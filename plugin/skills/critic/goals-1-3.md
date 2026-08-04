@@ -1,12 +1,13 @@
 # Critic: Goals 1-3 (`chunk` and `verify-resolutions`)
 
-The complete instruction set for these two modes. **Self-contained by design** — everything you need
-is here, so do not open `review-protocol.md` or `review-cycle.md`; following a pointer at review time
-is the payload this file exists to remove. Target wall-clock: 1-2 minutes.
+**Self-contained by design** — everything you need is here,
+so do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
 
 You are a **separate agent** and have not seen the builder's reasoning — that independence is the
 product. **Never run tests, builds, or executables**: review test quality and coverage by reading
-code. Both modes are **always single-pass** — no subagents, no coordinator.
+code. Both modes are **always single-pass** — no subagents, no coordinator. In `verify-resolutions`,
+only **BLOCKING** is a finding — report anything lesser, record-lint entries included, as an
+observation, never in `findings`.
 
 ## Before you review
 
@@ -17,20 +18,20 @@ code. Both modes are **always single-pass** — no subagents, no coordinator.
 3. Read the `.prawduct/artifacts/` a change touches — its build plan, and any artifact it cites.
 4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes.
 
-**Chunk `Type:`** (a separate axis from mode; missing or unrecognized ⇒ `code`, full protocol —
-never honor an unknown Type). `code`: all three goals full. `doc-only`: Goal 1 is prose and numeric
-counts only, Goal 2 is requirement coverage of prose deliverables, Goal 3 is scope discipline, and
-the test-evidence check is skipped. `trivial`: full, plus Goal 3's rationale-vs-diff sub-check.
-`cleanup`: Goal 1 structural-only (no broken refs), Goal 2 requirement coverage, Goal 3 scope
-discipline tolerating a zero diff; test-evidence skipped. `designer-handoff` never reaches you.
+**Chunk `Type:`** (separate axis from mode; missing or unrecognized ⇒ `code` — never honor an
+unknown Type). `code`: all three goals full. `doc-only`: Goal 1 prose only, Goal 2 requirement
+coverage of prose deliverables, Goal 3 scope discipline; test-evidence skipped.
+`trivial`: full, plus Goal 3's rationale-vs-diff sub-check. `cleanup`: Goal 1 structural-only (no
+broken refs), Goal 2 requirement coverage, Goal 3 scope discipline tolerating a zero diff;
+test-evidence skipped. `designer-handoff` never reaches you.
 
 **Normative authority** (`docs/norms.md`). Direction sections, preferences rows, project-state
 classification, **and unmarked prose recording a decision** bind; descriptions track (test: would
 syncing it to code silently unmake a decision?). Departure, unruled edge-work, normative change (even
 doc-only), or norm birth without a recorded vetoable decision → Goal 3 **BLOCKING** where ratified
 norms exist; with none, **NOTE** naming the capture path. Tell: amending a norm to match your own
-code. Correctness shapes the recommendation, never the need. Judge jurisdiction yourself;
-applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a downgrade.
+code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
+`/prawduct:doctor`; never a downgrade.
 
 **Record checks are already answered — read the manifest's `record_lint`, never re-derive it.** Never
 recount what it counted: that is how a record defect buys a review round. Each entry carries its own
@@ -86,9 +87,9 @@ chunk, and plan file. `null` there, or in any `counts` entry, means **no answer*
 
 ## Severity
 
-- **BLOCKING** — must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
+- **BLOCKING** — must fix before proceeding.
 - **WARNING** — true *and* worth the builder's time. Name the consequence: *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
-- **NOTE** — genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads anyone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next.
+- **NOTE** — genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads anyone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 
 **Never name the backlog as a finding's destination** — disposition is the builder's call.
 Proportionality: quick assessment for typos and formatting, full analysis for behavioral or
@@ -97,8 +98,9 @@ structural change.
 ## Record your judgment
 
 Write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook
-critic-consolidate` yourself — it appends the review fact, regenerates `.critic-findings.json`,
-anchors the ledger event, and clears the marker. You write nothing else.
+critic-consolidate` yourself. You write nothing else. **Its `NEXT-ACTION:` line is the
+builder's, not yours: relay it verbatim as your report's last line.** Everything else it printed
+dies in your context, and the builder is what terminates the review loop.
 
 ```json
 {
@@ -125,4 +127,5 @@ mismatch, so match this schema exactly.
 
 Then report to the user: signals (size, type, files, boundaries crossed), what you reviewed, each
 finding with goal, severity and recommendation, and a summary by severity saying whether the changes
-are ready. No findings: "No issues found. Changes are ready to proceed."
+are ready. No findings, no observations: "No issues found." **Either way** your last line is consolidate's
+`NEXT-ACTION:`, verbatim — the clean pass is where it matters most, never an exemption.

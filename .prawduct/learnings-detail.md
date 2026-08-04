@@ -2484,3 +2484,21 @@ maintainer's macOS checkout:
 **The generalisation.** All three are the same failure as the defect that scope existed to fix:
 nothing verified what a *different* consumer receives. A single execution environment makes every
 assumption it satisfies invisible.
+
+## A guardrail whose anchors come from your MENTAL MODEL of a file is a second copy of the claim, not a check on it
+
+A cross-file check written *specifically* to police the claim "these five classes are already
+BLOCKING-rated in `goals-1-3.md`" stayed green while two of the five were rated WARNING there and a
+third was not rated at all. Its anchors had been picked from the same mental list the false claim
+came from, so the test asserted the belief rather than the file.
+
+The repair was to split it: one guard for the classes the protocol genuinely rates (the citation
+half), one for the classes the directive *escalates*, with the protocol's LOWER rating pinned so
+stale escalation wording fails rather than passing quietly.
+
+**It recurred one method over.** The sibling guard was fixed to judge per clause after a
+five-verdict line let a downgrade pass; the same fix batch left its neighbour matching on the whole
+line, where the vulnerable-dependency clause supplied a `**WARNING**` that made an `auth/authz`
+promotion invisible. Verified by reverting the fix and re-running: the pre-fix assertion passes with
+the promotion applied. A slack-carrying drift detector is indistinguishable from the drift it
+watches for, and fixing one instance does not fix its siblings.

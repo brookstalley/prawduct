@@ -24,6 +24,49 @@ def estimate_tokens(text: str) -> int:
     return int(len(text.split()) * 1.3)
 
 
+def assert_inert_count_cap(text: str, path: str) -> None:
+    """Both Critic protocol files cap a finding whose only subject is an inert
+    count at NOTE, and both must carry it in the same place: INSIDE the NOTE
+    entry of the severity legend.
+
+    **Placement is the substance and is asserted, not assumed.** A reviewer
+    resolving "what severity is this?" reads the legend entry for the severity
+    it is weighing; a cap parked in its own paragraph is met either before
+    there is a finding to apply it to, or not at all. This repo has shipped
+    present-and-inert instruction twice with every artifact-measuring guardrail
+    green — `SKILL.md`'s header, and the near-miss that drafted the
+    verify-resolutions narrowing into `## Severity`, which sits below all three
+    goal sections. The legend entry is the right home here for the opposite
+    reason: it is a lookup, and it already owns the parent rule (record-only
+    prose is a NOTE because rating it WARNING manufactures the next round).
+
+    **The three components are the cap, not decoration.** A bare "rate it NOTE"
+    still hands the builder a defect report, and a builder fixes defect
+    reports — which is the commit that buys the next round. The finding has to
+    say the number is *right to leave alone*, which takes all three: the true
+    figure (or the builder cannot check the claim), that nothing reads it, and
+    that no edit is wanted.
+    """
+    note_bullet = next(
+        (
+            ln for ln in text.split("\n")
+            if ln.lstrip().startswith("- **NOTE**") and "ambiguous" in ln
+        ),
+        None,
+    )
+    assert note_bullet, f"{path} has no NOTE entry in its severity legend"
+    assert "inert count" in note_bullet, (
+        f"{path} states the inert-count cap outside the NOTE legend entry (or "
+        "not at all) — a reviewer picking a severity reads the entry, not the file"
+    )
+    for component, why in (
+        ("true figure", "the builder cannot check the claim without the number"),
+        ("nothing reads it", "'stale' without 'inert' is just a defect report"),
+        ("no edit is wanted", "the only clause that stops the fix commit"),
+    ):
+        assert component in note_bullet, f"{path}'s cap dropped {component!r} — {why}"
+
+
 #: The ACTUAL token count of each budgeted file, as last measured. The per-file
 #: `test_token_budget` assertions are *ceilings*; this is the reading, and one
 #: test below pins it.
@@ -41,9 +84,11 @@ def estimate_tokens(text: str) -> int:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4659,
-    "skills/critic/review-protocol.md": 3611,
-    "skills/critic/goals-1-3.md": 1960,
+    "methodology/building.md": 4657,
+    "skills/critic/review-protocol.md": 3589,
+    "skills/critic/goals-1-3.md": 1994,
+    "skills/critic/review-cycle.md": 9471,
+    "skills/critic/framework-checks.md": 1116,
 }
 
 
@@ -127,6 +172,43 @@ class TestBuildingMethodology:
         assert "The cheap-check gate" in self.content
         assert "Retrieval Over Generation" in self.content
         assert "Tuning a mechanism you haven't read" in self.content
+
+    def test_an_inert_count_is_not_written(self):
+        """The BUILDER half of the contestable-count rule. The reviewer half is
+        the NOTE cap in both Critic protocol files; this is the supply side, and
+        it is the half that matters — a count that was never written cannot be
+        corrected, re-reviewed, or argued about.
+
+        It sits beside the self-contained-comments rule because they are one
+        failure with two carriers: a durable artifact holding something that
+        decays. A build id dangles when the plan is deleted; a count goes stale
+        on the next commit. Both cost a finding, a fix commit, and the round the
+        commit buys.
+
+        The pinned content is the TEST, not the prohibition. "Avoid counts"
+        would also forbid thresholds, versions and limits, which must stay
+        exact — so the rule turns on whether anything branches on the number,
+        and that clause is what a trim must not quietly drop.
+        """
+        assert "a count nothing reads is not worth writing" in self.content
+        assert "wrong by two" in self.content, (
+            "the rule lost the test that separates an inert count from a "
+            "load-bearing one — without it this reads as 'avoid numbers'"
+        )
+        assert "stay exact" in self.content, "the load-bearing exception is gone"
+        # Reader model, not presence. A builder writes the count while INSIDE
+        # the build cycle (change-log entry, plan prose, docstring), so the rule
+        # has to be in that section — Common Traps sits at the end of the file
+        # and is read, if at all, after the prose is already written. This repo
+        # has shipped present-and-inert placement before (SKILL.md's header) with
+        # every artifact-measuring guardrail green.
+        cycle_at = self.content.index("## The Build Cycle")
+        rule_at = self.content.index("a count nothing reads")
+        next_section = self.content.index("\n## ", cycle_at + 1)
+        assert cycle_at < rule_at < next_section, (
+            "the count rule left The Build Cycle — a builder meets it after "
+            "writing the prose it governs, which is presence without effect"
+        )
 
     def test_references(self):
         """References subagent briefing, boundary patterns, learnings skill."""
@@ -416,6 +498,30 @@ class TestBuildingMethodology:
         # stale twice in one branch (4655 survived a trim to 4646, and this line
         # said "Headroom 5" above an assertion permitting 14) — the same
         # copy-forward this table was built to end.
+        #
+        # 2026-08-04 added the builder-side inert-count rule, from ZERO headroom
+        # (+0, the tightest this file has ever started an edit), and PAID FOR IT
+        # by the trim-or-relocate rule. Two Common Traps went, each checked
+        # rather than assumed:
+        #   "Gold plating" -> CLAUDE.md's always-loaded principle roster carries
+        #   P12 verbatim, the session digest's stance line says "do what was
+        #   asked - no more", and "Working With Specs" closes on it. Covered on a
+        #   surface the reader cannot skip, which this file's own history calls a
+        #   dedup rather than a cut.
+        #   "Verification theater / mock-as-implementation" -> the Verify step in
+        #   THIS file, both halves: "Launch it, call it, inspect output" and
+        #   "mocks are not verification". A trap restating a rule stated earlier
+        #   in the same file is the exact class three earlier traps were cut as.
+        # Plus three micro-relocates: the Critic's per-mode wall-clock figures
+        # (review-cycle.md owns per-mode behavior and its table has a Target
+        # wall-clock row -- this file now points), the gloss on "signals" (the
+        # same sentence already routes the reader to review-protocol.md for
+        # definitions), and "resets nothing and" in the compaction paragraph,
+        # which the session paragraph four lines above states of `compact`.
+        # NOT cut, and worth recording because it was the obvious candidate: the
+        # `changes_referenced`/`changes_unjudged` parenthetical. doctor/SKILL.md
+        # points HERE for the evidence shape, so this file is its referenced
+        # home, not a copy of one.
         tokens = estimate_tokens(self.content)
         assert tokens < 4660, f"building.md is ~{tokens} tokens, should be <4660"
 
@@ -510,6 +616,16 @@ class TestCriticSkill:
     @pytest.fixture(autouse=True)
     def load(self):
         self.content = read_file("skills/critic/review-protocol.md")
+
+    def test_an_inert_count_is_capped_at_note(self):
+        """The `final`/`cumulative` half of the sink-side cap.
+
+        Both protocol files carry it because both are read by a reviewer that
+        can raise the finding, and neither reads the other. `TestCriticGoals13`
+        holds the `chunk`/`verify-resolutions` half against the same helper, so
+        the two copies cannot drift into disagreeing about the cap.
+        """
+        assert_inert_count_cap(self.content, "review-protocol.md")
 
     def test_signals_and_work_scaling(self):
         """Has signals section and work size/type guidance."""
@@ -616,6 +732,23 @@ class TestCriticSkill:
         # keeping the template line to the bare imperative; the rationale and
         # full instruction live in agents/critic-reviewer.md, which every
         # dispatched reviewer loads anyway. 9 tokens of headroom remain.
+        #
+        # 3611 -> 3612 (2026-08-04) -- the reviewer must relay consolidate's
+        # `NEXT-ACTION:` line, the only carrier of the loop-termination rule
+        # with a reader in the BUILDER role. Paid in full by the fourth application of
+        # this comment's own first rule: the `resolutions` schema arm was
+        # restated here for a mode that does not read this file, and where
+        # emitting one FAILS consolidation -- so it was not merely redundant,
+        # it invited a fail-closed error.
+        #
+        # 3612 -> 3589 (2026-08-04) -- the inert-count NOTE cap, funded with room
+        # to spare by RELOCATING "Extending This Skill" to review-cycle.md. Fifth
+        # application of this comment's own first rule, and the cleanest: that
+        # section tells a MAINTAINER how to grow the Critic, and a reviewer never
+        # extends the skill while reviewing. Maintainer-facing rationale inside a
+        # per-review payload is the same class the goals-1-3.md budget comment
+        # records cutting twice. Relocated, not deleted -- review-cycle.md is the
+        # maintainer's companion file and carries no ceiling.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 
@@ -681,9 +814,106 @@ class TestCriticGoals13:
         # payload.
         #
         # Standing trim candidates when the next editor needs room: the
-        # chunk-`Type:` paragraph, which restates a table `review-cycle.md` owns,
-        # and the normative-authority block, the longest passage that is not a
-        # per-finding severity.
+        # normative-authority block, the longest passage that is not a
+        # per-finding severity. (The chunk-`Type:` paragraph was the other
+        # standing candidate and has now been spent — see below.)
+        #
+        # 1960 -> 1992 (2026-08-04) -- the reviewer must relay consolidate's
+        # `NEXT-ACTION:` line, the only carrier of the loop-termination rule
+        # with a reader in the BUILDER role: measured on a released version, one
+        # consumer branch ran ten Critic rounds while the rule sat in two files
+        # that branch never opened and in a directive that printed into seven
+        # reviewer forks and zero builder contexts. Bought at 32 tokens rather
+        # than ~160 by having CODE own the wording (`next_action_line`) and the
+        # prose only order the relay -- the ceiling held without a bump, which
+        # is this comment's standing rule.
+        #
+        # Paid twice, because the first version of the relay order sat where the
+        # no-findings shorthand swallowed it -- dropping the carrier in exactly
+        # the clean-pass case it exists for -- and making it unconditional cost
+        # more than the order itself. Funded by compressing the chunk-`Type:`
+        # paragraph, and by cutting a regrown instance of the very clause this
+        # comment already records cutting once: a rationale addressed to a
+        # MAINTAINER ("following a pointer at review time is the payload this
+        # file exists to remove") inside the file whose purpose is minimum
+        # reviewer payload.
+        #
+        # 1992 -> 1994 (2026-08-04) -- `verify-resolutions` rates new findings
+        # BLOCKING only, so a re-review cannot manufacture the non-blocking work
+        # that supplies the next round. Bought at 17 words for the same reason
+        # the NEXT-ACTION relay was bought at 32: the worked instances live in
+        # CODE (`VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, printed at dispatch) and
+        # this file carries only the rule. Funded by the standing candidate
+        # above -- "Judge jurisdiction yourself; applicability is recorded,
+        # never assumed", the most abstract sentence in the normative-authority
+        # block and the only one that assigns no verdict -- plus the opening
+        # "The complete instruction set for these two modes", which the H1 and
+        # the self-contained clause on the same line both already say.
+        #
+        # It sits in the PREAMBLE, not in `## Severity`, and that is a budget
+        # fact as much as a design one: Severity is below all three goal
+        # sections, so the cheap placement would have been read after every
+        # severity it governs -- paying 17 words for nothing. Ordering beats
+        # presence (`test_the_protocol_carries_it_before_any_severity_is_assigned`).
+        #
+        # 1994 -> 1990 (same day, that chunk's review): the narrowing needed two
+        # more clauses to be TRUE, and both were funded with room left over.
+        # "record-lint entries included" (+2) resolves a specific-over-general
+        # conflict -- the record-lint paragraph 20 lines below assigns WARNING
+        # and NOTE imperatively, inside the one mode that records neither, and
+        # this is the only protocol file that mode may open. "no observations"
+        # (+2) stops the report contract's clean-pass line instructing "No
+        # issues found" from a pass that demoted three observations, which
+        # would have defeated the cost-bound the whole narrowing rests on.
+        # PAID BY the `## Severity` BLOCKING legend's example list (-8):
+        # "(broken tests, dropped requirements, security vulnerabilities,
+        # unlisted deps)" restates four checks stated in full above it, in the
+        # legend that DEFINES the severity -- the definition is "must fix before
+        # proceeding" and the examples were a fourth restatement. Generalizes
+        # with the two cuts recorded above: a legend that re-lists its own
+        # section's contents is paying twice for one instruction.
+        #
+        # NOTE for the next editor: the two normative-authority blocks (here and
+        # review-protocol.md) diverged for the first time with the trim above,
+        # and nothing measures the seam. Mandatory in BOTH: every claim that
+        # assigns a verdict (what binds, the departure -> BLOCKING/NOTE rule,
+        # the stale-registry NOTE). Droppable HERE first: claims that assign
+        # none. That is the rule the divergence was chosen under.
+        #
+        # 1990 -> 1994 (2026-08-04) -- the inert-count NOTE cap, plus dropping
+        # `numeric counts` from the doc-only Goal 1 target list (a REMOVAL that
+        # part-funds its own addition: the protocol stops asking for the finding
+        # the cap then has to rate). Funded the rest by the `## Record your
+        # judgment` sentence enumerating what `critic-consolidate` does (appends
+        # the fact, regenerates the cache, anchors the ledger, clears the
+        # marker) -- mechanism the reviewer neither verifies nor uses; the
+        # actionable half ("run it yourself", "You write nothing else") stayed.
+        #
+        # **The trim tried FIRST was rejected by a guard, and that is the entry
+        # worth reading.** The `graded chunk` record-lint entry spells out both
+        # guess-paths (chunk inferred from build-plan Status, plan from
+        # `active_build_plan`), twenty lines under this file's own instruction
+        # that each entry "carries its own explanation - raise it, don't restate
+        # it" -- so the surrounding prose appeared to argue for the cut, and it
+        # was taken. `test_both_unchecked_shapes_are_graded_on_every_reviewer
+        # _surface` in tests/test_record_lint.py failed, and its docstring names
+        # this exact edit as the predicted casualty of a token-diet pass on this
+        # file. Naming only ONE guess-path leaves the other readable as a clean
+        # grade, which is how the assumption shape gets read as BLOCKING -- a
+        # false blocker no `--chunk` can clear. The generalization is already in
+        # learnings and now has a second instance: prose that reads as redundant
+        # may be the only witness to a contract. Uplevel aggressively, then run
+        # the suite; the guards decide what was redundant, not the reading.
+        #
+        # The cap sits in the `## Severity` NOTE legend and the narrowing does
+        # NOT, which is not an inconsistency: the narrowing governs whether to
+        # report at all, decided continuously while reading the goals, so it had
+        # to precede them; a severity cap is a LOOKUP made once at write-up, and
+        # the legend entry already owns its parent rule (record prose is a NOTE
+        # because rating it WARNING manufactures the next round). Both placements
+        # are asserted, not assumed -- `assert_inert_count_cap` requires the cap
+        # INSIDE the legend entry, and the ordering pin keeps the narrowing above
+        # goal 1.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 
@@ -768,6 +998,84 @@ class TestCriticGoals13:
         assert "designer-handoff" in self.content     # the chunk `Type:` selector
         assert "Normative authority" in self.content  # Goal 3's binding preamble
         assert '"resolutions"' in self.content        # the verify-resolutions schema arm
+
+    def test_an_inert_count_is_capped_at_note(self):
+        """The `chunk`/`verify-resolutions` half of the sink-side cap — same
+        helper as `TestCriticSkill`, so the two copies cannot disagree."""
+        assert_inert_count_cap(self.content, "goals-1-3.md")
+
+    def test_the_doc_only_selector_no_longer_hunts_counts(self):
+        """The source side: the protocol stopped ASKING for count findings.
+
+        The doc-only row aimed Goal 1 at "prose and numeric counts", which made
+        the contestable-count finding an *instruction* rather than an accident —
+        roughly one finding in eleven across the measured window was
+        count-shaped. Removing the direction is the cheaper half of R4 and the
+        only half that acts before a reviewer has formed an opinion; the NOTE
+        cap above only limits the damage once one has.
+
+        Asserted on BOTH carriers because the row exists twice — here (what a
+        chunk / verify-resolutions reviewer reads) and `review-cycle.md`'s
+        selector table (what every other reader consults). Dropping it from one
+        leaves the other instructing the opposite, which is worse than leaving
+        both: a reviewer that finds the surviving copy has an explicit mandate.
+        """
+        doc_only = next(ln for ln in self.content.split("\n") if "`doc-only`:" in ln)
+        assert "numeric counts" not in doc_only, (
+            "goals-1-3.md still directs doc-only Goal 1 at counts"
+        )
+        assert "Goal 1 prose only" in doc_only
+        row = next(
+            ln for ln in read_file("skills/critic/review-cycle.md").split("\n")
+            if ln.startswith("| `doc-only`")
+        )
+        assert "numeric counts" not in row, (
+            "review-cycle.md's Per-Chunk Type selector still asks for counts — "
+            "the two carriers now instruct opposite things"
+        )
+
+    def test_the_narrowing_covers_the_record_lint_entries_below_it(self):
+        """A specific-over-general conflict inside one file, and the clause that
+        resolves it is unpinned prose until this test exists.
+
+        The record-lint paragraph twenty lines below the narrowing assigns
+        **WARNING** and **NOTE** imperatively (`governed-by-gap` → WARNING, and
+        so on). In `verify-resolutions` those severities are not findings at
+        all, and this is the only protocol file that mode may open — so a
+        reviewer reading the specific instruction after the general one records
+        exactly the work the narrowing exists to stop. The clause has to be in
+        the narrowing, and it has to come FIRST, for the same reason the
+        narrowing itself sits in the preamble.
+        """
+        rule_at = self.content.find("only **BLOCKING** is a finding")
+        assert rule_at != -1, "the narrowing is gone — see the ordering pin"
+        clause_at = self.content.find("record-lint entries included")
+        assert clause_at != -1, (
+            "the narrowing no longer says it covers record-lint entries, and "
+            "the record-lint paragraph below still assigns WARNING and NOTE "
+            "imperatively inside the one mode that records neither"
+        )
+        assert rule_at < clause_at < self.content.index("`record_lint`"), (
+            "the coverage clause moved out of the narrowing or below the "
+            "record-lint paragraph it has to govern"
+        )
+
+    def test_the_clean_pass_shorthand_does_not_swallow_observations(self):
+        """`verify-resolutions` demotes findings into prose, so "no findings" and
+        "nothing to report" stopped being the same thing.
+
+        The report contract's shorthand ("No issues found.") is keyed on the
+        `findings` array. Left keyed there, a pass that demoted five
+        observations reports silence — and the entire cost argument for the
+        narrowing is that the builder still READS them. The first real use of
+        the rule demoted five, so this is not hypothetical.
+        """
+        closing = self.content[self.content.index("Then report to the user"):]
+        assert "No findings, no observations" in closing, (
+            "the clean-pass shorthand is keyed on findings alone again — a pass "
+            "that demoted observations now reports 'No issues found', which "
+            "deletes the only channel the demotion leaves them"
+        )
 
     def test_never_runs_anything(self):
         """The no-execution rule is load-bearing and must survive distillation."""
@@ -876,6 +1184,30 @@ class TestCriticSkillRoutesByMode:
                 offenders.append(clause.strip()[:110])
         assert not offenders, f"fast-path steps cite a final-only file unqualified: {offenders}"
 
+    def test_the_per_mode_scope_line_carries_the_severity_narrowing(self):
+        """SKILL.md is the FIRST file the fork reads, and its per-mode scope
+        line exists so that no mode has to open `review-cycle.md` for scope.
+        The narrowing IS scope, so a summary omitting it is an incomplete
+        description of the mode — and this is the only carrier of the rule with
+        no other guard.
+
+        Without this pin the next token trim of that already-long line removes
+        the narrowing from the fork's first read with CI green, which is the
+        plan's own Verification Strategy applied to itself: *prose changes to a
+        fork-read protocol are pinned by test, because nothing else can observe
+        them.*
+        """
+        line = next(
+            (ln for ln in self.content.split("\n") if "Per-mode scope" in ln), None
+        )
+        assert line is not None, "SKILL.md no longer summarises per-mode scope"
+        assert "BLOCKING only" in line, (
+            "SKILL.md's per-mode scope line no longer states that "
+            "verify-resolutions rates new findings BLOCKING only — the fork "
+            "reads this before its protocol, so the omission is read as "
+            "'this mode rates everything'"
+        )
+
     def test_review_cycle_table_records_the_routing(self):
         """`review-cycle.md` owns per-mode behavior, so the routing is recorded
         there too — a reader who checks the mode table must not learn a
@@ -893,6 +1225,51 @@ class TestCriticSkillRoutesByMode:
 
 
 class TestReviewCycle:
+    def test_token_budget(self):
+        # Ceiling 9600. Added 2026-08-04 because this file was the only
+        # `final`/`cumulative` payload with no bound, and the gap was being
+        # SPENT: `review-protocol.md`'s relocated "Extending This Skill" and the
+        # verify-narrowing argument both landed here justified by "review-cycle
+        # carries no ceiling", while the ceiling test one file over passed on a
+        # token DROP. Relocation across an unguarded boundary is a bump wearing
+        # a trim's clothing -- the P0 wall-clock norm is about the payload a
+        # reviewer loads, and `SKILL.md` lists this file as part of it (
+        # `test_payload_at_most_half_the_full_protocol` counts it too).
+        #
+        # The ceiling is deliberately loose relative to its siblings: this file
+        # is ~2.6x review-protocol.md and a tight bound would force an immediate
+        # diet that nothing has argued for. It exists to make the NEXT growth a
+        # decision, not to relitigate the current size. Same standing rule as
+        # every other budget comment here: THE NEXT ADDITION TRIMS OR RELOCATES,
+        # IT DOES NOT BUMP.
+        #
+        # The first draft of this comment closed with "'relocate to the
+        # unbudgeted file' is no longer an available move anywhere in this
+        # skill". That was FALSE when written -- `framework-checks.md` is listed
+        # at SKILL.md:27 as `final`/`cumulative` payload and had no ceiling
+        # either. Caught as an observation by the verify pass over the very
+        # commit that added this. It is true now because the sibling test below
+        # was added to MAKE it true, which is the only honest way to keep a
+        # universal claim: bound the last case, or do not make the claim.
+        content = read_file("skills/critic/review-cycle.md")
+        tokens = estimate_tokens(content)
+        assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
+
+    def test_framework_checks_token_budget(self):
+        # Ceiling 1150. The last `final`/`cumulative` payload file without one
+        # (SKILL.md:27 routes final/cumulative reviewers here for the four
+        # Framework-Specific Check definitions, and `review-protocol.md` names
+        # the file rather than restating them -- a deliberate relocation that
+        # this bound is what keeps honest).
+        #
+        # Small file, so the ceiling is proportionally looser than its siblings'
+        # few-token headroom: the point is that the NEXT addition is a decision,
+        # not to force a diet on 87 lines nothing has argued are too many. Same
+        # standing rule: THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP.
+        content = read_file("skills/critic/framework-checks.md")
+        tokens = estimate_tokens(content)
+        assert tokens < 1150, f"framework-checks.md is ~{tokens} tokens, should be <1150"
+
     def test_structure(self):
         content = read_file("skills/critic/review-cycle.md")
         for level in ["Trivial", "Small", "Medium", "Large"]:
@@ -907,6 +1284,88 @@ class TestReviewCycle:
         content = read_file("skills/critic/review-cycle.md")
         for check in ("C-B1", "C-B2", "C-B3", "C-B4"):
             assert check in content, f"review-cycle.md missing backlog check {check}"
+
+    def test_the_per_mode_table_records_the_severity_narrowing(self):
+        """`review-cycle.md` owns per-mode behavior, so the table is where a
+        maintainer looks up what a mode rates.
+
+        The reviewer never reads this file (`goals-1-3.md` forbids it), so
+        nothing here reaches the actor — which is exactly why it must not
+        contradict what does. This pins the row that says `verify-resolutions`
+        rates BLOCKING only against the same claim in the reviewer's protocol.
+        """
+        content = read_file("skills/critic/review-cycle.md")
+        row = next(
+            (ln for ln in content.split("\n") if "New findings rated" in ln), None
+        )
+        assert row is not None, (
+            "the per-mode table no longer says what each mode rates — a "
+            "maintainer reading it learns nothing about the narrowing"
+        )
+        assert "BLOCKING only" in row, (
+            "the table's verify-resolutions cell no longer records the "
+            "narrowing the reviewer is actually instructed to apply"
+        )
+        # Three modes rate everything; only one is narrowed. A row that said
+        # "BLOCKING only" everywhere would pass a presence check and describe a
+        # framework nobody built.
+        assert row.count("Every severity") == 3, (
+            "the table no longer distinguishes the narrowed mode from the "
+            "three that rate every severity"
+        )
+
+    def test_the_supply_side_section_states_the_cost(self):
+        """A rule that removes review output has to name what it gives up, or
+        the next maintainer re-derives the tradeoff from scratch and reverses it
+        on the strength of the risk alone.
+
+        Asserting the parts of the argument, not its wording: the rule, the
+        carve-out that keeps it safe, and the admission that an observation is
+        not a recorded fact.
+        """
+        content = read_file("skills/critic/review-cycle.md")
+        heading = "### A re-review does not manufacture work"
+        assert heading in content, (
+            "review-cycle.md no longer carries the supply-side section the "
+            "per-mode table points at"
+        )
+        # Split on the HEADING, not the phrase — the per-mode table cites the
+        # section by name, so a phrase split lands in the table and every
+        # assertion below then reads the wrong text.
+        section = content.split(heading, 1)[1].split("\n### ", 1)[0]
+        assert "OBSERVATION" in section, "the section never names where a demoted finding goes"
+        assert "fix-by-fudging" in section, (
+            "the section states the narrowing without its carve-out — the "
+            "classes that stay BLOCKING are what make it safe"
+        )
+        assert "not a recorded fact" in section or "cannot be" in section, (
+            "the section sells the benefit without stating the cost: a demoted "
+            "observation leaves no trace in the evidence store"
+        )
+
+    def test_the_verify_step_no_longer_rates_a_workaround_warning(self):
+        """Per-Chunk Cycle step 3 used to rate "a workaround instead of root
+        cause" **WARNING** — inside the one mode that now records no warnings.
+
+        Two things were wrong with it and only one is the contradiction. A
+        WARNING gates nothing, so it was also the wrong instrument: when a fix
+        works around a root cause the finding named, the honest verdict is that
+        the finding is *unresolved*, which is expressed by withholding the
+        resolution and fails closed.
+        """
+        content = read_file("skills/critic/review-cycle.md")
+        step = next(
+            ln for ln in content.split("\n") if ln.startswith("3. **If BLOCKING")
+        )
+        assert "workaround instead of root cause (**WARNING**)" not in step, (
+            "step 3 rates a fix-by-fudging class WARNING inside "
+            "verify-resolutions, which records no warnings — the reviewer is "
+            "told two different things by two files it may read in either order"
+        )
+        assert "resolutions" in step, (
+            "step 3 no longer routes fix-by-fudging to the mechanism that "
+            "actually holds the gate shut — withholding the resolution"
+        )
 
 
 # =============================================================================

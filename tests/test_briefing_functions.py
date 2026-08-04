@@ -373,6 +373,33 @@ class TestSummarizeCriticFindings:
         (pr / ".critic-findings.json").write_text(json.dumps({"summary": "", "findings": []}))
         assert briefing._summarize_critic_findings(pr) is None
 
+    def test_an_unreadable_record_says_so_rather_than_going_quiet(self, tmp_path):
+        """A record that EXISTS but cannot be parsed is not the same answer as
+        no record, and rendering them identically is the failure this whole
+        surface exists to prevent.
+
+        `None` drops the entire `## Critic Findings` section from the briefing,
+        which reads exactly like "no review has run" — and the reader here is
+        definitionally the builder who lost the reviewer's report across
+        `/clear`, the one context where that difference decides whether a round
+        gets run. The missing-FIELD paths are covered above; this is the
+        missing-RECORD path.
+
+        Same rule its sibling advisory follows in `coverage.diagnose_fix_churn`
+        (`unavailable` vs `None`), and the same learning both cite: "'advice
+        fails soft' is not 'advice fails silent'."
+        """
+        pr = _prawduct(tmp_path)
+        (pr / ".critic-findings.json").write_text('{"summary": "truncated mid-w')
+        out = briefing._summarize_critic_findings(pr)
+        assert out is not None, (
+            "an unparseable findings record renders identically to no review "
+            "having run — the builder inherits silence and re-reviews"
+        )
+        assert "could not be read" in out
+        assert "NOT a statement" in out, "the degraded path must name its consequence"
+        assert "critic-consolidate" in out, "and the route back to the real record"
+
     def test_counts_and_lists_blocking_and_warnings(self, tmp_path):
         pr = _prawduct(tmp_path)
         (pr / ".critic-findings.json").write_text(json.dumps({
@@ -387,6 +414,50 @@ class TestSummarizeCriticFindings:
         assert "Review done." in out
         assert "1 blocking" in out and "1 warning" in out and "1 note" in out
         assert "BLOCKING: must fix" in out and "WARNING: should fix" in out
+
+    def test_next_action_reaches_the_cross_session_builder(self, tmp_path):
+        """The handoff is the ONLY carrier of the loop-termination rule that
+        survives `/clear`, and its reader is by definition the one who lost the
+        reviewer's report — so a silent loss here is unobservable in-session,
+        which is the exact failure mode this whole change exists to close.
+        Every sibling carrier is pinned; this one was not."""
+        pr = _prawduct(tmp_path)
+        (pr / ".critic-findings.json").write_text(json.dumps({
+            "summary": "0 blocking, 4 warning, 2 note.",
+            "findings": [{"severity": "warning", "summary": "should fix"}],
+            "next_action": "0 blocking — THE REVIEW IS OVER. They gate NOTHING.",
+        }))
+        out = briefing._summarize_critic_findings(pr)
+        assert "NEXT-ACTION: 0 blocking — THE REVIEW IS OVER" in out
+        # Inheriting a warning list with no statement that warnings gate
+        # nothing is the state the measured ten-round failure started from.
+        assert out.index("1 warning") < out.index("NEXT-ACTION:")
+
+    def test_next_action_survives_a_clean_pass_with_no_findings(self, tmp_path):
+        """The clean pass is where "the review is over" is the entire message,
+        and it is the one shape the early `not summary and not findings` return
+        can swallow: with an empty `findings` list, only the summary keeps the
+        record from short-circuiting to `None` and taking `next_action` with it.
+        Pinned with a summary present because that is what `fact_to_cache_record`
+        writes; the summary-less case is `test_empty_summary_and_findings_returns_none`."""
+        pr = _prawduct(tmp_path)
+        (pr / ".critic-findings.json").write_text(json.dumps({
+            "summary": "0 blocking, 0 warning, 0 note across 1 reviewer(s).",
+            "findings": [],
+            "next_action": "0 blocking, 0 other findings — THE REVIEW IS OVER.",
+        }))
+        out = briefing._summarize_critic_findings(pr)
+        assert out is not None
+        assert "NEXT-ACTION: 0 blocking, 0 other findings" in out
+
+    def test_a_record_without_next_action_still_summarizes(self, tmp_path):
+        # Records written before the field existed must not lose their summary.
+        pr = _prawduct(tmp_path)
+        (pr / ".critic-findings.json").write_text(json.dumps({
+            "summary": "Legacy record.", "findings": [],
+        }))
+        out = briefing._summarize_critic_findings(pr)
+        assert out == "Legacy record."
 
 
 # --------------------------------------------------------------------------- #

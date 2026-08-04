@@ -677,11 +677,18 @@ def session_review_verdict(project_dir: Path) -> dict:
 
 
 def _merge_base_verdict(
-    project_dir: Path, facts: list[dict], target: str, diff_fn, key_fn=None
+    project_dir: Path, facts: list[dict], target: str, diff_fn, key_fn
 ) -> "dict | None":
     """Coverage of merge-base tree → ``target`` — the session gate's
     unwedging fallback (see :func:`session_review_verdict`). ``None`` when
-    the merge base cannot be resolved (the primary verdict then stands)."""
+    the merge base cannot be resolved (the primary verdict then stands).
+
+    ``key_fn`` is required for the reason :func:`coverage.diagnose_fix_churn`
+    documents at its own ``coverage_verdict`` call: a ``None`` key sends
+    ``_find_path`` down the pairwise free-edge branch, which :func:`_tree_key_fn`
+    measures on this repo's store at ~5.6k ``git diff`` subprocesses. It used to
+    default, unreachably — the sole caller passes it — and an unreachable
+    default for a silent slow path is a hang waiting for its first caller."""
     resolved = coverage.resolve_merge_base_tree(project_dir)
     if resolved["status"] != "ok":
         return None
@@ -1045,12 +1052,14 @@ def check_cumulative_critic(project_dir: Path) -> int:
         print(f"no-head: cannot resolve HEAD^{{tree}} ({err}).", file=sys.stderr)
         return 1
 
+    diff_fn = _cached_diff_fn(project_dir)
+    key_fn = _tree_key_fn(project_dir)
     verdict = coverage_algebra.coverage_verdict(
         read.get("facts", []),
         base_tree,
         head_tree,
-        _cached_diff_fn(project_dir),
-        _tree_key_fn(project_dir),
+        diff_fn,
+        key_fn,
     )
 
     if verdict["status"] == "covered":
@@ -1114,8 +1123,66 @@ def check_cumulative_critic(project_dir: Path) -> int:
             f"{stale['local']}'s tree.",
             file=sys.stderr,
         )
+    # A gap whose whole content is the builder's own non-blocking fixes needs a
+    # different first sentence than a gap that is unreviewed work. Surface it
+    # BEFORE the generic remedy for the same reason the stale-base NOTE is
+    # surfaced there: the reader acts on the first route they meet, and the
+    # generic route here is a 4-10 minute round that will hand them the next
+    # one's findings.
+    churn = coverage.diagnose_fix_churn(
+        project_dir,
+        read.get("facts", []),
+        head_tree,
+        base_tree,
+        resolved.get("merge_base", ""),
+        diff_fn,
+        key_fn,
+    )
+    if churn is not None and churn.get("status") == "unavailable":
+        # A degraded advisory that says nothing is indistinguishable from one
+        # that found nothing, and the builder then runs the round this control
+        # exists to prevent with no record that it never ran (learnings.md:
+        # "'Advice fails soft' is not 'advice fails silent'").
+        print(
+            f"NOTE: the fix-churn diagnosis could not run ({churn['reason']}) — "
+            f"this is not a finding that your gap is genuine work, only that the "
+            f"cheap check was unavailable.",
+            file=sys.stderr,
+        )
+    elif churn is not None:
+        shown = ", ".join(churn["delta_files"][:4])
+        if len(churn["delta_files"]) > 4:
+            shown += f" (+{len(churn['delta_files']) - 4} more)"
+        print(
+            f"NOTE: coverage composes all the way to review {churn['fact_id']} "
+            f"(taken on this branch, after the merge-base, 0 unresolved BLOCKING), "
+            f"and every judgeable change since it is in a file that review's OWN "
+            f"findings named ({shown}). That is FILE-level evidence for fix churn: "
+            f"it rules out work in a file that review never saw, not new work "
+            f"written into one it named. If those commits were only the fixes you "
+            f"were closing, they were optional — the {churn['warning']} warning + "
+            f"{churn['note']} note "
+            f"finding(s) gated nothing. ONE `/prawduct:critic verify-resolutions` "
+            f"closes it; fix nothing further first, or you will re-open it. For "
+            f"anything still undecided, `prawduct-hook disposition "
+            f"{churn['fact_id']} <fid> --accept \"<reason>\"` records a won't-fix, "
+            f"moves no tree, and needs no review.",
+            file=sys.stderr,
+        )
+    # The generic routes stay available but stop being the LAST imperative when
+    # the churn NOTE fired: an agent reading a stderr block commonly acts on the
+    # final instruction, and unqualified that is the 4-10 minute round this
+    # control exists to displace. The sibling stale-base NOTE solves the same
+    # problem with the same instrument — qualifying its own advice rather than
+    # suppressing the block, so no remedy is lost when the diagnosis is wrong.
+    lead = (
+        "If that diagnosis does not fit — you bundled new work into those commits, "
+        "or the gap is something else — the general routes are: run "
+        if churn is not None and churn.get("status") == "churn"
+        else "Run "
+    )
     print(
-        "Run /prawduct:critic cumulative — it reviews the whole span and records "
+        lead + "/prawduct:critic cumulative — it reviews the whole span and records "
         "the fact composition needs. If a pre-commit review was followed by a "
         "selective commit (only part of the reviewed state committed), the "
         "commit's tree was never reviewed — /prawduct:critic verify-resolutions "

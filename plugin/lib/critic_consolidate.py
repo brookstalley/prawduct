@@ -247,6 +247,86 @@ _BATCH_FIX_DIRECTIVE = (
 )
 
 
+#: Carried by EVERY zero-blocking variant, including the clean pass.
+#:
+#: "The review is over" and "you may merge" are different claims, and only the
+#: first is this function's to make: a clean `chunk` mid-plan still owes a
+#: `final`/`cumulative` at end of cycle (`review-cycle.md`'s table, and the
+#: advisory `_critic_session_satisfies_gate` fires for exactly that case), and
+#: `check-cumulative-critic` still needs spanning coverage. Omitting it from
+#: the clean branch let two code-owned surfaces assert opposite things in one
+#: session, with the newer one saying "stop" — so it is a constant rather than
+#: a phrase each branch remembers to repeat.
+_COVERAGE_IS_A_SEPARATE_QUESTION = (
+    " (Whether the PR gate is satisfied, and whether the work cycle still owes a"
+    " final/cumulative, are separate questions about coverage — ask them by"
+    " running the gate, not by reviewing again.)"
+)
+
+
+def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: int) -> str:
+    """The one sentence the BUILDER needs, computed from the fact's own counts
+    and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
+
+    **Why this field exists at all.** Every other carrier of the
+    loop-termination rule is a *pull* carrier, and the builder that most needs
+    it is the one least likely to pull. ``methodology/building.md`` states the
+    rule under "Resolve findings", but a builder reaches it only by entering a
+    build plan — and a branch with no plan (an ordinary framework fix, an
+    ad-hoc lane) never does. ``skills/critic/review-cycle.md`` states it more
+    fully and is read by nobody in the builder role. :data:`_BATCH_FIX_DIRECTIVE`
+    is the runtime carrier and *cannot reach the builder on the single-pass
+    path*: ``verify-resolutions`` and ``chunk`` are always single-pass, so the
+    reviewing fork runs ``critic-consolidate`` itself and the directive prints
+    into the reviewer's context, not the builder's. The docstring above
+    :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` already records that reasoning for
+    its own sake; this is the same gap answered where it can be closed.
+
+    Measured on a released version (v3.2.3), one consumer branch: ten Critic
+    rounds, of which rounds five onward were the builder fixing WARNINGs that
+    gated nothing. The transcript contains zero reads of either prose carrier
+    and zero occurrences of the batch-fix directive, against seven occurrences
+    inside reviewer forks. The builder did read the findings — so the findings
+    file is the carrier that had a reader and no message.
+
+    ``.critic-findings.json`` is a derived VIEW (D7): no gate reads it, so a
+    line here can never weaken one. It is advice delivered where the decision
+    is made."""
+    if blocking:
+        return (
+            f"{blocking} BLOCKING finding(s) gate this work — nothing else here does."
+            " Fix them, land EVERY fix you are going to make in ONE commit, then run"
+            " ONE `/prawduct:critic verify-resolutions`. Decide the WARNING/NOTE"
+            " findings in that SAME pass (fix / accept / file) — deferring them to a"
+            " later round is what turns one review into several."
+        )
+    if not (warning or note):
+        return (
+            "0 blocking, 0 other findings — THE REVIEW IS OVER and there is nothing"
+            " to disposition. Nothing in THIS review requires another round."
+            + _COVERAGE_IS_A_SEPARATE_QUESTION
+        )
+    ref = fact_id or "<review-id>"
+    return (
+        f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
+        " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
+        " requires another round."
+        + _COVERAGE_IS_A_SEPARATE_QUESTION
+        + " Disposition each finding instead of reflexively fixing it —"
+        " accept is the default for anything nobody will realistically action:"
+        f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"`, which needs'
+        " no review and moves no tree. If you do choose to fix some, batch them into"
+        " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
+        " ONLY if that commit touched judgeable files. A batch confined to"
+        " `.prawduct/` prose, `.claude/settings.json`, or `.md` outside `skills/`,"
+        " `methodology/`, `templates/` and a root `CLAUDE.md` moves no coverage and"
+        " needs no pass at all."
+        " Do NOT start another round to 'close coverage' before committing, and do"
+        " not infer that you need one from gate output printed before your fix —"
+        " commit, then re-run the gate and let it answer."
+    )
+
+
 #: Delivered at `verify-resolutions` DISPATCH — before the reviewer judges each
 #: prior finding, not after it has.
 #:
@@ -304,6 +384,95 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
     " second site is in a file this delta does not touch. Spend this on the"
     " finding you feel surest about: a rule you agree with and do not apply to"
     " the disposition actually in front of you has done nothing."
+)
+
+
+#: Delivered at `verify-resolutions` DISPATCH, immediately before
+#: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` — same reader, same moment, and the
+#: other half of what makes a re-review terminate. That one governs the
+#: `resolutions` array; this one governs `findings`.
+#:
+#: **The pump it closes.** A verify pass exists to answer one question: were the
+#: prior findings resolved? It also walks the fix delta at full severity, and
+#: the WARNING/NOTE findings it records there are round N+2's supply — the
+#: builder fixes them, the fix moves the tree, the moved tree reopens coverage,
+#: and the next pass reviews the prose the last fix wrote. Measured at ten
+#: rounds on one consumer branch (CRT-3W6P), where rounds five onward were
+#: entirely non-gating findings the previous round's fixing had created.
+#:
+#: **The argument for the narrowing is NOT restated here.** It lives in
+#: ``skills/critic/review-cycle.md`` § "A re-review does not manufacture work" —
+#: why this mode and not the others, what it does not cost (only
+#: ``unresolved_blocking`` is read by any gate), what it does cost (an
+#: observation is not a recorded fact), the escalation history, and the
+#: half-emitted yield. Both audiences are maintainers and both copies were
+#: full-length, which is the shape ``architecture.md``'s one-home norm names: on
+#: the next change to the argument — #585 landing makes "yield is half-emitted"
+#: false — the loser is whichever reader met the stale copy.
+#:
+#: What stays here is what an editor of THIS STRING needs and that section does
+#: not own:
+#:
+#: **The demotion binds on severity, not on class membership.** The list ADDS to
+#: what the protocol blocks and never narrows it. Stating it the other way round
+#: made "everything else" take the five classes as its antecedent, which
+#: literally demoted BLOCKING-rated classes the enumeration happens to omit —
+#: test failures in evidence, ``missing-coverage:`` lines, cross-component
+#: contract breaks, unlisted dependencies, norm departures. On the carrier the
+#: reviewer reads last before rating, that reading is the expensive one.
+#:
+#: **Two of the five classes are an ESCALATION and this text must keep saying
+#: so.** ``goals-1-3.md`` rates *auth/authz on new endpoints* and
+#: *known-vulnerable dependencies* WARNING and does not rate fix-by-fudging at
+#: all, so for this mode the rating exists nowhere but here — dropping the
+#: wording demotes those classes by silence, and claiming they are "already
+#: BLOCKING-rated" (an earlier draft did) is circular as well as false.
+#: ``test_the_escalated_carve_out_classes_are_named_as_escalations`` pins both
+#: halves, per clause rather than per line.
+#:
+#: **The structural destination is part of the string, not decoration.**
+#: ``goals-1-3.md``'s report contract enumerates findings and a summary with no
+#: slot for anything else, so "in prose" was not enough — the text names an
+#: `### Observations` heading and asks for a count, and both are pinned.
+#:
+#: **The descent is load-bearing, for the reason
+#: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s docstring gives at length.** A
+#: reviewer agrees that re-reviews should not manufacture work and then records
+#: the WARNING in front of it, because nothing made it recognize THIS finding as
+#: the instance. So the general sentence is followed by the act, by instances
+#: concrete enough to pattern-match against, and by an instruction to spend it
+#: on the finding the reader is surest about — which is the one a general rule
+#: never reaches.
+VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
+    "PRAWDUCT: this pass answers ONE question — were the prior findings"
+    " resolved? A NEW finding here is BLOCKING, or it is not a finding."
+    " **The test is the SEVERITY you would assign, never membership in any"
+    " list.** Anything you would rate below BLOCKING — including a record-lint"
+    " entry the manifest rated below BLOCKING — goes in your report under an"
+    " `### Observations` heading, in prose, and NOT into `findings`: a name you"
+    " would have chosen differently, prose that could be tighter, a test you"
+    " would have structured another way. Everything the protocol rates BLOCKING"
+    " stays BLOCKING, with no exceptions and no list to check. Five classes are"
+    " BLOCKING *in this mode whatever they are rated elsewhere*, because they"
+    " are what a fix delta actually gets wrong and demoting one is the only way"
+    " this rule could lose something real: a test weakened or deleted to make"
+    " the fix pass; a requirement dropped in the rewrite; changed behavior with"
+    " no test; anything security-relevant in the changed code — including the"
+    " auth/authz and known-vulnerable-dependency cases the protocol rates"
+    " WARNING; and fix-by-fudging — the spec edited to match the implementation,"
+    " or a workaround where the finding named the root cause, which is equally"
+    " grounds to leave that finding OUT of `resolutions`. This list only ADDS to"
+    " what the protocol blocks; it never narrows it. Then say how many"
+    " observations you demoted, in one line, so a rule that fired can be told"
+    " apart from a reviewer that found nothing. The demotion is not politeness:"
+    " a WARNING recorded here becomes a fix commit, the commit moves the tree,"
+    " the moved tree reopens coverage, and the next pass reviews the prose this"
+    " fix just wrote — measured at ten rounds on one branch, where rounds five"
+    " onward were entirely self-inflicted. The builder still reads your"
+    " observations and can act on them; they are simply not work the record"
+    " demands. Apply this to the one you are surest deserves a WARNING: that"
+    " finding is the next round's first item, and demoting it is the whole"
+    " point."
 )
 
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
@@ -1292,6 +1461,10 @@ def fact_to_cache_record(fact: dict) -> dict:
             f"across {len(roster)} reviewer(s). {verdict}"
         ),
         "fact_id": fact.get("id"),
+        # The builder's copy of the loop-termination rule, computed from the
+        # counts just read. See `next_action_line` for why the findings file is
+        # the carrier that had a reader and no message.
+        "next_action": next_action_line(fact.get("id"), blocking, warning, note),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
         # path. Additive key: `--json` readers tolerate unknown fields.
@@ -1734,6 +1907,22 @@ def consolidate(project_dir: Path) -> int:
         # Only when there is something to fix — a clean pass that ended with a
         # fix strategy attached would read as work it does not have.
         + (_BATCH_FIX_DIRECTIVE if all_findings else "")
+    )
+    # The single-pass reviewer runs this command itself, so everything above
+    # lands in the REVIEWER's context and dies there — the builder never sees a
+    # word of it. This one line is the part that has to travel: both protocol
+    # files tell the reviewer to relay `NEXT-ACTION:` verbatim as their closing line.
+    # Code owns the wording so it cannot be paraphrased into something weaker,
+    # and so it stays identical to the `next_action` the builder reads in
+    # `.critic-findings.json` on the coordinator path.
+    print(
+        "NEXT-ACTION: "
+        + next_action_line(
+            review_id,
+            counts.get("blocking", 0),
+            counts.get("warning", 0),
+            counts.get("note", 0),
+        )
     )
     return 0
 

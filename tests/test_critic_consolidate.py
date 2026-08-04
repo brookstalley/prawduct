@@ -505,6 +505,199 @@ class TestMergeFindings:
         assert record["model"] == "opus"  # from the partial, not the manifest
         assert body["counts"] == {"blocking": 1, "warning": 0, "note": 0}
         assert body["roster"] == [{"role": "correctness", "model": "opus"}]
+        # The builder's copy of the termination rule rides in the same record.
+        assert "next_action" in record
+
+
+class TestNextActionLine:
+    """``.critic-findings.json`` is the one carrier of the loop-termination
+    rule that has a reader in the BUILDER role.
+
+    ``methodology/building.md`` states the rule but is reached only by entering
+    a build plan; ``review-cycle.md`` is read by nobody building; and
+    ``_BATCH_FIX_DIRECTIVE`` prints wherever ``critic-consolidate`` runs, which
+    on the always-single-pass modes is the reviewing FORK. Measured on the
+    consumer branch that ran ten rounds: zero reads of either prose file, zero
+    occurrences of the directive in the builder's context against seven inside
+    reviewer forks — and the builder did read the findings. So the field must
+    say what gates, in the record the builder already opens."""
+
+    def test_the_free_write_list_agrees_with_the_classifier_that_owns_it(self):
+        """The zero-blocking line tells a builder which batches need no verify
+        pass. That is a prose COPY of a rule owned by
+        `coverage_algebra.is_judgeable_path`, and nothing related the two — the
+        wording was pinned, its truth was not.
+
+        Consequence if they drift: `METADATA_PREFIXES` or the protected-path set
+        moves, and this line keeps telling a builder to skip a pass that coverage
+        now requires — a false claim in the one carrier this whole change argues
+        the builder actually reads, and one that ends with an uncovered PR gate.
+
+        So each path the sentence names is asserted non-judgeable against the
+        classifier, with a judgeable counterexample so the check cannot pass by
+        the classifier answering "no" to everything.
+        """
+        from lib import coverage_algebra
+
+        line = cc.next_action_line("rev-1", 0, 1, 1)
+        for free in (
+            ".prawduct/change-log.md",
+            ".prawduct/artifacts/build-plan-x.md",
+            ".claude/settings.json",
+            "docs/notes.md",
+        ):
+            assert not coverage_algebra.is_judgeable_path(free), (
+                f"next_action_line tells the builder {free!r} moves no coverage, "
+                "but the classifier now judges it — the advice would skip a pass "
+                "the PR gate requires"
+            )
+        for judged in (
+            "plugin/skills/critic/goals-1-3.md",
+            "plugin/methodology/building.md",
+            "plugin/templates/build-plan.md",
+            "plugin/lib/gates.py",
+            # The sentence reads "`.md` outside `skills/`, `methodology/`,
+            # `templates/` AND a root `CLAUDE.md`" — the root file is EXCLUDED
+            # from the free list, not a member of it. Written here because the
+            # first draft of this test read it the other way and went red, which
+            # is the strongest argument for the pin existing at all.
+            "CLAUDE.md",
+        ):
+            assert coverage_algebra.is_judgeable_path(judged), (
+                f"{judged!r} is no longer judgeable, so the sentence's carve-out "
+                "is wider than it reads (and this test's negatives are vacuous)"
+            )
+        # The sentence must still be the one making the claim, or the pins above
+        # are guarding prose that moved.
+        assert "moves no coverage" in line and "`.prawduct/` prose" in line
+
+    def test_blocking_names_one_commit_and_one_verify_pass(self):
+        line = cc.next_action_line("rev-1", 2, 5, 3)
+        assert "2 BLOCKING" in line
+        assert "ONE commit" in line
+        assert "ONE `/prawduct:critic verify-resolutions`" in line
+        # The non-blocking findings are decided in the SAME pass — deferring
+        # them to a later round is the pump this field exists to stop.
+        assert "SAME pass" in line
+
+    def test_zero_blocking_says_the_review_is_over_and_names_disposition(self):
+        line = cc.next_action_line("rev-abc", 0, 4, 7)
+        assert "THE REVIEW IS OVER" in line
+        assert "gate NOTHING" in line
+        # The command arrives with this review's own id already substituted —
+        # an operator who has to go find the id is one who will not run it.
+        assert "prawduct-hook disposition rev-abc <fid> --accept" in line
+        assert "4 warning + 7 note" in line
+        # And the stale-gate-output trap is named where the decision is made.
+        assert "re-run the gate" in line
+
+    def test_clean_pass_has_nothing_to_disposition(self):
+        line = cc.next_action_line("rev-1", 0, 0, 0)
+        assert "THE REVIEW IS OVER" in line
+        assert "nothing" in line
+        assert "disposition" not in line.split("nothing to disposition")[-1]
+
+    def test_every_zero_blocking_variant_carries_the_coverage_caveat(self):
+        # "The review is over" and "you may merge" are different claims. A
+        # clean `chunk` mid-plan still owes a final/cumulative at end of cycle
+        # — `_critic_session_satisfies_gate` fires an advisory saying exactly
+        # that — so a variant asserting the first without disclaiming the
+        # second puts two code-owned surfaces in contradiction, with the newer
+        # one saying "stop". The caveat is a shared constant precisely so a
+        # branch cannot forget it.
+        for counts in ((0, 0, 0), (0, 4, 7), (0, 0, 2), (0, 1, 0)):
+            line = cc.next_action_line("rev-1", *counts)
+            assert cc._COVERAGE_IS_A_SEPARATE_QUESTION in line, counts
+
+    def test_the_verify_pass_is_conditioned_on_judgeable_files(self):
+        # `_BATCH_FIX_DIRECTIVE` prints immediately above this line and
+        # conditions the pass on "if that commit touches judgeable files". On
+        # framework work the non-blocking findings concentrate in `.prawduct/`
+        # prose — all non-judgeable — so the most common fix batch is exactly
+        # the one needing no pass, and an unconditional order buys the round
+        # this whole change exists to prevent.
+        line = cc.next_action_line("rev-1", 0, 3, 0)
+        assert "ONLY if that commit touched judgeable files" in line
+        assert "needs no pass at all" in line
+
+    def test_missing_fact_id_degrades_to_a_placeholder(self):
+        # A record with no id must still produce a runnable-shaped instruction
+        # rather than the string "None".
+        line = cc.next_action_line(None, 0, 1, 0)
+        assert "None" not in line
+        assert "<review-id>" in line
+
+
+class TestNextLineRelayContract:
+    """`NEXT-ACTION:` is code-owned and relay-only — the design that made this
+    affordable inside two files at their token ceilings.
+
+    The alternative was quoting both gate-line variants in each protocol: ~160
+    tokens per file, duplicated, and paraphrasable. Owning the wording in
+    :func:`next_action_line` costs ~35 and cannot drift, so the same sentence
+    reaches the builder whether they read the fork's report (single-pass) or
+    `next_action` in the findings cache (coordinator).
+
+    Both protocols must carry the relay order, because mode decides which one a
+    reviewer reads — `goals-1-3.md` for chunk/verify-resolutions,
+    `review-protocol.md` for final/cumulative. The measured ten-round loop ran
+    on the verify-resolutions path, so pinning only the full protocol would
+    leave exactly the observed case uncovered."""
+
+    PROTOCOLS = ("goals-1-3.md", "review-protocol.md")
+
+    def _text(self, name):
+        """Wrap- and emphasis-insensitive. These two files are line-wrapped to
+        different widths and one bolds inside the clause, so a literal
+        substring pin would fail on a re-wrap that changed nothing — the kind
+        of false failure that gets a pin deleted rather than fixed."""
+        raw = (ROOT / "skills" / "critic" / name).read_text()
+        return re.sub(r"\s+", " ", raw.replace("*", "").replace("`", ""))
+
+    def test_both_protocols_order_the_relay(self):
+        for name in self.PROTOCOLS:
+            text = self._text(name)
+            assert "NEXT-ACTION:" in text, name
+            assert "verbatim" in text, name
+
+    def test_goals_1_3_relay_survives_the_clean_pass_shorthand(self):
+        """The relay order must not sit where the no-findings shorthand can
+        swallow it — and `goals-1-3.md` serves the two always-single-pass
+        modes, where the measured data put most reviews at zero blocking. So
+        the clean pass is the relay's highest-value case, and the one a reader
+        is likeliest to shortcut. Modelling the READER, not just the artifact:
+        the words being present in the file is what the other pins assert, and
+        it is not the same as the instruction having effect."""
+        text = self._text("goals-1-3.md")
+        shorthand = text.index("No issues found")
+        relay = text.index("your last line is consolidate's")
+        assert relay > shorthand, (
+            "the relay order precedes the no-findings shorthand, so the "
+            "shorthand reads as a total replacement and drops the carrier"
+        )
+        assert "Either way" in text
+
+    def test_both_protocols_say_why_the_relay_is_not_optional(self):
+        # Without the reason, a token-diet pass reads the order as redundant
+        # with "report to the user" and trims it. The reason is structural:
+        # on the single-pass path the reviewer runs consolidate, so its output
+        # lands in the reviewer's context and reaches the builder only if
+        # relayed.
+        for name in self.PROTOCOLS:
+            text = self._text(name)
+            assert "dies in your context" in text, name
+            assert "terminates the review loop" in text, name
+
+    def test_the_prefix_does_not_collide_with_the_standing_block(self):
+        # `NEXT` is already framework-wide: the turn-closing standing block
+        # (session digest, building.md, reflection.md) defines it as "the ONE
+        # next action" — one line. This line is a paragraph that must be
+        # relayed verbatim, so an agent holding both contracts would have a
+        # standing instruction to compress the very text it was told to copy.
+        for name in self.PROTOCOLS:
+            text = self._text(name)
+            assert "NEXT-ACTION:" in text, name
+            assert re.search(r"(?<!-)\bNEXT:", text) is None, name
 
 
 # ---------------------------------------------------------------------------
@@ -898,6 +1091,17 @@ _COMMAND_HEADS = (
     "wc", "find", "ls", "cat", "sed", "awk", "make", "npm", "node", "bash",
 )
 
+#: Sentence openers that mark a DESCRIPTIVE closing rather than an instruction.
+#: Closed around the failure mode (a directive that trails off explaining
+#: itself) rather than enumerating acceptable verbs — a whitelist of verbs goes
+#: red on any correct rewording, which is how the previous version of this check
+#: ended up documenting four spellings while testing one.
+_DESCRIPTIVE_OPENERS = frozenset(
+    """a an and but everything anything nothing five four three two one the this
+    that these those there here it its they their his her your our so because
+    which what when where while since although however""".split()
+)
+
 _CRITIC_SKILL = ROOT / "skills" / "critic" / "SKILL.md"
 
 
@@ -1091,6 +1295,256 @@ class TestResolutionIsAClaimDirective:
         )
 
 
+class TestVerifyRatesBlockingOnlyDirective:
+    """The severity narrowing delivered at `verify-resolutions` dispatch.
+
+    Same three properties its sibling is held to — its claims about the gate
+    are true, it names nothing the reader cannot do, and it descends — plus the
+    one specific to a rule that REMOVES review output: the classes it exempts
+    from the narrowing must actually still be blocking-rated in the protocol
+    the reviewer reads. A narrowing whose carve-out has drifted out of
+    `goals-1-3.md` silently demotes the thing it promised to keep.
+    """
+
+    def test_it_is_true_that_only_blocking_gates(self):
+        """The narrowing's whole justification is that nothing which gated
+        stops gating. Driven from the algebra: a warning and a note left in a
+        fact must not appear in `unresolved_blocking`. If that ever changes,
+        this directive is telling reviewers to drop findings a gate reads.
+        """
+        from lib import coverage_algebra
+
+        fact = {
+            "id": "rev-x",
+            "body": {"findings": [
+                {"fid": "R-1", "severity": "warning", "title": "w"},
+                {"fid": "R-2", "severity": "note", "title": "n"},
+                {"fid": "R-3", "severity": "blocking", "title": "b"},
+            ]},
+        }
+        unresolved = [f["fid"] for f in coverage_algebra.unresolved_blocking(fact, set())]
+        assert unresolved == ["R-3"], (
+            "the directive tells reviewers that demoting a WARNING/NOTE to an "
+            f"observation costs no gate. unresolved_blocking now returns "
+            f"{unresolved} — a demoted finding would be a dropped gate input."
+        )
+
+    def test_the_carve_out_classes_the_protocol_rates_are_still_blocking(self):
+        """Half the carve-out is a CITATION — these classes are BLOCKING in
+        `goals-1-3.md` already, and the directive relies on that. If one is
+        downgraded there, the directive's promise silently becomes false.
+
+        Judged per CLAUSE, not per line. The first version asked only that some
+        line containing `**BLOCKING**` also contained the anchor — and
+        goals-1-3.md's security bullet carries five verdicts on one line (three
+        BLOCKING, two WARNING), so downgrading `injection` to WARNING left the
+        line matching and this test green. A drift detector with slack in it is
+        indistinguishable from the drift it watches for.
+        """
+        goals = (ROOT / "skills" / "critic" / "goals-1-3.md").read_text(encoding="utf-8")
+        # Split into severity-bearing clauses so a multi-verdict line cannot
+        # lend its BLOCKING to a neighbour that was downgraded.
+        clauses = [c for ln in goals.split("\n") for c in ln.split(";")]
+        for promise, anchor in (
+            ("weakened or deleted test", "assertions weakened"),
+            ("dropped requirement", "explicitly descoped"),
+            ("changed behavior with no test", "Changed/added behavior"),
+            ("injection vectors", "injection"),
+        ):
+            carrying = [c for c in clauses if anchor in c]
+            assert carrying, f"goals-1-3.md no longer mentions {anchor!r} at all"
+            assert any("**BLOCKING**" in c for c in carrying), (
+                f"goals-1-3.md no longer rates {anchor!r} BLOCKING in its own "
+                f"clause, but VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE relies on "
+                f"{promise!r} already being blocking there. One of the two is "
+                "now lying to a reviewer told to demote everything else."
+            )
+
+    def test_the_escalated_carve_out_classes_are_named_as_escalations(self):
+        """The other half of the carve-out is an ESCALATION, and the reason this
+        test exists is that the directive once claimed it was not.
+
+        `goals-1-3.md` rates *auth/authz on new endpoints* and *known critical
+        vulnerabilities* **WARNING**, and does not rate fix-by-fudging at all —
+        its workaround leg was rated only in `review-cycle.md`, which a
+        `verify-resolutions` reviewer is forbidden to open. The directive
+        claiming these were "already BLOCKING-rated" handed the same reviewer
+        two contradictory answers. So: the protocol's rating is pinned as
+        WARNING (if it ever becomes BLOCKING, the escalation wording is stale
+        and should be re-read), and the directive must carry the classes
+        explicitly, since it is now their only rating in this mode.
+        """
+        goals = (ROOT / "skills" / "critic" / "goals-1-3.md").read_text(encoding="utf-8")
+        d = cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE
+        # Judged per CLAUSE, exactly like the sibling above — and for the same
+        # reason, which this test reintroduced one method over while fixing it
+        # there. `auth/authz` shares its line with four other verdicts, so a
+        # line-level `"**WARNING**" in authz` is satisfied by the vulnerable-
+        # dependency clause beside it: promote auth/authz to BLOCKING and this
+        # stays green while the escalation wording it guards goes stale.
+        authz = next(
+            (c for ln in goals.split("\n") for c in ln.split(";") if "auth/authz" in c),
+            None,
+        )
+        assert authz is not None and "**WARNING**" in authz, (
+            "goals-1-3.md's auth/authz rating moved. The directive escalates it "
+            "to BLOCKING for verify-resolutions and says so explicitly — re-read "
+            "that wording against the new rating rather than updating this pin."
+        )
+        assert "fudging" not in goals, (
+            "goals-1-3.md now rates fix-by-fudging. The directive carries that "
+            "rating solely because the protocol did not — fold it in and drop "
+            "the escalation clause."
+        )
+        for named in ("auth/authz", "fudging", "workaround"):
+            assert named in d, (
+                f"the directive no longer names {named!r}. It is the ONLY "
+                "carrier rating that class for this mode; dropping it demotes "
+                "the class to an observation by silence."
+            )
+        assert "whatever they are rated elsewhere" in d or "escalat" in d.lower(), (
+            "the directive no longer marks the carve-out as an escalation, "
+            "which is the claim that made it honest"
+        )
+
+    def test_names_no_command_the_reviewer_cannot_run(self):
+        """Same grant check its sibling gets — the reader is tool-restricted,
+        and advice it cannot follow is discovered mid-review.
+
+        **Vacuous today, and deliberately kept.** This directive names no
+        commands, so the loop body does not execute — which is worth stating
+        rather than leaving for a reader to discover, because a silently vacuous
+        test reads as coverage. It is a forward guard: the moment an edit adds a
+        backticked command, the grant check starts biting. The assertion below
+        is what keeps the test from being vacuous in BOTH directions — the
+        backtick scan must still find the identifiers the rule depends on, so a
+        rewrite that dropped its formatting could not slip past as "no commands
+        named".
+        """
+        tokens = set(re.findall(r"`([^`]+)`", cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE))
+        assert "findings" in tokens and "resolutions" in tokens, (
+            "the backtick scan no longer finds the arrays this rule routes "
+            "between — either the directive lost its formatting (making the "
+            "command check below vacuous for the wrong reason) or it stopped "
+            "naming where a demoted finding does and does not go"
+        )
+        commands = {t for t in tokens if t.split()[0] in _COMMAND_HEADS}
+        for command in sorted(commands):
+            assert _reviewer_can_run(command), (
+                f"the directive tells the reviewer to run {command!r}, which no "
+                "Bash grant in skills/critic/SKILL.md covers."
+            )
+
+    def test_it_descends_rather_than_only_stating_a_rule(self):
+        """Structure, not wording — the same property its sibling is held to,
+        and for the same measured reason: a reviewer agrees that re-reviews
+        should not manufacture work and then records the WARNING in front of
+        it, because nothing made it recognize THIS finding as the instance.
+
+        The first cut of this check was itself the defect it screens for. Its
+        verb tuple was `("goes ", "report", "rate ", "spend ", "Spend ")`:
+        `"report"` matched the NOUN in "in your report", `"rate "` never matched
+        the capitalized "Rate these", and `"spend "`/`"Spend "` were leftovers
+        from a draft wording — so a test claiming to detect an imperative was
+        satisfied by descriptive text. Imperatives are capitalized sentence
+        openers here, which is what makes them matchable without pinning a
+        spelling.
+
+        The second cut replaced that tuple with `("Rate ", "Apply ", "Report ",
+        "Say ")` and only `"Apply "` ever matched — a whitelist that documents
+        four spellings while checking one, and that goes spuriously red the
+        first time someone rewords to a correct imperative outside it. So the
+        check is derived from the directive's LAST sentence instead: the closing
+        move is where the rule is handed to the reader, and the failure mode is
+        an opener that describes ("The demotion is not politeness…") rather than
+        instructs. The exclusion list is closed around that failure mode; the
+        set of acceptable verbs stays open.
+        """
+        d = cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE
+        last = [s for s in re.split(r"(?<=[.!?])\s+", d.strip()) if s][-1]
+        opener = last.split()[0].strip("*_`,:").lower()
+        assert opener not in _DESCRIPTIVE_OPENERS and last[0].isupper(), (
+            f"the directive's closing sentence opens with {opener!r} — it "
+            "describes the rule instead of telling the reader what to DO with "
+            "the finding in front of it, and agreement is not application"
+        )
+        assert "you" in last, (
+            "the closing sentence no longer addresses the reader, so nothing "
+            "connects the rule to the finding being rated right now"
+        )
+        assert "you" in d and ("this " in d or "the one you" in d), (
+            "the directive no longer aims at the decision the reader is making "
+            "right now"
+        )
+        # The demotion has a destination, and it is STRUCTURAL. "In prose" was
+        # not enough: goals-1-3.md's report contract enumerates findings and a
+        # summary with no slot for anything else, so a pass that demoted three
+        # observations was instructed to report "No issues found" — the exact
+        # silence the cost analysis assumes will not happen.
+        assert "### Observations" in d, (
+            "the directive no longer names a structural destination for demoted "
+            "findings. The report contract has no slot for them otherwise, so "
+            "they vanish — and the whole cost-bound rests on the builder "
+            "reading them."
+        )
+        # Half-emitted yield: the count must at least reach the builder, or a
+        # rule that fired is indistinguishable from a reviewer that found
+        # nothing.
+        assert "how many" in d, (
+            "the directive no longer asks for a demotion count. Verify-mode "
+            "WARNING/NOTE totals are zero by construction, so this line is the "
+            "only signal that the narrowing fired at all."
+        )
+
+    def test_delivery_is_upstream_of_the_rating(self):
+        """WHERE this prints is its substance: the reviewer must meet it before
+        it assigns a severity, not after. `verify-resolutions` is single-pass,
+        so the fork runs consolidate itself AFTER writing its findings —
+        emitting there would reach an agent that has already rated everything.
+        """
+        begin_src = HOOK.read_text(encoding="utf-8")
+        assert "VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE" in begin_src, (
+            "the dispatch command no longer emits the narrowing — dispatch is "
+            "the only moment before the reviewer rates the delta"
+        )
+        consolidate_src = (
+            ROOT / "lib" / "critic_consolidate.py"
+        ).read_text(encoding="utf-8")
+        body = consolidate_src.split("def consolidate(", 1)
+        assert len(body) == 2, "consolidate() not found — update this guard"
+        assert "VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE" not in body[1], (
+            "the narrowing is now also emitted from consolidate(), which runs "
+            "AFTER the reviewer has written its findings."
+        )
+
+    def test_the_protocol_carries_it_before_any_severity_is_assigned(self):
+        """The reader-modeling guardrail, and the reason the rule is NOT in
+        `goals-1-3.md`'s `## Severity` section.
+
+        Severity sits below all three goal sections, so a reviewer walking Goal
+        1 → Goal 2 → Goal 3 has already assigned every WARNING by the time it
+        arrives — presence would be real and effect zero. This repo has shipped
+        that exact defect once already: `SKILL.md`'s header said to read
+        `review-protocol.md` "first" 26 lines above the routing that said
+        otherwise, and six guardrails measuring the artifact all stayed green.
+        Ordering beats presence, so ordering is what this asserts.
+        """
+        goals = (ROOT / "skills" / "critic" / "goals-1-3.md").read_text(encoding="utf-8")
+        assert "verify-resolutions" in goals
+        rule_at = goals.find("only **BLOCKING** is a finding")
+        assert rule_at != -1, (
+            "goals-1-3.md no longer states the narrowing. The dispatch "
+            "directive is a transient channel; this file is the reviewer's "
+            "durable protocol and must carry the rule too."
+        )
+        first_goal_at = goals.index("## 1. Nothing Is Broken")
+        assert rule_at < first_goal_at, (
+            "the narrowing moved below the first goal section. A reviewer "
+            "assigns severities as it reads the goals, so a rule stated after "
+            "them is read after the decisions it governs — present, and inert."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Unit: pending_state
 # ---------------------------------------------------------------------------
@@ -1209,6 +1663,14 @@ class TestConsolidateIntegration:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "consolidated: 0 blocking" in result.stdout
         assert cc._BATCH_FIX_DIRECTIVE not in result.stdout
+        # ...but the relay line is UNCONDITIONAL, and the clean pass is the
+        # case it matters most in — "the review is over" is the whole message.
+        # The batch directive two lines above is deliberately `if all_findings`;
+        # an editor mirroring that condition onto this print would kill the
+        # clean-pass variant while every prose pin stayed green, so the producer
+        # is asserted against real stdout rather than against source text.
+        assert "NEXT-ACTION: " in result.stdout
+        assert "THE REVIEW IS OVER" in result.stdout
 
     def test_already_consolidated_noop_reports_the_recorded_findings(self, tmp_path):
         """The COORDINATOR path's normal case. The SubagentStop trigger
@@ -2533,6 +2995,68 @@ class TestResolutionDirectiveDelivery:
             "something now prints after the directive. Move it above, or move "
             "the directive back to last — the reader acts on the tail."
         )
+
+    def test_the_severity_narrowing_rides_the_same_dispatch(self, tmp_path):
+        """Both halves of the termination contract reach the same reader in the
+        same tool result: what to rate, and what a resolution claims."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE in result.stdout
+
+    def test_the_narrowing_precedes_the_resolution_directive(self, tmp_path):
+        """Order tracks the reviewer's own sequence: it rates the delta, then
+        judges the prior findings. The resolution warning stays last because it
+        is the only one of the two whose subject can WEAKEN a gate, and the
+        reader acts on the tail.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert result.stdout.index(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE) < result.stdout.index(
+            cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE
+        ), (
+            "the narrowing now prints after the resolution directive, which "
+            "displaces the gate-weakening warning from the tail and states the "
+            "severity rule after the severities were assigned."
+        )
+
+    @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
+    def test_no_other_mode_delivers_the_narrowing(self, tmp_path, mode):
+        """The narrowing is false in every other mode — those review work the
+        builder CHOSE to do, and demoting their warnings would lose real
+        review output rather than stop a self-inflicted round.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        if mode == "cumulative":
+            _git(repo, "checkout", "-q", "-b", "feature/demo")
+            _commit_file(repo, "src/feat.py", "z = 1\n", "feature work")
+        else:
+            (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", mode)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE not in result.stdout
+
+    def test_a_demoted_dispatch_delivers_no_narrowing(self, tmp_path):
+        """Exit 2 demotes to `final`, which rates every severity. Shipping the
+        narrowing to a `final` reviewer would silence warnings on a delta wide
+        enough that the scope threshold just refused a partial review of it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        for i in range(2 * 1 + 6):
+            (repo / f"src/new_{i}.py").write_text(f"n = {i}\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE not in result.stdout
 
     @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
     def test_no_other_mode_delivers_it(self, tmp_path, mode):

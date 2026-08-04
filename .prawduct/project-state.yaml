@@ -391,7 +391,16 @@ views_enabled: true
 # Set 2026-08-04 on branch feat/release-integrity, same discipline as the line
 # above: this branch builds the release-integrity plan, and silent-gates merged
 # to develop before it started. Nothing is orphaned by the move.
-active_build_plan: artifacts/build-plan-release-integrity.md
+#
+# CLEARED 2026-08-04 resolving the review-loop-carriers -> develop merge, where
+# both sides had repointed this slot (branch: review-loop-carriers, develop:
+# release-integrity). Taking either verbatim would name a plan that has finished
+# building, which is the dormant-pointer state all three incidents above record
+# — so neither side won and the slot is empty, per the v3.2.3 precedent. Both
+# plans are RETAINED on disk: they are release-pending under gitflow and the
+# develop->main promotion regenerates the Status of every scope-tagged plan.
+# Nothing is in flight to orphan. Next work sets this via /prawduct:backlog pick.
+active_build_plan:
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

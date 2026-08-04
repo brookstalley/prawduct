@@ -8,7 +8,7 @@ A **session** is one Claude Code invocation. Only `startup` and `/clear` **begin
 
 A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen within a single session.
 
-**Context compaction** resets nothing and passes no governance checkpoint, so anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
+**Context compaction** passes no governance checkpoint, so anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
 
 **`/clear` between work cycles is recommended** (not required): it resets the git baseline so the next cycle's canary only sees its own changes, archives the previous reflection, and starts fresh context.
 
@@ -83,6 +83,8 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 **CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
 
 **Comments and durable specs are self-contained — explain *why*, never reference build scaffolding.** A comment, docstring, or long-lived spec must not name a chunk, build-plan, or work-cycle — those are deleted when work ships, leaving the reference dangling. Carry the reason inline: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, reflections, commit/PR text) — there the id is the record (Principle 13).
+
+**Same decay: a count nothing reads is not worth writing.** Ask what gets decided differently if it is wrong by two; if nothing, omit it, make it relational ("the table's rows"), or cite the command that regenerates it. Numbers something *relies* on stay exact.
 
 **Verify.** Two layers:
 
@@ -189,7 +191,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 ## The Critic
 
-After medium+ work, invoke the Critic as a separate agent. It reasons from signals (files changed, work type/size) through seven prioritized goals: **Nothing Is Broken**, **Nothing Is Missing**, **Nothing Is Unintended**, **Everything Is Coherent**, **Decisions Were Deliberate**, **The System Can Be Understood**, **The Design Is Sound** (definitions: `skills/critic/review-protocol.md`).
+After medium+ work, invoke the Critic as a separate agent. It reasons from signals through seven prioritized goals: **Nothing Is Broken**, **Nothing Is Missing**, **Nothing Is Unintended**, **Everything Is Coherent**, **Decisions Were Deliberate**, **The System Can Be Understood**, **The Design Is Sound** (definitions: `skills/critic/review-protocol.md`).
 
 In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern — parallel subagents for correctness, design and sustainability. The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
 
@@ -208,7 +210,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
 
-**The Critic takes time** — 1-2 minutes for `chunk`, 4-10 for `final`/`cumulative`. Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings.
+**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings.
 
 **Never write Critic findings yourself** — writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent is slow, wait; if it fails, tell the user and re-invoke.
 
@@ -233,11 +235,7 @@ Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) 
 
 ## Common Traps
 
-**Gold plating**: Adding features the spec didn't ask for (Principle 12 — Scope Discipline).
-
 **Test-last**: Tests written to pass against existing implementation document behavior, including bugs.
-
-**Verification theater / mock-as-implementation**: Claiming verification without exercising the product, or shipping mocks where the data model declares a real integration.
 
 **Uninvestigated decisions**: Major technology or architectural choices without research — lock-in, pervasiveness, structural impact, and external dependencies warrant investigation.
 

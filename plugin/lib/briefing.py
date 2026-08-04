@@ -1042,7 +1042,15 @@ def _git_session_commits(project_dir: Path) -> list[str]:
 
 
 def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
-    """Extract a brief summary from .critic-findings.json. Returns None if unavailable."""
+    """Extract a brief summary from .critic-findings.json.
+
+    ``None`` means there is nothing to report — no record, or one that
+    parsed and held neither a summary nor findings. A record that EXISTS
+    but cannot be read returns a diagnostic STRING instead, because the
+    two are different answers and the caller renders them in the same
+    slot (see the except clause for why that difference decides whether a
+    round gets run).
+    """
     findings_path = prawduct_dir / ".critic-findings.json"
     if not findings_path.is_file():
         return None
@@ -1072,9 +1080,33 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
                 parts.append(f"  BLOCKING: {f.get('summary', 'no summary')}")
             for f in warnings[:3]:
                 parts.append(f"  WARNING: {f.get('summary', 'no summary')}")
+        # The cross-session builder is DEFINITIONALLY the one who lost the
+        # reviewer's report, so the two in-session carriers of the
+        # loop-termination rule (the relayed `NEXT-ACTION:` line, and reading
+        # the findings file because building.md routed you there) have both
+        # already failed by the time this is read. Inheriting "Findings: 4
+        # warning" with no statement that warnings gate nothing is the exact
+        # state the measured ten-round failure started from.
+        next_action = data.get("next_action")
+        if next_action:
+            parts.append(f"  NEXT-ACTION: {next_action}")
         return "\n".join(parts)
-    except Exception:  # prawduct:allow prawduct/broad-except -- findings summarization is best-effort
-        return None
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a briefing must render whatever the record turns out to be; the failure is reported, never swallowed
+        # `is_file()` already passed, so we are here because a record that EXISTS
+        # could not be read. Returning None would drop the whole `## Critic
+        # Findings` section and render identically to "no review has run" — and
+        # the reader is definitionally the builder who lost the reviewer's
+        # report, which is the one context where that difference decides whether
+        # a round gets run. Same rule the sibling advisory in
+        # `coverage.diagnose_fix_churn` follows: "'advice fails soft' is not
+        # 'advice fails silent'" — a degraded path names its consequence.
+        return (
+            f"the findings record at {findings_path.name} could not be read "
+            f"({type(exc).__name__}: {str(exc)[:80]}) — this is NOT a statement "
+            "that the review was clean. Re-run `prawduct-hook critic-consolidate` "
+            "to regenerate it from the evidence store, or read the store directly "
+            "with `prawduct-hook evidence list`."
+        )
 
 
 # The machine marker. Every generated handoff carries it as its first body

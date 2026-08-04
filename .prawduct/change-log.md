@@ -3,6 +3,348 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: a count nothing reads is not worth writing — or correcting
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=03 -->
+
+Chunks 01 and 02 made the loop terminate: the exit condition reaches the builder, and a re-review
+stopped manufacturing the next round's work. This closes the narrowest recurring *supply* of that
+work — the contestable count, measured at roughly one finding in eleven across the window this plan
+was cut from — on both sides at once.
+
+**Builder side.** `building.md` gains a rule beside the self-contained-comments rule, because they
+are one failure with two carriers: a durable artifact holding something that decays. A build id
+dangles when the plan is deleted; a count goes stale on the next commit. The rule turns on whether
+anything *branches* on the number — ask what gets decided differently if it is wrong by two. If
+nothing: omit it, make it relational, or cite the command that regenerates it. Numbers something
+relies on stay exact, which is why "avoid counts" would have been the wrong rule.
+
+**Reviewer side.** Both Critic protocol files cap a finding whose only subject is an inert count at
+NOTE, and require the qualifier that actually stops the fix commit: the true figure, that nothing
+reads it, and that no edit is wanted. A bare "rate it NOTE" still hands the builder a defect report,
+and builders fix defect reports — which is the commit that buys the next round.
+
+**And the protocol stops asking.** `numeric counts` leaves the doc-only Goal 1 target list, which had
+made the count finding an *instruction* rather than an accident. Removed from both carriers —
+`goals-1-3.md` and `review-cycle.md`'s Per-Chunk Type selector — because leaving one gives a reviewer
+who consults it an explicit mandate to hunt exactly what the cap demotes.
+
+**Placement went the opposite way from Chunk 02, deliberately.** That chunk fought to keep its
+narrowing OUT of `## Severity`, which sits below all three goal sections. The cap goes IN it. The
+narrowing governs *whether to report at all*, decided continuously while reading the goals; a
+severity cap is a *lookup* made once at write-up, and the NOTE legend already owns the cap's parent
+rule. Both placements are asserted by test rather than assumed.
+
+**No ceiling was raised.** All three budgeted files started at or near zero headroom. The one entry
+worth reading: `goals-1-3.md`'s first funding attempt cut a record-lint explanation that the file's
+own adjacent instruction appeared to argue for — and a guard failed whose docstring names that exact
+edit as the predicted casualty of a token diet there. Naming one of two guess-paths leaves the other
+readable as a clean grade. The dangerous trim is not the one you cannot justify; it is the one the
+surrounding prose seems to endorse.
+
+**Two inherited guards were weaker than they read**, both caught by review rather than CI. The
+escalated-carve-out test asserted a severity against a *line* carrying five verdicts, so promoting
+auth/authz to BLOCKING left it green — the same line-vs-clause slack its sibling had just been split
+to close, one method over. And an imperative check listed four verbs of which one ever matched. Both
+now assert the property; both were verified red under the failure and green under legitimate
+rewordings.
+
+## 2026-08-04: a re-review answers one question — it does not manufacture the next round's work
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=02 -->
+
+Chunk 01 closed the **demand** side: the builder now meets the termination rule on carriers it cannot
+avoid. This is the **supply** side. `verify-resolutions` exists to answer one question — were the
+named findings resolved? — and it also walked the fix delta at full severity, handing back
+WARNING/NOTE findings that are, definitionally, round N+2's inventory. **New findings in
+`verify-resolutions` are now BLOCKING only**; anything lesser the reviewer notices is reported as an
+OBSERVATION in prose, where it informs without becoming work.
+
+**Why this mode and no other.** `chunk`, `final` and `cumulative` review work the builder *chose* to
+do. Only `verify-resolutions` reviews a delta the framework itself asked for — so it is the only mode
+where suppressing non-gating findings removes churn rather than review.
+
+**The carve-out is what makes it safe, and it is pinned across the file boundary.** Five classes stay
+BLOCKING in this mode — a weakened or deleted test, a dropped requirement, changed behavior with no
+test, security in changed code, fix-by-fudging. **As first written this paragraph said they were
+"already BLOCKING-rated in `goals-1-3.md`", and the chunk's own review proved that false for two of
+five**: auth/authz on new endpoints and known-vulnerable dependencies are WARNING there, and
+fix-by-fudging is not rated in that file at all (its workaround leg was rated only in
+`review-cycle.md`, which this mode's reviewer may not open). So half the carve-out is a *citation*
+and half is an *escalation*, and the directive now says which is which — a safety argument resting on
+a false claim is not a safety argument. Two guards, split so neither half drifts silently:
+`test_the_carve_out_classes_the_protocol_rates_are_still_blocking` drives from the protocol's own
+BLOCKING lines, and `test_the_escalated_carve_out_classes_are_named_as_escalations` pins the
+protocol's *lower* rating so the escalation wording cannot go stale unnoticed. Both judge per clause,
+not per line.
+
+**Placement was the design, not a detail — and the cheap slot was the wrong one.** `## Severity` is
+the obvious home and sits *below* all three goal sections, so a reviewer walking Goal 1 → 2 → 3 has
+assigned every WARNING before reaching it: present, and inert. This repo has shipped that exact shape
+once (`SKILL.md`'s header said read `review-protocol.md` "first" 26 lines above the routing that said
+otherwise, with six artifact-measuring guardrails green throughout). The rule went in the **preamble**
+instead, and `test_the_protocol_carries_it_before_any_severity_is_assigned` asserts the ordering
+rather than the presence.
+
+**Split by cost, as in Chunk 01.** The 17-word rule is in `goals-1-3.md` (ceiling held: 1992 → 1994,
+funded by the normative block's most abstract sentence and a first line the H1 already said). The
+worked instances, the measured rationale and the descent are in
+`VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, printed at dispatch where there is no budget — and printed
+*before* `RESOLUTION_IS_A_CLAIM_DIRECTIVE`, because the reviewer rates the delta before it judges the
+prior findings, and the gate-weakening warning keeps the tail.
+
+**A contradiction this surfaced.** `review-cycle.md` step 3 rated "a workaround instead of root
+cause" **WARNING** — inside the one mode that now records no warnings. Two things were wrong and only
+one was the contradiction: a WARNING gates nothing, so it was also the wrong *instrument*. When a fix
+works around a root cause the finding named, the honest verdict is that the finding is unresolved,
+which is expressed by withholding the resolution and fails closed. Re-routed there.
+
+**The cost, recorded rather than buried.** A demoted observation is not a fact: it cannot be
+`disposition`ed and leaves no trace in the evidence store. Two things bound it — `verify-resolutions`
+is never a first review (`critic-begin` demotes when no usable prior fact exists), so every narrowed
+delta sits downstream of a full-severity pass; and the builder still reads the observation in the
+reviewer's report. The information survives; only the obligation is gone.
+
+**Carried in from Chunk 01's accepted findings.** `coverage.diagnose_fix_churn` now *requires*
+`diff_fn` and `key_fn` — the unreachable unmemoized fallback is deleted, so a dropped argument is a
+`TypeError` at the call site instead of a silent ~5-minute hang on the interactive
+`/prawduct:pr create` path. `gates._merge_base_verdict` carried the identical unreachable
+`key_fn=None` one frame up the same call chain and is now required too; a signature pin covers both.
+And `test_next_action_survives_a_clean_pass_with_no_findings`'s docstring claimed a
+`fact_to_cache_record` coupling it does not assert; it now states what it actually pins.
+
+**A fourth carrier, added during the build and recorded rather than dropped.** `SKILL.md`'s per-mode
+scope line states the narrowing too. That line exists so no mode has to open `review-cycle.md` for
+scope, and the narrowing *is* scope — omitting it describes a mode that rates everything, to the
+first file the fork reads. It is now in the plan's deliverables and pinned by test, per this plan's
+own Verification Strategy.
+
+### What the chunk's own review changed — 0 blocking, 8 warnings, 8 notes, one batch
+
+Three reviewers converged on the same seam, and they were right: **the carve-out was not sound as
+written, and it is the safety argument the whole change rests on.**
+
+- **The claim "these five classes are already BLOCKING-rated in `goals-1-3.md`" was false for two.**
+  Security is *mixed* there — injection, secrets and exploitable input validation block, but
+  *auth/authz on new endpoints* and *known-vulnerable dependencies* are **WARNING**. And
+  fix-by-fudging is not rated in that file at all; its workaround leg was rated only in
+  `review-cycle.md`, which a `verify-resolutions` reviewer is forbidden to open — so this change had
+  left the rating existing solely inside the directive that vouched for it, which is circular. The
+  same reviewer was being told both "rate these as you would in any mode" (⇒ WARNING) and "BLOCKING
+  or not a finding" (⇒ demote). Fixed by making the carve-out an **escalation that says it is one**,
+  and splitting the guardrail: one test pins the classes the protocol genuinely rates, another pins
+  that the escalated ones are named as escalations and that the protocol still rates them lower.
+- **The demotion bound on class membership where the rule binds on severity.** "Everything else you
+  notice" took the five classes as antecedent, which literally demoted BLOCKING-rated classes the
+  enumeration omits — test failures in evidence, `missing-coverage:` lines, cross-component contract
+  breaks, unlisted dependencies, norm departures. On the carrier read last before rating, that is the
+  expensive reading. Now: *the test is the severity you would assign, never membership in any list.*
+- **OBSERVATION had no slot in the only output contract this mode reads.** `goals-1-3.md` enumerates
+  findings and a summary, and its clean-pass line says `No findings: "No issues found."` — so a pass
+  that demoted three observations was instructed to report silence, defeating the cost-bound the
+  design rests on. The directive now names a structural destination (`### Observations`) and the
+  clean-pass line reads "No findings, no observations".
+- **`goals-1-3.md`'s record-lint severities contradicted the preamble 20 lines below it** —
+  specific-over-general, in the one protocol file this mode may open. Resolved in the preamble clause
+  itself, and mirrored on the two maintainer-facing surfaces carrying the same mapping.
+
+The ceiling absorbed all of it and came out lower: **1994 → 1990**, paid by the `## Severity`
+BLOCKING legend's example list, which restated four checks stated in full above it.
+
+**One norm departure, recorded not silently taken.** `nonfunctional-requirements.md` binds *"adding
+a control names the yield it expects AND emits that yield observably"*, retroactive to controls added
+from 2026-07-29. This control emits yield only half-way: under-firing is detectable (`review-stats`
+groups by mode, so a verify pass still carrying warnings proves the rule never landed), over-firing
+is not — `build_fact_body` carries `findings`/`counts` and drops the reviewer's prose, so verify-mode
+W/N reads zero by construction. Mitigated in-scope by having the directive ask for a demotion count,
+so the number reaches the builder. The structured field that would make it telemetry-visible is a
+persisted-format change — lock-in, and with a real design question of its own (self-reported vs.
+derived) — so it is **filed as #585**, not improvised into a fix batch. The plan now carries `governed_by:`
+with this disposition and three others; its absence was itself a finding, and `governed-by-gap`
+structurally cannot see it (the check grades dispositions against *cited* artifacts, so a plan citing
+nothing scores zero).
+
+## 2026-08-04: the verify pass — the one carrier with no test was the one that outlives the session
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->
+
+`verify-resolutions` over the resolution commit: **all ten resolutions verified `fixed`** against the
+files at HEAD, plus **1 blocking, 1 warning, 1 note** of its own. Two fixed, one accepted.
+
+**The blocking finding is this change's own thesis, applied to this change.** Every carrier added in
+the previous commit gained a pin — the emission against real stdout, the prefix collision by regex,
+the relay ordering by index, the coverage caveat across four count shapes, the judgeable condition.
+`_summarize_critic_findings`'s `next_action` append had none. And that is the carrier that survives
+`/clear`: its reader is *by definition* the builder who lost the reviewer's report, so its silent
+loss is unobservable in-session — in a plan whose entire thesis is that carriers fail silently. It
+also sat below an early `if not summary and not findings: return None`, harmless only because
+`fact_to_cache_record` always writes a summary, which nothing asserted. Three cases now: the warning
+list ordering, the clean pass, and a legacy record with no field.
+
+**The warning was a "cheap check" that was not cheap.** The upstream-composition guard added for R-1
+called `coverage_verdict` with an unmemoized `diff_fn` and **no `key_fn`**, which sends `_find_path`
+down the pairwise free-edge branch — the form `_tree_key_fn`'s own docstring measures on this repo's
+store at ~5,600 `git diff` subprocesses and ~316s, run twice per verdict with no memo between the
+passes. It sits on the interactive `/prawduct:pr create` path, inside a diagnosis whose gate message
+calls it cheap. Both are threaded in from the caller, which already builds them. Worth noting *why*
+threading beat editing prose: `_cached_diff_fn`'s docstring asserts that "every production call site
+pairs this with `_tree_key_fn`" — the new call site had made that false, and the choice was to
+restore the claim or weaken it.
+
+**Accepted (1):** the upstream check's own degraded path still returns the genuine-negative answer,
+which is the shape the status split exists to separate. Separating them needs the failure surfaced
+through `coverage_verdict`, shared by every gate — wider than this diagnosis, and silence is the safe
+direction. A half-measure catching only the missing-tree case was written and then removed: a fix
+that looks like one but does not catch the case it names is worse than an accepted gap.
+
+**One answer worth keeping.** Asked whether the new merge-base filter could suppress a *true*
+positive, the reviewer found the one shape and showed it fails closed: after a merge or rebase the
+branch's own genuine review also stops being a descendant of the new merge-base, so it is filtered
+too and the diagnosis goes silent rather than wrong — which is the desired direction, since the merge
+brought unreviewed lines in, and it self-heals at the next review on the branch.
+
+## 2026-08-04: the cumulative's findings — a false positive that would have sent unreviewed work to merge
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->
+
+Cumulative over Chunk 01, three reviewers: **0 blocking, 7 warnings, 11 notes.** Ten fixed in one
+batch, eight accepted. The gate needed none of it — which is the rule this branch is building, and
+the reason the whole batch is one commit and one verify pass rather than ten rounds.
+
+**The one that mattered was the one I asked about and looked for in the wrong place.** I asked the
+reviewers to check `diagnose_fix_churn`'s failure direction against renames, deletions, submodules
+and odd path shapes. None of those defeat it. The false positive comes in through the *lineage
+filter*: `merge-base --is-ancestor <fact> HEAD` is satisfied by **every fact on the base branch**,
+and one clone's evidence store is shared by all its worktrees. So a branch with no review of its own
+anchors on the last review of `develop` — and since reviews in a real repo name the same hot files
+over and over, a whole unreviewed branch can land inside the subset test and be reported to its
+builder as their own churn. Chunk 02 of this very plan was a live candidate.
+
+The anchor must now also be a **strict descendant of the merge-base**: a review at or before it
+never saw this branch. That also repairs a claim the docstring made and could not keep — *"a merge
+fails the subset test and diagnoses as nothing"* — because after merging the base in, a base-side
+fact can become *nearer* to HEAD by commit distance than the branch's own review, switching the
+anchor and dropping the merged lines out of the delta entirely. **The plan named a merge test; what
+shipped was a plain commit to an unnamed file**, which exercises the subset test and never touches
+anchor selection. The real merge case is now a test, and it fails without the filter.
+
+**Second half of the same finding: the diagnosis proved one leg and the message described the whole
+span.** `uncovered` means composition failed *somewhere* between base and HEAD, not necessarily on
+the last leg — an earlier dirty-tree review or selective commit leaves a hole below an anchor whose
+own delta is pure churn. The message then promised that one verify pass closes a gap it does not
+close. Coverage must now compose from the base tree up to the anchor before anything is claimed
+about the span, and the wording says what is proven.
+
+**The carrier proved itself on its own first review, and then showed its two holes.** That review's
+returned report ends with the `NEXT-ACTION:` line verbatim — the relay works. But all three
+reviewers independently hit the zero-blocking text, which is the strongest signal a coordinator
+review produces:
+
+- It ordered a verify pass **unconditionally**, printed directly beneath `_BATCH_FIX_DIRECTIVE`,
+  which conditions it on touching judgeable files. On framework work the non-blocking findings
+  concentrate in `.prawduct/` prose — all non-judgeable — so **the most common fix batch is exactly
+  the one that needs no pass**, and the line that now travels furthest picked the round-generating
+  phrasing. It now carries the condition, and says the common case out loud.
+- The clean-pass variant asserted "no further review is required" with no coverage caveat, while its
+  two siblings carried one. A clean `chunk` mid-plan still owes a final at end of cycle, and
+  `_critic_session_satisfies_gate` fires an advisory saying so — two code-owned surfaces asserting
+  opposite things in one session, with the newer one saying stop. The caveat is now a shared
+  constant every zero-blocking branch carries, pinned across all four count shapes.
+
+**And the relay order sat where the shorthand could swallow it.** In `goals-1-3.md` the order landed
+immediately before `No findings: "…"`, so the shorthand read as a total replacement — dropping the
+carrier in precisely the zero-blocking case that is most of these reviews, in the two
+always-single-pass modes. Reordered and made explicitly unconditional. The token pins could not have
+caught it: they assert the words are in the file, which is not the same as the instruction having
+effect.
+
+**Three more, each a gap between a producer and a consumer.** `_summarize_critic_findings` renders
+the handoff's Critic section from this same record and dropped `next_action` — so the cross-session
+builder, who is *definitionally* the one who lost the reviewer's report, inherited "Findings: 4
+warning" with nothing saying warnings gate nothing. That is the state the measured ten-round failure
+started from. The `NEXT:` prefix collided with the session digest's standing-block `NEXT`, which
+contracts for brevity — an agent holding both had a standing instruction to compress the line it was
+told to relay verbatim; it is `NEXT-ACTION:` now. And the emission was pinned only by a source-text
+grep, which passes for a print that is unreachable or conditional — it is asserted against real
+stdout, in the clean-pass test where an editor mirroring the batch directive's `if all_findings`
+would break it.
+
+**`diagnose_fix_churn` said nothing when it could not run.** Four return paths were genuine
+conditions and four were degradations, rendering identically — and `learnings.md` names that shape
+by name: *"'Advice fails soft' is not 'advice fails silent' — a degraded advisory path must still
+name its consequence, or it manufactures the false success it was meant to prevent."* The precedent
+was in the file I was editing. It now returns a status, and the gate says the check was unavailable
+rather than going quiet.
+
+**Accepted, not fixed (8):** two duplicates of fixes above; the perf note (the merge-base filter cut
+the candidate set anyway); the never-raises docstring; the two-definitions-of-prior-review note
+(deliberate — the two anchors answer different questions and unifying them would make one wrong);
+the stop-hook's parallel message path (real, but the measured loop ran against the PR gate); and the
+Issues-backend backlog gap. Each is a recorded fact, not a sentence — `prawduct-hook
+render-dispositions` prints the census rather than anyone counting by hand.
+
+## 2026-08-04: the loop-termination rule shipped, and reached nobody who could act on it
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->
+
+v3.2.3 already says the right thing about when a review is over — `methodology/building.md`
+under "Resolve findings" and `skills/critic/review-cycle.md` § "The review loop terminates" both
+state that zero blocking ends it, that WARNING and NOTE gate nothing, and that fixes belong in one
+commit. A consuming repo on that exact version then ran **ten Critic rounds on one branch**, rounds
+five onward spent fixing warnings that gated nothing.
+
+**Every carrier was a pull carrier.** The transcript contains zero reads of `building.md` and zero
+of `review-cycle.md`: the branch had no build plan (`record_lint` recorded exactly that), so the
+builder never entered the build cycle that would have made it read either. The one runtime carrier,
+`_BATCH_FIX_DIRECTIVE`, appeared in **seven reviewer-fork contexts and zero builder contexts** —
+because `verify-resolutions` and `chunk` are always single-pass, so the reviewing fork runs
+`critic-consolidate` itself and the directive prints where the reviewer will read it and the
+builder never will. That gap was already written down: the docstring above
+`RESOLUTION_IS_A_CLAIM_DIRECTIVE` says the directive "does not carry to the builder" and gives the
+reason. Knowing it was not enough to close it.
+
+Meanwhile the two things that *did* reach the builder both said *review again* — the gate's
+`uncovered:` remedy names two routes, both full reviews; and findings arrive as recommendations
+with no statement of what gates.
+
+**Measured across both evidence stores since the v3.2.3 tag:** 92 review facts in one repo and 96 in
+this one; 30 of that first repo's 806 findings were blocking. Sixty of its 92 reviews were
+zero-blocking `verify-resolutions` rounds, the longest run nine consecutive. Five of the
+ten-round branch's nine verify invocations open with the words "close coverage to committed HEAD".
+
+**Three carriers now push instead of waiting to be pulled.**
+
+- **`.critic-findings.json` gained `next_action`** — code-computed from the fact's own counts, in
+  the file the builder opens by contract. Zero blocking: the review is over, these gate nothing,
+  here is the `disposition … --accept` command with this review's id already substituted.
+- **`critic-consolidate` prints that same line as `NEXT:`**, and both protocol files order the
+  reviewer to relay it verbatim as their report's last line. This is what closes the single-pass
+  hole: the reviewer is the one running the command, so the only way its output reaches the builder
+  is if the reviewer carries it.
+- **The cumulative gate diagnoses fix churn.** When every judgeable change between the newest review
+  on HEAD's lineage and HEAD sits in a file that review's own findings named, and that review left
+  nothing blocking, the gate now says so before offering the generic remedy — and names
+  `disposition`, which moves no tree and needs no review.
+
+**The discriminator is what moved the tree, never a round counter.** CRT-3W6P's counter-example is a
+post-merge round that a counter would have called waste and was not, because a merge had brought
+thousands of unreviewed lines into functions the branch had already touched. A merge fails the
+subset test and diagnoses as nothing; so does partial overlap, an unresolved blocker, a sibling
+worktree's fact, and a review with no file attribution. Every one of those is a test, because the
+failure that matters is telling a builder their gap is self-inflicted when it is real.
+
+**Both protocol files were at their token ceilings, and neither ceiling moved.** Quoting the two
+gate-line variants in each file would have cost ~160 tokens apiece. Having code own the wording and
+the prose order only the relay cost 34 and 1. `goals-1-3.md` paid by compressing the chunk-`Type:`
+paragraph — a standing trim candidate its own budget comment names. `review-protocol.md` paid by
+dropping the `resolutions` schema arm, which it restated for a mode that does not read it and where
+emitting one *fails consolidation closed* — not redundancy but an invitation to an error.
+
+Parent requirement #167 (CRT-3W6P) stays open: its `critic-begin` **refusal** is deliberately not
+built here. Refusing a round leaves coverage open with no way to close it, so the PR gate would
+block with no remedy — a worse failure than the loop. This makes the loop terminate without needing
+one.
+
 ## 2026-08-04: the suite stops running only when someone remembers
 
 <!-- prawduct: type=feature | scope=release-integrity | chunks=05 -->
