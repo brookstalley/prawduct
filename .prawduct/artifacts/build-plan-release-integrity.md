@@ -207,11 +207,26 @@ has been stale since *before* it ever saw a newer version — which is the docum
 doctor half, and therefore only when someone runs doctor. **This does not fully close the loop, and
 the plan should not claim it does.**
 
-**Deliverables**
-- New `plugin/lib/staleness_probes.py`, registered in `probe_families.register_all()` via the
-  established lazy-import pattern; regression check only; no machine-level read.
-- A new `/prawduct:doctor` health check for the behind-latest comparison.
-- Advisory and health-check text carries the consequence in plain language and no internal ids.
+> **Sequencing decision 2026-08-04 — the probe half is deferred, and this is not a descope.**
+> `feat/advisory-actionability` is in flight and rewrites the probe-facing contract: it adds
+> `owner_action` and `prerequisite_of` to `AdvisoryCandidate` and updates **all seven** probe
+> modules to populate them (358 insertions / 248 deletions across 9 files). A probe authored here
+> today would ship without `owner_action` — the exact field that branch exists to require, and one
+> its tests pin — making it the only non-conforming probe in the tree the moment those branches
+> meet, plus a near-certain conflict in `probe_families.register_all()`.
+> **So: build the doctor half now, and the probe half on top of the new contract once
+> advisory-actionability reaches `develop`.** Chunks 04 and 05 touch no advisory code and are
+> unblocked either way.
+
+**Deliverables — now**
+- A new `/prawduct:doctor` health check for the behind-latest comparison (model-side, so it may
+  read the machine-level marketplace snapshot; this is the half that answers "you are behind").
+- Health-check text carries the consequence in plain language and no internal ids.
+
+**Deliverables — after `feat/advisory-actionability` lands on `develop`**
+- New `plugin/lib/staleness_probes.py`, registered via the established lazy-import pattern;
+  regression check only; no machine-level read; **written against the `owner_action` /
+  `prerequisite_of` contract**, not retrofitted onto it.
 
 **Done when**
 1. The probe reads nothing outside the project dir and the plugin root — asserted by a test, not
