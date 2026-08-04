@@ -170,11 +170,20 @@ dependencies are WARNING — and fix-by-fudging is not rated in that file at all
 argument resting on a false claim is not a safety argument; the carve-out is now an escalation
 that says so, with the guardrail split in two so neither half can drift silently.
 
+The `verify-resolutions` pass over that fix commit (`rev-20260804T191544Z-ea418c92`) recorded
+**0 findings, 13 fixed / 1 waived**, and `check-cumulative-critic` is **satisfied** —
+merge-base→HEAD over 5 review facts, 0 unresolved blocking. Two rounds, both gate-required,
+and the reviewer stated that nothing in the second required another.
+
+**The acceptance criterion was met by the pass that tested it.** "A `verify-resolutions` pass
+over a clean fix delta records zero findings and the gate passes" — it did, and it reported
+**5 demoted observations** with a stated count, which is the mitigation for the yield gap
+working on its first real use. Those five are carried into Chunk 03's batch (which owes a
+review anyway) rather than fixed now; two of them are defects in Chunk 02's own fixes, one
+being the line-vs-clause slack reintroduced in a sibling of the test that just fixed it.
+
 Next: Chunk 03 — and it is `Type: cumulative-final`, so its single `/prawduct:critic
-cumulative` is both the chunk's review and the PR gate's evidence. That cumulative is also what
-closes coverage over two edits that landed *after* Chunk 02's dispatch captured the tree
-(`SKILL.md`'s scope clause and a `coverage.py` docstring) — noted so it is met deliberately
-rather than at the gate.
+cumulative` is both the chunk's review and the PR gate's evidence.
 
 ## Verification Strategy
 
