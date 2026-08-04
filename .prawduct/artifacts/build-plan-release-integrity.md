@@ -255,9 +255,17 @@ the plan should not claim it does.**
 > | user can veto: the alternative is putting the Release check behind an explicit `--remote`
 > flag, which is more orthodox but makes the CI invocation the non-default one]`
 
+> **Scope amendment 2026-08-04 — the fourth check moves, it is not dropped.** "The local install
+> resolves to the released tree" is a fact about *the operator's machine*, not about the release,
+> and nothing in `lib/` reads `installed_plugins.json` today. Chunk 03's doctor half already has
+> to read exactly that file, model-side, where machine-level reads are sanctioned. Implementing it
+> here too would put one fact in two homes — the norm this plan's own dispositions cite. It is
+> therefore a Chunk 03 deliverable, and `check-released` answers only *"is this release complete
+> and public?"*, which is also the only question CI can meaningfully ask.
+
 **Deliverables**
 - `prawduct-hook check-released vX.Y.Z`: version files agree with the tag, tag is on `main`,
-  a GitHub Release exists, the local install resolves to the released tree.
+  a GitHub Release exists.
 - Body in `lib/`, thin `cmd_` wrapper in `bin/prawduct-hook` — the established shape for every
   neighbouring subcommand, and what the precedent's tests import.
 - Explicit arg scan; unknown tokens are usage errors (exit 2), never ignored — copied from
@@ -298,6 +306,26 @@ someone remembers. That gap is independent of releases and is the larger half of
 4. `/prawduct:critic` passes.
 
 ---
+
+## Status
+
+<!-- Derived view (`views_enabled: true`). Mark a chunk shipped by adding a change-log entry
+     tagged scope=release-integrity / status=shipped, then run regen-views.
+     Do NOT hand-flip the checkboxes. Stays [ ] on this branch until the release ships. -->
+
+- [ ] Chunk 01: `version` tells you when it cannot pin
+- [ ] Chunk 02: The skills stop asking PATH which prawduct they are governed by
+- [ ] Chunk 03: A repo running a stale plugin says so (doctor half now; probe half deferred)
+- [ ] Chunk 04: `check-released`, the mirror of `check-releasability`
+- [ ] Chunk 05: CI — run the suite, and verify what shipped
+
+Context: Plan authored 2026-08-04 on `feat/release-integrity`, cut from `develop` at `dbb42f3`,
+after an investigation into "the v3.2.3 release was weird" found the release clean and three
+independent defects around it. **Build order is not chunk order:** 04 was built first because it
+is the keystone for 05 (the owner ruled on CI mid-plan), and 03's probe half is blocked behind
+`feat/advisory-actionability`'s rewrite of the probe contract. 01 and 02 are the lowest-priority
+pair after the measurement showed PATH roulette is a weaker explanation for the reported symptom
+than the cache-key pin.
 
 ## Governance checkpoints
 

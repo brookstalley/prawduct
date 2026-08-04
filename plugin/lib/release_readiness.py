@@ -221,8 +221,13 @@ def _markdown_backlog_unavailable_reason(project_dir: Path) -> str | None:
     return None
 
 
-def _normalize_version(release: str) -> str:
-    """``3.2.0`` and ``v3.2.0`` name the same release; tags carry the ``v``."""
+def normalize_version(release: str) -> str:
+    """``3.2.0`` and ``v3.2.0`` name the same release; tags carry the ``v``.
+
+    Public because ``release_verification`` needs the identical rule: the two
+    gates sit at opposite ends of the same release and must agree on what the
+    operator's argument means, and a second copy is how they would stop agreeing.
+    """
     return release if release.startswith("v") else f"v{release}"
 
 
@@ -237,7 +242,7 @@ def _resolve_version(project_dir: Path, release: str | None) -> str | None:
     refusal-to-guess posture as the argv scan in the CLI wrapper.
     """
     if release:
-        return _normalize_version(release)
+        return normalize_version(release)
     version_file = project_dir / "plugin" / "VERSION"
     try:
         raw = version_file.read_text(encoding="utf-8").strip()
@@ -295,7 +300,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         tagged = sum(1 for e in entries if e.tag_line_count > 0)
         detail = f"{len(entries)} change-log entries scanned, {tagged} tagged"
         if release:
-            asked = _normalize_version(release)
+            asked = normalize_version(release)
             stamped = len(scopes_tagged_for(entries, asked))
             detail += f", {stamped} scope(s) already tagged release={asked}"
         print(f"releasable: no release-pending scopes — nothing to classify ({detail}).")

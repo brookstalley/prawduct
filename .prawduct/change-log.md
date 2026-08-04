@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: the check that would have been red for thirty releases
+
+<!-- prawduct: type=feature | scope=release-integrity | chunks=04 -->
+
+`prawduct-hook check-released vX.Y.Z` verifies a release from the outside: the three version files
+agree **at the tag's own tree**, the tag is contained in `origin/main`, and a GitHub Release
+exists. Run it against `v3.2.2` and it fails — as it does for every release before this one,
+because a pushed tag lands on `/tags` and the Releases page stayed empty for thirty of them. That
+is the defect users reported as "no tag on GitHub", and nothing in the release process could see
+it: every check was a git command run by the person doing the release, so nothing ever asked what
+a consumer receives.
+
+**Version agreement is read through `git show <tag>:<path>`, never the working tree.** What a
+release shipped is a fact about the tree that release names; the checkout you are standing in is a
+different question, and it answers confidently and wrongly from a feature branch. A test pins this
+by moving the working tree to a different version and asserting the gate still reads the tag's.
+
+**Failure posture is split, because the checks are not the same kind of claim.** The local checks
+produce a verdict and fail closed. The Releases-page check needs the network, which the governance
+runtime does not take — this is an operator/CI command carrying no session verdict, so it may, but
+a machine without `gh` reports **unverifiable** rather than failed. A false red on a release check
+is worse than no check: it is the reading that teaches people to ignore it. The same reasoning
+covers a clone with no `origin/main` — a fresh checkout, a fork, a shallow CI fetch — which now
+reports that it cannot answer instead of reporting a broken release.
+
+Two defects were caught by scrubbing the change rather than by the suite, and both were the
+confident-wrong-answer shape: the `pyproject.toml` parser matched any key *starting with*
+`version`, so a `versioning` key would have been read as the release version; and the
+`origin/main` containment check never established that the reference existed before asking what it
+contained.
+
 ## 2026-08-03: the final cumulative — a deliverable with no test, and six records that had drifted
 
 <!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->
