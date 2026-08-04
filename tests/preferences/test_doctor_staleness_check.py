@@ -13,11 +13,14 @@ makes it structurally fragile in ways the other fourteen are not:
   machine this was written on runs three. A regression to a hardcoded path grades
   a different install than the one governing the session and reports healthy while
   doing it.
-* Three of its five outcomes are *not* "healthy", and two of those are easy to
-  collapse into one during an edit: a ``directory:`` marketplace is **ungradeable**
-  (the comparison is a tree against itself) and a failed read is **degraded because
-  ungraded**. Either collapsing into "healthy" reintroduces the silence the check
-  exists to break.
+* Five of its six outcomes are *not* "healthy", and the ungradeable ones are easy
+  to collapse during an edit: a ``directory:`` marketplace and a local checkout are
+  both **ungradeable** (the comparison is a tree against itself, or against an
+  unrelated tree), and a failed read is **degraded because ungraded**. Any of them
+  collapsing into "healthy" reintroduces the silence the check exists to break —
+  and for the two gates, *position* is the property, not presence: they must be
+  decided before the comparison, or a top-down reader reaches ``Equal -> healthy``
+  first and stops.
 
 These assert properties, not phrasing. Each was verified red against a mutation
 that a reviewer would plausibly wave through — see the docstring on each test for

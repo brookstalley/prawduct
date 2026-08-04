@@ -20,13 +20,22 @@ which is why the plan's Chunk 03 is now two chunks: `views.py` flips a checkbox 
 tag at release, so one id covering both halves would have marked the probe shipped while it was
 still unwritten.
 
-**Three of the five outcomes are not "healthy," and that is the point.** A `directory:` marketplace
-is *not graded* — `installLocation` is the checkout itself, so the comparison comes out equal by
-construction and reporting healthy would tell a maintainer their install is current on evidence
-that could not have said otherwise. An unreadable input is *degraded because ungraded*, matching
-Checks #11, #13 and #14. And a running plugin **newer** than the snapshot is a separate finding —
+**Five of the six outcomes are not "healthy," and that is the point.** Two of them are *gates that
+end the check before any version is read*, because both make the comparison meaningless rather than
+negative: a `directory:` marketplace, where `installLocation` is the checkout itself so the two
+sides come out equal by construction; and a session running a **local checkout** while a marketplace
+install is also enabled, where the two sides are unrelated trees (`banner.py` `is_managed_install()`
+is the same path comparison). Ordering matters and was got wrong first: listing these beside the
+comparison outcomes instead of ahead of them let a reader going top-down reach `Equal → healthy` and
+stop. Of the rest, an unreadable or *incomplete* input is *degraded because ungraded*, matching
+Checks #11, #13 and #14; and a running plugin **newer** than the snapshot is a separate finding —
 the snapshot is stale, not the install — because reporting "you are behind" there sends someone to
 update something already ahead.
+
+Doctor gains one new tool grant, `Bash(printenv CLAUDE_CONFIG_DIR)`. Nothing else in the skill needs
+Bash, and the check cannot work without it: an environment variable is not a load-time prose
+placeholder the way `${CLAUDE_SKILL_DIR}` is, so without the grant the reader can only assume
+`~/.claude` — which is the one thing the check forbids.
 
 Two things it deliberately does not do. It does not hardcode `~/.claude`: the config home resolves
 through `CLAUDE_CONFIG_DIR` exactly as `hooks/banner.py` `managed_plugin_home()` resolves it, and

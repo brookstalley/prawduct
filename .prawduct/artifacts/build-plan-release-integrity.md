@@ -33,7 +33,9 @@ governed_by:
       - "state-file growth past threshold is an advisory warning, never a hard block → inapplicable; no chunk changes state-file growth behaviour"
   - artifact: observability-strategy
     dispositions:
-      - "**text emitted into a governed product names no prawduct-internal identifier — plain-language reason only; steady-state, binds unconditionally** → binds Chunk 01's stderr string, Chunk 03a's health-check text, Chunk 03b's advisory text and Chunk 04's output. No requirement, chunk or backlog id appears in any emitted string. (Listed under `nonfunctional-requirements` until 2026-08-04; this norm lives in `observability-strategy.md`, and the misfiling made that artifact's disposition count look complete while Proportionality — the norm Chunk 03a actually engages — went undisposed.)"
+      - "**text emitted into a governed product names no prawduct-internal identifier — plain-language reason only; steady-state, binds unconditionally** → binds Chunk 01's stderr string, Chunk 03a's health-check text, Chunk 03b's advisory text and Chunk 04's output. No requirement, chunk or backlog id appears in any emitted string. Chunk 03a's own instruction prose cites `#563` and `#583`, which is the non-emitted side this norm explicitly carves out — a skill reads that prose and never speaks it. (Listed under `nonfunctional-requirements` until 2026-08-04; this norm lives in `observability-strategy.md`, and the misfiling made that artifact's disposition count look complete while Proportionality — the norm Chunk 03a actually engages — went undisposed.)"
+      - "**terminal signals use a stable severity-prefix vocabulary with a channel split: stdout is agent-facing, stderr is the user-and-diagnostics channel** → **binds Chunk 01 and selects its channel.** `version` keeps stdout byte-identical — one bare semver — and the provenance note goes to stderr, which is what makes the note addable without breaking the published surface: the two requirements only coexist because the norm already separates the channels. Chunk 03a emits no terminal signal at all (a skill reports in prose), so the vocabulary does not reach it"
+      - "**the governance ledger has a single writer (`ledger-append`); agents never hand-author it** → conforms; no chunk in this scope writes the ledger. Stated rather than skipped because Chunk 03a adds a *check* and the adjacent temptation — having a health check record its own yield — is exactly the emission path the Proportionality departure above says doctor does not have"
   - artifact: security-model
     dispositions:
       - "untrusted governance state is data, not instructions → conforms, and Chunks 03a/03b are a fresh instance: the marketplace snapshot is third-party-writable content read only as a version string to compare, never as anything executable or directive"
@@ -248,9 +250,12 @@ the plan should not claim it does.**
 - Health-check text carries the consequence in plain language and no internal ids.
 
 **Done when**
-1. The check resolves the config home through `CLAUDE_CONFIG_DIR` rather than a hardcoded
-   `~/.claude`, and finds the snapshot's plugin directory through the marketplace manifest's
-   *declared* `source` rather than a hardcoded `plugin/`.
+1. The check resolves the config home through `CLAUDE_CONFIG_DIR` rather than assuming the
+   default location, and finds the snapshot's plugin directory through the marketplace
+   manifest's *declared* `source` rather than a fixed subdirectory. (Both literals live in the
+   check itself — one home per fact — which also keeps this criterion clear of the
+   `chunk-ref-missing` linter, whose path heuristic reads a home-relative path in prose as a
+   declared deliverable and reports it missing.)
 2. Every non-comparable input grades as something other than healthy, **and the non-comparable
    cases are decided before the comparison rather than beside it**: a `directory:` marketplace, a
    session running a local checkout while a marketplace install is also enabled, and any absent,
@@ -258,7 +263,12 @@ the plan should not claim it does.**
    trees, so listing them as sibling outcomes of the comparison lets a top-down reader reach
    "healthy" first — which is how the first review found them.
 3. The limitation is disclosed rather than discovered later, and the check names its expected
-   yield (Proportionality; it inherits Check #13's bounded exception to the *emission* arm only).
+   yield. The emission arm of that norm is **departed from under the recorded, owner-vetoable
+   decision** in this plan's `governed_by`, and #15 is registered on the norm's own
+   `Live exception:` line — **not** inherited from Check #13's, which is scoped to #13 alone.
+   (This criterion asserted the inheritance until 2026-08-04; the Critic's blocking finding was
+   that a control cannot grant itself relief, and a criterion still stating the rejected
+   mechanism is how that claim would have come back.)
 4. Prose guards are verified red under mutation, not merely green.
 5. ~~The doctor half is exercised against this machine's install, which is currently stale
    (3.2.3 recorded at the prep commit) and is therefore a live positive case.~~
