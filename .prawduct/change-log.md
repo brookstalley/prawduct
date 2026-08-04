@@ -3,6 +3,114 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: a re-review answers one question — it does not manufacture the next round's work
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=02 -->
+
+Chunk 01 closed the **demand** side: the builder now meets the termination rule on carriers it cannot
+avoid. This is the **supply** side. `verify-resolutions` exists to answer one question — were the
+named findings resolved? — and it also walked the fix delta at full severity, handing back
+WARNING/NOTE findings that are, definitionally, round N+2's inventory. **New findings in
+`verify-resolutions` are now BLOCKING only**; anything lesser the reviewer notices is reported as an
+OBSERVATION in prose, where it informs without becoming work.
+
+**Why this mode and no other.** `chunk`, `final` and `cumulative` review work the builder *chose* to
+do. Only `verify-resolutions` reviews a delta the framework itself asked for — so it is the only mode
+where suppressing non-gating findings removes churn rather than review.
+
+**The carve-out is what makes it safe, and it is pinned across the file boundary.** The classes that
+genuinely go wrong in a fix delta are already BLOCKING-rated in `goals-1-3.md` — a weakened or
+deleted test, a dropped requirement, changed behavior with no test, security in changed code,
+fix-by-fudging. The directive promising they stay rated lives in `critic_consolidate.py`; the ratings
+live in a markdown file. `test_the_classes_it_exempts_are_still_blocking_in_the_protocol` drives from
+the protocol's own BLOCKING lines, so a downgrade there fails the directive that vouches for it.
+
+**Placement was the design, not a detail — and the cheap slot was the wrong one.** `## Severity` is
+the obvious home and sits *below* all three goal sections, so a reviewer walking Goal 1 → 2 → 3 has
+assigned every WARNING before reaching it: present, and inert. This repo has shipped that exact shape
+once (`SKILL.md`'s header said read `review-protocol.md` "first" 26 lines above the routing that said
+otherwise, with six artifact-measuring guardrails green throughout). The rule went in the **preamble**
+instead, and `test_the_protocol_carries_it_before_any_severity_is_assigned` asserts the ordering
+rather than the presence.
+
+**Split by cost, as in Chunk 01.** The 17-word rule is in `goals-1-3.md` (ceiling held: 1992 → 1994,
+funded by the normative block's most abstract sentence and a first line the H1 already said). The
+worked instances, the measured rationale and the descent are in
+`VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, printed at dispatch where there is no budget — and printed
+*before* `RESOLUTION_IS_A_CLAIM_DIRECTIVE`, because the reviewer rates the delta before it judges the
+prior findings, and the gate-weakening warning keeps the tail.
+
+**A contradiction this surfaced.** `review-cycle.md` step 3 rated "a workaround instead of root
+cause" **WARNING** — inside the one mode that now records no warnings. Two things were wrong and only
+one was the contradiction: a WARNING gates nothing, so it was also the wrong *instrument*. When a fix
+works around a root cause the finding named, the honest verdict is that the finding is unresolved,
+which is expressed by withholding the resolution and fails closed. Re-routed there.
+
+**The cost, recorded rather than buried.** A demoted observation is not a fact: it cannot be
+`disposition`ed and leaves no trace in the evidence store. Two things bound it — `verify-resolutions`
+is never a first review (`critic-begin` demotes when no usable prior fact exists), so every narrowed
+delta sits downstream of a full-severity pass; and the builder still reads the observation in the
+reviewer's report. The information survives; only the obligation is gone.
+
+**Carried in from Chunk 01's accepted findings.** `coverage.diagnose_fix_churn` now *requires*
+`diff_fn` and `key_fn` — the unreachable unmemoized fallback is deleted, so a dropped argument is a
+`TypeError` at the call site instead of a silent ~5-minute hang on the interactive
+`/prawduct:pr create` path. `gates._merge_base_verdict` carried the identical unreachable
+`key_fn=None` one frame up the same call chain and is now required too; a signature pin covers both.
+And `test_next_action_survives_a_clean_pass_with_no_findings`'s docstring claimed a
+`fact_to_cache_record` coupling it does not assert; it now states what it actually pins.
+
+**A fourth carrier, added during the build and recorded rather than dropped.** `SKILL.md`'s per-mode
+scope line states the narrowing too. That line exists so no mode has to open `review-cycle.md` for
+scope, and the narrowing *is* scope — omitting it describes a mode that rates everything, to the
+first file the fork reads. It is now in the plan's deliverables and pinned by test, per this plan's
+own Verification Strategy.
+
+### What the chunk's own review changed — 0 blocking, 8 warnings, 8 notes, one batch
+
+Three reviewers converged on the same seam, and they were right: **the carve-out was not sound as
+written, and it is the safety argument the whole change rests on.**
+
+- **The claim "these five classes are already BLOCKING-rated in `goals-1-3.md`" was false for two.**
+  Security is *mixed* there — injection, secrets and exploitable input validation block, but
+  *auth/authz on new endpoints* and *known-vulnerable dependencies* are **WARNING**. And
+  fix-by-fudging is not rated in that file at all; its workaround leg was rated only in
+  `review-cycle.md`, which a `verify-resolutions` reviewer is forbidden to open — so this change had
+  left the rating existing solely inside the directive that vouched for it, which is circular. The
+  same reviewer was being told both "rate these as you would in any mode" (⇒ WARNING) and "BLOCKING
+  or not a finding" (⇒ demote). Fixed by making the carve-out an **escalation that says it is one**,
+  and splitting the guardrail: one test pins the classes the protocol genuinely rates, another pins
+  that the escalated ones are named as escalations and that the protocol still rates them lower.
+- **The demotion bound on class membership where the rule binds on severity.** "Everything else you
+  notice" took the five classes as antecedent, which literally demoted BLOCKING-rated classes the
+  enumeration omits — test failures in evidence, `missing-coverage:` lines, cross-component contract
+  breaks, unlisted dependencies, norm departures. On the carrier read last before rating, that is the
+  expensive reading. Now: *the test is the severity you would assign, never membership in any list.*
+- **OBSERVATION had no slot in the only output contract this mode reads.** `goals-1-3.md` enumerates
+  findings and a summary, and its clean-pass line says `No findings: "No issues found."` — so a pass
+  that demoted three observations was instructed to report silence, defeating the cost-bound the
+  design rests on. The directive now names a structural destination (`### Observations`) and the
+  clean-pass line reads "No findings, no observations".
+- **`goals-1-3.md`'s record-lint severities contradicted the preamble 20 lines below it** —
+  specific-over-general, in the one protocol file this mode may open. Resolved in the preamble clause
+  itself, and mirrored on the two maintainer-facing surfaces carrying the same mapping.
+
+The ceiling absorbed all of it and came out lower: **1994 → 1990**, paid by the `## Severity`
+BLOCKING legend's example list, which restated four checks stated in full above it.
+
+**One norm departure, recorded not silently taken.** `nonfunctional-requirements.md` binds *"adding
+a control names the yield it expects AND emits that yield observably"*, retroactive to controls added
+from 2026-07-29. This control emits yield only half-way: under-firing is detectable (`review-stats`
+groups by mode, so a verify pass still carrying warnings proves the rule never landed), over-firing
+is not — `build_fact_body` carries `findings`/`counts` and drops the reviewer's prose, so verify-mode
+W/N reads zero by construction. Mitigated in-scope by having the directive ask for a demotion count,
+so the number reaches the builder. The structured field that would make it telemetry-visible is a
+persisted-format change — lock-in, and with a real design question of its own (self-reported vs.
+derived) — so it is **filed as #585**, not improvised into a fix batch. The plan now carries `governed_by:`
+with this disposition and three others; its absence was itself a finding, and `governed-by-gap`
+structurally cannot see it (the check grades dispositions against *cited* artifacts, so a plan citing
+nothing scores zero).
+
 ## 2026-08-04: the verify pass — the one carrier with no test was the one that outlives the session
 
 <!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->

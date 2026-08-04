@@ -3,6 +3,18 @@ artifact: build-plan
 version: 2
 scope: review-loop-carriers
 depends_on: []
+governed_by:
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "Review wall-clock is a P0 constraint; reviewer payload is a lever → conforms, and this plan is the lever pulled. Every carrier added is paid for: the gate line and the severity narrowing are ~17-35 words of prose each, with the worked instances in code that costs the reviewer nothing until dispatch. Neither protocol ceiling was raised; both additions were funded by trims the files' own budget comments designate."
+      - "Adding a control names the yield it expects AND emits that yield observably → DEPARTURE, recorded. Chunk 02's narrowing emits yield only half-way. Under-firing is detectable (`review-stats` groups by mode, so a verify-resolutions row still carrying warnings proves the rule never landed); over-firing is not, because a demoted OBSERVATION lives in the fork's report and `build_fact_body` carries `findings`/`counts` but drops the reviewer's prose. Verify-mode W/N will read zero post-release — true by construction, evidence of nothing. Mitigated in-scope by having the directive ask for a demotion count, so the number reaches the builder. The structured field that would make it telemetry-visible is a persisted-format change (lock-in, per `building.md`'s Decision Research) with a real design question of its own — self-reported vs. derived — so it is FILED rather than improvised into a fix batch. Surfaced by this chunk's own review, which is the norm working."
+  - artifact: observability-strategy
+    dispositions:
+      - "Terminal signals use the stable severity-prefix vocabulary; stdout = agent → conforms. `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE` opens with `PRAWDUCT:` on stdout, addressed to the reviewer agent. Internal ids stay out of emitted text (`CRT-3W6P` appears only in the non-emitted docstring)."
+  - artifact: architecture
+    dispositions:
+      - "Goals and verification bind; prescribed method is advice → invoked, and recorded. The plan prescribed 'a mode-conditional section' in `goals-1-3.md`; the goal was that a `verify-resolutions` reviewer meets the narrowing before assigning severity. A section in `## Severity` would have satisfied the prescription and failed the goal, since that heading sits below all three goal sections. Shipped as a preamble clause, with the ordering — not the presence — pinned by test."
+      - "Every fact has one home; every other mention is a reference → conforms with a stated exception. The rule's home is `goals-1-3.md`'s preamble (the reviewer's protocol). `SKILL.md`, `review-cycle.md`'s table and its supply-side section are references; the directive is the only other authoritative statement, and it is authoritative precisely where the protocol has no rating — the escalated classes. That split is stated in both places rather than left implicit."
 last_validated: 2026-08-04
 ---
 
@@ -93,7 +105,7 @@ designed first; this plan makes the loop terminate without needing it.
 ## Status
 
 - [x] Chunk 01: The exit condition and the fix-churn diagnosis reach the builder
-- [ ] Chunk 02: `verify-resolutions` adjudicates; it does not re-review
+- [x] Chunk 02: `verify-resolutions` adjudicates; it does not re-review
 - [ ] Chunk 03: Contestable counts, on both sides
 
 Context: Plan authored 2026-08-04 on `fix/review-loop-carriers`, cut from `develop` at
@@ -123,14 +135,46 @@ the verify-resolutions narrowing in a dispatch directive beside
 `RESOLUTION_IS_A_CLAIM_DIRECTIVE` (emission site `cmd_critic_begin`, already gated on
 the mode) rather than in `goals-1-3.md`, which has ~8 tokens of headroom.
 
-**Two accepted findings are owed to Chunk 02's batch** (recorded as dispositions on
-`rev-20260804T181325Z-071df9b4`, not filed): make `key_fn` required on
-`diagnose_fix_churn` and delete the unreachable n² fallback, so a dropped argument is
-a `TypeError` rather than a ~5-minute hang; and reword
-`test_next_action_survives_a_clean_pass_with_no_findings`'s docstring, which claims a
-coupling it does not assert.
+Chunk 02 is **complete**. Both findings owed in from Chunk 01's dispositions on
+`rev-20260804T181325Z-071df9b4` shipped in the same batch: `diagnose_fix_churn` now
+*requires* `diff_fn`/`key_fn` with the unreachable unmemoized fallback deleted (a
+dropped argument is a `TypeError`, not a ~5-minute hang on the interactive PR path),
+and `test_next_action_survives_a_clean_pass_with_no_findings`'s docstring states what it
+actually pins.
 
-Next: Chunk 02.
+**The one deviation, recorded not narrowed:** the `goals-1-3.md` deliverable was written
+as "a mode-conditional section" and shipped as a one-sentence preamble clause. The
+ceiling forced the size (1992 → 1994 of <2000, funded by trims the file's own budget
+comment designates); *placement* was the more interesting constraint, and it came from
+`learnings.md` rather than from the plan. `## Severity` is the obvious home and sits
+below all three goal sections, so a reviewer has assigned every WARNING before reaching
+it — the same present-and-inert shape as the `SKILL.md` header that said read
+`review-protocol.md` "first" 26 lines above the routing that said otherwise, with six
+artifact-measuring guardrails green throughout. The rule went in the preamble and
+`test_the_protocol_carries_it_before_any_severity_is_assigned` asserts the *ordering*.
+Chunk 01's split-by-cost pattern carried cleanly: the 17-word rule in prose, the worked
+instances and descent in `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE` where there is no budget.
+
+The narrowing also surfaced a contradiction the plan had not anticipated:
+`review-cycle.md` step 3 rated "a workaround instead of root cause" **WARNING** inside
+the one mode that now records no warnings. Re-routed rather than deleted — a WARNING
+gates nothing, so it was the wrong instrument too; the honest verdict is that the
+finding is unresolved, expressed by withholding the resolution, which fails closed.
+
+Chunk 02's review was a coordinator `final` (`rev-20260804T184741Z-4692c54c`): **0 blocking,
+8 warnings, 8 notes**, dispositioned in ONE pass — 13 fixed in one commit, 2 accepted as
+recorded facts, 1 filed. All three reviewers converged on the same seam, and they were right:
+the five-class carve-out claimed those classes were "already BLOCKING-rated in `goals-1-3.md`",
+and that was **false for two of five** (security is mixed there — auth/authz and vulnerable
+dependencies are WARNING — and fix-by-fudging is not rated in that file at all). A safety
+argument resting on a false claim is not a safety argument; the carve-out is now an escalation
+that says so, with the guardrail split in two so neither half can drift silently.
+
+Next: Chunk 03 — and it is `Type: cumulative-final`, so its single `/prawduct:critic
+cumulative` is both the chunk's review and the PR gate's evidence. That cumulative is also what
+closes coverage over two edits that landed *after* Chunk 02's dispatch captured the tree
+(`SKILL.md`'s scope clause and a `coverage.py` docstring) — noted so it is met deliberately
+rather than at the gate.
 
 ## Verification Strategy
 
@@ -185,13 +229,31 @@ are pinned by test, because nothing else can observe them.
   reported as an advisory observation in prose, where it informs without becoming work.
 - **Depends on:** Chunk 01
 - **Deliverables:**
-  - `plugin/skills/critic/goals-1-3.md` — a mode-conditional section: what
-    `verify-resolutions` rates and what it demotes to observation. The classes that
-    matter in a fix delta are already BLOCKING-rated (weakened tests, dropped
-    requirements, untested changed behavior, security, fix-by-fudging) and stay so.
-  - `plugin/lib/critic_consolidate.py` — a dispatch-time directive beside
-    `RESOLUTION_IS_A_CLAIM_DIRECTIVE`, printed by `critic-begin` for this mode, stating
-    the narrowing where the reviewer meets it.
+  - `plugin/skills/critic/goals-1-3.md` — the mode-conditional rule. **Shipped as a
+    one-sentence clause in the PREAMBLE, not as the "mode-conditional section" this
+    line originally specified** — recorded rather than silently narrowed, for two
+    reasons. (1) The file has ~5 words of headroom against a hard ceiling and its
+    standing rule is trim-or-relocate; a section was unaffordable and a bump was not on
+    offer. (2) The obvious home, `## Severity`, sits *below* all three goal sections, so
+    a reviewer assigns every WARNING before reaching it — the section would have been
+    present and inert (the `SKILL.md`-header precedent: ordering beats presence). The
+    classes that matter in a fix delta are already BLOCKING-rated (weakened tests,
+    dropped requirements, untested changed behavior, security, fix-by-fudging) and stay
+    so, enforced across the file boundary by
+    `test_the_classes_it_exempts_are_still_blocking_in_the_protocol`.
+  - `plugin/lib/critic_consolidate.py` — `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, a
+    dispatch-time directive beside `RESOLUTION_IS_A_CLAIM_DIRECTIVE`, printed by
+    `critic-begin` for this mode. It carries what the ceiling displaced: the worked
+    instances, the measured rationale, the descent. Printed *before* the resolution
+    directive — the reviewer rates the delta before it judges the prior findings, and
+    the gate-weakening warning keeps the tail.
+  - `plugin/skills/critic/SKILL.md` — the per-mode scope line. **Not in the original
+    deliverable list; added during the build and recorded here rather than dropped.**
+    That line exists so no mode has to open `review-cycle.md` for scope, and the
+    narrowing *is* scope — a summary omitting it describes a mode that rates
+    everything, to the first file the fork reads. Pinned, per this plan's own
+    Verification Strategy, by
+    `test_the_per_mode_scope_line_carries_the_severity_narrowing`.
   - `plugin/skills/critic/review-cycle.md` — the per-mode table and the termination
     section record the narrowed contract.
   - Carried in from Chunk 01's accepted findings (dispositions on

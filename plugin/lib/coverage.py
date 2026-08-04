@@ -170,8 +170,8 @@ def diagnose_fix_churn(
     head_tree: str,
     base_tree: str,
     merge_base: str,
-    diff_fn=None,
-    key_fn=None,
+    diff_fn,
+    key_fn,
 ) -> "dict | None":
     """Detect the gap a builder dug for themselves: **the whole uncovered span**
     is a review of this branch, plus edits confined to files that review's own
@@ -227,7 +227,10 @@ def diagnose_fix_churn(
     manufactures the false success it was meant to prevent."* ``None`` means
     the diagnosis ran and this is not churn; ``unavailable`` means it could not
     run, which the caller says out loud so a control that never fires can be
-    told apart from one that never ran. Never raises.
+    told apart from one that never ran. Never raises — *given* its arguments:
+    ``diff_fn`` and ``key_fn`` are required, deliberately, so that omitting one
+    is a ``TypeError`` at the call site rather than the silent slow path this
+    diagnosis cannot afford (see the comment at the ``coverage_verdict`` call).
     """
     from . import coverage_algebra, evidence  # noqa: PLC0415 -- lazy: matches diagnose_stale_remote_base's import posture; avoids an import cycle at module load
 
@@ -299,17 +302,15 @@ def diagnose_fix_churn(
     # Everything below the anchor must already compose, or the gap is not the
     # last leg and the remedy this feeds would not close it.
     #
-    # `diff_fn`/`key_fn` are threaded in rather than built here: without a
-    # `key_fn`, `_find_path` takes the pairwise free-edge branch, which
-    # `_tree_key_fn`'s own docstring measures on this repo's store at ~5.6k
-    # `git diff` subprocesses — twice per verdict, with no memo between the
-    # passes. This runs on the interactive `/prawduct:pr create` path, inside a
-    # diagnosis the gate message calls "the cheap check", so it has to use the
-    # n-key form every other gate uses. The caller already builds both.
-    if diff_fn is None:
-        def diff_fn(a: str, b: str) -> "list[str] | None":  # noqa: E306
-            return evidence.tree_diff(project_dir, a, b)
-
+    # `diff_fn`/`key_fn` are threaded in and REQUIRED rather than defaulted:
+    # without a `key_fn`, `_find_path` takes the pairwise free-edge branch,
+    # which `_tree_key_fn`'s own docstring measures on this repo's store at
+    # ~5.6k `git diff` subprocesses — twice per verdict, with no memo between
+    # the passes. This runs on the interactive `/prawduct:pr create` path,
+    # inside a diagnosis the gate message calls "the cheap check", so it has to
+    # use the n-key form every other gate uses. A caller that forgets one is a
+    # `TypeError` at the call site, which is the failure a maintainer can see —
+    # the defaults made it a silent ~5-minute hang instead.
     upstream = coverage_algebra.coverage_verdict(
         facts, base_tree, anchor_tree, diff_fn, key_fn
     )

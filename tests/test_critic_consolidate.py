@@ -1235,6 +1235,232 @@ class TestResolutionIsAClaimDirective:
         )
 
 
+class TestVerifyRatesBlockingOnlyDirective:
+    """The severity narrowing delivered at `verify-resolutions` dispatch.
+
+    Same three properties its sibling is held to — its claims about the gate
+    are true, it names nothing the reader cannot do, and it descends — plus the
+    one specific to a rule that REMOVES review output: the classes it exempts
+    from the narrowing must actually still be blocking-rated in the protocol
+    the reviewer reads. A narrowing whose carve-out has drifted out of
+    `goals-1-3.md` silently demotes the thing it promised to keep.
+    """
+
+    def test_it_is_true_that_only_blocking_gates(self):
+        """The narrowing's whole justification is that nothing which gated
+        stops gating. Driven from the algebra: a warning and a note left in a
+        fact must not appear in `unresolved_blocking`. If that ever changes,
+        this directive is telling reviewers to drop findings a gate reads.
+        """
+        from lib import coverage_algebra
+
+        fact = {
+            "id": "rev-x",
+            "body": {"findings": [
+                {"fid": "R-1", "severity": "warning", "title": "w"},
+                {"fid": "R-2", "severity": "note", "title": "n"},
+                {"fid": "R-3", "severity": "blocking", "title": "b"},
+            ]},
+        }
+        unresolved = [f["fid"] for f in coverage_algebra.unresolved_blocking(fact, set())]
+        assert unresolved == ["R-3"], (
+            "the directive tells reviewers that demoting a WARNING/NOTE to an "
+            f"observation costs no gate. unresolved_blocking now returns "
+            f"{unresolved} — a demoted finding would be a dropped gate input."
+        )
+
+    def test_the_carve_out_classes_the_protocol_rates_are_still_blocking(self):
+        """Half the carve-out is a CITATION — these classes are BLOCKING in
+        `goals-1-3.md` already, and the directive relies on that. If one is
+        downgraded there, the directive's promise silently becomes false.
+
+        Judged per CLAUSE, not per line. The first version asked only that some
+        line containing `**BLOCKING**` also contained the anchor — and
+        goals-1-3.md's security bullet carries five verdicts on one line (three
+        BLOCKING, two WARNING), so downgrading `injection` to WARNING left the
+        line matching and this test green. A drift detector with slack in it is
+        indistinguishable from the drift it watches for.
+        """
+        goals = (ROOT / "skills" / "critic" / "goals-1-3.md").read_text(encoding="utf-8")
+        # Split into severity-bearing clauses so a multi-verdict line cannot
+        # lend its BLOCKING to a neighbour that was downgraded.
+        clauses = [c for ln in goals.split("\n") for c in ln.split(";")]
+        for promise, anchor in (
+            ("weakened or deleted test", "assertions weakened"),
+            ("dropped requirement", "explicitly descoped"),
+            ("changed behavior with no test", "Changed/added behavior"),
+            ("injection vectors", "injection"),
+        ):
+            carrying = [c for c in clauses if anchor in c]
+            assert carrying, f"goals-1-3.md no longer mentions {anchor!r} at all"
+            assert any("**BLOCKING**" in c for c in carrying), (
+                f"goals-1-3.md no longer rates {anchor!r} BLOCKING in its own "
+                f"clause, but VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE relies on "
+                f"{promise!r} already being blocking there. One of the two is "
+                "now lying to a reviewer told to demote everything else."
+            )
+
+    def test_the_escalated_carve_out_classes_are_named_as_escalations(self):
+        """The other half of the carve-out is an ESCALATION, and the reason this
+        test exists is that the directive once claimed it was not.
+
+        `goals-1-3.md` rates *auth/authz on new endpoints* and *known critical
+        vulnerabilities* **WARNING**, and does not rate fix-by-fudging at all —
+        its workaround leg was rated only in `review-cycle.md`, which a
+        `verify-resolutions` reviewer is forbidden to open. The directive
+        claiming these were "already BLOCKING-rated" handed the same reviewer
+        two contradictory answers. So: the protocol's rating is pinned as
+        WARNING (if it ever becomes BLOCKING, the escalation wording is stale
+        and should be re-read), and the directive must carry the classes
+        explicitly, since it is now their only rating in this mode.
+        """
+        goals = (ROOT / "skills" / "critic" / "goals-1-3.md").read_text(encoding="utf-8")
+        d = cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE
+        authz = next((ln for ln in goals.split("\n") if "auth/authz" in ln), None)
+        assert authz is not None and "**WARNING**" in authz, (
+            "goals-1-3.md's auth/authz rating moved. The directive escalates it "
+            "to BLOCKING for verify-resolutions and says so explicitly — re-read "
+            "that wording against the new rating rather than updating this pin."
+        )
+        assert "fudging" not in goals, (
+            "goals-1-3.md now rates fix-by-fudging. The directive carries that "
+            "rating solely because the protocol did not — fold it in and drop "
+            "the escalation clause."
+        )
+        for named in ("auth/authz", "fudging", "workaround"):
+            assert named in d, (
+                f"the directive no longer names {named!r}. It is the ONLY "
+                "carrier rating that class for this mode; dropping it demotes "
+                "the class to an observation by silence."
+            )
+        assert "whatever they are rated elsewhere" in d or "escalat" in d.lower(), (
+            "the directive no longer marks the carve-out as an escalation, "
+            "which is the claim that made it honest"
+        )
+
+    def test_names_no_command_the_reviewer_cannot_run(self):
+        """Same grant check its sibling gets — the reader is tool-restricted,
+        and advice it cannot follow is discovered mid-review.
+
+        **Vacuous today, and deliberately kept.** This directive names no
+        commands, so the loop body does not execute — which is worth stating
+        rather than leaving for a reader to discover, because a silently vacuous
+        test reads as coverage. It is a forward guard: the moment an edit adds a
+        backticked command, the grant check starts biting. The assertion below
+        is what keeps the test from being vacuous in BOTH directions — the
+        backtick scan must still find the identifiers the rule depends on, so a
+        rewrite that dropped its formatting could not slip past as "no commands
+        named".
+        """
+        tokens = set(re.findall(r"`([^`]+)`", cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE))
+        assert "findings" in tokens and "resolutions" in tokens, (
+            "the backtick scan no longer finds the arrays this rule routes "
+            "between — either the directive lost its formatting (making the "
+            "command check below vacuous for the wrong reason) or it stopped "
+            "naming where a demoted finding does and does not go"
+        )
+        commands = {t for t in tokens if t.split()[0] in _COMMAND_HEADS}
+        for command in sorted(commands):
+            assert _reviewer_can_run(command), (
+                f"the directive tells the reviewer to run {command!r}, which no "
+                "Bash grant in skills/critic/SKILL.md covers."
+            )
+
+    def test_it_descends_rather_than_only_stating_a_rule(self):
+        """Structure, not wording — the same property its sibling is held to,
+        and for the same measured reason: a reviewer agrees that re-reviews
+        should not manufacture work and then records the WARNING in front of
+        it, because nothing made it recognize THIS finding as the instance.
+
+        The first cut of this check was itself the defect it screens for. Its
+        verb tuple was `("goes ", "report", "rate ", "spend ", "Spend ")`:
+        `"report"` matched the NOUN in "in your report", `"rate "` never matched
+        the capitalized "Rate these", and `"spend "`/`"Spend "` were leftovers
+        from a draft wording — so a test claiming to detect an imperative was
+        satisfied by descriptive text. Imperatives are capitalized sentence
+        openers here, which is what makes them matchable without pinning a
+        spelling.
+        """
+        d = cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE
+        imperatives = [v for v in ("Rate ", "Apply ", "Report ", "Say ") if v in d]
+        assert imperatives, (
+            "the directive states a rule but never tells the reader what to DO "
+            "with the thing it just decided not to rate — agreement is not "
+            "application"
+        )
+        assert "you" in d and ("this " in d or "the one you" in d), (
+            "the directive no longer aims at the decision the reader is making "
+            "right now"
+        )
+        # The demotion has a destination, and it is STRUCTURAL. "In prose" was
+        # not enough: goals-1-3.md's report contract enumerates findings and a
+        # summary with no slot for anything else, so a pass that demoted three
+        # observations was instructed to report "No issues found" — the exact
+        # silence the cost analysis assumes will not happen.
+        assert "### Observations" in d, (
+            "the directive no longer names a structural destination for demoted "
+            "findings. The report contract has no slot for them otherwise, so "
+            "they vanish — and the whole cost-bound rests on the builder "
+            "reading them."
+        )
+        # Half-emitted yield: the count must at least reach the builder, or a
+        # rule that fired is indistinguishable from a reviewer that found
+        # nothing.
+        assert "how many" in d, (
+            "the directive no longer asks for a demotion count. Verify-mode "
+            "WARNING/NOTE totals are zero by construction, so this line is the "
+            "only signal that the narrowing fired at all."
+        )
+
+    def test_delivery_is_upstream_of_the_rating(self):
+        """WHERE this prints is its substance: the reviewer must meet it before
+        it assigns a severity, not after. `verify-resolutions` is single-pass,
+        so the fork runs consolidate itself AFTER writing its findings —
+        emitting there would reach an agent that has already rated everything.
+        """
+        begin_src = HOOK.read_text(encoding="utf-8")
+        assert "VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE" in begin_src, (
+            "the dispatch command no longer emits the narrowing — dispatch is "
+            "the only moment before the reviewer rates the delta"
+        )
+        consolidate_src = (
+            ROOT / "lib" / "critic_consolidate.py"
+        ).read_text(encoding="utf-8")
+        body = consolidate_src.split("def consolidate(", 1)
+        assert len(body) == 2, "consolidate() not found — update this guard"
+        assert "VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE" not in body[1], (
+            "the narrowing is now also emitted from consolidate(), which runs "
+            "AFTER the reviewer has written its findings."
+        )
+
+    def test_the_protocol_carries_it_before_any_severity_is_assigned(self):
+        """The reader-modeling guardrail, and the reason the rule is NOT in
+        `goals-1-3.md`'s `## Severity` section.
+
+        Severity sits below all three goal sections, so a reviewer walking Goal
+        1 → Goal 2 → Goal 3 has already assigned every WARNING by the time it
+        arrives — presence would be real and effect zero. This repo has shipped
+        that exact defect once already: `SKILL.md`'s header said to read
+        `review-protocol.md` "first" 26 lines above the routing that said
+        otherwise, and six guardrails measuring the artifact all stayed green.
+        Ordering beats presence, so ordering is what this asserts.
+        """
+        goals = (ROOT / "skills" / "critic" / "goals-1-3.md").read_text(encoding="utf-8")
+        assert "verify-resolutions" in goals
+        rule_at = goals.find("only **BLOCKING** is a finding")
+        assert rule_at != -1, (
+            "goals-1-3.md no longer states the narrowing. The dispatch "
+            "directive is a transient channel; this file is the reviewer's "
+            "durable protocol and must carry the rule too."
+        )
+        first_goal_at = goals.index("## 1. Nothing Is Broken")
+        assert rule_at < first_goal_at, (
+            "the narrowing moved below the first goal section. A reviewer "
+            "assigns severities as it reads the goals, so a rule stated after "
+            "them is read after the decisions it governs — present, and inert."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Unit: pending_state
 # ---------------------------------------------------------------------------
@@ -2685,6 +2911,68 @@ class TestResolutionDirectiveDelivery:
             "something now prints after the directive. Move it above, or move "
             "the directive back to last — the reader acts on the tail."
         )
+
+    def test_the_severity_narrowing_rides_the_same_dispatch(self, tmp_path):
+        """Both halves of the termination contract reach the same reader in the
+        same tool result: what to rate, and what a resolution claims."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE in result.stdout
+
+    def test_the_narrowing_precedes_the_resolution_directive(self, tmp_path):
+        """Order tracks the reviewer's own sequence: it rates the delta, then
+        judges the prior findings. The resolution warning stays last because it
+        is the only one of the two whose subject can WEAKEN a gate, and the
+        reader acts on the tail.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert result.stdout.index(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE) < result.stdout.index(
+            cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE
+        ), (
+            "the narrowing now prints after the resolution directive, which "
+            "displaces the gate-weakening warning from the tail and states the "
+            "severity rule after the severities were assigned."
+        )
+
+    @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
+    def test_no_other_mode_delivers_the_narrowing(self, tmp_path, mode):
+        """The narrowing is false in every other mode — those review work the
+        builder CHOSE to do, and demoting their warnings would lose real
+        review output rather than stop a self-inflicted round.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        if mode == "cumulative":
+            _git(repo, "checkout", "-q", "-b", "feature/demo")
+            _commit_file(repo, "src/feat.py", "z = 1\n", "feature work")
+        else:
+            (repo / "src/app.py").write_text("x = 2\n")
+        result = _run_begin(repo, "--mode", mode)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE not in result.stdout
+
+    def test_a_demoted_dispatch_delivers_no_narrowing(self, tmp_path):
+        """Exit 2 demotes to `final`, which rates every severity. Shipping the
+        narrowing to a `final` reviewer would silence warnings on a delta wide
+        enough that the scope threshold just refused a partial review of it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        for i in range(2 * 1 + 6):
+            (repo / f"src/new_{i}.py").write_text(f"n = {i}\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE not in result.stdout
 
     @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
     def test_no_other_mode_delivers_it(self, tmp_path, mode):

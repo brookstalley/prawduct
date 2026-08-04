@@ -677,11 +677,18 @@ def session_review_verdict(project_dir: Path) -> dict:
 
 
 def _merge_base_verdict(
-    project_dir: Path, facts: list[dict], target: str, diff_fn, key_fn=None
+    project_dir: Path, facts: list[dict], target: str, diff_fn, key_fn
 ) -> "dict | None":
     """Coverage of merge-base tree → ``target`` — the session gate's
     unwedging fallback (see :func:`session_review_verdict`). ``None`` when
-    the merge base cannot be resolved (the primary verdict then stands)."""
+    the merge base cannot be resolved (the primary verdict then stands).
+
+    ``key_fn`` is required for the reason :func:`coverage.diagnose_fix_churn`
+    documents at its own ``coverage_verdict`` call: a ``None`` key sends
+    ``_find_path`` down the pairwise free-edge branch, which :func:`_tree_key_fn`
+    measures on this repo's store at ~5.6k ``git diff`` subprocesses. It used to
+    default, unreachably — the sole caller passes it — and an unreachable
+    default for a silent slow path is a hang waiting for its first caller."""
     resolved = coverage.resolve_merge_base_tree(project_dir)
     if resolved["status"] != "ok":
         return None

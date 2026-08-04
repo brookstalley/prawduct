@@ -429,6 +429,36 @@ class TestFixChurnDiagnosis:
         )
         return repo, rid
 
+    def test_the_slow_path_cannot_be_reached_by_forgetting_an_argument(self):
+        """The accepted Chunk 01 finding this resolves was 'the n-squared path
+        is reachable by default', and deleting the defaults is the whole fix —
+        so the fix needs a pin, or a later editor restores a default for
+        convenience and nothing notices until a `/prawduct:pr create` hangs for
+        five minutes.
+
+        Asserted on the SIGNATURE, not by calling: `diagnose_fix_churn` never
+        raises by contract, so a behavioural probe would have to reach the
+        `coverage_verdict` call to see anything, and both parameters must be
+        required at the boundary regardless of what the body does. The sibling
+        one frame up (`_merge_base_verdict`) carried the identical unreachable
+        default and is pinned here too — same call chain, same slow path, same
+        gate.
+        """
+        import inspect
+
+        from lib import coverage
+
+        for fn in (coverage.diagnose_fix_churn, gates._merge_base_verdict):
+            params = inspect.signature(fn).parameters
+            for name in ("diff_fn", "key_fn"):
+                assert params[name].default is inspect.Parameter.empty, (
+                    f"{fn.__name__}'s {name} has a default again. A missing "
+                    "argument then silently selects the pairwise free-edge "
+                    "branch (~5.6k `git diff` subprocesses on this repo's "
+                    "store) on the interactive PR path, instead of raising a "
+                    "TypeError the caller can see."
+                )
+
     def test_fix_commit_on_named_file_is_diagnosed_as_churn(self, tmp_path, capsys):
         repo, rid = self._reviewed_feature(tmp_path)
         _commit(repo, "feature.py", "y = 3  # addressed R-1\n", "fix the warning")

@@ -38,6 +38,7 @@ See `methodology/planning.md` "Critic Mode Per Chunk" for the authoring heuristi
 | **Protocol read** (SKILL step 2 — exactly one, and nothing else) | `goals-1-3.md` | `review-protocol.md` | `review-protocol.md` | `goals-1-3.md` |
 | **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals | 1, 2, 3 |
 | **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
+| **New findings rated** | Every severity | Every severity | Every severity | **BLOCKING only** — anything lesser is an OBSERVATION in the reviewer's report, never a `findings` entry (see "A re-review does not manufacture work") |
 | **Review interval** (derived by `critic-begin`, recorded in the manifest) | HEAD's tree → captured working tree (the uncommitted diff) | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
 | **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Always single-pass |
 | **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
@@ -116,7 +117,7 @@ The anchor must also be an **ancestor of HEAD**. The findings cache is single-sl
 
 1. Builder completes a chunk's implementation and tests.
 2. Critic reviews using the goal-based approach (see SKILL.md).
-3. **If BLOCKING findings exist:** builder fixes; Critic re-reviews (`verify-resolutions`), specifically watching for **fix-by-fudging** — weakening a test to make it pass (**BLOCKING**), changing a spec to match wrong implementation (**BLOCKING**), a workaround instead of root cause (**WARNING**). Repeat until no blocking findings remain. Only the resolution facts a verify pass records unblock a blocking finding — the gate keeps blocking until then.
+3. **If BLOCKING findings exist:** builder fixes; Critic re-reviews (`verify-resolutions`), specifically watching for **fix-by-fudging** — weakening a test to make it pass, changing a spec to match wrong implementation, a workaround where the finding named the root cause. Each is a **BLOCKING** finding in its own right *and* grounds to withhold the resolution: the finding was not fixed, so leaving it out of `resolutions` keeps it blocking, which is the answer that fails closed. (The workaround case was rated **WARNING** here until the narrowing below; a WARNING was both the wrong severity — it gates nothing — and the wrong instrument, since the honest verdict is that the finding is unresolved.) Repeat until no blocking findings remain. Only the resolution facts a verify pass records unblock a blocking finding — the gate keeps blocking until then.
 4. Every review persists through `critic-consolidate` — a review fact in the store plus the regenerated `.prawduct/.critic-findings.json`. A clean pass records an empty findings array; there is no review without a record.
 5. **If no BLOCKING findings:** chunk complete; proceed.
 
@@ -147,6 +148,55 @@ one of three dispositions, and **FILE is the narrowest, never the default**:
   agent pays the re-derivation cost, and the item then sits unactioned because whoever picks it up has
   none of what you currently have in your head. **Deep context on a small problem is a FIX signal, not
   a filing signal.** (Owner-requested rule, 2026-07-29.)
+
+### A re-review does not manufacture work
+
+Everything above is the **demand** side — what the builder does with findings that already exist. This
+is the **supply** side, and without it the demand-side rules are asked to absorb an inflow the
+framework itself creates.
+
+**In `verify-resolutions`, a new finding is BLOCKING or it is not a finding.** Anything lesser the
+reviewer notices is reported as an **OBSERVATION** in prose and never enters `findings`. The rule is
+delivered where the reviewer meets it — `goals-1-3.md`'s preamble, before any severity is assigned,
+and again at dispatch as `critic_consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, which carries the
+worked instances.
+
+*Why this mode and not the others.* A verify pass exists to answer one question — were the named
+findings resolved? Walking the fix delta at full severity on top of that turns round N's fix into
+round N+1's findings: the builder fixes a WARNING, the fix moves the tree, the moved tree reopens
+coverage, and the next pass reviews the prose the last fix wrote. Measured at ten rounds on one
+consumer branch, where rounds five onward were entirely non-gating findings the previous round's
+fixing had created. `chunk`, `final` and `cumulative` review work the builder *chose* to do; only
+`verify-resolutions` reviews a delta the framework asked for.
+
+*What it does not cost.* Unresolved BLOCKING findings are the only severity any gate reads, so nothing
+that gated stops gating. Everything `goals-1-3.md` rates BLOCKING keeps blocking — the narrowing
+binds on the **severity you would assign**, never on membership in a list, so it cannot sweep up a
+blocking class the list happens to omit.
+
+*The carve-out is a rating, not a citation.* Five classes are BLOCKING **in this mode whatever they
+are rated elsewhere**: a weakened or deleted test, a dropped requirement, changed behavior with no
+test, anything security-relevant in changed code, and fix-by-fudging. Two of those are an
+**escalation** and the directive says so rather than pretending otherwise — `goals-1-3.md` rates
+*auth/authz on new endpoints* and *known-vulnerable dependencies* WARNING, and it does not rate
+fix-by-fudging at all (its workaround leg was rated only here, in a file this mode's reviewer is
+forbidden to open). An earlier draft claimed all five were "already BLOCKING-rated"; that was false
+for two, and a safety argument that rests on a false claim is not a safety argument.
+
+*What it does cost, stated plainly.* An observation is not a recorded fact: it cannot be
+`disposition`ed, and a later reader of the evidence store will not find it. The bound is narrower
+than it first reads, and the weaker reading is the honest one: `verify-resolutions` is never a first
+review (`critic-begin` demotes when no usable prior fact exists), so the tree *beneath* the fix was
+fully reviewed — but the fix delta's own content was not, and post-cumulative fixes route here too.
+What actually holds is that the builder reads the observations in the reviewer's report, which is why
+they have a structural destination (an `### Observations` section) and a stated count, not just
+"prose".
+
+*Yield is half-emitted, and that is a known gap.* The demotion count reaches the builder; it does not
+reach the evidence store, so verify-mode WARNING/NOTE totals will read zero post-release — true by
+construction and therefore evidence of nothing. Under-firing stays visible via `review-stats`;
+over-firing does not. A structured field on the fact body is the fix, deferred deliberately (a
+persisted format is lock-in) and filed.
 
 ### Record the disposition; render the census
 
@@ -330,6 +380,11 @@ history in it reports on the entry just written and nothing else. Severity per c
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
 only that reviewer reads it, so splitting the findings by their natural goal loses them.
+
+**The severities above are the other three modes'.** In `verify-resolutions` only `chunk-ref-missing`
+stays a finding; the WARNING and NOTE rows become observations like anything else rated below
+BLOCKING (see "A re-review does not manufacture work"). A record defect on a fix delta is precisely
+the non-gating work that buys the next round, so the general rule is not suspended for this table.
 
 **`unchecked` is not a pass, and the PREFIX decides the severity.** Each entry names a check that
 could not run, or an assumption made in place of one — and the two are told apart by the string, not

@@ -1253,7 +1253,13 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     # claim. Keyed off the manifest's own mode rather than the raw --mode
     # argument: `begin_review` is what canonicalizes the token, and a
     # verify-resolutions dispatch that got demoted never reaches here at all.
+    #
+    # ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer
+    # rates the delta BEFORE it judges the prior findings, so the severity
+    # narrowing comes first and the resolution warning stays adjacent to the
+    # claim it governs — the only one of the two that can weaken a gate.
     if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
+        print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
         print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
     return 0
 

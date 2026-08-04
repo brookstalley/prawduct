@@ -386,6 +386,110 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
     " the disposition actually in front of you has done nothing."
 )
 
+
+#: Delivered at `verify-resolutions` DISPATCH, immediately before
+#: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` — same reader, same moment, and the
+#: other half of what makes a re-review terminate. That one governs the
+#: `resolutions` array; this one governs `findings`.
+#:
+#: **The pump it closes.** A verify pass exists to answer one question: were the
+#: prior findings resolved? It also walks the fix delta at full severity, and
+#: the WARNING/NOTE findings it records there are round N+2's supply — the
+#: builder fixes them, the fix moves the tree, the moved tree reopens coverage,
+#: and the next pass reviews the prose the last fix wrote. Measured at ten
+#: rounds on one consumer branch (CRT-3W6P), where rounds five onward were
+#: entirely non-gating findings the previous round's fixing had created.
+#:
+#: **Why narrowing here loses nothing that gated.**
+#: ``coverage_algebra.unresolved_blocking`` is the only severity any gate reads;
+#: WARNING and NOTE are advisory at the Stop gate and at the PR gate alike.
+#:
+#: **The five-class carve-out is a RATING, not a citation — and saying otherwise
+#: was false.** An earlier draft claimed the five "are already BLOCKING-rated in
+#: ``goals-1-3.md``". Two are not. Security is mixed there: injection, secrets
+#: and exploitable input validation block, but *auth/authz on new endpoints* and
+#: *known-vulnerable dependencies* are **WARNING** — so the same reviewer was
+#: told both "rate these as you would in any mode" (⇒ WARNING) and "BLOCKING or
+#: not a finding" (⇒ demote to prose). And fix-by-fudging is not rated in
+#: ``goals-1-3.md`` at all; its workaround leg was rated only in
+#: ``review-cycle.md``, which a `verify-resolutions` reviewer is forbidden to
+#: open — leaving the rating to exist solely inside the directive vouching for
+#: it, which is circular. So this text now *escalates* those cases explicitly
+#: for this mode and says so, rather than claiming a rating that is not there.
+#:
+#: **The demotion binds on severity, not on class membership.** The list ADDS to
+#: what the protocol blocks and never narrows it. Stating it the other way round
+#: made "everything else" take the five classes as its antecedent, which
+#: literally demoted BLOCKING-rated classes the enumeration happens to omit —
+#: test failures in evidence, ``missing-coverage:`` lines, cross-component
+#: contract breaks, unlisted dependencies, norm departures. On the carrier the
+#: reviewer reads last before rating, that reading is the expensive one.
+#:
+#: **The cost, stated rather than hidden.** A demoted observation is not a
+#: recorded fact, so it cannot be `disposition`ed and a later reader of the
+#: store will not find it. What bounds it is narrower than it first looks, and
+#: the weaker reading is the honest one: `verify-resolutions` is never a first
+#: review (``critic-begin`` demotes when no usable prior fact exists), so the
+#: tree *beneath* the fix was fully reviewed — but the fix delta's own content
+#: was not, and post-cumulative fixes route here too. The real bound is that the
+#: builder still reads the observations in the fork's report, which is why this
+#: text names a structural destination (`### Observations`) rather than "in
+#: prose": ``goals-1-3.md``'s report contract enumerates findings and a summary
+#: with no slot for anything else, and its clean-pass line says "No issues
+#: found" — so a pass that demoted three observations was instructed to report
+#: silence, defeating the very bound the design rests on.
+#:
+#: **Yield is only half-emitted, deliberately.** The reviewer is told to state a
+#: demotion count, so the number reaches the builder. It does NOT reach the
+#: evidence store: ``build_fact_body`` carries `findings`/`counts` and drops the
+#: reviewer's prose, so verify-mode W/N will read zero post-release — true by
+#: construction and therefore evidence of nothing. Under-firing stays detectable
+#: via ``review-stats``; over-firing does not. `nonfunctional-requirements.md`'s
+#: observable-yield Direction binds here, and a structured field on the fact
+#: body is the fix — deferred deliberately rather than improvised into a fix
+#: batch, because a persisted format is lock-in and self-reported counts have a
+#: design question of their own (backlog, filed from this review).
+#:
+#: **The descent is load-bearing, for the reason
+#: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s docstring gives at length.** A
+#: reviewer agrees that re-reviews should not manufacture work and then records
+#: the WARNING in front of it, because nothing made it recognize THIS finding as
+#: the instance. So the general sentence is followed by the act, by instances
+#: concrete enough to pattern-match against, and by an instruction to spend it
+#: on the finding the reader is surest about — which is the one a general rule
+#: never reaches.
+VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
+    "PRAWDUCT: this pass answers ONE question — were the prior findings"
+    " resolved? A NEW finding here is BLOCKING, or it is not a finding."
+    " **The test is the SEVERITY you would assign, never membership in any"
+    " list.** Anything you would rate below BLOCKING — including a record-lint"
+    " entry the manifest rated below BLOCKING — goes in your report under an"
+    " `### Observations` heading, in prose, and NOT into `findings`: a name you"
+    " would have chosen differently, prose that could be tighter, a test you"
+    " would have structured another way. Everything the protocol rates BLOCKING"
+    " stays BLOCKING, with no exceptions and no list to check. Five classes are"
+    " BLOCKING *in this mode whatever they are rated elsewhere*, because they"
+    " are what a fix delta actually gets wrong and demoting one is the only way"
+    " this rule could lose something real: a test weakened or deleted to make"
+    " the fix pass; a requirement dropped in the rewrite; changed behavior with"
+    " no test; anything security-relevant in the changed code — including the"
+    " auth/authz and known-vulnerable-dependency cases the protocol rates"
+    " WARNING; and fix-by-fudging — the spec edited to match the implementation,"
+    " or a workaround where the finding named the root cause, which is equally"
+    " grounds to leave that finding OUT of `resolutions`. This list only ADDS to"
+    " what the protocol blocks; it never narrows it. Then say how many"
+    " observations you demoted, in one line, so a rule that fired can be told"
+    " apart from a reviewer that found nothing. The demotion is not politeness:"
+    " a WARNING recorded here becomes a fix commit, the commit moves the tree,"
+    " the moved tree reopens coverage, and the next pass reviews the prose this"
+    " fix just wrote — measured at ten rounds on one branch, where rounds five"
+    " onward were entirely self-inflicted. The builder still reads your"
+    " observations and can act on them; they are simply not work the record"
+    " demands. Apply this to the one you are surest deserves a WARNING: that"
+    " finding is the next round's first item, and demoting it is the whole"
+    " point."
+)
+
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
 

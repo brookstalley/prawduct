@@ -43,7 +43,7 @@ def estimate_tokens(text: str) -> int:
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4659,
     "skills/critic/review-protocol.md": 3612,
-    "skills/critic/goals-1-3.md": 1992,
+    "skills/critic/goals-1-3.md": 1990,
 }
 
 
@@ -712,6 +712,48 @@ class TestCriticGoals13:
         # MAINTAINER ("following a pointer at review time is the payload this
         # file exists to remove") inside the file whose purpose is minimum
         # reviewer payload.
+        #
+        # 1992 -> 1994 (2026-08-04) -- `verify-resolutions` rates new findings
+        # BLOCKING only, so a re-review cannot manufacture the non-blocking work
+        # that supplies the next round. Bought at 17 words for the same reason
+        # the NEXT-ACTION relay was bought at 32: the worked instances live in
+        # CODE (`VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, printed at dispatch) and
+        # this file carries only the rule. Funded by the standing candidate
+        # above -- "Judge jurisdiction yourself; applicability is recorded,
+        # never assumed", the most abstract sentence in the normative-authority
+        # block and the only one that assigns no verdict -- plus the opening
+        # "The complete instruction set for these two modes", which the H1 and
+        # the self-contained clause on the same line both already say.
+        #
+        # It sits in the PREAMBLE, not in `## Severity`, and that is a budget
+        # fact as much as a design one: Severity is below all three goal
+        # sections, so the cheap placement would have been read after every
+        # severity it governs -- paying 17 words for nothing. Ordering beats
+        # presence (`test_the_protocol_carries_it_before_any_severity_is_assigned`).
+        #
+        # 1994 -> 1990 (same day, that chunk's review): the narrowing needed two
+        # more clauses to be TRUE, and both were funded with room left over.
+        # "record-lint entries included" (+2) resolves a specific-over-general
+        # conflict -- the record-lint paragraph 20 lines below assigns WARNING
+        # and NOTE imperatively, inside the one mode that records neither, and
+        # this is the only protocol file that mode may open. "no observations"
+        # (+2) stops the report contract's clean-pass line instructing "No
+        # issues found" from a pass that demoted three observations, which
+        # would have defeated the cost-bound the whole narrowing rests on.
+        # PAID BY the `## Severity` BLOCKING legend's example list (-8):
+        # "(broken tests, dropped requirements, security vulnerabilities,
+        # unlisted deps)" restates four checks stated in full above it, in the
+        # legend that DEFINES the severity -- the definition is "must fix before
+        # proceeding" and the examples were a fourth restatement. Generalizes
+        # with the two cuts recorded above: a legend that re-lists its own
+        # section's contents is paying twice for one instruction.
+        #
+        # NOTE for the next editor: the two normative-authority blocks (here and
+        # review-protocol.md) diverged for the first time with the trim above,
+        # and nothing measures the seam. Mandatory in BOTH: every claim that
+        # assigns a verdict (what binds, the departure -> BLOCKING/NOTE rule,
+        # the stale-registry NOTE). Droppable HERE first: claims that assign
+        # none. That is the rule the divergence was chosen under.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 
@@ -904,6 +946,30 @@ class TestCriticSkillRoutesByMode:
                 offenders.append(clause.strip()[:110])
         assert not offenders, f"fast-path steps cite a final-only file unqualified: {offenders}"
 
+    def test_the_per_mode_scope_line_carries_the_severity_narrowing(self):
+        """SKILL.md is the FIRST file the fork reads, and its per-mode scope
+        line exists so that no mode has to open `review-cycle.md` for scope.
+        The narrowing IS scope, so a summary omitting it is an incomplete
+        description of the mode — and this is the only carrier of the rule with
+        no other guard.
+
+        Without this pin the next token trim of that already-long line removes
+        the narrowing from the fork's first read with CI green, which is the
+        plan's own Verification Strategy applied to itself: *prose changes to a
+        fork-read protocol are pinned by test, because nothing else can observe
+        them.*
+        """
+        line = next(
+            (ln for ln in self.content.split("\n") if "Per-mode scope" in ln), None
+        )
+        assert line is not None, "SKILL.md no longer summarises per-mode scope"
+        assert "BLOCKING only" in line, (
+            "SKILL.md's per-mode scope line no longer states that "
+            "verify-resolutions rates new findings BLOCKING only — the fork "
+            "reads this before its protocol, so the omission is read as "
+            "'this mode rates everything'"
+        )
+
     def test_review_cycle_table_records_the_routing(self):
         """`review-cycle.md` owns per-mode behavior, so the routing is recorded
         there too — a reader who checks the mode table must not learn a
@@ -935,6 +1001,88 @@ class TestReviewCycle:
         content = read_file("skills/critic/review-cycle.md")
         for check in ("C-B1", "C-B2", "C-B3", "C-B4"):
             assert check in content, f"review-cycle.md missing backlog check {check}"
+
+    def test_the_per_mode_table_records_the_severity_narrowing(self):
+        """`review-cycle.md` owns per-mode behavior, so the table is where a
+        maintainer looks up what a mode rates.
+
+        The reviewer never reads this file (`goals-1-3.md` forbids it), so
+        nothing here reaches the actor — which is exactly why it must not
+        contradict what does. This pins the row that says `verify-resolutions`
+        rates BLOCKING only against the same claim in the reviewer's protocol.
+        """
+        content = read_file("skills/critic/review-cycle.md")
+        row = next(
+            (ln for ln in content.split("\n") if "New findings rated" in ln), None
+        )
+        assert row is not None, (
+            "the per-mode table no longer says what each mode rates — a "
+            "maintainer reading it learns nothing about the narrowing"
+        )
+        assert "BLOCKING only" in row, (
+            "the table's verify-resolutions cell no longer records the "
+            "narrowing the reviewer is actually instructed to apply"
+        )
+        # Three modes rate everything; only one is narrowed. A row that said
+        # "BLOCKING only" everywhere would pass a presence check and describe a
+        # framework nobody built.
+        assert row.count("Every severity") == 3, (
+            "the table no longer distinguishes the narrowed mode from the "
+            "three that rate every severity"
+        )
+
+    def test_the_supply_side_section_states_the_cost(self):
+        """A rule that removes review output has to name what it gives up, or
+        the next maintainer re-derives the tradeoff from scratch and reverses it
+        on the strength of the risk alone.
+
+        Asserting the parts of the argument, not its wording: the rule, the
+        carve-out that keeps it safe, and the admission that an observation is
+        not a recorded fact.
+        """
+        content = read_file("skills/critic/review-cycle.md")
+        heading = "### A re-review does not manufacture work"
+        assert heading in content, (
+            "review-cycle.md no longer carries the supply-side section the "
+            "per-mode table points at"
+        )
+        # Split on the HEADING, not the phrase — the per-mode table cites the
+        # section by name, so a phrase split lands in the table and every
+        # assertion below then reads the wrong text.
+        section = content.split(heading, 1)[1].split("\n### ", 1)[0]
+        assert "OBSERVATION" in section, "the section never names where a demoted finding goes"
+        assert "fix-by-fudging" in section, (
+            "the section states the narrowing without its carve-out — the "
+            "classes that stay BLOCKING are what make it safe"
+        )
+        assert "not a recorded fact" in section or "cannot be" in section, (
+            "the section sells the benefit without stating the cost: a demoted "
+            "observation leaves no trace in the evidence store"
+        )
+
+    def test_the_verify_step_no_longer_rates_a_workaround_warning(self):
+        """Per-Chunk Cycle step 3 used to rate "a workaround instead of root
+        cause" **WARNING** — inside the one mode that now records no warnings.
+
+        Two things were wrong with it and only one is the contradiction. A
+        WARNING gates nothing, so it was also the wrong instrument: when a fix
+        works around a root cause the finding named, the honest verdict is that
+        the finding is *unresolved*, which is expressed by withholding the
+        resolution and fails closed.
+        """
+        content = read_file("skills/critic/review-cycle.md")
+        step = next(
+            ln for ln in content.split("\n") if ln.startswith("3. **If BLOCKING")
+        )
+        assert "workaround instead of root cause (**WARNING**)" not in step, (
+            "step 3 rates a fix-by-fudging class WARNING inside "
+            "verify-resolutions, which records no warnings — the reviewer is "
+            "told two different things by two files it may read in either order"
+        )
+        assert "resolutions" in step, (
+            "step 3 no longer routes fix-by-fudging to the mechanism that "
+            "actually holds the gate shut — withholding the resolution"
+        )
 
 
 # =============================================================================

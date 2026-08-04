@@ -408,9 +408,11 @@ class TestSummarizeCriticFindings:
 
     def test_next_action_survives_a_clean_pass_with_no_findings(self, tmp_path):
         """The clean pass is where "the review is over" is the entire message,
-        and it is the shape the early `not summary and not findings` return
-        sits above. That guard is harmless only because `fact_to_cache_record`
-        always writes a summary — which nothing asserted until now."""
+        and it is the one shape the early `not summary and not findings` return
+        can swallow: with an empty `findings` list, only the summary keeps the
+        record from short-circuiting to `None` and taking `next_action` with it.
+        Pinned with a summary present because that is what `fact_to_cache_record`
+        writes; the summary-less case is `test_empty_summary_and_findings_returns_none`."""
         pr = _prawduct(tmp_path)
         (pr / ".critic-findings.json").write_text(json.dumps({
             "summary": "0 blocking, 0 warning, 0 note across 1 reviewer(s).",
