@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: price a review round before the commit that buys it
+
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=01 -->
+
+**A consuming agent on v3.2.4 read the shipped loop-termination carriers and still ran six Critic
+rounds on one branch.** That is the first post-fix datum on `review-loop-carriers`, and it is why
+this plan exists rather than being a repeat of that one. The agent quotes `next_action_line`
+verbatim, so it demonstrably received the advice; its own account of why the advice lost names five
+failures, four of which are addressable. The fifth — *"the wording bounds the batch; it doesn't
+bound the sequence"* — is an argument that no advice closes this, and the plan records that limit
+under Requirements rather than burying it, because this is the third round of advice-improvement on
+one failure.
+
+**`prawduct-hook cost-of-commit [<paths>...]`** answers before a commit whether making it buys a
+review round, which is the one fact the reporter could only learn afterwards. It asks
+`is_judgeable_path` — the predicate that will actually charge for the commit — rather than a second
+copy, because a pricing tool that disagrees with the gate is worse than none. It degrades to
+`unknown`, never `free`: "free" from a broken check sends the builder into exactly the commit being
+priced.
+
+**The price is derived from this repo's own ledger at call time and never written down.** The
+report asked for hardcoded numbers; a prose copy of a number drifts and then costs a review round
+to correct, which is the round this is trying to save. One home for the fact, the re-deriving
+command cited beside it, a sample-size floor below which it reports unavailable rather than quoting
+a median of two runs, and a test asserting no emitted string carries a literal duration.
+
+**Two defects of one shape, both found by scrubbing during the review.** A directory is neither
+metadata nor `.md`, so it classifies as judgeable — and git names directories in two places.
+Untracked directories now expand with `-uall`; explicit directory arguments expand to the changed
+files under them, which is what `git add docs/` actually stages. Pricing `docs/` as costing a round
+was the wrong answer the code's own docstring already named.
+
+**Classification:** governance
+
 ## 2026-08-05: the cumulative's five warnings — three false records and a signal that reached nobody
 
 <!-- prawduct: type=fix | scope=ephemeral-worktrees -->

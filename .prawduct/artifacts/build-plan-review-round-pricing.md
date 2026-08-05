@@ -255,6 +255,29 @@ running the real command against real repo state:
 - [ ] Chunk 02: The message knows which round this is, and both branches carry the price
 - [ ] Chunk 03: The warning where the relapse starts
 
+**Chunk 01 is complete** — committed as `89c9c8f`, suite green (3713 passed / 7 skipped), verified
+against a real dirty tree per the Verification Strategy (the reporter's `.gitignore` case answers
+`costs-a-round` in one command; a doc-only set answers `free`). Status checkboxes above stay `[ ]`
+until the release regenerates them — `views_enabled` is set, so the change-log entry tagged
+`chunks=01` is what records completion.
+
+One review round, gate-required, not warning-driven: `rev-20260805T180741Z-dfcbc2f5` — 0 blocking,
+2 warnings, 3 notes. **Two of the five were already fixed by the deep-scrub running concurrently
+with the review**, which is `building.md`'s "scrub while it runs, it often pre-resolves findings"
+behaving as advertised; they are dispositioned as stale-against-HEAD rather than re-fixed. The
+directory-argument warning and the misattributed ledger diagnostic were fixed in the same batch. No
+second round was started, and none was required.
+
+**Two things the next session must know.** First, HEAD's tree is *not* the tree that review
+anchored to — the fixes landed after it — so `check-cumulative-critic` will report a gap on this
+branch. That is expected and needs no round now: Chunk 03 is `cumulative-final`, and its single
+`/prawduct:critic cumulative` spans `merge-base...HEAD` and closes it. Do not spend a
+`verify-resolutions` pass to close it early. Second, finding R-2 was recorded with
+`disposition --accept` when it was actually **fixed**; the reason string says so, but the record
+type is wrong. The CLI offers only `--accept`/`--file` — a fixed finding is meant to be discharged
+by a `verify-resolutions` resolution fact — and the store is append-only, so this is noted rather
+than corrected. It gates nothing (R-2 is a warning).
+
 Context: Plan authored 2026-08-05 on `fix/review-round-pricing`, cut from `develop` at
 `9dcff56`, from a consumer agent's write-up of a six-round branch on v3.2.4 — the first
 post-fix datum on `build-plan-review-loop-carriers.md`. Parent requirement #167
