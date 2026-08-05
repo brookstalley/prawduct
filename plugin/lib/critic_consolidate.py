@@ -903,6 +903,42 @@ def begin_review(
         }
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
 
+    # IN-FLIGHT GUARD — refuse rather than displace a review that is still live.
+    # First, because everything below derives state that a refusal would waste,
+    # and because the mutation this protects (`_archive_leftovers` + the manifest
+    # overwrite, further down) is the single most destructive act against another
+    # review. `active_dispatch_refusal` carries the full failure story.
+    #
+    # Two independent conditions, and the second is the one the observed
+    # incidents needed:
+    #
+    #   (a) a live critic-active marker — reviewers are plausibly still running.
+    #   (b) a COMPLETE roster on disk, at ANY age — finished work. Age tells you
+    #       whether more reviewers are coming; it says nothing about whether
+    #       already-written findings are worth keeping. The review destroyed in
+    #       the 2026-08-05 report had all three partials written and was swept a
+    #       minute later; a purely time-based guard would still have swept it had
+    #       the dispatching agent waited the window out first.
+    #
+    # Keyed on the MARKER, not on the manifest's age, and that is load-bearing:
+    # the standing contract (`test_begin_clears_leftover_partials`) is that an
+    # orphaned partial from a waived or stale-failed review IS swept, and that
+    # test writes its leftovers fresh — so file age cannot tell orphaned from
+    # live, while the marker can. It is also why `_INFLIGHT_GRACE_MINUTES` is NOT
+    # reused here despite #171 asking for it: that constant grades per-role
+    # `.started` ages on the consolidate side, and the marker already carries its
+    # own documented TTL for precisely this question. Reusing the number while
+    # changing the signal would CREATE the second notion of "live" rather than
+    # avoid it.
+    active, age_s = critic_marker.review_active(prawduct_dir)
+    roster_state, _missing = pending_state(prawduct_dir)
+    if active or roster_state == "complete":
+        return {
+            "status": "error",
+            "kind": "review-in-flight",
+            "reason": active_dispatch_refusal(prawduct_dir, age_s),
+        }
+
     # Which plan this review is OF. An unbounded `active_build_plan` has
     # attributed the manifest, the review fact and the ledger event to an
     # unrelated plan — with the pointer *correct* every time, which is why this
@@ -1381,6 +1417,78 @@ def pending_state(prawduct_dir: Path) -> tuple[str, list[str]]:
     if missing:
         return "incomplete", missing
     return "complete", []
+
+
+def active_dispatch_refusal(prawduct_dir: Path, age_seconds: "float | None") -> str:
+    """The message a ``critic-begin`` prints when it refuses to displace a review
+    that is still in flight.
+
+    **Why the refusal exists.** ``critic-begin`` resets the partials directory
+    (:func:`_archive_leftovers`) because a leftover partial at the same commit as
+    a fresh dispatch would merge as if the new reviewer had written it. That
+    treatment is right for an *orphaned* leftover and catastrophic for a *live*
+    review's: dispatching over one archives partials that may be complete,
+    overwrites the manifest and re-stamps the marker, so a finished review —
+    blocking findings included — leaves no fact and no ledger anchor. It is
+    recoverable only by someone who knows the archive exists and still has the
+    review id.
+
+    The second-order harm is worse than the first, because it is silent. The
+    displaced review's reviewers keep running and write into what is now the NEW
+    review's directory, and a partial is bound to the **commit** it reviewed
+    (:func:`consolidate` validates ``commit_reviewed`` against the manifest and
+    nothing else ties the two). At an unchanged HEAD a straggler from the
+    displaced review is therefore schema-valid and commit-valid against the new
+    manifest, satisfies its roster, and consolidates as the new review — a fact
+    attributed to a review that never read those files.
+
+    **This message is also the missing observability.** ``methodology/building.md``
+    tells an agent whose review looks slow to "wait; if it fails, re-invoke", and
+    nothing distinguished *in flight* from *dead* — so the guide's own failure
+    path led into the destructive dispatch. The refusal is emitted at exactly the
+    moment that judgment is being made, and answers it with the on-disk state
+    rather than leaving it to a guess.
+    """
+    age_note = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
+    prior_id = "(id unavailable — manifest unreadable)"
+    try:
+        prior_id = json.loads(manifest_path(prawduct_dir).read_text())["id"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        pass
+    state, missing = pending_state(prawduct_dir)
+    if state == "complete":
+        situation = (
+            "  On disk: every reviewer has reported. That review is FINISHED and needs\n"
+            "  only consolidation — dispatching now would discard it:\n"
+            "    prawduct-hook critic-consolidate\n"
+        )
+    elif state == "incomplete":
+        situation = (
+            f"  On disk: still waiting on {', '.join(missing)}. Those reviewers are\n"
+            "  most likely still running — consolidation fires as they finish. Wait.\n"
+        )
+    else:
+        situation = (
+            "  On disk: no readable dispatch manifest — a review set the marker but\n"
+            "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
+        )
+    # No "critic-begin:" prefix — the CLI renders this as `f"critic-begin: {reason}"`.
+    return (
+        f"refusing — a Critic review is already in flight in this "
+        f"worktree ({prior_id}, dispatched {age_note}).\n"
+        "  Dispatching now would archive its partials and overwrite its manifest, "
+        "and its\n"
+        "  still-running reviewers would write into THIS review's directory, where a "
+        "partial\n"
+        "  at the same commit is indistinguishable from one written for it.\n"
+        "\n"
+        + situation
+        + "\n"
+        "  If that review is genuinely dead, abandon it explicitly and re-dispatch:\n"
+        "    prawduct-hook critic-end\n"
+        f"  The marker also expires on its own after "
+        f"{critic_marker.CRITIC_ACTIVE_TTL_SECONDS // 60} minutes."
+    )
 
 
 # ---------------------------------------------------------------------------
