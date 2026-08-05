@@ -51,6 +51,19 @@ and calling it a discharge would be the same species of false record as the thre
 Ten notes accepted with recorded disposition facts; two of them (R-2, R-9) were bookkeeping this
 entry and the plan's Context now carry.
 
+**#598 was filed against the branch's own new norm, and that is an owner exception, not a pass.**
+The PR reviewer caught it: `Backlog filing` — born on this branch, binding from 2026-08-05 — allows
+a new item only when the finding is **both** orthogonal **and** medium-or-larger, and #598 is
+`effort:S`/`impact:S` and explicitly a residual of this branch's own #595 rider. It fails both
+tests. It was filed anyway because the owner, shown the two rough edges it records, said *"both of
+these feel like rough edges worth fixing, but not right now"* — an in-the-moment deferral, which is
+the owner's call to make and outranks the default (Principle 23). Recorded here rather than argued
+into conformance, because the norm's own enforcement (Critic Goal 4, `final`-mode backlog
+reconciliation) is **structurally dark on this repo's Issues backend** — the cumulative's own R-11
+says so — and a norm whose checker cannot see the violation is one whose exceptions have to be
+written down by hand or they are not written down at all. Second data point, one day into the
+norm's life, that its enforcement map is aspirational here.
+
 ## 2026-08-05: the findings view now says which review it is
 
 <!-- prawduct: type=fix | scope=ephemeral-worktrees -->

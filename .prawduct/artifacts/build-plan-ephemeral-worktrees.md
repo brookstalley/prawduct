@@ -72,9 +72,13 @@ overridable, and the bound holds without it.
 Context: Built 2026-08-05 from issue #594, on `fix/ephemeral-agent-worktrees` off
 `develop@b994bfa`. Chunk 01 committed (`5fd2f45`), reviewed clean. Chunks 02-03 committed
 (`493b5e0`). Status checkboxes stay `[ ]` on purpose — `views_enabled` regenerates them at
-the develop→main promotion, not at merge. All three chunks are built; the
-`cumulative` Chunk 03's `Type: cumulative-final` owed ran as `rev-20260805T165453Z-2cf52cde`
-(0 blocking, 5 warning, 10 note), and its dispositions are the remaining work.
+the develop→main promotion, not at merge. **All three chunks are built and nothing is
+outstanding on this scope.** Chunk 03's `Type: cumulative-final` ran as
+`rev-20260805T165453Z-2cf52cde` (0 blocking, 5 warning, 10 note), its dispositions landed
+in `02c7448`, and a second cumulative over the fixed bundle —
+`rev-20260805T171849Z-d1ff4f96` (0 blocking, 2 warning, 9 note), the fact the PR gate
+reads — was dispositioned in `ba9f3f1`. Both rounds are closed; the branch is ready to
+merge to `develop` and this plan is RETAINED for the release, not for further work.
 
 **Riders — work on this branch that this plan does NOT own.** The branch carries two by
 owner decision, both recorded in the change-log with an explicit `<!-- No chunks= -->`
