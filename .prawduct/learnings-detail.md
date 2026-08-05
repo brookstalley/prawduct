@@ -2455,3 +2455,90 @@ stale. The corrected sentence now carries an explicit *do not re-introduce a lit
 **Adjacent instance worth carrying.** `check-releasability` could not have caught the CHANGELOG defect
 at all — it grades **classification**, not **description**. A green gate remains evidence only about
 what that gate measures.
+
+## A green suite is evidence about the ONE environment that ran it
+
+Added 2026-08-04, when this repo gained its first CI (`release-integrity` Chunk 05). The full suite
+had been run three times locally first — on 3.12, 3.10 and 3.14 — precisely so the first push would
+be a confirmation. It was red on both legs anyway, and none of the three causes was reachable from a
+maintainer's macOS checkout:
+
+1. **A guard reading `git ls-files` answers differently across `git commit`.**
+   `tests/test_plugin_packaging.py` asserts every tracked top-level directory either ships or is
+   explicitly excluded. `.github/` became *tracked* at commit time — after the last local run — so
+   the guard could not see the thing it exists to guard until CI did. *"I ran the suite" and "I ran
+   the suite against what I am about to commit" are different claims.*
+2. **A test that searches git history by content reads a shallow clone as "never shipped".**
+   `actions/checkout` defaults to `fetch-depth: 1`; `tests/test_norm_index_scaffold.py` runs
+   `git log --all -S <row>` and got empty output, which it reported as a wrong scaffold row — an
+   accusation against the code for a truncated checkout. Its author *had* anticipated unavailable
+   history, but only via `returncode != 0`, and a shallow clone returns 0. The anticipated failure
+   mode and the real one differed by one exit code. Fixed with `fetch-depth: 0` **and** an explicit
+   `git rev-parse --is-shallow-repository` check, because the workflow line alone leaves the next
+   shallow runner lying.
+3. **Non-ASCII source through `python -c` dies under `LC_ALL=C` on Linux.** macOS always decodes
+   argv as UTF-8; Linux uses the locale's codec, so an em-dash arrives as surrogates and the
+   interpreter exits before reaching the assertion. Pass source as a **file** — source files are
+   UTF-8 by language definition regardless of locale — so only ASCII crosses the command line.
+
+**The generalisation.** All three are the same failure as the defect that scope existed to fix:
+nothing verified what a *different* consumer receives. A single execution environment makes every
+assumption it satisfies invisible.
+
+## A guardrail whose anchors come from your MENTAL MODEL of a file is a second copy of the claim, not a check on it
+
+A cross-file check written *specifically* to police the claim "these five classes are already
+BLOCKING-rated in `goals-1-3.md`" stayed green while two of the five were rated WARNING there and a
+third was not rated at all. Its anchors had been picked from the same mental list the false claim
+came from, so the test asserted the belief rather than the file.
+
+The repair was to split it: one guard for the classes the protocol genuinely rates (the citation
+half), one for the classes the directive *escalates*, with the protocol's LOWER rating pinned so
+stale escalation wording fails rather than passing quietly.
+
+**It recurred one method over.** The sibling guard was fixed to judge per clause after a
+five-verdict line let a downgrade pass; the same fix batch left its neighbour matching on the whole
+line, where the vulnerable-dependency clause supplied a `**WARNING**` that made an `auth/authz`
+promotion invisible. Verified by reverting the fix and re-running: the pre-fix assertion passes with
+the promotion applied. A slack-carrying drift detector is indistinguishable from the drift it
+watches for, and fixing one instance does not fix its siblings.
+
+## Making a capability conditional on the RUNTIME retroactively conditions every existing test whose fixture touches it
+
+Chunk 02 of `release-verification-false-reds` (2026-08-04). `_version_from`'s hand-rolled
+TOML branch was replaced by delegation to stdlib `tomllib`, which is 3.11+ — chosen over a
+section-aware hand-rolled reader because `architecture.md`'s LNG-5W8R forbids a gate
+acquiring a language-specific parser, and its own interim rule says new gate code delegates
+first. Below 3.11 a declared `toml` version file reports `unverifiable`, never `failed`.
+
+The cost was priced as "one of three files unread on 3.10." The actual cost included the
+test suite. `tests.yml` runs a deliberate `["3.10", "3.14"]` matrix, and **five** tests went
+red on the floor leg:
+
+* the new test for the fallback's absent-vs-present-but-unreadable split, built on
+  `pyproject.toml` — it was that fix's *only* test, so on 3.10 the repair went from covered
+  to red;
+* four **pre-existing** happy-path tests (`test_agreeing_tree_is_ok`,
+  `test_reads_the_tag_tree_not_the_working_tree`, `test_complete_release_exits_zero`,
+  `test_accepts_bare_version`) whose only connection to TOML was the shared `_make_repo`
+  fixture, which writes a `pyproject.toml` to mirror prawduct's real layout. None of them
+  mentions TOML. None was edited by the change.
+
+The `verify-resolutions` reviewer found the first and reported it as *the* problem — correct
+about the instance, and the instance framing is the trap. What found the other four was
+mechanical: substitute the loader lookup with one that returns `None` and run the whole
+file. That is a 30-second check and it is the only thing that enumerates the set.
+
+Two repairs, and the split matters. The new test was **rebuilt on a `json` file**, because
+its subject (the reason a skipped file was skipped) has nothing to do with TOML — a test
+should not inherit a dependency its subject does not have. The four pre-existing ones
+genuinely assert an outcome that is only true on 3.11+, so they declare it with `skipif`,
+paired with `test_the_floor_leg_degrades_instead_of_failing`, which asserts what 3.10 *does*
+see: unverifiable, never failed, two readable files still verified. Guarding without that
+companion would have left the floor leg with no coverage of the shape it actually runs,
+which is the failure mode the guard was supposed to prevent.
+
+Related: "A green suite is evidence about the ONE environment that ran it" — this is its
+active form. There, the second environment finds the dependency. Here *you* introduced the
+dependency, so you can enumerate it before CI does, and the enumeration is not optional
+because the affected set is invisible in the diff.

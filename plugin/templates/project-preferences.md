@@ -64,10 +64,16 @@ Each preference above should be enforced by one of three mechanisms — assign t
 
 This per-preference table is the product's **norm index** (`/prawduct:methodology norms`): each row assigns a norm its **mechanism** (linter / test / Critic) and its **audit home** — `janitor` (only the deep sweep sees it) or `advisory` (a mechanical probe fires on it). A row may be a **pointer** to a `## Direction` section instead of restating the norm, and every norm carries its **why** (a whyless norm is unenforceable at its edges).
 
+**Every populated row here *is* a homed norm** — the `norm-health-sweep-overdue` advisory reads
+these rows to decide whether this product has norms worth auditing, so never leave an example or
+placeholder row in the table: it would claim a norm registry that has not been ratified. Two row
+shapes go in — an ordinary row naming the convention, its mechanism, its enforcement artifact, its
+audit home (`janitor` or `advisory`) and its why; and a **pointer** row whose first cell reads
+`norm lives in <artifact> § Direction`, whose enforcement artifact is `—`, and whose why lives in
+the Direction entry it points at.
+
 | Preference / norm | Mechanism | Enforcement artifact | Audit home | Why |
 |---|---|---|---|---|
-| *(a code-level convention)* | Test | `tests/preferences/test_*.py` | janitor | *(the constraint's rationale)* |
-| norm lives in `observability-strategy.md` § Direction | Critic | — | advisory | *(pointer row — the why lives in the Direction entry)* |
 
 **Rule for adding a new preference:** assign a mechanism. If the preference can be expressed as "every file/function/config matches pattern X with named exceptions" → write a test. If a linter rule already exists for it → configure the linter. If it requires understanding intent → assign to Critic. Never leave a preference unassigned.
 

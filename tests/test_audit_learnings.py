@@ -1477,3 +1477,38 @@ class TestDescentObligationReachesTheReader:
             "never sees learnings.md's header, so without this pointer the "
             "obligation reaches the subagent and not the reader who acts."
         )
+
+
+# =============================================================================
+# sentinel runner — the interpreter it spawns
+# =============================================================================
+
+
+class TestSentinelRunsTheRunningInterpreter:
+    """The sentinel subprocess must be `sys.executable`, not a bare `python3`.
+
+    A bare `python3` resolves through the product's PATH, which under any
+    virtualenv is a *different* interpreter from the one running the audit —
+    typically one without pytest, or without the product installed. Every
+    sentinel then reports failing, and the audit's whole job is deciding which
+    learnings are structurally enforced, so a false-failing sentinel argues for
+    retiring a rule that is in fact still enforced.
+    """
+
+    def test_argv_uses_sys_executable(self, tmp_path, monkeypatch):
+        seen = {}
+
+        def fake_run(cmd, **kwargs):
+            seen["cmd"] = cmd
+            return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
+
+        monkeypatch.setattr(_mod.subprocess, "run", fake_run)
+        passed, _excerpt = run_sentinel(tmp_path, "tests/test_x.py")
+
+        assert passed is True
+        assert seen["cmd"][0] == sys.executable, (
+            "the sentinel must run the interpreter running the audit; a bare "
+            "'python3' is whatever the product's PATH resolves to"
+        )
+        assert seen["cmd"][1:] == ["-m", "pytest", "tests/test_x.py", "-q"]
+        assert isinstance(seen["cmd"], list), "list-form args, never shell=True"

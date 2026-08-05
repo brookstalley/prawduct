@@ -127,7 +127,7 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 - **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
 - **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
-- **NOTE**: Genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads someone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates."
+- **NOTE**: Genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads someone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 
 ## Review Execution
 
@@ -178,7 +178,7 @@ Persistence is **decoupled from the review** (the coordinator never resumes to a
 
 If no findings: "No issues found. Changes are ready to proceed."
 
-**Record your judgment (single-pass only — coordinator reviewers get this schema from their agent definition):** write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else):
+**Record your judgment (single-pass only — coordinator reviewers get this schema from their agent definition):** write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else). **Its `NEXT-ACTION:` line is the builder's: relay it verbatim as your report's last line** — everything else it prints dies in your context, and the builder terminates the review loop:
 
 ```json
 {
@@ -190,19 +190,12 @@ If no findings: "No issues found. Changes are ready to proceed."
   "findings": [
     {"name": "<short title>", "goal": "Nothing Is Unintended", "severity": "warning", "recommendation": "<what to do>", "files": ["file1"]}
   ],
-  "resolutions": [
-    {"review_id": "<prior fact id>", "fid": "R-1", "disposition": "fixed"}
-  ],
   "summary": "N warnings. Changes ready to proceed."
 }
 ```
 
-`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. `resolutions` — `verify-resolutions` mode ONLY: your judgment on each prior blocking/warning finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or `waived` (`waived` requires a `rationale`). Consolidation validates every entry and fails closed on a mismatch, so match this schema exactly.
+`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. Match this schema exactly — consolidation validates every entry and fails closed. No `resolutions` key in these modes: it is `verify-resolutions`-only, and emitting one here fails consolidation.
 
 ## Review Cycle
 
 Read `review-cycle.md` for the per-chunk lifecycle and mode selection. Framework changes follow the same protocol as product changes; framework-only fixes without a build plan run a single `final` review.
-
-## Extending This Skill
-
-Prefer strengthening existing goals over adding new ones. The 7 goals cover correctness (1-3), coherence and design (4, 7), and sustainability (5-6). When a new concern surfaces, first ask whether an existing goal can absorb it.

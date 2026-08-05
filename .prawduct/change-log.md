@@ -3,6 +3,1036 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-04: the product declares which files carry its version — and where in them
+
+<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=02 | release=v3.2.4 | status=shipped -->
+
+Closes the remaining two false reds in `check-released` (#576, #580) with one mechanism, and
+retires the surface `architecture.md`'s LNG-5W8R names in its retroactivity list.
+
+`_VERSION_FILES` was prawduct's own layout applied to every governed product. A product using
+setuptools-scm, or carrying a tooling-only `pyproject.toml`, was graded against a layout it never
+claimed and told `not-released`. Products now declare `release_version_files:` — path, format,
+and the **key path** where the version lives.
+
+**The posture splits on provenance, and that split is the requirement.** A *declared* file that is
+absent, or present without the declared key, is a real defect and reaches `failed` — the product
+said it ships that file. Undeclared, the built-in tuple is a **guess**, so it may only reach `ok`
+or `unverifiable`, never `failed`. Without the asymmetry declaration is cosmetic and the guess
+keeps failing products for someone else's layout. A disagreement found through the guess is still
+reported in full, with the one edit that would make it a failure named.
+
+**The declaration is read from the tag's tree**, not the checkout — the rule this module already
+states for the version files themselves, applied to the statement about them. Which files carried
+a release's version is a fact about that release. So reorganising a layout cannot retroactively
+fail an old release, and a release cut before the key existed grades through the fallback, which
+by construction cannot produce a false red.
+
+**#580 is closed by declaration, not by a better parser.** `_version_from` scanned for the first
+line-level `version =` and the comment called the ordering a guarantee; TOML makes no such promise,
+and the measured repro is the reverse ordering — `[tool.myplugin] version = "9.9.9"` above
+`[project]` returned 9.9.9. With `key: project.version` the product names the authoritative table
+and both orderings now return the same answer.
+
+Reading TOML **delegates to stdlib `tomllib`** rather than hand-rolling, which is LNG-5W8R's own
+interim rule ("new gate code delegates first") — so the repair *deletes* the parser that norm
+names instead of teaching it about tables. `tomllib` is 3.11+ and `requires-python` is `>=3.10`;
+on that floor a `toml` entry reports `unverifiable`, never `failed`, because an interpreter's
+stdlib is not evidence about a release. `[DECISION: delegate TOML reading to tomllib and degrade
+on 3.10, rather than grow the hand-rolled reader to honour a key path | honouring a declared key
+path requires tracking table headers, which is broader parsing and the exact ratchet LNG-5W8R
+exists to prevent; delegation discharges the retroactivity entry instead of deepening it, and the
+3.10 cost is an honest unverifiable on one of three files | user chose this over the
+section-aware hand-rolled reader, 2026-08-04]`
+
+**A test asserted the defect as a contract.** `test_toml_takes_the_first_assignment` pinned
+`[project]` above `[tool.other]` and its docstring called the ordering a guarantee. Correcting it
+is not weakening it — the assertion was true only of the example it chose; both orderings are now
+exercised, and the answer no longer depends on order at all.
+
+Three new guards initially could not fail for the regression they named, and were rebuilt before
+commit: a non-mapping descent test that only passed a top-level list (which the membership test
+survives without the `isinstance` guard), a block-terminator test whose trailing items were
+discarded anyway, and a `[]` early-return that could not change an answer by any route — deleted
+rather than left as a guard that only looked like one. Writing the missing multi-finding test also
+caught the soft-failure detail calling files "did agree" while they had just disagreed.
+
+**The verify pass returned one blocking finding, and it was the useful kind.** A test asserting
+the fallback's reason-split was built on `pyproject.toml` and would have gone red on the 3.10 CI
+leg, where that entry is `blocked` and the check never reaches the OK detail the test greps. It
+was that fix's only test, so on the floor leg the repair went from covered to red. Rebuilt on a
+`json` file, since the split has nothing to do with TOML.
+
+Simulating the missing loader across the whole file then showed the reviewer had caught **one of
+five**: every fixture built from `_make_repo` carries a toml entry, so four pre-existing
+happy-path tests asserted a full three-file verification that is only true on 3.11+. Those now
+declare the dependency, and a companion pins what the floor leg actually sees — degraded, never
+failed, with the two readable files still verified. That is the cost of the delegation decision
+made visible in the suite rather than discovered by CI.
+
+Also fixed from the same review round, found while verifying the filed follow-up rather than
+transcribing it: `_read_declaration` treated a full-line comment at column 0 as the end of the
+block, silently dropping every entry below it — a product annotating its declaration would lose a
+version file and the check would report `ok` over the survivors. Backlog #590 tracks reconciling
+all four of this repo's minimal-YAML readers, two of which truncate this way and two of which do
+not; #591 tracks the title-normalizer bug that filing #590 tripped.
+
+## 2026-08-04: a check that could not ask does not answer
+
+<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=01 | release=v3.2.4 | status=shipped -->
+
+`prawduct-hook check-released` ships as a new capability in v3.2.4, and three paths made it
+state a confident `not-released` about a release it never assessed. This closes the first.
+
+`git rev-parse <tag>^{commit}` exits **128** for two unrelated states — the tag is absent, and
+this is not a git repository — and `check_tag_on_main` read every non-zero as the first.
+Measured: running it from any non-repo directory printed `ERROR: tag-on-main: tag v3.2.4 does
+not resolve to a commit`, verdict `not-released`, exit 1. A finding about a release, from an
+environment that could not look at one. The module's own docstrings say twice that a false red
+is worse than no check, because it is the reading that teaches people to ignore the check.
+
+`_outside_repo_reason` now asks *why* the directory cannot answer, and only after a non-zero
+has already occurred, so the happy path costs nothing. **Three outcomes, not two** — "git is not
+installed" and "not a git repository" reach the same verdict but are not the same diagnosis, and
+an operator told the wrong one goes looking in the wrong place.
+
+Fixed one level down in the same spirit: `check_version_files` reached the right verdict by
+accident and named the wrong cause. Outside a repository every `git show` fails per-file exactly
+as an absent path does, so all three files "skipped" and the branch reported *"a different
+product layout"* — sending a product owner to inspect a layout that is fine. Advice failing soft
+is not advice failing silent.
+
+**#580 is deliberately not fixed here.** The first draft made the TOML branch table-aware;
+`architecture.md`'s in-transition LNG-5W8R norm forbids exactly that ("no gate acquires a
+language-specific parser") and names this file in its retroactivity list, with the remedy
+owner-ruled as *product declaration rather than broader parsing*. It moves to Chunk 02 and is
+closed by the same declaration that closes #576. Surfaced by `/prawduct:learnings` at plan time,
+before any code was written — which is where a norm is supposed to bite.
+
+## 2026-08-04: a count nothing reads is not worth writing — or correcting
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=03 | release=v3.2.4 | status=shipped -->
+
+Chunks 01 and 02 made the loop terminate: the exit condition reaches the builder, and a re-review
+stopped manufacturing the next round's work. This closes the narrowest recurring *supply* of that
+work — the contestable count, measured at roughly one finding in eleven across the window this plan
+was cut from — on both sides at once.
+
+**Builder side.** `building.md` gains a rule beside the self-contained-comments rule, because they
+are one failure with two carriers: a durable artifact holding something that decays. A build id
+dangles when the plan is deleted; a count goes stale on the next commit. The rule turns on whether
+anything *branches* on the number — ask what gets decided differently if it is wrong by two. If
+nothing: omit it, make it relational, or cite the command that regenerates it. Numbers something
+relies on stay exact, which is why "avoid counts" would have been the wrong rule.
+
+**Reviewer side.** Both Critic protocol files cap a finding whose only subject is an inert count at
+NOTE, and require the qualifier that actually stops the fix commit: the true figure, that nothing
+reads it, and that no edit is wanted. A bare "rate it NOTE" still hands the builder a defect report,
+and builders fix defect reports — which is the commit that buys the next round.
+
+**And the protocol stops asking.** `numeric counts` leaves the doc-only Goal 1 target list, which had
+made the count finding an *instruction* rather than an accident. Removed from both carriers —
+`goals-1-3.md` and `review-cycle.md`'s Per-Chunk Type selector — because leaving one gives a reviewer
+who consults it an explicit mandate to hunt exactly what the cap demotes.
+
+**Placement went the opposite way from Chunk 02, deliberately.** That chunk fought to keep its
+narrowing OUT of `## Severity`, which sits below all three goal sections. The cap goes IN it. The
+narrowing governs *whether to report at all*, decided continuously while reading the goals; a
+severity cap is a *lookup* made once at write-up, and the NOTE legend already owns the cap's parent
+rule. Both placements are asserted by test rather than assumed.
+
+**No ceiling was raised.** All three budgeted files started at or near zero headroom. The one entry
+worth reading: `goals-1-3.md`'s first funding attempt cut a record-lint explanation that the file's
+own adjacent instruction appeared to argue for — and a guard failed whose docstring names that exact
+edit as the predicted casualty of a token diet there. Naming one of two guess-paths leaves the other
+readable as a clean grade. The dangerous trim is not the one you cannot justify; it is the one the
+surrounding prose seems to endorse.
+
+**Two inherited guards were weaker than they read**, both caught by review rather than CI. The
+escalated-carve-out test asserted a severity against a *line* carrying five verdicts, so promoting
+auth/authz to BLOCKING left it green — the same line-vs-clause slack its sibling had just been split
+to close, one method over. And an imperative check listed four verbs of which one ever matched. Both
+now assert the property; both were verified red under the failure and green under legitimate
+rewordings.
+
+## 2026-08-04: a re-review answers one question — it does not manufacture the next round's work
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=02 | release=v3.2.4 | status=shipped -->
+
+Chunk 01 closed the **demand** side: the builder now meets the termination rule on carriers it cannot
+avoid. This is the **supply** side. `verify-resolutions` exists to answer one question — were the
+named findings resolved? — and it also walked the fix delta at full severity, handing back
+WARNING/NOTE findings that are, definitionally, round N+2's inventory. **New findings in
+`verify-resolutions` are now BLOCKING only**; anything lesser the reviewer notices is reported as an
+OBSERVATION in prose, where it informs without becoming work.
+
+**Why this mode and no other.** `chunk`, `final` and `cumulative` review work the builder *chose* to
+do. Only `verify-resolutions` reviews a delta the framework itself asked for — so it is the only mode
+where suppressing non-gating findings removes churn rather than review.
+
+**The carve-out is what makes it safe, and it is pinned across the file boundary.** Five classes stay
+BLOCKING in this mode — a weakened or deleted test, a dropped requirement, changed behavior with no
+test, security in changed code, fix-by-fudging. **As first written this paragraph said they were
+"already BLOCKING-rated in `goals-1-3.md`", and the chunk's own review proved that false for two of
+five**: auth/authz on new endpoints and known-vulnerable dependencies are WARNING there, and
+fix-by-fudging is not rated in that file at all (its workaround leg was rated only in
+`review-cycle.md`, which this mode's reviewer may not open). So half the carve-out is a *citation*
+and half is an *escalation*, and the directive now says which is which — a safety argument resting on
+a false claim is not a safety argument. Two guards, split so neither half drifts silently:
+`test_the_carve_out_classes_the_protocol_rates_are_still_blocking` drives from the protocol's own
+BLOCKING lines, and `test_the_escalated_carve_out_classes_are_named_as_escalations` pins the
+protocol's *lower* rating so the escalation wording cannot go stale unnoticed. Both judge per clause,
+not per line.
+
+**Placement was the design, not a detail — and the cheap slot was the wrong one.** `## Severity` is
+the obvious home and sits *below* all three goal sections, so a reviewer walking Goal 1 → 2 → 3 has
+assigned every WARNING before reaching it: present, and inert. This repo has shipped that exact shape
+once (`SKILL.md`'s header said read `review-protocol.md` "first" 26 lines above the routing that said
+otherwise, with six artifact-measuring guardrails green throughout). The rule went in the **preamble**
+instead, and `test_the_protocol_carries_it_before_any_severity_is_assigned` asserts the ordering
+rather than the presence.
+
+**Split by cost, as in Chunk 01.** The 17-word rule is in `goals-1-3.md` (ceiling held: 1992 → 1994,
+funded by the normative block's most abstract sentence and a first line the H1 already said). The
+worked instances, the measured rationale and the descent are in
+`VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, printed at dispatch where there is no budget — and printed
+*before* `RESOLUTION_IS_A_CLAIM_DIRECTIVE`, because the reviewer rates the delta before it judges the
+prior findings, and the gate-weakening warning keeps the tail.
+
+**A contradiction this surfaced.** `review-cycle.md` step 3 rated "a workaround instead of root
+cause" **WARNING** — inside the one mode that now records no warnings. Two things were wrong and only
+one was the contradiction: a WARNING gates nothing, so it was also the wrong *instrument*. When a fix
+works around a root cause the finding named, the honest verdict is that the finding is unresolved,
+which is expressed by withholding the resolution and fails closed. Re-routed there.
+
+**The cost, recorded rather than buried.** A demoted observation is not a fact: it cannot be
+`disposition`ed and leaves no trace in the evidence store. Two things bound it — `verify-resolutions`
+is never a first review (`critic-begin` demotes when no usable prior fact exists), so every narrowed
+delta sits downstream of a full-severity pass; and the builder still reads the observation in the
+reviewer's report. The information survives; only the obligation is gone.
+
+**Carried in from Chunk 01's accepted findings.** `coverage.diagnose_fix_churn` now *requires*
+`diff_fn` and `key_fn` — the unreachable unmemoized fallback is deleted, so a dropped argument is a
+`TypeError` at the call site instead of a silent ~5-minute hang on the interactive
+`/prawduct:pr create` path. `gates._merge_base_verdict` carried the identical unreachable
+`key_fn=None` one frame up the same call chain and is now required too; a signature pin covers both.
+And `test_next_action_survives_a_clean_pass_with_no_findings`'s docstring claimed a
+`fact_to_cache_record` coupling it does not assert; it now states what it actually pins.
+
+**A fourth carrier, added during the build and recorded rather than dropped.** `SKILL.md`'s per-mode
+scope line states the narrowing too. That line exists so no mode has to open `review-cycle.md` for
+scope, and the narrowing *is* scope — omitting it describes a mode that rates everything, to the
+first file the fork reads. It is now in the plan's deliverables and pinned by test, per this plan's
+own Verification Strategy.
+
+### What the chunk's own review changed — 0 blocking, 8 warnings, 8 notes, one batch
+
+Three reviewers converged on the same seam, and they were right: **the carve-out was not sound as
+written, and it is the safety argument the whole change rests on.**
+
+- **The claim "these five classes are already BLOCKING-rated in `goals-1-3.md`" was false for two.**
+  Security is *mixed* there — injection, secrets and exploitable input validation block, but
+  *auth/authz on new endpoints* and *known-vulnerable dependencies* are **WARNING**. And
+  fix-by-fudging is not rated in that file at all; its workaround leg was rated only in
+  `review-cycle.md`, which a `verify-resolutions` reviewer is forbidden to open — so this change had
+  left the rating existing solely inside the directive that vouched for it, which is circular. The
+  same reviewer was being told both "rate these as you would in any mode" (⇒ WARNING) and "BLOCKING
+  or not a finding" (⇒ demote). Fixed by making the carve-out an **escalation that says it is one**,
+  and splitting the guardrail: one test pins the classes the protocol genuinely rates, another pins
+  that the escalated ones are named as escalations and that the protocol still rates them lower.
+- **The demotion bound on class membership where the rule binds on severity.** "Everything else you
+  notice" took the five classes as antecedent, which literally demoted BLOCKING-rated classes the
+  enumeration omits — test failures in evidence, `missing-coverage:` lines, cross-component contract
+  breaks, unlisted dependencies, norm departures. On the carrier read last before rating, that is the
+  expensive reading. Now: *the test is the severity you would assign, never membership in any list.*
+- **OBSERVATION had no slot in the only output contract this mode reads.** `goals-1-3.md` enumerates
+  findings and a summary, and its clean-pass line says `No findings: "No issues found."` — so a pass
+  that demoted three observations was instructed to report silence, defeating the cost-bound the
+  design rests on. The directive now names a structural destination (`### Observations`) and the
+  clean-pass line reads "No findings, no observations".
+- **`goals-1-3.md`'s record-lint severities contradicted the preamble 20 lines below it** —
+  specific-over-general, in the one protocol file this mode may open. Resolved in the preamble clause
+  itself, and mirrored on the two maintainer-facing surfaces carrying the same mapping.
+
+The ceiling absorbed all of it and came out lower: **1994 → 1990**, paid by the `## Severity`
+BLOCKING legend's example list, which restated four checks stated in full above it.
+
+**One norm departure, recorded not silently taken.** `nonfunctional-requirements.md` binds *"adding
+a control names the yield it expects AND emits that yield observably"*, retroactive to controls added
+from 2026-07-29. This control emits yield only half-way: under-firing is detectable (`review-stats`
+groups by mode, so a verify pass still carrying warnings proves the rule never landed), over-firing
+is not — `build_fact_body` carries `findings`/`counts` and drops the reviewer's prose, so verify-mode
+W/N reads zero by construction. Mitigated in-scope by having the directive ask for a demotion count,
+so the number reaches the builder. The structured field that would make it telemetry-visible is a
+persisted-format change — lock-in, and with a real design question of its own (self-reported vs.
+derived) — so it is **filed as #585**, not improvised into a fix batch. The plan now carries `governed_by:`
+with this disposition and three others; its absence was itself a finding, and `governed-by-gap`
+structurally cannot see it (the check grades dispositions against *cited* artifacts, so a plan citing
+nothing scores zero).
+
+## 2026-08-04: the verify pass — the one carrier with no test was the one that outlives the session
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 | release=v3.2.4 | status=shipped -->
+
+`verify-resolutions` over the resolution commit: **all ten resolutions verified `fixed`** against the
+files at HEAD, plus **1 blocking, 1 warning, 1 note** of its own. Two fixed, one accepted.
+
+**The blocking finding is this change's own thesis, applied to this change.** Every carrier added in
+the previous commit gained a pin — the emission against real stdout, the prefix collision by regex,
+the relay ordering by index, the coverage caveat across four count shapes, the judgeable condition.
+`_summarize_critic_findings`'s `next_action` append had none. And that is the carrier that survives
+`/clear`: its reader is *by definition* the builder who lost the reviewer's report, so its silent
+loss is unobservable in-session — in a plan whose entire thesis is that carriers fail silently. It
+also sat below an early `if not summary and not findings: return None`, harmless only because
+`fact_to_cache_record` always writes a summary, which nothing asserted. Three cases now: the warning
+list ordering, the clean pass, and a legacy record with no field.
+
+**The warning was a "cheap check" that was not cheap.** The upstream-composition guard added for R-1
+called `coverage_verdict` with an unmemoized `diff_fn` and **no `key_fn`**, which sends `_find_path`
+down the pairwise free-edge branch — the form `_tree_key_fn`'s own docstring measures on this repo's
+store at ~5,600 `git diff` subprocesses and ~316s, run twice per verdict with no memo between the
+passes. It sits on the interactive `/prawduct:pr create` path, inside a diagnosis whose gate message
+calls it cheap. Both are threaded in from the caller, which already builds them. Worth noting *why*
+threading beat editing prose: `_cached_diff_fn`'s docstring asserts that "every production call site
+pairs this with `_tree_key_fn`" — the new call site had made that false, and the choice was to
+restore the claim or weaken it.
+
+**Accepted (1):** the upstream check's own degraded path still returns the genuine-negative answer,
+which is the shape the status split exists to separate. Separating them needs the failure surfaced
+through `coverage_verdict`, shared by every gate — wider than this diagnosis, and silence is the safe
+direction. A half-measure catching only the missing-tree case was written and then removed: a fix
+that looks like one but does not catch the case it names is worse than an accepted gap.
+
+**One answer worth keeping.** Asked whether the new merge-base filter could suppress a *true*
+positive, the reviewer found the one shape and showed it fails closed: after a merge or rebase the
+branch's own genuine review also stops being a descendant of the new merge-base, so it is filtered
+too and the diagnosis goes silent rather than wrong — which is the desired direction, since the merge
+brought unreviewed lines in, and it self-heals at the next review on the branch.
+
+## 2026-08-04: the cumulative's findings — a false positive that would have sent unreviewed work to merge
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 | release=v3.2.4 | status=shipped -->
+
+Cumulative over Chunk 01, three reviewers: **0 blocking, 7 warnings, 11 notes.** Ten fixed in one
+batch, eight accepted. The gate needed none of it — which is the rule this branch is building, and
+the reason the whole batch is one commit and one verify pass rather than ten rounds.
+
+**The one that mattered was the one I asked about and looked for in the wrong place.** I asked the
+reviewers to check `diagnose_fix_churn`'s failure direction against renames, deletions, submodules
+and odd path shapes. None of those defeat it. The false positive comes in through the *lineage
+filter*: `merge-base --is-ancestor <fact> HEAD` is satisfied by **every fact on the base branch**,
+and one clone's evidence store is shared by all its worktrees. So a branch with no review of its own
+anchors on the last review of `develop` — and since reviews in a real repo name the same hot files
+over and over, a whole unreviewed branch can land inside the subset test and be reported to its
+builder as their own churn. Chunk 02 of this very plan was a live candidate.
+
+The anchor must now also be a **strict descendant of the merge-base**: a review at or before it
+never saw this branch. That also repairs a claim the docstring made and could not keep — *"a merge
+fails the subset test and diagnoses as nothing"* — because after merging the base in, a base-side
+fact can become *nearer* to HEAD by commit distance than the branch's own review, switching the
+anchor and dropping the merged lines out of the delta entirely. **The plan named a merge test; what
+shipped was a plain commit to an unnamed file**, which exercises the subset test and never touches
+anchor selection. The real merge case is now a test, and it fails without the filter.
+
+**Second half of the same finding: the diagnosis proved one leg and the message described the whole
+span.** `uncovered` means composition failed *somewhere* between base and HEAD, not necessarily on
+the last leg — an earlier dirty-tree review or selective commit leaves a hole below an anchor whose
+own delta is pure churn. The message then promised that one verify pass closes a gap it does not
+close. Coverage must now compose from the base tree up to the anchor before anything is claimed
+about the span, and the wording says what is proven.
+
+**The carrier proved itself on its own first review, and then showed its two holes.** That review's
+returned report ends with the `NEXT-ACTION:` line verbatim — the relay works. But all three
+reviewers independently hit the zero-blocking text, which is the strongest signal a coordinator
+review produces:
+
+- It ordered a verify pass **unconditionally**, printed directly beneath `_BATCH_FIX_DIRECTIVE`,
+  which conditions it on touching judgeable files. On framework work the non-blocking findings
+  concentrate in `.prawduct/` prose — all non-judgeable — so **the most common fix batch is exactly
+  the one that needs no pass**, and the line that now travels furthest picked the round-generating
+  phrasing. It now carries the condition, and says the common case out loud.
+- The clean-pass variant asserted "no further review is required" with no coverage caveat, while its
+  two siblings carried one. A clean `chunk` mid-plan still owes a final at end of cycle, and
+  `_critic_session_satisfies_gate` fires an advisory saying so — two code-owned surfaces asserting
+  opposite things in one session, with the newer one saying stop. The caveat is now a shared
+  constant every zero-blocking branch carries, pinned across all four count shapes.
+
+**And the relay order sat where the shorthand could swallow it.** In `goals-1-3.md` the order landed
+immediately before `No findings: "…"`, so the shorthand read as a total replacement — dropping the
+carrier in precisely the zero-blocking case that is most of these reviews, in the two
+always-single-pass modes. Reordered and made explicitly unconditional. The token pins could not have
+caught it: they assert the words are in the file, which is not the same as the instruction having
+effect.
+
+**Three more, each a gap between a producer and a consumer.** `_summarize_critic_findings` renders
+the handoff's Critic section from this same record and dropped `next_action` — so the cross-session
+builder, who is *definitionally* the one who lost the reviewer's report, inherited "Findings: 4
+warning" with nothing saying warnings gate nothing. That is the state the measured ten-round failure
+started from. The `NEXT:` prefix collided with the session digest's standing-block `NEXT`, which
+contracts for brevity — an agent holding both had a standing instruction to compress the line it was
+told to relay verbatim; it is `NEXT-ACTION:` now. And the emission was pinned only by a source-text
+grep, which passes for a print that is unreachable or conditional — it is asserted against real
+stdout, in the clean-pass test where an editor mirroring the batch directive's `if all_findings`
+would break it.
+
+**`diagnose_fix_churn` said nothing when it could not run.** Four return paths were genuine
+conditions and four were degradations, rendering identically — and `learnings.md` names that shape
+by name: *"'Advice fails soft' is not 'advice fails silent' — a degraded advisory path must still
+name its consequence, or it manufactures the false success it was meant to prevent."* The precedent
+was in the file I was editing. It now returns a status, and the gate says the check was unavailable
+rather than going quiet.
+
+**Accepted, not fixed (8):** two duplicates of fixes above; the perf note (the merge-base filter cut
+the candidate set anyway); the never-raises docstring; the two-definitions-of-prior-review note
+(deliberate — the two anchors answer different questions and unifying them would make one wrong);
+the stop-hook's parallel message path (real, but the measured loop ran against the PR gate); and the
+Issues-backend backlog gap. Each is a recorded fact, not a sentence — `prawduct-hook
+render-dispositions` prints the census rather than anyone counting by hand.
+
+## 2026-08-04: the loop-termination rule shipped, and reached nobody who could act on it
+
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 | release=v3.2.4 | status=shipped -->
+
+v3.2.3 already says the right thing about when a review is over — `methodology/building.md`
+under "Resolve findings" and `skills/critic/review-cycle.md` § "The review loop terminates" both
+state that zero blocking ends it, that WARNING and NOTE gate nothing, and that fixes belong in one
+commit. A consuming repo on that exact version then ran **ten Critic rounds on one branch**, rounds
+five onward spent fixing warnings that gated nothing.
+
+**Every carrier was a pull carrier.** The transcript contains zero reads of `building.md` and zero
+of `review-cycle.md`: the branch had no build plan (`record_lint` recorded exactly that), so the
+builder never entered the build cycle that would have made it read either. The one runtime carrier,
+`_BATCH_FIX_DIRECTIVE`, appeared in **seven reviewer-fork contexts and zero builder contexts** —
+because `verify-resolutions` and `chunk` are always single-pass, so the reviewing fork runs
+`critic-consolidate` itself and the directive prints where the reviewer will read it and the
+builder never will. That gap was already written down: the docstring above
+`RESOLUTION_IS_A_CLAIM_DIRECTIVE` says the directive "does not carry to the builder" and gives the
+reason. Knowing it was not enough to close it.
+
+Meanwhile the two things that *did* reach the builder both said *review again* — the gate's
+`uncovered:` remedy names two routes, both full reviews; and findings arrive as recommendations
+with no statement of what gates.
+
+**Measured across both evidence stores since the v3.2.3 tag:** 92 review facts in one repo and 96 in
+this one; 30 of that first repo's 806 findings were blocking. Sixty of its 92 reviews were
+zero-blocking `verify-resolutions` rounds, the longest run nine consecutive. Five of the
+ten-round branch's nine verify invocations open with the words "close coverage to committed HEAD".
+
+**Three carriers now push instead of waiting to be pulled.**
+
+- **`.critic-findings.json` gained `next_action`** — code-computed from the fact's own counts, in
+  the file the builder opens by contract. Zero blocking: the review is over, these gate nothing,
+  here is the `disposition … --accept` command with this review's id already substituted.
+- **`critic-consolidate` prints that same line as `NEXT:`**, and both protocol files order the
+  reviewer to relay it verbatim as their report's last line. This is what closes the single-pass
+  hole: the reviewer is the one running the command, so the only way its output reaches the builder
+  is if the reviewer carries it.
+- **The cumulative gate diagnoses fix churn.** When every judgeable change between the newest review
+  on HEAD's lineage and HEAD sits in a file that review's own findings named, and that review left
+  nothing blocking, the gate now says so before offering the generic remedy — and names
+  `disposition`, which moves no tree and needs no review.
+
+**The discriminator is what moved the tree, never a round counter.** CRT-3W6P's counter-example is a
+post-merge round that a counter would have called waste and was not, because a merge had brought
+thousands of unreviewed lines into functions the branch had already touched. A merge fails the
+subset test and diagnoses as nothing; so does partial overlap, an unresolved blocker, a sibling
+worktree's fact, and a review with no file attribution. Every one of those is a test, because the
+failure that matters is telling a builder their gap is self-inflicted when it is real.
+
+**Both protocol files were at their token ceilings, and neither ceiling moved.** Quoting the two
+gate-line variants in each file would have cost ~160 tokens apiece. Having code own the wording and
+the prose order only the relay cost 34 and 1. `goals-1-3.md` paid by compressing the chunk-`Type:`
+paragraph — a standing trim candidate its own budget comment names. `review-protocol.md` paid by
+dropping the `resolutions` schema arm, which it restated for a mode that does not read it and where
+emitting one *fails consolidation closed* — not redundancy but an invitation to an error.
+
+Parent requirement #167 (CRT-3W6P) stays open: its `critic-begin` **refusal** is deliberately not
+built here. Refusing a round leaves coverage open with no way to close it, so the PR gate would
+block with no remedy — a worse failure than the loop. This makes the loop terminate without needing
+one.
+
+## 2026-08-04: the suite stops running only when someone remembers
+
+<!-- prawduct: type=feature | scope=release-integrity | chunks=05 | release=v3.2.4 | status=shipped -->
+
+This repository had no `.github/` of any kind. Every release it ever cut shipped on a suite that ran when a
+human chose to run it, and eleven `tests/preferences/` guards were documented with an audit home of
+"CI (test)" against a runner that did not exist. `.github/workflows/tests.yml` runs the suite on
+every push and every pull request; `.github/workflows/verify-release.yml` runs `check-released` on
+every tag push.
+
+**The suite workflow filters nothing — not by branch, not by path.** The economy on offer was
+skipping doc-only changes, and it reproduces a hole this repo has already fallen into:
+`tests/test_norm_probes.py` reads the live `project-state.yaml`, so a `.md`-and-`.prawduct/**`
+change really can turn the suite red, and both existing fast paths already miss it. A branch that
+never opens a PR is likewise the branch nobody is watching. Runs are cheap; the hole is not.
+
+**The first CI run was red, and that is the entry's most useful sentence.** Both matrix legs were
+green locally before the workflow was written — 3.10 and 3.14, full suite, twice — and CI still
+failed three tests that no local run could have shown. `test_plugin_packaging` demands every tracked
+top-level directory be shipped or explicitly excluded, and `.github/` became tracked only at commit
+time, *after* the last local suite run; `test_norm_index_scaffold` searches git history by content,
+which a depth-1 checkout answers "never shipped" with a straight face; and
+`test_operator_verification`'s C-locale round trip passed its non-ASCII source through `python -c`,
+which Linux decodes with the locale's ASCII codec and macOS always decodes as UTF-8 — a test that
+could only ever fail on a platform this project had never run it on. Fixed respectively by recording
+the deliberate exclusion, by `fetch-depth: 0` plus a shallow-clone guard that says so instead of
+accusing the code, and by handing the subprocess a UTF-8 source *file* so only ASCII crosses the
+command line. Three latent defects, first push, none of them in the feature.
+
+**The matrix runs the declared floor and current — 3.10 and 3.14.**
+`requires-python = ">=3.10"` had been a claim nothing exercised.
+A matrix cannot be computed from a constraint expression, so the floor is copied; a new
+`tests/preferences/test_ci_workflow_conventions.py` fails if the copy and `pyproject.toml` drift in
+either direction, and equally if a future edit inlines `-n auto` into the run step or replaces
+`pip install ".[dev]"` with a hand-listed dependency set. That install did not work before this
+change: setuptools' flat-layout discovery finds `plugin/` beside other top-level directories and
+refuses to build, so `pyproject.toml` gained a `[build-system]` stanza and `packages = []` — the
+repo is installable and packages nothing, because the install exists to carry the dependency list,
+not the code.
+
+**CI verifies the release; it never publishes one** (owner ruling, 2026-08-04). Publishing notifies
+watchers and is not cleanly retractable, and `security-model.md` § Direction requires explicit owner
+approval at the operation level for an act like that — a tag-push trigger has no human present when
+it fires. A forgotten publish is meant to surface as a red build instead. The guard test fails on
+`gh release create` and on the three common publish actions, because that ruling is invisible in the
+diff of the edit that would remove it. `--allow-unverifiable` is absent for the same reason: exit 3
+exists so that "could not reach the Releases page" is not green.
+
+The tag job fetches `origin/main` explicitly. `actions/checkout` leaves no such ref on a tag build,
+and without it the containment check correctly degrades to unverifiable — a permanently red job
+reporting nothing about the release. `workflow_dispatch` takes a tag input so the check can be
+exercised, including against a deliberately bogus tag, without pushing a junk tag to prove it works.
+
+## 2026-08-04: the check that would have been red for every release this repo ever cut
+
+<!-- prawduct: type=feature | scope=release-integrity | chunks=04 | release=v3.2.4 | status=shipped -->
+
+`prawduct-hook check-released vX.Y.Z` verifies a release from the outside: every version file
+present in the tag's tree agrees with it — read **at the tag's own tree**, and a file the product
+does not carry is skipped rather than reported missing — the tag is contained in `origin/main`, and a GitHub Release
+exists. Run it against `v3.2.2` and it fails — as it does for every release before this one,
+because a pushed tag lands on `/tags` and the Releases page stayed empty for every one of them. That
+is the defect users reported as "no tag on GitHub", and nothing in the release process could see
+it: every check was a git command run by the person doing the release, so nothing ever asked what
+a consumer receives.
+
+**Version agreement is read through `git show <tag>:<path>`, never the working tree.** What a
+release shipped is a fact about the tree that release names; the checkout you are standing in is a
+different question, and it answers confidently and wrongly from a feature branch. A test pins this
+by moving the working tree to a different version and asserting the gate still reads the tag's.
+
+**Three outcomes, not two — and the third is the whole point.** Exit **0** verified, **1** a check
+failed, **3** nothing failed but a check could not run (no `gh`, no `origin/main`). Both ways of
+folding that third state into the other two are wrong in the environment this command exists for.
+Folded into *failed*, a fresh clone or a fork reports a broken release. Folded into *passed* — which
+is how it first shipped in review — a tag-push CI job goes green over an empty Releases page, since
+`actions/checkout` leaves no `origin/main` and a step without a token gets a `gh` that cannot
+answer. That is the original defect with a passing check on top. `--allow-unverifiable` collapses 3
+to 0 for an operator who deliberately wants the local subset. Relatedly, a `gh` failure that is not
+literally "release not found" is never read as absence: a refused question is not a missing
+release.
+
+Two defects were caught by scrubbing the change rather than by the suite, and both were the
+confident-wrong-answer shape: the `pyproject.toml` parser matched any key *starting with*
+`version`, so a `versioning` key would have been read as the release version; and the
+`origin/main` containment check never established that the reference existed before asking what it
+contained.
+
+## 2026-08-03: the final cumulative — a deliverable with no test, and six records that had drifted
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=06 | release=v3.2.4 | status=shipped -->
+
+Final cumulative over the whole branch — 16 commits, 24 files, three reviewers: **1 blocking, 9
+warnings, 9 notes.** Eleven fixed, eight accepted.
+
+**The blocking one is the branch's own lesson arriving once more.** Chunk 06 names
+`plugin/bin/prawduct-hook` as a deliverable and models itself explicitly on `learnings-obligation` —
+whose test file drives its command through dry-run, apply, absent, unreadable and unknown-arg. I
+tested only the lib. Roughly fifty lines shipped executing in no test: both exit-code mappings, the
+`Would delete from … line N` confirmation block, `--json`, unknown-arg rejection, and the `main()`
+dispatch arm. Choosing a precedent and then not following the part of it that is the test file is a
+specific and repeatable way to miss coverage.
+
+**Two reviewers converged independently on the same structural defect (R-9 / R-16):** the skew
+guard's `_HARNESS_INVOKED_COMMANDS` is a hand-transcribed copy of `hooks/hooks.json`, and its drift
+is silent in the *unsafe* direction — a hook entry point that falls out of the set starts refusing,
+and a refusal a hook cannot act on breaks SessionStart in every framework checkout. Now derived from
+`hooks.json` by a test that parses the file, red-verified by dropping an entry point from the set.
+
+- **The refusal named a command the caller could not run (R-3).** `/prawduct:critic`'s
+  `allowed-tools` lists only the bare `prawduct-hook` forms, so the skew guard's advice — "run
+  `python3 <repo>/plugin/bin/prawduct-hook`" — was unactionable for the one caller that hits it most.
+  The repo-local forms are now allowed. A remedy the reader cannot execute is a refusal with extra
+  steps.
+- **`Status: **in-transition**` was entry-visible and stall-invisible (R-2)** — emphasis was
+  tolerated after the label but not around the value, which is the `__Status:__` defect Chunk 05's
+  own entry records, one position over. Fixed as "optional emphasis anywhere between marker and
+  token" rather than patched per-form, because per-form patching is precisely how the first one was
+  missed.
+- **A failed repair would have crashed the health check that relays it (R-15).**
+  `atomic_write_text` propagates `OSError` by design — each caller owns its failure policy — and this
+  caller had none, so a write failure tracebacked out of doctor Health Check #14 instead of degrading
+  to a finding. That is fail-soft inverted at the one site built to be fail-soft.
+- **A missing `project-preferences.md` was graded healthy by every check in the flow (R-8).** Check
+  #14 deferred it to Check #5, which enumerates five other paths and never looks at this one. Now a
+  finding where it is actually detected.
+- **The owner's acceptance lived only in a file the release deletes (R-17).** The
+  advisory-amplification decision was recorded in the build plan; build plans are deleted at release,
+  and a ruling that survives only in a deleted file is a decision nobody can later show was taken.
+  Now in the change-log, where the earlier entry's "this decision is open" is also corrected — it was
+  true when written and answered an hour later.
+- **The history pin would have gone silent exactly when it stopped working (R-5 / R-12).** The
+  `SCAFFOLD_ROWS` test pinned the constants against a branch-local SHA and `pytest.skip`ped when it
+  could not resolve — so a squash or rebase would have retired the pin without a word. Now a content
+  search across all history that **fails** rather than skips.
+- Also fixed: `norm-index-scaffold` added to the api-contract enumeration (R-10), the sweep advisory
+  now names the repair alongside the janitor sweep since a repo carrying template rows owes no sweep
+  at all (R-4), and `docs/norms.md` brought into line with the field-bearing entry definition (R-7).
+
+**Filed rather than fixed: `#571`.** Establishing where the `unwritable` status belonged surfaced a
+live defect in the sibling this chunk cites as its precedent: `learnings_obligation.repair()` catches
+the write failure but leaves `status` at whatever `check()` found, so doctor Health Check #13 relays
+a *failed repair* as "no marker" — indistinguishable from the state before the owner ran it, and the
+exact failure the `unwritable` split was made to avoid. Not fixed here: it changes a shipped health
+check's behaviour and deserves its own review rather than a drive-by in a disposition round. The id
+is recorded **here** because the deferral originally lived only in a commit body, which a later
+review correctly could not verify — a decision whose only witness is a commit message is not a
+record.
+
+Accepted with reasons recorded as facts: the four `learnings-entry-shape` notes (the lint and
+`learnings.md`'s own stated policy disagree, and degrading the entries is the wrong way to settle
+it), the two-algorithms note (the *marker* has one home; the algorithms answer different questions
+and diverge only on input nothing produces), the registry-row and thrice-stated-rule notes (both are
+real doc-structure improvements with no code in them), and the two informational ones.
+
+## 2026-08-03: the template fix that never reached the installed base
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=06 | release=v3.2.4 | status=shipped -->
+
+`#567`'s blocking finding was closed by shipping the Enforcement norm index **empty**, because its
+two illustrative rows carried non-empty `Audit home` / `Why` cells and so read as homed norms. That
+fix reaches **new onboards only**: `init_product` and `core.write_template` copy a template only
+into a destination that does not exist. Every already-onboarded repo still carries those rows, still
+reads as having a ratified norm registry, and is still nudged about a Norm Health sweep it owes
+nothing to. This is not new work — it is the honest completion of Chunk 02, and without it that
+chunk's fix is true of the template and false of the fleet.
+
+`prawduct-hook norm-index-scaffold` detects the leftover rows and offers to remove them; doctor
+Health Check #14 relays it. Same shape as Health Check #13 (`learnings-obligation`), which is the
+established pattern for a defect that lives in already-onboarded repos and that a template change
+cannot reach: report a status, offer a repair, never apply it unasked.
+
+**Detection is exact-match against the rows prawduct actually shipped**, never a guess at what a
+placeholder looks like. Sniffing for italics-in-parentheses was considered and rejected when the same
+choice arose in `#567` — it bakes a formatting convention into a governance predicate, and a real
+norm's *why* may legitimately be italic. Exact-match cannot mistake an authored row for a scaffold
+one, and a scaffold row a human has since edited is theirs and is left alone. The two row strings are
+byte-identical across the entire template lineage (checked back through the `plugin/` move), so the
+set is small, closed, and complete — and a test pins the constants against git history, because
+getting one byte wrong would make the detector silently find nothing in every repo forever, which is
+the quietest possible failure and this branch's subject exactly.
+
+- **Verified end-to-end against a real legacy repo, not a fixture.** Materialised a repo from the
+  pre-fix template revision: `_norms_exist` → `True` and the sweep advisory fires; after the repair,
+  `_norms_exist` → `False` and it goes quiet. That is the chunk's whole reason for existing,
+  measured rather than argued.
+- **A test caught the repair silently re-line-ending a product's file.** The first cut read with
+  universal newlines, so a CRLF file came back as `\n`-only and the delete-only guarantee held
+  line-by-line while every line's ending was rewritten. Reading with `newline=""` fixes it; the
+  guard is red-verified by reverting it. This is the same concern Chunk 03's `newline=""` opt-out
+  exists for, arriving in the one place that writes an authored file.
+- **`unreadable` is its own status, degraded-because-ungraded.** A check that could not run is
+  otherwise indistinguishable from one that ran and found nothing — the failure mode the whole scope
+  is named after.
+- **The skill's `allowed-tools` had to list the new command.** A health check whose command the
+  skill may not invoke is a check that reports nothing, which would have reproduced the defect in
+  the surface built to fix it.
+
+Closes #570.
+
+## 2026-08-03: one definition of a norm entry, and the test that refused to be weakened
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=05 | release=v3.2.4 | status=shipped -->
+
+Two issue numbers, one decision surface: what IS a Direction norm entry, mechanically. **#568** —
+`record_lint.direction_norm_count` counted every top-level bullet while `norm_probes` (since Chunk
+02) required a field, so the two disagreed exactly in the roadmap case and the `governed_by`
+under-disposition lint demanded dispositions for items that are not norms. **#569** — the marker
+regex anchored on a bare `Why:`, so a product writing `**Why:**` lost all four norm signals silently.
+Sequencing them apart costs more: converge first and you converge onto a predicate still blind to
+emphasis, then re-touch both call sites.
+
+**A failing test changed the definition, and the design is better for it.** The plan, the owner
+conversation and two docstrings all said "a norm entry is a `Why:`-bearing entry". Then a
+`governed-by-gap` test went red on a fixture whose bullet carried `Status:` and no `Why:`. Editing
+that fixture would have shipped a real defect: **doctor Health Check #10 exists to report "every
+Direction entry carries a Why", and a Why-only definition makes it vacuous** — the whyless entries
+it is meant to flag stop being entries at all. Requiredness is a property the checks assert *about*
+entries, not the test for whether something *is* one. The shared definition is therefore
+**field-bearing** (`Why` / `Status` / `Rulings` / `Retroactivity`), which still excludes the roadmap
+case #567 was about, since a prioritised list of undone work carries no fields.
+
+Two other fixtures *were* edited in the same pass and the distinction is the point: the
+section-boundary tests' bare `- one` bullets were incidental scaffolding, not the contract under
+test, and their assertions are untouched. The line is whether the fixture expresses the test's
+intent or merely carries it.
+
+**Emphasis tolerance is an owner decision (2026-08-03), taken deliberately.** `**Why:**`, `__Why:__`,
+`*Why:*` and `_Why:_` now count, as do the same forms of the other fields. This necessarily moves
+`dead-why` and `stalled-transition`, which share the regex — that is the point, not a side effect.
+`_FIELD_OR_ITEM_RE` had to widen alongside `_WHY_RE`: without it an emphasised marker is not a line
+start, so it soft-wraps onto the bullet above and the `^`-anchored marker can never see it however
+tolerant it is. Widening either alone accomplishes nothing.
+
+- **#569's defect survived #569's fix, one field over.** The first cut widened the `Status:` prefix
+  to accept `_{1,2}` but left the `in-transition` closer accepting only `*`, so `__Status:__
+  in-transition` counted as an entry and was scanned by dead-why while `probe_stalled_transition`
+  could never see it — a stalled norm going unaudited while every other check treated it as live.
+  Prefix and closer are now the same class, pinned across all five emphasis forms of both fields —
+  **through the probes, not their constants.** The first cut asserted `_IN_TRANSITION_RE.search(...)`
+  directly and routed its marker matrix through `_has_direction_entry`, which reads a *different*
+  constant (`_FIELD_MARKER_RE`); `_WHY_RE` and `_STATUS_RE` have exactly one consumer between them —
+  `probe_dead_why` — and no test reached it, so both could have lost emphasis tolerance with the
+  suite green. Testing the constant you are thinking about instead of the one the behaviour routes
+  through is the same defect as a fixture that cannot reach its branch, one level finer.
+- **The marker has one home, not two copies.** Closing "two definitions disagree" with a second
+  *copy* of the regex would have re-created the defect in a slower-acting form — copies agree today
+  and drift on the first edit. `record_lint` imports `_FIELD_MARKER_RE` from `norm_probes` (lazily;
+  that module pulls the advisory-store and backlog readers and this one sits on the record-lint
+  path).
+- **The lib-skew refusal added in Chunk 04's follow-up was unpinned.** It had only an advisory-path
+  test, so dropping the data-plane refusal left the file green — and that is the half which can
+  refuse the very invocation the plan's Verification Strategy prescribes. Now pinned, and
+  mutation-verified alongside the `in-transition` closer.
+- **#332's input, re-derived after the change rather than before it:** 28 norm entries across 7
+  artifacts, `governed-by-gap` 0. Old and new definitions yield **identical** counts on every
+  artifact in this repo, because every Direction entry here already carries a field — so #332's
+  count does not move. Recorded so the next reader does not re-run it to learn nothing changed.
+- **The fourth degenerate fixture this session, caught by mutation.** The shared-definition roadmap
+  corpus had two adjacent bullets then EOF, so no line ever followed a pending bullet and a mutation
+  that counts every bullet returned 0 as well — the test passed against the code it was written to
+  reject. Minimal fixtures are frequently degenerate: they exercise the entry condition and not the
+  branch. A fixture is validated by the mutation failing, never by the test passing.
+
+Closes #568, #569.
+
+## 2026-08-03: the binary that is not the one this repo carries
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=04 | release=v3.2.4 | status=shipped -->
+
+Inside a framework checkout, a bare `prawduct-hook` on `$PATH` resolves to whatever plugin the
+environment installed — the install cache, or, in this clone, **a sibling worktree's checkout on
+`develop`**. The observed consequence is the worst failure mode this system has: `critic-begin` ran
+the foreign binary and wrote **no** kernel-v3 manifest — no error, no manifest — and the
+`SubagentStop` `critic-consolidate` no-opped the same way, leaving reviews unpersisted. A governance
+write that reports nothing while doing nothing is this branch's subject exactly, one layer out from
+`#154`: *which binary am I actually running*.
+
+**The guard keys on binary identity, not version equality, and that is a departure from what `#227`
+prescribed.** The issue asked the binary to compare its self-reported version against the repo's
+expected lineage. That test is blind in the common case and was blind to the live instance: at the
+time of writing, the installed plugin and this worktree both report `3.2.3` while the worktree's
+`lib/` has diverged across an entire branch. A checkout is *routinely* ahead of its own manifest
+between releases, so version comparison would have passed the very skew it was written to catch.
+"Am I the binary this repo carries" is exact and needs no lineage bookkeeping.
+
+Posture follows what the command produces, per `architecture.md` § Direction: an agent-invoked
+governance write refuses (exit 1, naming the binary to run); everything else emits a loud stderr
+note and proceeds. Neither is silent, which is the entire point.
+
+- **Two blocking findings, and the review caught the one that mattered most.** The first cut
+  computed the running root from `_plugin_root()`, which prefers `$CLAUDE_PLUGIN_ROOT` — so it keyed
+  on the *environment*, not the binary, while its own `[DECISION]` block committed to identity. Both
+  directions failed whenever that variable is set: the correct repo-local invocation would refuse
+  with advice to run exactly what you just ran; and a foreign binary invoked with the variable
+  pointed at this repo would compare equal and pass — `#227` itself, wearing the guard as a
+  disguise. Now `Path(__file__).resolve().parent.parent`.
+
+  (This bullet read "whenever that variable is exported — *which it is, into the Bash tool env,
+  whenever the plugin is enabled*" until the PR review. That parenthetical was asserted, never
+  measured, and the guard's own docstring records the opposite from an actual measurement: the var
+  is set in the *hook* process, whether it reaches an agent's Bash env varies, and it was measured
+  **unset** in the session that built the guard. Measured unset again at the PR boundary. The
+  finding it justifies is unaffected — keying on the environment instead of the binary is wrong at
+  any frequency — but the change-log outlives the build plan, so an unsupported claim here is the
+  one that persists. On the branch whose subject is a record asserting health it never measured.)
+- **The second would have broken every framework checkout on the day it shipped.**
+  `hooks/hooks.json` invokes `${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook` for SessionStart, Stop,
+  SubagentStop and UserPromptSubmit — the install cache, which inside a framework checkout is
+  foreign **by design**; that is the governance model, not a mistake. `clear` and `subagent-stop`
+  were in the refusing set, so the guard would have returned 1 from every SessionStart in every such
+  repo: no briefing, no session reset, no marker sweep. It is also unactionable — a hook cannot be
+  told to invoke a repo-local binary. Harness entry points now take the note and never refuse.
+- **The classification was inverted and is now made on the right axis.** `stop` performs a
+  review-fact write through its abandoned-review self-heal yet was advisory, while `subagent-stop` —
+  whose own comment reads "always advisory, never propagate consolidate's exit code as a block" —
+  refused. The axis is **who invokes it** first (a refusal a hook cannot act on is not a safety
+  device), and only then what it writes. `ledger-append`, a documented sole-writer of the ledger,
+  joins the refusing set.
+- **The tests pinned the wrong thing and were rebuilt.** The first matrix always ran *this*
+  worktree's binary and varied only `$CLAUDE_PLUGIN_ROOT` — it pinned the env-var implementation
+  that was the blocking defect, so fixing the defect turned one of its own tests red. Tests now
+  materialise a real hook under a foreign plugin root and run *that*, deciding "foreign" the same
+  way the guard decides it: by where the file lives. Two tests were added for the inversion
+  specifically — the env var can neither vouch for a foreign binary nor condemn the repo-local one.
+- **Which mutation owns which test.** The over-fire assertions check marker *absence*, and an
+  absence assertion cannot tell "correctly quiet" from "no guard exists". They are pinned by
+  mutations that make the guard wrongly fire: dropping the product-repo exemption turns both
+  product-repo tests red; letting harness hooks refuse turns all three hook tests red; reverting to
+  the env-var root turns the two identity tests red.
+- **The fix cannot reach backwards.** A guard shipped inside the binary cannot protect an invocation
+  of a binary that predates it, so the incident binary keeps no-opping until a release carries this
+  into the install. The value lands at the next release, not at merge.
+
+Closes #227.
+
+## 2026-08-03: the cumulative round — a survey that ran short, and three cascades that stopped early
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=03 | release=v3.2.4 | status=shipped -->
+
+Cumulative review of the bundle: **0 blocking, 7 warnings, 14 notes across 3 reviewers.** Nothing
+gated. Ten fixed, one filed, ten accepted — dispositioned in one pass, as facts.
+
+**The one that changed shipped behaviour: the `atomic_write_text` survey enumerated 7 of 11 call
+sites.** Two reviewers found it independently. The missing four are all in
+`plugin/bin/prawduct-hook`, which is **extensionless**, so the `grep --include='*.py'` that produced
+the "seven callers" claim could not see them. This repo already carries the rule — *enumerate the
+sites by grep, never by memory, and the grep is itself a site: it is a PREFIX of the real set* — and
+the extension filter is exactly that prefix.
+
+The claim built on that survey was also false: the entry asserted utf-8 "matches every reader — they
+all open `encoding='utf-8'`", and they did not. `operator_verification` wrote through the shared
+writer and read back with a bare `read_text()`. That pair was **self-inverse while both used the
+locale encoding** and became asymmetric the moment the default changed — so on a non-UTF-8 locale a
+status mutation would transcode a committed product file. Fixed at the reader (`_load_queue` and the
+`operator_verification_required` state read now decode utf-8), and the docstring now says what is
+actually true: the writer alone does not settle a round trip, and each reader must ask for utf-8 too.
+
+**Three cascades had stopped one file short**, all the same class as the `doctor/SKILL.md` edit that
+shipped with Chunk 02:
+
+- `docs/norms.md` still described the pre-fix triggers — and at `:370` told an owner that adding a
+  `## Direction` heading clears the advisory, which is precisely the roadmap-heading behaviour
+  Chunk 02 removed.
+- `skills/critic/review-cycle.md` recorded the old anchoring rule: it documents tree-inequality as
+  the discriminator without the mirror reading Chunk 01 added, so the protocol doc and the code
+  disagreed about when the head anchor moves.
+- The `[DECISION]` leaving the wrongly-anchored resolution facts in the ledger named those fact ids
+  **only in the build plan**, which is deleted at release — so the one durable record of which facts
+  are mis-anchored would have vanished with it. Now named in Chunk 01's entry.
+
+**A second markdown-table parser where the plan said to reuse the first.** `_has_enforcement_norm_rows`
+re-derived the norm-index location that `_norm_index_lacks_columns` owns, and with *different*
+acceptance rules — the first `Preference`-headed table versus the first one carrying the norm
+columns. A preferences file with two such tables therefore got contradictory nudges out of a single
+read: "your index lacks the norm columns" and "norms are homed in your index", simultaneously. Both
+now go through one `_norm_index_header` locator, pinned by a two-table test.
+
+- **The template prose was written about the template.** `project-preferences.md` is copied verbatim
+  into every product, so "the table ships empty" is a note about the framework's own file that lands
+  in a file where it is not true. Reworded as an instruction to the product author: every populated
+  row *is* a homed norm, so never leave an example row in it.
+- **Filed rather than absorbed: `#570`.** The emptied template reaches **new onboards only** —
+  `init_product` and `core.write_template` skip existing destinations, so every already-onboarded
+  repo keeps the scaffold rows and reproduces Chunk 02's blocking finding across the installed base.
+  That needs a doctor detect-and-repair, which is a chunk's worth of work and cannot be absorbed into
+  a closing burndown.
+- **That owner decision was subsequently ANSWERED — 2026-08-03, accept.** When this entry was
+  written the acceptance was outstanding; the owner was then asked directly and chose *"accept — it's
+  the defect being fixed"*, over gating the amplification behind `#570` or vetoing the widening.
+  Recorded here as well as in the plan deliberately: the plan is deleted at release, and an owner
+  ruling that survives only in a deleted file is a decision nobody can later show was taken. The
+  residual risk it carried — already-onboarded repos seeing the advisory *spuriously* — is what
+  `#570` makes **closable**, in Chunk 06 of this same plan. Not closed: the repair is offered, never
+  applied unasked, so a legacy repo keeps seeing it until an owner runs doctor Health Check #14.
+  (Corrected here as well as in the plan, since this bullet exists precisely because the plan is
+  deleted at release — leaving the overstatement in the durable copy would have been the same defect
+  the bullet is about.)
+- **The reader fix is pinned two ways, and the pin is the durable part.** A locale-forced
+  `_write_queue` → `_load_queue` round trip carrying an em-dash, plus a receiver-qualified source pin
+  asserting both `read_text(encoding="utf-8")` call sites. The behavioural test cannot see a reader
+  that is never reached on a UTF-8 host; the source pin can, which is what makes a reverted guard
+  fail somewhere rather than nowhere. Both go red when the guard is reverted.
+- **A lint and a policy disagree, and the entry was not degraded to satisfy the lint.** Record-lint
+  scored two `learnings-entry-shape` notes for entries carrying their evidence inline;
+  `learnings.md`'s own header mandates exactly that ("entries carry their instances inline… rules are
+  collapsed by merging statements and unioning instances, never by dropping them"), on the ground
+  that a general statement is what makes a rule storable *and* inert. Accepted with the conflict
+  named rather than trimmed away.
+
+## 2026-08-03: two runtime assumptions that were invisible where they were written
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=03 | release=v3.2.4 | status=shipped -->
+
+Two independent one-site fixes, batched because they are the same class: a runtime assumption that
+holds on the machine it was written on and fails elsewhere, silently.
+
+**`core.atomic_write_text` wrote at the locale encoding while every reader opens utf-8.** The
+`encoding` parameter defaulted to `None` — `locale.getpreferredencoding(False)` — so on any
+non-UTF-8 locale the round trip was lossy, and non-ASCII content raised `UnicodeEncodeError` at the
+write. It stayed latent because the early callers write JSON at `ensure_ascii=True`, which is ASCII
+either way. `briefing.py`'s `.session-handoff.md` write is not one of those, and that file routinely
+carries em-dashes. The default is now `utf-8`. `newline` deliberately stays `None`: line-ending
+translation is a separate concern with one real opt-out (`learnings_obligation.repair`, writing into
+a product's authored file), and flipping both at once would bundle an unrequested change.
+
+Verified across all seven call sites before changing the signature, not after: five write ASCII JSON,
+one already passes `encoding="utf-8"` explicitly, and none passes `encoding=None`, so narrowing the
+type from `str | None` to `str` breaks no caller.
+
+**`audit_learnings_cmd.run_sentinel` spawned a bare `python3`.** Under any virtualenv that is a
+different interpreter from the one running the audit — usually one without pytest, or without the
+product importable — so every sentinel reported failing. The consequence is worse than a noisy
+diagnostic: the audit decides which learnings are *structurally enforced*, so a false-failing
+sentinel argues for retiring a rule that is in fact still enforced. Now `sys.executable`, matching
+the convention already applied elsewhere under `plugin/`; list-form args preserved, no shell.
+
+- **The encoding test had to force the locale, because the defect is invisible on a UTF-8 machine.**
+  An in-process assertion would have passed identically against the broken code — the exact
+  "fixture that cannot reach the guard" failure this branch already paid for once. The test spawns a
+  subprocess under `LC_ALL=C PYTHONUTF8=0 PYTHONCOERCECLOCALE=0`, an environment first *confirmed* to
+  reproduce (`getpreferredencoding` → `US-ASCII`, bare write → `UnicodeEncodeError`) rather than
+  assumed to. Red-verified: it fails on the old default with the real traceback.
+- **The suite already runs under a venv**, which is `#154`'s exact scenario — the sentinel defect was
+  live in this very repo's own test environment.
+
+Closes #562, #154.
+
+## 2026-08-03: a Direction heading is not a norm registry, and its absence is not health
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=02 | release=v3.2.4 | status=shipped -->
+
+Two defects in `norm_probes.py`, pulling in opposite directions, both rooted in treating a
+`## Direction` **heading** as proof that a norm registry exists. Field-reported from an onboarding of
+an unrelated product; the reporting session walked into both in sequence, the second *while fixing
+the first*.
+
+**A heading with nothing under it certified as a ratified registry.** `_has_direction_heading`
+matched heading text alone, so `probe_norm_registry_unratified`'s first arm was satisfied by the
+heading's mere presence. The reporting repo's only `## Direction` section was a prioritized list of
+undone work — a roadmap, zero norm entries — and it satisfied the arm completely, which would have
+left doctor check #10 reporting findings against that roadmap indefinitely. This is the same shape as
+an unfilled template counting as a present artifact: **a section empty of the thing being checked
+does not fail the check, it passes it**, because presence is what was measured. The arm now keys on a
+`Why:`-bearing entry — `docs/norms.md` § Anatomy makes Why *required*, while Status is optional and a
+bold Statement is not mechanically distinguishable from any bold bullet.
+
+**The absence of a heading silenced the time-domain audit permanently.** `_any_direction` gated
+`probe_norm_health_sweep_overdue` and never re-opened. A product that homes its norms entirely in the
+preferences Enforcement table — a legitimate homing under `docs/norms.md` § Where Norms Live, where
+that table *is* the norm index — got no norm-health reminder at all, ever, with no signal that it was
+missing. The guard now asks whether norms exist under **either** homing. This is the learnings rule
+`advice fails soft is not advice fails silent` arriving in a new organ: a probe returning `[]`
+because its guard short-circuited is not degrading to a note, it is manufacturing the false success
+it exists to prevent. The field session's own "all probes return `[]`" check would have reported that
+short-circuit as health — in the same commit that created the norm those probes exist to audit.
+
+**Scoped deliberately to one guard.** The first draft of the plan also promised to "close
+`probe_dead_why` and `probe_stalled_transition` on the same predicate." That is incoherent — a
+predicate answers *whether* norms exist; those two are starved for *lines to scan*, which no
+predicate supplies. The issue's own Scope section settles it: the janitor sweep already covers table
+rows, so the coverage exists and only the *reminder* was gated. Corrected in the plan before building
+rather than discovered after.
+
+- **The Critic caught this over-firing on every new product.** `plugin/templates/project-preferences.md`
+  shipped the norm-index table with two *illustrative* rows whose `Audit home`/`Why` cells were
+  non-empty placeholders (`janitor` / `*(the constraint's rationale)*`), and `init_product` copies
+  that file verbatim. So the widened guard read a brand-new repo as having a norm registry and fired
+  `norm-health-sweep-overdue` on its first session sync — inverting this chunk's own acceptance
+  criterion. **Both of my over-fire fixtures were hand-written and neither resembled the shipped
+  file, so the suite stayed green.** The template now ships the table **empty**, with the two row
+  shapes described in prose, and a test reads the real template through `core.TEMPLATES_DIR` so
+  template and predicate cannot drift apart again. Fixing this in the template rather than by
+  teaching the predicate to sniff "placeholder-shaped" text was deliberate: that would bake a
+  formatting convention into a governance predicate, and a real norm's why may legitimately be
+  italic.
+- **The advisory's `evidence` string is an identity key and was left verbatim.**
+  `advisory_store.compute_id` hashes the evidence list, so editing the wording mints a new advisory
+  id and resurrects the advisory in every repo that had dismissed it — and a widened trigger does not
+  revoke a dismissal. It now under-describes its own trigger, and `/prawduct:advisory show` renders
+  it verbatim, so a table-homed repo is pointed at `## Direction` sections it lacks. Accepted: the
+  id-free `trigger_summary` already reads "while norms exist", which is homing-agnostic and correct,
+  so the stale text is in the secondary line rather than the headline. Correcting it means bumping
+  `PROBE_VERSION`, which is module-level and shared by all five norm probes — superseding four
+  unrelated advisories to fix one line of prose.
+- **`Why:` at line start is now the global discriminator for "a registry exists"**, not just
+  per-entry decay detection, so a product writing `**Why:**` would lose the ratification signal and
+  the sweep reminder as well. Behaviour is unchanged and consistent with `dead-why` and
+  `stalled-transition`, which share the regex; a near-miss test now pins the boundary so a deliberate
+  widening turns it red rather than passing unnoticed. **Filed as `#569`.**
+- **Two definitions of "a norm entry" now coexist.** `record_lint.direction_norm_count` counts every
+  top-level bullet in a Direction section while the probes count `Why:`-bearing lines, so they
+  disagree exactly in the roadmap case this entry is about. Out of scope here because it moves a
+  different gate's behaviour. **Filed as `#568`.** Both ids are named here rather than only in the
+  build plan, which the release deletes.
+- **The cascade into `doctor/SKILL.md` was required, not scope creep.** Its step 5 said a dateless
+  "no norms to ratify" outcome is fine because "with no `## Direction` sections there is no sweep to
+  seed" — a rationale this change falsifies. Doctor check #10 already recognised both homings, so the
+  widening brings the probe into agreement with the skill rather than diverging from it.
+
+Closes #567.
+
+## 2026-08-03: the review interval that ran backwards whenever the prior review saw a dirty tree
+
+<!-- prawduct: type=fix | scope=silent-gates | chunks=01 | release=v3.2.4 | status=shipped -->
+
+`verify-resolutions` decided whether a commit had landed since the prior review with a single test:
+does the committed tree differ from the tree that review saw? That question has **two** answers that
+look identical and mean opposite things. A commit landed afterwards, so the anchor is *behind* — the
+case the branch was written for. Or the prior review vouched for a **dirty** tree and nothing has
+been committed since, so the anchor is *ahead*. The second is not an edge case: it is the ordinary
+shape of a `chunk`-mode review, whose fact records `head_commit: null` and a `head_tree` matching no
+commit. **Measured 2026-08-03: 136 of 402 review facts in this clone's store — roughly a third — are
+that shape.** Stated as a dated snapshot because the count moves with every review: it was 135/401
+when the chunk review measured it and 136/402 four minutes later, the difference being that review's
+own fact, which is itself dirty-shaped. The proportion is the durable claim; the live answer is a
+`kind == "review"` query over `<git-common-dir>/prawduct/evidence.jsonl`. That same query says
+**zero** facts lack `dispatch_commit`, so the guard below engages on every fact in the store rather
+than degrading to the old behaviour on some of them.
+
+Read as a committed delta, the edge inverts — base becomes the dirty snapshot that is ahead, head the
+committed tree that is behind. Three consequences, ascending: `files_changed` describes the chunk
+being *deleted* rather than its content; `record_lint` grades pre-fix committed content and reports
+findings already discharged on disk; and — the load-bearing one — **the resolution facts are
+persisted against a tree in which none of the fixes exist.** A resolution lifts a BLOCKING finding,
+so this was unsound, not merely noisy. Observed on `fix/drift-burndown` 2026-08-02: a manifest
+interval of `base 927fe38 -> head 505a04a5`, diffing to −198 lines, while stderr asserted that a
+committed delta existed.
+
+The discriminator was already in the prior fact and simply not read: a fact carrying no `head_commit`
+vouched for a working tree, and if HEAD still stands where that review dispatched, nothing has been
+committed since. The fix is that conjunction. It changes behaviour **only** when the working tree is
+dirty — on a clean tree both branches compute the same `head_tree` and `head_commit` — so it repairs
+the inversion without perturbing the clean-tree path, and no fact-schema field is added, removed or
+retyped.
+
+- **The field is spelled differently in the two places it lives.** The issue prescribed comparing
+  against the prior fact's `commit_reviewed`; the *fact* body spells that value `dispatch_commit`
+  (`manifest` uses `commit_reviewed`). Following the prescription literally would have read `None`
+  off every fact, made the conjunct vacuously false, and left the defect in place while looking
+  fixed. Read the schema, not the prose about it.
+- **The Critic caught the guard closing this finding being itself untested.** `anchor_is_ahead` has
+  two conjuncts; deleting the second left the entire suite green, because every existing dirty-prior
+  fixture either never moves HEAD or commits the reviewed tree *verbatim* — so both sides of the
+  conjunct agreed in every covered case. The absent cell was **dirty prior × content-changing landed
+  commit**, which is exactly what the conjunct exists for: without it that case anchors at the
+  working tree, and a stray judgeable uncommitted file then leaves the PR gate `uncovered` — CRT-7H2W
+  re-opened one prior-fact-shape over, where the clean-prior test guarding it cannot see. Pinned by
+  `test_dirty_prior_with_a_landed_commit_still_anchors_committed_head`, red-verified by removing the
+  conjunct and confirming that test and **no other** goes red.
+- **The mirror case is preserved deliberately.** The existing vouching-commit test — a commit that
+  changes no content is not a change of intent — still passes through tree equality, which
+  short-circuits before the new conjunction is reached.
+- **The wrongly-anchored facts already in the ledger stay there.** Facts are immutable and
+  append-only; rewriting history to make the ledger look correct would break the property that makes
+  it evidence. The affected review is `rev-20260802T191628Z-ddd15904` (drift-burndown Chunk 02) and
+  its four resolution facts — named here rather than only in the build plan, which is deleted at
+  release, so the one durable record of which facts are mis-anchored does not vanish with it. That
+  review has since been superseded by a clean cumulative and a 0/0/0 verify on the same branch.
+
+Closes #554.
+
 ## 2026-08-02: two doctor surfaces that answered confidently for a state the repo was not in
 
 <!-- prawduct: type=fix | scope=drift-burndown | chunks=04 | release=v3.2.3 | status=shipped -->

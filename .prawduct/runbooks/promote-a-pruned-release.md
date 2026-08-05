@@ -261,12 +261,54 @@ amended 2026-07-29). Step 10 is that test.
 
     **Expected:** no output. `git worktree list` no longer shows it.
 
+15. Extract the notes — **and edit them before publishing**:
+
+    ```
+    awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+    ```
+
+    **Expected:** a file whose first line is the release headline.
+
+    > *Why the whole section and not just the headline: `plugin/CHANGELOG.md` ships inside the
+    > plugin, so the Releases page is its only public copy. A pushed tag lands on `/tags` and
+    > nowhere else.*
+
+    > ⚠️ **This is a pruned release. Open `/tmp/notes-vX.Y.Z.md` and delete every paragraph
+    > describing withheld work.** The CHANGELOG section was written against the whole cut;
+    > publishing it verbatim announces a feature that is not in the tree.
+
+16. Publish, using the file you just edited:
+
+    ```
+    gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
+    ```
+
+    **Expected:** one line — the release URL, ending `/releases/tag/vX.Y.Z`.
+
 ---
 
 ## Done when
 
 - `git show origin/main:plugin/VERSION` prints the new number.
 - `git ls-remote --tags origin` shows a line ending `refs/tags/vX.Y.Z`.
+- `./plugin/bin/prawduct-hook check-released vX.Y.Z` exits 0. **Exit 3 is not a pass** — a check
+  could not run. (Repo-local on purpose: the *installed* plugin is the previous release, which
+  does not carry this subcommand.)
+- The `verify-release` workflow run for the tag is green
+  (`gh run list --workflow verify-release.yml --limit 1`) — the same check, run with a token, on
+  the release nobody verified by hand. It publishes nothing: the pruned-release hazard below is a
+  human-read warning precisely because no automation touches the Release text. **First run only:**
+  until this workflow has passed once against a real tag, read a red run as *either* an incomplete
+  release *or* a defect in the workflow, and confirm against the repo-local `check-released` above.
+  Deleting this caveat is an acceptance criterion of **#581**.
+- Your own install holds the released tree — these two print the **same** 40-character sha:
+
+  ```
+  echo "released:  $(git rev-parse vX.Y.Z^{commit})"
+  echo "installed: $(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")"
+  ```
+
+  *(Differing shas: see the same bullet in `cut-and-publish-a-plugin-release.md` §"If this doesn't work".)*
 - `git diff --stat origin/main origin/develop` is **non-empty**, and what it lists is the withheld
   work plus step 3's collateral, nothing else. *Unlike a whole-develop promotion, an empty diff here
   means the withheld work shipped.*

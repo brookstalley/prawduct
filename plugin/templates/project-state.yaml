@@ -278,6 +278,51 @@ build_state:
 #   - src/api/contract.py
 
 # =============================================================================
+# RELEASE VERSION FILES (opt-in)
+# =============================================================================
+# Which of YOUR files carry the release version, read by
+# `prawduct-hook check-released`. One consumer, three questions: which paths,
+# how is each read, and which key holds the value.
+#
+# **Declaring is what lets a mismatch FAIL your release.** Leave it unset and
+# check-released falls back to guessing prawduct's own layout
+# (`plugin/VERSION`, `plugin/.claude-plugin/plugin.json`, `pyproject.toml`) —
+# and because that is a guess about a product that never claimed it, the guess
+# may only report `ok` or `unverifiable`, never `not-released`. That is
+# deliberate: a setuptools-scm project, or one whose `pyproject.toml` is
+# tooling-only, must not be told its release is broken against a layout it
+# never chose. Declare your files and prawduct will hold you to them.
+#
+# **Read from the TAG's tree, not your checkout** — which files carried a
+# release's version is a fact about that release. So a release cut before you
+# added this key keeps grading through the fallback, and reorganising your
+# layout later cannot retroactively fail an old release.
+#
+# `format` names a structural shape, not a language:
+#   bare  — the whole file is the version string (no `key`)
+#   json  — decoded, then `key` descended
+#   toml  — decoded via stdlib `tomllib`, then `key` descended
+# `key` is a dotted path descended literally, which is what keeps the read
+# dumb: you say `project.version` and nothing has to decide which table of a
+# manifest wins. A key name containing a literal dot is not expressible — point
+# at a `bare` or `json` file instead.
+#
+# `toml` needs Python 3.11+ (`tomllib`); on 3.10 such an entry reports
+# `unverifiable` rather than failing, since an interpreter's stdlib is not
+# evidence about your release. Block style only. An empty list is a deliberate
+# "this product ships no version file" and reports that nothing was checked.
+#
+# release_version_files:
+#   - path: VERSION
+#     format: bare
+#   - path: package.json
+#     format: json
+#     key: version
+#   - path: Cargo.toml
+#     format: toml
+#     key: package.version
+
+# =============================================================================
 # DERIVED VIEWS (enabled by default, v1.4+)
 # =============================================================================
 # When true (default), three derived views are regenerated from change-log.md

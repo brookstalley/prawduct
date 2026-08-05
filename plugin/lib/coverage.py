@@ -164,6 +164,209 @@ def diagnose_stale_remote_base(project_dir: Path, base_ref: str) -> dict | None:
     }
 
 
+def diagnose_fix_churn(
+    project_dir: Path,
+    facts: "list[dict]",
+    head_tree: str,
+    base_tree: str,
+    merge_base: str,
+    diff_fn,
+    key_fn,
+) -> "dict | None":
+    """Detect the gap a builder dug for themselves: **the whole uncovered span**
+    is a review of this branch, plus edits confined to files that review's own
+    findings named, and that review left nothing blocking.
+
+    This is the ``uncovered`` case that should not have existed. The gate's
+    generic remedy names only full reviews, so a builder staring at it runs
+    one — and that round reviews the prose the last fix wrote, finds something
+    true about it, and buys the next round. Measured on a released version,
+    one consumer branch reached ten rounds this way; across two evidence
+    stores in the same window, most reviews were zero-blocking re-reviews.
+    Naming the condition is what lets the message offer ``disposition``
+    instead of a fourth reviewer.
+
+    The discriminator is deliberately **what moved the tree**, never a round
+    counter — CRT-3W6P's own counter-example is a round that looked like waste
+    and was not, because a merge had brought thousands of unreviewed lines into
+    functions the branch already touched.
+
+    **Both ends of the span have to be proved, not just the last leg.** The
+    message this feeds characterizes the whole gap, so proving only
+    anchor→HEAD would let two shapes through, and both are false positives in
+    the direction that sends unreviewed work to merge:
+
+    * *The anchor predates the branch.* ``merge-base --is-ancestor`` alone is
+      satisfied by every fact on the base branch, and the store is shared
+      across worktrees. A branch with no review of its own would anchor on the
+      last review of ``develop`` — and since reviews in one repo name the same
+      hot files over and over, a whole unreviewed branch could land inside the
+      subset test. So the anchor must also be a **descendant of the
+      merge-base**: a review at or before the merge-base by definition never
+      saw this branch. This is also what keeps the merge case honest — after
+      merging the base in, a base-side fact can become *nearer* by commit
+      distance than the branch's own review, which would switch the anchor and
+      drop the merged-in lines out of the delta.
+    * *The gap is upstream of the anchor.* ``uncovered`` means composition
+      failed somewhere in base→HEAD, and it need not have failed on the last
+      leg — an earlier dirty-tree review or selective commit leaves a hole
+      below an anchor whose own delta is pure churn. Then "one verify pass
+      closes this" is false and the builder is back in the loop. So coverage
+      must **compose from the base tree up to the anchor's tree**; only the
+      anchor→HEAD leg may be the churn.
+
+    **The bound this does NOT prove, stated beside the two it does.** The
+    subset test is ``set(judgeable delta) <= {files the anchor's findings
+    named}`` — *file* granularity. It rules out work in a file that review
+    never looked at; it cannot tell a fix from substantial new work written
+    into a file some finding merely named. The consequence is asymmetric and
+    lands downstream: the remedy this feeds is ``verify-resolutions``, which
+    since CRT-3W6P rates new findings BLOCKING-only, so a false positive here
+    routes genuinely unreviewed content to the narrowest review in the
+    framework. That is bounded rather than open — the carve-out keeps
+    weakened tests, dropped requirements, untested changed behavior, security
+    and fix-by-fudging blocking in that mode — but it is a real bound, and the
+    caller's message must not assert content-level certainty on file-level
+    evidence. Closing it properly needs a content discriminator (hunk overlap
+    against the findings' own line ranges), which the findings record does not
+    carry today.
+
+    Returns ``None`` when the condition does not hold, and a dict otherwise::
+
+        {"status": "churn", "fact_id", "delta_files", "named_files",
+         "warning", "note"}
+      | {"status": "unavailable", "reason": str}
+
+    The two negatives are **not** the same answer, and collapsing them is the
+    shape ``learnings.md`` names: *"'Advice fails soft' is not 'advice fails
+    silent' — a degraded advisory path must still name its consequence, or it
+    manufactures the false success it was meant to prevent."* ``None`` means
+    the diagnosis ran and this is not churn; ``unavailable`` means it could not
+    run, which the caller says out loud so a control that never fires can be
+    told apart from one that never ran. Never raises — *given* its arguments:
+    ``diff_fn`` and ``key_fn`` are required, deliberately, so that omitting one
+    is a ``TypeError`` at the call site rather than the silent slow path this
+    diagnosis cannot afford (see the comment at the ``coverage_verdict`` call).
+    """
+    from . import coverage_algebra, evidence  # noqa: PLC0415 -- lazy: matches diagnose_stale_remote_base's import posture; avoids an import cycle at module load
+
+    if not head_tree or not base_tree or not merge_base or not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "missing span endpoints"}
+
+    resolved = coverage_algebra.resolution_index(facts)
+    candidates = []
+    degraded: "str | None" = None
+    for fact in facts:
+        if fact.get("kind") != "review":
+            continue
+        body = fact.get("body") or {}
+        fact_head_tree = body.get("head_tree")
+        head_commit = body.get("head_commit")
+        # A dirty-tree review records `head_commit: null` — it vouches for a
+        # tree no commit materialized, so "is it behind HEAD?" has no answer
+        # and the lineage filters below cannot run. Skip rather than guess;
+        # this is a genuine non-candidate, not a degradation.
+        if not fact_head_tree or not head_commit or fact_head_tree == head_tree:
+            continue
+        anc_rc, _, anc_err = evidence.run_git(
+            project_dir, "merge-base", "--is-ancestor", head_commit, "HEAD"
+        )
+        if anc_rc not in (0, 1):
+            # rc 1 is a clean "not an ancestor" — another branch's fact, and
+            # the filter that keeps a sibling worktree's review from anchoring
+            # a diagnosis about this one. Anything else is git failing, which
+            # is a different fact about the world and must not read as "no".
+            degraded = degraded or f"ancestry check failed ({anc_err.strip()[:80]})"
+            continue
+        if anc_rc == 1:
+            continue
+        # ...and strictly AFTER the merge-base, or it never saw this branch.
+        mb_rc, _, mb_err = evidence.run_git(
+            project_dir, "merge-base", "--is-ancestor", merge_base, head_commit
+        )
+        if mb_rc not in (0, 1):
+            degraded = degraded or f"merge-base check failed ({mb_err.strip()[:80]})"
+            continue
+        if mb_rc == 1 or head_commit.startswith(merge_base) or merge_base.startswith(head_commit):
+            continue
+        rc, distance, err = evidence.run_git(
+            project_dir, "rev-list", "--count", f"{head_commit}..HEAD"
+        )
+        if rc != 0 or not distance.isdigit():
+            degraded = degraded or f"distance to HEAD unresolvable ({err.strip()[:80]})"
+            continue
+        candidates.append((int(distance), fact.get("ts") or "", fact))
+
+    if not candidates:
+        return {"status": "unavailable", "reason": degraded} if degraded else None
+    # "Nearest" means nearest to HEAD *on the lineage*, not latest by clock.
+    # The store is shared across every worktree of a clone, so wall-clock order
+    # is not this branch's order — a sibling worktree's review can carry a
+    # later timestamp than the one that vouches for the commit below HEAD.
+    # Timestamp breaks ties only when two facts sit at the same distance.
+    nearest = min(c[0] for c in candidates)
+    newest = max((c for c in candidates if c[0] == nearest), key=lambda c: c[1])[2]
+
+    # A round that IS required stays required: an unresolved blocker means the
+    # builder owes a verify pass regardless of what moved the tree.
+    if coverage_algebra.unresolved_blocking(newest, resolved):
+        return None
+
+    body = newest.get("body") or {}
+    anchor_tree = body["head_tree"]
+
+    # Everything below the anchor must already compose, or the gap is not the
+    # last leg and the remedy this feeds would not close it.
+    #
+    # `diff_fn`/`key_fn` are threaded in and REQUIRED rather than defaulted:
+    # without a `key_fn`, `_find_path` takes the pairwise free-edge branch,
+    # which `_tree_key_fn`'s own docstring measures on this repo's store at
+    # ~5.6k `git diff` subprocesses — twice per verdict, with no memo between
+    # the passes. This runs on the interactive `/prawduct:pr create` path,
+    # inside a diagnosis the gate message calls "the cheap check", so it has to
+    # use the n-key form every other gate uses. A caller that forgets one is a
+    # `TypeError` at the call site, which is the failure a maintainer can see —
+    # the defaults made it a silent ~5-minute hang instead.
+    upstream = coverage_algebra.coverage_verdict(
+        facts, base_tree, anchor_tree, diff_fn, key_fn
+    )
+    # Known gap, accepted: a `diff_fn` that fails renders here as "nothing
+    # composes", the same shape the status split above exists to separate.
+    # Distinguishing them needs the failure surfaced through `coverage_verdict`
+    # itself, which every gate shares — a wider change than this diagnosis, and
+    # the failure direction is the safe one (silence, not a false claim).
+    if upstream.get("status") != "covered":
+        return None
+
+    delta = evidence.tree_diff(project_dir, anchor_tree, head_tree)
+    if delta is None:
+        return {"status": "unavailable", "reason": "anchor→HEAD diff unresolvable"}
+    judgeable = coverage_algebra.judgeable_files(delta)
+    if not judgeable:
+        # Nothing judgeable moved — this composes as a free edge and is not the
+        # uncovered case at all. Whatever brought the caller here, it is not
+        # this.
+        return None
+
+    named: set[str] = set()
+    for finding in body.get("findings") or []:
+        for path in finding.get("files") or []:
+            if isinstance(path, str) and path:
+                named.add(path)
+    if not named or not set(judgeable) <= named:
+        return None
+
+    counts = body.get("counts") or {}
+    return {
+        "status": "churn",
+        "fact_id": newest.get("id"),
+        "delta_files": sorted(judgeable),
+        "named_files": sorted(named),
+        "warning": counts.get("warning", 0),
+        "note": counts.get("note", 0),
+    }
+
+
 def resolve_merge_base_tree(project_dir: Path) -> dict:
     """Resolve base branch → merge-base commit → that commit's tree SHA —
     the shared prelude of every gate/dispatch that anchors an interval at

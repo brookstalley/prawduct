@@ -78,7 +78,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
-  `check-releasability [--release vX.Y.Z]`, `resolve-base`,
+  `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
+  `resolve-base`,
   `regen-views` (mutating), `stamp-merged` (deprecated, mutating).
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating).
@@ -86,7 +87,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
   `jurisdiction`.
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
-  `learnings-obligation`, `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
+  `learnings-obligation`, `norm-index-scaffold`, `repo-disable`, `bug-inbox` (all
+  dry-run-by-default where they mutate).
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
@@ -97,7 +99,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
-`repo-disable`, `audit-learnings`, `learnings-obligation`) default to a **dry run** and require
+`repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`) default to a
+**dry run** and require
 `--apply` to write.
 
 ## Inputs & Outputs
@@ -119,6 +122,10 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
     `discovery_expected` or `structural_recorded` = the staging check **could not run**, and in that
     state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
     consumer must not read it as a clean layer 1.
+  - `norm-index-scaffold --json` → consumed by `/prawduct:doctor` Health Check #14 (`status` —
+    one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable`; plus `rows`, `path`, `detail`, `applied`,
+    `removed`). Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
+    write or idempotent no-op and 1 on refusal.
   - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
     `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
     `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).
@@ -126,6 +133,14 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
     the key set is documented, and named as unconsumed on purpose: every sibling in this list binds
     a real reader that keeps its keys honest, and asserting a binding that does not exist is how a
     maintainer sizes a key change against a consumer that would never have noticed.
+  - `check-released --json` → **no skill consumer today** (`release`, `verdict` — one of
+    `released` / `not-released` / `unverified` — and `checks[]`, each `{check, state, detail}` with
+    `state` in `ok` / `failed` / `unverifiable`). The **human** form is what
+    `.github/workflows/verify-release.yml` and both release runbooks read, and what carries the
+    verdict; CI consumes the **exit code** (0/1/3), not this payload. Named as unconsumed on
+    purpose, per the rule this list already applies to `learnings-obligation`: asserting a binding
+    that does not exist is how a maintainer sizes a key change against a reader that would never
+    have noticed.
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
     `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
@@ -152,6 +167,22 @@ raised as stack traces across the boundary.** The intended scheme:
 | **CLI advisory report** (`verify-records`) | ran — findings, if any, are on stdout | **could not run** (unresolvable interval, unreadable state) | usage error |
 | **State-mutating writer** (e.g. `disposition`) | written, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
+
+`check-released --json` emits `{release, verdict, checks[]{check, state, detail}}`, where
+`verdict` is one of `released` | `not-released` | `unverified` and each `state` is
+`ok` | `failed` | `unverifiable`. Registered here because the `--json` emitters are enumerated in
+this section, and a payload documented only by its exit code is a shape a caller has to reverse-engineer.
+
+**One gate carries a third outcome, added 2026-08-04.** `check-released` exits **3** for
+*unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a
+shallow checkout, or a declared `toml` version file on a pre-3.11 interpreter (no `tomllib`).
+It is a distinct code rather than folded into 0 or 1 because both foldings are
+wrong in the environment the command exists for. Folded into 1 it reports a broken release on a
+fresh clone; folded into 0 it reports success on a tag-push CI job, which has no `origin/main` by
+default and may have no token — precisely the case where an unpublished Release must turn the
+build red. Its `--json` `verdict` therefore has three values: `released`, `not-released`,
+`unverified`. `--allow-unverifiable` collapses 3 to 0 for an operator who wants the local subset.
+CI binds to the exit code, so any non-zero is red without special-casing.
 
 Fail-direction is deliberate and per-purpose:
 

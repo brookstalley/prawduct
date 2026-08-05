@@ -1,0 +1,90 @@
+# Run the suite — on every push, and on every pull request.
+#
+# Until this file existed, `tests/` ran only when someone remembered to run it.
+# Every release this repo ever cut shipped that way. The gap is independent of any
+# one release and is the larger half of the problem: a suite nothing invokes is a
+# suite that is green by assumption.
+#
+# **No path filters, deliberately.** The obvious economy here — skip the run when
+# only `.md` or `.prawduct/**` changed — reproduces a hole this repo has already
+# fallen into: `tests/test_norm_probes.py` reads the live `project-state.yaml`, so
+# a docs-and-state change really can turn the suite red. A filter that calls those
+# paths untestable would hide exactly that class of break. Runs are cheap; the
+# hole is not.
+#
+# **Action pins are floating majors** (`actions/checkout@v7`, `actions/setup-python@v7`),
+# verified to exist on 2026-08-04 rather than recalled: `gh api
+# repos/actions/checkout/releases/latest` → v7.0.1, `actions/setup-python` →
+# v7.0.0. These are GitHub's own first-party actions, where the major tag is the
+# publisher's documented contract and picks up security fixes without a bump. A
+# third-party action would be pinned to a SHA instead — the supply-chain exposure
+# there is somebody else's account, not GitHub's own org.
+#
+# **No pytest flags here.** `-n auto`, `--dist loadfile`, `--timeout` and
+# `testpaths` all live in `pyproject.toml`, and repeating them in this file would
+# make it a second home for the same fact — the next person to tune parallelism
+# would tune one of the two. Same reason the dependency list is read out of the
+# `dev` extra rather than restated: `pip install ".[dev]"` is a reference to it.
+
+name: tests
+
+on:
+  # Unfiltered by branch as well as by path. A branch that never opens a PR is
+  # precisely the branch nobody is watching.
+  #
+  # Weighed and kept: pairing these double-runs the matrix for any branch with an
+  # open PR, and the concurrency group below cannot collapse the pair because the
+  # two events carry different refs (`refs/heads/<branch>` vs `refs/pull/N/merge`).
+  # They test different trees — the branch tip, and the merge result — and on a
+  # public repo the minutes are free, so the duplication buys a real second answer
+  # at a cost of wall-clock only.
+  push:
+  pull_request:
+
+# A superseded run tells you about a commit that no longer exists. Cancel it.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # Both legs report. Learning that 3.10 broke is worth as much as learning
+      # 3.14 did, and fail-fast would throw away whichever finished second.
+      fail-fast: false
+      matrix:
+        # Floor and current. The floor mirrors `requires-python` in
+        # `pyproject.toml` — that file is the fact, this is a copy of it, and
+        # `tests/preferences/test_ci_workflow_conventions.py` fails if the two
+        # drift. Without the floor leg `requires-python = ">=3.10"` is a claim
+        # nothing checks.
+        python-version: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The suite contains a pin that searches history by content —
+          # `test_norm_index_scaffold.py` asks whether a scaffold row was ever
+          # actually shipped in the template. A shallow clone answers "never"
+          # with a straight face, so the guard fails claiming the row is wrong
+          # when the truth is that CI truncated the history it reads.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install test dependencies
+        # The `dev` extra is the one home for these; see the header. The install
+        # carries the dependency list only — `packages = []`, and the tests reach
+        # `plugin/` through `tests/conftest.py`'s path shim, not through site-packages.
+        run: python -m pip install ".[dev]"
+
+      - name: Run the suite
+        run: python -m pytest
