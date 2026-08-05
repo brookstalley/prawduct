@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: a dispatch no longer displaces a review that is still live
+
+<!-- prawduct: chunks=1,2 | type=fix | scope=critic-concurrent-dispatch -->
+
+**A completed review could be destroyed by the next one, and the loss was silent.**
+`begin_review` archived the partials directory and overwrote the manifest unconditionally, with no
+check for an in-flight review. Dispatching over one erased findings outright — and left the
+displaced review's reviewers running, so their partials landed in the NEW review's directory, where
+a partial is bound to the COMMIT it reviewed and to nothing else. At an unchanged HEAD a straggler
+is therefore schema- and commit-valid against the wrong manifest, satisfies its roster, and
+consolidates as a review that never read those files. Observed live three times (2026-07-29,
+07-30, 08-05); the last destroyed a three-reviewer cumulative carrying two blocking findings, one
+minute after its final partial landed. **Not a v3.2.5 regression**, which is how it was reported:
+the sweep is in the 3.2.3/3.2.4/3.2.5 trees alike and no tag carried a guard.
+
+**The guard refuses on either of two conditions, and the second is the one the incidents needed.**
+A live critic-active marker — reviewers plausibly still running. Or a *complete roster at any age*:
+age tells you whether more reviewers are coming and says nothing about whether findings already
+written are worth keeping, so a purely time-based guard would still have swept the 08-05 review
+once its window passed. Keyed on the marker rather than file age, because the standing contract is
+that an orphaned partial from a waived or stale-failed review IS still swept, and that test writes
+its leftovers fresh — file age cannot tell orphaned from live, and the marker can.
+
+**A guard that cannot be escaped is its own outage, and the first version was one.** The review of
+this change found it: consolidation fail-closes *without* removing partials so the cause can be
+fixed and retried, and `critic-end` clears only the marker — so a failed consolidate stranded a
+complete roster that nothing expired and no command cleared, refusing every dispatch forever. The
+remedy has to reach the state that is refusing. `prawduct-hook critic-discard` is that remedy:
+archive-first, never a bare delete, and deliberately *not* folded into `critic-end`, which is what
+an agent reaches for whenever a review looks dead — making it destructive would hand back the loss
+the guard exists to prevent. The refusal text now branches too, since promising a 30-minute expiry
+in a state with no live marker is simply false.
+
+**The dispatch path stopped sweeping the marker it reads.** `review_active()` unlinks a stale
+marker, and the Stop hook's abandoned-review branch — the surface that prints the manual-recovery
+instructions — is gated on the marker being present. A guard calling the sweeping form on every
+dispatch would delete the signal that produces those instructions, so the first refused dispatch
+past the TTL would strip the correct advice out of the subsystem. `review_active(sweep=False)` is
+the read for callers that must not decide, in passing, that a crashed review is over.
+
+**Still open, and filed rather than fixed here** (`#602`, near-duplicate of `#171`): a partial
+carries no review identity — `partial_path` is keyed by role alone, so two single-pass reviews
+contend for one `reviewer.json`. This guard closes the reachable path; a `review_id` checked
+against the manifest is what makes the class impossible. Note for whoever builds it: the documented
+recovery works *because* of that defect, so a `critic-recover` would have to re-stamp, not copy.
+
 ## 2026-08-05: the cumulative's findings, and the guards that could not see the shapes they guarded
 
 <!-- prawduct: type=fix | scope=review-round-pricing | release=v3.2.5 | status=shipped -->

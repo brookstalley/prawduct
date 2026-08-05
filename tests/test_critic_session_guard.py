@@ -346,3 +346,195 @@ class TestDesignerHandoffMarkerOrdering:
             "the designer-handoff early exit must come before critic-begin "
             "(CRT-6F2N: no critic-active marker for a review that never happens)"
         )
+
+
+class TestConcurrentDispatchGuard:
+    """`critic-begin` must refuse to displace a review that is still live.
+
+    The defect these pin (filed as brookstalley/prawduct#602, near-duplicate of
+    #171, observed live 2026-07-29, 2026-07-30 and 2026-08-05): `begin_review`
+    archived the partials directory and overwrote the manifest unconditionally.
+    Dispatching over an in-flight review therefore destroyed completed findings
+    — and, worse, left the displaced review's reviewers running so their
+    partials landed in the NEW review's directory, where a partial at the same
+    commit is indistinguishable from one written for it and consolidates as the
+    wrong review.
+
+    NOT a v3.2.5 regression: the sweep is in the 3.2.3/3.2.4/3.2.5 trees alike
+    and no tag carried a guard.
+
+    The seam every test here turns on: **an orphaned partial with no marker is
+    still swept** (`test_begin_clears_leftover_partials` is the standing
+    contract, deliberately unchanged); a partial with a LIVE marker is not.
+    """
+
+    def _dispatch(self, tmp_path):
+        repo = _real_repo(tmp_path)
+        (repo / ".prawduct").mkdir()
+        first = _run_real("critic-begin", repo, "--mode", "chunk")
+        assert first.returncode == 0, first.stderr
+        assert (repo / ".prawduct" / cm.MARKER_NAME).is_file()
+        return repo
+
+    def test_refuses_while_a_review_is_live_and_leaves_it_intact(self, tmp_path):
+        """The core incident: a second dispatch must not touch the first's state."""
+        repo = self._dispatch(tmp_path)
+        partials = repo / ".prawduct" / ".critic-partials"
+        first_id = json.loads((partials / "manifest.json").read_text())["id"]
+        (partials / "reviewer.json").write_text('{"role": "reviewer"}')
+
+        second = _run_real("critic-begin", repo, "--mode", "chunk")
+
+        assert second.returncode == 1, "a dispatch over a live review must refuse"
+        assert "already in flight" in second.stderr
+        assert first_id in second.stderr, "the refusal names the review it protected"
+        # The whole point: nothing of the first review was disturbed.
+        assert json.loads((partials / "manifest.json").read_text())["id"] == first_id
+        assert (partials / "reviewer.json").read_text() == '{"role": "reviewer"}'
+        assert not (repo / ".prawduct" / ".critic-partials-archive").exists(), (
+            "a refused dispatch must not archive the live review's partials"
+        )
+
+    def test_refuses_a_complete_roster_even_after_the_marker_expires(self, tmp_path):
+        """Age says whether more reviewers are coming; it says nothing about
+        whether findings already written are worth keeping. The destroyed review
+        in the 2026-08-05 report had every partial on disk — a purely time-based
+        guard would still have swept it once the window passed."""
+        repo = self._dispatch(tmp_path)
+        prawduct = repo / ".prawduct"
+        partials = prawduct / ".critic-partials"
+        (partials / "reviewer.json").write_text('{"role": "reviewer"}')
+        # Expire the marker: strictly past the TTL, so review_active() is False.
+        stale = datetime.now(timezone.utc) - timedelta(
+            seconds=cm.CRITIC_ACTIVE_TTL_SECONDS + 60
+        )
+        (prawduct / cm.MARKER_NAME).write_text(
+            json.dumps({"started_at": stale.strftime("%Y-%m-%dT%H:%M:%SZ"), "tool": "critic"})
+        )
+        assert cm.review_active(prawduct) == (False, None), "precondition: marker is stale"
+
+        second = _run_real("critic-begin", repo, "--mode", "chunk")
+
+        assert second.returncode == 1, "a complete roster is finished work at any age"
+        assert "every reviewer has reported" in second.stderr
+        assert "critic-consolidate" in second.stderr, (
+            "the remedy for a complete roster is to consolidate it, not to discard it"
+        )
+        assert (partials / "reviewer.json").is_file()
+
+    def test_critic_end_escapes_a_live_marker_with_an_incomplete_roster(self, tmp_path):
+        """`critic-end` is the escape for condition (a) ONLY — a live marker whose
+        roster has not completed. Named narrowly on purpose: it does not clear a
+        complete roster, which is the separate state the next two tests cover."""
+        repo = self._dispatch(tmp_path)
+        refused = _run_real("critic-begin", repo, "--mode", "chunk")
+        assert refused.returncode == 1
+        assert "prawduct-hook critic-end" in refused.stderr
+
+        assert _run_real("critic-end", repo).returncode == 0
+        again = _run_real("critic-begin", repo, "--mode", "chunk")
+        assert again.returncode == 0, f"after critic-end a dispatch proceeds: {again.stderr}"
+
+    def _strand_a_complete_roster(self, tmp_path):
+        """The state a failed consolidation leaves: a valid manifest, every
+        roster partial present, and NO live marker.
+
+        Reachable without contrivance — `consolidate` fail-closes on a malformed
+        partial, a commit mismatch, or a store/ledger write error and leaves the
+        partials in place so the fix can retry; its only two `remove_partials`
+        call sites are `begin_review` (behind the guard) and consolidate-on-success.
+        """
+        repo = self._dispatch(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / ".critic-partials" / "reviewer.json").write_text('{"role": "reviewer"}')
+        assert _run_real("critic-end", repo).returncode == 0  # marker gone, partials stay
+        assert not (prawduct / cm.MARKER_NAME).exists()
+        return repo, prawduct
+
+    def test_a_stranded_complete_roster_is_refused_with_a_remedy_that_reaches_it(
+        self, tmp_path
+    ):
+        """The guard must not create a state nothing can clear. `critic-end` does
+        not touch partials and no TTL expires them, so the refusal here must NOT
+        claim either — it must name the one command that does work."""
+        repo, _prawduct = self._strand_a_complete_roster(tmp_path)
+
+        refused = _run_real("critic-begin", repo, "--mode", "chunk")
+
+        assert refused.returncode == 1
+        assert "STRANDED" in refused.stderr
+        assert "prawduct-hook critic-discard" in refused.stderr
+        assert "expires on its own" not in refused.stderr, (
+            "no marker is live here — promising expiry would be false"
+        )
+        assert "critic-end` will NOT clear this" in refused.stderr
+
+    def test_critic_discard_unblocks_a_stranded_roster_and_archives_it(self, tmp_path):
+        """The escape works, and it preserves rather than deletes — discarding a
+        completed review's findings is a decision, so they stay recoverable."""
+        repo, prawduct = self._strand_a_complete_roster(tmp_path)
+        assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 1
+
+        discard = _run_real("critic-discard", repo)
+
+        assert discard.returncode == 0, discard.stderr
+        assert "archived" in discard.stdout
+        archive = prawduct / ".critic-partials-archive"
+        assert archive.is_dir() and any(archive.iterdir()), "partials archived, not deleted"
+        again = _run_real("critic-begin", repo, "--mode", "chunk")
+        assert again.returncode == 0, f"discard must unblock dispatch: {again.stderr}"
+
+    def test_a_refused_dispatch_does_not_sweep_the_marker(self, tmp_path):
+        """The Stop hook's abandoned-review branch is gated on `marker_present`
+        and is what prints the manual-recovery remedy. A dispatch that swept a
+        stale marker on its way past would delete the signal producing those
+        instructions — so the guard reads with `sweep=False`."""
+        repo = self._dispatch(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / ".critic-partials" / "reviewer.json").write_text('{"role": "reviewer"}')
+        stale = datetime.now(timezone.utc) - timedelta(
+            seconds=cm.CRITIC_ACTIVE_TTL_SECONDS + 60
+        )
+        (prawduct / cm.MARKER_NAME).write_text(
+            json.dumps({"started_at": stale.strftime("%Y-%m-%dT%H:%M:%SZ"), "tool": "critic"})
+        )
+
+        assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 1
+        assert (prawduct / cm.MARKER_NAME).is_file(), (
+            "a refused dispatch must leave the marker for the Stop gate to find"
+        )
+
+    def test_incomplete_roster_names_who_it_is_waiting_on(self, tmp_path):
+        """The observability half. `methodology/building.md` tells an agent whose
+        review looks slow to re-invoke, and nothing distinguished in-flight from
+        dead — so the guide's own failure path led into the destructive dispatch.
+        The refusal answers that question at the moment it is being asked."""
+        repo = self._dispatch(tmp_path)
+        second = _run_real("critic-begin", repo, "--mode", "chunk")
+        assert second.returncode == 1
+        assert "still waiting on reviewer" in second.stderr
+        assert "still running" in second.stderr
+
+    def test_stray_partials_with_no_valid_manifest_are_still_swept(self, tmp_path):
+        """The seam, stated as its own test: with no marker AND no valid manifest,
+        `pending_state` is not `complete`, so the sweep runs exactly as before.
+
+        Scoped precisely to what the fixture builds. An earlier version of this
+        test claimed to pin "a waived or stale-failed review's leftovers" — those
+        carry a VALID manifest and often a complete roster, which is the state the
+        guard now refuses (see the stranded-roster tests above), so the claim was
+        green precisely where it was wrong."""
+        repo = _real_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
+        partials = prawduct / ".critic-partials"
+        partials.mkdir()
+        (partials / "reviewer.json").write_text('{"role": "reviewer"}')
+        assert not (prawduct / cm.MARKER_NAME).exists(), "precondition: no live review"
+
+        begin = _run_real("critic-begin", repo, "--mode", "chunk")
+
+        assert begin.returncode == 0, begin.stderr
+        assert not (partials / "reviewer.json").exists(), (
+            "an orphaned partial with no marker is still swept"
+        )

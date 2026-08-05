@@ -151,6 +151,22 @@ def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _abandon(repo: Path) -> subprocess.CompletedProcess:
+    """Abandon the dispatched review — the real lifecycle step between two
+    dispatches, now that `critic-begin` refuses to displace a live one.
+
+    A test that dispatches twice is testing something about the SECOND dispatch
+    (roster derivation, superseded re-stamping); it is not asserting that an
+    unguarded concurrent dispatch is allowed. Going through `critic-end` is what
+    a caller genuinely does, so the setup models the lifecycle instead of a path
+    the guard now refuses."""
+    return subprocess.run(
+        ["python3", str(HOOK), "critic-end"],
+        cwd=str(repo), capture_output=True, text=True,
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+    )
+
+
 def _store_facts(repo: Path, kind: str | None = None) -> list[dict]:
     """Facts currently in the repo's evidence store (deduped, schema-checked
     read — the same read gates will use)."""
@@ -2230,6 +2246,7 @@ class TestCriticBeginCLI:
 
         # Widen past the judgeable threshold — same mode now goes coordinator
         # on volume alone, with no risk surface anywhere in the diff.
+        _abandon(repo)  # the first dispatch is live; abandon before re-dispatching
         for i in range(cc.COORDINATOR_JUDGEABLE_THRESHOLD):
             p = repo / f"src/mod_{i}.py"
             p.write_text(f"y = {i}\n")
@@ -2752,6 +2769,7 @@ class TestBeginMarksFindingsSuperseded:
         repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
         assert _run_begin(repo, "--mode", "chunk").returncode == 0
         first_marker = json.loads((repo / FINDINGS_REL).read_text())["superseded_by"]
+        _abandon(repo)  # the first dispatch is live; abandon before re-dispatching
         assert _run_begin(repo, "--mode", "chunk").returncode == 0
 
         raw = (repo / FINDINGS_REL).read_text()
