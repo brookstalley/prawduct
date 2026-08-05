@@ -359,6 +359,18 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     > *Why: the version-delta banner shows exactly that first line to every repo
     > crossing this version.*
 
+    **On a minor or major bump — not a patch — also refresh `README.md`'s `## Recent
+    Changes`** so the current line is represented there. Rewrite the section; do not
+    append a per-release bullet. A patch has nothing to say on that surface, so skipping
+    it is the correct outcome and not an omission.
+
+    > *Why it is conditional, and why it lives here: the README is the first thing a
+    > prospective user reads, and no release had ever updated it — it sat two minor
+    > versions and eight releases stale (3.1.0 through 3.2.4) because no release document
+    > named the file. A per-release step would no-op on every patch, and a step that
+    > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
+    > and has something to say every time it does.*
+
 11. In `.prawduct/project-state.yaml`, set `active_build_plan:` to `null`.
 
 12. Commit the prep:
@@ -383,7 +395,8 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 ### Checkpoint
 
 `origin/develop` now holds the whole release: bumped version, shipped
-change-log tags, regenerated views, cleared plan pointer. Everything up to here
+change-log tags, regenerated views, cleared plan pointer — and, on a minor or major
+bump, a `## Recent Changes` section that covers this line. Everything up to here
 is undone by an ordinary commit on `develop`, so this is a safe place to stop
 and come back.
 

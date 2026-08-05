@@ -281,7 +281,18 @@ See [`docs/principles.md`](plugin/docs/principles.md) for the full principles wi
 
 ## Recent Changes
 
-Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture:
+Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.2** line is what has been built on top of them:
+
+### 3.1–3.2 — Governance that reports its own state
+- **Norms bind, descriptions track** — `## Direction` statements in governing artifacts carry normative authority, with an owner-ratification flow and time-domain health sweeps; enforcement is scoped to adoption, so a repo with no ratified norms gets NOTEs and is never blocked
+- **Review depth is a risk question, not a file count** — the Critic's three-reviewer coordinator fires on a declared **risk surface** or 12+ judgeable files; `risk_surfaces:` in `project-state.yaml` is how you say where your risk actually lives. Fast `chunk`/`verify-resolutions` reviews got ~83% cheaper, and coordinator reviews now genuinely run in parallel rather than riding an ambient default
+- **The review loop has an exit condition** — `.critic-findings.json` carries a code-computed `next_action` that says, in the file the builder opens by contract, *zero blocking: the review is over*. Findings are **dispositioned** — fixed, accepted with a reason, or filed — rather than filed by default
+- **Learnings fire where the mistake gets made** — rules that used to wait in a file to be read now print at the command that runs at the moment they apply, in any language rather than only Python; and every agent turn closes with a fixed `STATE` / `NEXT` / `CLEAR` block
+- **The GitHub-Issues backlog service** — ships opt-in and dormant behind a single `backlog_service_repo` key; unset means the markdown backend, byte-for-byte. Prawduct migrated its own backlog through it: 371 items, 0 stranded, 0 collisions
+- **Release integrity** — a Phase 0 `check-releasability` gate that fails closed unless every release-pending scope is classified, `check-released` to verify a published release from the *consumer's* side, `release_version_files:` so a product declares which files carry its version, and CI on every push across a 3.10-and-3.14 matrix (CI verifies a release; it never publishes one)
+- **The plugin installs from a curated root** — 109 files, 1.7 MB, holding only what you actually run; a `"source": "./"` had been shipping prawduct's own backlog, learnings, and build plans into every consumer's plugin cache
+- **Session boundaries stopped destroying session evidence** — `--resume`, `--fork-session`, and compaction now run *orientation*, not a boundary reset, and `.prawduct/.handoff-notes.md` is a forward channel the machine never overwrites
+- **Also** — `/prawduct:runbook` (authoring guide, template, and skill), Principle 24 (Retrieval Over Generation), a structural-coverage advisory chain that can see what was *never created*, `test_commands:` for polyglot suites, and merge commits as the standing default everywhere
 
 ### 3.0 — Review evidence as a composable fact store
 - Review results are **append-only facts** in a store shared by every worktree of a clone — not single-slot, per-worktree files judged by modification time and a mode label
@@ -298,7 +309,7 @@ Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major release
 - Plugin-native onboarding/scaffolding via `/prawduct:onboard` (health-check/repair stays `/prawduct:doctor`)
 - Gitflow release model (see [docs/release-process.md](documentation/release-process.md))
 
-Between these two, the **2.1–2.3** line hardened the framework without changing its shape: reviews became proportional, observable (a governance ledger + `review-stats`), and resilient (a persistence redesign so a coordinator review can't be silently lost); the backlog grew lifecycle stages and multi-agent claims; API design joined the cross-cutting concerns; and dozens of gate-soundness and session hot-path fixes landed. See the [CHANGELOG](plugin/CHANGELOG.md) for the full stream.
+Between 2.0 and 3.0, the **2.1–2.3** line hardened the framework without changing its shape: reviews became proportional, observable (a governance ledger + `review-stats`), and resilient (a persistence redesign so a coordinator review can't be silently lost); the backlog grew lifecycle stages and multi-agent claims; API design joined the cross-cutting concerns; and dozens of gate-soundness and session hot-path fixes landed. See the [CHANGELOG](plugin/CHANGELOG.md) for the full stream.
 
 ## License
 

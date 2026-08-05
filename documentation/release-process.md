@@ -125,6 +125,13 @@ When `develop` is ready to release as `vX.Y.Z`:
 
    Chunk-ID matching is tolerant (`chunks=1` flips `Chunk 01`; case and `-`/`_`
    variants match).
+
+   > **The release's consumer-facing narrative lives in two files, not one.**
+   > `plugin/CHANGELOG.md` gets a `## vX.Y.Z` section every release; `README.md`'s
+   > `## Recent Changes` gets refreshed on a **minor or major bump only**. Both are written
+   > at **Phase 1 step 10** of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this
+   > checklist names them rather than restating them, because the README went eight releases
+   > stale precisely while no release document named it at all.
 5. **Publish the GitHub Release — the tag is not the release, and this one step creates both.**
    A pushed tag lands on `/tags`; the Releases page is a separate surface and it stayed empty for
    every tag this repo had ever pushed, which is what consumers reported as "no tag on GitHub".
