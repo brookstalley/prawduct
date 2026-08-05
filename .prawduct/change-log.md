@@ -3,6 +3,183 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: the cumulative's five warnings — three false records and a signal that reached nobody
+
+<!-- prawduct: type=fix | scope=ephemeral-worktrees -->
+
+<!-- No `chunks=`: review dispositions for `rev-20260805T165453Z-2cf52cde`, spanning both this
+     branch's plan work and the #595 rider. Flips no Status checkbox. -->
+
+**The marker shipped one commit earlier reached the direct reader and not the one it was written
+for** (R-3 and R-10, found independently by two reviewers). `briefing._summarize_critic_findings`
+reads the same `.critic-findings.json` and rebuilds the section field by field, so it dropped all
+three supersession keys and presented a superseded review's counts and `NEXT-ACTION:` as current.
+That reader is the cross-session builder — by its own comment, "DEFINITIONALLY the one who lost the
+reviewer's report", and so exactly the reader who cannot compare what they hold against a review id
+they never saw. My own reason for thinking this path was safe was wrong in a way my own docstring
+had already recorded: I checked that `clear` refuses while a review is active and stopped there,
+having written two paragraphs earlier that a dispatched review's marker *expires by TTL and is
+swept at a session boundary*. The notice now leads the section, before the summary and directive it
+qualifies.
+
+**Three comments described mechanisms that do not exist.** The harness-invoked carve-out justified
+itself partly by "a human driving it who can see the banner" — nothing in the banner or the session
+digest mentions ephemerality, and the carve-out returned *before* the detection ran, so `clear` and
+`stop` inside an agent worktree emitted no ephemeral signal at all (R-1, R-12). Detection now runs
+first and the harness path emits the HEAD-snapshot notice while still refusing nothing, which makes
+the comment's claim true rather than deleting it. Separately, the backlog guard's rationale said the
+markdown backend "writes `.prawduct/backlog.md` in THIS tree and falls through to the per-op set" —
+`cmd_backlog` is always the gh adapter and has no markdown path (R-5). The real markdown filing path
+is the SKILL's own Read/Write on that file, which invokes no command and is invisible to any command
+guard; that residual strand is now in Scope-out instead of implied to be covered.
+
+**A fail-closed guard with a fail-open seam** (R-4). `lib/backlog/cli.py` owns the op surface; the
+hook re-stated it as hand-maintained tables. They agreed across all 21 ops and nothing kept them
+agreeing — and the drift is asymmetric: an op added later that writes locally but is missed in
+`_BACKLOG_LOCAL_WRITE_OPS` is **allowed** on a service-backed repo, because the service-backed early
+return fires before the per-op set. `cli._ALL_OPS` now builds the unknown-op message (so it cannot
+go stale while that message is right), and a partition test names the previously-implicit
+service-only remainder, so adding an op fails until someone classifies it.
+
+**The exception got a rail, and the rail is partial** (R-11). `docs/norms.md` § "Exceptions expire"
+puts a temporary exception's clock on a tracking item; this one lived in plan frontmatter that no
+time-domain organ walks. Filed as **#596**, linked from the exception. Stated plainly there and
+here: the Issues backend has no write path for `revisit:` (#564), so the trigger is body prose —
+findable by a human, walked by no probe. That is more than frontmatter and less than the norm asks,
+and calling it a discharge would be the same species of false record as the three comments above.
+
+Ten notes accepted with recorded disposition facts; two of them (R-2, R-9) were bookkeeping this
+entry and the plan's Context now carry.
+
+**#598 was filed against the branch's own new norm, and that is an owner exception, not a pass.**
+The PR reviewer caught it: `Backlog filing` — born on this branch, binding from 2026-08-05 — allows
+a new item only when the finding is **both** orthogonal **and** medium-or-larger, and #598 is
+`effort:S`/`impact:S` and explicitly a residual of this branch's own #595 rider. It fails both
+tests. It was filed anyway because the owner, shown the two rough edges it records, said *"both of
+these feel like rough edges worth fixing, but not right now"* — an in-the-moment deferral, which is
+the owner's call to make and outranks the default (Principle 23). Recorded here rather than argued
+into conformance, because the norm's own enforcement (Critic Goal 4, `final`-mode backlog
+reconciliation) is **structurally dark on this repo's Issues backend** — the cumulative's own R-11
+says so — and a norm whose checker cannot see the violation is one whose exceptions have to be
+written down by hand or they are not written down at all. Second data point, one day into the
+norm's life, that its enforcement map is aspirational here.
+
+## 2026-08-05: the findings view now says which review it is
+
+<!-- prawduct: type=fix | scope=ephemeral-worktrees -->
+
+<!-- No `chunks=`: **#595** rode this branch by owner decision rather than belonging to its plan,
+     so it takes release stamping without flipping any build-plan Status checkbox. Same shape as
+     the norm-birth entry below. -->
+
+`.prawduct/.critic-findings.json` survived every dispatch carrying nothing that marked it stale.
+Between `critic-begin` and the consolidation that regenerates it, a reader met the **previous**
+review's findings in a file that looked exactly like the current one's — timestamped from that
+earlier run, with a `next_action` directing disposition of findings that were not the in-flight
+review's. Observed during the #594 build: mid-review the file was dated the previous day while a
+review dispatched minutes earlier was still running. That file is the one surface the builder is
+guaranteed to meet, which is what made the ambiguity expensive.
+
+The framework already knew about the window and answered it **procedurally** — CLAUDE.md tells the
+builder to run `critic-consolidate` before reading, because doing so "closes the window where an
+unfired trigger would leave you reading the *previous* review's file." That instruction is the
+burden: it asks the agent to reason about whether what it is holding is current.
+
+`critic-begin` now stamps the record `superseded_by` / `superseded_at` / `superseded_notice` —
+first keys in the file, so a reader meets them before the findings and the `next_action` they
+qualify — and leaves every other field byte-identical. The dispatch output says the same thing to
+the one context certain to be reading at that moment. Consolidation rewrites the whole record from
+the new fact, so the keys clear themselves; nothing goes looking for them.
+
+**It marks rather than deletes, and that is the whole design.** Deleting at dispatch is the obvious
+fix and it is wrong: `_prior_review_fact` reads this file's `fact_id` to anchor a
+`verify-resolutions` delta. The steady-state sequence would survive, but a review **waived or
+abandoned before consolidating** would leave the next verify with no anchor at all — where today it
+correctly anchors to the last completed review. Deletion trades a cosmetic ambiguity for a lost
+anchor. `test_verify_still_anchors_after_an_abandoned_review` is the pin that goes red if a later
+edit "simplifies" the mark into a delete.
+
+The notice states a **fact about the record**, not a liveness claim. "A review is in flight" would
+go false on its own — a dispatched review can expire by TTL or be swept at a session boundary, and
+neither path passes through anything that could retract it. "Review X was dispatched after this
+record was written, so this is not X's result" stays true forever, and a reader meeting it after an
+abandoned review learns exactly why the newest record is older than expected.
+
+*Not done, deliberately*: CLAUDE.md's `critic-consolidate`-before-reading instruction stays. It is
+still the **action** that gets you current findings on the coordinator path; what the marker
+retires is the *reasoning* the instruction asked for, and adding prose to say so would grow total
+footprint to describe a field that now describes itself. No gate reads the view, so nothing in the
+authority path changed (`data-model.md` § Direction).
+
+## 2026-08-05: fix, don't file — a norm for when a finding earns a backlog item
+
+<!-- prawduct: type=docs | scope=ephemeral-worktrees -->
+
+<!-- No `chunks=`: this is a norm birth that rode the branch, not chunk work, so it takes
+     release stamping without flipping any build-plan Status checkbox. -->
+
+**Norm birth**, owner-declared during the #594 build and recorded here because a preferences row
+alone leaves the birth invisible in the log. `project-preferences.md` § Workflow gains **Backlog
+filing**: a strong bias to fix rather than file, with a new item justified only when the finding is
+**both** orthogonal to the current work **and** medium or larger.
+
+*Why*: a filed item is a deferred decision that costs triage, re-reading and re-derivation later,
+and the backlog's value falls as it grows — 168 pending items make the next `pick` worse, not
+better. The two tests are exactly the cases where filing beats fixing: orthogonal work would
+corrupt the current change's scope and review, and medium+ work needs requirements before code
+(Principle 6). **Small-and-orthogonal is the trap the rule closes** — it feels like a legitimate
+defer and is really just avoided work. Recording a finding as a *comment on an existing item* is
+not filing and stays unrestricted.
+
+*Status* steady-state. *Retroactivity* **grandfather** — the 168 items pending at birth are exempt
+and will not be re-triaged; converging them is separate, unrequested work, and grandfather is the
+honest word for not intending to converge. One site inside the birthing changeset is not exempt:
+**#595**, filed the same session under the old habit and failing the medium+ test.
+
+*Enforcement*: Critic (Goal 4, plus `final` mode's existing backlog reconciliation), audit home
+Critic + janitor. Session config alone would have left it aspirational — the failure is an agent
+filing small in-scope work it should simply have done, which no mechanical check can see, because
+it needs a reader who knows what the current work was.
+
+## 2026-08-05: prawduct now knows a worktree can be disposable
+
+<!-- prawduct: type=fix | scope=ephemeral-worktrees | chunks=01,02,03 -->
+
+`methodology/building.md` recommends `isolation: "worktree"` for parallel chunks. Following that
+advice puts a subagent in a worktree forked from HEAD, of which **only the code commit is merged
+back** — and prawduct had no representation of that, so `resolve_project_dir` followed the session
+in and governed it as an ordinary peer checkout. An agent obeying prawduct's own rules ("file it
+via `/prawduct:backlog`") produced a write that died at merge and was told it had succeeded.
+Reported from a product repo (**#594**).
+
+`gitstate.is_ephemeral_worktree` is the missing predicate; a pre-dispatch guard in the hook turns
+every agent-invoked `.prawduct/` write from inside such a tree into a loud refusal naming its
+override, and commands that proceed carry a notice that everything tracked there is a fork-point
+snapshot. That notice matters because it is the **only channel that reaches an isolated agent
+without its dispatcher's cooperation**: the briefing file `building.md` sends every subagent to is
+gitignored, so `git worktree add` never creates it — the standing delegation instruction has been a
+dangling pointer for exactly the isolation mode the next line recommends.
+
+**Three claims in the report were wrong, and checking them changed the design.** Its cheapest
+suggested fix — put the rules in `.subagent-briefing.md`, "a tracked file, so it is copied into
+every agent worktree" — would have shipped a no-op. Detecting on the `.claude/worktrees/` parent
+alone, as proposed, would have false-positived on every `EnterWorktree` session worktree, which
+lives under the same parent and is legitimate and long-lived; silencing governance there is worse
+than the strand being fixed, so the harness id shape is required and the negative cases are pinned.
+And provenance needed no schema change: the evidence envelope already carries `actor.worktree`, so
+`evidence status`/`list` classify on read and label facts already in the store.
+
+Sibling of **#221**, not a duplicate: that guards a cross-worktree *mismatch* and needs a
+session-scoped marker; this asks whether the correctly-resolved tree is *disposable*, which needs no
+persisted state. The predicate lives in `gitstate.py` so #221's guard composes with it.
+
+**The guard fails closed** — an unlisted command is refused here, inverting `_DATA_PLANE_COMMANDS`'s
+permissive default. The asymmetry that justified it there is reversed: this fires only inside
+`.claude/worktrees/agent-*`, so over-refusal costs one env var while under-refusal costs the silent
+strand under repair.
+
+**`building.md`'s token ceiling moved 4660 → 4810, accepted rather than offset.** The trims attempted, why the apparent redundancy was already spent, and why cross-file relocation was rejected are recorded at the assertion in `tests/test_v5_methodology.py` — one home, because this paragraph was a second copy and had to be corrected once already.
+
 ## 2026-08-05: the release gate was asking a question the release had not answered yet
 
 <!-- prawduct: type=fix | scope=release-integrity | chunks=05 -->

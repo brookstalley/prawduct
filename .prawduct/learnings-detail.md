@@ -6,6 +6,59 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## A background agent's liveness is answered by ITS OWN completion signal, never by reading the files it is midway through writing — a death verdict from a directory listing is how a re-dispatch clobbers a live review. And the grep that "confirms" it may be matching the failure mode's own DOCUMENTATION, which feels exactly like verification
+
+Observed twice. `critic_consolidate._archive_leftovers` exists because on **2026-08-02** "a premature
+death verdict led to a re-dispatch that clobbered the first manifest — the first review became
+unreconstructable from disk." On **2026-08-05** the identical sequence ran again, with that docstring
+in the agent's own context: a `verify-resolutions` review was live, a shell `ls` of
+`.prawduct/.critic-partials/` was read as "it never dispatched", and a `cumulative` was dispatched
+over it, overwriting the live manifest. The running reviewer saved it — it declined to write a
+`reviewer`-role partial into a three-role coordinator roster (which would have failed consolidation
+closed or corrupted the merge) and declined `critic-end` on a marker that now belonged to a different
+review — and the archive preserved the forensics. Nothing was lost; a full ~13-minute round was.
+
+Two distinct errors, and the second is the subtler one. **Liveness from disk state**: an agent's
+partials directory is mid-write by definition, so a snapshot of it answers no question about whether
+the agent is alive. The harness delivers a completion notification unprompted; that is the only
+signal. **A grep that reads as confirmation**: the diagnosis was "confirmed" by grepping the
+transcript for `scope-widened` and finding it — in the *skill's own protocol prose* describing the
+demotion rule, not in any command output. A string match against documentation of a failure mode is
+indistinguishable from a match against an instance of it, and it carries the full felt weight of
+having checked.
+
+The mechanical remedy is narrow: wait for the notification. The generalisable one is that a
+retrieval step (P24) can be satisfied by the wrong document — before treating a match as evidence,
+ask whether the text found is *describing* the thing or *being* the thing.
+
+Related: the fix that would make the wrong diagnosis harmless is a refusal at `critic-begin` when the
+existing manifest names a review still inside the in-flight grace window (`dispatch_age_minutes`
+already sits unused at that site). Tracked on the concurrent-dispatch guard item.
+
+---
+
+## A safety argument and its counterexample can sit two paragraphs apart in YOUR OWN writing and never meet, because each answers a different question — before clearing a reader/caller/path as unaffected, re-read what you just wrote about the mechanism's lifetime and ask it against the clearance, not against the wording it was written for
+
+Building the `.critic-findings.json` supersession marker (#595), I considered whether
+`briefing._summarize_critic_findings` — the cross-session renderer — also needed the marker, and
+cleared it: `prawduct-hook clear` refuses to run while a review is active, so that reader would only
+ever meet a superseded record after an abandoned review, when the record genuinely *is* the newest
+completed one. Two Critic reviewers independently found this false (R-3, R-10).
+
+The counterexample was in my own docstring, written minutes earlier and two paragraphs above the
+code: *"a dispatched review can expire by TTL or be swept at a session boundary, and neither path
+passes through here to retract anything."* That is precisely why the `clear` guard does not close the
+window — the record outlives every in-session signal. I wrote the sentence while deciding **how to
+word the notice** (should it claim liveness, or state a fact about the record?) and never ran it past
+the separate question **which readers need the marker**. Same fact, two questions, no crossing.
+
+The failure is not carelessness and re-reading more carefully is not the fix, because on the second
+question the docstring does not *look* relevant. What works is mechanical: when clearing a
+consumer as unaffected, the clearance rests on some claim about how long the state lives or who
+guards it — go find what you already wrote about that lifetime and ask *this* question of it.
+
+---
+
 ## A sample you sliced for DISPLAY is not the set — if the command that formed your impression carried a `[:8]` or a `head`, re-run it unsliced before writing "all/every/entirely", because the slice is invisible in the output you read back. A RETRACTION is where this bites hardest
 
 A Critic warning retracted a claim I had measured in an unrepresentative scratch repo. Fixing it, I
@@ -2542,3 +2595,35 @@ Related: "A green suite is evidence about the ONE environment that ran it" — t
 active form. There, the second environment finds the dependency. Here *you* introduced the
 dependency, so you can enumerate it before CI does, and the enumeration is not optional
 because the affected set is invisible in the diff.
+
+
+## A test asserts what would BREAK, not what you just built — red-verify mechanically (break the subject, watch that specific test go red, restore), because the vacuous shapes all look correct while proving nothing
+
+Three vacuous-pass shapes, all observed on `fix/ephemeral-agent-worktrees` (2026-08-05, #594):
+an **exit code** asserted on a command that also exits non-zero for its own reasons (missing
+args, no active review) — it passed with the guard entirely removed; an **equality** that also
+held under the regression (`distinct_trees(mixed) == distinct_trees(plain)` where the fixture
+hardcoded one tree for every fact, so it passed whether or not ephemeral facts reached the
+coverage algebra — the single thing it existed to detect); and a **fixture built from ambient
+env**, which passed whenever the shell happened to export the override the test meant to exclude.
+
+Two were caught by the Critic, one by a red-verify pass. Each was written by someone who knew
+the rule, which is why the remedy is mechanical rather than attentional: revert the subject,
+run the specific test, confirm it goes red, restore. It caught something every time it was run
+here and cost about a minute each time.
+
+## Apparent duplication across governing docs may be the RECEIPT for a token budget already paid — check for a pinning test before cutting it, never fund a budget by moving prose between files, and raise the ceiling rather than spend redundancy twice
+
+`plugin/methodology/building.md` carries a hard ceiling asserted in
+`tests/test_v5_methodology.py`. Adding the two delegation hazards (+146 tokens) against 3 tokens
+of headroom needed funding. The standing block looked like free redundancy — stated in
+`session-digest.md`, `session-digest-slim.md`, `reflection.md` and `building.md`, with
+`building.md` already pointing at `reflection.md` as the canonical rule. Cutting it turned two
+tests red, and `test_standing_block_is_on_every_surface_that_claims_it`'s docstring said why:
+*"building.md's token budget was FUNDED by relocating this rule's rationale"* — the redundancy
+had been harvested once already, and the pin exists so a later trim cannot spend it twice.
+
+Owner rule (2026-08-05): never fund a budget by moving prose to another file — total context
+footprint is the only number that matters, so relocation satisfies the assertion and achieves
+nothing. Order: simplify genuine duplication, then raise the ceiling and record what bought the
+increase **at the assertion**, where the next person to hit it will be reading.

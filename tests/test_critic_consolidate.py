@@ -2557,6 +2557,179 @@ class TestBeginArchivesLeftovers:
         assert not pdir.exists()
 
 
+class TestBeginMarksFindingsSuperseded:
+    """The derived view's half of the problem the class above solves for
+    partials (#595).
+
+    Leftover partials are archived at dispatch, so nothing from the previous
+    review is left where the current one's belongs. `.critic-findings.json`
+    got no such treatment: it survived every dispatch carrying nothing that
+    marked it stale, so between `critic-begin` and the consolidation that
+    regenerates it a reader met the PREVIOUS review's findings in a file that
+    looked exactly like the current one's — on the one surface the builder is
+    guaranteed to meet.
+
+    It MARKS rather than deletes, and the distinction is load-bearing:
+    `_prior_review_fact` reads this file's `fact_id` to anchor a
+    verify-resolutions delta, so deleting at dispatch would strand the next
+    verify after any review waived or abandoned before consolidating —
+    trading a cosmetic ambiguity for a lost anchor.
+    `test_verify_still_anchors_after_an_abandoned_review` is the pin that goes
+    red if a later edit "simplifies" the mark into a delete.
+    """
+
+    def _repo_with_a_completed_review(self, tmp_path) -> tuple[Path, str, str]:
+        """A repo holding one consolidated review (blocking finding, cache
+        pointing at its fact) and a dirty tree, so the next dispatch has both
+        something to mark and something to review. Returns (repo, head, id)."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        prior_id = _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo, head, prior_id
+
+    def test_dispatch_marks_the_prior_record_naming_both_reviews(self, tmp_path):
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        new_id = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())["id"]
+
+        raw = (repo / FINDINGS_REL).read_text()
+        record = json.loads(raw)
+        assert record["superseded_by"] == new_id
+        assert record["superseded_at"]
+        # Both ids: which review superseded this record, and which review this
+        # record IS. A reader holding neither can place the file from the text
+        # alone — no timestamp arithmetic against an id it may not have.
+        notice = record["superseded_notice"]
+        assert new_id in notice and prior_id in notice
+
+        # FIRST in the file, so the marker is met before the findings and the
+        # `next_action` it qualifies — a reader that stops early stops on the
+        # warning, not on the previous review's directive.
+        assert list(record)[:3] == list(cc._SUPERSEDED_KEYS)
+        assert raw.index("superseded_by") < raw.index('"next_action"')
+
+        # And said at the dispatching context too: that is the one reader
+        # certain to be present at the moment the stale window opens.
+        assert "superseded_by" in result.stdout and new_id in result.stdout
+
+    def test_marking_preserves_every_other_field(self, tmp_path):
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        before = json.loads((repo / FINDINGS_REL).read_text())
+        assert before.get("findings"), "fixture must seed a finding to preserve"
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        after = json.loads((repo / FINDINGS_REL).read_text())
+        # Marked AND preserved. Without the first assertion this reduces to
+        # "the file did not change", which holds identically when the marker
+        # is not written at all — the variable under test erased by the check.
+        assert after.get("superseded_by")
+        assert {k: v for k, v in after.items() if k not in cc._SUPERSEDED_KEYS} == before
+        # The anchor pointer specifically — everything below rests on it.
+        assert after["fact_id"] == prior_id
+
+    def test_verify_still_anchors_after_an_abandoned_review(self, tmp_path):
+        """The reason this marks instead of deleting.
+
+        Review A consolidates; review B is dispatched and never consolidates
+        (waived, crashed, or abandoned via `critic-end`); the next
+        verify-resolutions must still anchor to A — which is the correct
+        anchor, since B produced no fact. Deleting the cache at B's dispatch
+        would leave this pass with no anchor at all, failing it closed.
+        """
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0  # B dispatched…
+        subprocess.run(  # …and abandoned without consolidating
+            ["python3", str(HOOK), "critic-end"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        prior_fact = next(f for f in _store_facts(repo, "review") if f["id"] == prior_id)
+        assert manifest["base_tree"] == prior_fact["body"]["head_tree"]
+
+    def test_consolidation_clears_the_marker(self, tmp_path):
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        assert "superseded_by" in json.loads((repo / FINDINGS_REL).read_text())
+
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        for role in manifest["roster"]:
+            _write_partial(repo, role, manifest["commit_reviewed"])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+        after = json.loads((repo / FINDINGS_REL).read_text())
+        assert [k for k in cc._SUPERSEDED_KEYS if k in after] == []
+        # Cleared because the whole record was rewritten from the NEW fact —
+        # not because anything went looking for the keys.
+        assert after["fact_id"] == manifest["id"] != prior_id
+
+    def test_a_second_dispatch_restamps_rather_than_stacks(self, tmp_path):
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        first_marker = json.loads((repo / FINDINGS_REL).read_text())["superseded_by"]
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+
+        raw = (repo / FINDINGS_REL).read_text()
+        record = json.loads(raw)
+        second = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())["id"]
+        assert second != first_marker
+        assert record["superseded_by"] == second
+        assert first_marker not in raw  # re-stamped, not layered
+        for key in cc._SUPERSEDED_KEYS:
+            assert raw.count(f'"{key}"') == 1
+        assert record["fact_id"] == prior_id  # still the last COMPLETED review
+
+    def test_a_marked_record_still_passes_the_findings_validator(self, tmp_path):
+        # `ledger.py` validates this record through
+        # `gates.validate_critic_findings` before anchoring a `review.critic`
+        # event. Extra keys must not turn a legitimate record into a rejected
+        # one — the marker is additive or it is a regression.
+        repo, _head, _prior = self._repo_with_a_completed_review(tmp_path)
+        assert gates.validate_critic_findings(repo / FINDINGS_REL)
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        # Assert the marker landed FIRST: without it this validates an
+        # unmarked record and passes whether or not the marker exists.
+        assert json.loads((repo / FINDINGS_REL).read_text()).get("superseded_by")
+        assert gates.validate_critic_findings(repo / FINDINGS_REL)
+
+    def _repo_without_a_review(self, tmp_path) -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo
+
+    def test_no_cache_is_not_an_error_and_invents_nothing(self, tmp_path):
+        repo = self._repo_without_a_review(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert not (repo / FINDINGS_REL).exists()
+        assert "superseded" not in result.stdout
+
+    def test_an_unreadable_cache_is_left_alone_and_never_blocks_dispatch(self, tmp_path):
+        # The view is advisory; a dispatch must never fail over it. A truncated
+        # cache is the shape `critic_findings_note` already reads this file
+        # behind (UnicodeDecodeError, not just JSONDecodeError).
+        repo = self._repo_without_a_review(tmp_path)
+        raw = '{"summary": "truncated mid-w'
+        (repo / FINDINGS_REL).write_text(raw)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert (repo / FINDINGS_REL).read_text() == raw  # untouched, not half-rewritten
+        assert (repo / PARTIALS_REL / "manifest.json").is_file()  # dispatch proceeded
+        assert "superseded" not in result.stdout
+
+
 class TestVerifyResolutionsDispatch:
     def _seed_and_fix(self, repo: Path) -> tuple[str, str]:
         """Prior review fact (with a blocker) at the initial commit's REAL

@@ -445,7 +445,25 @@ views_enabled: true
 # gates resolve it by scope — which is the property the line above names as
 # what made the cleared state survivable last time. Next work sets this via
 # /prawduct:backlog pick.
-active_build_plan:
+#
+# SET 2026-08-05 to the ephemeral-worktrees plan (#594), and this note is the
+# annotation the entry above went in without — caught by the cumulative's R-5,
+# which is the discipline working. Read the CLEARED note above as the argument
+# it is, not as a standing instruction: it cleared a finished plan at ITS
+# completion, and all three of this plan's chunks are likewise built.
+#
+# The retain-vs-clear call is NOT made here, deliberately. `skills/pr/SKILL.md`
+# step 4 states the rule for a `develop` base — RETAIN both the plan file and
+# this pointer, because the develop->main promotion regenerates the Status of
+# every scope-tagged plan and the pointer is the fallback for unscoped ones.
+# That is a different answer from the CLEARED note above, which cleared a
+# release-pending plan on the argument that `scope:` tagging made the slot
+# redundant. Two governance surfaces, two answers, and resolving that conflict
+# by hand at merge time is how the slot went stale twice before. So: annotate
+# now, let `/prawduct:pr` apply its documented rule at merge, and if the
+# conflict still stands afterwards it is a real one to settle once — not
+# per-branch, and not by whoever is holding the merge.
+active_build_plan: .prawduct/artifacts/build-plan-ephemeral-worktrees.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
