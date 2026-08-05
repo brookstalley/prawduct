@@ -71,7 +71,9 @@ overridable, and the bound holds without it.
 - [ ] Chunk 03: Delegation guidance states the snapshot and the shared index
 Context: Built 2026-08-05 from issue #594, on `fix/ephemeral-agent-worktrees` off
 `develop@b994bfa`. Chunk 01 committed (`5fd2f45`), reviewed clean. Chunk 02 built and
-reviewed. Next: Chunk 03 (methodology prose).
+reviewed. Chunks 02-03 committed (`493b5e0`). Status checkboxes stay `[ ]` on purpose —
+`views_enabled` regenerates them at the develop→main promotion, not at merge.
+Next: the `cumulative` review Chunk 03's `Type: cumulative-final` owes.
 
 Dispatch note: pass `--scope ephemeral-worktrees` to `/prawduct:critic` on this branch. The
 branch name does not name the scope, so record-lint otherwise resolves the graded plan from
@@ -168,7 +170,10 @@ alternative was rejected on that reversed asymmetry, not by overlooking the prec
   justified `verify-migration` as read-only "because it takes no `project_dir`", which
   `export`/`restructure-preview` falsify), and the extraction of `_hook_env` in
   `tests/test_ephemeral_worktree.py` after a hand-built subprocess env drifted vacuous a
-  second time.
+  second time. `gitstate.is_ephemeral_worktree` was also reordered to run its
+  `.claude/worktrees` ancestor test once instead of twice — behaviour-identical, and it
+  now shares `_EPHEMERAL_DIR_PATTERNS` with `ephemeral_worktree_kind_of_path` rather
+  than delegating to it.
 - **Tests:** unit — a store containing facts from an agent worktree, a workflow checkout and
   a normal worktree reports the ephemeral count and leaves the fact list unfiltered;
   unit — no gate's composed coverage changes in the presence of ephemeral facts (the

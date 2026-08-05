@@ -152,9 +152,13 @@ def _under_claude_worktrees(project_dir: Path) -> bool:
 
 
 def ephemeral_worktree_kind_of_path(path: str | Path) -> str | None:
-    """The pure-path half of :func:`is_ephemeral_worktree` — no git, no stat.
+    """Classify a worktree PATH as disposable — no git, no stat, no filesystem.
 
-    Split out for readers that must classify a path they cannot probe: an
+    Shares :data:`_EPHEMERAL_DIR_PATTERNS` with :func:`is_ephemeral_worktree`
+    rather than being called by it, so neither can drift from the other while
+    each keeps its own single ancestor test.
+
+    Exists for readers that must classify a path they cannot probe: an
     evidence fact records ``actor.worktree`` as a string, and by the time
     anyone reads it that worktree is usually deleted, so the branch fallback
     below would answer ``None`` for every historical record. Path shape is the

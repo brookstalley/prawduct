@@ -533,7 +533,12 @@ class TestBuildingMethodology:
         # and `test_standing_block_is_on_every_surface_that_claims_it` records
         # that an EARLIER budget trim was already funded by relocating that
         # rule's rationale, so the redundancy a fresh trim would harvest has
-        # been spent once already. Relocating prose to another file was rejected
+        # been spent once already. One trim DID land and is counted in the +146
+        # net: the Modes section lost its restatement of the mode-inference rule
+        # that line ~100 already owns. Recorded because "three trims tried and
+        # reverted" understated what was harvested, and a budget note that
+        # misreports its own accounting is the thing this table exists to stop.
+        # Relocating prose to another file was rejected
         # outright: it moves cost between files without reducing the total
         # footprint, which is the only number that matters.
         # What the +146 buys: the shared-index hazard has already produced a
