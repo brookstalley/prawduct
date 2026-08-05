@@ -36,7 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(ROOT))
-from lib import evidence, gates  # noqa: E402
+from lib import coverage, evidence, gates  # noqa: E402
 
 _ids = itertools.count(1)
 
@@ -128,6 +128,8 @@ def _fact(
     mode: str = "chunk (lighter pass, not ready for push)",
     head_commit: "str | None" = None,
     counts: "dict | None" = None,
+    dispatch_commit: "str | None" = None,
+    duration_seconds: "float | None" = None,
 ) -> str:
     fact_id = f"rev-test-{next(_ids):04d}"
     body = {
@@ -146,6 +148,13 @@ def _fact(
         body["head_commit"] = head_commit
     if counts is not None:
         body["counts"] = counts
+    # A real dirty-tree review records `head_commit: null` and keeps the commit
+    # HEAD sat at in `dispatch_commit` — the only thing that can place THAT
+    # round on a branch, which is why `count_branch_rounds` falls back to it.
+    if dispatch_commit is not None:
+        body["dispatch_commit"] = dispatch_commit
+    if duration_seconds is not None:
+        body["duration_seconds"] = duration_seconds
     result = evidence.append_fact(repo, "review", fact_id, body)
     assert result["status"] == "appended", result
     return fact_id
@@ -492,6 +501,20 @@ class TestFixChurnDiagnosis:
         # The counts it quotes come from the fact, not from a guess.
         assert "1 warning + 1 note" in err
 
+    def test_the_churn_note_names_the_command_that_prices_the_next_commit(
+        self, tmp_path, capsys
+    ):
+        """`cost-of-commit` is useless to a builder who does not know it exists,
+        and a command nobody knows about is a PULL carrier — the exact failure
+        the push carriers were built to fix. This block is where the builder is
+        standing when they decide whether to make one more commit, so it is
+        where the command has to be named."""
+        repo, _rid = self._reviewed_feature(tmp_path)
+        _commit(repo, "feature.py", "y = 3  # addressed R-1\n", "fix the warning")
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "fix churn" in err
+        assert "prawduct-hook cost-of-commit" in err
+
     def test_change_outside_the_named_files_is_not_churn(self, tmp_path, capsys):
         # CRT-3W6P's counter-example in miniature: the tree moved for a reason
         # the review loop did not cause, so the round it needs is real.
@@ -774,6 +797,208 @@ class TestFixChurnDiagnosis:
 # ---------------------------------------------------------------------------
 # Blocking findings and resolutions (D5 join)
 # ---------------------------------------------------------------------------
+
+
+class TestRoundTally:
+    """The uncovered block used to be a pure function of the current tree, so
+    round five printed the same words as round one.
+
+    Measured on a v3.2.4 consumer branch that ran six rounds: *"the gate
+    re-fires identically — block #6 read exactly like block #1."* Nothing in
+    the message let the builder see they were in a sequence, so each round was
+    priced as if it were the first. The tally is the discriminator, and it is
+    derived from the branch's own facts rather than a counter, because the
+    evidence store is shared by every worktree of the clone.
+    """
+
+    def _uncovered_branch(self, tmp_path, rounds: int, **fact_kwargs) -> Path:
+        """A feature branch whose gate is uncovered, carrying ``rounds``
+        recorded reviews of its own.
+
+        Each fact spans main→f1 only, so the judgeable commits after f1 leave
+        the gate uncovered — the state that prints the block under test — while
+        every fact still sits on this branch's lineage and counts.
+        """
+        repo = _branch_repo(tmp_path)
+        f1_commit, f1_tree = _git(repo, "rev-parse", "HEAD"), _tree(repo)
+        _commit(repo, "later.py", "z = 3\n", "f2")
+        for _ in range(rounds):
+            _fact(
+                repo,
+                _tree(repo, "main"),
+                f1_tree,
+                ["feature.py"],
+                head_commit=f1_commit,
+                **fact_kwargs,
+            )
+        return repo
+
+    def test_a_first_round_branch_says_it_is_the_first(self, tmp_path, capsys):
+        repo = _branch_repo(tmp_path)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "no review round has been recorded against this branch" in err
+        assert "this branch's first" in err
+
+    def test_a_fifth_round_branch_reads_differently_from_a_first(self, tmp_path, capsys):
+        """The acceptance criterion, asserted as a DIFFERENCE and not merely as
+        the presence of the right words — identical output is the reported
+        defect, so the test has to be able to see identity."""
+        (tmp_path / "a").mkdir()
+        (tmp_path / "b").mkdir()
+        first = _branch_repo(tmp_path / "a")
+        rc_first, _out, err_first = _run_gate(first, capsys)
+        repeat = self._uncovered_branch(tmp_path / "b", 4)
+        rc_repeat, _out, err_repeat = _run_gate(repeat, capsys)
+
+        assert rc_first == 1 and rc_repeat == 1
+        assert "the next one is round 5, not its first" in err_repeat
+        assert "4 review rounds" in err_repeat
+        assert err_first != err_repeat
+
+    def test_the_tally_asks_for_a_reason_instead_of_discouraging_the_round(
+        self, tmp_path, capsys
+    ):
+        """A repeat round is sometimes exactly right — CRT-3W6P's own
+        counter-example is one that looked like waste because a merge had
+        brought unreviewed lines into files the branch already touched. A bare
+        "you have spent four already" suppresses that round, so the sentence
+        has to name what a good answer looks like; a reader agrees with a
+        general prompt and spends the round anyway."""
+        repo = self._uncovered_branch(tmp_path, 4)
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "a merge or genuinely new work is a good answer" in err
+        assert "'one more fix commit' is not" in err
+        # ...and it never tells the builder NOT to review. The generic route
+        # below it stays reachable and unqualified when nothing diagnosed churn.
+        assert "/prawduct:critic cumulative" in err
+
+    def test_the_cost_comes_from_the_rounds_own_durations(self, tmp_path, capsys):
+        repo = self._uncovered_branch(tmp_path, 4, duration_seconds=300.0)
+        _rc, _out, err = _run_gate(repo, capsys)
+        # 4 × 300s = 20 min, computed at call time from the facts themselves —
+        # never a figure written into the message (see the no-hardcoded-duration
+        # sweep in tests/test_cost_of_commit.py).
+        assert "costing about 20 min so far" in err
+        # And it says WHOSE rounds those are. The other duration a builder meets
+        # in the same session is a repo-wide median from the ledger; two
+        # unlabelled figures read as one number contradicting itself.
+        assert "this branch's own rounds, not a repo-wide median" in err
+
+    def test_a_partly_timed_history_says_how_much_it_could_price(
+        self, tmp_path, capsys
+    ):
+        repo = self._uncovered_branch(tmp_path, 2, duration_seconds=300.0)
+        _fact(repo, _tree(repo, "main"), "deadbeef" * 5, ["feature.py"],
+              head_commit=_git(repo, "rev-parse", "HEAD~1"))
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "3 review rounds" in err
+        assert "costing about 10 min so far" in err
+        assert "2 of 3 timed" in err
+
+    def test_a_sub_minute_total_never_reads_as_about_zero_minutes(
+        self, tmp_path, capsys
+    ):
+        """The guard's whole point, asserted as the WRONG form being ABSENT.
+        A total under a minute formats to "about 0 min", which reads as a claim
+        that rounds are free — the opposite of what this sentence is for. Every
+        other case in this class is measured in whole minutes, so without this
+        a future edit dropping the guard goes green."""
+        repo = self._uncovered_branch(tmp_path, 2, duration_seconds=10.0)
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "costing under a minute so far" in err
+        assert "about 0 min" not in err
+
+    def test_untimed_rounds_are_counted_without_inventing_a_cost(self, tmp_path, capsys):
+        repo = self._uncovered_branch(tmp_path, 3)
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "3 review rounds" in err
+        assert "min between them" not in err
+
+    def test_a_dirty_tree_round_is_placed_by_its_dispatch_commit(self, tmp_path, capsys):
+        """A `chunk` review of an uncommitted tree records `head_commit: null`.
+        Dropping it would undercount exactly the mid-chunk rounds a long branch
+        spends most of — `dispatch_commit` is the commit HEAD sat at, and that
+        round was bought by this branch just as surely."""
+        repo = _branch_repo(tmp_path)
+        dispatched_at = _git(repo, "rev-parse", "HEAD")
+        _commit(repo, "later.py", "z = 3\n", "f2")
+        _fact(repo, _tree(repo, "main"), "deadbeef" * 5, ["feature.py"],
+              dispatch_commit=dispatched_at)
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "already recorded 1 review round since" in err
+        assert "round 2, not its first" in err
+        # Reads as English at n=1 too — the plural forms were caught by running
+        # the real gate on a one-round branch, which no unit test had done.
+        assert "still uncovered after it" in err
+
+    def test_a_sibling_branchs_round_is_not_this_branchs(self, tmp_path, capsys):
+        """The store is shared by every worktree of the clone, so "reviews that
+        exist" is not "reviews this branch bought". A fact off this lineage
+        must not inflate the count — an inflated count tells a first-round
+        builder they are churning, which discredits the whole message."""
+        repo = _branch_repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "sibling", "main")
+        _commit(repo, "sibling.py", "s = 1\n", "s1")
+        sibling_commit = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "checkout", "-q", "feature")
+        _fact(repo, _tree(repo, "main"), _tree(repo, "sibling"), ["sibling.py"],
+              head_commit=sibling_commit)
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "no review round has been recorded against this branch" in err
+
+    def test_a_review_at_the_merge_base_is_not_counted(self, tmp_path, capsys):
+        """The documented lower bound, pinned so the fix for it is a decision
+        and not an accident: a dirty-tree review dispatched before the branch's
+        first commit sits AT the merge-base. Counting it would mean counting
+        the BASE branch's reviews too, which is the error that tells a
+        first-round builder they are on round four."""
+        repo = _branch_repo(tmp_path)
+        merge_base = _git(repo, "rev-parse", "main")
+        _fact(repo, _tree(repo, "main"), "deadbeef" * 5, ["feature.py"],
+              dispatch_commit=merge_base)
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "no review round has been recorded against this branch" in err
+
+    def test_the_tally_degrades_to_a_reason_never_to_a_count(self, tmp_path):
+        """`advice fails soft` is not `advice fails silent`: a tally that
+        vanishes when it breaks reads as "round one" to the builder it exists
+        to warn."""
+        repo = _branch_repo(tmp_path)
+        for bad_base in ("", "deadbeef" * 5):
+            tally = coverage.count_branch_rounds(repo, [], bad_base)
+            assert tally["status"] == "unavailable", bad_base
+            line = coverage.format_branch_rounds(tally)
+            assert "could not be derived" in line
+            assert "unknown, not as one" in line
+        assert "could not be derived" in coverage.format_branch_rounds(None)
+
+    def test_the_producer_counts_and_totals_without_the_gate(self, tmp_path):
+        repo = _branch_repo(tmp_path)
+        head = _git(repo, "rev-parse", "HEAD")
+        merge_base = _git(repo, "merge-base", "main", "HEAD")
+        facts = [
+            {"kind": "review", "body": {"head_commit": head, "duration_seconds": 120}},
+            {"kind": "review", "body": {"head_commit": head}},
+            {"kind": "resolution", "body": {"head_commit": head}},
+            {"kind": "review", "body": {"head_commit": "deadbeef" * 5}},
+        ]
+        tally = coverage.count_branch_rounds(repo, facts, merge_base)
+        assert tally == {
+            "status": "counted", "rounds": 2, "seconds": 120.0, "timed": 1,
+        }
+
+    def test_the_tally_leads_the_block_it_frames(self, tmp_path, capsys):
+        """Placement is the deliverable, not the sentence. The routes below it
+        are answered differently on round five than on round one, so a reader
+        who acts on the first thing they meet has to meet this first."""
+        repo = self._uncovered_branch(tmp_path, 2)
+        _rc, _out, err = _run_gate(repo, capsys)
+        lines = [line for line in err.splitlines() if line.strip()]
+        tally_at = next(i for i, line in enumerate(lines) if "round 3" in line)
+        route_at = next(i for i, line in enumerate(lines) if "/prawduct:critic" in line)
+        assert lines[0].startswith("uncovered:")
+        assert 0 < tally_at < route_at
 
 
 class TestBlockingAndResolutions:

@@ -23,9 +23,17 @@ governed_by:
       - "Goals and verification bind; prescribed method is advice → invoked pre-emptively for Chunk 02. The goal is that a builder reading a repeat round's gate output can tell it is a repeat; whether that is a count, a duration, or both is the builder's call at implementation time."
       - "Local-first: no network, no daemon → conforms. The ledger is a local file."
       - "Prawduct guides and reviews; it never implements → conforms. `cost-of-commit` reports on the product's own paths and writes nothing into them."
+      - "The plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared evidence store, and the files it must reconcile → conforms, and this plan is unusually clean on it: NOTHING here writes at all. `cost-of-commit`, the pricing helper and the round tally are pure readers; the three message changes emit to stdout/stderr. No chunk creates, edits, or deletes a file in a governed repo."
+      - "Written in Python, never specific to Python; gates dispatch per file by language → conforms. Every classification added routes through `coverage_algebra.is_judgeable_path`, which decides by PATH and never opens a file or infers a language — so `cost-of-commit` answers identically in a Go or TypeScript product. The round tally is language-blind by construction (it counts facts, not code)."
   - artifact: data-model
     dispositions:
-      - "inapplicable — no persisted schema is introduced or changed. The pricing helper derives from the ledger's existing event shape via `telemetry._extract_row`, adding no field."
+      - "No persisted schema is introduced or changed → conforms across both chunks. The pricing helper derives from the ledger's existing event shape via `telemetry._extract_row`; Chunk 02's round tally reads two fields `build_fact_body` already writes (`dispatch_commit`, `duration_seconds`). Neither adds a field, and no reader of a NEW shape is created."
+      - "Governance verdicts are computed from the append-only fact ledger, never from mutable model-written state; no model sits in a fact's write path → conforms. Everything added is a READER — the tally consumes the same fact list the gate already read, and no chunk appends, edits, or authors a fact. The one model-written input in this area (the reviewer's partial) is untouched."
+      - "Facts are immutable and append-only; a state change is a new fact → conforms, untouched. No chunk mutates a fact, and the tally deliberately derives the round count at call time rather than persisting a counter — a stored count would be exactly the mutable state this norm forbids, and would drift from the facts it summarizes."
+      - "Derived views are disposable and never authoritative — no gate reads a view to reach a verdict → conforms, and this is the load-bearing check for Chunk 02. `.critic-findings.json`'s `next_action` gains the round price, and no gate reads that file; the gate's own tally is printed prose that no verdict consumes. Nothing added can move a verdict."
+      - "A fact written by a newer schema than the reader is a loud block, never silently dropped → inapplicable, because no new reader of the store is introduced. `count_branch_rounds` is handed the fact list the gate already obtained through `evidence.read_facts` + `_store_precheck`, which performs the schema-ahead block before any caller sees a fact. Reading the store directly would have made this applicable; taking the caller's list is what keeps it out."
+      - "Two stores, two lifetimes: shared committed answers distinct from per-clone gitignored nags and caches → conforms. Two stores are read for two different questions — the evidence store for which rounds THIS BRANCH bought, the governance ledger for this repo's median round cost — and neither gains a writer or a cross-reference. The gate message labels which figure came from which, so the reader is never handed two unattributed durations."
+      - "`backlog_service_repo` selects the authoritative backlog store → inapplicable. No chunk reads or writes a backlog on either backend."
 last_validated: 2026-08-05
 ---
 
@@ -255,7 +263,8 @@ running the real command against real repo state:
 - [ ] Chunk 02: The message knows which round this is, and both branches carry the price
 - [ ] Chunk 03: The warning where the relapse starts
 
-**Chunk 01 is complete** — committed as `89c9c8f`, suite green (3713 passed / 7 skipped), verified
+**Chunk 01 is complete** — committed as `89c9c8f`, suite green at that tree (the evidence store
+records pass/fail per tree; `prawduct-hook test-status` answers for the current one), verified
 against a real dirty tree per the Verification Strategy (the reporter's `.gitignore` case answers
 `costs-a-round` in one command; a doc-only set answers `free`). Status checkboxes above stay `[ ]`
 until the release regenerates them — `views_enabled` is set, so the change-log entry tagged
@@ -267,6 +276,19 @@ with the review**, which is `building.md`'s "scrub while it runs, it often pre-r
 behaving as advertised; they are dispositioned as stale-against-HEAD rather than re-fixed. The
 directory-argument warning and the misattributed ledger diagnostic were fixed in the same batch. No
 second round was started, and none was required.
+
+**Chunk 02 is complete** — the tally leads the uncovered block (derived from the branch's own
+review facts, placing dirty-tree rounds by `dispatch_commit`, undercounting at the merge-base by
+documented choice), both arms of `next_action_line` carry the round price and the accept route, and
+`cost-of-commit` is named by the two carriers that already reach a builder mid-commit. Verified
+against this branch's real gate output per the Verification Strategy — which is where the singular
+grammar defects were caught, no unit test having run it at *n*=1. The free-path enumeration in
+`next_action_line` was deleted rather than extended: it was a second authoritative copy of
+`is_judgeable_path`, and its drift-guard test is now a pin that it stays deleted. One pre-existing
+hardcoded duration (`_BATCH_FIX_DIRECTIVE`'s "5-10 minute rounds") was removed on the way through,
+found by widening the no-hardcoded-duration sweep — which is scoped to price-bearing surfaces, not
+whole modules, because those modules also carry reviewer-liveness durations that are expectations
+rather than prices.
 
 **Two things the next session must know.** First, HEAD's tree is *not* the tree that review
 anchored to — the fixes landed after it — so `check-cumulative-critic` will report a gap on this

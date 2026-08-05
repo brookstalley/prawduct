@@ -85,7 +85,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `verify-operator-verification` (both mutating).
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
-  `jurisdiction`.
+  `jurisdiction`, `cost-of-commit [--json] [<paths>...]` (does committing these paths — the
+  working tree by default — buy a review round? Asks the gates' own `is_judgeable_path`, so it
+  cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
+  to `unknown` rather than a reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
   `learnings-obligation`, `norm-index-scaffold`, `repo-disable`, `bug-inbox` (all
   dry-run-by-default where they mutate).

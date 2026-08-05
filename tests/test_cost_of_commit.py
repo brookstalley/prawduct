@@ -27,6 +27,7 @@ tests/test_classify_diff_risk.py.
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
 import subprocess
@@ -369,17 +370,51 @@ class TestOutput:
         the right form is present.
 
         Only literals in the *emitted* strings are the subject — the sample
-        sizes and thresholds in code are not quoted to anyone. Both modules
-        are scanned: the verdict prose lives in `coverage.py`, but the price
-        sentence itself lives in `telemetry.format_round_price`, which is
-        where a hardcoded figure would actually be tempting.
+        sizes and thresholds in code are not quoted to anyone.
+
+        **The scope is the surfaces that quote a PRICE**, and the granularity
+        differs on purpose. `coverage.py` and `telemetry.py` exist to answer
+        "what does this cost", so they are scanned whole. `gates.py` and
+        `critic_consolidate.py` also carry a duration of a different kind — how
+        long a reviewer typically runs, which tells a reader whether silence is
+        still normal. That number is an expectation about a subagent, not a
+        price offered to change a spending decision, and it is not derivable
+        from the ledger at the point it is printed. Scanning those modules
+        whole would flag it forever, and a guard people have to argue with gets
+        deleted rather than fixed — so the price-bearing surfaces inside them
+        are named individually.
+
+        The list is maintained alongside the callers rather than frozen: a
+        guard aimed at the one file that cannot regress reports green forever,
+        which is precisely how this test's first draft passed while the
+        sentence it guarded lived somewhere else.
         """
-        for module in ("coverage.py", "telemetry.py"):
-            source = (ROOT / "lib" / module).read_text()
-            emitted = re.findall(r'^\s*(?:print\(|\s+f?")(.*)$', source, re.MULTILINE)
-            for line in emitted:
-                assert not re.search(r"\b\d+\s*(?:min|minute|sec|second)s?\b", line), (
-                    f"a duration is hardcoded into emitted text in {module}: "
-                    f"{line.strip()!r} — the price must be derived from the ledger "
-                    "at call time"
-                )
+        from lib import critic_consolidate, gates  # noqa: PLC0415
+
+        scanned = {
+            "lib/coverage.py": (ROOT / "lib" / "coverage.py").read_text(),
+            "lib/telemetry.py": (ROOT / "lib" / "telemetry.py").read_text(),
+            "gates.check_cumulative_critic": inspect.getsource(
+                gates.check_cumulative_critic
+            ),
+            "critic_consolidate.next_action_line": inspect.getsource(
+                critic_consolidate.next_action_line
+            ),
+        }
+        # A module constant has no source to scan for interpolation — every
+        # digit in its VALUE is hardcoded by construction, so the value itself
+        # is the subject. It printed "5-10 minute rounds" until the round price
+        # became derivable, which is the case that put it on this list.
+        emitted = [
+            (f"{name} (emitted line)", line)
+            for name, source in scanned.items()
+            for line in re.findall(r'^\s*(?:print\(|\s+f?")(.*)$', source, re.MULTILINE)
+        ] + [
+            ("critic_consolidate._BATCH_FIX_DIRECTIVE", critic_consolidate._BATCH_FIX_DIRECTIVE),
+        ]
+        for name, line in emitted:
+            assert not re.search(r"\b\d+\s*(?:min|minute|sec|second)s?\b", line), (
+                f"a duration is hardcoded into emitted text in {name}: "
+                f"{line.strip()!r} — the price must be derived from the ledger "
+                "at call time"
+            )

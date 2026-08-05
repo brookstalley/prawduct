@@ -230,12 +230,22 @@ _CACHE_WARM_DIRECTIVE = (
 #: ``tests/test_critic_consolidate.py`` parses the backticked path tokens out of
 #: this string and drives its assertions from the text — drift in EITHER
 #: direction fails (a predicate change, or an edit to this list alone).
+#:
+#: **It makes no positional cross-reference, and cannot.** There are two
+#: emission sites and they print different things after it: :func:`consolidate`
+#: follows with the ``NEXT-ACTION:`` line, while
+#: :func:`_already_consolidated_note` follows with nothing at all — and that is
+#: the coordinator path's normal case, where the reviewing fork has already
+#: returned. A clause pointing at "the line below" is therefore true on one path
+#: and a dangling pointer on the other, which is worse than the hardcoded
+#: "5-10 minute rounds" it briefly replaced. Anything this text needs the reader
+#: to have must be inside it.
 _BATCH_FIX_DIRECTIVE = (
     " Disposition them ALL in ONE pass — land every fix you are going to make in"
     " ONE commit, and accept or file the rest. Only unresolved BLOCKING findings"
     " gate anything; if that commit touches judgeable files, ONE"
     " `/prawduct:critic verify-resolutions` re-covers it. A fix-commit-verify"
-    " cycle per finding multiplies 5-10 minute rounds, and each round reviews the"
+    " cycle per finding multiplies whole review rounds, and each round reviews the"
     " prose the previous fix wrote. Free to write at any time (they do not move"
     " coverage): everything under `.prawduct/` — change-log, backlog,"
     " project-state, build plans, regen-views output — plus"
@@ -264,7 +274,13 @@ _COVERAGE_IS_A_SEPARATE_QUESTION = (
 )
 
 
-def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: int) -> str:
+def next_action_line(
+    fact_id: "str | None",
+    blocking: int,
+    warning: int,
+    note: int,
+    price_sentence: "str | None" = None,
+) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
 
@@ -291,14 +307,31 @@ def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: i
 
     ``.critic-findings.json`` is a derived VIEW (D7): no gate reads it, so a
     line here can never weaken one. It is advice delivered where the decision
-    is made."""
+    is made.
+
+    ``price_sentence`` is :func:`telemetry.format_round_price`'s output, passed
+    in rather than derived here so this stays a pure function of its arguments
+    and the ledger read happens once per consolidation. **Both arms carry it.**
+    The blocking arm used to say only that deferring "turns one review into
+    several" — a rule, not a price, which is the first of the five failures a
+    v3.2.4 consumer reported after reading these carriers and running six rounds
+    anyway. For the same reason the blocking arm now also names the accept
+    route: it already orders the builder to decide the WARNING/NOTE findings in
+    the same pass, and the command for the cheapest of those decisions lived
+    only in the arm the builder does not reach when something is blocking."""
+    ref = fact_id or "<review-id>"
+    price = f" {price_sentence}" if price_sentence else ""
     if blocking:
         return (
             f"{blocking} BLOCKING finding(s) gate this work — nothing else here does."
             " Fix them, land EVERY fix you are going to make in ONE commit, then run"
             " ONE `/prawduct:critic verify-resolutions`. Decide the WARNING/NOTE"
             " findings in that SAME pass (fix / accept / file) — deferring them to a"
-            " later round is what turns one review into several."
+            " later round is what turns one review into several. Accept is the"
+            " default for anything nobody will realistically action:"
+            f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"` needs no'
+            " review and moves no tree."
+            + price
         )
     if not (warning or note):
         return (
@@ -306,7 +339,6 @@ def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: i
             " to disposition. Nothing in THIS review requires another round."
             + _COVERAGE_IS_A_SEPARATE_QUESTION
         )
-    ref = fact_id or "<review-id>"
     return (
         f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
         " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
@@ -317,13 +349,13 @@ def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: i
         f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"`, which needs'
         " no review and moves no tree. If you do choose to fix some, batch them into"
         " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
-        " ONLY if that commit touched judgeable files. A batch confined to"
-        " `.prawduct/` prose, `.claude/settings.json`, or `.md` outside `skills/`,"
-        " `methodology/`, `templates/` and a root `CLAUDE.md` moves no coverage and"
-        " needs no pass at all."
+        " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
+        " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
+        " prices `free` moves no coverage and needs no pass at all."
         " Do NOT start another round to 'close coverage' before committing, and do"
         " not infer that you need one from gate output printed before your fix —"
         " commit, then re-run the gate and let it answer."
+        + price
     )
 
 
@@ -1515,12 +1547,17 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
     }
 
 
-def fact_to_cache_record(fact: dict) -> dict:
+def fact_to_cache_record(fact: dict, price_sentence: "str | None" = None) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
     and briefings read it for content; no gate reads it). Carries the source
     ``fact_id`` so staleness is detectable and the verify-resolutions
-    dispatch can locate its anchor fact."""
+    dispatch can locate its anchor fact.
+
+    ``price_sentence`` rides through to :func:`next_action_line`. It is a
+    parameter rather than a ledger read here because this function is a pure
+    fact→record projection and the cache is written once per consolidation,
+    where the caller already holds the prawduct dir."""
     body = fact.get("body") or {}
     findings = []
     for f in body.get("findings", []):
@@ -1562,7 +1599,9 @@ def fact_to_cache_record(fact: dict) -> dict:
         # The builder's copy of the loop-termination rule, computed from the
         # counts just read. See `next_action_line` for why the findings file is
         # the carrier that had a reader and no message.
-        "next_action": next_action_line(fact.get("id"), blocking, warning, note),
+        "next_action": next_action_line(
+            fact.get("id"), blocking, warning, note, price_sentence
+        ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
         # path. Additive key: `--json` readers tolerate unknown fields.
@@ -1927,7 +1966,15 @@ def consolidate(project_dir: Path) -> int:
             file=sys.stderr,
         )
         return 1
-    record = fact_to_cache_record(fact)
+    # One ledger read per consolidation, shared by the cache record and the
+    # relayed NEXT-ACTION line, so the two carriers of the same sentence cannot
+    # quote different prices. Unavailable is a first-class answer here — the
+    # formatter says so out loud rather than dropping the clause.
+    from . import telemetry  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
+
+    record = fact_to_cache_record(fact, price_sentence)
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -2020,6 +2067,7 @@ def consolidate(project_dir: Path) -> int:
             counts.get("blocking", 0),
             counts.get("warning", 0),
             counts.get("note", 0),
+            price_sentence,
         )
     )
     return 0

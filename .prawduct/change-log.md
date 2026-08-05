@@ -3,6 +3,59 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: the gate knows which round this is, and both arms carry the price
+
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=02 -->
+
+**Round five printed the same words as round one.** Everything the uncovered `check-cumulative-critic`
+block says is a pure function of the current tree, so nothing in it could tell a builder they were
+in a sequence — the reporter's fourth failure, verbatim: *"the gate re-fires identically; block #6
+read exactly like block #1."* The block now leads with a tally: how many review rounds this branch
+has recorded since the merge-base, what they cost, and that the next one is round N+1.
+
+**The count is derived from the branch's own facts, never a counter.** The evidence store is shared
+by every worktree of a clone, so "reviews that exist" is not "reviews this branch bought" — a round
+is attributed by the commit it was taken against lying on HEAD's lineage after the merge-base. A
+dirty-tree review records no `head_commit` and is placed by its `dispatch_commit`, which is what
+keeps the mid-chunk rounds a long branch spends most of from vanishing. One `git rev-list` answers
+both lineage questions by set membership, so the tally costs one subprocess on a path where the
+sibling diagnosis pays two per fact.
+
+**It undercounts in exactly one case, and that is the choice.** A review dispatched before the
+branch's first commit sits AT the merge-base and is not counted; widening the span to include it
+would sweep in the base branch's own reviews and tell a first-round builder they were on round
+four. Undercounting says "at least this many"; overcounting says something false, and a message
+caught being wrong once is discounted forever after.
+
+**Both arms of `next_action_line` now carry what only one did.** The blocking arm ordered the
+builder to decide the WARNING/NOTE findings in the same pass but named neither the accept command
+nor any price — a rule, not a number, which is the reporter's first failure. Both arms quote the
+round price from the Chunk 01 helper, computed per consolidation and shared by the findings cache
+and the relayed `NEXT-ACTION:` line so the two carriers cannot disagree.
+
+**`cost-of-commit` stops being a pull carrier.** A command nobody knows about is precisely the
+failure v3.2.4 diagnosed, so the two surfaces that already reach a builder at the moment of
+committing now name it: the fix-churn NOTE, and the free-write sentence in `next_action_line` —
+which drops its hand-maintained enumeration of free paths in favour of the command that asks the
+classifier owning them. The enumeration was a second authoritative copy of `is_judgeable_path`; its
+guard test is now a pin that it stays deleted. `_BATCH_FIX_DIRECTIVE` keeps its own list on
+purpose — that one is parsed token-by-token and driven against the classifier by
+`TestBatchFixDirective`, so it cannot drift silently, and it addresses a reviewer rather than the
+builder who is about to commit.
+
+**`api-contract.md` gains the `cost-of-commit` row Chunk 01 owed it** — the command shipped last
+chunk without reaching the Operations list, and naming it from two runtime carriers made the
+omission load-bearing rather than cosmetic.
+
+**One hardcoded duration was found and removed on the way through.** `_BATCH_FIX_DIRECTIVE` said
+"5-10 minute rounds" — the exact defect this scope exists to stop — and the no-hardcoded-duration
+sweep was widened to reach it. The sweep names price-bearing surfaces individually rather than
+scanning whole modules, because the same modules carry reviewer-liveness durations that are
+expectations about a subagent, not prices; a guard that flags those forever gets deleted rather
+than fixed.
+
+**Classification:** governance
+
 ## 2026-08-05: price a review round before the commit that buys it
 
 <!-- prawduct: type=fix | scope=review-round-pricing | chunks=01 -->

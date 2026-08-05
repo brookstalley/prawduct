@@ -368,6 +368,143 @@ def diagnose_fix_churn(
     }
 
 
+def count_branch_rounds(
+    project_dir: Path, facts: "list[dict]", merge_base: str
+) -> dict:
+    """How many review rounds this branch has already bought, and what they cost.
+
+    Everything the uncovered gate prints is a pure function of the current
+    tree, so round five reads exactly like round one — measured on a consumer
+    branch that ran six of them and reported that block #6 was
+    indistinguishable from block #1. This is the discriminator that lets a
+    repeat round *look* like one.
+
+    It is derived from the branch's own facts, never a stored counter: the
+    evidence store is shared by every worktree of the clone, so "how many
+    reviews exist" is not "how many this branch bought". A round is this
+    branch's when the commit it was taken against lies strictly after the
+    merge-base on HEAD's lineage. ``head_commit`` is that commit for a review
+    of committed state; a dirty-tree review records ``head_commit: null`` and
+    is placed by ``dispatch_commit``, the commit HEAD sat at when the reviewer
+    was dispatched — that round was spent on this branch's work just as surely,
+    and dropping it would undercount exactly the mid-chunk reviews a long
+    branch accumulates most of.
+
+    **The count is a documented lower bound in one case**, and the asymmetry is
+    deliberate: a dirty-tree review taken before the branch's first commit sits
+    AT the merge-base, and ``merge_base..HEAD`` excludes it. Widening the span
+    to include the merge-base commit would sweep in the *base branch's* own
+    reviews, which is the error that tells a first-round builder they are on
+    round four. Undercounting says "at least this many"; overcounting says
+    something false in the direction that discredits the whole message.
+
+    One ``git rev-list`` answers both lineage questions by set membership, so
+    this adds a single subprocess rather than the two-ancestry-checks-per-fact
+    that :func:`diagnose_fix_churn` pays — it runs on the interactive
+    ``/prawduct:pr create`` path against a store holding every review the clone
+    has ever recorded.
+
+    Returns ``{"status": "counted", "rounds", "seconds", "timed"}`` — with
+    ``seconds`` ``None`` when no attributed round recorded a duration — or
+    ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
+    advice fails soft. It is deliberately not silent, because a tally that
+    vanishes when it breaks reads as "round one" to the builder it exists to
+    warn (``learnings.md``: "'advice fails soft' is not 'advice fails silent'").
+    """
+    from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
+
+    if not merge_base:
+        return {"status": "unavailable", "reason": "no merge-base to count from"}
+    if not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "the evidence store did not read"}
+    rc, out, err = evidence.run_git(project_dir, "rev-list", f"{merge_base}..HEAD")
+    if rc != 0:
+        return {
+            "status": "unavailable",
+            "reason": f"this branch's commits are unresolvable ({err.strip()[:80]})",
+        }
+    on_branch = {line.strip() for line in out.splitlines() if line.strip()}
+
+    rounds = 0
+    durations: list[float] = []
+    for fact in facts:
+        if fact.get("kind") != "review":
+            continue
+        body = fact.get("body") or {}
+        commit = body.get("head_commit") or body.get("dispatch_commit")
+        if not isinstance(commit, str) or commit not in on_branch:
+            continue
+        rounds += 1
+        seconds = body.get("duration_seconds")
+        if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
+            durations.append(float(seconds))
+    return {
+        "status": "counted",
+        "rounds": rounds,
+        "seconds": round(sum(durations), 1) if durations else None,
+        "timed": len(durations),
+    }
+
+
+def format_branch_rounds(tally: "dict | None") -> str:
+    """The uncovered gate's one sentence about *which* round this is.
+
+    One function owns the whole sentence and decides which of the three
+    readings leads, so no call site can assemble a variant of its own
+    (``learnings.md``: advice with an exception stapled on still leads with the
+    advice). The figure is computed from the branch's own rounds at call time
+    and never written down — a duration copied into prose drifts, and
+    correcting it costs the review round this message exists to save.
+
+    **It asks for a reason rather than discouraging the round**, and it names
+    what a good reason looks like. A repeat round is sometimes exactly right —
+    CRT-3W6P's counter-example is a round that looked like waste and was not,
+    because a merge had brought thousands of unreviewed lines into files the
+    branch already touched. A bare "you have spent four already" would suppress
+    that round, so the sentence descends to the two cases: a merge or genuinely
+    new work answers it, one more fix commit does not. A reader agrees with a
+    general prompt and spends the round anyway.
+    """
+    if not tally or tally.get("status") != "counted":
+        reason = (tally or {}).get("reason", "unknown")
+        return (
+            f"NOTE: which round this is could not be derived ({reason}) — read the "
+            f"round count as unknown, not as one."
+        )
+    n = tally["rounds"]
+    if not n:
+        return (
+            "NOTE: no review round has been recorded against this branch since the "
+            "merge-base, so this gap is unreviewed work rather than a repeat — the "
+            "next round is this branch's first."
+        )
+    spent = ""
+    if tally.get("seconds"):
+        minutes = tally["seconds"] / 60.0
+        # Only when some round went untimed: "1 of 1 timed" is noise, and a
+        # reader who has to parse it stops reading the sentence that matters.
+        partial = "" if tally["timed"] >= n else f", {tally['timed']} of {n} timed"
+        # Named as THIS BRANCH's spend because the other number a builder meets
+        # in the same session — `telemetry.format_round_price` — is a repo-wide
+        # median. Two unlabelled durations in one workflow read as one number
+        # that disagrees with itself.
+        # A sub-minute total rounds to "about 0 min", which reads as a claim
+        # that rounds are free — the opposite of what this sentence is for.
+        cost = "under a minute" if minutes < 1 else f"about {minutes:.0f} min"
+        spent = (
+            f", costing {cost} so far "
+            f"(this branch's own rounds{partial}, not a repo-wide median)"
+        )
+    plural = "" if n == 1 else "s"
+    return (
+        f"NOTE: this branch has already recorded {n} review round{plural} since the "
+        f"merge-base{spent} — so the next one is round {n + 1}, not its first. The "
+        f"gate is still uncovered after {'it' if n == 1 else 'them'}: name what "
+        f"round {n + 1} will do differently before you spend it — a merge or "
+        f"genuinely new work is a good answer, 'one more fix commit' is not."
+    )
+
+
 def resolve_merge_base_tree(project_dir: Path) -> dict:
     """Resolve base branch → merge-base commit → that commit's tree SHA —
     the shared prelude of every gate/dispatch that anchors an interval at
