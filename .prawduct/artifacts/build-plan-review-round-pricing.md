@@ -112,6 +112,16 @@ Parent item: **#600** (filed 2026-08-05, `stage: ready`), whose `related` record
 | R3 — a repeat round does not present identically to a first round | reporter failure 4 | Chunk 02 |
 | R4 — the blocking-branch message carries what the zero-blocking branch already carries | reporter failure 1, read against `next_action_line` | Chunk 02 |
 | R5 — the round-cost warning appears in the PR reviewer's output, where the relapse starts | reporter failure 3 | Chunk 03 |
+| R6 — the routes offered at a finding name the **ride-along**: carrying a small fix into the next chunk's commit, which was going to buy a round anyway | owner, mid-build 2026-08-05 | Chunk 03 (both the PR protocol and the Critic's builder-facing line) |
+
+**R6 arrived mid-build and is recorded here rather than built silently.** The owner's point:
+the routes on offer were fix-now (buys a round), accept, and file — and the cheapest real option
+was missing. When a plan has further judgeable chunks, a small fix carried into the next chunk's
+commit costs *nothing extra*, because that commit buys a round regardless. It is explicitly not
+always right (a fix that changes what the bundle claims to ship belongs in the bundle), so it is
+offered as an option with its condition attached, never as the default. It applies to Critic
+findings and PR-review findings alike, which is why R6 lands on both surfaces in one chunk even
+though the message half belongs to Chunk 02's family.
 
 **Out of scope, deliberately — and this is the honest limit of the plan.** #167's
 `critic-begin` **refusal** is untouched. Reporter failure 2 (*"the wording bounds the
@@ -289,6 +299,15 @@ hardcoded duration (`_BATCH_FIX_DIRECTIVE`'s "5-10 minute rounds") was removed o
 found by widening the no-hardcoded-duration sweep — which is scoped to price-bearing surfaces, not
 whole modules, because those modules also carry reviewer-liveness durations that are expectations
 rather than prices.
+
+**Chunk 03 is complete** — the round-cost statement sits above every finding-producing section of
+`skills/pr/review-protocol.md`, with ordering asserted rather than presence. Its bound is delegated
+to `cost-of-commit` rather than restated: the first draft claimed a `.md`-only fix moves no
+coverage, which is false for the governance-protected `.md` a product reviewer meets, and reading
+the paragraph as its audience is what caught it. **R6 (the ride-along route) landed here too**,
+across both the PR protocol and `next_action_line`'s two arms — recorded as a requirement before
+being built, offered with its condition, and explicitly distinguished from the deferral the same
+message warns against.
 
 **Two things the next session must know.** First, HEAD's tree is *not* the tree that review
 anchored to — the fixes landed after it — so `check-cumulative-critic` will report a gap on this

@@ -8,6 +8,7 @@ PR-reviewer template/skill content. The file-sync init/sync/manifest behavior
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -413,6 +414,64 @@ class TestPrReviewSkillContent:
             "Bundle-Level Simplification",
         ):
             assert goal in content, f"skills/pr/review-protocol.md missing goal: {goal}"
+
+    def test_findings_carry_their_cost_before_any_finding_is_written(self):
+        """A v3.2.4 consumer was reading the PR reviewer's findings when it
+        decided to make the commit that re-opened the cumulative Critic gate,
+        and this protocol had never said that acting on a non-blocking finding
+        costs a round. The statement is now here — but **placement is the
+        deliverable, not presence**.
+
+        The predecessor plan shipped a correct rule into `goals-1-3.md` that sat
+        below every section needing it, and it changed nothing. A reviewer reads
+        top-down and forms findings while reading the goals, so this has to be
+        reached BEFORE the goals, the severity ladder, and the output format —
+        not appended near the end where it becomes a fact about work already
+        done. Ordering is what gets asserted.
+
+        It must also not overclaim: a fix confined to prose or `.prawduct/`
+        state moves no coverage, and a reviewer told that every finding costs a
+        round would stop filing the ones that don't.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        assert "costs the builder a review round" in content
+        cost_at = content.index("costs the builder a review round")
+        for later in ("## Review Goals", "### 1. Right Scope", "## Severity Levels",
+                      "## Output Format", "### Findings"):
+            assert cost_at < content.index(later), (
+                f"the round-cost statement sits BELOW {later!r} — the reviewer forms "
+                "findings before reaching it, which is the placement failure that made "
+                "the same rule inert in the Critic's own protocol"
+            )
+        # Accepting is a real answer, and the claim is bounded rather than
+        # absolute — "every finding costs a round" would be false, and a
+        # reviewer who believed it would stop filing the ones that don't.
+        assert "accepting is a real answer" in content.lower()
+        assert "some paths move no coverage" in content
+        # The bound is delegated, not restated. An extension rule spelled out
+        # here would be a second copy of `is_judgeable_path` and wrong for the
+        # governance-protected `.md` under skills/, methodology/ and templates/
+        # — which is exactly what the first draft of this paragraph claimed.
+        assert "prawduct-hook cost-of-commit" in content
+
+    def test_the_ride_along_route_is_offered_with_its_condition(self):
+        """Fix-now buys a round; accept and file buy none. The option that costs
+        *nothing extra* was missing from every surface: a small fix carried into
+        the next chunk's commit rides a round that was going to be bought
+        anyway.
+
+        It is offered, never defaulted — a fix that changes what the PR claims
+        to ship belongs in this bundle — and it names where the deferral gets
+        written down, because an unrecorded deferral is a drop.
+        """
+        raw = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
+        # Wrap- and emphasis-insensitive: this file is hard-wrapped, so a literal
+        # pin fails on a re-wrap that changed nothing — the kind of false failure
+        # that gets a pin deleted rather than fixed.
+        content = re.sub(r"\s+", " ", raw.replace("*", ""))
+        assert "ride along with the next chunk or the next build plan" in content
+        assert "not always right" in content
+        assert "quietly become a drop" in content
 
     def test_review_protocol_dropped_critic_overlap_goals(self):
         """The Critic-overlapping PR-reviewer goals must stay removed (PRR-4M9T).

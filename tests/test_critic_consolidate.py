@@ -605,6 +605,37 @@ class TestNextActionLine:
             # connector left behind by the omitted clause.
             assert line.endswith((".", ")")), counts
 
+    def test_both_arms_offer_the_ride_along_route_with_its_condition(self):
+        """The fix/accept/file trio was missing the option that costs nothing
+        extra: when the branch has more judgeable work coming, a small fix
+        carried into the next chunk's commit rides a round that was going to be
+        bought anyway.
+
+        Both arms carry it — a builder with a blocking finding still has
+        WARNING/NOTE companions to decide, and deferring one IS a decision made
+        in that same pass. It ships with its condition ("if this branch has more
+        judgeable work coming") because it is not universally right, and with
+        its failure mode named, because an unwritten deferral is a drop.
+        """
+        for counts in ((2, 1, 1), (0, 1, 1)):
+            line = cc.next_action_line("rev-9", *counts)
+            assert "carry the fix into the NEXT chunk's commit" in line, counts
+            assert "if this branch has more judgeable work coming" in line.lower(), counts
+            assert "it is not a deferral, it is a drop" in line, counts
+            # And it distinguishes itself from the deferral the same message
+            # warns against two sentences earlier. Without that, the blocking
+            # arm says "deferring turns one review into several" and then
+            # offers a deferral — a reader resolves the contradiction by
+            # ignoring one of them, and there is no telling which.
+            assert "NOT the deferral" in line, counts
+            assert "buys a second round" in line and "buys none" in line, counts
+
+    def test_the_clean_pass_is_not_offered_a_route_for_findings_it_lacks(self):
+        # 0/0/0 has nothing to carry anywhere; a deferral route on a review with
+        # no findings reads as work the builder does not have.
+        line = cc.next_action_line("rev-9", 0, 0, 0)
+        assert "NEXT chunk's commit" not in line
+
     def test_zero_blocking_says_the_review_is_over_and_names_disposition(self):
         line = cc.next_action_line("rev-abc", 0, 4, 7)
         assert "THE REVIEW IS OVER" in line

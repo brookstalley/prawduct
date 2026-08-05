@@ -3,6 +3,42 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: the warning where the relapse starts, and the route nobody was offering
+
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=03 -->
+
+**The reporter was reading the PR reviewer's findings when it made the commit that re-opened the
+gate.** That is the third of its five failures and the one no previous plan touched: the PR
+reviewer's protocol has never said that acting on its own non-blocking findings costs a Critic
+round. It says so now, positioned where a reviewer reaches it *before* forming any finding — under
+the existing scope boundary it extends rather than contradicts. Placement is the deliverable and the
+test asserts ordering, not presence: the predecessor plan shipped a correct rule into `goals-1-3.md`
+that sat below every section needing it and changed nothing.
+
+**The claim is bounded by delegation rather than by a rule of thumb.** A first draft said a fix
+confined to `.md` prose moves no coverage — false for the governance-protected `.md` under
+`skills/`, `methodology/` and `templates/`, and this file is read by *product* reviewers. It now
+names `cost-of-commit` instead, which asks the classifier that owns the answer. Same shape as the
+enumeration Chunk 02 deleted, caught this time by reading the paragraph as its audience rather than
+by a test.
+
+**A route nobody was offering: the ride-along.** Raised by the owner mid-build and recorded as R6
+before it was built. Fix-now buys a round; accept and file buy none — and the option that costs
+*nothing extra* was missing everywhere. When a branch has further judgeable chunks, a small fix
+carried into the next chunk's commit rides a round that was going to be bought anyway. It ships on
+both surfaces (the PR protocol and the Critic's builder-facing `next_action_line`), always as an
+option with its condition attached — a fix that changes what the bundle claims to ship belongs in
+the bundle — and always naming where the deferral gets written down, because an unrecorded deferral
+is a drop rather than a deferral.
+
+**It also has to distinguish itself from the deferral the same message warns against**, or the
+blocking arm says "deferring turns one review into several" and then offers a deferral one sentence
+later. The distinction is the whole point and is now explicit: deferring to a later *round* buys a
+second round; riding a commit that is being made anyway buys none. A reader who cannot see the
+difference resolves it by ignoring one of the two sentences, and there is no telling which.
+
+**Classification:** governance
+
 ## 2026-08-05: the gate knows which round this is, and both arms carry the price
 
 <!-- prawduct: type=fix | scope=review-round-pricing | chunks=02 -->

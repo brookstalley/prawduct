@@ -274,6 +274,38 @@ _COVERAGE_IS_A_SEPARATE_QUESTION = (
 )
 
 
+#: The route the fix/accept/file trio was missing, carried by BOTH arms.
+#:
+#: Fixing now buys a round; accepting and filing buy none. What was never on
+#: offer is the option that costs *nothing extra*: when the plan has further
+#: judgeable chunks, a small fix carried into the next chunk's commit rides a
+#: round that was going to be bought anyway. A builder weighing "fix now or
+#: accept" reaches for one of two answers because those are the two the message
+#: names.
+#:
+#: Stated with its condition, because it is not always right — a fix that
+#: changes what the bundle claims to ship belongs in the bundle, and a branch
+#: with no further judgeable work has nothing to ride. And stated with its
+#: failure mode: an unwritten deferral is a drop, not a deferral, so the route
+#: names where to write it.
+#:
+#: **It must distinguish itself from the deferral the blocking arm warns
+#: against**, or it reads as the message contradicting itself one sentence
+#: later. The two are genuinely different and the difference is the whole
+#: point: deferring a finding to a later ROUND buys a second round, while
+#: riding a commit that is being made anyway buys none. A reader who cannot
+#: see that distinction resolves it by ignoring one of the two sentences, and
+#: there is no telling which.
+_RIDE_ALONG_ROUTE = (
+    " If this branch has more judgeable work coming, there is a third route:"
+    " carry the fix into the NEXT chunk's commit. That is NOT the deferral"
+    " warned against above — deferring to a later ROUND buys a second round;"
+    " riding a commit that is being made anyway buys none. Write it where that"
+    " chunk will meet it (the build plan or `.prawduct/.handoff-notes.md`), or"
+    " it is not a deferral, it is a drop."
+)
+
+
 def next_action_line(
     fact_id: "str | None",
     blocking: int,
@@ -331,6 +363,7 @@ def next_action_line(
             " default for anything nobody will realistically action:"
             f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"` needs no'
             " review and moves no tree."
+            + _RIDE_ALONG_ROUTE
             + price
         )
     if not (warning or note):
@@ -355,6 +388,7 @@ def next_action_line(
         " Do NOT start another round to 'close coverage' before committing, and do"
         " not infer that you need one from gate output printed before your fix —"
         " commit, then re-run the gate and let it answer."
+        + _RIDE_ALONG_ROUTE
         + price
     )
 
