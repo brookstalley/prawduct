@@ -108,7 +108,10 @@ def _read_events(path: Path) -> tuple[list[dict], dict]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
-        print(f"review-stats: ledger unreadable ({exc})", file=sys.stderr)
+        # Named for the file, not for one caller: `round_price` reads through
+        # here too, so a `review-stats:` prefix would misattribute the failure
+        # to a command the reader never ran.
+        print(f"governance ledger unreadable ({exc})", file=sys.stderr)
         return events, skipped
     for raw in lines:
         raw = raw.strip()
@@ -207,6 +210,101 @@ def _top_files(rows: list[dict]) -> tuple[list[dict], int]:
         key=lambda e: (-e["actionable_findings"], -e["findings"], e["path"]),
     )
     return ranked[:TOP_FILES_LIMIT], len(per_path)
+
+
+# The mode a fix commit actually buys. Committing a fix extends HEAD, so the
+# cheapest thing that re-closes coverage is ONE `verify-resolutions` pass — a
+# cumulative is what a *widened* delta or a lost anchor costs, not what an
+# ordinary fix costs. Pricing on any other mode would quote the builder a
+# number they will not pay, which is worse than quoting none.
+PRICED_MODE = "verify-resolutions"
+
+# Below this many recorded rounds a median is one or two runs wearing a
+# statistic's clothes. A wrong price is worse than no price here: the whole
+# reason this is computed rather than written down is that a stale or
+# unrepresentative number drifts and then costs a round to correct — so a thin
+# sample reports unavailable rather than guessing.
+MIN_PRICED_SAMPLE = 5
+
+
+def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
+    """What one more review round costs in THIS repo, derived from its own
+    ledger at call time.
+
+    **Why this is derived and never written down.** The price is the single
+    most quotable fact in the loop-termination argument, and quoting it is
+    exactly how the framework has burned itself before: a number copied into
+    prose drifts from the thing it describes, and correcting it costs a review
+    round — the very round this helper exists to stop a builder from spending
+    (``learnings.md``: cite the command that re-derives a number, never the
+    digits; ``project-preferences.md`` forbids the sibling suite-total claim
+    for the same stated reason). So there is one home for the fact and no
+    copies: callers ask, they never assert.
+
+    Returns either
+
+    - ``{"status": "priced", "mode", "median_seconds", "reviews"}`` — the
+      median duration of the rounds this repo has actually recorded, with the
+      sample size it rests on, so a caller can show its work; or
+    - ``{"status": "unavailable", "reason"}`` — no ledger, no rounds of this
+      mode, none carrying a duration, or too few to be worth quoting.
+
+    Unavailable is a first-class answer, not a failure: this is advice, and
+    advice fails soft (``architecture.md`` § Direction). It is deliberately
+    distinguishable from "free" by callers, because an advisory that goes
+    quiet when it breaks manufactures the false confidence it was meant to
+    prevent (``learnings.md``: "advice fails soft" is not "advice fails
+    silent").
+    """
+    path = ledger_path(prawduct_dir)
+    if not path.is_file():
+        return {"status": "unavailable", "reason": "this repo has no recorded review history yet"}
+    events, _skipped = _read_events(path)
+    durations = [
+        row["duration"]
+        for row in (_extract_row(e) for e in events)
+        if row["mode"] == mode and row["duration"] is not None
+    ]
+    if not durations:
+        return {
+            "status": "unavailable",
+            "reason": f"no {mode} round in this repo's history records how long it took",
+        }
+    if len(durations) < MIN_PRICED_SAMPLE:
+        return {
+            "status": "unavailable",
+            "reason": (
+                f"only {len(durations)} timed {mode} round(s) recorded — too few to quote "
+                f"as this repo's price"
+            ),
+        }
+    return {
+        "status": "priced",
+        "mode": mode,
+        "median_seconds": round(median(durations), 1),
+        "reviews": len(durations),
+    }
+
+
+def format_round_price(price: dict) -> str:
+    """One sentence naming what a round costs, for the messages a builder
+    meets at the moment of deciding to spend one.
+
+    Shared by every caller so the phrasing cannot drift between the CLI
+    verdict, the gate, and the findings cache — and so the command that
+    re-derives the figure is always cited beside it.
+    """
+    if price.get("status") != "priced":
+        return (
+            f"What one more round costs here is unavailable ({price.get('reason', 'unknown')}) "
+            f"— that is a missing number, not a small one."
+        )
+    minutes = price["median_seconds"] / 60.0
+    return (
+        f"One more round costs about {minutes:.0f} min here (median of "
+        f"{price['reviews']} recorded {price['mode']} rounds; re-derive with "
+        f"`prawduct-hook review-stats`)."
+    )
 
 
 def aggregate_review_stats(events: list[dict], skipped: dict) -> dict:

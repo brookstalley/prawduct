@@ -191,6 +191,13 @@ running the real command against real repo state:
     the tally reports alongside that judgement rather than replacing it.
   - `plugin/lib/gates.py` — the `uncovered:` branch states which round this is and what
     the preceding ones cost, so round 5 does not read as round 1.
+  - **`cost-of-commit` must be named by the carriers that already reach the builder.**
+    Found while building Chunk 01 and recorded here rather than left implicit: a command
+    the builder has to already know about is a *pull* carrier, which is the precise
+    failure v3.2.4 diagnosed and this plan is the second attempt at. Chunk 01 delivers
+    the answer; this chunk is what makes anyone ask the question. It is named in the
+    gate's churn NOTE and in `next_action_line`'s free-path sentence, which today
+    enumerates free paths in prose the builder must match by hand.
   - `plugin/lib/critic_consolidate.py` — `next_action_line`'s **blocking** arm reaches
     parity with the zero-blocking arm: it already says batch-and-review-once, but it
     does not price the round or name the accept route for the non-blocking findings it
