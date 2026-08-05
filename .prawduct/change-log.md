@@ -5,7 +5,7 @@
 
 ## 2026-08-04: the product declares which files carry its version — and where in them
 
-<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=02 -->
+<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=02 | release=v3.2.4 | status=shipped -->
 
 Closes the remaining two false reds in `check-released` (#576, #580) with one mechanism, and
 retires the surface `architecture.md`'s LNG-5W8R names in its retroactivity list.
@@ -79,7 +79,7 @@ not; #591 tracks the title-normalizer bug that filing #590 tripped.
 
 ## 2026-08-04: a check that could not ask does not answer
 
-<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=01 -->
+<!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=01 | release=v3.2.4 | status=shipped -->
 
 `prawduct-hook check-released` ships as a new capability in v3.2.4, and three paths made it
 state a confident `not-released` about a release it never assessed. This closes the first.
@@ -111,7 +111,7 @@ before any code was written — which is where a norm is supposed to bite.
 
 ## 2026-08-04: a count nothing reads is not worth writing — or correcting
 
-<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=03 -->
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=03 | release=v3.2.4 | status=shipped -->
 
 Chunks 01 and 02 made the loop terminate: the exit condition reaches the builder, and a re-review
 stopped manufacturing the next round's work. This closes the narrowest recurring *supply* of that
@@ -157,7 +157,7 @@ rewordings.
 
 ## 2026-08-04: a re-review answers one question — it does not manufacture the next round's work
 
-<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=02 -->
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=02 | release=v3.2.4 | status=shipped -->
 
 Chunk 01 closed the **demand** side: the builder now meets the termination rule on carriers it cannot
 avoid. This is the **supply** side. `verify-resolutions` exists to answer one question — were the
@@ -272,7 +272,7 @@ nothing scores zero).
 
 ## 2026-08-04: the verify pass — the one carrier with no test was the one that outlives the session
 
-<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 | release=v3.2.4 | status=shipped -->
 
 `verify-resolutions` over the resolution commit: **all ten resolutions verified `fixed`** against the
 files at HEAD, plus **1 blocking, 1 warning, 1 note** of its own. Two fixed, one accepted.
@@ -311,7 +311,7 @@ brought unreviewed lines in, and it self-heals at the next review on the branch.
 
 ## 2026-08-04: the cumulative's findings — a false positive that would have sent unreviewed work to merge
 
-<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 | release=v3.2.4 | status=shipped -->
 
 Cumulative over Chunk 01, three reviewers: **0 blocking, 7 warnings, 11 notes.** Ten fixed in one
 batch, eight accepted. The gate needed none of it — which is the rule this branch is building, and
@@ -391,7 +391,7 @@ render-dispositions` prints the census rather than anyone counting by hand.
 
 ## 2026-08-04: the loop-termination rule shipped, and reached nobody who could act on it
 
-<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 -->
+<!-- prawduct: type=fix | scope=review-loop-carriers | chunks=01 | release=v3.2.4 | status=shipped -->
 
 v3.2.3 already says the right thing about when a review is over — `methodology/building.md`
 under "Resolve findings" and `skills/critic/review-cycle.md` § "The review loop terminates" both
@@ -453,7 +453,7 @@ one.
 
 ## 2026-08-04: the suite stops running only when someone remembers
 
-<!-- prawduct: type=feature | scope=release-integrity | chunks=05 -->
+<!-- prawduct: type=feature | scope=release-integrity | chunks=05 | release=v3.2.4 | status=shipped -->
 
 This repository had no `.github/` of any kind. Every release it ever cut shipped on a suite that ran when a
 human chose to run it, and eleven `tests/preferences/` guards were documented with an audit home of
@@ -506,7 +506,7 @@ exercised, including against a deliberately bogus tag, without pushing a junk ta
 
 ## 2026-08-04: the check that would have been red for every release this repo ever cut
 
-<!-- prawduct: type=feature | scope=release-integrity | chunks=04 -->
+<!-- prawduct: type=feature | scope=release-integrity | chunks=04 | release=v3.2.4 | status=shipped -->
 
 `prawduct-hook check-released vX.Y.Z` verifies a release from the outside: every version file
 present in the tag's tree agrees with it — read **at the tag's own tree**, and a file the product
@@ -541,7 +541,7 @@ contained.
 
 ## 2026-08-03: the final cumulative — a deliverable with no test, and six records that had drifted
 
-<!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->
+<!-- prawduct: type=fix | scope=silent-gates | chunks=06 | release=v3.2.4 | status=shipped -->
 
 Final cumulative over the whole branch — 16 commits, 24 files, three reviewers: **1 blocking, 9
 warnings, 9 notes.** Eleven fixed, eight accepted.
@@ -608,7 +608,7 @@ real doc-structure improvements with no code in them), and the two informational
 
 ## 2026-08-03: the template fix that never reached the installed base
 
-<!-- prawduct: type=fix | scope=silent-gates | chunks=06 -->
+<!-- prawduct: type=fix | scope=silent-gates | chunks=06 | release=v3.2.4 | status=shipped -->
 
 `#567`'s blocking finding was closed by shipping the Enforcement norm index **empty**, because its
 two illustrative rows carried non-empty `Audit home` / `Why` cells and so read as homed norms. That
@@ -653,7 +653,7 @@ Closes #570.
 
 ## 2026-08-03: one definition of a norm entry, and the test that refused to be weakened
 
-<!-- prawduct: type=fix | scope=silent-gates | chunks=05 -->
+<!-- prawduct: type=fix | scope=silent-gates | chunks=05 | release=v3.2.4 | status=shipped -->
 
 Two issue numbers, one decision surface: what IS a Direction norm entry, mechanically. **#568** —
 `record_lint.direction_norm_count` counted every top-level bullet while `norm_probes` (since Chunk
@@ -719,7 +719,7 @@ Closes #568, #569.
 
 ## 2026-08-03: the binary that is not the one this repo carries
 
-<!-- prawduct: type=fix | scope=silent-gates | chunks=04 -->
+<!-- prawduct: type=fix | scope=silent-gates | chunks=04 | release=v3.2.4 | status=shipped -->
 
 Inside a framework checkout, a bare `prawduct-hook` on `$PATH` resolves to whatever plugin the
 environment installed — the install cache, or, in this clone, **a sibling worktree's checkout on
@@ -789,7 +789,7 @@ Closes #227.
 
 ## 2026-08-03: the cumulative round — a survey that ran short, and three cascades that stopped early
 
-<!-- prawduct: type=fix | scope=silent-gates | chunks=03 -->
+<!-- prawduct: type=fix | scope=silent-gates | chunks=03 | release=v3.2.4 | status=shipped -->
 
 Cumulative review of the bundle: **0 blocking, 7 warnings, 14 notes across 3 reviewers.** Nothing
 gated. Ten fixed, one filed, ten accepted — dispositioned in one pass, as facts.
@@ -863,7 +863,7 @@ now go through one `_norm_index_header` locator, pinned by a two-table test.
 
 ## 2026-08-03: two runtime assumptions that were invisible where they were written
 
-<!-- prawduct: type=fix | scope=silent-gates | chunks=03 -->
+<!-- prawduct: type=fix | scope=silent-gates | chunks=03 | release=v3.2.4 | status=shipped -->
 
 Two independent one-site fixes, batched because they are the same class: a runtime assumption that
 holds on the machine it was written on and fails elsewhere, silently.
@@ -901,7 +901,7 @@ Closes #562, #154.
 
 ## 2026-08-03: a Direction heading is not a norm registry, and its absence is not health
 
-<!-- prawduct: type=fix | scope=silent-gates | chunks=02 -->
+<!-- prawduct: type=fix | scope=silent-gates | chunks=02 | release=v3.2.4 | status=shipped -->
 
 Two defects in `norm_probes.py`, pulling in opposite directions, both rooted in treating a
 `## Direction` **heading** as proof that a norm registry exists. Field-reported from an onboarding of
@@ -975,7 +975,7 @@ Closes #567.
 
 ## 2026-08-03: the review interval that ran backwards whenever the prior review saw a dirty tree
 
-<!-- prawduct: type=fix | scope=silent-gates | chunks=01 -->
+<!-- prawduct: type=fix | scope=silent-gates | chunks=01 | release=v3.2.4 | status=shipped -->
 
 `verify-resolutions` decided whether a commit had landed since the prior review with a single test:
 does the committed tree differ from the tree that review saw? That question has **two** answers that

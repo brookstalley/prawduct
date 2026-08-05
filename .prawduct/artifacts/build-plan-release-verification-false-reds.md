@@ -101,8 +101,8 @@ degraded path rather than as a second parser.
 
 ## Status
 
-- [ ] Chunk 01: A check that could not ask does not answer
-- [ ] Chunk 02: The product declares which files carry its version
+- [x] Chunk 01: A check that could not ask does not answer
+- [x] Chunk 02: The product declares which files carry its version
 
 Context: Plan authored 2026-08-04 on `fix/release-verification-false-reds`, cut from
 `develop` at `f864cbc` (immediately after `review-loop-carriers` merged as PR #588).

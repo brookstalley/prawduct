@@ -706,18 +706,27 @@ scope_rollups:
   regen-views-null-plan:
     chunks: ["01"]
     releases: ["v2.2.1"]
+  release-integrity:
+    chunks: ["04", "05"]
+    releases: ["v3.2.4"]
   release-readiness:
     chunks: ["01", "02", "03"]
     releases: ["v3.2.0"]
   release-tooling:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.0.6"]
+  release-verification-false-reds:
+    chunks: ["01", "02"]
+    releases: ["v3.2.4"]
   retire-pr-trivial-fast-path:
     chunks: ["01"]
     releases: ["v2.0.17"]
   review-fixes:
     chunks: ["1", "2", "3", "4"]
     releases: ["v2.1.0"]
+  review-loop-carriers:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.4"]
   review-loop-termination:
     chunks: []
     releases: ["v3.2.0"]
@@ -745,6 +754,9 @@ scope_rollups:
   session-handoff-continuity:
     chunks: ["01", "02", "03"]
     releases: ["v3.1.2"]
+  silent-gates:
+    chunks: ["01", "02", "03", "04", "05", "06"]
+    releases: ["v3.2.4"]
   single-owner-shared-checks:
     chunks: ["01"]
     releases: ["v2.1.8"]

@@ -114,9 +114,9 @@ designed first; this plan makes the loop terminate without needing it.
 
 ## Status
 
-- [ ] Chunk 01: The exit condition and the fix-churn diagnosis reach the builder
-- [ ] Chunk 02: `verify-resolutions` adjudicates; it does not re-review
-- [ ] Chunk 03: Contestable counts, on both sides
+- [x] Chunk 01: The exit condition and the fix-churn diagnosis reach the builder
+- [x] Chunk 02: `verify-resolutions` adjudicates; it does not re-review
+- [x] Chunk 03: Contestable counts, on both sides
 
 Context: Plan authored 2026-08-04 on `fix/review-loop-carriers`, cut from `develop` at
 `dbb42f3`, after reading the ten-round consumer transcript and both evidence stores.

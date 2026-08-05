@@ -374,8 +374,8 @@ someone remembers. That gap is independent of releases and is the larger half of
 - [ ] Chunk 01: `version` tells you when it cannot pin
 - [ ] Chunk 02: The skills stop asking PATH which prawduct they are governed by
 - [ ] Chunk 03: A repo running a stale plugin says so (doctor half now; probe half deferred)
-- [ ] Chunk 04: `check-released`, the mirror of `check-releasability`
-- [ ] Chunk 05: CI — run the suite, and verify what shipped
+- [x] Chunk 04: `check-released`, the mirror of `check-releasability`
+- [x] Chunk 05: CI — run the suite, and verify what shipped
 
 Context: Plan authored 2026-08-04 on `feat/release-integrity`, cut from `develop` at `dbb42f3`,
 after an investigation into "the v3.2.3 release was weird" found the release clean and three

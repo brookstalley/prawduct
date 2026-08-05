@@ -87,12 +87,12 @@ Problem, success, and scope are each statable in one sentence.
      tagged scope=silent-gates / status=shipped, then run regen-views.
      Do NOT hand-flip the checkboxes. Stays [ ] on this branch until the release ships. -->
 
-- [ ] Chunk 01: The inverted verify-resolutions interval (#554)
-- [ ] Chunk 02: Direction detection — a heading is not a registry, and its absence is not health (#567)
-- [ ] Chunk 03: The mechanical tail — one encoding default, one interpreter (#562, #154)
-- [ ] Chunk 04: The binary that is not the one this repo carries (#227)
-- [ ] Chunk 05: One definition of a Direction norm entry, tolerant of emphasis (#568, #569)
-- [ ] Chunk 06: The template fix that never reached the installed base (#570)
+- [x] Chunk 01: The inverted verify-resolutions interval (#554)
+- [x] Chunk 02: Direction detection — a heading is not a registry, and its absence is not health (#567)
+- [x] Chunk 03: The mechanical tail — one encoding default, one interpreter (#562, #154)
+- [x] Chunk 04: The binary that is not the one this repo carries (#227)
+- [x] Chunk 05: One definition of a Direction norm entry, tolerant of emphasis (#568, #569)
+- [x] Chunk 06: The template fix that never reached the installed base (#570)
 Context: Plan authored 2026-08-03 on `fix/silent-gates`, cut from `develop` at `596d761` after
 v3.2.3 shipped. Scope chosen by the owner from a `/prawduct:backlog pick` roster; the theme is
 **a check that reports health it did not measure**, which is what unifies the four items rather

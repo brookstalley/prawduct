@@ -5,6 +5,34 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.2.4
+
+### release-verification-false-reds
+
+**Entry:** 2026-08-04: the product declares which files carry its version — and where in them
+
+**Chunks shipped:** 01, 02
+
+### review-loop-carriers
+
+**Entry:** 2026-08-04: a count nothing reads is not worth writing — or correcting
+
+**Chunks shipped:** 01, 02, 03
+
+### release-integrity
+
+**Entry:** 2026-08-04: the suite stops running only when someone remembers
+
+**Chunks shipped:** 04, 05
+
+### silent-gates
+
+**Entry:** 2026-08-03: the final cumulative — a deliverable with no test, and six records that had drifted
+
+**Chunks shipped:** 01, 02, 03, 04, 05, 06
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.2.3
 
 ### drift-burndown
