@@ -66,9 +66,9 @@ overridable, and the bound holds without it.
 
 ## Status
 
-- [ ] Chunk 01: The ephemeral-worktree predicate and the pre-dispatch refusal
-- [ ] Chunk 02: Evidence facts carry visible worktree provenance
-- [ ] Chunk 03: Delegation guidance states the snapshot and the shared index
+- [x] Chunk 01: The ephemeral-worktree predicate and the pre-dispatch refusal
+- [x] Chunk 02: Evidence facts carry visible worktree provenance
+- [x] Chunk 03: Delegation guidance states the snapshot and the shared index
 Context: Built 2026-08-05 from issue #594, on `fix/ephemeral-agent-worktrees` off
 `develop@b994bfa`. Chunk 01 committed (`5fd2f45`), reviewed clean. Chunks 02-03 committed
 (`493b5e0`). Status checkboxes stay `[ ]` on purpose — `views_enabled` regenerates them at

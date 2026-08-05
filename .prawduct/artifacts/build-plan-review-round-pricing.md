@@ -276,9 +276,9 @@ running the real command against real repo state:
 
 ## Status
 
-- [ ] Chunk 01: One home for what a round costs, and a command that answers before the commit
-- [ ] Chunk 02: The message knows which round this is, and both branches carry the price
-- [ ] Chunk 03: The warning where the relapse starts
+- [x] Chunk 01: One home for what a round costs, and a command that answers before the commit
+- [x] Chunk 02: The message knows which round this is, and both branches carry the price
+- [x] Chunk 03: The warning where the relapse starts
 
 **Chunk 01 is complete** — committed as `89c9c8f`, suite green at that tree (the evidence store
 records pass/fail per tree; `prawduct-hook test-status` answers for the current one), verified

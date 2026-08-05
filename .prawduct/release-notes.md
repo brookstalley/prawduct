@@ -5,6 +5,28 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.2.5
+
+### review-round-pricing
+
+**Entry:** 2026-08-05: the cumulative's findings, and the guards that could not see the shapes they guarded
+
+**Chunks shipped:** 01, 02, 03
+
+### ephemeral-worktrees
+
+**Entry:** 2026-08-05: the cumulative's five warnings — three false records and a signal that reached nobody
+
+**Chunks shipped:** 01, 02, 03
+
+### release-integrity
+
+**Entry:** 2026-08-05: the release gate was asking a question the release had not answered yet
+
+**Chunks shipped:** 05
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.2.4
 
 ### release-verification-false-reds

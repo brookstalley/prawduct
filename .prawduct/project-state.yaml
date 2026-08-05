@@ -463,7 +463,7 @@ views_enabled: true
 # now, let `/prawduct:pr` apply its documented rule at merge, and if the
 # conflict still stands afterwards it is a real one to settle once — not
 # per-branch, and not by whoever is holding the merge.
-active_build_plan: .prawduct/artifacts/build-plan-ephemeral-worktrees.md
+active_build_plan: null
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
@@ -676,6 +676,9 @@ scope_rollups:
   drift-burndown:
     chunks: ["01", "02", "03", "04"]
     releases: ["v3.2.3"]
+  ephemeral-worktrees:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.5"]
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]
@@ -726,7 +729,7 @@ scope_rollups:
     releases: ["v2.2.1"]
   release-integrity:
     chunks: ["04", "05"]
-    releases: ["v3.2.4"]
+    releases: ["v3.2.4", "v3.2.5"]
   release-readiness:
     chunks: ["01", "02", "03"]
     releases: ["v3.2.0"]
@@ -751,6 +754,9 @@ scope_rollups:
   review-proportionality:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.1.0"]
+  review-round-pricing:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.5"]
   reviewer-model-fallback:
     chunks: ["01"]
     releases: ["v2.1.5"]

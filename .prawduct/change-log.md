@@ -5,7 +5,7 @@
 
 ## 2026-08-05: the cumulative's findings, and the guards that could not see the shapes they guarded
 
-<!-- prawduct: type=fix | scope=review-round-pricing -->
+<!-- prawduct: type=fix | scope=review-round-pricing | release=v3.2.5 | status=shipped -->
 
 **The scope's own failure mode, delivered by its own carriers.** The cumulative review over the
 three chunks returned 0 blocking, 8 warnings, 7 notes; eleven were fixed in one batch, three
@@ -57,7 +57,7 @@ corrected — "no chunk writes to a state file" was true of Chunk 01 and false o
 
 ## 2026-08-05: the warning where the relapse starts, and the route nobody was offering
 
-<!-- prawduct: type=fix | scope=review-round-pricing | chunks=03 -->
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=03 | release=v3.2.5 | status=shipped -->
 
 **The reporter was reading the PR reviewer's findings when it made the commit that re-opened the
 gate.** That is the third of its five failures and the one no previous plan touched: the PR
@@ -93,7 +93,7 @@ difference resolves it by ignoring one of the two sentences, and there is no tel
 
 ## 2026-08-05: the gate knows which round this is, and both arms carry the price
 
-<!-- prawduct: type=fix | scope=review-round-pricing | chunks=02 -->
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=02 | release=v3.2.5 | status=shipped -->
 
 **Round five printed the same words as round one.** Everything the uncovered `check-cumulative-critic`
 block says is a pure function of the current tree, so nothing in it could tell a builder they were
@@ -146,7 +146,7 @@ than fixed.
 
 ## 2026-08-05: price a review round before the commit that buys it
 
-<!-- prawduct: type=fix | scope=review-round-pricing | chunks=01 -->
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=01 | release=v3.2.5 | status=shipped -->
 
 **A consuming agent on v3.2.4 read the shipped loop-termination carriers and still ran six Critic
 rounds on one branch.** That is the first post-fix datum on `review-loop-carriers`, and it is why
@@ -180,7 +180,7 @@ was the wrong answer the code's own docstring already named.
 
 ## 2026-08-05: the cumulative's five warnings — three false records and a signal that reached nobody
 
-<!-- prawduct: type=fix | scope=ephemeral-worktrees -->
+<!-- prawduct: type=fix | scope=ephemeral-worktrees | release=v3.2.5 | status=shipped -->
 
 <!-- No `chunks=`: review dispositions for `rev-20260805T165453Z-2cf52cde`, spanning both this
      branch's plan work and the #595 rider. Flips no Status checkbox. -->
@@ -241,7 +241,7 @@ norm's life, that its enforcement map is aspirational here.
 
 ## 2026-08-05: the findings view now says which review it is
 
-<!-- prawduct: type=fix | scope=ephemeral-worktrees -->
+<!-- prawduct: type=fix | scope=ephemeral-worktrees | release=v3.2.5 | status=shipped -->
 
 <!-- No `chunks=`: **#595** rode this branch by owner decision rather than belonging to its plan,
      so it takes release stamping without flipping any build-plan Status checkbox. Same shape as
@@ -288,7 +288,7 @@ authority path changed (`data-model.md` § Direction).
 
 ## 2026-08-05: fix, don't file — a norm for when a finding earns a backlog item
 
-<!-- prawduct: type=docs | scope=ephemeral-worktrees -->
+<!-- prawduct: type=docs | scope=ephemeral-worktrees | release=v3.2.5 | status=shipped -->
 
 <!-- No `chunks=`: this is a norm birth that rode the branch, not chunk work, so it takes
      release stamping without flipping any build-plan Status checkbox. -->
@@ -318,7 +318,7 @@ it needs a reader who knows what the current work was.
 
 ## 2026-08-05: prawduct now knows a worktree can be disposable
 
-<!-- prawduct: type=fix | scope=ephemeral-worktrees | chunks=01,02,03 -->
+<!-- prawduct: type=fix | scope=ephemeral-worktrees | chunks=01,02,03 | release=v3.2.5 | status=shipped -->
 
 `methodology/building.md` recommends `isolation: "worktree"` for parallel chunks. Following that
 advice puts a subagent in a worktree forked from HEAD, of which **only the code commit is merged
@@ -357,7 +357,7 @@ strand under repair.
 
 ## 2026-08-05: the release gate was asking a question the release had not answered yet
 
-<!-- prawduct: type=fix | scope=release-integrity | chunks=05 -->
+<!-- prawduct: type=fix | scope=release-integrity | chunks=05 | release=v3.2.5 | status=shipped -->
 
 Discharges every acceptance item of **#581**, the last residual of the release-integrity scope and
 the only one whose acceptance could not be met at merge: GitHub registers a workflow from the
