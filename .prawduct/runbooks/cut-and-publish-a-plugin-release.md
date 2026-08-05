@@ -359,6 +359,18 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     > *Why: the version-delta banner shows exactly that first line to every repo
     > crossing this version.*
 
+    **On a minor or major bump — not a patch — also refresh `README.md`'s `## Recent
+    Changes`** so the current line is represented there. Rewrite the section; do not
+    append a per-release bullet. A patch has nothing to say on that surface, so skipping
+    it is the correct outcome and not an omission.
+
+    > *Why it is conditional, and why it lives here: the README is the first thing a
+    > prospective user reads, and no release had ever updated it — it sat two minor
+    > versions and eight releases stale (3.1.0 through 3.2.4) because no release document
+    > named the file. A per-release step would no-op on every patch, and a step that
+    > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
+    > and has something to say every time it does.*
+
 11. In `.prawduct/project-state.yaml`, set `active_build_plan:` to `null`.
 
 12. Commit the prep:
@@ -383,7 +395,8 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 ### Checkpoint
 
 `origin/develop` now holds the whole release: bumped version, shipped
-change-log tags, regenerated views, cleared plan pointer. Everything up to here
+change-log tags, regenerated views, cleared plan pointer — and, on a minor or major
+bump, a `## Recent Changes` section that covers this line. Everything up to here
 is undone by an ordinary commit on `develop`, so this is a safe place to stop
 and come back.
 
@@ -410,7 +423,7 @@ becomes `develop`'s:
 
 **IF `K withheld` is 1 or more**, or step 0 refused with `cannot-verify-blockers:` and you recorded
 the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `develop`'s:
-- **Stop here.** Go to `.prawduct/runbooks/promote-a-pruned-release.md`, which replaces steps 14–20
+- **Stop here.** Go to `.prawduct/runbooks/promote-a-pruned-release.md`, which replaces steps 14–21
   and carries its own `Done when`.
 - Do **not** run step 14. `git read-tree --reset -u origin/develop` at step 15 would publish the
   withheld work — that is the whole failure Phase 0 exists to prevent, arriving one phase later.
@@ -482,28 +495,33 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
 
     **Expected:** a line ending `main -> main`.
 
-20. Tag the release and publish the tag:
-
-    ```
-    git tag vX.Y.Z && git push origin vX.Y.Z
-    ```
-
-    **Expected:** `* [new tag]  v3.2.0 -> v3.2.0`.
-
-    > *Chained on purpose: if the tag already exists, `git tag` fails and the
-    > push must not run.*
-
-21. Publish the GitHub Release, using step 10's whole CHANGELOG section as the notes:
+20. Publish the GitHub Release, using step 10's whole CHANGELOG section as the notes.
+    **This step is also what creates the tag** — do not tag separately first:
 
     ```
     awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
-    gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
+    gh release create vX.Y.Z --target "$(git rev-parse main)" \
+      --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
     ```
 
     **Expected:** one line — the release URL, ending `/releases/tag/vX.Y.Z`.
     **If the notes look truncated or carry the previous release's text:** the `awk`
     boundary missed. Check that `## vX.Y.Z` is on its own line in `plugin/CHANGELOG.md`
     with nothing trailing it, then re-run with `gh release edit` rather than `create`.
+    **If it reports the tag already exists:** something tagged ahead of this step. Confirm
+    `git rev-parse vX.Y.Z` is the commit you just pushed, then re-run without `--target`
+    to attach the Release to the tag that is already there.
+
+    > *Why the Release creates the tag, rather than `git tag && git push` as a step
+    > before it: `verify-release.yml` fires on the tag push, and one of the three things
+    > it checks is whether a Release exists. Tag first and the job is dispatched **before
+    > the fact it checks becomes true**, so it goes green only if you publish faster than
+    > a runner boots. At v3.2.4 that margin was **9 seconds** and the only thing defending
+    > it was typing speed — a pause here to read output would have turned a correct
+    > release red. Creating both in one call means no instant exists at which the tag is
+    > there without its Release. It also sharpens what a red tag-push run means: a tag
+    > that arrived by some route other than this step, which is exactly the case worth a
+    > red build.*
 
     > *Why the whole section, not just the headline: `plugin/CHANGELOG.md` ships **inside**
     > the plugin, so it is unreadable to anyone who has not installed it. The Releases page
@@ -511,6 +529,46 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > `/releases` reading "no releases published" — which is both where a consumer whose
     > banner just announced an update goes to find out what changed, and the first thing
     > someone evaluating prawduct sees.*
+
+21. Bring the tag back locally, and run the same check in CI:
+
+    ```
+    git fetch origin --tags
+    ./plugin/bin/prawduct-hook check-released vX.Y.Z
+    gh workflow run verify-release.yml -f tag=vX.Y.Z
+    ```
+
+    **Expected:** the tag arrives in the fetch output, then
+    `released: vX.Y.Z — 3 of 3 verified`, then silence from the dispatch. Give the run
+    ~30s and read it — this is a `Done when` item below, not fire-and-forget:
+
+    ```
+    gh run list --workflow verify-release.yml --event workflow_dispatch --limit 1 \
+      --json databaseId,status,conclusion,createdAt
+    ```
+
+    **Expected:** `"conclusion":"success"`, with a `createdAt` from the last few minutes.
+    **If `createdAt` is old:** your dispatch has not registered yet and this is a *previous*
+    dispatch — wait and re-run. Do not grade the release on it.
+
+    > *Why `--event workflow_dispatch` rather than the newest run of any kind: it names the run
+    > you just asked for. A tag-push run appearing beside it is not an error — see below — but
+    > it is a different run, and "newest" would let the two trade places.*
+
+    > *Why the fetch: step 20 created the tag on the remote, so your clone does not have
+    > it yet and every local command naming `vX.Y.Z` — including `check-released` and the
+    > install-sha check in `Done when` — would fail on an unknown ref.*
+
+    > *Why the CI run is dispatched by hand here rather than arriving on its own: a tag
+    > created through the Releases API emits `create` and `release` webhook events, not
+    > `push`, so the tag-push trigger does not fire on this path. That is the trade step
+    > 20 makes — a race you could lose replaced by a step you must not skip. A
+    > push-triggered run appearing anyway is not an error; read it the same way.*
+    >
+    > 🚧 **UNVERIFIED** — that a Release-created tag emits no `push` event is reasoned
+    > from GitHub's event model, not yet measured here; v3.2.4 tagged the old way. The
+    > dispatch above is correct either way. Confirm at the next release and delete this
+    > note: if a push-triggered run *did* appear on its own, say so instead.
 
 ---
 
@@ -530,16 +588,14 @@ mean the withheld work shipped.*
   (no `gh`, no `origin/main`, or a declared `toml` version file on a pre-3.11 python3 — this
   repo declares one), and the Releases page may still be empty. Repo-local on purpose —
   the *installed* plugin is the previous release and does not carry this subcommand.
-- The `verify-release` workflow run for the tag is green
+- The `verify-release` workflow run dispatched at step 21 is green
   (`gh run list --workflow verify-release.yml --limit 1`). It runs the same command with a token,
   so it is the check that still happens on the release where someone skipped the bullet above.
   A red run here means the release is incomplete — it never means CI failed to publish something,
-  because CI does not publish. **First run only:** this workflow has never executed against a real
-  tag (it registers only from the default branch, so it could not run before the promotion that
-  ships it). On that one release, read a red run as *either* an incomplete release *or* a defect in
-  the workflow, and confirm against `./plugin/bin/prawduct-hook check-released vX.Y.Z` above before
-  acting. Delete this paragraph once it has passed once — that deletion is an acceptance criterion
-  of **#581**, which tracks exercising this workflow at the first promotion.
+  because CI does not publish. **A red run is a fact about the release, not a suspect workflow:**
+  this job has been exercised both ways — green against the real v3.2.4 tag with output identical
+  to the local command, red with a `not-released` verdict against a deliberately bogus one. There
+  is no longer any reading of red that lets you carry on.
 - Your own install holds the released tree, not the prep tree — these two print the
   **same** 40-character sha:
 

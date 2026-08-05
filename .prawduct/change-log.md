@@ -3,6 +3,79 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: the release gate was asking a question the release had not answered yet
+
+<!-- prawduct: type=fix | scope=release-integrity | chunks=05 -->
+
+Discharges every acceptance item of **#581**, the last residual of the release-integrity scope and
+the only one whose acceptance could not be met at merge: GitHub registers a workflow from the
+**default branch**, so `verify-release.yml` could not run at all until the promotion that carried it
+to `main`. *(The issue is closed by hand at ship time — a `Closes #NNN` in a file body is prose;
+only a commit message or PR body auto-closes, and this repo merges to `develop`, not the default
+branch, so neither would fire here either.)*
+
+**It ran, three ways.** The workflow registered the moment the promotion landed
+(`verify-release  active  327463943`), and these run ids are the evidence — recorded here because
+two of them are one-shot observations that cannot be re-derived once the moment has passed:
+
+| run | trigger | verdict |
+|---|---|---|
+| [`30967251206`](https://github.com/brookstalley/prawduct/actions/runs/30967251206) | `push`, ref `v3.2.4` — **fired on its own** | success, 20s |
+| [`30967433461`](https://github.com/brookstalley/prawduct/actions/runs/30967433461) | `workflow_dispatch`, `v3.2.4` | success; output line-for-line identical to `check-released v3.2.4` run locally |
+| [`30967434559`](https://github.com/brookstalley/prawduct/actions/runs/30967434559) | `workflow_dispatch`, `v0.0.0-nonexistent` | **failure**, exit 1, `not-released` |
+
+The third is the half that mattered. Chunk 05's Done-when 2 was *"red for a deliberately broken
+input"* — a gate nobody has watched fail is not a gate.
+
+**One claim made about the first run does not survive scrutiny, and is corrected here rather than
+repeated.** #581's disposition comment read run `30967251206` as proof that a tag push resolves
+workflows from the **tagged commit's own tree**, falsifying the issue body's "a tag push cannot
+reach it either." The evidence cannot carry that: the promotion pushed `main` *before* the tag, so
+the workflow was already registered on the default branch when the tag push landed, and ordinary
+default-branch registration explains the run completely. The issue body said both routes open at the
+promotion; both did. Nothing here distinguishes the two mechanisms, and the tree-resolution claim
+should not be relied on until something does.
+
+**And that green run was a coin flip, which is the finding worth more than the checkboxes.** The
+job fires on the tag push; one of the three things it checks is whether a GitHub Release exists —
+which the *next* runbook step is what creates. It was dispatched before the fact it checks could
+become true, and passed only because runner spin-up and `checkout --depth 0` burned 11 seconds
+while the publish landed at +11s and the check ran at +20s. **Won by roughly 9 seconds, defended by
+nothing but operator typing speed.** Pause between those two steps to read output — which the
+runbook's own prose invites — and it closes. A race that usually passes is worse to leave than a
+deterministic red: a deterministic red gets fixed, an intermittent one gets learned as noise.
+
+**The fix is an ordering change in both release runbooks: the Release now creates the tag.**
+`gh release create vX.Y.Z --target <sha>` makes both in one call, so no instant exists at which the
+tag is there without its Release, and the race is not narrowed but structurally removed from the
+runbook path. It also sharpens what a red tag-push run means — a tag that arrived by some route
+other than the runbook, which is exactly the case worth a red build. `documentation/release-process.md`
+carried the same ordering in two places and was corrected with them.
+
+`[DECISION: publish the Release with --target so it creates the tag, rather than tightening the gap
+between a tag push and a separate publish | narrowing the window keeps a correctness property that
+depends on how fast a human types, and the pruned runbook could not be narrowed at all — its Release
+notes need a hand-edit, so its window is minutes, not seconds; the workflow itself was scope-out for
+#581 | user chose this over "close the window" and over reopening scope to add a `release:` trigger,
+2026-08-05]`
+
+**`promote-a-pruned-release.md` was the worse of the two and had never been exercised** — a
+worktree removal *and* a hand-edit of the notes file sat between its tag push and its publish. Its
+steps 13–16 are reordered so the notes edit happens while no tag exists and nothing is watching.
+
+**The cost is that the automatic run stops firing on the runbook path**, so dispatching it is now a
+numbered step in both documents rather than something that arrives on its own. That a
+Releases-API-created tag emits `create` and `release` but not `push` is reasoned from GitHub's event
+model and **not yet measured here** — it is marked 🚧 UNVERIFIED at the step, and the dispatch is
+correct either way. A trade worth naming plainly: a race you can lose became a step you can skip.
+
+**Both runbooks' "First run only" caveats are deleted, and that deletion is load-bearing.** They
+told the operator to read a red run as *possibly a defect in the workflow* — true before the
+workflow had ever executed, and false the moment run `30967434559` showed it failing correctly on
+demand. Left in place after that, they train people to discount a real red, which is the same
+false-red pathology the rest of this scope has been eradicating. Each bullet now says the opposite:
+a red run is a fact about the release.
+
 ## 2026-08-04: the product declares which files carry its version — and where in them
 
 <!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=02 | release=v3.2.4 | status=shipped -->

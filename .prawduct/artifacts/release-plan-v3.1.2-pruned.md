@@ -75,6 +75,14 @@ impossible; the tree is built by patching instead:
 5. Commit the tree with `v3.1.1` as its parent, then publish **by ref**:
    `git push origin <sha>:refs/heads/main`, then `git tag vX.Y.Z <sha> && git push origin vX.Y.Z`.
 
+   > **Superseded 2026-08-05 — the tag half only.** This records what v3.1.2 did, and the
+   > publish-by-ref half is still right. Do **not** copy the `git tag && git push` that follows
+   > it: `verify-release.yml` did not exist when this was written, and it now fires on a tag push
+   > to ask whether a Release exists — which a later publish step has not yet made true. The
+   > current procedure creates both in one call (`gh release create --target <sha>`);
+   > `runbooks/promote-a-pruned-release.md` steps 13–16 are authoritative. See the 2026-08-05
+   > change-log entry.
+
 ### Two deviations from the runbook, both deliberate
 
 - **Step 14 (`git checkout main && git pull`) was not run.** `main` was checked out in the sibling
