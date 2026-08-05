@@ -140,6 +140,24 @@ design_decisions:
   api_versioning_approach: null
   # api_error_model_approach: { envelope (e.g. RFC-7807/problem+json), codes, status, rationale, date }
   api_error_model_approach: null
+  # Upstream dependency intake — the terms on which third-party code enters this
+  # product. Governs ANY upstream artifact whose release someone else controls,
+  # independent of delivery mechanism: registries, container base images, CI
+  # actions, submodules, vendored code, installers, plugins, model weights. This
+  # records the DECISION (a deliberate "none — consumes no upstream code" counts),
+  # not a mandate. Clauses and the enforcement-tier model: docs/upstream-dependency-policy.md.
+  # upstream_dependency_policy: {
+  #   minimum_release_age: how long an untrusted release must have been public
+  #                        before adoption (framework default: 7 days),
+  #   trusted: who is taken at latest, each named party with its why,
+  #   security_fast_path: how a fix for a known exposure bypasses the age floor,
+  #   install_time_execution: may upstream code run at install time, and what may (with reasons),
+  #   resolution_pinning: is the resolved set committed, and are installs frozen,
+  #   new_dependency_intake: the age floor, plus how package identity is verified,
+  #   surfaces: per intake surface, the enforcement tier actually reached
+  #             (declarative | bot | agent) — recorded, never assumed,
+  #   status: active|deferred, rationale, date }
+  upstream_dependency_policy: null
   observability_approach: null    # Signal types, correlation context, sensitive data filtering, operational model
   infrastructure_dependencies: null  # External services (DB, queue, auth, APIs), mock boundaries, integration test strategy
   visual_direction: null
@@ -415,6 +433,19 @@ operator_verification_required: false
 # "none-internal-only" resolves it; this is NOT a mandate to version.
 #
 # api_versioning_decided:
+
+# =============================================================================
+# UPSTREAM DEPENDENCY POLICY (advisory resolution fact)
+# =============================================================================
+# The committed "answer store" fact the `dependency-policy` sync probe consults.
+# Unlike the API probe above, this one runs no code scan and has no detection
+# gate: every product that incorporates upstream code needs recorded intake
+# terms, and one that incorporates none records that. So the probe asks only
+# whether an answer exists. Set this to the decision summary (e.g. "7d-cooldown",
+# "none-no-upstream-code", "deferred:<why>") to resolve it — it mirrors
+# design_decisions.upstream_dependency_policy. Unset/absent = undecided.
+#
+# upstream_dependency_policy_decided:
 
 # =============================================================================
 # BACKLOG (structured backlog resolution conditions, v1.7+)

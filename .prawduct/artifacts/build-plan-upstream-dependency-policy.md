@@ -112,13 +112,24 @@ feature's seven legs, which is the direct structural precedent.
 
 ## Status
 
-- [ ] Chunk 01: Keystone — the policy decision record + capture-point wiring
+- [x] Chunk 01: Keystone — the policy decision record + capture-point wiring
 - [ ] Chunk 02: The canonical policy spec + the security-model home
 - [ ] Chunk 03: Forward Critic gate + the `**Dependency change:**` field
 - [ ] Chunk 04: Retroactive — doctor check #15 (incl. the conformance procedure) + janitor
 - [ ] Chunk 05: Migration nudge — the dependency-policy advisory probe (CODE)
 - [ ] Chunk 06: Coherence & close — matrix row, Known Gaps overturn, update-procedure template
-Context: Plan authored 2026-08-05 on `feature/upstream-dependency-policy` (off `develop`). Requirements ruled the same day. Nothing built. Next: Chunk 01.
+Context: Plan authored 2026-08-05 on `feature/upstream-dependency-policy` (off `develop`); requirements ruled the same day. Owner confirmed both post-ruling design changes (agent-performed conformance — *"it needs to be adaptable to any platform"* — and the tier-3 fillable runbook template).
+
+**Chunk 01 DONE.** `templates/project-state.yaml` gained the `design_decisions.upstream_dependency_policy` block (7 sub-fields incl. `surfaces`, the per-surface enforcement-tier record) and the commented-out top-level `upstream_dependency_policy_decided` answer-store fact, whose comment records *why this probe has no detection gate* so a later reader doesn't add one. `discovery.md` gained "Surface Upstream Dependency Policy" between Infrastructure Dependencies and Observability — universal trigger, defaults-with-why per Principle 20, CI actions named as the non-manifest intake surface, no ecosystem named as a requirement. `planning.md`'s Dependency Manifest bullet now carries the justification/terms split. 3743 green.
+
+**Three carried notes from Chunk 01's learnings lookup, none silently accepted:**
+1. **Chunk 03 gained a deliverable** — the session-digest line (see that chunk). Rule: a new framework-wide default that doesn't reach migrated repos isn't framework-wide.
+2. **Legend-refresh gap, recorded not closed.** `templates/project-state.yaml` is scaffold-only, so an already-onboarded repo never gains the new block's commented shape guide. The api-design precedent has the identical gap and routes around it: the *methodology* carries the shape and the advisory's `recommended_action` points there. `discovery.md`'s new section does carry it, so the routing holds — but the propagation surface named by the learning (a `migrate`/refresh step) is deliberately not built. Flagged for the Chunk 01 `final` review to judge.
+3. **The `discovery.md` pointer to `docs/upstream-dependency-policy.md` is deferred to Chunk 02**, where the file exists — Chunk 01 references the concepts, not the path, so no commit on this branch carries a dangling reference.
+
+**Persisted-schema consumer queries, enumerated before the fields were designed** (planning.md's lock-in rule): the advisory probe asks *does an answer exist* (top-level fact); doctor #15 asks *does it exist* and *is it expressed per surface* (`surfaces`); janitor asks *are trusted parties still trusted and still carrying a why* (`trusted`) and *do install-time execution and pinning still match* (`install_time_execution`, `resolution_pinning`); the Critic asks *is a policy recorded* (presence). Every query has a field.
+
+Next: Chunk 01 `final` Critic review, then Chunk 02.
 
 ## Yield Declarations
 
@@ -187,7 +198,8 @@ principle. Three controls are added here:
 - **Deliverables:**
   1. `plugin/skills/critic/review-protocol.md` and `plugin/skills/critic/goals-1-3.md` — under Goal 2, beside the Exposed-API bullet: a chunk declaring `**Dependency change:**` needs a recorded upstream intake policy (`upstream_dependency_policy` present, or an explicit deferral) → **WARNING** if missing. **Both files, not one** — they are the two roster paths and a bullet in only one is a check that fires or not depending on review mode.
   2. `plugin/templates/build-plan.md` — a `**Dependency change:**` field beside `**Foreign API:**` and `**Exposed API:**` (~line 164), same comment style.
-  3. Hold both Critic files under their token ceilings (`tests/test_v5_methodology.py`: review-protocol.md < 3620, goals-1-3.md < 2000) by trimming adjacent prose **in this chunk**, never by weakening an existing check.
+  3. `plugin/methodology/session-digest.md` — one line in the hardest-rules block: the agent's own dependency actions are governed by the product's recorded intake policy. **Added to this chunk after Chunk 01's learnings lookup** surfaced the rule *"a new framework-wide DEFAULT must land in the session digest — place-once preferences and the thin anchor don't reach migrated repos."* The digest is the only surface reaching every product vintage, and the owner's requirement was explicitly that the policy binds *"when the agent takes action, everywhere"* — without this line the agent-behavior arm reaches new products only. The digest is token-budget-bound: fund the line by trim in this chunk.
+  4. Hold both Critic files and the digest under their token ceilings (`tests/test_v5_methodology.py`: review-protocol.md < 3620, goals-1-3.md < 2000) by trimming adjacent prose **in this chunk**, never by weakening an existing check.
 - **Tests:** none new (the Foreign-API and Exposed-API checks are prose-only on the same model); the existing token-ceiling tests are the guard.
 - **Acceptance criteria:**
   1. The bullet reads symmetric to the Exposed-API bullet in **both** files; severity is WARNING.

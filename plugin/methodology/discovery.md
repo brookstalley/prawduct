@@ -150,6 +150,18 @@ When the product needs external services — databases, queues, auth providers, 
 
 **Foreign APIs are a distinct subcategory.** When a dependency's surface the project doesn't own (vendor APIs, MCP servers, wrapped third-party libraries), name it explicitly so the planner carries it forward as `**Foreign API:** <name>` on the chunk that first wraps it — that annotation triggers the Critic's `verify-api` check (see `methodology/planning.md` "Foreign API Verification").
 
+## Surface Upstream Dependency Policy
+
+Nearly every product incorporates code someone else releases, so this is **asked of every product rather than detected** — there is no structural characteristic to wait for. One question: *on what terms does upstream code enter?* A product that genuinely incorporates none records that in one line and is done.
+
+The scope is **dependencies, not package managers** — any upstream artifact whose release someone else controls, independent of delivery mechanism. Registry packages are the obvious case and the least complete one: container base images, CI actions pinned to a mutable tag (upstream code running with the repository's credentials, named in no manifest), git submodules, vendored directories, install scripts, editor and agent plugins, and model weights all carry the same exposure through routes no manifest lists.
+
+**Bring the defaults, don't interrogate** (Principle 20). State the opinion and its why for correction: an untrusted release waits before adoption (default **7 days** — long enough that a compromised release is usually withdrawn first, and it also catches the ships-broken-fixed-tomorrow pattern); code the product publishes itself is taken at latest; a fix for a vulnerability the product is exposed to **skips the wait**, because a blanket delay turns a security control into a security regression; upstream code does not execute at install time by default, since install-time execution — not the version number — is what actually runs a payload; and the resolved set is committed with installs frozen, or the other clauses govern a manifest while something else decides what lands.
+
+Scale to risk: low → record the defaults and move on; medium → name the trusted parties and the product's intake surfaces; high → record, per surface, which enforcement mechanism was actually reached (the toolchain's own config binds every actor; an update bot binds proposed updates; a documented agent procedure binds one actor per invocation), plus an install-time-execution allowlist with reasons and a named owner for the security fast path.
+
+**Capture to `project-state.yaml`** under `design_decisions.upstream_dependency_policy`, and set the top-level `upstream_dependency_policy_decided` fact — that is what resolves the ambient nudge for everyone on the next sync.
+
 ## Surface Observability Needs
 
 Every product has observability needs — even when the answer is "console.error is enough." Products with `runs_unattended`, `exposes_programmatic_interface`, or `multi_process_distributed` need deeper design. Scale to risk: low → error logging to console; medium → structured logging with correlation context, key metrics, health endpoint; high → three-signal observability (logs, metrics, traces), sensitive-data filtering, alerting. Also surface: what ties related events together (request/session/domain IDs); whether sensitive data needs filtering; the operational model (developer debugging vs. SRE monitoring vs. automated response); whether the development agent will need to query signals during debugging (if so, plan agent-accessible interfaces early). **Capture to `project-state.yaml`** under `design_decisions.observability_approach`.
