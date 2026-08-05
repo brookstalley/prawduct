@@ -3,6 +3,53 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: the findings view now says which review it is
+
+<!-- prawduct: type=fix | scope=ephemeral-worktrees -->
+
+<!-- No `chunks=`: **#595** rode this branch by owner decision rather than belonging to its plan,
+     so it takes release stamping without flipping any build-plan Status checkbox. Same shape as
+     the norm-birth entry below. -->
+
+`.prawduct/.critic-findings.json` survived every dispatch carrying nothing that marked it stale.
+Between `critic-begin` and the consolidation that regenerates it, a reader met the **previous**
+review's findings in a file that looked exactly like the current one's — timestamped from that
+earlier run, with a `next_action` directing disposition of findings that were not the in-flight
+review's. Observed during the #594 build: mid-review the file was dated the previous day while a
+review dispatched minutes earlier was still running. That file is the one surface the builder is
+guaranteed to meet, which is what made the ambiguity expensive.
+
+The framework already knew about the window and answered it **procedurally** — CLAUDE.md tells the
+builder to run `critic-consolidate` before reading, because doing so "closes the window where an
+unfired trigger would leave you reading the *previous* review's file." That instruction is the
+burden: it asks the agent to reason about whether what it is holding is current.
+
+`critic-begin` now stamps the record `superseded_by` / `superseded_at` / `superseded_notice` —
+first keys in the file, so a reader meets them before the findings and the `next_action` they
+qualify — and leaves every other field byte-identical. The dispatch output says the same thing to
+the one context certain to be reading at that moment. Consolidation rewrites the whole record from
+the new fact, so the keys clear themselves; nothing goes looking for them.
+
+**It marks rather than deletes, and that is the whole design.** Deleting at dispatch is the obvious
+fix and it is wrong: `_prior_review_fact` reads this file's `fact_id` to anchor a
+`verify-resolutions` delta. The steady-state sequence would survive, but a review **waived or
+abandoned before consolidating** would leave the next verify with no anchor at all — where today it
+correctly anchors to the last completed review. Deletion trades a cosmetic ambiguity for a lost
+anchor. `test_verify_still_anchors_after_an_abandoned_review` is the pin that goes red if a later
+edit "simplifies" the mark into a delete.
+
+The notice states a **fact about the record**, not a liveness claim. "A review is in flight" would
+go false on its own — a dispatched review can expire by TTL or be swept at a session boundary, and
+neither path passes through anything that could retract it. "Review X was dispatched after this
+record was written, so this is not X's result" stays true forever, and a reader meeting it after an
+abandoned review learns exactly why the newest record is older than expected.
+
+*Not done, deliberately*: CLAUDE.md's `critic-consolidate`-before-reading instruction stays. It is
+still the **action** that gets you current findings on the coordinator path; what the marker
+retires is the *reasoning* the instruction asked for, and adding prose to say so would grow total
+footprint to describe a field that now describes itself. No gate reads the view, so nothing in the
+authority path changed (`data-model.md` § Direction).
+
 ## 2026-08-05: fix, don't file — a norm for when a finding earns a backlog item
 
 <!-- prawduct: type=docs | scope=ephemeral-worktrees -->

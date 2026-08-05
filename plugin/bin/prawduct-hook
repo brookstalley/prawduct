@@ -1186,6 +1186,16 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         )
     elif result["cleared_leftovers"]:
         print("PRAWDUCT: cleared leftover .critic-partials from a prior review.")
+    if result.get("superseded_findings"):
+        # Said at dispatch because that is when the window opens: from here
+        # until this review consolidates, .critic-findings.json holds the
+        # PREVIOUS review. The file now says so itself; this is the same fact
+        # delivered to the one context that is certain to be reading right now.
+        print(
+            f"PRAWDUCT: .critic-findings.json is now marked superseded_by "
+            f"{result['id']} — until this review consolidates it holds the "
+            "PREVIOUS review's findings, not this one's."
+        )
     for note in result["notes"]:
         print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
     manifest = result["manifest"]
