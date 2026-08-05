@@ -3,6 +3,58 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: the cumulative's findings, and the guards that could not see the shapes they guarded
+
+<!-- prawduct: type=fix | scope=review-round-pricing -->
+
+**The scope's own failure mode, delivered by its own carriers.** The cumulative review over the
+three chunks returned 0 blocking, 8 warnings, 7 notes; eleven were fixed in one batch, three
+accepted, one split. Three of them are the same defect wearing different clothes: a claim that held
+only on the form it was pinned for. `cost-of-commit` priced a *directory* argument `free` when git
+could not be read — `_working_tree_paths(...) or []` turned a git failure into an empty expansion
+and the argument branch never set `reason`, so the "unknown, never free" asymmetry documented in
+three docstrings was true of the path form only. A builder holding an `index.lock` was told the
+commit was free. Both forms now return `(value, reason)` and both degrade to `unknown`, with the
+git detail carried in the reason — which also makes the broad-except waiver's stated reason true.
+
+**A guard that matches line shapes guards the shapes it was written against.** The
+no-hardcoded-duration sweep walked lines, so it saw `print(...)` and wrapped continuations and
+nothing else; `return {"reason": "...5 minutes"}` and a single-line `return f"...7 minutes"` both
+slipped past — exactly the shapes the emitted `reason` strings use. It walks the AST now, every
+string constant, docstrings excluded. Widening a guard is itself a claim, so the guard's own
+detection is pinned against the shapes that escaped it, with controls for the derived form and for
+bare thresholds.
+
+**Two seconds→minutes renderers shipped in one bundle and only one guarded the sub-minute case** —
+so the surface that literally states the price could say "about 0 min". `telemetry.format_minutes`
+is now the one home for the rendering: the fact had one home, its rendering had two.
+
+**An unreadable ledger was reported as an empty history.** The true cause went to stderr and died
+there while the wrong reason was *persisted* into the findings cache, the ledger event and the
+briefing — reading as "no review history" for a repo holding hundreds. `_read_events` returns the
+read failure as a third value, deliberately not a fourth key in `skipped`, which is published
+inside the registered `review-stats --json` payload; the first attempt did widen it and
+`test_review_stats` caught the leak.
+
+**And the protocol edited in Chunk 03 still quoted the wrong price.** It charged a non-blocking fix
+"a full Critic round", contradicting `_BATCH_FIX_DIRECTIVE`, the gate's churn NOTE and
+`PRICED_MODE = verify-resolutions`, which all quote the delta pass — a reviewer who believes each
+NOTE costs a cumulative files fewer findings than it should, the opposite of that paragraph's
+closing line. Alongside it: the "no paths were given" message printed when paths *were* given and
+expanded to nothing, the quoted price now names "the cheapest round that closes it" (on a branch
+with no prior review the closing round is a cumulative, and `PRICED_MODE` records the
+understatement), and `round_price` states that `duration_seconds` is a reviewer self-estimate so
+the figure is not defended as measured.
+
+**Free-path record work in the same batch:** `cost-of-commit --json` joins the registered emitter
+list with its key set (and the plan gains the `api-contract` `governed_by:` block whose absence
+explains the miss); the cross-cutting Review-loop-termination row records this bundle's four
+carriers, including the first-ever PR-review leg; and the plan's state-file disposition is
+corrected — "no chunk writes to a state file" was true of Chunk 01 and false of Chunk 02, since
+`next_action` rides `ledger_append` into every review event and prints in every briefing.
+
+**Classification:** governance
+
 ## 2026-08-05: the warning where the relapse starts, and the route nobody was offering
 
 <!-- prawduct: type=fix | scope=review-round-pricing | chunks=03 -->

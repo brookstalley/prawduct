@@ -316,11 +316,13 @@ across both the PR protocol and `next_action_line`'s two arms — recorded as a 
 being built, offered with its condition, and explicitly distinguished from the deferral the same
 message warns against.
 
-**Two things the next session must know.** First, HEAD's tree is *not* the tree that review
-anchored to — the fixes landed after it — so `check-cumulative-critic` will report a gap on this
-branch. That is expected and needs no round now: Chunk 03 is `cumulative-final`, and its single
-`/prawduct:critic cumulative` spans `merge-base...HEAD` and closes it. Do not spend a
-`verify-resolutions` pass to close it early. Second, finding R-2 was recorded with
+**The closing cumulative ran and is recorded**: `rev-20260805T201127Z-07ed88bd` — 0 blocking, 8
+warnings, 7 notes, spanning `merge-base...HEAD`. Eleven were fixed in one batch (commit `201744c`,
+its own change-log entry), three accepted, one split; the judgeable half bought one
+`verify-resolutions` and the record half was free. `check-cumulative-critic` now reports
+`satisfied` at HEAD — the gap this section previously warned about is closed, not pending.
+
+**One thing the next session must know.** Finding R-2 was recorded with
 `disposition --accept` when it was actually **fixed**; the reason string says so, but the record
 type is wrong. The CLI offers only `--accept`/`--file` — a fixed finding is meant to be discharged
 by a `verify-resolutions` resolution fact — and the store is append-only, so this is noted rather
