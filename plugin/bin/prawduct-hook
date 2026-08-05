@@ -4811,7 +4811,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 #    That is the only reason the sentences above talk around it.
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-consolidate|"
+    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-discard|critic-consolidate|"
     "subagent-stop|"
     "stop|build-index|user-prompt-submit|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
