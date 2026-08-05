@@ -1297,6 +1297,47 @@ def cmd_critic_end(project_dir: Path) -> int:
     return 0
 
 
+def cmd_critic_discard(project_dir: Path) -> int:
+    """Deliberately discard a dispatched review's partials so a fresh dispatch
+    can proceed. Archives first — never deletes outright.
+
+    The escape hatch for the one state `critic-end` cannot reach. `critic-begin`
+    refuses while a complete roster is on disk, at any age, because a complete
+    roster is finished work and age says nothing about whether it is worth
+    keeping. But consolidation fail-closes WITHOUT removing partials (so the
+    cause can be fixed and retried), and `critic-end` clears only the marker —
+    so a failed consolidate strands a complete roster that nothing expires and
+    no other command clears. Without this, that state refuses every dispatch
+    forever, which is exactly the "a crashed review must not permanently brick
+    anything" property `lib/critic_marker` is built around.
+
+    Deliberately NOT folded into `critic-end`: that command is what an agent
+    reaches for whenever a review looks dead, and making it destructive would
+    hand back the loss this guard exists to prevent. Discarding a completed
+    review's findings is a decision, so it gets its own name and its own
+    invocation. The archive keeps it recoverable either way.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        print("PRAWDUCT: not an onboarded repo — nothing to discard.")
+        return 0
+    consolidate = _critic_consolidate()
+    archived = consolidate._archive_leftovers(prawduct_dir)
+    consolidate.remove_partials(prawduct_dir)
+    _critic_marker().clear_marker(prawduct_dir)
+    if archived:
+        print(
+            f"PRAWDUCT: discarded the dispatched review — partials archived to "
+            f"{archived} (not deleted). A fresh `/prawduct:critic` can now dispatch."
+        )
+    else:
+        print(
+            "PRAWDUCT: nothing to discard (no partials on disk); critic-active "
+            "marker cleared."
+        )
+    return 0
+
+
 def cmd_critic_consolidate(project_dir: Path) -> int:
     """Merge complete reviewer partials into evidence facts + the derived cache.
 
@@ -5076,6 +5117,7 @@ _HARNESS_INVOKED_COMMANDS = frozenset({
 _DATA_PLANE_COMMANDS = frozenset({
     "critic-begin",
     "critic-consolidate",
+    "critic-discard",
     "critic-end",
     "disposition",
     "ledger-append",
@@ -5453,6 +5495,8 @@ def main() -> int:
         return cmd_critic_begin(project_dir, sys.argv[2:])
     elif command == "critic-end":
         return cmd_critic_end(project_dir)
+    elif command == "critic-discard":
+        return cmd_critic_discard(project_dir)
     elif command == "critic-consolidate":
         return cmd_critic_consolidate(project_dir)
     elif command == "subagent-stop":

@@ -930,13 +930,19 @@ def begin_review(
     # own documented TTL for precisely this question. Reusing the number while
     # changing the signal would CREATE the second notion of "live" rather than
     # avoid it.
-    active, age_s = critic_marker.review_active(prawduct_dir)
+    # `sweep=False`: refusing a dispatch is not the moment to also decide a
+    # crashed review is over. The Stop hook's abandoned-review branch is gated on
+    # `marker_present` and is what prints the manual-recovery remedy, so sweeping
+    # here would delete the signal that produces those instructions — the first
+    # refused dispatch past the TTL would strip the correct advice out of the
+    # subsystem. `clear` keeps the sweeping default; see `critic_marker`.
+    active, age_s = critic_marker.review_active(prawduct_dir, sweep=False)
     roster_state, _missing = pending_state(prawduct_dir)
     if active or roster_state == "complete":
         return {
             "status": "error",
             "kind": "review-in-flight",
-            "reason": active_dispatch_refusal(prawduct_dir, age_s),
+            "reason": active_dispatch_refusal(prawduct_dir, age_s, active),
         }
 
     # Which plan this review is OF. An unbounded `active_build_plan` has
@@ -1419,7 +1425,9 @@ def pending_state(prawduct_dir: Path) -> tuple[str, list[str]]:
     return "complete", []
 
 
-def active_dispatch_refusal(prawduct_dir: Path, age_seconds: "float | None") -> str:
+def active_dispatch_refusal(
+    prawduct_dir: Path, age_seconds: float | None, active: bool = True
+) -> str:
     """The message a ``critic-begin`` prints when it refuses to displace a review
     that is still in flight.
 
@@ -1472,22 +1480,49 @@ def active_dispatch_refusal(prawduct_dir: Path, age_seconds: "float | None") -> 
             "  On disk: no readable dispatch manifest — a review set the marker but\n"
             "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
         )
-    # No "critic-begin:" prefix — the CLI renders this as `f"critic-begin: {reason}"`.
-    return (
+
+    # The remedy has to REACH the state that is refusing, and the two conditions
+    # strand a caller differently. A live marker expires and `critic-end` clears
+    # it. A complete roster with NO live marker does neither: consolidation
+    # fail-closes without removing partials (its two `remove_partials` call sites
+    # are `begin_review` — now behind this guard — and consolidate-on-success),
+    # so a failed consolidate leaves a complete roster that `critic-end` cannot
+    # touch and no TTL expires. Naming the marker's TTL there would be false, and
+    # a refusal whose stated remedy does not work is worse than none.
+    if active:
+        escape = (
+            "  If that review is genuinely dead, abandon it explicitly and re-dispatch:\n"
+            "    prawduct-hook critic-end\n"
+            f"  The marker also expires on its own after "
+            f"{critic_marker.CRITIC_ACTIVE_TTL_SECONDS // 60} minutes."
+        )
+    else:
+        escape = (
+            "  No live marker — these partials are STRANDED, most likely by a\n"
+            "  consolidation that failed (it leaves them in place so the fix can retry).\n"
+            "  Consolidate them if the cause is fixable; `critic-end` will NOT clear this\n"
+            "  state and nothing expires it. To discard them deliberately and dispatch\n"
+            "  fresh — archiving first, never deleting outright:\n"
+            "    prawduct-hook critic-discard"
+        )
+    opening = (
         f"refusing — a Critic review is already in flight in this "
         f"worktree ({prior_id}, dispatched {age_note}).\n"
-        "  Dispatching now would archive its partials and overwrite its manifest, "
-        "and its\n"
-        "  still-running reviewers would write into THIS review's directory, where a "
+        if active
+        else f"refusing — a completed review's partials are still on disk ({prior_id}).\n"
+    )
+    # No "critic-begin:" prefix — the CLI renders this as `f"critic-begin: {reason}"`.
+    return (
+        opening
+        + "  Dispatching now would archive its partials and overwrite its manifest, "
+        "and any\n"
+        "  still-running reviewer would write into THIS review's directory, where a "
         "partial\n"
         "  at the same commit is indistinguishable from one written for it.\n"
         "\n"
         + situation
         + "\n"
-        "  If that review is genuinely dead, abandon it explicitly and re-dispatch:\n"
-        "    prawduct-hook critic-end\n"
-        f"  The marker also expires on its own after "
-        f"{critic_marker.CRITIC_ACTIVE_TTL_SECONDS // 60} minutes."
+        + escape
     )
 
 
