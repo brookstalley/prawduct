@@ -2544,7 +2544,7 @@ dependency, so you can enumerate it before CI does, and the enumeration is not o
 because the affected set is invisible in the diff.
 
 
-## A test asserts what would BREAK, not what you just built
+## A test asserts what would BREAK, not what you just built — red-verify mechanically (break the subject, watch that specific test go red, restore), because the vacuous shapes all look correct while proving nothing
 
 Three vacuous-pass shapes, all observed on `fix/ephemeral-agent-worktrees` (2026-08-05, #594):
 an **exit code** asserted on a command that also exits non-zero for its own reasons (missing
@@ -2559,7 +2559,7 @@ the rule, which is why the remedy is mechanical rather than attentional: revert 
 run the specific test, confirm it goes red, restore. It caught something every time it was run
 here and cost about a minute each time.
 
-## Apparent duplication may be the receipt for a token budget already paid
+## Apparent duplication across governing docs may be the RECEIPT for a token budget already paid — check for a pinning test before cutting it, never fund a budget by moving prose between files, and raise the ceiling rather than spend redundancy twice
 
 `plugin/methodology/building.md` carries a hard ceiling asserted in
 `tests/test_v5_methodology.py`. Adding the two delegation hazards (+146 tokens) against 3 tokens

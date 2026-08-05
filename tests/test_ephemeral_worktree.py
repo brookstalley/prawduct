@@ -358,7 +358,13 @@ class TestGuardAllowsReads:
         assert "BLOCKED" not in _run(wt, command).stderr
 
     @pytest.mark.parametrize(
-        "command", ["audit-learnings", "coverage-scaffold", "learnings-obligation"]
+        "command",
+        [
+            "audit-learnings",
+            "coverage-scaffold",
+            "learnings-obligation",
+            "norm-index-scaffold",
+        ],
     )
     def test_apply_form_still_refuses(self, tmp_path, command):
         """The other half of the same branch — `--apply` is the writing form."""

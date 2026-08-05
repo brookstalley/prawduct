@@ -3,6 +3,31 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: fix, don't file — a norm for when a finding earns a backlog item
+
+**Norm birth**, owner-declared during the #594 build and recorded here because a preferences row
+alone leaves the birth invisible in the log. `project-preferences.md` § Workflow gains **Backlog
+filing**: a strong bias to fix rather than file, with a new item justified only when the finding is
+**both** orthogonal to the current work **and** medium or larger.
+
+*Why*: a filed item is a deferred decision that costs triage, re-reading and re-derivation later,
+and the backlog's value falls as it grows — 168 pending items make the next `pick` worse, not
+better. The two tests are exactly the cases where filing beats fixing: orthogonal work would
+corrupt the current change's scope and review, and medium+ work needs requirements before code
+(Principle 6). **Small-and-orthogonal is the trap the rule closes** — it feels like a legitimate
+defer and is really just avoided work. Recording a finding as a *comment on an existing item* is
+not filing and stays unrestricted.
+
+*Status* steady-state. *Retroactivity* **grandfather** — the 168 items pending at birth are exempt
+and will not be re-triaged; converging them is separate, unrequested work, and grandfather is the
+honest word for not intending to converge. One site inside the birthing changeset is not exempt:
+**#595**, filed the same session under the old habit and failing the medium+ test.
+
+*Enforcement*: Critic (Goal 4, plus `final` mode's existing backlog reconciliation), audit home
+Critic + janitor. Session config alone would have left it aspirational — the failure is an agent
+filing small in-scope work it should simply have done, which no mechanical check can see, because
+it needs a reader who knows what the current work was.
+
 ## 2026-08-05: prawduct now knows a worktree can be disposable
 
 <!-- prawduct: type=fix | scope=ephemeral-worktrees | chunks=01,02,03 -->
