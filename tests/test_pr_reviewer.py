@@ -453,6 +453,14 @@ class TestPrReviewSkillContent:
         # governance-protected `.md` under skills/, methodology/ and templates/
         # — which is exactly what the first draft of this paragraph claimed.
         assert "prawduct-hook cost-of-commit" in content
+        # And it prices the round the gate actually accepts. Every sibling
+        # carrier in the same runtime — the batch-fix directive, the gate's
+        # churn NOTE, `telemetry.PRICED_MODE` — quotes the delta pass; a
+        # reviewer told each NOTE costs a full cumulative over-prices its own
+        # findings and files fewer, which is the opposite of what this
+        # paragraph is for.
+        assert "verify-resolutions" in content
+        assert "a full Critic round" not in content
 
     def test_the_ride_along_route_is_offered_with_its_condition(self):
         """Fix-now buys a round; accept and file buy none. The option that costs

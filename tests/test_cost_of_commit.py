@@ -27,11 +27,13 @@ tests/test_classify_diff_risk.py.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import re
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
@@ -97,6 +99,48 @@ def _ledger(repo: Path, rounds: list[float], mode: str = "verify-resolutions") -
             "review": {"mode": f"{mode} (some verbose suffix)", "findings": []},
         }))
     (repo / ".prawduct" / ".governance-ledger.jsonl").write_text("\n".join(lines) + "\n")
+
+
+_DURATION_RE = re.compile(r"\b\d+\s*(?:min|minute|sec|second)s?\b")
+
+
+def _hardcodes_a_duration(text: str) -> bool:
+    """The detector, named once so the guard and the guard's own test share it."""
+    return bool(_DURATION_RE.search(text))
+
+
+def _emitted_strings(source: str) -> "list[str]":
+    """Every string constant in `source` that could reach a reader.
+
+    An AST walk, not a line-shape regex. The regex this replaced saw a
+    `print(...)` call and a wrapped string continuation and nothing else, so a
+    duration written into a `return {...}` dict value or a single-line
+    `return f"..."` went unseen — which is the shape the emitted `reason`
+    strings actually use.
+
+    Docstrings are excluded: they explain the guard and legitimately name
+    durations. Everything else counts, whatever syntax produced it — a plain
+    literal, a dict value, an f-string's literal segments, an
+    implicitly-concatenated run.
+    """
+    # Function sources come from `inspect.getsource` and are indented;
+    # `ast.parse` rejects that, so normalize before parsing.
+    tree = ast.parse(textwrap.dedent(source))
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(
+            node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
+            doc = ast.get_docstring(node, clean=False)
+            if doc is not None:
+                docstrings.add(doc)
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value not in docstrings
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +317,49 @@ class TestRoundPrice:
         assert price["median_seconds"] == 300.0
         assert price["reviews"] == 5
 
+    def test_a_sub_minute_price_never_reads_as_about_zero_minutes(
+        self, tmp_path: Path
+    ) -> None:
+        """The surface that literally states the price could say "One more
+        round costs about 0 min here" — the false-confidence failure this whole
+        scope exists to prevent, delivered by its own carrier.
+
+        Two seconds→minutes renderings shipped in one bundle and only the
+        branch-tally one carried the guard. The *fact* had one home; its
+        *rendering* had two. Plausible in any product whose delta reviews are
+        quick.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _ledger(repo, [20.0] * 6)
+        rendered = telemetry.format_round_price(
+            telemetry.round_price(repo / ".prawduct")
+        )
+        assert "under a minute" in rendered
+        assert "0 min" not in rendered
+
+    def test_an_unreadable_ledger_is_not_reported_as_an_empty_history(
+        self, tmp_path: Path
+    ) -> None:
+        """The verdict was right and the persisted REASON named the wrong
+        cause. `_read_events` prints the real failure to stderr and returns no
+        events, so `round_price` fell through to "no round records how long it
+        took" — which is then written into the findings cache, the ledger event
+        and the session briefing, reading as "no review history" for a repo
+        holding hundreds."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        ledger = repo / ".prawduct" / ".governance-ledger.jsonl"
+        ledger.write_text("{}\n")
+        ledger.chmod(0o000)
+        try:
+            price = telemetry.round_price(repo / ".prawduct")
+        finally:
+            ledger.chmod(0o644)
+        assert price["status"] == "unavailable"
+        assert "could not be read" in price["reason"]
+        assert "no verify-resolutions round" not in price["reason"]
+
     def test_no_ledger_is_unavailable(self, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
         _init_repo(repo)
@@ -310,6 +397,57 @@ class TestDegradation:
         result = _run(not_a_repo)
         assert result.stdout.splitlines()[0] == "unknown"
         assert "not a free one" in result.stdout
+
+    def test_a_directory_argument_also_reports_unknown_not_free(
+        self, tmp_path: Path
+    ) -> None:
+        """The twin of the test above, and the hole it left open. A directory
+        argument expands through `git status`, so the ARGUMENT form reaches git
+        too — but its failure was collapsed into an empty expansion
+        (`_working_tree_paths(...) or []`), which the caller then priced as
+        `free` under "No paths were given". A builder holding an `index.lock`
+        was told the commit was free, from the one form the asymmetry was never
+        pinned for.
+        """
+        not_a_repo = tmp_path / "bare"
+        (not_a_repo / ".prawduct").mkdir(parents=True)
+        (not_a_repo / "docs").mkdir()
+        result = _run(not_a_repo, "docs")
+        assert result.stdout.splitlines()[0] == "unknown"
+        assert "not a free one" in result.stdout
+
+    def test_the_unknown_verdict_carries_the_git_failure_detail(
+        self, tmp_path: Path
+    ) -> None:
+        """`unknown` is unactionable without a cause, and nothing else logs it
+        — a missing git, a not-a-repository and the 30s timeout are otherwise
+        indistinguishable once the call returns. The sibling advisory in the
+        same module (`count_branch_rounds`) already carries its git error
+        forward; this asserts the pricing path does too."""
+        not_a_repo = tmp_path / "bare"
+        (not_a_repo / ".prawduct").mkdir(parents=True)
+        result = _run(not_a_repo)
+        assert "git status failed" in result.stdout
+        assert result.stdout.count("(") >= 1, "the cause is not carried in the reason"
+
+    def test_a_directory_holding_no_change_is_not_reported_as_no_paths_given(
+        self, tmp_path: Path
+    ) -> None:
+        """The verdict is right and the sentence was wrong: a directory
+        argument expands to the changed files beneath it, so a clean directory
+        arrives with arguments and an empty expansion. "No paths were given"
+        then reads as "your argument was dropped" — a wrong-tool inference in
+        an advisory whose only value is being trusted."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        (repo / "docs").mkdir()
+        (repo / "docs" / "committed.md").write_text("x\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "docs", "--quiet")
+        result = _run(repo, "docs")
+        assert result.stdout.splitlines()[0] == "free"
+        assert "hold no uncommitted change" in result.stdout
+        assert "No paths were given" not in result.stdout
 
     def test_a_bad_argument_exits_one(self, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
@@ -388,6 +526,17 @@ class TestOutput:
         guard aimed at the one file that cannot regress reports green forever,
         which is precisely how this test's first draft passed while the
         sentence it guarded lived somewhere else.
+
+        **It walks the AST rather than matching line shapes.** The first draft
+        selected candidate text with `^\\s*(?:print\\(|\\s+f?")`, which sees a
+        `print(...)` call and a wrapped string continuation and nothing else —
+        so `return {"status": ..., "reason": "...5 minutes"}` and
+        `return f"...7 minutes"` both slipped past it. Those are exactly the
+        shapes the `reason` strings use, and those strings are interpolated
+        verbatim into what the reader sees. A guard that misses the form the
+        next regression will take is the same defect as one aimed at the wrong
+        file, one level down: it reports green over the very strings it exists
+        to watch.
         """
         from lib import critic_consolidate, gates  # noqa: PLC0415
 
@@ -401,20 +550,62 @@ class TestOutput:
                 critic_consolidate.next_action_line
             ),
         }
-        # A module constant has no source to scan for interpolation — every
-        # digit in its VALUE is hardcoded by construction, so the value itself
-        # is the subject. It printed "5-10 minute rounds" until the round price
-        # became derivable, which is the case that put it on this list.
-        emitted = [
-            (f"{name} (emitted line)", line)
-            for name, source in scanned.items()
-            for line in re.findall(r'^\s*(?:print\(|\s+f?")(.*)$', source, re.MULTILINE)
-        ] + [
+        emitted: list[tuple[str, str]] = [
+            # A module constant has no source to scan for interpolation — every
+            # digit in its VALUE is hardcoded by construction, so the value
+            # itself is the subject. It printed "5-10 minute rounds" until the
+            # round price became derivable, which put it on this list.
             ("critic_consolidate._BATCH_FIX_DIRECTIVE", critic_consolidate._BATCH_FIX_DIRECTIVE),
         ]
-        for name, line in emitted:
-            assert not re.search(r"\b\d+\s*(?:min|minute|sec|second)s?\b", line), (
+        for name, source in scanned.items():
+            emitted.extend((name, text) for text in _emitted_strings(source))
+        for name, text in emitted:
+            assert not _hardcodes_a_duration(text), (
                 f"a duration is hardcoded into emitted text in {name}: "
-                f"{line.strip()!r} — the price must be derived from the ledger "
+                f"{text.strip()[:120]!r} — the price must be derived from the ledger "
                 "at call time"
             )
+
+    def test_the_guard_catches_the_shapes_that_slipped_past_its_first_draft(self) -> None:
+        """A guard is only worth what it detects, and this one has already
+        shipped a version that detected less than it claimed.
+
+        Its first draft matched line *shapes* — `print(...)` and wrapped string
+        continuations — so a duration written into a `return {...}` dict value,
+        a single-line `return f"..."`, or an assignment went unseen. Those are
+        exactly the shapes the emitted `reason` strings use. Without this,
+        widening the guard is an unverified claim of the same kind the guard
+        exists to prevent, so each form is planted and asserted caught, with a
+        clean control so the check cannot pass by flagging everything.
+        """
+        caught = {
+            "return-dict": 'def f():\n    return {"reason": "only 5 minutes left"}\n',
+            # The digit must be LITERAL inside the f-string. `f"about {n} sec"`
+            # is the derived form and must stay legal — writing that fixture
+            # first is how this test learned to state its own subject.
+            "return-fstring": 'def f(n):\n    return f"7 minutes across {n} rounds"\n',
+            "assignment": 'msg = "a round takes 10 minutes"\n',
+            "implicit-concat": 'x = ("a round takes"\n     " 7 min")\n',
+        }
+        for label, source in caught.items():
+            assert any(_hardcodes_a_duration(t) for t in _emitted_strings(source)), (
+                f"the guard does not see a hardcoded duration in the {label} form"
+            )
+        # Controls: the derived form and a bare threshold constant must both
+        # stay legal. A guard that fires on the correct form is one people
+        # delete rather than fix.
+        for label, source in {
+            "interpolated": 'def f(s):\n    return f"about {s/60:.0f} min"\n',
+            "threshold-constant": "MIN_SAMPLE = 5\nGRACE = 30\n",
+        }.items():
+            assert not any(_hardcodes_a_duration(t) for t in _emitted_strings(source)), (
+                f"the guard flags the {label} form, which is correct code"
+            )
+
+    def test_the_guard_ignores_docstrings_which_legitimately_name_durations(self) -> None:
+        source = (
+            'def f():\n'
+            '    """Explains why a round takes 5 minutes."""\n'
+            '    return "derived"\n'
+        )
+        assert not any(_hardcodes_a_duration(t) for t in _emitted_strings(source))

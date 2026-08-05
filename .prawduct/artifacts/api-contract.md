@@ -144,6 +144,15 @@ dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, 
     purpose, per the rule this list already applies to `learnings-obligation`: asserting a binding
     that does not exist is how a maintainer sizes a key change against a reader that would never
     have noticed.
+  - `cost-of-commit --json` → **no skill consumer today** (`verdict` — one of `free` /
+    `costs-a-round` / `unknown` — plus `source` (`working-tree` / `arguments`), `paths[]`,
+    `judgeable[]`, `free[]`, and `round_price` (the `telemetry.round_price` dict: `status` of
+    `priced` / `unavailable`, with `mode`/`median_seconds`/`reviews` or `reason`); `reason` appears
+    at top level only on the degraded path). Named as unconsumed on purpose, per the rule this list
+    already applies to `learnings-obligation` and `check-released`. The **human** form is what an
+    agent reads — the verdict token leads stdout so a caller can branch on one word — and the exit
+    code is deliberately NOT the contract here: 0 means "answered", including `unknown`, because
+    the command gates nothing; 1 is reserved for bad arguments.
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
     `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level

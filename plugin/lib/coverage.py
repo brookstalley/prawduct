@@ -480,7 +480,8 @@ def format_branch_rounds(tally: "dict | None") -> str:
         )
     spent = ""
     if tally.get("seconds"):
-        minutes = tally["seconds"] / 60.0
+        from . import telemetry  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
         # Only when some round went untimed: "1 of 1 timed" is noise, and a
         # reader who has to parse it stops reading the sentence that matters.
         partial = "" if tally["timed"] >= n else f", {tally['timed']} of {n} timed"
@@ -488,9 +489,12 @@ def format_branch_rounds(tally: "dict | None") -> str:
         # in the same session — `telemetry.format_round_price` — is a repo-wide
         # median. Two unlabelled durations in one workflow read as one number
         # that disagrees with itself.
-        # A sub-minute total rounds to "about 0 min", which reads as a claim
-        # that rounds are free — the opposite of what this sentence is for.
-        cost = "under a minute" if minutes < 1 else f"about {minutes:.0f} min"
+        #
+        # Rendered through the shared formatter, which owns the sub-minute
+        # guard: this function had that guard and the price sentence did not,
+        # which is how the surface that literally states the price could say
+        # "about 0 min".
+        cost = telemetry.format_minutes(tally["seconds"])
         spent = (
             f", costing {cost} so far "
             f"(this branch's own rounds{partial}, not a repo-wide median)"
@@ -772,9 +776,17 @@ def check_pr_doc_only(project_dir: Path) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _working_tree_paths(project_dir: Path) -> "list[str] | None":
+def _working_tree_paths(project_dir: Path) -> "tuple[list[str] | None, str | None]":
     """Every path with an uncommitted change — staged, unstaged, untracked —
-    or ``None`` when git cannot be read.
+    as ``(paths, None)``, or ``(None, reason)`` when git cannot be read.
+
+    **The reason is returned rather than dropped** because it is the only
+    diagnosis of an ``unknown`` verdict that will ever exist: nothing else logs
+    it, so once this function returns, a missing git, a not-a-repository, and
+    the 30s timeout are indistinguishable to everyone downstream. The sibling
+    advisory in this module (:func:`count_branch_rounds`) already carries its
+    git error forward this way, and a waivered broad catch is expected to
+    surface its context at a real boundary rather than swallow it.
 
     Deliberately NOT session-scoped, unlike ``gitstate._get_session_changed_files``:
     the question here is what *this commit* will contain, and a commit takes
@@ -797,10 +809,10 @@ def _working_tree_paths(project_dir: Path) -> "list[str] | None":
             ["git", "status", "--porcelain", "-uall"],
             cwd=str(project_dir), capture_output=True, text=True, timeout=30,
         )
-    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory must not crash the caller
-        return None
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- an advisory must not crash the caller; the cause is carried out in `reason`
+        return None, f"git status failed ({str(exc).strip()[:80]})"
     if proc.returncode != 0:
-        return None
+        return None, f"git status failed ({proc.stderr.strip()[:80] or 'no detail'})"
     status_output = proc.stdout
 
     from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
@@ -814,10 +826,12 @@ def _working_tree_paths(project_dir: Path) -> "list[str] | None":
         paths.add(path)
         if src_path:
             paths.add(src_path)
-    return sorted(paths)
+    return sorted(paths), None
 
 
-def _expand_directory_arguments(project_dir: Path, paths: "list[str]") -> "list[str]":
+def _expand_directory_arguments(
+    project_dir: Path, paths: "list[str]"
+) -> "tuple[list[str] | None, str | None]":
     """Replace any argument naming a directory with the changed files under it.
 
     `git add docs/` stages the changed files beneath `docs/`, never an entry
@@ -831,6 +845,14 @@ def _expand_directory_arguments(project_dir: Path, paths: "list[str]") -> "list[
     so the command prices what a commit would actually contain. A path that is
     not a directory — including one that does not exist yet — is left exactly
     as given, so a builder can price a file before creating it.
+
+    **A git failure here returns ``(None, reason)``, never an empty expansion.**
+    Collapsing the two (`_working_tree_paths(...) or []`) made an unreadable
+    tree look like a directory holding no changes, which the caller then priced
+    as ``free`` — breaking the module's load-bearing asymmetry on the one form
+    it was not pinned for, and telling a builder whose `index.lock` is held
+    that the commit is free. The no-argument form has always degraded to
+    ``unknown``; this is the twin of that guarantee.
     """
     changed: "list[str] | None" = None
     out: list[str] = []
@@ -839,10 +861,12 @@ def _expand_directory_arguments(project_dir: Path, paths: "list[str]") -> "list[
             out.append(path)
             continue
         if changed is None:
-            changed = _working_tree_paths(project_dir) or []
+            changed, reason = _working_tree_paths(project_dir)
+            if changed is None:
+                return None, reason
         prefix = path.rstrip("/") + "/"
         out.extend(p for p in changed if p.startswith(prefix))
-    return sorted(set(out))
+    return sorted(set(out)), None
 
 
 def commit_cost(project_dir: Path, paths: "list[str] | None" = None) -> dict:
@@ -863,23 +887,31 @@ def commit_cost(project_dir: Path, paths: "list[str] | None" = None) -> dict:
     alongside an empty path list when git could not be read. ``judgeable``
     non-empty means committing buys a round; empty with a non-empty ``paths``
     means the commit is free.
+
+    **Both forms set ``reason`` on a git failure**, and the reason carries the
+    cause rather than a fixed string. The argument form reaches git too — a
+    directory argument expands through the working tree — so the "unknown,
+    never free" asymmetry has to hold on both, not just on the form that was
+    pinned for it.
     """
     from . import coverage_algebra  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
     if paths is None:
-        found = _working_tree_paths(project_dir)
-        if found is None:
-            return {
-                "source": "working-tree",
-                "paths": [],
-                "judgeable": [],
-                "free": [],
-                "reason": "git status could not be read",
-            }
-        paths, source = found, "working-tree"
+        found, reason = _working_tree_paths(project_dir)
+        source = "working-tree"
     else:
         given = sorted({p.strip() for p in paths if p.strip()})
-        paths, source = _expand_directory_arguments(project_dir, given), "arguments"
+        found, reason = _expand_directory_arguments(project_dir, given)
+        source = "arguments"
+    if found is None:
+        return {
+            "source": source,
+            "paths": [],
+            "judgeable": [],
+            "free": [],
+            "reason": reason or "git status could not be read",
+        }
+    paths = found
 
     judgeable = coverage_algebra.judgeable_files(paths)
     judgeable_set = set(judgeable)
@@ -922,6 +954,7 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
         else:
             paths.append(arg)
 
+    given_paths = bool(paths)
     cost = commit_cost(project_dir, paths or None)
 
     # Unguarded, like this module's sibling lazy imports: telemetry ships in
@@ -955,18 +988,28 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
         )
         return 0
     if not cost["paths"]:
-        print(
-            "Nothing is uncommitted, so there is nothing to price."
-            if cost["source"] == "working-tree"
-            else "No paths were given, so there is nothing to price."
-        )
+        # Three readings, not two. A directory argument expands to the changed
+        # files beneath it, so `cost-of-commit docs/` on a clean `docs/` arrives
+        # here WITH arguments and an empty expansion — and "no paths were given"
+        # then reads as "your argument was dropped", which is a wrong-tool
+        # inference in an advisory whose only value is being trusted.
+        if cost["source"] == "working-tree":
+            print("Nothing is uncommitted, so there is nothing to price.")
+        elif given_paths:
+            print(
+                "The path(s) given hold no uncommitted change, so there is nothing "
+                "to price."
+            )
+        else:
+            print("No paths were given, so there is nothing to price.")
         return 0
 
     n_judgeable, n_free, n_total = len(cost["judgeable"]), len(cost["free"]), len(cost["paths"])
     if cost["judgeable"]:
         print(
             f"{n_judgeable} of {n_total} path(s) move review coverage — committing them "
-            f"re-opens the cumulative Critic gate, which one review round closes:"
+            f"re-opens the cumulative Critic gate, and you pay the cheapest round "
+            f"that closes it again:"
         )
         for path in cost["judgeable"]:
             print(f"  {path}")

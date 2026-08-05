@@ -94,14 +94,23 @@ def _canonical_model(model) -> str | None:
     return model.strip()
 
 
-def _read_events(path: Path) -> tuple[list[dict], dict]:
-    """All reportable ``review.*`` events oldest-first, plus skip counts.
+def _read_events(path: Path) -> "tuple[list[dict], dict, str | None]":
+    """All reportable ``review.*`` events oldest-first, skip counts, and the
+    read failure if the file could not be opened at all.
 
     ``corrupt_lines``: unparseable JSON, a non-object line, or an envelope
     without a string ``event`` kind. ``unknown_kinds``: a valid envelope whose
     kind is not ``review.*`` (v1 reports reviews only). ``invalid_payloads``:
     a ``review.*`` envelope whose ``review`` payload is missing a findings
     list (unusable for aggregation).
+
+    **The read failure is a third return value, not a fourth key in
+    ``skipped``.** An unreadable file is not a skip count, and ``skipped`` is
+    published verbatim inside ``review-stats --json`` — a registered payload
+    whose key set is documented in ``api-contract.md``. Widening a public
+    shape to carry an internal signal is how a payload acquires a key nobody
+    registered, which is the defect this bundle's own review caught one
+    command over.
     """
     skipped = {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
     events: list[dict] = []
@@ -112,7 +121,7 @@ def _read_events(path: Path) -> tuple[list[dict], dict]:
         # here too, so a `review-stats:` prefix would misattribute the failure
         # to a command the reader never ran.
         print(f"governance ledger unreadable ({exc})", file=sys.stderr)
-        return events, skipped
+        return events, skipped, str(exc).strip()[:80]
     for raw in lines:
         raw = raw.strip()
         if not raw:
@@ -133,7 +142,7 @@ def _read_events(path: Path) -> tuple[list[dict], dict]:
             skipped["invalid_payloads"] += 1
             continue
         events.append(event)
-    return events, skipped
+    return events, skipped, None
 
 
 def _extract_row(event: dict) -> dict:
@@ -217,6 +226,14 @@ def _top_files(rows: list[dict]) -> tuple[list[dict], int]:
 # cumulative is what a *widened* delta or a lost anchor costs, not what an
 # ordinary fix costs. Pricing on any other mode would quote the builder a
 # number they will not pay, which is worse than quoting none.
+#
+# Its knowing understatement, recorded rather than left to be rediscovered: a
+# branch with NO prior review has no anchor for a delta pass, so the round that
+# closes its gate is a full `cumulative` — the more expensive mode. The quoted
+# figure is therefore a floor there, not the price. The callers say "the
+# cheapest round that closes it" for that reason; widening the quote to the
+# worst case would overprice the common path, which is the case this exists to
+# make legible.
 PRICED_MODE = "verify-resolutions"
 
 # Below this many recorded rounds a median is one or two runs wearing a
@@ -249,6 +266,17 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
     - ``{"status": "unavailable", "reason"}`` — no ledger, no rounds of this
       mode, none carrying a duration, or too few to be worth quoting.
 
+    **Provenance, recorded so the figure is not defended as more than it is.**
+    ``duration_seconds`` reaches the ledger from the reviewer's own partial —
+    ``build_fact_body`` takes ``max()`` over the partials, and the reviewer
+    contract asks for a best-estimate wall-clock. So this is a median of
+    self-reported estimates, not of measured time, and estimates cluster on
+    round numbers. It is the right order of magnitude and the honest thing to
+    quote today; making it *measurable* means timing the
+    ``critic-begin``→``critic-consolidate`` interval in code instead of
+    trusting the partial, which is a change to what gets recorded and not to
+    what gets read here.
+
     Unavailable is a first-class answer, not a failure: this is advice, and
     advice fails soft (``architecture.md`` § Direction). It is deliberately
     distinguishable from "free" by callers, because an advisory that goes
@@ -259,7 +287,17 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
     path = ledger_path(prawduct_dir)
     if not path.is_file():
         return {"status": "unavailable", "reason": "this repo has no recorded review history yet"}
-    events, _skipped = _read_events(path)
+    events, skipped, unreadable = _read_events(path)
+    # An unreadable ledger is not an empty one. Both produce zero durations, but
+    # only one of them is honestly described as "no round records how long it
+    # took" — and this reason is PERSISTED into the findings cache, the ledger
+    # event and the briefing, where the wrong one reads as a repo with no
+    # review history.
+    if unreadable:
+        return {
+            "status": "unavailable",
+            "reason": f"this repo's governance ledger could not be read ({unreadable})",
+        }
     durations = [
         row["duration"]
         for row in (_extract_row(e) for e in events)
@@ -286,6 +324,21 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
     }
 
 
+def format_minutes(seconds: float) -> str:
+    """Render a duration for a reader, in the one place that does it.
+
+    Two near-identical renderings of this quantity shipped in one bundle and
+    only one carried the sub-minute guard, so the surface that literally states
+    the price could emit "about 0 min" — the false-confidence failure the whole
+    round-pricing scope exists to prevent, delivered by its own carrier. The
+    *fact* had one home; its *rendering* had two. This is the one home for the
+    rendering, and the guard cannot be present in one caller and absent in the
+    other because there is no longer an "other".
+    """
+    minutes = seconds / 60.0
+    return "under a minute" if minutes < 1 else f"about {minutes:.0f} min"
+
+
 def format_round_price(price: dict) -> str:
     """One sentence naming what a round costs, for the messages a builder
     meets at the moment of deciding to spend one.
@@ -299,10 +352,9 @@ def format_round_price(price: dict) -> str:
             f"What one more round costs here is unavailable ({price.get('reason', 'unknown')}) "
             f"— that is a missing number, not a small one."
         )
-    minutes = price["median_seconds"] / 60.0
     return (
-        f"One more round costs about {minutes:.0f} min here (median of "
-        f"{price['reviews']} recorded {price['mode']} rounds; re-derive with "
+        f"One more round costs {format_minutes(price['median_seconds'])} here (median "
+        f"of {price['reviews']} recorded {price['mode']} rounds; re-derive with "
         f"`prawduct-hook review-stats`)."
     )
 
@@ -404,7 +456,12 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     path = ledger_path(prawduct_dir)
     if path.is_file():
-        events, skipped = _read_events(path)
+        # The read failure is already reported to stderr by `_read_events`, and
+        # this report's own contract is honest COUNTS — an unreadable ledger
+        # renders as the empty report it truthfully is, with the cause on
+        # stderr beside it. `round_price` is the caller that must distinguish
+        # them, because its reason string gets persisted.
+        events, skipped, _unreadable = _read_events(path)
     else:
         events, skipped = [], {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
 

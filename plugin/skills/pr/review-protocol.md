@@ -6,9 +6,11 @@ Three review layers are explicitly distinct (table at the end): the per-chunk Cr
 
 **A finding you file is not free — it costs the builder a review round.** The coverage that gate
 verified is closed at the tree you are reading; when the builder acts on one of your WARNINGs or
-NOTEs, the fix commit re-opens it, and closing it again takes a full Critic round. Not every fix
-does — some paths move no coverage, and `prawduct-hook cost-of-commit <paths>` is what answers that
-for a specific batch, rather than a rule of thumb about file extensions. So: file what a maintainer
+NOTEs, the fix commit re-opens it, and ONE `/prawduct:critic verify-resolutions` closes it again.
+That is a delta pass, not a full re-review — price it as the cheap round it is, because a reviewer
+who thinks each NOTE costs a full cumulative files fewer findings than it should. Not every fix
+costs even that — some paths move no coverage, and `prawduct-hook cost-of-commit <paths>` is what
+answers that for a specific batch, rather than a rule of thumb about file extensions. So: file what a maintainer
 would genuinely want changed before merge, and say plainly when a finding is worth accepting rather
 than fixing — accepting is a real answer and costs nothing. Group observations that share one fix
 into one finding, so the builder can land them in a single commit rather than one round each.
