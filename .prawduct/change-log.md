@@ -5,6 +5,11 @@
 
 ## 2026-08-05: fix, don't file — a norm for when a finding earns a backlog item
 
+<!-- prawduct: type=docs | scope=ephemeral-worktrees -->
+
+<!-- No `chunks=`: this is a norm birth that rode the branch, not chunk work, so it takes
+     release stamping without flipping any build-plan Status checkbox. -->
+
 **Norm birth**, owner-declared during the #594 build and recorded here because a preferences row
 alone leaves the birth invisible in the log. `project-preferences.md` § Workflow gains **Backlog
 filing**: a strong bias to fix rather than file, with a new item justified only when the finding is
