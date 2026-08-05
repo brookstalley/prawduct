@@ -463,7 +463,7 @@ views_enabled: true
 # now, let `/prawduct:pr` apply its documented rule at merge, and if the
 # conflict still stands afterwards it is a real one to settle once — not
 # per-branch, and not by whoever is holding the merge.
-active_build_plan: null
+active_build_plan: artifacts/build-plan-upstream-dependency-policy.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
