@@ -101,7 +101,7 @@ trigger). Everything below was verified against current sources today; citations
 
 ## 4. The policy (stated without reference to any ecosystem)
 
-Five clauses. Each is stated in terms of *dependencies*; §5 says how each is enforced and
+Six clauses. Each is stated in terms of *dependencies*; §5 says how each is enforced and
 §9's appendix says how each is spelled in a given toolchain.
 
 **Clause 1 — Minimum release age.** An upstream release is not adopted until it has been
@@ -282,7 +282,9 @@ requirements:
 
 - `[ASSUMPTION: the policy is a decision record (design_decisions.upstream_dependency_policy) plus a top-level answer-store fact, with rationale and the trusted-party register as a security-model ## Direction norm entry — not a new strategy-class artifact template | MED impact | owner can promote it to its own artifact template if the per-surface tier record proves too big for a Direction entry]`
 - `[ASSUMPTION: enforcement posture matches api-design end to end — advisory + doctor + janitor + Critic WARNING, never BLOCKING | MED impact | owner can request a blocking gate on updater-config drift]`
-- `[ASSUMPTION: the tier-3 update procedure ships as a generated runbook via the existing /prawduct:runbook machinery rather than a new artifact class | MED impact | owner can prefer prose in the methodology instead, accepting the weaker binding]`
+- `[ASSUMPTION: the tier-3 update procedure ships as a FILLABLE TEMPLATE consuming the existing runbook machinery, not a generator and not a new artifact class | MED impact | owner can prefer prose in the methodology instead, accepting the weaker binding]` — **owner-confirmed 2026-08-05** ("nice on tier 3 fillable runbook template"); this entry previously read "generated runbook" and was corrected here rather than only in the build plan, so the two do not disagree.
+- `[ASSUMPTION: the Critic trigger is an author-declared **Dependency change:** build-plan field, mirroring Foreign API's and Exposed API's opt-in model, rather than diff-detected from touched manifests | MED impact | diff-detection is the stronger guarantee but requires classifying "is this a dependency manifest", which is the §6 allowlist trap; deferred to backlog as api-design did]` — added at plan-authoring time.
+- `[ASSUMPTION: the advisory probe fires universally on the missing fact with no codebase scan at all, per §6's universal trigger | LOW impact | the alternative is a scan, which is the rejected allowlist]` — added at plan-authoring time.
 - `[ASSUMPTION: "declared trusted" is recorded per-party with a why in the security-model Direction entry, not as a bare list | LOW impact]`
 - `[ASSUMPTION: the conformance scan reads intake-surface configs but never executes package-manager commands to enumerate them | MED impact — keeps the scan hermetic and offline, consistent with the local-first/no-network norm in architecture.md; the tier-3 procedure is where network reads legitimately happen]`
 

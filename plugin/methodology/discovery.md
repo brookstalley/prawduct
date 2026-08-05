@@ -160,7 +160,7 @@ The scope is **dependencies, not package managers** — any upstream artifact wh
 
 Scale to risk: low → record the defaults and move on; medium → name the trusted parties and the product's intake surfaces; high → record, per surface, which enforcement mechanism was actually reached (the toolchain's own config binds every actor; an update bot binds proposed updates; a documented agent procedure binds one actor per invocation), plus an install-time-execution allowlist with reasons and a named owner for the security fast path.
 
-**Capture to `project-state.yaml`** under `design_decisions.upstream_dependency_policy`, and set the top-level `upstream_dependency_policy_decided` fact — that is what resolves the ambient nudge for everyone on the next sync.
+**Capture to `project-state.yaml`** under `design_decisions.upstream_dependency_policy` — sub-keys `minimum_release_age`, `trusted`, `security_fast_path`, `install_time_execution`, `resolution_pinning`, `new_dependency_intake`, and `surfaces` (per intake surface, the enforcement tier actually reached: `declarative` | `bot` | `agent`). Name them here rather than only in the scaffold comment, because a repo onboarded before this field existed never receives that comment and the later checks read these keys by name. Then set the top-level `upstream_dependency_policy_decided` fact — that is what resolves the ambient nudge for everyone on the next sync.
 
 ## Surface Observability Needs
 

@@ -145,7 +145,8 @@ design_decisions:
   # independent of delivery mechanism: registries, container base images, CI
   # actions, submodules, vendored code, installers, plugins, model weights. This
   # records the DECISION (a deliberate "none — consumes no upstream code" counts),
-  # not a mandate. Clauses and the enforcement-tier model: docs/upstream-dependency-policy.md.
+  # not a mandate. The clauses and the enforcement-tier model are specified in the
+  # plugin's upstream dependency policy doc (see `/prawduct:methodology discovery`).
   # upstream_dependency_policy: {
   #   minimum_release_age: how long an untrusted release must have been public
   #                        before adoption (framework default: 7 days),
