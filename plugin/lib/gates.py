@@ -1102,6 +1102,21 @@ def check_cumulative_critic(project_dir: Path) -> int:
         f"({verdict.get('reason', 'no path')}).",
         file=sys.stderr,
     )
+    # Everything else in this block is a pure function of the current tree, so
+    # without this line round five reads exactly like round one — the measured
+    # complaint from a six-round branch was that block #6 was indistinguishable
+    # from block #1. Printed FIRST because it frames every remedy below it: the
+    # question "is another round the right move" is answered differently on
+    # round one than on round five, and the reader decides that before choosing
+    # among the routes.
+    print(
+        coverage.format_branch_rounds(
+            coverage.count_branch_rounds(
+                project_dir, read.get("facts", []), resolved.get("merge_base", "")
+            )
+        ),
+        file=sys.stderr,
+    )
     # COV-7K4N: a stale remote base (origin/<b> behind an ancestor-of-HEAD local
     # <b>) drags already-reviewed work into the required span and reads as
     # uncovered — the cheap, correct remedy is `git push origin <b>`, not a full
@@ -1166,7 +1181,9 @@ def check_cumulative_critic(project_dir: Path) -> int:
             f"closes it; fix nothing further first, or you will re-open it. For "
             f"anything still undecided, `prawduct-hook disposition "
             f"{churn['fact_id']} <fid> --accept \"<reason>\"` records a won't-fix, "
-            f"moves no tree, and needs no review.",
+            f"moves no tree, and needs no review. Before you make the NEXT commit, "
+            f"`prawduct-hook cost-of-commit` says whether it re-opens this gate — "
+            f"the answer that used to be learnable only after committing.",
             file=sys.stderr,
         )
     # The generic routes stay available but stop being the LAST imperative when

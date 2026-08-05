@@ -33,6 +33,23 @@ _WRITE_OPS: frozenset[str] = frozenset(
      "link", "unlink", "provision", "reconcile-labels", "import", "merge"}
 )
 
+#: Every op :func:`run` dispatches, in dispatch order. It builds the unknown-op
+#: message below, so it cannot go stale while that message is correct — and it
+#: is what lets a test outside this module enumerate the op surface instead of
+#: re-typing it. ``prawduct-hook``'s ephemeral-worktree guard classifies this
+#: exact surface into read-only / writes-locally / service-only, and nothing but
+#: a partition test keeps the two in step: an op added here and missed in the
+#: guard's local-write set is ALLOWED on a service-backed repo (the
+#: service-backed early return fires before the per-op set), which is precisely
+#: the stranded write that guard exists to refuse. Adding an op therefore has to
+#: fail something until it is classified.
+_ALL_OPS: tuple[str, ...] = (
+    "file", "get", "show", "status", "update", "comment", "list", "pick",
+    "counts", "verify-migration", "refresh-counts", "reconcile-labels",
+    "claim", "unclaim", "link", "unlink", "provision", "import",
+    "restructure-preview", "export", "merge",
+)
+
 # code → exit class. A code absent here (should not happen) falls back to 1.
 _EXIT_CLASS: dict[str, int] = {
     "validation": 2,
@@ -165,10 +182,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             return _emit(
                 core.error(
                     "validation",
-                    f"unknown op {op!r} (expected file|get|status|update|comment|"
-                    "list|pick|counts|refresh-counts|claim|unclaim|link|unlink|"
-                    "provision|reconcile-labels|import|verify-migration|"
-                    "restructure-preview|export|merge)",
+                    f"unknown op {op!r} (expected {'|'.join(_ALL_OPS)})",
                 ),
                 json_mode=json_mode,
                 usage=True,

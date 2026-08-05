@@ -213,7 +213,7 @@ the plugin no longer places them.
 | Plugin (distributed) | `plugin/` in the prawduct repo; the plugin root once installed | skills, hooks, methodology, CLI, templates | read-only; never placed into a repo |
 | Framework docs (this repo) | `documentation/` (tracked) | long-form requirements, PRDs, research, and the migration guide — human-facing working docs, framework-repo only (distinct from the plugin-bundled `docs/` reference) | committed to the framework repo |
 | Upstream bug intake (this repo) | `incoming-bugs/` (tracked) | bug reports products file upstream about prawduct itself, via `/prawduct:report-bug`; triaged into the backlog, then archived under `incoming-bugs/archive/` | committed to the framework repo |
-| CI (this repo) | `.github/workflows/` (tracked) | the suite on every push and pull request; `check-released` on every tag push. Framework-repo only — it governs prawduct's own code, is never copied into a governed product, and never publishes a release | committed to the framework repo |
+| CI (this repo) | `.github/workflows/` (tracked) | the suite on every push and pull request; `check-released` on a tag push, and on the `workflow_dispatch` the release runbooks issue — which is the route that fires on the release path, since the tag is created through the Releases API and so emits no push. Framework-repo only — it governs prawduct's own code, is never copied into a governed product, and never publishes a release | committed to the framework repo |
 
 ### What counts as a session boundary
 

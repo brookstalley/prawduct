@@ -125,25 +125,46 @@ When `develop` is ready to release as `vX.Y.Z`:
 
    Chunk-ID matching is tolerant (`chunks=1` flips `Chunk 01`; case and `-`/`_`
    variants match).
-5. **Tag the release:** `git tag vX.Y.Z` (and push the tag).
 
-6. **Publish the GitHub Release — the tag is not the release.** A pushed tag lands on `/tags`;
-   the Releases page is a separate surface and it stayed empty for every tag this repo had ever
-   pushed, which is what consumers reported as "no tag on GitHub".
+   > **The release's consumer-facing narrative lives in two files, not one.**
+   > `plugin/CHANGELOG.md` gets a `## vX.Y.Z` section every release; `README.md`'s
+   > `## Recent Changes` gets refreshed on a **minor or major bump only**. Both are written
+   > at **Phase 1 step 10** of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this
+   > checklist names them rather than restating them, because the README went eight releases
+   > stale precisely while no release document named it at all.
+5. **Publish the GitHub Release — the tag is not the release, and this one step creates both.**
+   A pushed tag lands on `/tags`; the Releases page is a separate surface and it stayed empty for
+   every tag this repo had ever pushed, which is what consumers reported as "no tag on GitHub".
 
    ```
    awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
-   gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
+   gh release create vX.Y.Z --target "$(git rev-parse main)" \
+     --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
    ```
 
-7. **Verify what actually shipped:** `./plugin/bin/prawduct-hook check-released vX.Y.Z`.
+   **One call, not `git tag` and then a publish.** `.github/workflows/verify-release.yml` fires on
+   a tag push and one of the three things it asks is whether a Release exists — which a later
+   publish step has not yet made true. At v3.2.4 the job reached that check 9 seconds after the
+   publish landed, a margin defended by nothing but how fast the operator typed. Creating both in
+   one call means no instant exists at which the tag is there without its Release, and it sharpens
+   what a red tag-push run means: a tag that arrived by some route other than this step.
+
+6. **Verify what actually shipped:** `git fetch origin --tags` (the tag was created on the remote,
+   so your clone does not have it yet), then `./plugin/bin/prawduct-hook check-released vX.Y.Z`.
    Exit **0** verified · **1** a check failed · **3** nothing failed but a check could not run.
    **A 3 is not a pass.**
 
-   Pushing the tag also fires `.github/workflows/verify-release.yml`, which runs the same command
-   with a token and goes red on any non-zero — so a forgotten step 6 surfaces as a failed build
-   even if nobody runs step 7. CI verifies; it never publishes. Run the command anyway: it answers
-   in seconds, and the workflow only tells you *afterwards*.
+7. **Run the same check in CI:** `gh workflow run verify-release.yml -f tag=vX.Y.Z`, then read the
+   run. It runs step 6's command with a token and goes red on any non-zero, so it is the backstop
+   for the release nobody verified by hand. **Dispatch it by hand** — a tag created through the
+   Releases API is expected to emit `create` and `release` events, not `push`, so nothing fires
+   the workflow on this path. CI verifies; it never publishes.
+
+   > 🚧 **UNVERIFIED** — the no-`push`-event half is reasoned from GitHub's event model and has
+   > not been measured here; v3.2.4 was tagged the old way. The dispatch is correct either way,
+   > and a push-triggered run appearing alongside it is not an error. Confirm at the next release
+   > and correct this — the same note sits at step 21 of
+   > `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`, and both should be settled together.
 8. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
    gate newly active in the range.
@@ -213,12 +234,14 @@ git read-tree --reset -u origin/develop      # main's index+worktree := develop'
 git commit -m "release: vX.Y.Z — <headline>" # single-parent commit on main, develop's tree
 git diff --stat origin/develop HEAD          # MUST be empty — this shape only, see below
 git push origin main
-git tag vX.Y.Z && git push origin vX.Y.Z
 
-# A pushed tag is NOT a published release — see below.
+# One call creates the tag AND the Release — see below for why not `git tag` first.
 awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
-gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
+gh release create vX.Y.Z --target "$(git rev-parse main)" \
+  --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
+git fetch origin --tags                            # the tag was created on the remote
 ./plugin/bin/prawduct-hook check-released vX.Y.Z   # exit 0 = released; 3 = a check could not run
+gh workflow run verify-release.yml -f tag=vX.Y.Z   # the same check with a token; dispatch by hand
 ```
 
 **The tag is not the release.** A pushed tag lands on `/tags`; the Releases page is a separate
@@ -229,9 +252,12 @@ tree, the tag contained in `origin/main`, the Release present) and is the one co
 afterwards. Note the exit codes: **0** verified, **1** something failed, **3** nothing failed but a
 check could not run — a `3` is not a pass. **Repo-local on purpose:** at this moment the *installed*
 plugin is the previous release, and a bare `prawduct-hook` resolves to it — an unknown subcommand
-there exits 1, which is this command's own code for *not-released*. The tag push runs the same check in CI
-(`.github/workflows/verify-release.yml`), which is the backstop for the release nobody verified by
-hand; it never publishes a Release, by owner ruling.
+there exits 1, which is this command's own code for *not-released*. `gh workflow run
+verify-release.yml -f tag=vX.Y.Z` runs the same check in CI with a token and is the backstop for the
+release nobody verified by hand; it never publishes a Release, by owner ruling. The workflow also
+triggers on a tag push, but that route is not expected to fire for a release cut this way, since the
+tag now comes into being through the Releases API — so treat the dispatch as the run that counts
+(step 7 above carries the unverified half of that claim).
 
 **Pruned** — used for **v3.1.1 and v3.1.2**. The candidate is built as the previous release's tree
 plus `git diff <cut-point>..develop` applied with `--3way`, published by ref

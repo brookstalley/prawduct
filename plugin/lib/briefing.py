@@ -1061,6 +1061,26 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
         if not summary and not findings:
             return None
         parts = []
+        # FIRST, for the same reason `_mark_cache_superseded` writes the marker
+        # keys first: everything below describes the review this record names,
+        # and a newer one was dispatched after it. Without this the marker
+        # reached the direct reader of the file and NOT this renderer — which is
+        # the one the marker was written for, since the reader here is
+        # definitionally the builder who lost the reviewer's report and cannot
+        # compare what they are holding against a review id they never saw. The
+        # `clear` guard does not close it: a dispatched review's marker expires
+        # by TTL and is swept at the next session boundary, so the record
+        # outlives every in-session signal that a newer review happened.
+        superseded_by = data.get("superseded_by")
+        if superseded_by:
+            at = data.get("superseded_at") or "an unrecorded time"
+            parts.append(
+                f"SUPERSEDED — review {superseded_by} was dispatched at {at}, after"
+                " everything below was written. These are the PREVIOUS review's"
+                " findings and next_action. Run `prawduct-hook critic-consolidate`"
+                " if that review has since reported; if it was abandoned, this is"
+                " still the newest COMPLETED review."
+            )
         if summary:
             parts.append(summary)
         if findings:

@@ -230,12 +230,22 @@ _CACHE_WARM_DIRECTIVE = (
 #: ``tests/test_critic_consolidate.py`` parses the backticked path tokens out of
 #: this string and drives its assertions from the text — drift in EITHER
 #: direction fails (a predicate change, or an edit to this list alone).
+#:
+#: **It makes no positional cross-reference, and cannot.** There are two
+#: emission sites and they print different things after it: :func:`consolidate`
+#: follows with the ``NEXT-ACTION:`` line, while
+#: :func:`_already_consolidated_note` follows with nothing at all — and that is
+#: the coordinator path's normal case, where the reviewing fork has already
+#: returned. A clause pointing at "the line below" is therefore true on one path
+#: and a dangling pointer on the other, which is worse than the hardcoded
+#: "5-10 minute rounds" it briefly replaced. Anything this text needs the reader
+#: to have must be inside it.
 _BATCH_FIX_DIRECTIVE = (
     " Disposition them ALL in ONE pass — land every fix you are going to make in"
     " ONE commit, and accept or file the rest. Only unresolved BLOCKING findings"
     " gate anything; if that commit touches judgeable files, ONE"
     " `/prawduct:critic verify-resolutions` re-covers it. A fix-commit-verify"
-    " cycle per finding multiplies 5-10 minute rounds, and each round reviews the"
+    " cycle per finding multiplies whole review rounds, and each round reviews the"
     " prose the previous fix wrote. Free to write at any time (they do not move"
     " coverage): everything under `.prawduct/` — change-log, backlog,"
     " project-state, build plans, regen-views output — plus"
@@ -264,7 +274,45 @@ _COVERAGE_IS_A_SEPARATE_QUESTION = (
 )
 
 
-def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: int) -> str:
+#: The route the fix/accept/file trio was missing, carried by BOTH arms.
+#:
+#: Fixing now buys a round; accepting and filing buy none. What was never on
+#: offer is the option that costs *nothing extra*: when the plan has further
+#: judgeable chunks, a small fix carried into the next chunk's commit rides a
+#: round that was going to be bought anyway. A builder weighing "fix now or
+#: accept" reaches for one of two answers because those are the two the message
+#: names.
+#:
+#: Stated with its condition, because it is not always right — a fix that
+#: changes what the bundle claims to ship belongs in the bundle, and a branch
+#: with no further judgeable work has nothing to ride. And stated with its
+#: failure mode: an unwritten deferral is a drop, not a deferral, so the route
+#: names where to write it.
+#:
+#: **It must distinguish itself from the deferral the blocking arm warns
+#: against**, or it reads as the message contradicting itself one sentence
+#: later. The two are genuinely different and the difference is the whole
+#: point: deferring a finding to a later ROUND buys a second round, while
+#: riding a commit that is being made anyway buys none. A reader who cannot
+#: see that distinction resolves it by ignoring one of the two sentences, and
+#: there is no telling which.
+_RIDE_ALONG_ROUTE = (
+    " If this branch has more judgeable work coming, there is a third route:"
+    " carry the fix into the NEXT chunk's commit. That is NOT the deferral"
+    " warned against above — deferring to a later ROUND buys a second round;"
+    " riding a commit that is being made anyway buys none. Write it where that"
+    " chunk will meet it (the build plan or `.prawduct/.handoff-notes.md`), or"
+    " it is not a deferral, it is a drop."
+)
+
+
+def next_action_line(
+    fact_id: "str | None",
+    blocking: int,
+    warning: int,
+    note: int,
+    price_sentence: "str | None" = None,
+) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
 
@@ -291,14 +339,32 @@ def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: i
 
     ``.critic-findings.json`` is a derived VIEW (D7): no gate reads it, so a
     line here can never weaken one. It is advice delivered where the decision
-    is made."""
+    is made.
+
+    ``price_sentence`` is :func:`telemetry.format_round_price`'s output, passed
+    in rather than derived here so this stays a pure function of its arguments
+    and the ledger read happens once per consolidation. **Both arms carry it.**
+    The blocking arm used to say only that deferring "turns one review into
+    several" — a rule, not a price, which is the first of the five failures a
+    v3.2.4 consumer reported after reading these carriers and running six rounds
+    anyway. For the same reason the blocking arm now also names the accept
+    route: it already orders the builder to decide the WARNING/NOTE findings in
+    the same pass, and the command for the cheapest of those decisions lived
+    only in the arm the builder does not reach when something is blocking."""
+    ref = fact_id or "<review-id>"
+    price = f" {price_sentence}" if price_sentence else ""
     if blocking:
         return (
             f"{blocking} BLOCKING finding(s) gate this work — nothing else here does."
             " Fix them, land EVERY fix you are going to make in ONE commit, then run"
             " ONE `/prawduct:critic verify-resolutions`. Decide the WARNING/NOTE"
             " findings in that SAME pass (fix / accept / file) — deferring them to a"
-            " later round is what turns one review into several."
+            " later round is what turns one review into several. Accept is the"
+            " default for anything nobody will realistically action:"
+            f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"` needs no'
+            " review and moves no tree."
+            + _RIDE_ALONG_ROUTE
+            + price
         )
     if not (warning or note):
         return (
@@ -306,7 +372,6 @@ def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: i
             " to disposition. Nothing in THIS review requires another round."
             + _COVERAGE_IS_A_SEPARATE_QUESTION
         )
-    ref = fact_id or "<review-id>"
     return (
         f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
         " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
@@ -317,13 +382,14 @@ def next_action_line(fact_id: "str | None", blocking: int, warning: int, note: i
         f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"`, which needs'
         " no review and moves no tree. If you do choose to fix some, batch them into"
         " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
-        " ONLY if that commit touched judgeable files. A batch confined to"
-        " `.prawduct/` prose, `.claude/settings.json`, or `.md` outside `skills/`,"
-        " `methodology/`, `templates/` and a root `CLAUDE.md` moves no coverage and"
-        " needs no pass at all."
+        " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
+        " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
+        " prices `free` moves no coverage and needs no pass at all."
         " Do NOT start another round to 'close coverage' before committing, and do"
         " not infer that you need one from gate output printed before your fix —"
         " commit, then re-run the gate and let it answer."
+        + _RIDE_ALONG_ROUTE
+        + price
     )
 
 
@@ -604,6 +670,97 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
     except OSError:
         pass
     return dest
+
+
+#: The keys :func:`_mark_cache_superseded` owns. Named once so the marker is
+#: re-stamped rather than stacked when a re-dispatch marks an already-marked
+#: record, and so a reader can strip them mechanically.
+_SUPERSEDED_KEYS = ("superseded_by", "superseded_at", "superseded_notice")
+
+
+def _mark_cache_superseded(prawduct_dir: Path, review_id: str) -> bool:
+    """Stamp the derived findings view as PREDATING the review being dispatched.
+
+    The partials half of this is solved by :func:`_archive_leftovers`: a
+    review's working files are moved aside at dispatch, so nothing from the
+    previous review is left where the current one's belong. The derived view
+    got no such treatment — it survived every dispatch carrying nothing that
+    marked it stale, so between ``critic-begin`` and the consolidation that
+    regenerates it a reader met the PREVIOUS review's findings in a file that
+    looked exactly like the current one's. That file is the one surface the
+    builder is guaranteed to meet (see :data:`_BATCH_FIX_DIRECTIVE`), which is
+    what made the ambiguity expensive: the framework answered it procedurally,
+    by asking the builder to reason about whether what it was holding was
+    current.
+
+    **Mark, never delete.** Deleting at dispatch is the obvious fix and it is
+    wrong: :func:`_prior_review_fact` reads this file's ``fact_id`` to anchor a
+    ``verify-resolutions`` delta. The steady-state sequence would survive
+    (begin reads, deletes; consolidate regenerates), but a review WAIVED or
+    ABANDONED before consolidating would leave the next verify with no anchor
+    at all — where today it correctly anchors to the last completed review. So
+    deletion trades a cosmetic ambiguity for a lost anchor. Everything except
+    the marker keys is preserved byte-for-byte.
+
+    **The marker states a fact about the record, not a liveness claim.**
+    "A review is in flight" would go false on its own: a dispatched review can
+    expire by TTL or be swept at a session boundary, and neither path passes
+    through here to retract anything. "Review X was dispatched after this
+    record was written, so this is not X's result" stays true forever, and a
+    reader that meets it after an abandoned review learns exactly why the
+    newest record is older than it expected. Consolidation rewrites the whole
+    record from the fact, so the keys clear themselves on the normal path.
+
+    Fail-soft in every direction — the view is advisory, and a dispatch must
+    never be blocked by it. Returns whether the marker was written.
+    """
+    cache = prawduct_dir / ".critic-findings.json"
+    try:
+        # ValueError covers JSONDecodeError AND the UnicodeDecodeError a
+        # byte-truncated cache raises from read_text() — same pair
+        # `critic_findings_note` reads this file behind.
+        record = json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # No cache yet (first review in this repo), or one nothing can parse.
+        # Either way there is no record to make honest and nothing to lose.
+        return False
+    if not isinstance(record, dict):
+        return False
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    prior_id = record.get("fact_id") or "an earlier review"
+    marker = {
+        "superseded_by": review_id,
+        "superseded_at": now,
+        "superseded_notice": (
+            f"SUPERSEDED — review {review_id} was dispatched at {now}, AFTER"
+            " this record was written. Everything below (findings, summary,"
+            f" next_action) is the EARLIER review {prior_id} and is NOT"
+            f" {review_id}'s result. Run `prawduct-hook critic-consolidate`"
+            " once that review's reviewers have reported; it regenerates this"
+            " file and these keys disappear. If it was abandoned instead, this"
+            f" record is still the newest completed review — {prior_id} is a"
+            " live fact_id either way."
+        ),
+    }
+    # Marker keys FIRST: a reader meets them before the findings and the
+    # `next_action` they qualify. Rebuilt from the record with any previous
+    # marker dropped, so a re-dispatch re-stamps rather than stacks.
+    rest = {k: v for k, v in record.items() if k not in _SUPERSEDED_KEYS}
+    try:
+        # Same form consolidate writes this file in, so a marked record and a
+        # regenerated one differ only by the marker keys.
+        atomic_write_text(cache, json.dumps({**marker, **rest}, indent=2))
+    except OSError as exc:
+        # Name the reason before degrading — a silent skip makes "why does the
+        # stale view look current?" undiagnosable after the fact, which is the
+        # very question this marker exists to answer.
+        print(
+            f"critic-begin: could not mark {cache.name} superseded ({exc}) — "
+            "it still holds the PREVIOUS review's findings",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1016,6 +1173,12 @@ def begin_review(
         archived = _archive_leftovers(prawduct_dir)
         remove_partials(prawduct_dir)
         cleared = True
+    # The same act for the derived view: the leftover partials are moved aside,
+    # and the leftover FINDINGS say so rather than reading as this review's.
+    # After the anchor read above (`_prior_review_fact` runs on the
+    # verify-resolutions branch and needs the record as it stands), and after
+    # the manifest validated — nothing is marked for a dispatch that fails.
+    superseded = _mark_cache_superseded(prawduct_dir, review_id)
     pdir.mkdir(parents=True, exist_ok=True)
     atomic_write_text(manifest_path(prawduct_dir), json.dumps(manifest, indent=2))
 
@@ -1027,6 +1190,7 @@ def begin_review(
         "notes": notes,
         "cleared_leftovers": cleared,
         "archived_leftovers": str(archived) if archived else None,
+        "superseded_findings": superseded,
         "manifest": manifest,
     }
 
@@ -1417,12 +1581,17 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
     }
 
 
-def fact_to_cache_record(fact: dict) -> dict:
+def fact_to_cache_record(fact: dict, price_sentence: "str | None" = None) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
     and briefings read it for content; no gate reads it). Carries the source
     ``fact_id`` so staleness is detectable and the verify-resolutions
-    dispatch can locate its anchor fact."""
+    dispatch can locate its anchor fact.
+
+    ``price_sentence`` rides through to :func:`next_action_line`. It is a
+    parameter rather than a ledger read here because this function is a pure
+    fact→record projection and the cache is written once per consolidation,
+    where the caller already holds the prawduct dir."""
     body = fact.get("body") or {}
     findings = []
     for f in body.get("findings", []):
@@ -1464,7 +1633,9 @@ def fact_to_cache_record(fact: dict) -> dict:
         # The builder's copy of the loop-termination rule, computed from the
         # counts just read. See `next_action_line` for why the findings file is
         # the carrier that had a reader and no message.
-        "next_action": next_action_line(fact.get("id"), blocking, warning, note),
+        "next_action": next_action_line(
+            fact.get("id"), blocking, warning, note, price_sentence
+        ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
         # path. Additive key: `--json` readers tolerate unknown fields.
@@ -1829,7 +2000,15 @@ def consolidate(project_dir: Path) -> int:
             file=sys.stderr,
         )
         return 1
-    record = fact_to_cache_record(fact)
+    # One ledger read per consolidation, shared by the cache record and the
+    # relayed NEXT-ACTION line, so the two carriers of the same sentence cannot
+    # quote different prices. Unavailable is a first-class answer here — the
+    # formatter says so out loud rather than dropping the clause.
+    from . import telemetry  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
+
+    record = fact_to_cache_record(fact, price_sentence)
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -1922,6 +2101,7 @@ def consolidate(project_dir: Path) -> int:
             counts.get("blocking", 0),
             counts.get("warning", 0),
             counts.get("note", 0),
+            price_sentence,
         )
     )
     return 0

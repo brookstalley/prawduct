@@ -17,7 +17,7 @@ verified_by: null
 ## When to use this
 
 You finished Phase 1 of `cut-and-publish-a-plugin-release.md` and some of what is on `develop` is
-**withheld** from this release. This document replaces that runbook's Phase 2 (steps 14–20).
+**withheld** from this release. This document replaces that runbook's Phase 2 (steps 14–21).
 Everything before Phase 2 is unchanged and is not repeated here.
 
 Confirm you are in that situation:
@@ -243,17 +243,7 @@ amended 2026-07-29). Step 10 is that test.
     > `git checkout main` cannot run at all, and moving the ref under it would leave that worktree's
     > index inconsistent with its HEAD. Pushing by ref touches no other worktree.*
 
-13. Tag the release and publish the tag:
-
-    ```
-    git tag vX.Y.Z <candidate-sha> && git push origin vX.Y.Z
-    ```
-
-    **Expected:** `* [new tag]  vX.Y.Z -> vX.Y.Z`.
-
-    > *Chained on purpose: if the tag already exists, `git tag` fails and the push must not run.*
-
-14. Remove the candidate worktree:
+13. Remove the candidate worktree:
 
     ```
     git worktree remove ../prawduct-candidate
@@ -261,7 +251,10 @@ amended 2026-07-29). Step 10 is that test.
 
     **Expected:** no output. `git worktree list` no longer shows it.
 
-15. Extract the notes — **and edit them before publishing**:
+    > *`<candidate-sha>` is still needed at step 15 — it is a value you wrote down, not
+    > something the worktree holds. Keep it.*
+
+14. Extract the notes — **and edit them before publishing**:
 
     ```
     awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
@@ -277,13 +270,60 @@ amended 2026-07-29). Step 10 is that test.
     > describing withheld work.** The CHANGELOG section was written against the whole cut;
     > publishing it verbatim announces a feature that is not in the tree.
 
-16. Publish, using the file you just edited:
+    > *Take as long as this needs. No tag exists yet, so nothing is watching — which is the
+    > point of doing the edit here. This step used to sit **after** the tag push, where the
+    > minutes it takes were minutes of a dispatched `verify-release` job asking whether a
+    > Release existed that you had not published yet.*
+
+15. Publish, using the file you just edited. **This is also what creates the tag** —
+    there is no separate `git tag`:
 
     ```
-    gh release create vX.Y.Z --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
+    gh release create vX.Y.Z --target <candidate-sha> \
+      --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
     ```
 
     **Expected:** one line — the release URL, ending `/releases/tag/vX.Y.Z`.
+    **If it reports the tag already exists:** something tagged ahead of this step. Confirm
+    `git rev-parse vX.Y.Z` is `<candidate-sha>`, then re-run without `--target`.
+
+    > *Why the Release creates the tag rather than a `git tag && git push` before it:
+    > `verify-release.yml` fires on the tag push and one of the three things it checks is
+    > whether a Release exists. Tag first and the job is dispatched before the fact it checks
+    > becomes true — a race the whole-develop path won by 9 seconds at v3.2.4, and this path
+    > would have lost outright, because the tag push used to come first and step 14's hand-edit
+    > sat in the middle of the window. One call creates both, so no instant exists at which the
+    > tag is there without its Release.*
+
+16. Bring the tag back locally, and run the check both ways:
+
+    ```
+    git fetch origin --tags
+    ./plugin/bin/prawduct-hook check-released vX.Y.Z
+    gh workflow run verify-release.yml -f tag=vX.Y.Z
+    ```
+
+    **Expected:** the tag arrives in the fetch output, then `released: vX.Y.Z — 3 of 3
+    verified`, then silence from the dispatch. Give the run ~30s and read it — it is a
+    `Done when` item below:
+
+    ```
+    gh run list --workflow verify-release.yml --event workflow_dispatch --limit 1 \
+      --json databaseId,status,conclusion,createdAt
+    ```
+
+    **Expected:** `"conclusion":"success"`, with a `createdAt` from the last few minutes.
+    **If `createdAt` is old:** your dispatch has not registered yet and this is a *previous*
+    dispatch — wait and re-run. Do not grade the release on it.
+
+    > *`--event workflow_dispatch` names the run you just asked for. A tag-push run appearing
+    > beside it is not an error, but it is a different run, and "newest" would let the two
+    > trade places.*
+
+    > *Why by hand: a tag created through the Releases API emits `create` and `release`
+    > webhook events, not `push`, so nothing fires the workflow on this path. See the
+    > same step in `cut-and-publish-a-plugin-release.md` (step 21) for the unverified
+    > half of that claim.*
 
 ---
 
@@ -294,13 +334,12 @@ amended 2026-07-29). Step 10 is that test.
 - `./plugin/bin/prawduct-hook check-released vX.Y.Z` exits 0. **Exit 3 is not a pass** — a check
   could not run. (Repo-local on purpose: the *installed* plugin is the previous release, which
   does not carry this subcommand.)
-- The `verify-release` workflow run for the tag is green
+- The `verify-release` workflow run dispatched at step 16 is green
   (`gh run list --workflow verify-release.yml --limit 1`) — the same check, run with a token, on
   the release nobody verified by hand. It publishes nothing: the pruned-release hazard below is a
-  human-read warning precisely because no automation touches the Release text. **First run only:**
-  until this workflow has passed once against a real tag, read a red run as *either* an incomplete
-  release *or* a defect in the workflow, and confirm against the repo-local `check-released` above.
-  Deleting this caveat is an acceptance criterion of **#581**.
+  human-read warning precisely because no automation touches the Release text. **A red run is a
+  fact about the release, not a suspect workflow** — this job has been exercised both ways at
+  v3.2.4, green against a real tag and red with a `not-released` verdict against a bogus one.
 - Your own install holds the released tree — these two print the **same** 40-character sha:
 
   ```

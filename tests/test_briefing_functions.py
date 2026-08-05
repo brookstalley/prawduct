@@ -373,6 +373,55 @@ class TestSummarizeCriticFindings:
         (pr / ".critic-findings.json").write_text(json.dumps({"summary": "", "findings": []}))
         assert briefing._summarize_critic_findings(pr) is None
 
+    def test_a_superseded_record_says_so_before_anything_it_qualifies(self, tmp_path):
+        """The marker `critic-begin` stamps must survive into THIS renderer.
+
+        `_mark_cache_superseded` writes `superseded_by`/`superseded_at`/
+        `superseded_notice` first in the record so a direct reader meets them
+        before the findings and the `next_action` they qualify — but this
+        function reads the same file and rebuilds the section field by field, so
+        it dropped all three and presented a superseded review's counts and
+        `NEXT-ACTION:` as current. That reader is the one the marker was written
+        for: definitionally the builder who lost the reviewer's report, and so
+        the one who cannot compare what they are holding against a review id
+        they never saw.
+
+        Reachable in normal operation despite `clear` refusing to run while a
+        review is active: a dispatched review's marker expires by TTL and is
+        swept at the next session boundary, so the record outlives every
+        in-session signal that a newer review was dispatched.
+        """
+        pr = _prawduct(tmp_path)
+        (pr / ".critic-findings.json").write_text(json.dumps({
+            "superseded_by": "rev-20260805T165453Z-2cf52cde",
+            "superseded_at": "2026-08-05T16:55:14Z",
+            "superseded_notice": "SUPERSEDED — …",
+            "summary": "0 blocking, 4 warning, 0 note across 3 reviewer(s).",
+            "findings": [{"severity": "warning", "summary": "a stale warning"}],
+            "next_action": "0 blocking — THE REVIEW IS OVER.",
+        }))
+        out = briefing._summarize_critic_findings(pr)
+        assert out is not None
+        assert "SUPERSEDED" in out
+        assert "rev-20260805T165453Z-2cf52cde" in out, "name the review that displaced it"
+        # BEFORE the summary and the directive it qualifies — a reader that stops
+        # early must stop on the warning, not on the stale next_action.
+        assert out.index("SUPERSEDED") < out.index("0 blocking, 4 warning")
+        assert out.index("SUPERSEDED") < out.index("NEXT-ACTION")
+
+    def test_an_unsuperseded_record_carries_no_marker_prose(self, tmp_path):
+        """The ordinary case stays clean — the notice appears only when the
+        record actually carries the marker, so its presence is information."""
+        pr = _prawduct(tmp_path)
+        (pr / ".critic-findings.json").write_text(json.dumps({
+            "summary": "0 blocking, 0 warning, 0 note across 1 reviewer(s).",
+            "findings": [],
+            "next_action": "0 blocking — THE REVIEW IS OVER.",
+        }))
+        out = briefing._summarize_critic_findings(pr)
+        assert out is not None
+        assert "SUPERSEDED" not in out
+
     def test_an_unreadable_record_says_so_rather_than_going_quiet(self, tmp_path):
         """A record that EXISTS but cannot be parsed is not the same answer as
         no record, and rendering them identically is the failure this whole

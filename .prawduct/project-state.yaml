@@ -445,7 +445,25 @@ views_enabled: true
 # gates resolve it by scope — which is the property the line above names as
 # what made the cleared state survivable last time. Next work sets this via
 # /prawduct:backlog pick.
-active_build_plan:
+#
+# SET 2026-08-05 to the ephemeral-worktrees plan (#594), and this note is the
+# annotation the entry above went in without — caught by the cumulative's R-5,
+# which is the discipline working. Read the CLEARED note above as the argument
+# it is, not as a standing instruction: it cleared a finished plan at ITS
+# completion, and all three of this plan's chunks are likewise built.
+#
+# The retain-vs-clear call is NOT made here, deliberately. `skills/pr/SKILL.md`
+# step 4 states the rule for a `develop` base — RETAIN both the plan file and
+# this pointer, because the develop->main promotion regenerates the Status of
+# every scope-tagged plan and the pointer is the fallback for unscoped ones.
+# That is a different answer from the CLEARED note above, which cleared a
+# release-pending plan on the argument that `scope:` tagging made the slot
+# redundant. Two governance surfaces, two answers, and resolving that conflict
+# by hand at merge time is how the slot went stale twice before. So: annotate
+# now, let `/prawduct:pr` apply its documented rule at merge, and if the
+# conflict still stands afterwards it is a real one to settle once — not
+# per-branch, and not by whoever is holding the merge.
+active_build_plan: null
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
@@ -658,6 +676,9 @@ scope_rollups:
   drift-burndown:
     chunks: ["01", "02", "03", "04"]
     releases: ["v3.2.3"]
+  ephemeral-worktrees:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.5"]
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]
@@ -708,7 +729,7 @@ scope_rollups:
     releases: ["v2.2.1"]
   release-integrity:
     chunks: ["04", "05"]
-    releases: ["v3.2.4"]
+    releases: ["v3.2.4", "v3.2.5"]
   release-readiness:
     chunks: ["01", "02", "03"]
     releases: ["v3.2.0"]
@@ -733,6 +754,9 @@ scope_rollups:
   review-proportionality:
     chunks: ["01", "02", "03", "04", "05"]
     releases: ["v2.1.0"]
+  review-round-pricing:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.5"]
   reviewer-model-fallback:
     chunks: ["01"]
     releases: ["v2.1.5"]

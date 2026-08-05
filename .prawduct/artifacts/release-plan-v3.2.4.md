@@ -197,24 +197,67 @@ and nothing is left local). Phase 2 is unaffected: `main` is checked out in no w
 **What this does not fix:** the sibling worktree's local `develop` ref stays behind. That is its own
 session's to update, and it has no bearing on what ships — Phase 2 step 15 reads `origin/develop`.
 
-### 2. The `verify-release` workflow's first run against a real tag is red **by construction**
+### 2. Steps 20 and 21 are in a race the runbook does not mention — this release won it by ~9 seconds
 
-Not a departure taken, a defect **found** — recorded here because the runbook's own `Done when`
-misdescribes it.
+Not a departure taken, a defect **found**.
 
 `verify-release.yml` fires on the tag push (step 20). `check-released` asks three questions, and one
-of them is *does a GitHub Release exist* — which step **21** is what creates. So the automatic run
-fires roughly a minute before the fact it is checking becomes true, and **must** be red. The
-runbook's `Done when` anticipates a red first run but attributes it to "*either* an incomplete
-release *or* a defect in the workflow"; the real cause is neither, and it is deterministic rather
-than a first-run quirk.
+of them is *does a GitHub Release exist* — which step **21** is what creates. So the automatic run is
+dispatched **before** the fact it checks becomes true, and whether it passes depends on whether the
+operator publishes the Release faster than a GitHub runner can spin up and reach the check step.
 
-**Handled in-release** by re-running the workflow after step 21 (`workflow_dispatch` becomes
-available the moment the promotion puts the file on the default branch, which is the same push).
-**Filed rather than fixed** — a runbook edit mid-release is its own change needing its own review,
-which is this repo's standing precedent. The fix is a step ordering question (publish the Release
-before pushing the tag, or state the re-run as a numbered step), and it belongs with `#581`, whose
-acceptance criterion is deleting that same `Done when` paragraph once the workflow has passed once.
+> ⚠️ **This section asserted the run was red "by construction" and "**must** be red". That was
+> written before the promotion and is FALSE — measured, not softened.** The tag push dispatched the
+> run at **01:43:48Z**; the Release went live at **01:43:59Z**; the run concluded **success** at
+> **01:44:08Z**. Runner spin-up, `actions/checkout` at `fetch-depth: 0` and the `origin/main` fetch
+> consumed the first ~11 seconds of a 20-second job, so `check-released` ran *after* the Release
+> existed and saw all three checks green. The hazard is real and the conclusion inverted: it is a
+> **race**, not a guarantee, which is strictly worse to leave unfixed than a deterministic failure
+> would be — a deterministic red gets fixed, and a race that usually passes gets learned as noise.
+> *(Recorded rather than quietly edited: this repo's rule is that correcting a false claim is
+> authoring a new claim, and a release document that silently swaps one confident assertion for its
+> opposite teaches nobody why the first one was wrong. The first version reasoned from step ordering
+> alone and never asked how long a runner takes to reach the step.)*
+
+**What actually protects it, and it should not have to:** publishing the Release immediately after
+pushing the tag. Pause between steps 20 and 21 to read output, answer a question, or check a run —
+all of which the runbook's own prose invites — and the window closes. The release process must not
+depend on operator typing speed.
+
+**Filed rather than fixed here.** A runbook edit is its own change needing its own review, which is
+this repo's standing precedent. It belongs with **`#581`**, and this release supplies two things
+that item was waiting on:
+
+1. **The workflow has now passed once against a real tag**, which is `#581`'s stated purpose — so its
+   acceptance criterion (delete the `First run only:` paragraph from the runbook's `Done when`) is
+   now dischargeable, and leaving that paragraph in place makes the runbook *wrong* for the next
+   release: it tells the operator to read a red run as possibly a workflow defect, which is now
+   ruled out.
+2. **The race above**, which is the more valuable of the two and was not previously known.
+
+## Verification — measured at the promotion, 2026-08-05
+
+`./plugin/bin/prawduct-hook check-released v3.2.4` → **exit 0**, `released: v3.2.4 — 3 of 3
+verified`: three version files agreeing at the tag's tree, `tag-on-main: 889127816`, and the Release
+URL. **This is the first release in this repo's history for which that command can pass** — it fails
+for every earlier tag, because the Releases page was empty for all of them.
+
+Four CI runs green: `verify-release` on the tag, `tests` on the tag, `tests` on `main` (the first
+time either has ever run on the release surface — `.github/` reaches `main` in this promotion), and
+`tests` on `develop` for the prep commit. Local suite before the prep commit: **3627 passed, 7
+skipped**.
+
+**One `Done when` item does NOT pass, and it is a pre-existing condition rather than this release's
+doing.** The installed-plugin sha (`ddb6dd1`) is **v3.2.3's prep commit**, not v3.2.4 and not even
+v3.2.3's released tree — so this machine's `directory:` marketplace has been serving v3.2.3's *prep*
+tree since 2026-08-01, exactly the symptom the runbook's "If this doesn't work" section describes,
+one release late. It self-heals here rather than needing the unverified cache-deletion remedy,
+because the failure was a cache key that never changed and this release **does** change it
+(`3.2.3` → `3.2.4`): the next session start re-resolves. Worth stating plainly for the next
+reader — the runbook frames this as a Phase 1–2 *gap* symptom, but the underlying exposure is
+permanent for a `directory:` marketplace, since `develop` outruns the version key for the whole
+inter-release window. (Inert for the correction commit below: it touches only `.prawduct/artifacts/`,
+and the cache resolves `plugin/`.)
 
 ## What is deliberately NOT hand-edited
 

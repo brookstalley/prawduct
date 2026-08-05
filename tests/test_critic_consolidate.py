@@ -45,6 +45,7 @@ from lib.critic_mode import _commit_is_ancestor, _commit_resolves  # noqa: E402
 from lib import evidence  # noqa: E402
 from lib import gates  # noqa: E402
 from lib import record_lint  # noqa: E402
+from lib import telemetry  # noqa: E402
 
 PARTIALS_REL = ".prawduct/.critic-partials"
 FINDINGS_REL = ".prawduct/.critic-findings.json"
@@ -522,54 +523,38 @@ class TestNextActionLine:
     reviewer forks — and the builder did read the findings. So the field must
     say what gates, in the record the builder already opens."""
 
-    def test_the_free_write_list_agrees_with_the_classifier_that_owns_it(self):
+    def test_the_free_write_question_is_delegated_not_restated(self):
         """The zero-blocking line tells a builder which batches need no verify
-        pass. That is a prose COPY of a rule owned by
-        `coverage_algebra.is_judgeable_path`, and nothing related the two — the
-        wording was pinned, its truth was not.
+        pass. It used to answer that by ENUMERATING the free paths — a prose
+        copy of a rule owned by `coverage_algebra.is_judgeable_path`, which the
+        builder then had to match against their own batch by hand, and which
+        went stale the moment `METADATA_PREFIXES` moved.
 
-        Consequence if they drift: `METADATA_PREFIXES` or the protected-path set
-        moves, and this line keeps telling a builder to skip a pass that coverage
-        now requires — a false claim in the one carrier this whole change argues
-        the builder actually reads, and one that ends with an uncovered PR gate.
+        It now cites `cost-of-commit`, which asks that classifier about the
+        exact paths in hand. So the pin changes shape with the message: the
+        message must NAME the command, and it must not have grown a second
+        authoritative copy of the carve-out. Nothing here can drift from the
+        classifier, because nothing here restates it.
 
-        So each path the sentence names is asserted non-judgeable against the
-        classifier, with a judgeable counterexample so the check cannot pass by
-        the classifier answering "no" to everything.
+        The command being named must also exist — a message citing a command
+        the hook does not dispatch is worse than the list it replaced.
         """
-        from lib import coverage_algebra
-
         line = cc.next_action_line("rev-1", 0, 1, 1)
-        for free in (
-            ".prawduct/change-log.md",
-            ".prawduct/artifacts/build-plan-x.md",
-            ".claude/settings.json",
-            "docs/notes.md",
-        ):
-            assert not coverage_algebra.is_judgeable_path(free), (
-                f"next_action_line tells the builder {free!r} moves no coverage, "
-                "but the classifier now judges it — the advice would skip a pass "
-                "the PR gate requires"
+        assert "prawduct-hook cost-of-commit" in line
+        assert "needs no pass at all" in line
+        # The enumeration is what was deleted; its return would reintroduce the
+        # drift this delegation removes.
+        for carve_out in ("`.prawduct/` prose", "`.claude/settings.json`", "`templates/`"):
+            assert carve_out not in line, (
+                f"{carve_out!r} is back in next_action_line — the free-path rule has "
+                "one home (`coverage_algebra.is_judgeable_path`) and this message "
+                "asks it via `cost-of-commit` rather than copying it"
             )
-        for judged in (
-            "plugin/skills/critic/goals-1-3.md",
-            "plugin/methodology/building.md",
-            "plugin/templates/build-plan.md",
-            "plugin/lib/gates.py",
-            # The sentence reads "`.md` outside `skills/`, `methodology/`,
-            # `templates/` AND a root `CLAUDE.md`" — the root file is EXCLUDED
-            # from the free list, not a member of it. Written here because the
-            # first draft of this test read it the other way and went red, which
-            # is the strongest argument for the pin existing at all.
-            "CLAUDE.md",
-        ):
-            assert coverage_algebra.is_judgeable_path(judged), (
-                f"{judged!r} is no longer judgeable, so the sentence's carve-out "
-                "is wider than it reads (and this test's negatives are vacuous)"
-            )
-        # The sentence must still be the one making the claim, or the pins above
-        # are guarding prose that moved.
-        assert "moves no coverage" in line and "`.prawduct/` prose" in line
+        hook = (ROOT / "bin" / "prawduct-hook").read_text()
+        assert '"cost-of-commit"' in hook, (
+            "next_action_line cites `prawduct-hook cost-of-commit`, which the hook "
+            "no longer dispatches"
+        )
 
     def test_blocking_names_one_commit_and_one_verify_pass(self):
         line = cc.next_action_line("rev-1", 2, 5, 3)
@@ -579,6 +564,77 @@ class TestNextActionLine:
         # The non-blocking findings are decided in the SAME pass — deferring
         # them to a later round is the pump this field exists to stop.
         assert "SAME pass" in line
+
+    def test_the_blocking_arm_reaches_parity_with_the_zero_blocking_arm(self):
+        """Reporter failure 1, read against the two arms: *"it stated a rule,
+        not a price. I never saw a number."*
+
+        The blocking arm ordered the builder to decide the WARNING/NOTE
+        findings in the same pass, but the command for the cheapest of those
+        decisions — and any statement of what a round costs — lived only in the
+        arm a builder with a blocking finding never reaches. Both are now on
+        both arms.
+        """
+        priced = "One more round costs about 5 min here (median of 9 rounds)."
+        line = cc.next_action_line("rev-9", 3, 2, 1, priced)
+        assert 'prawduct-hook disposition rev-9 <fid> --accept "<reason>"' in line
+        assert "moves no tree" in line
+        assert priced in line
+
+    def test_both_arms_quote_the_same_price_sentence(self):
+        priced = "One more round costs about 5 min here (median of 9 rounds)."
+        for counts in ((2, 1, 1), (0, 1, 1)):
+            assert priced in cc.next_action_line("rev-9", *counts, priced), counts
+
+    def test_an_unavailable_price_is_relayed_rather_than_dropped(self):
+        """The helper's unavailable sentence is a first-class answer — a
+        message that goes quiet when the ledger cannot be read lets the builder
+        assume a round is cheap, which is the assumption the whole change
+        exists to correct."""
+        unavailable = telemetry.format_round_price({"status": "unavailable", "reason": "no history"})
+        line = cc.next_action_line("rev-9", 1, 0, 0, unavailable)
+        assert "unavailable" in line and "not a small one" in line
+
+    def test_no_price_at_all_still_produces_a_whole_sentence(self):
+        """The default path (tests, and any caller without a prawduct dir) must
+        not leave a dangling clause or a trailing double space."""
+        for counts in ((2, 1, 1), (0, 1, 1), (0, 0, 0)):
+            line = cc.next_action_line("rev-9", *counts)
+            assert line == line.strip() and "  " not in line, counts
+            # "." or the coverage caveat's closing paren — never a dangling
+            # connector left behind by the omitted clause.
+            assert line.endswith((".", ")")), counts
+
+    def test_both_arms_offer_the_ride_along_route_with_its_condition(self):
+        """The fix/accept/file trio was missing the option that costs nothing
+        extra: when the branch has more judgeable work coming, a small fix
+        carried into the next chunk's commit rides a round that was going to be
+        bought anyway.
+
+        Both arms carry it — a builder with a blocking finding still has
+        WARNING/NOTE companions to decide, and deferring one IS a decision made
+        in that same pass. It ships with its condition ("if this branch has more
+        judgeable work coming") because it is not universally right, and with
+        its failure mode named, because an unwritten deferral is a drop.
+        """
+        for counts in ((2, 1, 1), (0, 1, 1)):
+            line = cc.next_action_line("rev-9", *counts)
+            assert "carry the fix into the NEXT chunk's commit" in line, counts
+            assert "if this branch has more judgeable work coming" in line.lower(), counts
+            assert "it is not a deferral, it is a drop" in line, counts
+            # And it distinguishes itself from the deferral the same message
+            # warns against two sentences earlier. Without that, the blocking
+            # arm says "deferring turns one review into several" and then
+            # offers a deferral — a reader resolves the contradiction by
+            # ignoring one of them, and there is no telling which.
+            assert "NOT the deferral" in line, counts
+            assert "buys a second round" in line and "buys none" in line, counts
+
+    def test_the_clean_pass_is_not_offered_a_route_for_findings_it_lacks(self):
+        # 0/0/0 has nothing to carry anywhere; a deferral route on a review with
+        # no findings reads as work the builder does not have.
+        line = cc.next_action_line("rev-9", 0, 0, 0)
+        assert "NEXT chunk's commit" not in line
 
     def test_zero_blocking_says_the_review_is_over_and_names_disposition(self):
         line = cc.next_action_line("rev-abc", 0, 4, 7)
@@ -961,6 +1017,26 @@ class TestBatchFixDirective:
     editing the free-list alone (adding `docs/`, dropping `.claude/settings.json`)
     would keep the suite green while shipping a runtime message that tells a
     builder to commit mid-review and lose their coverage."""
+
+    def test_the_directive_makes_no_positional_cross_reference(self):
+        """It has TWO emission sites and they print different things after it:
+        `consolidate` follows with the `NEXT-ACTION:` line, while
+        `_already_consolidated_note` follows with nothing — the coordinator
+        path's normal case, where the reviewing fork has already returned.
+
+        So a clause pointing at "the line below" is true on one path and a
+        dangling pointer on the other. That shipped briefly while replacing a
+        hardcoded "5-10 minute rounds", trading a wrong number for a broken
+        reference on the path that most needed the number. Whatever this text
+        needs the reader to have must be inside it.
+        """
+        d = cc._BATCH_FIX_DIRECTIVE
+        for pointer in ("line below", "below prices", "above", "following line"):
+            assert pointer not in d, (
+                f"{pointer!r} points outside the directive, which is emitted from "
+                "two sites printing different things after it — see "
+                "`_already_consolidated_note`, which prints nothing below"
+            )
 
     def test_directive_dispositions_rather_than_mandating_fixes(self):
         # Only unresolved BLOCKING gates anything. "Fix them ALL" contradicted
@@ -2555,6 +2631,179 @@ class TestBeginArchivesLeftovers:
         cc.started_path(prawduct, "correctness").write_text("correctness")
         cc.remove_partials(prawduct)
         assert not pdir.exists()
+
+
+class TestBeginMarksFindingsSuperseded:
+    """The derived view's half of the problem the class above solves for
+    partials (#595).
+
+    Leftover partials are archived at dispatch, so nothing from the previous
+    review is left where the current one's belongs. `.critic-findings.json`
+    got no such treatment: it survived every dispatch carrying nothing that
+    marked it stale, so between `critic-begin` and the consolidation that
+    regenerates it a reader met the PREVIOUS review's findings in a file that
+    looked exactly like the current one's — on the one surface the builder is
+    guaranteed to meet.
+
+    It MARKS rather than deletes, and the distinction is load-bearing:
+    `_prior_review_fact` reads this file's `fact_id` to anchor a
+    verify-resolutions delta, so deleting at dispatch would strand the next
+    verify after any review waived or abandoned before consolidating —
+    trading a cosmetic ambiguity for a lost anchor.
+    `test_verify_still_anchors_after_an_abandoned_review` is the pin that goes
+    red if a later edit "simplifies" the mark into a delete.
+    """
+
+    def _repo_with_a_completed_review(self, tmp_path) -> tuple[Path, str, str]:
+        """A repo holding one consolidated review (blocking finding, cache
+        pointing at its fact) and a dirty tree, so the next dispatch has both
+        something to mark and something to review. Returns (repo, head, id)."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        prior_id = _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo, head, prior_id
+
+    def test_dispatch_marks_the_prior_record_naming_both_reviews(self, tmp_path):
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        new_id = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())["id"]
+
+        raw = (repo / FINDINGS_REL).read_text()
+        record = json.loads(raw)
+        assert record["superseded_by"] == new_id
+        assert record["superseded_at"]
+        # Both ids: which review superseded this record, and which review this
+        # record IS. A reader holding neither can place the file from the text
+        # alone — no timestamp arithmetic against an id it may not have.
+        notice = record["superseded_notice"]
+        assert new_id in notice and prior_id in notice
+
+        # FIRST in the file, so the marker is met before the findings and the
+        # `next_action` it qualifies — a reader that stops early stops on the
+        # warning, not on the previous review's directive.
+        assert list(record)[:3] == list(cc._SUPERSEDED_KEYS)
+        assert raw.index("superseded_by") < raw.index('"next_action"')
+
+        # And said at the dispatching context too: that is the one reader
+        # certain to be present at the moment the stale window opens.
+        assert "superseded_by" in result.stdout and new_id in result.stdout
+
+    def test_marking_preserves_every_other_field(self, tmp_path):
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        before = json.loads((repo / FINDINGS_REL).read_text())
+        assert before.get("findings"), "fixture must seed a finding to preserve"
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        after = json.loads((repo / FINDINGS_REL).read_text())
+        # Marked AND preserved. Without the first assertion this reduces to
+        # "the file did not change", which holds identically when the marker
+        # is not written at all — the variable under test erased by the check.
+        assert after.get("superseded_by")
+        assert {k: v for k, v in after.items() if k not in cc._SUPERSEDED_KEYS} == before
+        # The anchor pointer specifically — everything below rests on it.
+        assert after["fact_id"] == prior_id
+
+    def test_verify_still_anchors_after_an_abandoned_review(self, tmp_path):
+        """The reason this marks instead of deleting.
+
+        Review A consolidates; review B is dispatched and never consolidates
+        (waived, crashed, or abandoned via `critic-end`); the next
+        verify-resolutions must still anchor to A — which is the correct
+        anchor, since B produced no fact. Deleting the cache at B's dispatch
+        would leave this pass with no anchor at all, failing it closed.
+        """
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0  # B dispatched…
+        subprocess.run(  # …and abandoned without consolidating
+            ["python3", str(HOOK), "critic-end"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        prior_fact = next(f for f in _store_facts(repo, "review") if f["id"] == prior_id)
+        assert manifest["base_tree"] == prior_fact["body"]["head_tree"]
+
+    def test_consolidation_clears_the_marker(self, tmp_path):
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        assert "superseded_by" in json.loads((repo / FINDINGS_REL).read_text())
+
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        for role in manifest["roster"]:
+            _write_partial(repo, role, manifest["commit_reviewed"])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+        after = json.loads((repo / FINDINGS_REL).read_text())
+        assert [k for k in cc._SUPERSEDED_KEYS if k in after] == []
+        # Cleared because the whole record was rewritten from the NEW fact —
+        # not because anything went looking for the keys.
+        assert after["fact_id"] == manifest["id"] != prior_id
+
+    def test_a_second_dispatch_restamps_rather_than_stacks(self, tmp_path):
+        repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        first_marker = json.loads((repo / FINDINGS_REL).read_text())["superseded_by"]
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+
+        raw = (repo / FINDINGS_REL).read_text()
+        record = json.loads(raw)
+        second = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())["id"]
+        assert second != first_marker
+        assert record["superseded_by"] == second
+        assert first_marker not in raw  # re-stamped, not layered
+        for key in cc._SUPERSEDED_KEYS:
+            assert raw.count(f'"{key}"') == 1
+        assert record["fact_id"] == prior_id  # still the last COMPLETED review
+
+    def test_a_marked_record_still_passes_the_findings_validator(self, tmp_path):
+        # `ledger.py` validates this record through
+        # `gates.validate_critic_findings` before anchoring a `review.critic`
+        # event. Extra keys must not turn a legitimate record into a rejected
+        # one — the marker is additive or it is a regression.
+        repo, _head, _prior = self._repo_with_a_completed_review(tmp_path)
+        assert gates.validate_critic_findings(repo / FINDINGS_REL)
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        # Assert the marker landed FIRST: without it this validates an
+        # unmarked record and passes whether or not the marker exists.
+        assert json.loads((repo / FINDINGS_REL).read_text()).get("superseded_by")
+        assert gates.validate_critic_findings(repo / FINDINGS_REL)
+
+    def _repo_without_a_review(self, tmp_path) -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo
+
+    def test_no_cache_is_not_an_error_and_invents_nothing(self, tmp_path):
+        repo = self._repo_without_a_review(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert not (repo / FINDINGS_REL).exists()
+        assert "superseded" not in result.stdout
+
+    def test_an_unreadable_cache_is_left_alone_and_never_blocks_dispatch(self, tmp_path):
+        # The view is advisory; a dispatch must never fail over it. A truncated
+        # cache is the shape `critic_findings_note` already reads this file
+        # behind (UnicodeDecodeError, not just JSONDecodeError).
+        repo = self._repo_without_a_review(tmp_path)
+        raw = '{"summary": "truncated mid-w'
+        (repo / FINDINGS_REL).write_text(raw)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert (repo / FINDINGS_REL).read_text() == raw  # untouched, not half-rewritten
+        assert (repo / PARTIALS_REL / "manifest.json").is_file()  # dispatch proceeded
+        assert "superseded" not in result.stdout
 
 
 class TestVerifyResolutionsDispatch:

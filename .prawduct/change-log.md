@@ -3,6 +3,431 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: the cumulative's findings, and the guards that could not see the shapes they guarded
+
+<!-- prawduct: type=fix | scope=review-round-pricing | release=v3.2.5 | status=shipped -->
+
+**The scope's own failure mode, delivered by its own carriers.** The cumulative review over the
+three chunks returned 0 blocking, 8 warnings, 7 notes; eleven were fixed in one batch, three
+accepted, one split. Three of them are the same defect wearing different clothes: a claim that held
+only on the form it was pinned for. `cost-of-commit` priced a *directory* argument `free` when git
+could not be read — `_working_tree_paths(...) or []` turned a git failure into an empty expansion
+and the argument branch never set `reason`, so the "unknown, never free" asymmetry documented in
+three docstrings was true of the path form only. A builder holding an `index.lock` was told the
+commit was free. Both forms now return `(value, reason)` and both degrade to `unknown`, with the
+git detail carried in the reason — which also makes the broad-except waiver's stated reason true.
+
+**A guard that matches line shapes guards the shapes it was written against.** The
+no-hardcoded-duration sweep walked lines, so it saw `print(...)` and wrapped continuations and
+nothing else; `return {"reason": "...5 minutes"}` and a single-line `return f"...7 minutes"` both
+slipped past — exactly the shapes the emitted `reason` strings use. It walks the AST now, every
+string constant, docstrings excluded. Widening a guard is itself a claim, so the guard's own
+detection is pinned against the shapes that escaped it, with controls for the derived form and for
+bare thresholds.
+
+**Two seconds→minutes renderers shipped in one bundle and only one guarded the sub-minute case** —
+so the surface that literally states the price could say "about 0 min". `telemetry.format_minutes`
+is now the one home for the rendering: the fact had one home, its rendering had two.
+
+**An unreadable ledger was reported as an empty history.** The true cause went to stderr and died
+there while the wrong reason was *persisted* into the findings cache, the ledger event and the
+briefing — reading as "no review history" for a repo holding hundreds. `_read_events` returns the
+read failure as a third value, deliberately not a fourth key in `skipped`, which is published
+inside the registered `review-stats --json` payload; the first attempt did widen it and
+`test_review_stats` caught the leak.
+
+**And the protocol edited in Chunk 03 still quoted the wrong price.** It charged a non-blocking fix
+"a full Critic round", contradicting `_BATCH_FIX_DIRECTIVE`, the gate's churn NOTE and
+`PRICED_MODE = verify-resolutions`, which all quote the delta pass — a reviewer who believes each
+NOTE costs a cumulative files fewer findings than it should, the opposite of that paragraph's
+closing line. Alongside it: the "no paths were given" message printed when paths *were* given and
+expanded to nothing, the quoted price now names "the cheapest round that closes it" (on a branch
+with no prior review the closing round is a cumulative, and `PRICED_MODE` records the
+understatement), and `round_price` states that `duration_seconds` is a reviewer self-estimate so
+the figure is not defended as measured.
+
+**Free-path record work in the same batch:** `cost-of-commit --json` joins the registered emitter
+list with its key set (and the plan gains the `api-contract` `governed_by:` block whose absence
+explains the miss); the cross-cutting Review-loop-termination row records this bundle's four
+carriers, including the first-ever PR-review leg; and the plan's state-file disposition is
+corrected — "no chunk writes to a state file" was true of Chunk 01 and false of Chunk 02, since
+`next_action` rides `ledger_append` into every review event and prints in every briefing.
+
+**Classification:** governance
+
+## 2026-08-05: the warning where the relapse starts, and the route nobody was offering
+
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=03 | release=v3.2.5 | status=shipped -->
+
+**The reporter was reading the PR reviewer's findings when it made the commit that re-opened the
+gate.** That is the third of its five failures and the one no previous plan touched: the PR
+reviewer's protocol has never said that acting on its own non-blocking findings costs a Critic
+round. It says so now, positioned where a reviewer reaches it *before* forming any finding — under
+the existing scope boundary it extends rather than contradicts. Placement is the deliverable and the
+test asserts ordering, not presence: the predecessor plan shipped a correct rule into `goals-1-3.md`
+that sat below every section needing it and changed nothing.
+
+**The claim is bounded by delegation rather than by a rule of thumb.** A first draft said a fix
+confined to `.md` prose moves no coverage — false for the governance-protected `.md` under
+`skills/`, `methodology/` and `templates/`, and this file is read by *product* reviewers. It now
+names `cost-of-commit` instead, which asks the classifier that owns the answer. Same shape as the
+enumeration Chunk 02 deleted, caught this time by reading the paragraph as its audience rather than
+by a test.
+
+**A route nobody was offering: the ride-along.** Raised by the owner mid-build and recorded as R6
+before it was built. Fix-now buys a round; accept and file buy none — and the option that costs
+*nothing extra* was missing everywhere. When a branch has further judgeable chunks, a small fix
+carried into the next chunk's commit rides a round that was going to be bought anyway. It ships on
+both surfaces (the PR protocol and the Critic's builder-facing `next_action_line`), always as an
+option with its condition attached — a fix that changes what the bundle claims to ship belongs in
+the bundle — and always naming where the deferral gets written down, because an unrecorded deferral
+is a drop rather than a deferral.
+
+**It also has to distinguish itself from the deferral the same message warns against**, or the
+blocking arm says "deferring turns one review into several" and then offers a deferral one sentence
+later. The distinction is the whole point and is now explicit: deferring to a later *round* buys a
+second round; riding a commit that is being made anyway buys none. A reader who cannot see the
+difference resolves it by ignoring one of the two sentences, and there is no telling which.
+
+**Classification:** governance
+
+## 2026-08-05: the gate knows which round this is, and both arms carry the price
+
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=02 | release=v3.2.5 | status=shipped -->
+
+**Round five printed the same words as round one.** Everything the uncovered `check-cumulative-critic`
+block says is a pure function of the current tree, so nothing in it could tell a builder they were
+in a sequence — the reporter's fourth failure, verbatim: *"the gate re-fires identically; block #6
+read exactly like block #1."* The block now leads with a tally: how many review rounds this branch
+has recorded since the merge-base, what they cost, and that the next one is round N+1.
+
+**The count is derived from the branch's own facts, never a counter.** The evidence store is shared
+by every worktree of a clone, so "reviews that exist" is not "reviews this branch bought" — a round
+is attributed by the commit it was taken against lying on HEAD's lineage after the merge-base. A
+dirty-tree review records no `head_commit` and is placed by its `dispatch_commit`, which is what
+keeps the mid-chunk rounds a long branch spends most of from vanishing. One `git rev-list` answers
+both lineage questions by set membership, so the tally costs one subprocess on a path where the
+sibling diagnosis pays two per fact.
+
+**It undercounts in exactly one case, and that is the choice.** A review dispatched before the
+branch's first commit sits AT the merge-base and is not counted; widening the span to include it
+would sweep in the base branch's own reviews and tell a first-round builder they were on round
+four. Undercounting says "at least this many"; overcounting says something false, and a message
+caught being wrong once is discounted forever after.
+
+**Both arms of `next_action_line` now carry what only one did.** The blocking arm ordered the
+builder to decide the WARNING/NOTE findings in the same pass but named neither the accept command
+nor any price — a rule, not a number, which is the reporter's first failure. Both arms quote the
+round price from the Chunk 01 helper, computed per consolidation and shared by the findings cache
+and the relayed `NEXT-ACTION:` line so the two carriers cannot disagree.
+
+**`cost-of-commit` stops being a pull carrier.** A command nobody knows about is precisely the
+failure v3.2.4 diagnosed, so the two surfaces that already reach a builder at the moment of
+committing now name it: the fix-churn NOTE, and the free-write sentence in `next_action_line` —
+which drops its hand-maintained enumeration of free paths in favour of the command that asks the
+classifier owning them. The enumeration was a second authoritative copy of `is_judgeable_path`; its
+guard test is now a pin that it stays deleted. `_BATCH_FIX_DIRECTIVE` keeps its own list on
+purpose — that one is parsed token-by-token and driven against the classifier by
+`TestBatchFixDirective`, so it cannot drift silently, and it addresses a reviewer rather than the
+builder who is about to commit.
+
+**`api-contract.md` gains the `cost-of-commit` row Chunk 01 owed it** — the command shipped last
+chunk without reaching the Operations list, and naming it from two runtime carriers made the
+omission load-bearing rather than cosmetic.
+
+**One hardcoded duration was found and removed on the way through.** `_BATCH_FIX_DIRECTIVE` said
+"5-10 minute rounds" — the exact defect this scope exists to stop — and the no-hardcoded-duration
+sweep was widened to reach it. The sweep names price-bearing surfaces individually rather than
+scanning whole modules, because the same modules carry reviewer-liveness durations that are
+expectations about a subagent, not prices; a guard that flags those forever gets deleted rather
+than fixed.
+
+**Classification:** governance
+
+## 2026-08-05: price a review round before the commit that buys it
+
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=01 | release=v3.2.5 | status=shipped -->
+
+**A consuming agent on v3.2.4 read the shipped loop-termination carriers and still ran six Critic
+rounds on one branch.** That is the first post-fix datum on `review-loop-carriers`, and it is why
+this plan exists rather than being a repeat of that one. The agent quotes `next_action_line`
+verbatim, so it demonstrably received the advice; its own account of why the advice lost names five
+failures, four of which are addressable. The fifth — *"the wording bounds the batch; it doesn't
+bound the sequence"* — is an argument that no advice closes this, and the plan records that limit
+under Requirements rather than burying it, because this is the third round of advice-improvement on
+one failure.
+
+**`prawduct-hook cost-of-commit [<paths>...]`** answers before a commit whether making it buys a
+review round, which is the one fact the reporter could only learn afterwards. It asks
+`is_judgeable_path` — the predicate that will actually charge for the commit — rather than a second
+copy, because a pricing tool that disagrees with the gate is worse than none. It degrades to
+`unknown`, never `free`: "free" from a broken check sends the builder into exactly the commit being
+priced.
+
+**The price is derived from this repo's own ledger at call time and never written down.** The
+report asked for hardcoded numbers; a prose copy of a number drifts and then costs a review round
+to correct, which is the round this is trying to save. One home for the fact, the re-deriving
+command cited beside it, a sample-size floor below which it reports unavailable rather than quoting
+a median of two runs, and a test asserting no emitted string carries a literal duration.
+
+**Two defects of one shape, both found by scrubbing during the review.** A directory is neither
+metadata nor `.md`, so it classifies as judgeable — and git names directories in two places.
+Untracked directories now expand with `-uall`; explicit directory arguments expand to the changed
+files under them, which is what `git add docs/` actually stages. Pricing `docs/` as costing a round
+was the wrong answer the code's own docstring already named.
+
+**Classification:** governance
+
+## 2026-08-05: the cumulative's five warnings — three false records and a signal that reached nobody
+
+<!-- prawduct: type=fix | scope=ephemeral-worktrees | release=v3.2.5 | status=shipped -->
+
+<!-- No `chunks=`: review dispositions for `rev-20260805T165453Z-2cf52cde`, spanning both this
+     branch's plan work and the #595 rider. Flips no Status checkbox. -->
+
+**The marker shipped one commit earlier reached the direct reader and not the one it was written
+for** (R-3 and R-10, found independently by two reviewers). `briefing._summarize_critic_findings`
+reads the same `.critic-findings.json` and rebuilds the section field by field, so it dropped all
+three supersession keys and presented a superseded review's counts and `NEXT-ACTION:` as current.
+That reader is the cross-session builder — by its own comment, "DEFINITIONALLY the one who lost the
+reviewer's report", and so exactly the reader who cannot compare what they hold against a review id
+they never saw. My own reason for thinking this path was safe was wrong in a way my own docstring
+had already recorded: I checked that `clear` refuses while a review is active and stopped there,
+having written two paragraphs earlier that a dispatched review's marker *expires by TTL and is
+swept at a session boundary*. The notice now leads the section, before the summary and directive it
+qualifies.
+
+**Three comments described mechanisms that do not exist.** The harness-invoked carve-out justified
+itself partly by "a human driving it who can see the banner" — nothing in the banner or the session
+digest mentions ephemerality, and the carve-out returned *before* the detection ran, so `clear` and
+`stop` inside an agent worktree emitted no ephemeral signal at all (R-1, R-12). Detection now runs
+first and the harness path emits the HEAD-snapshot notice while still refusing nothing, which makes
+the comment's claim true rather than deleting it. Separately, the backlog guard's rationale said the
+markdown backend "writes `.prawduct/backlog.md` in THIS tree and falls through to the per-op set" —
+`cmd_backlog` is always the gh adapter and has no markdown path (R-5). The real markdown filing path
+is the SKILL's own Read/Write on that file, which invokes no command and is invisible to any command
+guard; that residual strand is now in Scope-out instead of implied to be covered.
+
+**A fail-closed guard with a fail-open seam** (R-4). `lib/backlog/cli.py` owns the op surface; the
+hook re-stated it as hand-maintained tables. They agreed across all 21 ops and nothing kept them
+agreeing — and the drift is asymmetric: an op added later that writes locally but is missed in
+`_BACKLOG_LOCAL_WRITE_OPS` is **allowed** on a service-backed repo, because the service-backed early
+return fires before the per-op set. `cli._ALL_OPS` now builds the unknown-op message (so it cannot
+go stale while that message is right), and a partition test names the previously-implicit
+service-only remainder, so adding an op fails until someone classifies it.
+
+**The exception got a rail, and the rail is partial** (R-11). `docs/norms.md` § "Exceptions expire"
+puts a temporary exception's clock on a tracking item; this one lived in plan frontmatter that no
+time-domain organ walks. Filed as **#596**, linked from the exception. Stated plainly there and
+here: the Issues backend has no write path for `revisit:` (#564), so the trigger is body prose —
+findable by a human, walked by no probe. That is more than frontmatter and less than the norm asks,
+and calling it a discharge would be the same species of false record as the three comments above.
+
+Ten notes accepted with recorded disposition facts; two of them (R-2, R-9) were bookkeeping this
+entry and the plan's Context now carry.
+
+**#598 was filed against the branch's own new norm, and that is an owner exception, not a pass.**
+The PR reviewer caught it: `Backlog filing` — born on this branch, binding from 2026-08-05 — allows
+a new item only when the finding is **both** orthogonal **and** medium-or-larger, and #598 is
+`effort:S`/`impact:S` and explicitly a residual of this branch's own #595 rider. It fails both
+tests. It was filed anyway because the owner, shown the two rough edges it records, said *"both of
+these feel like rough edges worth fixing, but not right now"* — an in-the-moment deferral, which is
+the owner's call to make and outranks the default (Principle 23). Recorded here rather than argued
+into conformance, because the norm's own enforcement (Critic Goal 4, `final`-mode backlog
+reconciliation) is **structurally dark on this repo's Issues backend** — the cumulative's own R-11
+says so — and a norm whose checker cannot see the violation is one whose exceptions have to be
+written down by hand or they are not written down at all. Second data point, one day into the
+norm's life, that its enforcement map is aspirational here.
+
+## 2026-08-05: the findings view now says which review it is
+
+<!-- prawduct: type=fix | scope=ephemeral-worktrees | release=v3.2.5 | status=shipped -->
+
+<!-- No `chunks=`: **#595** rode this branch by owner decision rather than belonging to its plan,
+     so it takes release stamping without flipping any build-plan Status checkbox. Same shape as
+     the norm-birth entry below. -->
+
+`.prawduct/.critic-findings.json` survived every dispatch carrying nothing that marked it stale.
+Between `critic-begin` and the consolidation that regenerates it, a reader met the **previous**
+review's findings in a file that looked exactly like the current one's — timestamped from that
+earlier run, with a `next_action` directing disposition of findings that were not the in-flight
+review's. Observed during the #594 build: mid-review the file was dated the previous day while a
+review dispatched minutes earlier was still running. That file is the one surface the builder is
+guaranteed to meet, which is what made the ambiguity expensive.
+
+The framework already knew about the window and answered it **procedurally** — CLAUDE.md tells the
+builder to run `critic-consolidate` before reading, because doing so "closes the window where an
+unfired trigger would leave you reading the *previous* review's file." That instruction is the
+burden: it asks the agent to reason about whether what it is holding is current.
+
+`critic-begin` now stamps the record `superseded_by` / `superseded_at` / `superseded_notice` —
+first keys in the file, so a reader meets them before the findings and the `next_action` they
+qualify — and leaves every other field byte-identical. The dispatch output says the same thing to
+the one context certain to be reading at that moment. Consolidation rewrites the whole record from
+the new fact, so the keys clear themselves; nothing goes looking for them.
+
+**It marks rather than deletes, and that is the whole design.** Deleting at dispatch is the obvious
+fix and it is wrong: `_prior_review_fact` reads this file's `fact_id` to anchor a
+`verify-resolutions` delta. The steady-state sequence would survive, but a review **waived or
+abandoned before consolidating** would leave the next verify with no anchor at all — where today it
+correctly anchors to the last completed review. Deletion trades a cosmetic ambiguity for a lost
+anchor. `test_verify_still_anchors_after_an_abandoned_review` is the pin that goes red if a later
+edit "simplifies" the mark into a delete.
+
+The notice states a **fact about the record**, not a liveness claim. "A review is in flight" would
+go false on its own — a dispatched review can expire by TTL or be swept at a session boundary, and
+neither path passes through anything that could retract it. "Review X was dispatched after this
+record was written, so this is not X's result" stays true forever, and a reader meeting it after an
+abandoned review learns exactly why the newest record is older than expected.
+
+*Not done, deliberately*: CLAUDE.md's `critic-consolidate`-before-reading instruction stays. It is
+still the **action** that gets you current findings on the coordinator path; what the marker
+retires is the *reasoning* the instruction asked for, and adding prose to say so would grow total
+footprint to describe a field that now describes itself. No gate reads the view, so nothing in the
+authority path changed (`data-model.md` § Direction).
+
+## 2026-08-05: fix, don't file — a norm for when a finding earns a backlog item
+
+<!-- prawduct: type=docs | scope=ephemeral-worktrees | release=v3.2.5 | status=shipped -->
+
+<!-- No `chunks=`: this is a norm birth that rode the branch, not chunk work, so it takes
+     release stamping without flipping any build-plan Status checkbox. -->
+
+**Norm birth**, owner-declared during the #594 build and recorded here because a preferences row
+alone leaves the birth invisible in the log. `project-preferences.md` § Workflow gains **Backlog
+filing**: a strong bias to fix rather than file, with a new item justified only when the finding is
+**both** orthogonal to the current work **and** medium or larger.
+
+*Why*: a filed item is a deferred decision that costs triage, re-reading and re-derivation later,
+and the backlog's value falls as it grows — 168 pending items make the next `pick` worse, not
+better. The two tests are exactly the cases where filing beats fixing: orthogonal work would
+corrupt the current change's scope and review, and medium+ work needs requirements before code
+(Principle 6). **Small-and-orthogonal is the trap the rule closes** — it feels like a legitimate
+defer and is really just avoided work. Recording a finding as a *comment on an existing item* is
+not filing and stays unrestricted.
+
+*Status* steady-state. *Retroactivity* **grandfather** — the 168 items pending at birth are exempt
+and will not be re-triaged; converging them is separate, unrequested work, and grandfather is the
+honest word for not intending to converge. One site inside the birthing changeset is not exempt:
+**#595**, filed the same session under the old habit and failing the medium+ test.
+
+*Enforcement*: Critic (Goal 4, plus `final` mode's existing backlog reconciliation), audit home
+Critic + janitor. Session config alone would have left it aspirational — the failure is an agent
+filing small in-scope work it should simply have done, which no mechanical check can see, because
+it needs a reader who knows what the current work was.
+
+## 2026-08-05: prawduct now knows a worktree can be disposable
+
+<!-- prawduct: type=fix | scope=ephemeral-worktrees | chunks=01,02,03 | release=v3.2.5 | status=shipped -->
+
+`methodology/building.md` recommends `isolation: "worktree"` for parallel chunks. Following that
+advice puts a subagent in a worktree forked from HEAD, of which **only the code commit is merged
+back** — and prawduct had no representation of that, so `resolve_project_dir` followed the session
+in and governed it as an ordinary peer checkout. An agent obeying prawduct's own rules ("file it
+via `/prawduct:backlog`") produced a write that died at merge and was told it had succeeded.
+Reported from a product repo (**#594**).
+
+`gitstate.is_ephemeral_worktree` is the missing predicate; a pre-dispatch guard in the hook turns
+every agent-invoked `.prawduct/` write from inside such a tree into a loud refusal naming its
+override, and commands that proceed carry a notice that everything tracked there is a fork-point
+snapshot. That notice matters because it is the **only channel that reaches an isolated agent
+without its dispatcher's cooperation**: the briefing file `building.md` sends every subagent to is
+gitignored, so `git worktree add` never creates it — the standing delegation instruction has been a
+dangling pointer for exactly the isolation mode the next line recommends.
+
+**Three claims in the report were wrong, and checking them changed the design.** Its cheapest
+suggested fix — put the rules in `.subagent-briefing.md`, "a tracked file, so it is copied into
+every agent worktree" — would have shipped a no-op. Detecting on the `.claude/worktrees/` parent
+alone, as proposed, would have false-positived on every `EnterWorktree` session worktree, which
+lives under the same parent and is legitimate and long-lived; silencing governance there is worse
+than the strand being fixed, so the harness id shape is required and the negative cases are pinned.
+And provenance needed no schema change: the evidence envelope already carries `actor.worktree`, so
+`evidence status`/`list` classify on read and label facts already in the store.
+
+Sibling of **#221**, not a duplicate: that guards a cross-worktree *mismatch* and needs a
+session-scoped marker; this asks whether the correctly-resolved tree is *disposable*, which needs no
+persisted state. The predicate lives in `gitstate.py` so #221's guard composes with it.
+
+**The guard fails closed** — an unlisted command is refused here, inverting `_DATA_PLANE_COMMANDS`'s
+permissive default. The asymmetry that justified it there is reversed: this fires only inside
+`.claude/worktrees/agent-*`, so over-refusal costs one env var while under-refusal costs the silent
+strand under repair.
+
+**`building.md`'s token ceiling moved 4660 → 4810, accepted rather than offset.** The trims attempted, why the apparent redundancy was already spent, and why cross-file relocation was rejected are recorded at the assertion in `tests/test_v5_methodology.py` — one home, because this paragraph was a second copy and had to be corrected once already.
+
+## 2026-08-05: the release gate was asking a question the release had not answered yet
+
+<!-- prawduct: type=fix | scope=release-integrity | chunks=05 | release=v3.2.5 | status=shipped -->
+
+Discharges every acceptance item of **#581**, the last residual of the release-integrity scope and
+the only one whose acceptance could not be met at merge: GitHub registers a workflow from the
+**default branch**, so `verify-release.yml` could not run at all until the promotion that carried it
+to `main`. *(The issue is closed by hand at ship time — a `Closes #NNN` in a file body is prose;
+only a commit message or PR body auto-closes, and this repo merges to `develop`, not the default
+branch, so neither would fire here either.)*
+
+**It ran, three ways.** The workflow registered the moment the promotion landed
+(`verify-release  active  327463943`), and these run ids are the evidence — recorded here because
+two of them are one-shot observations that cannot be re-derived once the moment has passed:
+
+| run | trigger | verdict |
+|---|---|---|
+| [`30967251206`](https://github.com/brookstalley/prawduct/actions/runs/30967251206) | `push`, ref `v3.2.4` — **fired on its own** | success, 20s |
+| [`30967433461`](https://github.com/brookstalley/prawduct/actions/runs/30967433461) | `workflow_dispatch`, `v3.2.4` | success; output line-for-line identical to `check-released v3.2.4` run locally |
+| [`30967434559`](https://github.com/brookstalley/prawduct/actions/runs/30967434559) | `workflow_dispatch`, `v0.0.0-nonexistent` | **failure**, exit 1, `not-released` |
+
+The third is the half that mattered. Chunk 05's Done-when 2 was *"red for a deliberately broken
+input"* — a gate nobody has watched fail is not a gate.
+
+**One claim made about the first run does not survive scrutiny, and is corrected here rather than
+repeated.** #581's disposition comment read run `30967251206` as proof that a tag push resolves
+workflows from the **tagged commit's own tree**, falsifying the issue body's "a tag push cannot
+reach it either." The evidence cannot carry that: the promotion pushed `main` *before* the tag, so
+the workflow was already registered on the default branch when the tag push landed, and ordinary
+default-branch registration explains the run completely. The issue body said both routes open at the
+promotion; both did. Nothing here distinguishes the two mechanisms, and the tree-resolution claim
+should not be relied on until something does.
+
+**And that green run was a coin flip, which is the finding worth more than the checkboxes.** The
+job fires on the tag push; one of the three things it checks is whether a GitHub Release exists —
+which the *next* runbook step is what creates. It was dispatched before the fact it checks could
+become true, and passed only because runner spin-up and `checkout --depth 0` burned 11 seconds
+while the publish landed at +11s and the check ran at +20s. **Won by roughly 9 seconds, defended by
+nothing but operator typing speed.** Pause between those two steps to read output — which the
+runbook's own prose invites — and it closes. A race that usually passes is worse to leave than a
+deterministic red: a deterministic red gets fixed, an intermittent one gets learned as noise.
+
+**The fix is an ordering change in both release runbooks: the Release now creates the tag.**
+`gh release create vX.Y.Z --target <sha>` makes both in one call, so no instant exists at which the
+tag is there without its Release, and the race is not narrowed but structurally removed from the
+runbook path. It also sharpens what a red tag-push run means — a tag that arrived by some route
+other than the runbook, which is exactly the case worth a red build. `documentation/release-process.md`
+carried the same ordering in two places and was corrected with them.
+
+`[DECISION: publish the Release with --target so it creates the tag, rather than tightening the gap
+between a tag push and a separate publish | narrowing the window keeps a correctness property that
+depends on how fast a human types, and the pruned runbook could not be narrowed at all — its Release
+notes need a hand-edit, so its window is minutes, not seconds; the workflow itself was scope-out for
+#581 | user chose this over "close the window" and over reopening scope to add a `release:` trigger,
+2026-08-05]`
+
+**`promote-a-pruned-release.md` was the worse of the two and had never been exercised** — a
+worktree removal *and* a hand-edit of the notes file sat between its tag push and its publish. Its
+steps 13–16 are reordered so the notes edit happens while no tag exists and nothing is watching.
+
+**The cost is that the automatic run stops firing on the runbook path**, so dispatching it is now a
+numbered step in both documents rather than something that arrives on its own. That a
+Releases-API-created tag emits `create` and `release` but not `push` is reasoned from GitHub's event
+model and **not yet measured here** — it is marked 🚧 UNVERIFIED at the step, and the dispatch is
+correct either way. A trade worth naming plainly: a race you can lose became a step you can skip.
+
+**Both runbooks' "First run only" caveats are deleted, and that deletion is load-bearing.** They
+told the operator to read a red run as *possibly a defect in the workflow* — true before the
+workflow had ever executed, and false the moment run `30967434559` showed it failing correctly on
+demand. Left in place after that, they train people to discount a real red, which is the same
+false-red pathology the rest of this scope has been eradicating. Each bullet now says the opposite:
+a red run is a fact about the release.
+
 ## 2026-08-04: the product declares which files carry its version — and where in them
 
 <!-- prawduct: type=fix | scope=release-verification-false-reds | chunks=02 | release=v3.2.4 | status=shipped -->
