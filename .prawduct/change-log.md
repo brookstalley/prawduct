@@ -40,13 +40,7 @@ permissive default. The asymmetry that justified it there is reversed: this fire
 `.claude/worktrees/agent-*`, so over-refusal costs one env var while under-refusal costs the silent
 strand under repair.
 
-**`building.md`'s token ceiling moved 4660 → 4810, accepted rather than offset.** Three trims were
-tried and reverted: the standing block and the warnings-gate-nothing rule are both test-pinned, and
-the standing-block pin records that an earlier budget trim was *already funded* by relocating that
-rule's rationale — the redundancy a fresh trim would harvest has been spent once. Relocating prose
-to another file was rejected outright: it moves cost between files without reducing the total
-footprint. What the +146 buys is the shared-index hazard, which has already produced a real commit
-deleting three test files under a message asserting no test was deleted.
+**`building.md`'s token ceiling moved 4660 → 4810, accepted rather than offset.** The trims attempted, why the apparent redundancy was already spent, and why cross-file relocation was rejected are recorded at the assertion in `tests/test_v5_methodology.py` — one home, because this paragraph was a second copy and had to be corrected once already.
 
 ## 2026-08-05: the release gate was asking a question the release had not answered yet
 

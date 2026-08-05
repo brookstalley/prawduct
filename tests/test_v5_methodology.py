@@ -84,7 +84,7 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4803,
+    "methodology/building.md": 4807,
     "skills/critic/review-protocol.md": 3589,
     "skills/critic/goals-1-3.md": 1994,
     "skills/critic/review-cycle.md": 9471,

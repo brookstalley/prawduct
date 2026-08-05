@@ -2542,3 +2542,35 @@ Related: "A green suite is evidence about the ONE environment that ran it" — t
 active form. There, the second environment finds the dependency. Here *you* introduced the
 dependency, so you can enumerate it before CI does, and the enumeration is not optional
 because the affected set is invisible in the diff.
+
+
+## A test asserts what would BREAK, not what you just built
+
+Three vacuous-pass shapes, all observed on `fix/ephemeral-agent-worktrees` (2026-08-05, #594):
+an **exit code** asserted on a command that also exits non-zero for its own reasons (missing
+args, no active review) — it passed with the guard entirely removed; an **equality** that also
+held under the regression (`distinct_trees(mixed) == distinct_trees(plain)` where the fixture
+hardcoded one tree for every fact, so it passed whether or not ephemeral facts reached the
+coverage algebra — the single thing it existed to detect); and a **fixture built from ambient
+env**, which passed whenever the shell happened to export the override the test meant to exclude.
+
+Two were caught by the Critic, one by a red-verify pass. Each was written by someone who knew
+the rule, which is why the remedy is mechanical rather than attentional: revert the subject,
+run the specific test, confirm it goes red, restore. It caught something every time it was run
+here and cost about a minute each time.
+
+## Apparent duplication may be the receipt for a token budget already paid
+
+`plugin/methodology/building.md` carries a hard ceiling asserted in
+`tests/test_v5_methodology.py`. Adding the two delegation hazards (+146 tokens) against 3 tokens
+of headroom needed funding. The standing block looked like free redundancy — stated in
+`session-digest.md`, `session-digest-slim.md`, `reflection.md` and `building.md`, with
+`building.md` already pointing at `reflection.md` as the canonical rule. Cutting it turned two
+tests red, and `test_standing_block_is_on_every_surface_that_claims_it`'s docstring said why:
+*"building.md's token budget was FUNDED by relocating this rule's rationale"* — the redundancy
+had been harvested once already, and the pin exists so a later trim cannot spend it twice.
+
+Owner rule (2026-08-05): never fund a budget by moving prose to another file — total context
+footprint is the only number that matters, so relocation satisfies the assertion and achieves
+nothing. Order: simplify genuine duplication, then raise the ceiling and record what bought the
+increase **at the assertion**, where the next person to hit it will be reading.

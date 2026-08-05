@@ -281,7 +281,12 @@ class TestGuardRefusesWrites:
 
         stderr = _run(wt, "test-evidence", "record").stderr
 
-        assert "discarded with no trace" in stderr
+        assert "discarded when it merges" in stderr
+        # The message must not overclaim: a review or disposition persists to the
+        # clone-shared evidence store and survives the worktree — it covers no
+        # branch rather than vanishing, and saying otherwise would teach an agent
+        # to distrust a store that did keep its fact.
+        assert "clone-shared evidence store" in stderr
         assert "PRAWDUCT_ALLOW_EPHEMERAL_WRITES=1" in stderr
 
     @pytest.mark.parametrize(
@@ -328,13 +333,39 @@ class TestGuardAllowsReads:
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, *argv).stderr
 
-    def test_read_only_flag_form_proceeds(self, tmp_path):
-        """`learnings-obligation` mutates only under `--apply`; the dry run is a
-        report and must stay usable."""
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "audit-learnings",
+            "coverage-scaffold",
+            "learnings-obligation",
+            "norm-index-scaffold",
+        ],
+    )
+    def test_read_only_flag_form_proceeds(self, tmp_path, command):
+        """These four mutate only under `--apply`; the dry run is a report.
+
+        Parametrized over the whole family because two of them shipped missing
+        from the allowlist: their dry runs were refused with a message asserting
+        a discarded write, about commands that write nothing. That is the false
+        refusal the guard's own comment says it must never produce, and it is
+        the fail-closed default's most exposed edge — so the family is pinned
+        rather than one representative of it.
+        """
         primary = tmp_path / "primary"
         _init_repo(primary)
         wt = _agent_worktree(primary)
-        assert "BLOCKED" not in _run(wt, "learnings-obligation").stderr
+        assert "BLOCKED" not in _run(wt, command).stderr
+
+    @pytest.mark.parametrize(
+        "command", ["audit-learnings", "coverage-scaffold", "learnings-obligation"]
+    )
+    def test_apply_form_still_refuses(self, tmp_path, command):
+        """The other half of the same branch — `--apply` is the writing form."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+        assert "BLOCKED" in _run(wt, command, "--apply").stderr
 
     def test_allowed_command_carries_the_head_snapshot_notice(self, tmp_path):
         """The silence that produced the source report: an isolated agent reads
@@ -382,7 +413,14 @@ class TestGuardScope:
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, "backlog", "show", "ABC-1234").stderr
 
-    def test_override_env_reverses_the_refusal(self, tmp_path):
+    def test_override_env_reverses_the_refusal_but_keeps_the_notice(self, tmp_path):
+        """The override waives permission to write, not the staleness warning.
+
+        They answer different questions — "may I write here" versus "how old is
+        what I am reading" — and a dispatcher who deliberately opted into writing
+        has not thereby learned that every tracked file it reads is a fork-point
+        snapshot. Silencing both on one env var loses the half nobody opted out of.
+        """
         primary = tmp_path / "primary"
         _init_repo(primary)
         wt = _agent_worktree(primary)
@@ -391,6 +429,7 @@ class TestGuardScope:
             env_extra={"PRAWDUCT_ALLOW_EPHEMERAL_WRITES": "1"},
         ).stderr
         assert "BLOCKED" not in stderr
+        assert "snapshot of the commit it was forked from" in stderr
 
     def test_fails_open_when_lib_is_unimportable(self, tmp_path):
         """Bootstrap resilience — the contract `get_project_dir` documents.

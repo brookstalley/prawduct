@@ -5167,7 +5167,12 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
 
 # Read-only reports that mutate only under `--apply` — a third shape, neither
 # whole-command nor per-op.
-_EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({"audit-learnings", "learnings-obligation"})
+_EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
+    "audit-learnings",
+    "coverage-scaffold",
+    "learnings-obligation",
+    "norm-index-scaffold",
+})
 
 # Commands whose first positional argument selects a read or a write.
 _EPHEMERAL_READ_ONLY_OPS = {
@@ -5261,8 +5266,7 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
     instruction names does not exist in an isolated worktree (it is gitignored,
     so `git worktree add` never materializes it).
     """
-    if os.environ.get(_EPHEMERAL_OVERRIDE_ENV):
-        return 0
+    override = bool(os.environ.get(_EPHEMERAL_OVERRIDE_ENV))
     if command in _HARNESS_INVOKED_COMMANDS:
         # A DELIBERATE HOLE, stated rather than left to be discovered: `clear`
         # and `stop` are among the largest `.prawduct/` writers, and their
@@ -5289,7 +5293,11 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
     if kind is None:
         return 0
 
-    if not _ephemeral_command_writes(command, argv, project_dir):
+    if override or not _ephemeral_command_writes(command, argv, project_dir):
+        # The override waives the REFUSAL, not the notice. They answer different
+        # questions — "may I write here" versus "how old is what I am reading" —
+        # and a dispatcher who opted into writing has not thereby learned that
+        # its artifacts are a fork-point snapshot.
         print(
             f"NOTE: this is an ephemeral {kind} worktree ({project_dir}). Every "
             "tracked file here — build plans, artifacts, learnings — is a "
@@ -5303,10 +5311,12 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
     print(
         f"BLOCKED: refusing `{command}` — this is an ephemeral {kind} worktree "
         f"({project_dir}). Only your code commit is merged back, so a write to "
-        ".prawduct/ here is discarded with no trace and you would be told it "
-        "succeeded. Report this in your final message and let the dispatching "
-        "session record it; Critic reviews and test-evidence stay with the "
-        f"dispatcher too. Override for one invocation: {_EPHEMERAL_OVERRIDE_ENV}=1",
+        ".prawduct/ here is discarded when it merges and you would be told it "
+        "succeeded. (A review or disposition would instead persist to the "
+        "clone-shared evidence store against a tree no branch carries — kept, "
+        "but covering nothing.) Report this in your final message and let the "
+        "dispatching session record it; Critic reviews and test-evidence stay "
+        f"with the dispatcher. Override for one invocation: {_EPHEMERAL_OVERRIDE_ENV}=1",
         file=sys.stderr,
     )
     return 1
