@@ -50,6 +50,10 @@ dropping them.
 
 ## The fix for a review finding needs the same adversarial pass as the original work — dispatch a delta review of the fix commit, because "I am correcting a known defect" feels like lower-risk work than writing new code and the verification reflex relaxes exactly where the last round proved it shouldn't. **A fix commit is a code commit**: everything the chunk protocol demands of new code — a test, red-verified, in the same pass — applies unchanged to code written to close a finding, and applies MORE, because that code is written under time pressure and never gets a chunk review of its own. A reader guard added to close a utf-8 round-trip finding shipped with no test at all and the suite stayed green, because on a UTF-8 host the guard is a no-op; the delta review caught it. Third under-tested guard on one branch — an unpinned conjunct, a fixture that could not reach the guard it named, then this — so the failure is not the rule being unknown but the *reflex* not firing on correction work
 
+## A background agent's liveness is answered by ITS OWN completion signal, never by reading the files it is midway through writing — a death verdict from a directory listing is how a re-dispatch clobbers a live review. And the grep that "confirms" it may be matching the failure mode's own DOCUMENTATION, which feels exactly like verification
+
+## A safety argument and its counterexample can sit two paragraphs apart in YOUR OWN writing and never meet, because each answers a different question — before clearing a reader/caller/path as unaffected, re-read what you just wrote about the mechanism's lifetime and ask it against the clearance, not against the wording it was written for
+
 ## A test asserts what would BREAK, not what you just built — red-verify mechanically (break the subject, watch that specific test go red, restore), because the vacuous shapes all look correct while proving nothing
 
 ## Apparent duplication across governing docs may be the RECEIPT for a token budget already paid — check for a pinning test before cutting it, never fund a budget by moving prose between files, and raise the ceiling rather than spend redundancy twice
@@ -144,7 +148,7 @@ dropping them.
 
 ## When you disable a mechanism at its wiring point but keep its implementation, reconcile the retained code's self-descriptions in the same change — or its prose reads as false
 
-## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 plugin/bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree. A governance action the HARNESS dispatches (a skill, a hook trigger) runs that same cache and cannot be redirected, so "I ran the real thing and my change did nothing" is a skew hypothesis before it is a bug hypothesis — verify out-of-band (call the new function against the repo's real state on a copy) rather than debugging code that was never loaded
+## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 plugin/bin/prawduct-hook` — the bare one on PATH is the installed plugin cache. A HARNESS-dispatched governance action runs that cache and CANNOT be redirected, so "I ran the real thing and nothing happened" is a skew hypothesis before a bug hypothesis: verify out-of-band instead
 
 ## A review finding is about a CLAIM, not a file — resolve it by grepping the claim's wording, and never truncate the recommendation you are acting on
 

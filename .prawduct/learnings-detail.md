@@ -6,6 +6,59 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## A background agent's liveness is answered by ITS OWN completion signal, never by reading the files it is midway through writing — a death verdict from a directory listing is how a re-dispatch clobbers a live review. And the grep that "confirms" it may be matching the failure mode's own DOCUMENTATION, which feels exactly like verification
+
+Observed twice. `critic_consolidate._archive_leftovers` exists because on **2026-08-02** "a premature
+death verdict led to a re-dispatch that clobbered the first manifest — the first review became
+unreconstructable from disk." On **2026-08-05** the identical sequence ran again, with that docstring
+in the agent's own context: a `verify-resolutions` review was live, a shell `ls` of
+`.prawduct/.critic-partials/` was read as "it never dispatched", and a `cumulative` was dispatched
+over it, overwriting the live manifest. The running reviewer saved it — it declined to write a
+`reviewer`-role partial into a three-role coordinator roster (which would have failed consolidation
+closed or corrupted the merge) and declined `critic-end` on a marker that now belonged to a different
+review — and the archive preserved the forensics. Nothing was lost; a full ~13-minute round was.
+
+Two distinct errors, and the second is the subtler one. **Liveness from disk state**: an agent's
+partials directory is mid-write by definition, so a snapshot of it answers no question about whether
+the agent is alive. The harness delivers a completion notification unprompted; that is the only
+signal. **A grep that reads as confirmation**: the diagnosis was "confirmed" by grepping the
+transcript for `scope-widened` and finding it — in the *skill's own protocol prose* describing the
+demotion rule, not in any command output. A string match against documentation of a failure mode is
+indistinguishable from a match against an instance of it, and it carries the full felt weight of
+having checked.
+
+The mechanical remedy is narrow: wait for the notification. The generalisable one is that a
+retrieval step (P24) can be satisfied by the wrong document — before treating a match as evidence,
+ask whether the text found is *describing* the thing or *being* the thing.
+
+Related: the fix that would make the wrong diagnosis harmless is a refusal at `critic-begin` when the
+existing manifest names a review still inside the in-flight grace window (`dispatch_age_minutes`
+already sits unused at that site). Tracked on the concurrent-dispatch guard item.
+
+---
+
+## A safety argument and its counterexample can sit two paragraphs apart in YOUR OWN writing and never meet, because each answers a different question — before clearing a reader/caller/path as unaffected, re-read what you just wrote about the mechanism's lifetime and ask it against the clearance, not against the wording it was written for
+
+Building the `.critic-findings.json` supersession marker (#595), I considered whether
+`briefing._summarize_critic_findings` — the cross-session renderer — also needed the marker, and
+cleared it: `prawduct-hook clear` refuses to run while a review is active, so that reader would only
+ever meet a superseded record after an abandoned review, when the record genuinely *is* the newest
+completed one. Two Critic reviewers independently found this false (R-3, R-10).
+
+The counterexample was in my own docstring, written minutes earlier and two paragraphs above the
+code: *"a dispatched review can expire by TTL or be swept at a session boundary, and neither path
+passes through here to retract anything."* That is precisely why the `clear` guard does not close the
+window — the record outlives every in-session signal. I wrote the sentence while deciding **how to
+word the notice** (should it claim liveness, or state a fact about the record?) and never ran it past
+the separate question **which readers need the marker**. Same fact, two questions, no crossing.
+
+The failure is not carelessness and re-reading more carefully is not the fix, because on the second
+question the docstring does not *look* relevant. What works is mechanical: when clearing a
+consumer as unaffected, the clearance rests on some claim about how long the state lives or who
+guards it — go find what you already wrote about that lifetime and ask *this* question of it.
+
+---
+
 ## A sample you sliced for DISPLAY is not the set — if the command that formed your impression carried a `[:8]` or a `head`, re-run it unsliced before writing "all/every/entirely", because the slice is invisible in the output you read back. A RETRACTION is where this bites hardest
 
 A Critic warning retracted a claim I had measured in an unrepresentative scratch repo. Fixing it, I
