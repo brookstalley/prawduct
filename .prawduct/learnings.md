@@ -144,7 +144,7 @@ dropping them.
 
 ## When you disable a mechanism at its wiring point but keep its implementation, reconcile the retained code's self-descriptions in the same change — or its prose reads as false
 
-## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 plugin/bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree
+## When verifying a framework-repo `lib/`/`bin/` change by running the hook, invoke the repo-local `python3 plugin/bin/prawduct-hook` — the bare `prawduct-hook` on PATH is the installed plugin cache, not your working tree. A governance action the HARNESS dispatches (a skill, a hook trigger) runs that same cache and cannot be redirected, so "I ran the real thing and my change did nothing" is a skew hypothesis before it is a bug hypothesis — verify out-of-band (call the new function against the repo's real state on a copy) rather than debugging code that was never loaded
 
 ## A review finding is about a CLAIM, not a file — resolve it by grepping the claim's wording, and never truncate the recommendation you are acting on
 

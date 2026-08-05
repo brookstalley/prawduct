@@ -3,6 +3,54 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: the cumulative's five warnings — three false records and a signal that reached nobody
+
+<!-- prawduct: type=fix | scope=ephemeral-worktrees -->
+
+<!-- No `chunks=`: review dispositions for `rev-20260805T165453Z-2cf52cde`, spanning both this
+     branch's plan work and the #595 rider. Flips no Status checkbox. -->
+
+**The marker shipped one commit earlier reached the direct reader and not the one it was written
+for** (R-3 and R-10, found independently by two reviewers). `briefing._summarize_critic_findings`
+reads the same `.critic-findings.json` and rebuilds the section field by field, so it dropped all
+three supersession keys and presented a superseded review's counts and `NEXT-ACTION:` as current.
+That reader is the cross-session builder — by its own comment, "DEFINITIONALLY the one who lost the
+reviewer's report", and so exactly the reader who cannot compare what they hold against a review id
+they never saw. My own reason for thinking this path was safe was wrong in a way my own docstring
+had already recorded: I checked that `clear` refuses while a review is active and stopped there,
+having written two paragraphs earlier that a dispatched review's marker *expires by TTL and is
+swept at a session boundary*. The notice now leads the section, before the summary and directive it
+qualifies.
+
+**Three comments described mechanisms that do not exist.** The harness-invoked carve-out justified
+itself partly by "a human driving it who can see the banner" — nothing in the banner or the session
+digest mentions ephemerality, and the carve-out returned *before* the detection ran, so `clear` and
+`stop` inside an agent worktree emitted no ephemeral signal at all (R-1, R-12). Detection now runs
+first and the harness path emits the HEAD-snapshot notice while still refusing nothing, which makes
+the comment's claim true rather than deleting it. Separately, the backlog guard's rationale said the
+markdown backend "writes `.prawduct/backlog.md` in THIS tree and falls through to the per-op set" —
+`cmd_backlog` is always the gh adapter and has no markdown path (R-5). The real markdown filing path
+is the SKILL's own Read/Write on that file, which invokes no command and is invisible to any command
+guard; that residual strand is now in Scope-out instead of implied to be covered.
+
+**A fail-closed guard with a fail-open seam** (R-4). `lib/backlog/cli.py` owns the op surface; the
+hook re-stated it as hand-maintained tables. They agreed across all 21 ops and nothing kept them
+agreeing — and the drift is asymmetric: an op added later that writes locally but is missed in
+`_BACKLOG_LOCAL_WRITE_OPS` is **allowed** on a service-backed repo, because the service-backed early
+return fires before the per-op set. `cli._ALL_OPS` now builds the unknown-op message (so it cannot
+go stale while that message is right), and a partition test names the previously-implicit
+service-only remainder, so adding an op fails until someone classifies it.
+
+**The exception got a rail, and the rail is partial** (R-11). `docs/norms.md` § "Exceptions expire"
+puts a temporary exception's clock on a tracking item; this one lived in plan frontmatter that no
+time-domain organ walks. Filed as **#596**, linked from the exception. Stated plainly there and
+here: the Issues backend has no write path for `revisit:` (#564), so the trigger is body prose —
+findable by a human, walked by no probe. That is more than frontmatter and less than the norm asks,
+and calling it a discharge would be the same species of false record as the three comments above.
+
+Ten notes accepted with recorded disposition facts; two of them (R-2, R-9) were bookkeeping this
+entry and the plan's Context now carry.
+
 ## 2026-08-05: the findings view now says which review it is
 
 <!-- prawduct: type=fix | scope=ephemeral-worktrees -->

@@ -18,6 +18,9 @@ Real ``git`` repos, sterile env, mirroring ``tests/test_project_dir_resolution.p
 
 from __future__ import annotations
 
+import functools
+import importlib.machinery
+import importlib.util
 import os
 import subprocess
 import sys
@@ -27,6 +30,22 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
+sys.path.insert(0, str(ROOT))
+
+
+@functools.lru_cache(maxsize=1)
+def _hook_module():
+    """The extensionless hook script, imported for its classification tables.
+
+    SourceFileLoader because the script has a shebang and no ``.py`` extension;
+    the module name is not ``__main__``, so its CLI dispatch does not run at
+    import. Same idiom as ``test_bug_inbox.py``.
+    """
+    loader = importlib.machinery.SourceFileLoader("prawduct_hook_ephemeral", str(HOOK))
+    spec = importlib.util.spec_from_loader("prawduct_hook_ephemeral", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +401,86 @@ class TestGuardAllowsReads:
         assert "your prompt is newer" in stderr
 
 
+class TestBacklogOpClassificationIsBound:
+    """The guard's backlog tables must stay a PARTITION of the CLI's op surface.
+
+    `lib/backlog/cli.py` owns the ops; `bin/prawduct-hook` classifies them into
+    read-only, writes-locally, and the implicit service-only remainder. They
+    agree today and nothing kept them agreeing — and the drift is asymmetric:
+    an op added later that writes locally but is missed in
+    `_BACKLOG_LOCAL_WRITE_OPS` is **allowed** on a service-backed repo, because
+    the service-backed early return fires before the per-op set. That silently
+    reintroduces the stranded write this whole guard exists to refuse, and the
+    fail-closed posture does not cover it.
+
+    So the remainder is named here rather than left implicit: adding an op to
+    `cli._ALL_OPS` fails this test until someone classifies it, which is the
+    decision the drift was skipping.
+    """
+
+    #: Ops that only ever talk to the service — no local write, so they cannot
+    #: strand and the service-backed allowance covers them correctly.
+    SERVICE_ONLY = frozenset({
+        "file", "status", "update", "comment", "claim", "unclaim",
+        "link", "unlink", "provision", "reconcile-labels", "merge",
+    })
+
+    def _tables(self):
+        hook = _hook_module()
+        return (
+            frozenset(hook._EPHEMERAL_READ_ONLY_OPS["backlog"]),
+            frozenset(hook._BACKLOG_LOCAL_WRITE_OPS),
+        )
+
+    def test_the_three_classifications_partition_the_cli_op_surface(self):
+        from lib.backlog import cli
+
+        read_only, local_write = self._tables()
+        all_ops = frozenset(cli._ALL_OPS)
+        classified = read_only | local_write | self.SERVICE_ONLY
+
+        assert all_ops - classified == frozenset(), (
+            "backlog op(s) the ephemeral guard does not classify — decide whether "
+            "each writes into THIS tree (add to _BACKLOG_LOCAL_WRITE_OPS, or it "
+            "will be ALLOWED on a service-backed repo and strand), is read-only "
+            "(_EPHEMERAL_READ_ONLY_OPS['backlog']), or is service-only (add to "
+            "this test's SERVICE_ONLY)"
+        )
+        assert classified - all_ops == frozenset(), (
+            "the guard classifies backlog op(s) `cli.run` no longer dispatches"
+        )
+
+    @pytest.mark.parametrize(
+        "a,b",
+        [("read_only", "local_write"), ("read_only", "service_only"),
+         ("local_write", "service_only")],
+    )
+    def test_the_classifications_are_disjoint(self, a, b):
+        read_only, local_write = self._tables()
+        sets = {"read_only": read_only, "local_write": local_write,
+                "service_only": self.SERVICE_ONLY}
+        assert sets[a] & sets[b] == frozenset(), (
+            f"{a} and {b} both claim an op — one of them is wrong about whether "
+            "it writes into this tree"
+        )
+
+    def test_the_op_surface_is_the_one_the_unknown_op_message_names(self):
+        """`_ALL_OPS` builds that message, so it cannot go stale silently — this
+        pins the coupling rather than the list, which would just be a second
+        copy of the thing that drifts."""
+        from lib.backlog import cli
+
+        source = (ROOT / "lib" / "backlog" / "cli.py").read_text()
+        assert "'|'.join(_ALL_OPS)" in source, (
+            "the unknown-op message no longer derives from _ALL_OPS — the list "
+            "is now free to drift from what `run` dispatches"
+        )
+        # And the dispatcher really does handle each one (a name in the tuple
+        # that `run` never branches on would classify a phantom).
+        for op in cli._ALL_OPS:
+            assert f'"{op}"' in source, f"{op!r} is in _ALL_OPS but `run` never names it"
+
+
 class TestGuardScope:
     def test_normal_worktree_is_unaffected(self, tmp_path):
         primary = tmp_path / "primary"
@@ -418,6 +517,25 @@ class TestGuardScope:
         _init_repo(primary)
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, "backlog", "show", "ABC-1234").stderr
+
+    def test_harness_command_is_exempt_from_the_refusal_but_not_the_notice(self, tmp_path):
+        """The carve-out is a hole in the REFUSAL only.
+
+        `clear`/`stop` are the harness's calls, not the agent's — refusing one
+        breaks the session outright. But an earlier form returned before the
+        detection ran, so those invocations emitted no ephemeral signal at all,
+        while the carve-out's own comment justified itself partly by "a human
+        driving it who can see the banner". Nothing in the banner or the session
+        digest mentions ephemerality, so that channel carried the fact nowhere —
+        a justification naming an empty channel reads as coverage the guard does
+        not have. The notice is the channel; this pins that it fires.
+        """
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+        result = _run(wt, "clear", "--brief-only")
+        assert "BLOCKED" not in result.stderr  # still exempt from the refusal
+        assert "snapshot of the commit it was forked from" in result.stderr
 
     def test_override_env_reverses_the_refusal_but_keeps_the_notice(self, tmp_path):
         """The override waives permission to write, not the staleness warning.

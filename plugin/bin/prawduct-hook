@@ -5235,9 +5235,19 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
             # On the Issues backend a live-backlog op is a network write against
             # `--repo owner/repo`. It lands on the server and outlives the
             # worktree, so it cannot strand, and refusing it would be exactly
-            # the false refusal this guard must avoid. The markdown backend
-            # writes `.prawduct/backlog.md` in THIS tree — the stranding case —
-            # and falls through to the per-op set below.
+            # the false refusal this guard must avoid.
+            #
+            # What the FALL-THROUGH does is narrower than it looks, and an
+            # earlier comment here claimed otherwise: `cmd_backlog` is always the
+            # gh adapter, with no markdown path at all. So on a markdown-backend
+            # repo the fall-through refuses adapter ops that would have been
+            # network calls — harmless fail-closed — and never intercepts a
+            # `.prawduct/backlog.md` write, because no `prawduct-hook` command
+            # makes one. The markdown backend's real filing path is the backlog
+            # SKILL's own read-modify-write on that file via Read/Write, which
+            # invokes no command and is therefore invisible to any command
+            # guard. That residual strand is recorded in the build plan's
+            # Scope-out rather than papered over here.
             return False
 
     read_only_ops = _EPHEMERAL_READ_ONLY_OPS.get(command)
@@ -5264,10 +5274,29 @@ def _backlog_is_service_backed(project_dir: Path) -> bool:
         return False
 
 
+def _print_ephemeral_notice(kind: str, project_dir: Path) -> None:
+    """The HEAD-snapshot notice, on every path that proceeds.
+
+    One function because three callers emit it for three different reasons
+    (read-only command, dispatcher override, harness-invoked carve-out) and the
+    text is the same answer to the same question each time — a second copy is
+    how one of them ends up saying something the others do not.
+    """
+    print(
+        f"NOTE: this is an ephemeral {kind} worktree ({project_dir}). Every "
+        "tracked file here — build plans, artifacts, learnings — is a "
+        "snapshot of the commit it was forked from, so uncommitted changes "
+        "in the dispatching session are NOT visible. Where a file and your "
+        "prompt disagree, your prompt is newer.",
+        file=sys.stderr,
+    )
+
+
 def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) -> int:
     """0 to proceed; 1 when a state write from a disposable worktree must refuse.
 
-    Also emits the HEAD-snapshot notice for commands that DO proceed: a
+    Also emits the HEAD-snapshot notice for EVERY command that proceeds,
+    harness-invoked ones included: a
     worktree-isolated agent reads every tracked file as a snapshot of the fork
     point, so a dispatcher's uncommitted governing artifacts are invisible to it.
     That silence is what made the source report's agent hold a build plan
@@ -5277,18 +5306,6 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
     so `git worktree add` never materializes it).
     """
     override = bool(os.environ.get(_EPHEMERAL_OVERRIDE_ENV))
-    if command in _HARNESS_INVOKED_COMMANDS:
-        # A DELIBERATE HOLE, stated rather than left to be discovered: `clear`
-        # and `stop` are among the largest `.prawduct/` writers, and their
-        # writes DO strand in a disposable worktree. They are exempt anyway
-        # because they are the harness's calls, not the agent's — refusing one
-        # breaks the session outright instead of protecting it, and a session
-        # that fires SessionStart inside an agent worktree has a human driving
-        # it who can see the banner. The exposure is bounded by the guard
-        # upstream: `critic-begin` is refused, so no review can be active for a
-        # `subagent-stop` to consolidate. So the chunk's contract is "every
-        # AGENT-invoked `.prawduct/`-mutating command", not literally every one.
-        return 0
     try:
         kind = _gitstate().is_ephemeral_worktree(project_dir)
     except ImportError:
@@ -5303,19 +5320,33 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
     if kind is None:
         return 0
 
+    if command in _HARNESS_INVOKED_COMMANDS:
+        # A DELIBERATE HOLE in the REFUSAL, stated rather than left to be
+        # discovered: `clear` and `stop` are among the largest `.prawduct/`
+        # writers, and their writes DO strand in a disposable worktree. They are
+        # exempt anyway because they are the harness's calls, not the agent's —
+        # refusing one breaks the session outright instead of protecting it. The
+        # exposure is bounded by the guard upstream: `critic-begin` is refused,
+        # so no review can be active for a `subagent-stop` to consolidate. So the
+        # chunk's contract is "every AGENT-invoked `.prawduct/`-mutating
+        # command", not literally every one.
+        #
+        # The NOTICE still fires, and the detection above now runs before this
+        # branch so it can. An earlier form returned here first and justified the
+        # hole partly by "a human driving it who can see the banner" — nothing in
+        # the SessionStart banner or the session digest mentions ephemerality, so
+        # that path emitted no signal at all on the one path where a human could
+        # act. A justification naming a channel that carries nothing is worse
+        # than an unjustified hole: it reads as coverage.
+        _print_ephemeral_notice(kind, project_dir)
+        return 0
+
     if override or not _ephemeral_command_writes(command, argv, project_dir):
         # The override waives the REFUSAL, not the notice. They answer different
         # questions — "may I write here" versus "how old is what I am reading" —
         # and a dispatcher who opted into writing has not thereby learned that
         # its artifacts are a fork-point snapshot.
-        print(
-            f"NOTE: this is an ephemeral {kind} worktree ({project_dir}). Every "
-            "tracked file here — build plans, artifacts, learnings — is a "
-            "snapshot of the commit it was forked from, so uncommitted changes "
-            "in the dispatching session are NOT visible. Where a file and your "
-            "prompt disagree, your prompt is newer.",
-            file=sys.stderr,
-        )
+        _print_ephemeral_notice(kind, project_dir)
         return 0
 
     print(

@@ -25,7 +25,7 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "no probe or gate on the hot path may block or noticeably delay session start → **binds Chunk 01 and constrains the implementation.** The guard runs pre-dispatch on *every* `prawduct-hook` invocation, `clear` and `stop` included. The predicate is therefore ordered so the pure-string path test gates the git probe: a worktree not under `.claude/worktrees/` returns `None` having spawned no subprocess, which is every session outside an agent worktree"
-      - "proportionality ratchets both ways — a control names the yield it expects and emits it observably → **EXCEPTION, recorded (was wrongly claimed as conformance).** The yield arm is NOT satisfied: the refusal reaches stderr inside a worktree that is then deleted, and its escalation (\"report this in your final message\") is model-mediated, so nothing countable survives for the janitor Norm Health sweep to retire the guard on. **Trigger to close:** the first time anyone asks whether this guard has ever fired. **Discharge then:** append a firing fact to the shared evidence store, which outlives the worktree via `<git-common-dir>` — the same property Chunk 02 relies on to classify ephemeral facts at all. Deferred now because a control that writes evidence from its own refusal path needs its own design pass, not a line in this one. **Class, not instance:** `_check_binary_skew` (#227, also post-2026-07-29) has the identical shape, so one fix should route through both pre-dispatch guards"
+      - "proportionality ratchets both ways — a control names the yield it expects and emits it observably → **EXCEPTION, recorded (was wrongly claimed as conformance).** The yield arm is NOT satisfied: the refusal reaches stderr inside a worktree that is then deleted, and its escalation (\"report this in your final message\") is model-mediated, so nothing countable survives for the janitor Norm Health sweep to retire the guard on. **Trigger to close:** the first time anyone asks whether this guard has ever fired. **Discharge then:** append a firing fact to the shared evidence store, which outlives the worktree via `<git-common-dir>` — the same property Chunk 02 relies on to classify ephemeral facts at all. Deferred now because a control that writes evidence from its own refusal path needs its own design pass, not a line in this one. **Class, not instance:** `_check_binary_skew` (#227, also post-2026-07-29) has the identical shape, so one fix should route through both pre-dispatch guards. **Rail: #596** — filed because `docs/norms.md` § 'Exceptions expire' puts the clock on a tracking item, and this clock had been living only here, in plan frontmatter no time-domain organ walks (`probe_revisit_due` returns `[]` post-cutover; the janitor's Norm Health sweep walks Direction/registry homes, not frontmatter). Found by the cumulative's R-11. **The rail is partial and this is the honest word for it:** the Issues backend has no write path for `revisit:` (itself filed as #564), so the trigger lives as body prose on #596 — enumerable by a human reading the issue, still walked by no probe until #564 lands. Filing it does not make the exception expire visibly; it makes it *findable*, which is strictly more than frontmatter and strictly less than the norm asks"
       - "review wall-clock is a P0 constraint → **conforms, and Chunk 02 defends it.** A `/prawduct:critic` run inside an agent worktree spends full review unit-cost on a fact that covers nothing; naming those facts is what makes that waste visible"
       - "state-file growth past its threshold is an advisory warning, never a hard block → inapplicable because no chunk changes a state file's size posture"
 last_validated: 2026-08-05
@@ -70,10 +70,19 @@ overridable, and the bound holds without it.
 - [ ] Chunk 02: Evidence facts carry visible worktree provenance
 - [ ] Chunk 03: Delegation guidance states the snapshot and the shared index
 Context: Built 2026-08-05 from issue #594, on `fix/ephemeral-agent-worktrees` off
-`develop@b994bfa`. Chunk 01 committed (`5fd2f45`), reviewed clean. Chunk 02 built and
-reviewed. Chunks 02-03 committed (`493b5e0`). Status checkboxes stay `[ ]` on purpose —
-`views_enabled` regenerates them at the develop→main promotion, not at merge.
-Next: the `cumulative` review Chunk 03's `Type: cumulative-final` owes.
+`develop@b994bfa`. Chunk 01 committed (`5fd2f45`), reviewed clean. Chunks 02-03 committed
+(`493b5e0`). Status checkboxes stay `[ ]` on purpose — `views_enabled` regenerates them at
+the develop→main promotion, not at merge. All three chunks are built; the
+`cumulative` Chunk 03's `Type: cumulative-final` owed ran as `rev-20260805T165453Z-2cf52cde`
+(0 blocking, 5 warning, 10 note), and its dispositions are the remaining work.
+
+**Riders — work on this branch that this plan does NOT own.** The branch carries two by
+owner decision, both recorded in the change-log with an explicit `<!-- No chunks= -->`
+rationale rather than folded into a chunk: the **fix-don't-file norm birth**, and **#595**
+(the `.critic-findings.json` supersession marker, `d0a4f00` + the cumulative's R-3/R-10
+follow-up). Neither appears in the chunk roster below and neither should — they flip no
+Status checkbox. Read the change-log for their records; this note exists so a reader who
+diffs the branch against these three chunks does not read the extra commits as scope drift.
 
 Dispatch note: pass `--scope ephemeral-worktrees` to `/prawduct:critic` on this branch. The
 branch name does not name the scope, so record-lint otherwise resolves the graded plan from
@@ -234,3 +243,12 @@ alternative was rejected on that reversed asymmetry, not by overlooking the prec
   does not block on them.
 - **Issue #221's cross-worktree mismatch guard** (WT1-WT6) — a different predicate needing a
   session-scoped marker. Explicitly not started here.
+- **The markdown backend's filing path is out of reach of any command guard.** The guard
+  classifies `prawduct-hook backlog` ops, and `cmd_backlog` is always the gh adapter — it has
+  no markdown path. On a markdown-backend repo the backlog SKILL files by reading
+  `.prawduct/backlog.md`, editing it and writing it back with Read/Write, invoking no command
+  at all. So an isolated agent on that backend still strands a filed item, invisibly. Not
+  closable here (a command guard cannot see a file edit); closing it would take a different
+  mechanism — a write-time check, or a `PostToolUse:Write` matcher. Recorded because the
+  guard's own comment previously implied it covered this case, which read as coverage that
+  does not exist.
