@@ -84,7 +84,7 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4657,
+    "methodology/building.md": 4803,
     "skills/critic/review-protocol.md": 3589,
     "skills/critic/goals-1-3.md": 1994,
     "skills/critic/review-cycle.md": 9471,
@@ -522,8 +522,26 @@ class TestBuildingMethodology:
         # `changes_referenced`/`changes_unjudged` parenthetical. doctor/SKILL.md
         # points HERE for the evidence shape, so this file is its referenced
         # home, not a copy of one.
+        # RAISED 4660 -> 4810 (2026-08-05, #594). Paid for by ACCEPTING the cost,
+        # not by offsetting it, and the attempt to offset is why: the two
+        # delegation hazards added here (a worktree-isolated subagent reads HEAD,
+        # so uncommitted governing artifacts are invisible; a shared-worktree
+        # subagent shares your git INDEX, so a pathspec-less commit takes its
+        # staged work) are +146 against 3 tokens of headroom. Three candidate
+        # trims were tried and reverted: the standing block and the
+        # warnings-gate-nothing rule are both pinned by tests in this class —
+        # and `test_standing_block_is_on_every_surface_that_claims_it` records
+        # that an EARLIER budget trim was already funded by relocating that
+        # rule's rationale, so the redundancy a fresh trim would harvest has
+        # been spent once already. Relocating prose to another file was rejected
+        # outright: it moves cost between files without reducing the total
+        # footprint, which is the only number that matters.
+        # What the +146 buys: the shared-index hazard has already produced a
+        # real commit that deleted three test files under a message asserting no
+        # test was deleted, and the HEAD-snapshot hazard put a subagent's
+        # governing artifact in contradiction with its own prompt.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4660, f"building.md is ~{tokens} tokens, should be <4660"
+        assert tokens < 4810, f"building.md is ~{tokens} tokens, should be <4810"
 
 
 # =============================================================================

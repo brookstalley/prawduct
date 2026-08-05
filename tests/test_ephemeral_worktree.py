@@ -90,12 +90,25 @@ def gitstate():
     return gs
 
 
-def _run(repo: Path, *args: str, env_extra: dict[str, str] | None = None):
+def _hook_env(repo: Path, env_extra: dict[str, str] | None = None) -> dict[str, str]:
+    """The sterile env every hook invocation in this file must use.
+
+    Extracted because hand-building it drifted vacuous TWICE: an inherited
+    `PRAWDUCT_ALLOW_EPHEMERAL_WRITES` makes a "not refused" assertion pass for
+    the wrong reason, and an inherited `CLAUDE_PLUGIN_ROOT` makes the hook print
+    BLOCKED from the *skew* guard rather than this one. Both failures look like
+    a passing test. One helper, so a third caller cannot diverge.
+    """
     env = {**os.environ}
     env.pop("CLAUDE_PLUGIN_ROOT", None)
     env.pop("PRAWDUCT_ALLOW_EPHEMERAL_WRITES", None)
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     env.update(env_extra or {})
+    return env
+
+
+def _run(repo: Path, *args: str, env_extra: dict[str, str] | None = None):
+    env = _hook_env(repo, env_extra)
     return subprocess.run(
         [sys.executable, str(HOOK), *args],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=60,
@@ -406,16 +419,12 @@ class TestGuardScope:
         primary = tmp_path / "primary"
         _init_repo(primary)
         wt = _agent_worktree(primary)
-        # Build the env the same way `_run` does — popping the override — or the
-        # assertion passes whenever the ambient shell happens to export it, which
-        # is vacuous rather than wrong-looking. Same defect class as the
-        # exit-code-only assertion caught by red-verifying this file.
-        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(wt)}
-        env.pop("PRAWDUCT_ALLOW_EPHEMERAL_WRITES", None)
+        # Shares `_run`'s env construction rather than rebuilding it — a
+        # hand-built copy here drifted vacuous twice before.
         result = subprocess.run(
             [sys.executable, str(HOOK), "stop"],
             cwd=str(wt), capture_output=True, text=True, input="{}",
-            env=env, timeout=60,
+            env=_hook_env(wt), timeout=60,
         )
         assert "BLOCKED" not in result.stderr
 

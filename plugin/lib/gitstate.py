@@ -151,6 +151,27 @@ def _under_claude_worktrees(project_dir: Path) -> bool:
     )
 
 
+def ephemeral_worktree_kind_of_path(path: str | Path) -> str | None:
+    """The pure-path half of :func:`is_ephemeral_worktree` — no git, no stat.
+
+    Split out for readers that must classify a path they cannot probe: an
+    evidence fact records ``actor.worktree`` as a string, and by the time
+    anyone reads it that worktree is usually deleted, so the branch fallback
+    below would answer ``None`` for every historical record. Path shape is the
+    only signal that survives the tree it describes.
+    """
+    try:
+        candidate = Path(path)
+    except TypeError:
+        return None
+    if not _under_claude_worktrees(candidate):
+        return None
+    for pattern, label in _EPHEMERAL_DIR_PATTERNS:
+        if pattern.match(candidate.name):
+            return label
+    return None
+
+
 def is_ephemeral_worktree(project_dir: Path) -> str | None:
     """``"agent"``/``"workflow"`` when ``project_dir`` is a DISPOSABLE worktree,
     else ``None``.
@@ -184,12 +205,15 @@ def is_ephemeral_worktree(project_dir: Path) -> str | None:
         project_dir = Path(project_dir)
     except TypeError:
         return None
+    # Path shape first, and the ancestor test exactly once: the common case (any
+    # tree not under `.claude/worktrees`) answers here having spawned no
+    # subprocess, which is what keeps this off the hook's hot path.
     if not _under_claude_worktrees(project_dir):
-        return None  # hot path: no subprocess, no stat
-
+        return None
     for pattern, label in _EPHEMERAL_DIR_PATTERNS:
         if pattern.match(project_dir.name):
             return label
+
     branch = current_branch(project_dir)
     if branch is not None and _EPHEMERAL_BRANCH_PATTERN.match(branch):
         return "agent"

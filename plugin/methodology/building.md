@@ -70,7 +70,7 @@ There is no "pre-existing" exception — tests, broad exceptions, stale artifact
 
 **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Flag ambiguity before building; don't guess silently. Validate that referenced files and components still exist — plans go stale. Run `/prawduct:learnings [chunk focus]` for relevant rules before coding.
 
-**Persist plans immediately.** When scope evolves — new chunks, discovered gaps — update `build-plan.md` at once.
+**Persist plans immediately.** When scope evolves — new chunks, discovered gaps — update `build-plan.md` at once. *Writing* it is not enough before you delegate: a worktree-isolated subagent reads HEAD, so an uncommitted amendment is invisible to it (see "Delegating Work to Subagents").
 
 **Write tests.** Tests come first or alongside implementation, not after. If you can't write the test, you don't understand the requirement well enough to implement it.
 
@@ -159,9 +159,9 @@ Research scales to impact: **medium** (pervasive pattern, non-core dep) → quic
 
 **When the user asks you to work in a subagent, do it** (Principle 23) — also when chunks are independent and parallelizable, a well-scoped chunk benefits from a clean context, or the main context is large.
 
-**How:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`, then `.prawduct/.subagent-briefing.md` for conventions and learnings,"** and to run the full suite before and after.
+**How:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`, then `.prawduct/.subagent-briefing.md` for conventions and learnings,"** and to run the full suite before and after. **A worktree-isolated subagent has no briefing file** — it is gitignored, so `git worktree add` never creates it; put what that agent needs in the prompt.
 
-**Parallel chunks:** launch independent chunks as separate subagents, await results, run the combined suite, then Critic. Merge conflicts are the main agent's job. Shared-worktree subagents see each other's partial edits — use `isolation: "worktree"` when truly independent. The canary may fire O(agents × edits) — expected; note it in the reflection.
+**Parallel chunks:** launch independent chunks as separate subagents, await results, run the combined suite, then Critic. Merge conflicts are the main agent's job. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts, including the plan you just amended, are invisible; commit first or pass the content in the prompt, say the prompt outranks any file, and tell it not to write `.prawduct/` (only its code commit returns, so `prawduct-hook` refuses). **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope the `git commit` that follows, so commit with `git commit -- <paths>`. The canary may fire O(agents × edits) — expected; note it in the reflection.
 
 **What stays in the main agent:** Critic, reflection, state updates. The subagent implements; the main agent governs.
 
@@ -201,7 +201,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 ### Modes
 
-`/prawduct:critic` (no args) infers from git + build-plan state; `Critic mode:` in the plan and an explicit slash arg are successive overrides. Four modes:
+`Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes:
 
 - **`chunk`** — Goals 1-3 against the chunk's uncommitted diff.
 - **`final`** — all 7 goals + cross-checks + Framework-Specific Checks.

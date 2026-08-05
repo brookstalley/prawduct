@@ -5175,9 +5175,12 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # `show` is `get`'s alias — `lib/backlog/cli.py` dispatches `op in ("get",
     # "show")` to one handler — and omitting it refused a pure read with a
     # message asserting a discarded write, which is the false refusal this
-    # guard must never produce. `verify-migration` takes no `project_dir` and
-    # so cannot touch local state; `refresh-counts` and `import` do take one,
-    # which is exactly why they sit in `_BACKLOG_LOCAL_WRITE_OPS` below.
+    # guard must never produce. `verify-migration` is read-only because
+    # `migrate.verify_migration` contains no write, which is the only test that
+    # settles it. Note what is NOT the test: taking a `project_dir` is not
+    # necessary for a local write — `export` and `restructure-preview` take
+    # none and write to caller-supplied `--to`/`--out` paths, which is why they
+    # sit in `_BACKLOG_LOCAL_WRITE_OPS` below alongside the two that do.
     "backlog": frozenset({"get", "show", "list", "counts", "pick", "verify-migration"}),
 }
 

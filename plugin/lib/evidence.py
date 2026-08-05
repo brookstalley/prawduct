@@ -589,6 +589,43 @@ def evidence_cmd(project_dir: Path, argv: list[str]) -> int:
     return 1
 
 
+def is_ephemeral_fact(fact: dict) -> bool:
+    """Whether one fact was recorded from a disposable worktree.
+
+    The per-fact predicate is the public one so no caller has to hold a
+    collection to ask the question — an earlier version marked list rows by
+    matching ``id()`` against a prebuilt set, which was correct only while
+    ``ephemeral_facts`` returned the very dicts the caller still held, and would
+    have failed silently the moment anything normalized or re-parsed a fact on
+    the way out.
+    """
+    actor = fact.get("actor")
+    if not isinstance(actor, dict):
+        return False  # opaque envelope — never crash a reader on one
+    worktree = actor.get("worktree")
+    if not isinstance(worktree, str):
+        return False
+    return gitstate.ephemeral_worktree_kind_of_path(worktree) is not None
+
+
+def ephemeral_facts(facts: list[dict]) -> list[dict]:
+    """Facts recorded from a disposable worktree, by ``actor.worktree`` shape.
+
+    Derived on READ, never stored: schema 1 already carries the path, so no
+    version moves and every fact already in the store classifies retroactively.
+
+    These facts are **not** filtered out of anything. Tree-keying already makes
+    them cover nothing — a fact recorded against a disposable worktree's tree
+    matches no branch the dispatcher will ever have — so the gates compose
+    correctly today and suppressing the facts would *change* gate behavior
+    rather than describe it (`data-model.md` § Direction: derived views are
+    disposable and never authoritative). What is missing is only that such a
+    fact reads in `evidence status` exactly like a review that covers the
+    branch, so a full-cost review that vouched for nothing looks like coverage.
+    """
+    return [f for f in facts if is_ephemeral_fact(f)]
+
+
 def _cmd_status(project_dir: Path) -> int:
     path = store_path(project_dir)
     if path is None:
@@ -612,6 +649,15 @@ def _cmd_status(project_dir: Path) -> int:
     print(f"facts: {counts}")
     trees = distinct_trees(result["facts"])
     print(f"trees referenced: {len(trees)}")
+    ephemeral = ephemeral_facts(result["facts"])
+    if ephemeral:
+        print(
+            f"from ephemeral worktrees: {len(ephemeral)} (these COVER NO BRANCH — "
+            "recorded in a disposable agent/workflow worktree whose trees no "
+            "branch will ever carry; the review cost was spent, the coverage was "
+            "not gained). Run reviews and test-evidence from the dispatching "
+            "session instead."
+        )
     if len(trees) >= TREE_COUNT_ADVISORY:
         print(
             f"NOTE: {len(trees)} distinct trees. Coverage composition is linear in this "
@@ -669,5 +715,10 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         # Opaque bodies stay opaque: a non-string value here is a valid
         # envelope whose body this lister doesn't understand — never crash.
         tree_note = f" tree={tree[:12]}" if isinstance(tree, str) and tree else ""
-        print(f"{fact.get('ts', '-')}  {fact['kind']:<10} {fact['id']}{tree_note}")
+        # Marked inline rather than filtered: the fact is real and stays listed;
+        # what it does not do is cover a branch.
+        origin = " [ephemeral — covers no branch]" if is_ephemeral_fact(fact) else ""
+        print(
+            f"{fact.get('ts', '-')}  {fact['kind']:<10} {fact['id']}{tree_note}{origin}"
+        )
     return 0

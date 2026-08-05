@@ -69,9 +69,13 @@ overridable, and the bound holds without it.
 - [ ] Chunk 01: The ephemeral-worktree predicate and the pre-dispatch refusal
 - [ ] Chunk 02: Evidence facts carry visible worktree provenance
 - [ ] Chunk 03: Delegation guidance states the snapshot and the shared index
-Context: Plan written 2026-08-05 from issue #594, on `fix/ephemeral-agent-worktrees` off
-`develop@b994bfa`. Baseline suite green (`python3 -m pytest tests/ -q`). Nothing built yet.
-Next: Chunk 01.
+Context: Built 2026-08-05 from issue #594, on `fix/ephemeral-agent-worktrees` off
+`develop@b994bfa`. Chunk 01 committed (`5fd2f45`), reviewed clean. Chunk 02 built and
+reviewed. Next: Chunk 03 (methodology prose).
+
+Dispatch note: pass `--scope ephemeral-worktrees` to `/prawduct:critic` on this branch. The
+branch name does not name the scope, so record-lint otherwise resolves the graded plan from
+the `active_build_plan` pointer and reports that assumption on every dispatch.
 
 Sibling work in flight: `documentation/issues/221-requirements.md` (landed on `develop`
 this morning) specifies a *different* guard for a *different* predicate — a cross-worktree
@@ -155,6 +159,16 @@ alternative was rejected on that reversed asymmetry, not by overlooking the prec
 - **Deliverables:** provenance classification in `plugin/lib/evidence.py` derived from the
   `actor.worktree` path each fact already carries; the count surfaced in `evidence status`
   and `evidence list`; tests in `tests/` alongside the existing evidence suite
+- **Added during build** (same convention as Chunk 01): the per-fact predicate
+  `is_ephemeral_fact` is public rather than internal, so `evidence list` marks rows by
+  asking about a fact instead of matching `id()` against a set built by another call —
+  correct only while both sides hold the same dict objects, silently wrong the moment
+  anything normalizes one. Two edits belonging to Chunk 01 also landed here, recorded
+  rather than left in the diff: a comment correction in `plugin/bin/prawduct-hook` (Chunk 01
+  justified `verify-migration` as read-only "because it takes no `project_dir`", which
+  `export`/`restructure-preview` falsify), and the extraction of `_hook_env` in
+  `tests/test_ephemeral_worktree.py` after a hand-built subprocess env drifted vacuous a
+  second time.
 - **Tests:** unit — a store containing facts from an agent worktree, a workflow checkout and
   a normal worktree reports the ephemeral count and leaves the fact list unfiltered;
   unit — no gate's composed coverage changes in the presence of ephemeral facts (the

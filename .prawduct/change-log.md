@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: prawduct now knows a worktree can be disposable
+
+<!-- prawduct: type=fix | scope=ephemeral-worktrees | chunks=01,02,03 -->
+
+`methodology/building.md` recommends `isolation: "worktree"` for parallel chunks. Following that
+advice puts a subagent in a worktree forked from HEAD, of which **only the code commit is merged
+back** — and prawduct had no representation of that, so `resolve_project_dir` followed the session
+in and governed it as an ordinary peer checkout. An agent obeying prawduct's own rules ("file it
+via `/prawduct:backlog`") produced a write that died at merge and was told it had succeeded.
+Reported from a product repo (**#594**).
+
+`gitstate.is_ephemeral_worktree` is the missing predicate; a pre-dispatch guard in the hook turns
+every agent-invoked `.prawduct/` write from inside such a tree into a loud refusal naming its
+override, and commands that proceed carry a notice that everything tracked there is a fork-point
+snapshot. That notice matters because it is the **only channel that reaches an isolated agent
+without its dispatcher's cooperation**: the briefing file `building.md` sends every subagent to is
+gitignored, so `git worktree add` never creates it — the standing delegation instruction has been a
+dangling pointer for exactly the isolation mode the next line recommends.
+
+**Three claims in the report were wrong, and checking them changed the design.** Its cheapest
+suggested fix — put the rules in `.subagent-briefing.md`, "a tracked file, so it is copied into
+every agent worktree" — would have shipped a no-op. Detecting on the `.claude/worktrees/` parent
+alone, as proposed, would have false-positived on every `EnterWorktree` session worktree, which
+lives under the same parent and is legitimate and long-lived; silencing governance there is worse
+than the strand being fixed, so the harness id shape is required and the negative cases are pinned.
+And provenance needed no schema change: the evidence envelope already carries `actor.worktree`, so
+`evidence status`/`list` classify on read and label facts already in the store.
+
+Sibling of **#221**, not a duplicate: that guards a cross-worktree *mismatch* and needs a
+session-scoped marker; this asks whether the correctly-resolved tree is *disposable*, which needs no
+persisted state. The predicate lives in `gitstate.py` so #221's guard composes with it.
+
+**The guard fails closed** — an unlisted command is refused here, inverting `_DATA_PLANE_COMMANDS`'s
+permissive default. The asymmetry that justified it there is reversed: this fires only inside
+`.claude/worktrees/agent-*`, so over-refusal costs one env var while under-refusal costs the silent
+strand under repair.
+
+**`building.md`'s token ceiling moved 4660 → 4810, accepted rather than offset.** Three trims were
+tried and reverted: the standing block and the warnings-gate-nothing rule are both test-pinned, and
+the standing-block pin records that an earlier budget trim was *already funded* by relocating that
+rule's rationale — the redundancy a fresh trim would harvest has been spent once. Relocating prose
+to another file was rejected outright: it moves cost between files without reducing the total
+footprint. What the +146 buys is the shared-index hazard, which has already produced a real commit
+deleting three test files under a message asserting no test was deleted.
+
 ## 2026-08-05: the release gate was asking a question the release had not answered yet
 
 <!-- prawduct: type=fix | scope=release-integrity | chunks=05 -->
