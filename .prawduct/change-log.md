@@ -3,6 +3,181 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: the cumulative's findings, and the guards that could not see the shapes they guarded
+
+<!-- prawduct: type=fix | scope=review-round-pricing -->
+
+**The scope's own failure mode, delivered by its own carriers.** The cumulative review over the
+three chunks returned 0 blocking, 8 warnings, 7 notes; eleven were fixed in one batch, three
+accepted, one split. Three of them are the same defect wearing different clothes: a claim that held
+only on the form it was pinned for. `cost-of-commit` priced a *directory* argument `free` when git
+could not be read — `_working_tree_paths(...) or []` turned a git failure into an empty expansion
+and the argument branch never set `reason`, so the "unknown, never free" asymmetry documented in
+three docstrings was true of the path form only. A builder holding an `index.lock` was told the
+commit was free. Both forms now return `(value, reason)` and both degrade to `unknown`, with the
+git detail carried in the reason — which also makes the broad-except waiver's stated reason true.
+
+**A guard that matches line shapes guards the shapes it was written against.** The
+no-hardcoded-duration sweep walked lines, so it saw `print(...)` and wrapped continuations and
+nothing else; `return {"reason": "...5 minutes"}` and a single-line `return f"...7 minutes"` both
+slipped past — exactly the shapes the emitted `reason` strings use. It walks the AST now, every
+string constant, docstrings excluded. Widening a guard is itself a claim, so the guard's own
+detection is pinned against the shapes that escaped it, with controls for the derived form and for
+bare thresholds.
+
+**Two seconds→minutes renderers shipped in one bundle and only one guarded the sub-minute case** —
+so the surface that literally states the price could say "about 0 min". `telemetry.format_minutes`
+is now the one home for the rendering: the fact had one home, its rendering had two.
+
+**An unreadable ledger was reported as an empty history.** The true cause went to stderr and died
+there while the wrong reason was *persisted* into the findings cache, the ledger event and the
+briefing — reading as "no review history" for a repo holding hundreds. `_read_events` returns the
+read failure as a third value, deliberately not a fourth key in `skipped`, which is published
+inside the registered `review-stats --json` payload; the first attempt did widen it and
+`test_review_stats` caught the leak.
+
+**And the protocol edited in Chunk 03 still quoted the wrong price.** It charged a non-blocking fix
+"a full Critic round", contradicting `_BATCH_FIX_DIRECTIVE`, the gate's churn NOTE and
+`PRICED_MODE = verify-resolutions`, which all quote the delta pass — a reviewer who believes each
+NOTE costs a cumulative files fewer findings than it should, the opposite of that paragraph's
+closing line. Alongside it: the "no paths were given" message printed when paths *were* given and
+expanded to nothing, the quoted price now names "the cheapest round that closes it" (on a branch
+with no prior review the closing round is a cumulative, and `PRICED_MODE` records the
+understatement), and `round_price` states that `duration_seconds` is a reviewer self-estimate so
+the figure is not defended as measured.
+
+**Free-path record work in the same batch:** `cost-of-commit --json` joins the registered emitter
+list with its key set (and the plan gains the `api-contract` `governed_by:` block whose absence
+explains the miss); the cross-cutting Review-loop-termination row records this bundle's four
+carriers, including the first-ever PR-review leg; and the plan's state-file disposition is
+corrected — "no chunk writes to a state file" was true of Chunk 01 and false of Chunk 02, since
+`next_action` rides `ledger_append` into every review event and prints in every briefing.
+
+**Classification:** governance
+
+## 2026-08-05: the warning where the relapse starts, and the route nobody was offering
+
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=03 -->
+
+**The reporter was reading the PR reviewer's findings when it made the commit that re-opened the
+gate.** That is the third of its five failures and the one no previous plan touched: the PR
+reviewer's protocol has never said that acting on its own non-blocking findings costs a Critic
+round. It says so now, positioned where a reviewer reaches it *before* forming any finding — under
+the existing scope boundary it extends rather than contradicts. Placement is the deliverable and the
+test asserts ordering, not presence: the predecessor plan shipped a correct rule into `goals-1-3.md`
+that sat below every section needing it and changed nothing.
+
+**The claim is bounded by delegation rather than by a rule of thumb.** A first draft said a fix
+confined to `.md` prose moves no coverage — false for the governance-protected `.md` under
+`skills/`, `methodology/` and `templates/`, and this file is read by *product* reviewers. It now
+names `cost-of-commit` instead, which asks the classifier that owns the answer. Same shape as the
+enumeration Chunk 02 deleted, caught this time by reading the paragraph as its audience rather than
+by a test.
+
+**A route nobody was offering: the ride-along.** Raised by the owner mid-build and recorded as R6
+before it was built. Fix-now buys a round; accept and file buy none — and the option that costs
+*nothing extra* was missing everywhere. When a branch has further judgeable chunks, a small fix
+carried into the next chunk's commit rides a round that was going to be bought anyway. It ships on
+both surfaces (the PR protocol and the Critic's builder-facing `next_action_line`), always as an
+option with its condition attached — a fix that changes what the bundle claims to ship belongs in
+the bundle — and always naming where the deferral gets written down, because an unrecorded deferral
+is a drop rather than a deferral.
+
+**It also has to distinguish itself from the deferral the same message warns against**, or the
+blocking arm says "deferring turns one review into several" and then offers a deferral one sentence
+later. The distinction is the whole point and is now explicit: deferring to a later *round* buys a
+second round; riding a commit that is being made anyway buys none. A reader who cannot see the
+difference resolves it by ignoring one of the two sentences, and there is no telling which.
+
+**Classification:** governance
+
+## 2026-08-05: the gate knows which round this is, and both arms carry the price
+
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=02 -->
+
+**Round five printed the same words as round one.** Everything the uncovered `check-cumulative-critic`
+block says is a pure function of the current tree, so nothing in it could tell a builder they were
+in a sequence — the reporter's fourth failure, verbatim: *"the gate re-fires identically; block #6
+read exactly like block #1."* The block now leads with a tally: how many review rounds this branch
+has recorded since the merge-base, what they cost, and that the next one is round N+1.
+
+**The count is derived from the branch's own facts, never a counter.** The evidence store is shared
+by every worktree of a clone, so "reviews that exist" is not "reviews this branch bought" — a round
+is attributed by the commit it was taken against lying on HEAD's lineage after the merge-base. A
+dirty-tree review records no `head_commit` and is placed by its `dispatch_commit`, which is what
+keeps the mid-chunk rounds a long branch spends most of from vanishing. One `git rev-list` answers
+both lineage questions by set membership, so the tally costs one subprocess on a path where the
+sibling diagnosis pays two per fact.
+
+**It undercounts in exactly one case, and that is the choice.** A review dispatched before the
+branch's first commit sits AT the merge-base and is not counted; widening the span to include it
+would sweep in the base branch's own reviews and tell a first-round builder they were on round
+four. Undercounting says "at least this many"; overcounting says something false, and a message
+caught being wrong once is discounted forever after.
+
+**Both arms of `next_action_line` now carry what only one did.** The blocking arm ordered the
+builder to decide the WARNING/NOTE findings in the same pass but named neither the accept command
+nor any price — a rule, not a number, which is the reporter's first failure. Both arms quote the
+round price from the Chunk 01 helper, computed per consolidation and shared by the findings cache
+and the relayed `NEXT-ACTION:` line so the two carriers cannot disagree.
+
+**`cost-of-commit` stops being a pull carrier.** A command nobody knows about is precisely the
+failure v3.2.4 diagnosed, so the two surfaces that already reach a builder at the moment of
+committing now name it: the fix-churn NOTE, and the free-write sentence in `next_action_line` —
+which drops its hand-maintained enumeration of free paths in favour of the command that asks the
+classifier owning them. The enumeration was a second authoritative copy of `is_judgeable_path`; its
+guard test is now a pin that it stays deleted. `_BATCH_FIX_DIRECTIVE` keeps its own list on
+purpose — that one is parsed token-by-token and driven against the classifier by
+`TestBatchFixDirective`, so it cannot drift silently, and it addresses a reviewer rather than the
+builder who is about to commit.
+
+**`api-contract.md` gains the `cost-of-commit` row Chunk 01 owed it** — the command shipped last
+chunk without reaching the Operations list, and naming it from two runtime carriers made the
+omission load-bearing rather than cosmetic.
+
+**One hardcoded duration was found and removed on the way through.** `_BATCH_FIX_DIRECTIVE` said
+"5-10 minute rounds" — the exact defect this scope exists to stop — and the no-hardcoded-duration
+sweep was widened to reach it. The sweep names price-bearing surfaces individually rather than
+scanning whole modules, because the same modules carry reviewer-liveness durations that are
+expectations about a subagent, not prices; a guard that flags those forever gets deleted rather
+than fixed.
+
+**Classification:** governance
+
+## 2026-08-05: price a review round before the commit that buys it
+
+<!-- prawduct: type=fix | scope=review-round-pricing | chunks=01 -->
+
+**A consuming agent on v3.2.4 read the shipped loop-termination carriers and still ran six Critic
+rounds on one branch.** That is the first post-fix datum on `review-loop-carriers`, and it is why
+this plan exists rather than being a repeat of that one. The agent quotes `next_action_line`
+verbatim, so it demonstrably received the advice; its own account of why the advice lost names five
+failures, four of which are addressable. The fifth — *"the wording bounds the batch; it doesn't
+bound the sequence"* — is an argument that no advice closes this, and the plan records that limit
+under Requirements rather than burying it, because this is the third round of advice-improvement on
+one failure.
+
+**`prawduct-hook cost-of-commit [<paths>...]`** answers before a commit whether making it buys a
+review round, which is the one fact the reporter could only learn afterwards. It asks
+`is_judgeable_path` — the predicate that will actually charge for the commit — rather than a second
+copy, because a pricing tool that disagrees with the gate is worse than none. It degrades to
+`unknown`, never `free`: "free" from a broken check sends the builder into exactly the commit being
+priced.
+
+**The price is derived from this repo's own ledger at call time and never written down.** The
+report asked for hardcoded numbers; a prose copy of a number drifts and then costs a review round
+to correct, which is the round this is trying to save. One home for the fact, the re-deriving
+command cited beside it, a sample-size floor below which it reports unavailable rather than quoting
+a median of two runs, and a test asserting no emitted string carries a literal duration.
+
+**Two defects of one shape, both found by scrubbing during the review.** A directory is neither
+metadata nor `.md`, so it classifies as judgeable — and git names directories in two places.
+Untracked directories now expand with `-uall`; explicit directory arguments expand to the changed
+files under them, which is what `git add docs/` actually stages. Pricing `docs/` as costing a round
+was the wrong answer the code's own docstring already named.
+
+**Classification:** governance
+
 ## 2026-08-05: the cumulative's five warnings — three false records and a signal that reached nobody
 
 <!-- prawduct: type=fix | scope=ephemeral-worktrees -->

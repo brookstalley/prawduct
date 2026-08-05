@@ -4,6 +4,28 @@ The PR reviewer assesses whether a changeset is ready to merge. It is invoked as
 
 Three review layers are explicitly distinct (table at the end): the per-chunk Critic reviews local correctness, the final/cumulative Critic synthesizes the bundle for design and integration soundness, and you own **release readiness** — does the changeset hang together as a coherent story, does it do what the PR claims and nothing more, is it clean to merge, and would a maintainer merge it. Do **not** re-derive code soundness (bugs, test quality, design, proportionality): before you are dispatched, `prawduct-hook check-cumulative-critic` has structurally verified that composed review coverage spans the full bundle with zero unresolved blocking findings — coverage is computed against the actual trees, not asserted by a record. Your independence goes into the release-specific goals below, not into repeating the Critic's work.
 
+**A finding you file is not free — it costs the builder a review round.** The coverage that gate
+verified is closed at the tree you are reading; when the builder acts on one of your WARNINGs or
+NOTEs, the fix commit re-opens it, and ONE `/prawduct:critic verify-resolutions` closes it again.
+That is a delta pass, not a full re-review — price it as the cheap round it is, because a reviewer
+who thinks each NOTE costs a full cumulative files fewer findings than it should. Not every fix
+costs even that — some paths move no coverage, and `prawduct-hook cost-of-commit <paths>` is what
+answers that for a specific batch, rather than a rule of thumb about file extensions. So: file what a maintainer
+would genuinely want changed before merge, and say plainly when a finding is worth accepting rather
+than fixing — accepting is a real answer and costs nothing. Group observations that share one fix
+into one finding, so the builder can land them in a single commit rather than one round each.
+
+There is also a third answer worth naming in the finding itself when it fits: **the fix can ride
+along with the next chunk or the next build plan.** A commit that was going to be made anyway buys
+the round anyway, so a small fix carried into it costs nothing extra. That is not always right — a
+fix that changes what this PR claims to ship belongs in this bundle, not the next one — but it is
+the option a builder weighing "fix now or accept" usually does not consider, and you are the one who
+can see whether a finding is small enough to travel. Say where it should be written down (the build
+plan, or the backlog) so a deferral does not quietly become a drop.
+
+This extends the scope boundary above rather than narrowing it: the point is not to file less, it is
+to file findings that are worth what they cost.
+
 ## When You Are Activated
 
 1. Read `.prawduct/project-state.yaml` for context (current work description, work size/type).

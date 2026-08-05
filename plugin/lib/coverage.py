@@ -31,6 +31,7 @@ skipped both review gates.)
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -367,6 +368,147 @@ def diagnose_fix_churn(
     }
 
 
+def count_branch_rounds(
+    project_dir: Path, facts: "list[dict]", merge_base: str
+) -> dict:
+    """How many review rounds this branch has already bought, and what they cost.
+
+    Everything the uncovered gate prints is a pure function of the current
+    tree, so round five reads exactly like round one — measured on a consumer
+    branch that ran six of them and reported that block #6 was
+    indistinguishable from block #1. This is the discriminator that lets a
+    repeat round *look* like one.
+
+    It is derived from the branch's own facts, never a stored counter: the
+    evidence store is shared by every worktree of the clone, so "how many
+    reviews exist" is not "how many this branch bought". A round is this
+    branch's when the commit it was taken against lies strictly after the
+    merge-base on HEAD's lineage. ``head_commit`` is that commit for a review
+    of committed state; a dirty-tree review records ``head_commit: null`` and
+    is placed by ``dispatch_commit``, the commit HEAD sat at when the reviewer
+    was dispatched — that round was spent on this branch's work just as surely,
+    and dropping it would undercount exactly the mid-chunk reviews a long
+    branch accumulates most of.
+
+    **The count is a documented lower bound in one case**, and the asymmetry is
+    deliberate: a dirty-tree review taken before the branch's first commit sits
+    AT the merge-base, and ``merge_base..HEAD`` excludes it. Widening the span
+    to include the merge-base commit would sweep in the *base branch's* own
+    reviews, which is the error that tells a first-round builder they are on
+    round four. Undercounting says "at least this many"; overcounting says
+    something false in the direction that discredits the whole message.
+
+    One ``git rev-list`` answers both lineage questions by set membership, so
+    this adds a single subprocess rather than the two-ancestry-checks-per-fact
+    that :func:`diagnose_fix_churn` pays — it runs on the interactive
+    ``/prawduct:pr create`` path against a store holding every review the clone
+    has ever recorded.
+
+    Returns ``{"status": "counted", "rounds", "seconds", "timed"}`` — with
+    ``seconds`` ``None`` when no attributed round recorded a duration — or
+    ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
+    advice fails soft. It is deliberately not silent, because a tally that
+    vanishes when it breaks reads as "round one" to the builder it exists to
+    warn (``learnings.md``: "'advice fails soft' is not 'advice fails silent'").
+    """
+    from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
+
+    if not merge_base:
+        return {"status": "unavailable", "reason": "no merge-base to count from"}
+    if not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "the evidence store did not read"}
+    rc, out, err = evidence.run_git(project_dir, "rev-list", f"{merge_base}..HEAD")
+    if rc != 0:
+        return {
+            "status": "unavailable",
+            "reason": f"this branch's commits are unresolvable ({err.strip()[:80]})",
+        }
+    on_branch = {line.strip() for line in out.splitlines() if line.strip()}
+
+    rounds = 0
+    durations: list[float] = []
+    for fact in facts:
+        if fact.get("kind") != "review":
+            continue
+        body = fact.get("body") or {}
+        commit = body.get("head_commit") or body.get("dispatch_commit")
+        if not isinstance(commit, str) or commit not in on_branch:
+            continue
+        rounds += 1
+        seconds = body.get("duration_seconds")
+        if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
+            durations.append(float(seconds))
+    return {
+        "status": "counted",
+        "rounds": rounds,
+        "seconds": round(sum(durations), 1) if durations else None,
+        "timed": len(durations),
+    }
+
+
+def format_branch_rounds(tally: "dict | None") -> str:
+    """The uncovered gate's one sentence about *which* round this is.
+
+    One function owns the whole sentence and decides which of the three
+    readings leads, so no call site can assemble a variant of its own
+    (``learnings.md``: advice with an exception stapled on still leads with the
+    advice). The figure is computed from the branch's own rounds at call time
+    and never written down — a duration copied into prose drifts, and
+    correcting it costs the review round this message exists to save.
+
+    **It asks for a reason rather than discouraging the round**, and it names
+    what a good reason looks like. A repeat round is sometimes exactly right —
+    CRT-3W6P's counter-example is a round that looked like waste and was not,
+    because a merge had brought thousands of unreviewed lines into files the
+    branch already touched. A bare "you have spent four already" would suppress
+    that round, so the sentence descends to the two cases: a merge or genuinely
+    new work answers it, one more fix commit does not. A reader agrees with a
+    general prompt and spends the round anyway.
+    """
+    if not tally or tally.get("status") != "counted":
+        reason = (tally or {}).get("reason", "unknown")
+        return (
+            f"NOTE: which round this is could not be derived ({reason}) — read the "
+            f"round count as unknown, not as one."
+        )
+    n = tally["rounds"]
+    if not n:
+        return (
+            "NOTE: no review round has been recorded against this branch since the "
+            "merge-base, so this gap is unreviewed work rather than a repeat — the "
+            "next round is this branch's first."
+        )
+    spent = ""
+    if tally.get("seconds"):
+        from . import telemetry  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+        # Only when some round went untimed: "1 of 1 timed" is noise, and a
+        # reader who has to parse it stops reading the sentence that matters.
+        partial = "" if tally["timed"] >= n else f", {tally['timed']} of {n} timed"
+        # Named as THIS BRANCH's spend because the other number a builder meets
+        # in the same session — `telemetry.format_round_price` — is a repo-wide
+        # median. Two unlabelled durations in one workflow read as one number
+        # that disagrees with itself.
+        #
+        # Rendered through the shared formatter, which owns the sub-minute
+        # guard: this function had that guard and the price sentence did not,
+        # which is how the surface that literally states the price could say
+        # "about 0 min".
+        cost = telemetry.format_minutes(tally["seconds"])
+        spent = (
+            f", costing {cost} so far "
+            f"(this branch's own rounds{partial}, not a repo-wide median)"
+        )
+    plural = "" if n == 1 else "s"
+    return (
+        f"NOTE: this branch has already recorded {n} review round{plural} since the "
+        f"merge-base{spent} — so the next one is round {n + 1}, not its first. The "
+        f"gate is still uncovered after {'it' if n == 1 else 'them'}: name what "
+        f"round {n + 1} will do differently before you spend it — a merge or "
+        f"genuinely new work is a good answer, 'one more fix commit' is not."
+    )
+
+
 def resolve_merge_base_tree(project_dir: Path) -> dict:
     """Resolve base branch → merge-base commit → that commit's tree SHA —
     the shared prelude of every gate/dispatch that anchors an interval at
@@ -627,3 +769,260 @@ def check_pr_doc_only(project_dir: Path) -> int:
     )
     print(f"{status}{suffix}", file=sys.stderr)
     return 1
+
+
+# ---------------------------------------------------------------------------
+# Pricing a commit before it is made
+# ---------------------------------------------------------------------------
+
+
+def _working_tree_paths(project_dir: Path) -> "tuple[list[str] | None, str | None]":
+    """Every path with an uncommitted change — staged, unstaged, untracked —
+    as ``(paths, None)``, or ``(None, reason)`` when git cannot be read.
+
+    **The reason is returned rather than dropped** because it is the only
+    diagnosis of an ``unknown`` verdict that will ever exist: nothing else logs
+    it, so once this function returns, a missing git, a not-a-repository, and
+    the 30s timeout are indistinguishable to everyone downstream. The sibling
+    advisory in this module (:func:`count_branch_rounds`) already carries its
+    git error forward this way, and a waivered broad catch is expected to
+    surface its context at a real boundary rather than swallow it.
+
+    Deliberately NOT session-scoped, unlike ``gitstate._get_session_changed_files``:
+    the question here is what *this commit* will contain, and a commit takes
+    the whole working tree regardless of which session dirtied it. A rename
+    contributes BOTH of its paths, because the review interval sees both sides.
+
+    Runs its own ``git status`` rather than reusing
+    ``gitstate.git_status_output`` for one reason: ``-uall``. The shared helper
+    uses plain ``--porcelain``, which collapses an untracked directory to a
+    single ``src/`` entry — enough for the session-baseline comparison it
+    serves, and wrong here twice over. Classifying a directory names a path
+    the builder cannot act on, and a directory holding only free files
+    classifies as judgeable because it is neither metadata nor ``.md``,
+    pricing a free commit as costly. The shared helper is left alone: its
+    flags are load-bearing for the baseline callers, and widening them there
+    would change what every session treats as a change.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain", "-uall"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- an advisory must not crash the caller; the cause is carried out in `reason`
+        return None, f"git status failed ({str(exc).strip()[:80]})"
+    if proc.returncode != 0:
+        return None, f"git status failed ({proc.stderr.strip()[:80] or 'no detail'})"
+    status_output = proc.stdout
+
+    from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    paths: set[str] = set()
+    for line in status_output.splitlines():
+        parsed = gitstate.parse_porcelain_line(line)
+        if parsed is None:
+            continue
+        _status, src_path, path = parsed
+        paths.add(path)
+        if src_path:
+            paths.add(src_path)
+    return sorted(paths), None
+
+
+def _expand_directory_arguments(
+    project_dir: Path, paths: "list[str]"
+) -> "tuple[list[str] | None, str | None]":
+    """Replace any argument naming a directory with the changed files under it.
+
+    `git add docs/` stages the changed files beneath `docs/`, never an entry
+    called `docs/` — so pricing the directory string is pricing something that
+    is never committed. It also gets the answer wrong: a directory is neither
+    metadata nor ``.md``, so ``is_judgeable_path`` calls it judgeable, and a
+    directory holding nothing but doc files is reported as costing a round.
+
+    This is the explicit-argument twin of the ``-uall`` expansion
+    ``_working_tree_paths`` already does for the no-argument form; both exist
+    so the command prices what a commit would actually contain. A path that is
+    not a directory — including one that does not exist yet — is left exactly
+    as given, so a builder can price a file before creating it.
+
+    **A git failure here returns ``(None, reason)``, never an empty expansion.**
+    Collapsing the two (`_working_tree_paths(...) or []`) made an unreadable
+    tree look like a directory holding no changes, which the caller then priced
+    as ``free`` — breaking the module's load-bearing asymmetry on the one form
+    it was not pinned for, and telling a builder whose `index.lock` is held
+    that the commit is free. The no-argument form has always degraded to
+    ``unknown``; this is the twin of that guarantee.
+    """
+    changed: "list[str] | None" = None
+    out: list[str] = []
+    for path in paths:
+        if not (project_dir / path).is_dir():
+            out.append(path)
+            continue
+        if changed is None:
+            changed, reason = _working_tree_paths(project_dir)
+            if changed is None:
+                return None, reason
+        prefix = path.rstrip("/") + "/"
+        out.extend(p for p in changed if p.startswith(prefix))
+    return sorted(set(out)), None
+
+
+def commit_cost(project_dir: Path, paths: "list[str] | None" = None) -> dict:
+    """Does committing these paths cost a review round?
+
+    The builder-facing half of the question the coverage gates answer after
+    the fact. It reuses ``coverage_algebra.is_judgeable_path`` rather than
+    re-deriving the classification, which is the whole point: an independent
+    copy could disagree with the gate that will actually charge for the
+    commit, and a pricing tool that is wrong about the price is worse than
+    none. There is one predicate, and this asks it.
+
+    ``paths`` omitted reads the working tree — the real question is almost
+    always "does committing what I have now cost a round?", and requiring the
+    builder to enumerate paths reintroduces the judgement call this removes.
+
+    Returns ``{"source", "paths", "judgeable", "free"}``, or a ``"reason"``
+    alongside an empty path list when git could not be read. ``judgeable``
+    non-empty means committing buys a round; empty with a non-empty ``paths``
+    means the commit is free.
+
+    **Both forms set ``reason`` on a git failure**, and the reason carries the
+    cause rather than a fixed string. The argument form reaches git too — a
+    directory argument expands through the working tree — so the "unknown,
+    never free" asymmetry has to hold on both, not just on the form that was
+    pinned for it.
+    """
+    from . import coverage_algebra  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    if paths is None:
+        found, reason = _working_tree_paths(project_dir)
+        source = "working-tree"
+    else:
+        given = sorted({p.strip() for p in paths if p.strip()})
+        found, reason = _expand_directory_arguments(project_dir, given)
+        source = "arguments"
+    if found is None:
+        return {
+            "source": source,
+            "paths": [],
+            "judgeable": [],
+            "free": [],
+            "reason": reason or "git status could not be read",
+        }
+    paths = found
+
+    judgeable = coverage_algebra.judgeable_files(paths)
+    judgeable_set = set(judgeable)
+    return {
+        "source": source,
+        "paths": paths,
+        "judgeable": judgeable,
+        "free": [p for p in paths if p not in judgeable_set],
+    }
+
+
+def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
+    """Body of ``prawduct-hook cost-of-commit [--json] [<paths>...]``.
+
+    Answers, BEFORE the commit, the question a builder could previously only
+    answer after making it: does committing this buy a review round? The
+    verdict token leads on stdout (the agent-facing channel) so a caller can
+    branch on one word; the reasoning follows for a reader.
+
+    Read-only and advisory — it gates nothing, and it exits 0 whether the
+    answer is "free" or "costs a round", because both are answers. Exit 1 is
+    reserved for bad arguments, and the degraded git path reports ``unknown``
+    with its reason rather than a reassuring "free" that would send the
+    builder into exactly the commit this exists to price.
+    """
+    from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    as_json = False
+    paths: list[str] = []
+    for arg in argv:
+        if arg == "--json":
+            as_json = True
+        elif arg.startswith("-"):
+            print(
+                f"cost-of-commit: unknown argument {arg!r} "
+                "(usage: cost-of-commit [--json] [<paths>...])",
+                file=sys.stderr,
+            )
+            return 1
+        else:
+            paths.append(arg)
+
+    given_paths = bool(paths)
+    cost = commit_cost(project_dir, paths or None)
+
+    # Unguarded, like this module's sibling lazy imports: telemetry ships in
+    # the same package, so a failure here is a broken install and an exception
+    # is the honest report. Swallowing it would drop the price sentence
+    # silently — and a message that goes quiet when it breaks is the failure
+    # mode `format_round_price` exists to avoid.
+    from . import telemetry  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    price = telemetry.round_price(gitstate.get_prawduct_dir(project_dir))
+    price_sentence = telemetry.format_round_price(price)
+
+    if cost.get("reason"):
+        verdict = "unknown"
+    elif not cost["paths"]:
+        verdict = "free"
+    elif cost["judgeable"]:
+        verdict = "costs-a-round"
+    else:
+        verdict = "free"
+
+    if as_json:
+        print(json.dumps({"verdict": verdict, **cost, "round_price": price}, indent=2))
+        return 0
+
+    print(verdict)
+    if verdict == "unknown":
+        print(
+            f"Could not price this commit ({cost['reason']}) — that is a missing "
+            f"answer, not a free one. Treat it as costing a round until you can re-run."
+        )
+        return 0
+    if not cost["paths"]:
+        # Three readings, not two. A directory argument expands to the changed
+        # files beneath it, so `cost-of-commit docs/` on a clean `docs/` arrives
+        # here WITH arguments and an empty expansion — and "no paths were given"
+        # then reads as "your argument was dropped", which is a wrong-tool
+        # inference in an advisory whose only value is being trusted.
+        if cost["source"] == "working-tree":
+            print("Nothing is uncommitted, so there is nothing to price.")
+        elif given_paths:
+            print(
+                "The path(s) given hold no uncommitted change, so there is nothing "
+                "to price."
+            )
+        else:
+            print("No paths were given, so there is nothing to price.")
+        return 0
+
+    n_judgeable, n_free, n_total = len(cost["judgeable"]), len(cost["free"]), len(cost["paths"])
+    if cost["judgeable"]:
+        print(
+            f"{n_judgeable} of {n_total} path(s) move review coverage — committing them "
+            f"re-opens the cumulative Critic gate, and you pay the cheapest round "
+            f"that closes it again:"
+        )
+        for path in cost["judgeable"]:
+            print(f"  {path}")
+        if cost["free"]:
+            print(f"The other {n_free} move no coverage and cost nothing to commit.")
+        print(price_sentence)
+        print(
+            "If these are fixes for findings that gate nothing, committing them is "
+            "optional — accepting those findings costs nothing at all."
+        )
+    else:
+        print(
+            f"None of the {n_total} path(s) move review coverage — commit them without "
+            f"buying a review round."
+        )
+    return 0

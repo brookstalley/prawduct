@@ -3766,6 +3766,31 @@ def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
     return telemetry.review_stats(project_dir, argv)
 
 
+def cmd_cost_of_commit(project_dir: Path, argv: list[str]) -> int:
+    """Price a commit BEFORE it is made: does committing these paths buy a
+    review round? Thin wrapper — body lives in ``lib.coverage.cost_of_commit``.
+
+    Advisory, never a gate, so an unimportable lib degrades to a note. It
+    degrades to ``unknown`` rather than ``free``: a builder who reads "free"
+    from a broken check makes exactly the commit this command exists to
+    price, and would learn the truth only from the gate afterwards."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import coverage  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "cost-of-commit unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}); treat the commit as costing a review round.",
+            file=sys.stderr,
+        )
+        print("unknown")
+        return 0
+
+    return coverage.cost_of_commit(project_dir, argv)
+
+
 def cmd_classify_diff_risk(project_dir: Path, argv: list[str]) -> int:
     """Classify the review scope as ``escalate``/``standard`` against the
     repo's risk surfaces. Thin wrapper — body lives in
@@ -4757,6 +4782,7 @@ _USAGE = (
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
     "review-stats [--json]|classify-diff-risk [<base>]|"
+    "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
@@ -5158,6 +5184,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "check-releasability",
     "check-released",
     "classify-diff-risk",
+    "cost-of-commit",
     "coverage-status",
     "evidence",
     "handoff",
@@ -5461,6 +5488,8 @@ def main() -> int:
         return cmd_review_stats(project_dir, sys.argv[2:])
     elif command == "classify-diff-risk":
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
+    elif command == "cost-of-commit":
+        return cmd_cost_of_commit(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":
