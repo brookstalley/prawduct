@@ -5111,6 +5111,204 @@ def _binary_skew(project_dir: Path) -> "tuple[Path, Path] | None":
     return repo_plugin, running
 
 
+# =============================================================================
+# Ephemeral-worktree guard
+# =============================================================================
+# A subagent dispatched with `isolation: "worktree"` gets a disposable worktree
+# forked from HEAD, of which only the code commit is merged back. Everything it
+# writes under `.prawduct/` dies at that merge with no trace, so an agent
+# correctly following prawduct's own rules ("file it via /prawduct:backlog")
+# produces a stranded write and is told it succeeded.
+#
+# DECIDED: this classification is an allowlist of READS — an unlisted command
+# defaults to refused-inside-an-ephemeral-worktree, the restrictive side. That
+# deliberately inverts `_DATA_PLANE_COMMANDS` (below), whose own DECIDED note
+# chose the permissive default because the read set is "the larger,
+# faster-moving one" and a restrictive default would break new commands "inside
+# every framework checkout". That reasoning is right there and does not carry:
+# the skew guard fires in every framework checkout, while this one fires only
+# inside `.claude/worktrees/agent-*`. Getting the restrictive default wrong
+# costs one loud, overridable refusal inside a tree that is about to be deleted;
+# getting the permissive default wrong costs a silently stranded governance
+# write, which is the defect under repair. The asymmetry is reversed, so the
+# default is too — considered against the precedent, not in ignorance of it.
+_EPHEMERAL_OVERRIDE_ENV = "PRAWDUCT_ALLOW_EPHEMERAL_WRITES"
+
+# Verified command by command by READING each implementation for a write path,
+# never inferred from the name — the names mislead in both directions here.
+# `handoff` and `render-dispositions` read as writers and are explicitly
+# read-only; `verify-operator-verification` reads as a check and mutates the
+# verification queue.
+_EPHEMERAL_SAFE_COMMANDS = frozenset({
+    "bug-inbox",
+    "check-change-log-entry",
+    "check-cumulative-critic",
+    "check-operator-verification",
+    "check-pr-doc-only",
+    "check-releasability",
+    "check-released",
+    "classify-diff-risk",
+    "coverage-status",
+    "evidence",
+    "handoff",
+    "infer-critic-mode",
+    "jurisdiction",
+    "print-install-reference",
+    "render-dispositions",
+    "resolve-base",
+    "review-stats",
+    "test-status",
+    "validate-evidence",
+    "verify-chunk-refs",
+    "verify-coverage",
+    "verify-records",
+    "version",
+})
+
+# Read-only reports that mutate only under `--apply` — a third shape, neither
+# whole-command nor per-op.
+_EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({"audit-learnings", "learnings-obligation"})
+
+# Commands whose first positional argument selects a read or a write.
+_EPHEMERAL_READ_ONLY_OPS = {
+    "advisory": frozenset({"list", "show"}),
+    # `show` is `get`'s alias — `lib/backlog/cli.py` dispatches `op in ("get",
+    # "show")` to one handler — and omitting it refused a pure read with a
+    # message asserting a discarded write, which is the false refusal this
+    # guard must never produce. `verify-migration` takes no `project_dir` and
+    # so cannot touch local state; `refresh-counts` and `import` do take one,
+    # which is exactly why they sit in `_BACKLOG_LOCAL_WRITE_OPS` below.
+    "backlog": frozenset({"get", "show", "list", "counts", "pick", "verify-migration"}),
+}
+
+# Backlog ops that write into THIS tree even when the backlog itself lives on a
+# service, so the service-backed allowance below must never cover them. The
+# tempting shorthand — "Issues backend ⇒ every backlog op is a network call" —
+# is false: `lib/backlog/cli.py` documents `refresh-counts` in as many words as
+# "a read + a local snapshot write".
+_BACKLOG_LOCAL_WRITE_OPS = frozenset({
+    "refresh-counts",       # derives from the service, persists the briefing snapshot locally
+    "export",               # writes its `--to` directory
+    "restructure-preview",  # writes its `--out` artifact
+    "import",               # migration; stamps local backlog-format state
+})
+
+
+def _first_positional(argv: list[str]) -> str | None:
+    """The op selector — the first non-flag argument, or ``None``."""
+    return next((a for a in argv if not a.startswith("-")), None)
+
+
+def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) -> bool:
+    """Whether ``command`` would mutate state that dies with this worktree.
+
+    Fail-closed: anything not positively known to be read-only is a write.
+    """
+    if command in _EPHEMERAL_SAFE_COMMANDS:
+        return False
+    if command in _EPHEMERAL_APPLY_GATED_COMMANDS:
+        return "--apply" in argv
+
+    if command == "backlog":
+        op = _first_positional(argv)
+        if op in _BACKLOG_LOCAL_WRITE_OPS:
+            return True
+        if _backlog_is_service_backed(project_dir):
+            # On the Issues backend a live-backlog op is a network write against
+            # `--repo owner/repo`. It lands on the server and outlives the
+            # worktree, so it cannot strand, and refusing it would be exactly
+            # the false refusal this guard must avoid. The markdown backend
+            # writes `.prawduct/backlog.md` in THIS tree — the stranding case —
+            # and falls through to the per-op set below.
+            return False
+
+    read_only_ops = _EPHEMERAL_READ_ONLY_OPS.get(command)
+    if read_only_ops is not None:
+        op = _first_positional(argv)
+        if op in read_only_ops:
+            # `backlog pick --claim` writes a claim; the bare form only reads.
+            return op == "pick" and "--claim" in argv
+        return True
+    return True
+
+
+def _backlog_is_service_backed(project_dir: Path) -> bool:
+    """True when the repo routes its backlog to a service (`backlog_service_repo`).
+
+    Reached only from inside an ephemeral worktree, so this file read is off the
+    hook's hot path. Fails closed to ``False`` (treat as the local markdown
+    backend, which is the refusing branch) on any read problem.
+    """
+    try:
+        state = get_prawduct_dir(project_dir) / "project-state.yaml"
+        return _core().read_str_yaml_key(state, "backlog_service_repo") is not None
+    except Exception:  # prawduct:allow prawduct/broad-except -- a probe failure must fail closed, not crash
+        return False
+
+
+def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) -> int:
+    """0 to proceed; 1 when a state write from a disposable worktree must refuse.
+
+    Also emits the HEAD-snapshot notice for commands that DO proceed: a
+    worktree-isolated agent reads every tracked file as a snapshot of the fork
+    point, so a dispatcher's uncommitted governing artifacts are invisible to it.
+    That silence is what made the source report's agent hold a build plan
+    contradicting its own prompt, and this is the only channel that reaches such
+    an agent without its cooperation — the briefing file the delegation
+    instruction names does not exist in an isolated worktree (it is gitignored,
+    so `git worktree add` never materializes it).
+    """
+    if os.environ.get(_EPHEMERAL_OVERRIDE_ENV):
+        return 0
+    if command in _HARNESS_INVOKED_COMMANDS:
+        # A DELIBERATE HOLE, stated rather than left to be discovered: `clear`
+        # and `stop` are among the largest `.prawduct/` writers, and their
+        # writes DO strand in a disposable worktree. They are exempt anyway
+        # because they are the harness's calls, not the agent's — refusing one
+        # breaks the session outright instead of protecting it, and a session
+        # that fires SessionStart inside an agent worktree has a human driving
+        # it who can see the banner. The exposure is bounded by the guard
+        # upstream: `critic-begin` is refused, so no review can be active for a
+        # `subagent-stop` to consolidate. So the chunk's contract is "every
+        # AGENT-invoked `.prawduct/`-mutating command", not literally every one.
+        return 0
+    try:
+        kind = _gitstate().is_ephemeral_worktree(project_dir)
+    except ImportError:
+        # Same bootstrap-resilience contract `get_project_dir` documents: this
+        # runs before command dispatch, so a broken or absent plugin `lib/` must
+        # not crash here. Fail OPEN — an install too broken to import cannot be
+        # detected as ephemeral either, and `_check_binary_skew` above already
+        # owns the broken-install case. (Regression caught by the full suite:
+        # an unguarded call took down `test_views`'s import-error path and five
+        # binary-skew tests, all of which run the hook with no importable lib/.)
+        return 0
+    if kind is None:
+        return 0
+
+    if not _ephemeral_command_writes(command, argv, project_dir):
+        print(
+            f"NOTE: this is an ephemeral {kind} worktree ({project_dir}). Every "
+            "tracked file here — build plans, artifacts, learnings — is a "
+            "snapshot of the commit it was forked from, so uncommitted changes "
+            "in the dispatching session are NOT visible. Where a file and your "
+            "prompt disagree, your prompt is newer.",
+            file=sys.stderr,
+        )
+        return 0
+
+    print(
+        f"BLOCKED: refusing `{command}` — this is an ephemeral {kind} worktree "
+        f"({project_dir}). Only your code commit is merged back, so a write to "
+        ".prawduct/ here is discarded with no trace and you would be told it "
+        "succeeded. Report this in your final message and let the dispatching "
+        "session record it; Critic reviews and test-evidence stay with the "
+        f"dispatcher too. Override for one invocation: {_EPHEMERAL_OVERRIDE_ENV}=1",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def _check_binary_skew(command: str, project_dir: Path) -> int:
     """0 to proceed; 1 when a data-plane write must refuse.
 
@@ -5160,6 +5358,12 @@ def main() -> int:
     # Before dispatch, so it covers every command — including `subagent-stop`,
     # the path a fix touching only `critic-begin` would miss (#227).
     if _check_binary_skew(command, project_dir) != 0:
+        return 1
+
+    # Same reason, same site: a per-command fix would miss whichever write
+    # nobody thought of, which is precisely how a disposable worktree strands
+    # governance state today (#594).
+    if _check_ephemeral_worktree(command, sys.argv[2:], project_dir) != 0:
         return 1
 
     if command == "clear":

@@ -445,7 +445,7 @@ views_enabled: true
 # gates resolve it by scope — which is the property the line above names as
 # what made the cleared state survivable last time. Next work sets this via
 # /prawduct:backlog pick.
-active_build_plan:
+active_build_plan: .prawduct/artifacts/build-plan-ephemeral-worktrees.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

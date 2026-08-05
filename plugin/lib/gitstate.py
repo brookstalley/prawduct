@@ -118,6 +118,84 @@ def resolve_project_dir(env_project_dir: str | None, cwd: Path) -> Path:
     return env_dir  # unrelated repo (or undeterminable) — honor the launch pin
 
 
+# A disposable worktree's directory basename (Claude Code's Agent tool with
+# `isolation: "worktree"`) and its branch. Both are observed harness output, and
+# both are required to carry the literal `agent-` prefix plus a hex tail.
+#
+# The prefix is doing load-bearing work, not decoration. `EnterWorktree` creates
+# its worktrees under the SAME `.claude/worktrees/` parent, and those are
+# legitimate, user-requested, long-lived session worktrees that must keep being
+# governed normally. Matching on the parent directory alone — the detection the
+# source bug report proposed — would silence governance in every one of them,
+# which is a worse failure than the silent strand this predicate exists to
+# close. The parent is therefore necessary but never sufficient.
+_EPHEMERAL_DIR_PATTERNS = (
+    (re.compile(r"^agent-[0-9a-f]{6,}$"), "agent"),
+    (re.compile(r"^wf_[0-9a-z_-]{4,}$", re.IGNORECASE), "workflow"),
+)
+_EPHEMERAL_BRANCH_PATTERN = re.compile(r"^worktree-agent-[0-9a-f]{6,}$")
+
+
+def _under_claude_worktrees(project_dir: Path) -> bool:
+    """True when some ancestor pair of ``project_dir`` is ``.claude/worktrees``.
+
+    Pure string work on an already-resolved path — no filesystem access and no
+    subprocess. This is deliberately the FIRST test in
+    :func:`is_ephemeral_worktree` so the common case (every session that is not
+    inside a harness-managed worktree) costs nothing on the hook's hot path.
+    """
+    parts = project_dir.parts
+    return any(
+        parts[i] == ".claude" and parts[i + 1] == "worktrees"
+        for i in range(len(parts) - 2)
+    )
+
+
+def is_ephemeral_worktree(project_dir: Path) -> str | None:
+    """``"agent"``/``"workflow"`` when ``project_dir`` is a DISPOSABLE worktree,
+    else ``None``.
+
+    Claude Code gives a subagent dispatched with ``isolation: "worktree"`` — and
+    a workflow stage — its own git worktree forked from HEAD, of which only the
+    code commit is ever merged back. Such a tree is not a peer checkout:
+    everything tracked in it is a HEAD snapshot (so a dispatcher's uncommitted
+    governing artifacts are invisible there), and anything written into its
+    ``.prawduct/`` dies at merge with no trace. :func:`resolve_project_dir`
+    resolves it correctly and has no way to know it is disposable; this is that
+    missing predicate.
+
+    Distinct from the cross-worktree mismatch guarded separately (issue #221):
+    that asks "is this the session's active worktree", which needs persisted
+    session-scoped state. This asks "is this worktree disposable", which is a
+    property of the tree itself — true even when it IS correctly resolved — so
+    it needs no persisted state and cannot answer #221's question.
+
+    Detection is a conjunction: the ``.claude/worktrees`` ancestor locates the
+    harness's worktree root, and the ``agent-``/``wf_`` id shape distinguishes a
+    disposable tree from an ``EnterWorktree`` session worktree living under the
+    same parent (see :data:`_EPHEMERAL_DIR_PATTERNS`). The branch name is
+    consulted only as a fallback, so a future harness change to the directory
+    naming degrades to one more signal rather than to silence.
+
+    Never raises (lib convention) — every probe inside fails open to ``None``,
+    which is today's behavior: govern the tree normally.
+    """
+    try:
+        project_dir = Path(project_dir)
+    except TypeError:
+        return None
+    if not _under_claude_worktrees(project_dir):
+        return None  # hot path: no subprocess, no stat
+
+    for pattern, label in _EPHEMERAL_DIR_PATTERNS:
+        if pattern.match(project_dir.name):
+            return label
+    branch = current_branch(project_dir)
+    if branch is not None and _EPHEMERAL_BRANCH_PATTERN.match(branch):
+        return "agent"
+    return None
+
+
 def git_status_output(project_dir: Path) -> str | None:
     """Return raw `git status --porcelain` output, or None on failure."""
     try:
