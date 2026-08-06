@@ -26,7 +26,13 @@ EXPLICIT_EXCEPTIONS = {
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root, base in (("lib", REPO_ROOT), ("hooks", REPO_ROOT), ("tests", REPO_ROOT.parent)):
+    # `tools/` is repo-root, not plugin-root: derivation scripts kept runnable so an
+    # artifact's figures stay falsifiable. They are implementation code and are held to
+    # the same preference — a root that is scanned by nobody is a root that drifts.
+    roots = (("lib", REPO_ROOT), ("hooks", REPO_ROOT), ("tests", REPO_ROOT.parent), ("tools", REPO_ROOT.parent))
+    for root, base in roots:
+        if not (base / root).is_dir():
+            continue
         for path in (base / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue

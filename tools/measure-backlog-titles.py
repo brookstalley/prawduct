@@ -10,11 +10,20 @@ silently as a corpus grows; cite this command rather than the digits.
 
 Reports, per corpus: how many parsed titles exceed the authoring budget
 (`issuefmt.TITLE_MAX`, 72) and how many exceed GitHub's hard 422 boundary
-(`legacy.GITHUB_TITLE_HARD_CAP`, 256), plus how many bullets carry the inline
-`[areas: …]` marker the boundary rule cuts at. The marker count is the load-bearing
-one: it is what distinguishes a corpus whose long titles are *prose bleed* from one
-whose long titles are genuinely authored, and the boundary rule is only correct for
-the first.
+(`legacy.GITHUB_TITLE_HARD_CAP`, 256), plus how many items carry an `[areas: …]`
+marker. The marker count is the load-bearing one: it is what distinguishes a corpus
+whose long titles are *prose bleed* from one whose long titles are genuinely
+authored, and the boundary rule is only correct for the first.
+
+Two things to know before citing a number from this script:
+
+* It imports the **current** parser, so it always reports the post-fix state. To
+  measure a corpus against the pre-boundary parser, run it against that revision's
+  ``legacy.py`` — this tree cannot reproduce a "before" figure.
+* The marker count is an **upper bound** on the boundary rule's reach. It matches
+  title *and* body, because the rule moves the marker into the body — so a corpus
+  that authors ``[areas: …]`` on a following body line, which the rule never cuts
+  at, is counted here too.
 
 Exit 1 if any title exceeds the hard cap — that corpus cannot be imported.
 """
@@ -43,7 +52,7 @@ def measure(path: Path) -> int:
     print(f"  title length         max {max(lengths)}  median {int(statistics.median(lengths))}")
     print(f"  over authoring norm  {sum(1 for n in lengths if n > issuefmt.TITLE_MAX)} (> {issuefmt.TITLE_MAX})")
     print(f"  over GitHub's cap    {over_cap} (> {legacy.GITHUB_TITLE_HARD_CAP}) <- blocks import")
-    print(f"  carry [areas:] marker {marked}")
+    print(f"  carry [areas:] marker {marked} (title or body — upper bound)")
     return 1 if over_cap else 0
 
 

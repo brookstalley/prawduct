@@ -25,8 +25,13 @@ SUBPROCESS_FUNCS = frozenset({"run", "check_output", "check_call", "call", "Pope
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root in ("lib", "tests", "hooks"):
-        for path in (REPO_ROOT / root).rglob("*.py"):
+    # `tools/` sits at the repo root, not under `plugin/` — derivation scripts kept
+    # runnable so an artifact's figures stay falsifiable. Scanned here for the same
+    # reason as everything else: an unscanned root is where `shell=True` lands next.
+    for root, base in (("lib", REPO_ROOT), ("tests", REPO_ROOT), ("hooks", REPO_ROOT), ("tools", REPO_ROOT.parent)):
+        if not (base / root).is_dir():
+            continue
+        for path in (base / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
             files.append(path)
@@ -62,7 +67,7 @@ class TestSubprocessSafety:
             tree = ast.parse(path.read_text(), filename=str(path))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call) and _is_subprocess_call(node) and _has_shell_true(node):
-                    rel = path.relative_to(REPO_ROOT).as_posix()
+                    rel = path.relative_to(REPO_ROOT.parent).as_posix()  # repo-relative: files span plugin/ and tools/
                     func_name = node.func.attr if isinstance(node.func, ast.Attribute) else "?"
                     violations.append(f"{rel}:{node.lineno}: subprocess.{func_name}(..., shell=True)")
         assert not violations, (

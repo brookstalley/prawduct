@@ -23,10 +23,13 @@ Two layers, and the loud one is not the real defect:
 
 ## 2. What the numbers actually say — measured, not inferred
 
-> **Re-derive, do not cite.** `tools/measure-backlog-titles.py <backlog.md> …` prints every figure
-> in this section. The tables below are a 2026-08-06 reading and will drift as either corpus
-> grows; the discodon corpus is not in this repo, so nothing here re-checks itself. Where a figure
-> matters to a decision, run the command.
+> **Re-derive, do not cite.** `tools/measure-backlog-titles.py <backlog.md> …` re-derives these
+> figures — but it imports the **current** parser, so on this branch it prints the *after* state.
+> Running it here reproduces §3's after-row, **not** the before-row below: to reproduce a before-row
+> you must measure against the pre-fix `legacy.py` (`git show origin/develop:plugin/lib/backlog/legacy.py`).
+> The tables are a 2026-08-06 reading and will drift as either corpus grows; the discodon corpus is
+> not in this repo, so its rows never re-check themselves. Where a figure matters to a decision, run
+> the command — and check which parser you ran it against.
 
 The report could not characterise 342 of 396 lines and explicitly warned against trusting its
 regex. Re-derived here against both real corpora:
@@ -60,8 +63,15 @@ Measured effect:
 
 | | >256 before | >256 after | max before | max after |
 |---|---|---|---|---|
-| discodon | 55 | **1** | 2319 | 260 |
-| prawduct | 6 | 6 | 336 | 325 |
+| discodon | 55 | **0** | 2319 | ≤256 (not re-derivable here) |
+| prawduct | 6 | **0** | 336 | 254 |
+
+**The after-column zero is a property of the code, not a lucky measurement.** The cap split budgets
+`GITHUB_TITLE_HARD_CAP - len(id_prefix)` and re-adds the prefix, so no parsed title can exceed 256
+for *any* corpus. An earlier reading of this table said `1` and `6` — it was taken against an
+intermediate parser that budgeted the cap *before* re-adding the id prefix, which is the off-by-a-prefix
+the fix's own review caught. prawduct's after-max is the measured `254`; discodon's is bounded by
+construction but cannot be measured from this repo.
 
 `CI-L0SB` — the exact item that killed the run — goes **1055 → 73 characters**:
 `Move activity token-generation into `activity/package.json` build script.` That matches the
@@ -69,7 +79,12 @@ authored title the reporter measured at 72.
 
 **The rule repairs the shape that carries the marker and does not touch the shape that does
 not**, which is the property that makes it safe to ship to a fleet whose authoring conventions
-differ. `[areas:` appears on 100 of discodon's 401 items and **0** of prawduct's.
+differ. `[areas:` appears on 100 of discodon's 401 items and **0** of prawduct's. That 100 is an **upper
+bound**: the measurement matches title *or* body (the rule moves the marker into the body, so a
+title-only match would read 0 after the fix), and a marker authored on a following body line is
+counted although the boundary rule never cuts at it. The `0` for prawduct is exact — an upper bound
+of zero admits no undercount, which is the direction that matters for "this rule does not touch
+this corpus."
 
 ## 4. The correctness question that gates the whole fix — resolved
 

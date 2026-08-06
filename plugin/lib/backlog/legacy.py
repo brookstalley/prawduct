@@ -81,7 +81,10 @@ PROVENANCE_RE = re.compile(r"^\((?:orig|from)\b[^)]*\)\s*")
 # titles, and truncating those to fix a different product's run-on lines would
 # damage the working shape to repair the broken one. Measured, the marker appears on
 # 100 of one product's 401 items and 0 of this repo's 197 — and cutting at it takes
-# that product's over-cap titles from 55 to 1 while leaving this repo's untouched.
+# that product's over-cap titles from 55 to 0 while leaving this repo's untouched.
+# (0, not "nearly 0": the cap split below is a hard bound, so an over-cap title is
+# unreachable for any corpus. An earlier comment said 1, measured before the split's
+# budget accounted for the id prefix.)
 INLINE_AREAS_RE = re.compile(r"\s*\[(?:areas?|tags?)\s*:[^\]]*\]")
 
 # Section headers whose items are NOT "pending" work — the resolved/archive end of

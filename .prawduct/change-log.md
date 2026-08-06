@@ -51,6 +51,18 @@ promising "loses none". And a bullet *leading* with the marker cut to an empty t
 `migrate._records_from_backlog` then skips with no collision record and no diagnostic — a silent
 drop. Both are fixed and both are pinned by tests red-verified against the code that shipped them.
 
+**The PR review then caught the artifact asserting numbers its own code makes impossible.** §2 told
+a maintainer to re-derive with `tools/measure-backlog-titles.py` — but that script imports the
+*current* parser, so it can only ever print the after-state, and running it reproduces neither the
+before-table nor §3's after-column. Worse, that after-column (`1` and `6` still over the cap) was a
+reading from the intermediate commit that budgeted the cap *before* re-adding the id prefix. The
+final split makes an over-cap title unreachable **by construction** for any corpus: the columns are
+`0`, and the artifact now says why that is a property rather than a measurement. The marker count is
+labelled the upper bound it always was — it matches title *or* body, because the rule moves the
+marker into the body. And `tools/` was a scan-free root: the `from __future__ import annotations`
+and `shell=True` conventions checked `plugin/` and `tests/` only, so the second script to land there
+could have skipped both silently. Both scans now cover it, red-verified by mutation.
+
 **`TestTitleBoundary` is the coverage that should have existed first.** The parser gained four
 behaviours with zero tests; the discovery artifact had itself required one (the PFX-less
 idempotency-key hazard "must be guarded by a test rather than left to luck").
