@@ -270,8 +270,34 @@ warnings / 2 notes — R-1 to R-5 FIXED, R-6 accepted-as-carry):
   (inert count), but the figures changed anyway with R-1, so the true ones are written.
 - **NOTE R-6 — ACCEPTED as a carry**, recorded in Chunk 06 deliverable 5.
 
+**Chunk 03 verify pass CLEAN** — `rev-20260806T053751Z-77b082f3` over `b50031cb..35c32212`
+(`70b11a7`), 0 blocking / 0 findings, all four resolutions recorded `fixed`. The reviewer
+checked R-1 by grepping the whole tree for the two narrow phrasings (exactly two hits, both the
+widened lines), and confirmed R-2's new test fails against the old terminator rather than taking
+the claim on trust.
+
+**Four observations demoted by the verify pass, all ACCEPTED — no further round bought.** The
+review said in as many words that it was over, and this branch's predecessor spent a whole extra
+round after exactly that sentence.
+1. **The `bullet`/`section` scope choice is itself unpinned** — flipping either Critic entry back
+   to `section` fails nothing today, because neither negative guard has a hit anywhere in either
+   file. Same shape as R-2, one level up. **CARRIED INTO CHUNK 04, not accepted-and-dropped**:
+   that chunk adds the doctor and janitor surfaces, so it is the commit where a scope pin becomes
+   both cheap and meaningful (a `section`-scoped doctor entry would then actually catch prose the
+   `bullet` scope spares). Riding a commit already being made buys no extra round.
+2. **The full digest dropped "base images"** from the parenthetical to fund "or editing an updater
+   config" against 10 characters of headroom. Nothing normative is lost — the rule still reads
+   "manifest or not", and the spec, `templates/security-model.md` and `templates/project-state.yaml`
+   all still name base images — but the trade was unrecorded. Recorded here.
+3. **The two digest variants word the same rule differently** and neither line is pinned by any
+   test. Correct as it stands: slim is the framework repo's own surface and deliberately says
+   "this repo's own CI actions are the case in point", which is false of a product. Divergence by
+   audience, not drift.
+4. **Full digest headroom is 10 chars against a hard 10,000-char gate.** The next digest edit
+   trims before it adds — this is now the tightest-bound surface in the framework.
+
 Next: Chunk 04 — doctor check #15 + the janitor Dependency Health extension. Both are
-`_POLICY_SURFACES` additions at `bullet` scope.
+`_POLICY_SURFACES` additions at `bullet` scope, and observation 1's scope pin rides that commit.
 
 ## Yield Declarations
 
