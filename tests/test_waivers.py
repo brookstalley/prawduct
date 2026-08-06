@@ -139,6 +139,28 @@ class TestReasonRequired:
         assert waivers.line_waives(line, "prawduct/chunk-ref-missing")
         assert waivers.parse_waivers(line)[0].reason == "names a dead path"
 
+    def test_prose_after_a_closed_comment_is_not_a_reason(self):
+        """The comment ENDS at `-->`; text after it is ordinary document prose
+        and cannot supply the justification.
+
+        An end-of-line-only strip leaves exactly this hole — the reason comes
+        back as `"> and then some prose"`, which is non-empty, so a bare pragma
+        waives after all. The guard has to truncate at the token, not trim it
+        off the end.
+        """
+        line = "<!-- prawduct:allow prawduct/chunk-ref-missing --> and then some prose"
+        assert not waivers.line_waives(line, "prawduct/chunk-ref-missing")
+
+    def test_a_reason_inside_the_comment_still_wins_with_prose_after_it(self):
+        """Paired positive for the truncation: a real reason before the
+        terminator survives, and the prose after it is simply not part of it."""
+        line = (
+            "<!-- prawduct:allow prawduct/chunk-ref-missing -- the absence is the "
+            "point --> and then some prose"
+        )
+        assert waivers.line_waives(line, "prawduct/chunk-ref-missing")
+        assert waivers.parse_waivers(line)[0].reason == "the absence is the point"
+
     def test_invalid_waivers_collects_reasonless(self):
         lines = [
             "ok  # prawduct:allow prawduct/broad-except -- has reason",

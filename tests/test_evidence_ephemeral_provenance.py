@@ -224,9 +224,9 @@ class TestObservationalKindsRenderHonestly:
             f"the cost line fired for a refusal-only store:\n{out}"
         )
         # It is still counted as a fact — suppressed from the COST sentence, not
-        # from the store. Asserted on the kind token alone: pinning the whole
-        # `guard-refusal=1` pair couples this test to `by_kind`'s separator
-        # formatting, which is not what it is about.
+        # from the store. The kind token alone is the claim; the count beside it
+        # is `by_kind`'s business, and this test is about which SENTENCE a
+        # refusal reaches, not how the tally renders.
         assert "guard-refusal" in out
 
     def test_status_still_bills_an_ephemeral_review(self, tmp_path, capsys):
