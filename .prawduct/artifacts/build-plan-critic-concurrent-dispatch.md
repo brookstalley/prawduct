@@ -51,8 +51,8 @@ same fix, read before writing.
 
 ## Status
 
-- [ ] Chunk 1: The in-flight guard — `critic-begin` refuses rather than displacing a live review
-- [ ] Chunk 2: The guard's own escape — `critic-discard`, and a refusal that names a remedy reaching the state
+- [x] Chunk 1: The in-flight guard — `critic-begin` refuses rather than displacing a live review
+- [x] Chunk 2: The guard's own escape — `critic-discard`, and a refusal that names a remedy reaching the state
 Context: Built on `fix/critic-concurrent-dispatch` off `develop` on 2026-08-05, commits `8bcdf14` and `409ae3e`. Both chunks complete; suite 3751 green. Chunk 2 exists **because the cumulative review of Chunk 1 found that Chunk 1 created a state nothing could clear** — that finding is the reason this is two chunks and not one. **Part 2 of the underlying defect is deliberately NOT in this plan**: a partial carries no review identity (`partial_path` is keyed by role alone; `commit_reviewed` is the only binding), which is what would make the class impossible rather than unreachable. It stays open on #602/#171, and whoever builds it must know the documented recovery works *because* of that defect — a `critic-recover` would have to re-stamp, not copy. The state-machine reachability test agreed with the owner is filed on #602 and sequenced **after** part 2, since the `review_id` binding changes the states it would pin.
 
 ## Build Chunks

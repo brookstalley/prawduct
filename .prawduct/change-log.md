@@ -5,7 +5,7 @@
 
 ## 2026-08-05: a dispatch no longer displaces a review that is still live
 
-<!-- prawduct: chunks=1,2 | type=fix | scope=critic-concurrent-dispatch -->
+<!-- prawduct: chunks=1,2 | type=fix | scope=critic-concurrent-dispatch | release=v3.2.6 | status=shipped -->
 
 **A completed review could be destroyed by the next one, and the loss was silent.**
 `begin_review` archived the partials directory and overwrote the manifest unconditionally, with no

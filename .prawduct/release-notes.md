@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.2.6
+
+**Entry:** 2026-08-05: a dispatch no longer displaces a review that is still live
+
+**Chunks shipped:** 1, 2
+
+**Scope:** critic-concurrent-dispatch
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.2.5
 
 ### review-round-pricing

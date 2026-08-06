@@ -637,6 +637,9 @@ scope_rollups:
   critic-burndown:
     chunks: ["01", "02", "03"]
     releases: ["v3.2.3"]
+  critic-concurrent-dispatch:
+    chunks: ["1", "2"]
+    releases: ["v3.2.6"]
   critic-death-signals:
     chunks: ["1"]
     releases: ["v3.2.3"]

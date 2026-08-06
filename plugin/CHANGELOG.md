@@ -10,6 +10,23 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.2.6
+
+A second Critic dispatch can no longer destroy the review already running — and every state it
+refuses now names a command that clears it.
+
+`critic-begin` used to archive an in-flight review's partials and overwrite its manifest with no
+check that a review was running. Dispatching over one erased completed findings, and left the
+displaced reviewers writing into the new review's directory — where their partials consolidated as
+a review that never read those files. Seen three times in the wild; the worst case lost a
+three-reviewer review carrying two blocking findings. It refuses now, on a live review marker or on
+a complete set of reviewer reports at any age, and `prawduct-hook critic-discard` is the
+archive-first way out of the one state nothing else could clear. An orphaned leftover from a review
+that genuinely died is still swept, exactly as before.
+
+Not a v3.2.5 regression despite arriving right after it — the gap was present in 3.2.3, 3.2.4 and
+3.2.5 alike.
+
 ## v3.2.5
 
 **A review round now has a price you can see before the commit that buys it — and a write that would have vanished with a disposable subagent worktree is refused instead of silently lost.**
