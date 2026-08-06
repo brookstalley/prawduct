@@ -11,7 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from lib.backlog.legacy import BacklogItem, parse_backlog, parse_metadata_bar
+from lib.backlog.legacy import (
+    GITHUB_TITLE_HARD_CAP,
+    BacklogItem,
+    parse_backlog,
+    parse_metadata_bar,
+)
 
 
 # A representative structured item with the full v0.3 metadata bar.
@@ -274,3 +279,105 @@ class TestRealBacklogSmoke:
         # The known structured items resolve their IDs.
         ids = {i.item_id for i in bl.items}
         assert "REL-2N8K" in ids
+
+
+class TestTitleBoundary:
+    """The title boundary rule, and the two ways it can lose data.
+
+    `_parse_title_line` used to return the whole bullet line as the title. That is
+    correct for products writing body prose on the FOLLOWING lines and catastrophic
+    for one writing provenance, title, areas and body on a single line: parsed
+    titles reached 2319 chars, GitHub rejects anything over 256, and the importer
+    treated that rejection as fatal for a whole 396-item migration.
+
+    These tests exist because the first cut of the fix shipped two silent losses of
+    its own — the marker span discarded, and a marker-led bullet cut to an empty
+    title that `migrate._records_from_backlog` then skips. Both are pinned below;
+    neither was caught by the suite, because none of this had a test at all.
+    """
+
+    def _item(self, bullet: str):
+        return parse_backlog(f"## Open\n\n{bullet}\n").items[0]
+
+    def test_cuts_the_title_at_an_inline_areas_marker(self):
+        item = self._item(
+            "- **[CI-L0SB]** (orig #980, pr-reviewer 2026-05-10) Move token-generation "
+            "into the build script. [areas: ci, deploy] The deploy break is fixed but "
+            "the mismatch is latent elsewhere."
+        )
+        assert item.title == "[CI-L0SB] Move token-generation into the build script."
+        assert item.item_id == "CI-L0SB"
+
+    def test_the_marker_span_itself_reaches_the_body(self):
+        """The span is authored text, so it moves — it does not evaporate.
+
+        Slicing around the match (`[:start]` + `[end:]`) drops it into neither
+        field. Nothing downstream recovers it: `migrate._block_for` preserves only
+        the backtick metadata bar.
+        """
+        item = self._item("- **[X-1]** Short title [areas: ci, deploy] trailing prose")
+        assert "[areas: ci, deploy]" in item.body
+        assert "trailing prose" in item.body
+
+    def test_a_marker_led_bullet_keeps_a_title_rather_than_vanishing(self):
+        """A cut that empties the title would delete the item from a migration.
+
+        `migrate._records_from_backlog` skips on `not item.title`, with no collision
+        record and no diagnostic — a silent drop. A long title is a lint finding; a
+        dropped item is data loss, so the line stays whole.
+        """
+        item = self._item("- [areas: ci] body prose with no authored title")
+        assert item.title, "marker-led bullet parsed to an empty title — it would be silently dropped"
+
+    def test_a_leading_provenance_parenthetical_is_not_part_of_the_title(self):
+        item = self._item("- **[X-2]** (orig #12, critic 2026-05-01) The real title")
+        assert item.title == "[X-2] The real title"
+
+    def test_a_parenthetical_that_does_not_lead_is_ordinary_title_prose(self):
+        item = self._item("- **[X-3]** Fix the thing (orig behaviour) properly")
+        assert "(orig behaviour)" in item.title
+
+    def test_no_title_can_exceed_githubs_hard_cap(self):
+        """256 is GitHub's 422 boundary, not the authoring norm (that is 72, and it
+        lives in `issuefmt.TITLE_MAX`). Exceeding it fails the write."""
+        item = self._item("- **[X-4]** " + ("word " * 200))
+        assert len(item.title) <= GITHUB_TITLE_HARD_CAP
+
+    def test_the_cap_budgets_for_the_id_prefix(self):
+        """The prefix is re-added after the split and counts against the same 256.
+
+        Budgeting only the remainder is an off-by-a-prefix that leaves the exact
+        items this fix exists for still over the cap — which is what the first cut
+        of this fix did.
+        """
+        item = self._item("- **[LONGISH-PREFIX-9999]** " + ("word " * 200))
+        assert len(item.title) <= GITHUB_TITLE_HARD_CAP
+
+    def test_capped_overflow_is_moved_to_the_body_not_dropped(self):
+        tail = "DISTINCTIVETAILTOKEN"
+        item = self._item("- **[X-5]** " + ("word " * 200) + tail)
+        assert tail in item.body
+
+    def test_an_ordinary_title_is_untouched(self):
+        """The rule is a MARKER rule, not a length rule. Products author
+        legitimately long titles with no marker; truncating those to repair a
+        different product's run-on lines would damage the working shape."""
+        item = self._item("- **[X-6]** A perfectly ordinary one-line title")
+        assert item.title == "[X-6] A perfectly ordinary one-line title"
+        assert item.body == ""
+
+    def test_the_pfx_marker_stays_in_the_title(self):
+        """Contract, not incidental: it is the display string consumers expect, and
+        `migrate.py` strips it downstream where the id lives in the alias."""
+        item = self._item("- **[CRT-6F2N]** Fix the thing [areas: critic] and prose")
+        assert item.title.startswith("[CRT-6F2N] ")
+
+    def test_a_pfx_less_item_still_parses_with_a_title(self):
+        """`ImportRecord.key_label` falls back to `sha256(title + body)` for an item
+        with no PFX, so a title change moves its idempotency key and a re-import
+        duplicates. Zero such items exist in either measured corpus, but the shape
+        is legal — the discovery artifact requires this guarded rather than left to
+        luck."""
+        item = self._item("- A legacy item with no id at all [areas: misc] and prose")
+        assert item.item_id is None
+        assert item.title

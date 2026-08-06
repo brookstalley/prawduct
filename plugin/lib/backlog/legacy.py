@@ -54,6 +54,39 @@ ID_RE = re.compile(r"\[([A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)\]")
 # A metadata bar: a backtick-wrapped line of ``·``-separated ``key: value`` pairs.
 METADATA_BAR_RE = re.compile(r"^`(.+)`$")
 
+# GitHub rejects an issue title over 256 characters with a 422. This is the
+# **hard remote failure boundary**, deliberately NOT the authoring norm — the
+# standard's budget is 72 (`issuefmt.TITLE_MAX`, `backlog-service-issue-standard.md`
+# §1), and a title anywhere near this constant is already far outside it.
+#
+# The name is spelled out because `issuefmt.TITLE_MAX = 72` lives one module away:
+# two constants called TITLE_MAX in one subsystem, meaning "the norm" and "the
+# cap", is how a later reader enforces 256 believing it is the standard. Splitting
+# here is a floor that stops a 422 killing a migration; bringing a title to 72 is
+# the scrub pre-pass's job (§5), not the parser's.
+GITHUB_TITLE_HARD_CAP = 256
+
+# A provenance parenthetical some products author *before* the title —
+# ``(orig #980, pr-reviewer 2026-05-10)``. Anchored, so it is only stripped when
+# it leads; a parenthetical anywhere else is ordinary title prose.
+PROVENANCE_RE = re.compile(r"^\((?:orig|from)\b[^)]*\)\s*")
+
+# An INLINE areas/tags marker — ``[areas: ci, frontend]`` — written on the bullet
+# line itself. Where a product authors one, it is the END of the title: everything
+# after it is body prose that happens to share the line.
+#
+# This is the whole title-boundary rule, and it was derived from the corpora rather
+# than guessed (`artifacts/backlog-import-title-boundary-discovery.md`). It matters
+# that it is a MARKER rule and not a length rule: products author legitimately long
+# titles, and truncating those to fix a different product's run-on lines would
+# damage the working shape to repair the broken one. Measured, the marker appears on
+# 100 of one product's 401 items and 0 of this repo's 197 — and cutting at it takes
+# that product's over-cap titles from 55 to 0 while leaving this repo's untouched.
+# (0, not "nearly 0": the cap split below is a hard bound, so an over-cap title is
+# unreachable for any corpus. An earlier comment said 1, measured before the split's
+# budget accounted for the id prefix.)
+INLINE_AREAS_RE = re.compile(r"\s*\[(?:areas?|tags?)\s*:[^\]]*\]")
+
 # Section headers whose items are NOT "pending" work — the resolved/archive end of
 # the lifecycle. Kept as the briefing's original word-set so the pending count is
 # preserved exactly across the parser rewrite (Open + Promoted count; Archive and
@@ -208,15 +241,75 @@ class Backlog:
         return grouped
 
 
-def _parse_title_line(raw: str) -> tuple[str | None, str, bool]:
-    """From a bullet's text (after ``- ``) return ``(item_id, title, struck)``."""
+def _parse_title_line(raw: str) -> tuple[str | None, str, bool, str]:
+    """From a bullet's text (after ``- ``) return ``(item_id, title, struck, overflow)``.
+
+    ``overflow`` is whatever was cut from the title and belongs in the body — the
+    prose after an inline ``[areas: …]`` marker, plus any tail past
+    :data:`GITHUB_TITLE_HARD_CAP`. It is **never discarded**: the caller prepends it to the
+    item's body, so this function moves text between fields and loses none.
+
+    Until 2026-08-06 the title was the whole bullet line with ``**``/``~~``
+    stripped, which is correct only for products that put body prose on the
+    *following* lines. For a product that writes provenance, title, areas and body
+    on one line, the parsed "title" reached 2319 characters against a 72-character
+    authoring norm — and the importer sent it to GitHub, which rejects anything over
+    256 and took the whole 396-item migration down with one item.
+    """
     struck = "~~" in raw
     id_match = ID_RE.search(raw)
     item_id = id_match.group(1) if id_match else None
-    # Title is the human text: strip bold markers and strikethrough tildes so the
-    # briefing's display string matches the old ``stripped[2:].strip()`` behavior.
-    title = raw.replace("~~", "").replace("**", "").strip()
-    return item_id, title, struck
+
+    text = raw.replace("~~", "").replace("**", "").strip()
+    # The leading ``[PFX]`` marker STAYS in the title. It is part of the display
+    # string every existing consumer expects, and `migrate.py` strips it itself when
+    # building the issue title (the id lives in the alias there). Removing it here
+    # would fix nothing about this defect and would break that contract.
+    #
+    # A provenance parenthetical is different: it is authored *ahead of* the title
+    # and is not part of it. Strip it only where it leads, after the id.
+    id_prefix = ""
+    if id_match and text.startswith(f"[{id_match.group(1)}]"):
+        id_prefix = f"[{id_match.group(1)}] "
+        text = text[len(f"[{id_match.group(1)}]") :].strip()
+    text = PROVENANCE_RE.sub("", text).strip()
+
+    overflow = ""
+    marker = INLINE_AREAS_RE.search(text)
+    if marker:
+        # The marker span itself goes to the body WITH the prose after it. Slicing
+        # around it (`[:start]` + `[end:]`) drops the authored `[areas: …]` text
+        # into neither field — a silent loss on 100 of 401 items in the corpus that
+        # motivated this, under a docstring promising nothing is lost.
+        # `migrate._block_for` preserves only the backtick metadata bar, so nothing
+        # downstream recovers it.
+        remainder = f"{marker.group(0).strip()} {text[marker.end():].strip()}".strip()
+        head = text[: marker.start()].strip()
+        # A bullet that LEADS with the marker (no title before it) would cut to an
+        # empty title, and `migrate._records_from_backlog` skips falsy titles — the
+        # item would vanish from a migration with no collision record and no
+        # diagnostic. Keep the line whole instead: a long title is a lint finding,
+        # a dropped item is data loss.
+        if head:
+            overflow = remainder
+            text = head
+
+    # A title still over the remote cap is split rather than rejected. Break on a
+    # word boundary where one is reachable, so the issue does not read as cut
+    # mid-word — the shape operators actually saw on the polluted issues.
+    #
+    # The budget is measured against the FINAL title, id prefix included: the prefix
+    # is re-added below and counts against GitHub's 256 like any other character.
+    # Budgeting only the remainder is the off-by-a-prefix that leaves the exact items
+    # this fix exists for still over the cap.
+    budget = GITHUB_TITLE_HARD_CAP - len(id_prefix)
+    if len(text) > budget:
+        head, sep, _tail = text[:budget].rpartition(" ")
+        cut = head if sep and len(head) >= budget // 2 else text[:budget]
+        overflow = f"{text[len(cut):].strip()} {overflow}".strip()
+        text = cut.strip()
+
+    return item_id, f"{id_prefix}{text}".strip(), struck, overflow
 
 
 def parse_backlog(content: str) -> Backlog:
@@ -265,7 +358,7 @@ def parse_backlog(content: str) -> Backlog:
 
         item_match = ITEM_RE.match(line)
         if item_match:
-            item_id, title, struck = _parse_title_line(item_match.group(1))
+            item_id, title, struck, overflow = _parse_title_line(item_match.group(1))
             item = BacklogItem(
                 title=title,
                 section=section,
@@ -293,7 +386,7 @@ def parse_backlog(content: str) -> Backlog:
                     break
                 body_lines.append(nxt)
                 j += 1
-            _attach_metadata_and_body(item, body_lines)
+            _attach_metadata_and_body(item, body_lines, overflow)
             items.append(item)
             i = j
             continue
@@ -303,8 +396,16 @@ def parse_backlog(content: str) -> Backlog:
     return Backlog(items=items)
 
 
-def _attach_metadata_and_body(item: BacklogItem, body_lines: list[str]) -> None:
-    """Split an item's raw body lines into its metadata bar + free-form body."""
+def _attach_metadata_and_body(
+    item: BacklogItem, body_lines: list[str], overflow: str = ""
+) -> None:
+    """Split an item's raw body lines into its metadata bar + free-form body.
+
+    ``overflow`` is title text the boundary rule moved out of the title (see
+    :func:`_parse_title_line`); it leads the body, because it was authored ahead of
+    everything on the following lines. Passing it here rather than losing it is what
+    makes the boundary rule a *move* rather than a truncation.
+    """
     bar_index = None
     for idx, raw in enumerate(body_lines):
         stripped = raw.strip()
@@ -317,4 +418,5 @@ def _attach_metadata_and_body(item: BacklogItem, body_lines: list[str]) -> None:
         # First non-blank body line settles whether a bar is present.
         break
     remaining = body_lines if bar_index is None else body_lines[bar_index + 1 :]
-    item.body = "\n".join(remaining).strip()
+    body = "\n".join(remaining).strip()
+    item.body = f"{overflow}\n\n{body}".strip() if overflow else body

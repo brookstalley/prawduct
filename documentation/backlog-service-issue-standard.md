@@ -19,12 +19,34 @@ issues*: brevity, clarity, specificity.
 
 ## 1. Title
 
-- **Budget ≤ 72 chars** (warn > 72, aim 50–70). **Shape: `area: specific summary`** — lowercase area
+- **Budget ≤ 72 chars** (aim 50–70). Over budget is **blocking** per the §4 amendment once #614
+  lands, advisory until then — the number is the same either way; only the posture changed. **Shape: `area: specific summary`** — lowercase area
   prefix, then a noun-phrase stating *what failed + where* (bug) or *what to do* (task).
-- **One atomic problem.** Two clauses / a `—`/`;` join usually means the issue is non-atomic → split
-  (net-new) or flag for manual split (migration — see §5).
+- **One atomic problem — and atomicity is a property of the FIX, not of the sentence.** The test is
+  one question: **would a single change close all of these?** If yes they are one issue written at
+  too low an altitude; if no they are separate issues that happen to share a scene.
+- **Splitting is the failure in one direction, and the standard used to name only that one.**
+  - *Under-split* → a title joining two claims with **independent fixes** (`—`/`;` is the usual
+    tell) → split (net-new) or flag for manual split (migration — see §5).
+  - *Over-split* → sibling titles differing only in a noun that names an **instance of a category**
+    → uplevel to the category. `personas crash on emoji` + `on unicode` + `on UTF-16` are one
+    defect: `personas: crash on non-ASCII character encoding`. Three issues, one fix, three times
+    the triage — and the root cause is stated nowhere.
+  - Being wrong in this direction is the more expensive error: a split backlog looks *more*
+    thorough, so nothing prompts a re-read, while an under-split one is loud the moment someone
+    tries to close it.
+- **Only the under-split direction is visible from a single title.** Over-splitting is a fact
+  *between* issues, so no per-title lint can catch it. **Nothing screens for it today** — say this
+  plainly rather than delegating to a mechanism that does not exist: the dedup/merge sweep
+  (`skills/backlog/SKILL.md`) pairs on *title-keyword + body overlap*, which is a **duplicate**
+  test, and the two come apart exactly here — `crash on emoji` and `crash on UTF-16` share a root
+  cause and almost no keywords. Adding the shared-root-cause question to that sweep is the
+  intended home and is **unbuilt**. Until it exists, over-splitting is caught by a human reading
+  the backlog or not at all, and the migration scrub must therefore look across the corpus rather
+  than rewriting items one at a time in isolation.
 - ✅ `importer: PFX alias read-resolution unwired, breaks import idempotency` (69)
-- ❌ vague (`Bug in the thing`), non-specific (`Fix backlog`), or em-dash chains of ≥2 claims.
+- ❌ vague (`Bug in the thing`), non-specific (`Fix backlog`), em-dash chains of ≥2 claims, or a
+  family of near-identical titles that one fix would close.
 
 ## 2. Body
 
@@ -55,22 +77,43 @@ The adapter already models the recommended taxonomy: `kind/area/effort/impact/so
 
 ## 4. Enforcement — two homes, one standard
 
+**Amended 2026-08-06 (owner ruling) — the TITLE lints block; everything else stays WARN-only.**
+This section previously read "WARN only, never blocks" for all lints. Owner: *"we need to enforce
+on migration. fine if the agent has to rewrite. They must be EXCELLENT issue titles, always,
+whether migrated or created new or modified."* The old posture and that directive cannot both
+hold, and the directive supersedes: a WARN the migration path never even called is what let a
+396-item corpus reach GitHub with titles up to 2319 characters.
+
+**Scope of the amendment, deliberately narrow.** Blocking applies to the four **§1 title** checks
+(`title-too-long` / `-too-short` / `-placeholder` / `-non-atomic`) on all three write paths
+(`file`, `update`, `import`). The **body** lints — `body-too-long`, missing sections, the Env
+nudge — stay WARN-only: a title is the handle every later reader triages by and is cheap to
+rewrite, while a body budget blocking an edit to an unrelated field is the confirmation-fatigue
+shape `security-model.md`'s approval norm already rejects. **Not yet built** — tracked as **#614**,
+which also carries the co-shipping constraint (the shared-root-cause check in the dedup sweep must
+land with it, or enforcing ≤72 alone entrenches an over-split backlog; §1).
+
 > **Implemented (programmatic home):** `lib/backlog/issuefmt.py` — `normalize_title` (§1),
-> `render_body` (§2 composer, shared with migration), and `lint` (§4, WARN-only). Wired into the
+> `render_body` (§2 composer, shared with migration), and `lint` (§4). **`lint` is WARN-only in
+> code today** — `issuefmt.py` says so by construction and no caller blocks on it. The 2026-08-06
+> amendment below makes the title checks blocking as a *ruling*; wiring it is **#614**. This
+> blockquote states what is built, so it must not borrow the amendment's tense. Wired into the
 > `file` path (`core.file_item`): the title is normalized on create and the result is audited, with
-> findings in the envelope's `lint` field (never blocks). The **MG6 migration pre-pass (§5) is
+> findings in the envelope's `lint` field (advisory today; blocking for title findings once
+> #614 lands). The **MG6 migration pre-pass (§5) is
 > implemented** — `lib/backlog/restructure.py` (fail-closed plan validation, application through
 > the shared composer, `original_*` preservation per Data Model §2) + `import --restructure` +
 > the offline `restructure-preview` owner-review artifact. Issue Forms (consumer-UI home,
 > BKL-7F3D) remain to build.
 
 - **`file` CLI + migration (programmatic):** a standard-aware **serializer** emits the title + section
-  contract; a **WARN-only linter** audits. Issue *Forms* do NOT gate programmatic creation.
+  contract; the linter audits — **title findings block, body findings warn** once #614 lands
+  (advisory on every path today). Issue *Forms* do NOT gate programmatic creation.
 - **Consumers filing via the GitHub UI:** ship **YAML Issue Forms** (`.github/ISSUE_TEMPLATE/`, one per
   variant; required `textarea`s = the sections, `dropdown`s pin `kind/area/stage/impact`). Forms require
   labels to pre-exist — `provision` already creates them.
-- **Linter (WARN only, never blocks — matches prawduct's never-block posture; this path was never a
-  blocking gate):** title > 72 / < 15 / placeholder; title joins ≥2 claims; missing or empty required
+- **Linter — §1 title checks BLOCK per the 2026-08-06 ruling (wiring: #614); all other lints WARN
+  only:** title > 72 / < 15 / placeholder; title joins ≥2 claims **→ blocking**. Missing or empty required
   section; > ~175 visible words (`issuefmt.BODY_MAX_WORDS` — the one implementation constant, §2's
   number and this threshold are the same budget); unwrapped evidence > 30 lines; no `kind:`/`area:`; > ~6 labels;
   acceptance prose without `- [ ]`; a `kind:bug` issue with **no Env line** (`bug-missing-env` — the
