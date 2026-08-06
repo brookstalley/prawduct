@@ -463,7 +463,13 @@ views_enabled: true
 # now, let `/prawduct:pr` apply its documented rule at merge, and if the
 # conflict still stands afterwards it is a real one to settle once — not
 # per-branch, and not by whoever is holding the merge.
-active_build_plan: null
+#
+# SET 2026-08-05 on branch fix/critic-review-identity to the plan this branch
+# builds. The slot was null when the branch was cut — v3.2.6 shipped and nothing
+# was in flight — so this is a fresh set inheriting none of the staleness the
+# incidents above record, and no plan is orphaned by the move. The work is part 2
+# of the concurrent-dispatch defect (#602/#171), sequenced by the owner.
+active_build_plan: artifacts/build-plan-critic-review-identity.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
