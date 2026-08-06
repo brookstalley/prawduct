@@ -113,7 +113,7 @@ feature's seven legs, which is the direct structural precedent.
 ## Status
 
 - [x] Chunk 01: Keystone — the policy decision record + capture-point wiring
-- [ ] Chunk 02: The canonical policy spec + the security-model home
+- [x] Chunk 02: The canonical policy spec + the security-model home
 - [ ] Chunk 03: Forward Critic gate + the `**Dependency change:**` field
 - [ ] Chunk 04: Retroactive — doctor check #15 (incl. the conformance procedure) + janitor
 - [ ] Chunk 05: Migration nudge — the dependency-policy advisory probe (CODE)
@@ -203,6 +203,30 @@ heading, silently widening the scanned region to include four unrelated sections
 still passed. `extract_section` is now line-anchored. The general shape: a test that locates its
 subject by substring is one prose edit away from testing the wrong region, and it fails silently
 because the wrong region usually still contains the right words.
+
+**Chunk 02 verify pass CLEAN** — `rev-20260806T044630Z-6b01ac0b` over `c54a5dd5..1ad9a90f`
+(`5f38dee`), 0 blocking / 0 findings, all four resolutions recorded. The reviewer independently
+confirmed `grep -rn "7 days" plugin/` returns exactly one hit (the spec, line 24), that the spec
+itself was not in the delta so R-1 was not fixed by fudging the target, and that no test was
+weakened — the one deletion is the `str.index` extractor replaced by the strictly stronger
+line-anchored `extract_section`.
+
+**Three observations demoted by the verify pass, all ACCEPTED — no further round bought.** The
+review said in as many words that it was over; this branch's predecessor spent a whole extra
+round on a one-hunk fix after exactly that sentence, and none of these three earns one:
+1. `test_does_not_restate_the_numeric_default` is now subsumed by the sweep — harmless duplicate
+   coverage, not a wrong test.
+2. `test_every_policy_surface_cites_the_spec` asserts the bare basename where its sibling asserts
+   the `docs/` prefix, so a basename-only citation would pass. A one-word tightening; both
+   surfaces carry the prefix today, so nothing is actually unguarded.
+3. `discovery.md:155` uses the unqualified `docs/…` form that R-2 qualified next door. Correct as
+   is — methodology files are read by the agent *from the plugin*, where that is house style; the
+   template is the one that ships into a repo without a `docs/` directory. Outside the interval.
+**If you touch `tests/test_v5_templates.py` for another reason, carry 1 and 2 in.**
+
+**The cumulative gate reports `uncovered`, and that is expected here, not a defect.** The span
+runs from `develop`'s merge-base and takes in Chunk 01 plus the `develop` merge, which no single
+review covers. Chunk 06's `cumulative` is the designated PR gate for exactly this span.
 
 Next: Chunk 03 — which lands against ~9/2/3 tokens of headroom on
 `review-protocol.md`/`goals-1-3.md`/`building.md` respectively, so its trim is real work, not a
