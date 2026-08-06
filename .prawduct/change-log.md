@@ -68,10 +68,11 @@ duplicate test, and the two come apart exactly here.
 conform on every write path, agent rewriting where needed. The design: the importer validates and
 refuses pre-flight (no model in the data plane), the scrub rewrites beforehand, the owner approves
 in aggregate. It must ship as one unit with the shared-root-cause check — shipping the length half
-first would use that window to build a large, tidy, over-split backlog. Two things are owed before
-it lands and are recorded rather than resolved: the norm needs a `## Direction` home in a strategy
-artifact, and it **collides with standard §4's ratified "WARN only, never blocks"** posture, which
-needs an amendment or an exception.
+first would use that window to build a large, tidy, over-split backlog. Both things it was owed are now done rather than
+owed: the norm has a `## Direction` home in `data-model.md` with a pointer row in the preferences
+index, and its collision with standard §4's ratified *"WARN only, never blocks"* was **ruled by
+the owner** — the §1 title checks block on all three write paths, every body lint stays WARN-only.
+Deferred scope is filed as #612 / #613 / #614 rather than left in a handoff note.
 
 ## 2026-08-05: an archived review can be brought back as itself
 

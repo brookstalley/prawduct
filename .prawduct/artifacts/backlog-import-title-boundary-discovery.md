@@ -203,10 +203,12 @@ produce a large, tidy, over-split backlog that then has to be merged back by han
 **Delivery status of the five, recorded so nothing is silently dropped (Principle 2).** This
 branch delivers **1 and 2 only**. Items **3, 4 and 5 are DEFERRED, not descoped** — they remain
 required, and the reporter's second failure mode (one bad row ending a 396-row run) survives until
-item 4 lands. Their tracked home is `.prawduct/.handoff-notes.md` plus this section; they must be
-filed to the backlog before this branch merges, because a handoff note is consumed at `/clear` and
-is not a tracker. The same applies to §4b's three-path enforcement table and §4c's two named
-consequences.
+item 4 lands. **Filed 2026-08-06:** item 3 + item 4 as **#612** (one change to the import loop — pre-flight
+validation and per-item failure isolation), item 5 as **#613** (retitle-in-place on skip), and
+§4b's three-path enforcement plus §4c's shared-root-cause check as **#614** (staged
+`requirements`, not `ready`, because its governing requirement needed the owner ruling that
+`4b` now records). A handoff note is consumed at `/clear` and is not a tracker, which is why
+these are in the tracker and not only here.
 
 **Out of scope, recorded not forgotten:**
 

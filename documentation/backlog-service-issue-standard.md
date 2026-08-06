@@ -19,7 +19,8 @@ issues*: brevity, clarity, specificity.
 
 ## 1. Title
 
-- **Budget ≤ 72 chars** (warn > 72, aim 50–70). **Shape: `area: specific summary`** — lowercase area
+- **Budget ≤ 72 chars** (aim 50–70). Over budget is **blocking** per the §4 amendment once #614
+  lands, advisory until then — the number is the same either way; only the posture changed. **Shape: `area: specific summary`** — lowercase area
   prefix, then a noun-phrase stating *what failed + where* (bug) or *what to do* (task).
 - **One atomic problem — and atomicity is a property of the FIX, not of the sentence.** The test is
   one question: **would a single change close all of these?** If yes they are one issue written at
@@ -93,24 +94,26 @@ which also carries the co-shipping constraint (the shared-root-cause check in th
 land with it, or enforcing ≤72 alone entrenches an over-split backlog; §1).
 
 > **Implemented (programmatic home):** `lib/backlog/issuefmt.py` — `normalize_title` (§1),
-> `render_body` (§2 composer, shared with migration), and `lint` (§4 — title checks blocking as
-> of 2026-08-06, all others WARN-only). Wired into the
+> `render_body` (§2 composer, shared with migration), and `lint` (§4). **`lint` is WARN-only in
+> code today** — `issuefmt.py` says so by construction and no caller blocks on it. The 2026-08-06
+> amendment below makes the title checks blocking as a *ruling*; wiring it is **#614**. This
+> blockquote states what is built, so it must not borrow the amendment's tense. Wired into the
 > `file` path (`core.file_item`): the title is normalized on create and the result is audited, with
-> findings in the envelope's `lint` field (title findings blocking per the amendment above;
-> body findings advisory). The **MG6 migration pre-pass (§5) is
+> findings in the envelope's `lint` field (advisory today; blocking for title findings once
+> #614 lands). The **MG6 migration pre-pass (§5) is
 > implemented** — `lib/backlog/restructure.py` (fail-closed plan validation, application through
 > the shared composer, `original_*` preservation per Data Model §2) + `import --restructure` +
 > the offline `restructure-preview` owner-review artifact. Issue Forms (consumer-UI home,
 > BKL-7F3D) remain to build.
 
 - **`file` CLI + migration (programmatic):** a standard-aware **serializer** emits the title + section
-  contract; the linter audits — **title findings block, body findings warn** (amendment above).
-  Issue *Forms* do NOT gate programmatic creation.
+  contract; the linter audits — **title findings block, body findings warn** once #614 lands
+  (advisory on every path today). Issue *Forms* do NOT gate programmatic creation.
 - **Consumers filing via the GitHub UI:** ship **YAML Issue Forms** (`.github/ISSUE_TEMPLATE/`, one per
   variant; required `textarea`s = the sections, `dropdown`s pin `kind/area/stage/impact`). Forms require
   labels to pre-exist — `provision` already creates them.
-- **Linter — §1 title checks BLOCK (2026-08-06); all other lints WARN only:** title > 72 / < 15 /
-  placeholder; title joins ≥2 claims **→ blocking**. Missing or empty required
+- **Linter — §1 title checks BLOCK per the 2026-08-06 ruling (wiring: #614); all other lints WARN
+  only:** title > 72 / < 15 / placeholder; title joins ≥2 claims **→ blocking**. Missing or empty required
   section; > ~175 visible words (`issuefmt.BODY_MAX_WORDS` — the one implementation constant, §2's
   number and this threshold are the same budget); unwrapped evidence > 30 lines; no `kind:`/`area:`; > ~6 labels;
   acceptance prose without `- [ ]`; a `kind:bug` issue with **no Env line** (`bug-missing-env` — the
