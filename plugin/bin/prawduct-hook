@@ -1131,10 +1131,16 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         "--scope": "scope",
         "--tier": "tier",
     }
-    opts: dict[str, str] = {}
+    opts: dict[str, object] = {}
     i = 0
     while i < len(argv):
         arg = argv[i]
+        # `--force` is the escape hatch for the free-interval refusal below: it
+        # takes no value, so it is parsed before the value-pair loop body.
+        if arg == "--force":
+            opts["force"] = True
+            i += 1
+            continue
         if arg not in flags:
             print(f"critic-begin: unknown argument {arg!r}", file=sys.stderr)
             return 1
@@ -1175,6 +1181,21 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     consolidate = _critic_consolidate()
     result = consolidate.begin_review(project_dir, **opts)
+    if result["status"] == "no-review-needed":
+        # Exit 3, not 0: 0 means "dispatched, go review", and the skill would
+        # proceed to spawn a reviewer against a manifest that was never
+        # written. Not an error either — this is the gate answering "nothing
+        # here needs a review", which is the whole point of asking it first.
+        # Goes to STDOUT because it is a normal, correct outcome.
+        free = result.get("free_files") or []
+        shown = ", ".join(free[:5]) + (f" (+{len(free) - 5} more)" if len(free) > 5 else "")
+        print(
+            f"PRAWDUCT: no review needed — {result['reason']}.\n"
+            f"  free files: {shown}\n"
+            "  Nothing to do: the coverage gate already passes this interval. "
+            "Run `critic-begin --mode <m> --force` to review anyway."
+        )
+        return 3
     if result["status"] != "ok":
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
         return 2 if result.get("kind") == "scope-widened" else 1

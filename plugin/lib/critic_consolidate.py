@@ -1208,13 +1208,19 @@ def begin_review(
     chunk: str | None = None,
     scope: str | None = None,
     tier: str | None = None,
+    force: bool = False,
 ) -> dict:
     """Derive and write the dispatch manifest for one review. All code.
 
     Returns ``{"status": "ok", "id", "roster", "path", "notes": [...],
     "cleared_leftovers": bool, "manifest": {...}}`` or ``{"status": "error",
     "reason", "kind"?}`` where ``kind == "scope-widened"`` tells the CLI to
-    exit 2 (the skill's fall-back-to-final signal).
+    exit 2 (the skill's fall-back-to-final signal), or ``{"status":
+    "no-review-needed", "reason", "free_files"}`` when the interval holds no
+    judgeable file and no finding this mode could resolve — the CLI exits 3.
+    That is a NO-OP, not a failure: the coverage gate already composes such an
+    interval as a free edge, so the review would record a fact nothing needs.
+    ``force=True`` dispatches anyway.
 
     Per-mode interval (design D8, chunk-03 refinements):
 
@@ -1314,6 +1320,12 @@ def begin_review(
     notes: list[str] = []
     base_reviewed = None
     files_reviewed: list[str] | None = None
+    # Findings a THIS-mode review could still resolve. Only verify-resolutions
+    # records resolution facts, so it is the only mode that can carry a nonzero
+    # value; for every other mode there is nothing outstanding that running it
+    # would clear. Read by the free-interval refusal below, where it is the
+    # conjunct that keeps the gate from deadlocking.
+    pending_actionable = 0
 
     if mode_token in ("chunk", "final"):
         base_commit = dispatch_commit
@@ -1455,6 +1467,7 @@ def begin_review(
         actionable = (prior_counts.get("blocking") or 0) + (
             prior_counts.get("warning") or 0
         )
+        pending_actionable = actionable
         if not delta and not actionable:
             # Name the tree that was compared. Under the tree-inequality anchor
             # above, an empty delta means the working tree AND committed HEAD
@@ -1491,6 +1504,44 @@ def begin_review(
                 "a committed bundle is cumulative's scope)"
             ),
         }
+    # GATE AS DISPATCHER — do not spend a reviewer on a review the gate would
+    # not require. `coverage_algebra.is_judgeable_path` already decides which
+    # paths need coverage, and `coverage_verdict` already grants a FREE EDGE to
+    # an interval holding none; until this check the predicate was consulted
+    # only when GRADING coverage, so `check-cumulative-critic` could tell you a
+    # round was unnecessary — but only after you had paid for it. Measured
+    # 2026-08-06: 62 of 492 review facts (12.6%, ~5.2 opus-hours) covered
+    # entirely non-judgeable intervals.
+    #
+    # THE SAFETY ARGUMENT: this refuses only what the gate would already pass.
+    # Same predicate, same inputs, moved upstream of the cost — so nothing that
+    # could not already merge becomes mergeable, and this is not a new escape
+    # hatch. Do NOT re-key it on "looks like docs": `skills/`, `methodology/`,
+    # `templates/` and root `CLAUDE.md` are judgeable `.md`, and a private
+    # notion of "docs" is how a skip-gate and its gate drift apart.
+    #
+    # BOTH conjuncts are load-bearing. Without the first, reviews of real code
+    # are refused. Without the second the gate DEADLOCKS: a `blocked` verdict's
+    # only remedy is a verify-resolutions pass, and refusing that pass over a
+    # free interval would leave findings raised on prose permanently
+    # unresolvable, with no command that clears them.
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    if (
+        not force
+        and not coverage_algebra.judgeable_files(files_changed)
+        and not pending_actionable
+    ):
+        return {
+            "status": "no-review-needed",
+            "reason": (
+                f"no judgeable file in {base_tree[:12]}..{head_tree[:12]} — the "
+                "coverage gate already composes this interval as a free edge, so "
+                "a review would record a fact nothing needs"
+            ),
+            "free_files": list(files_changed),
+        }
+
     if files_reviewed is None:
         files_reviewed = list(files_changed)
 

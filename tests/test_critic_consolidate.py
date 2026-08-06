@@ -3712,6 +3712,12 @@ class TestScopeAttribution:
         (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
         _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
         (repo / ".prawduct" / "artifacts" / "notes.md").write_text("# Notes\n\nplain\n")
+        # A judgeable file in the diff, or there is no dispatch to attribute:
+        # an interval of `.prawduct/` prose alone is a free edge, and
+        # `critic-begin` now declines it (exit 3) rather than spending a
+        # reviewer the coverage gate never asked for. This test is about what
+        # record-lint REPORTS on a real dispatch, so it needs one.
+        (repo / "src" / "app.py").write_text("x = 2\n")
 
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
