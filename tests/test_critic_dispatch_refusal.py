@@ -568,7 +568,7 @@ class TestTheRefusalIsObservable:
         ).returncode == 0
         assert self._guard_facts(repo) == []
 
-    def test_an_unrecordable_refusal_is_still_a_refusal(self, tmp_path, monkeypatch):
+    def test_an_unrecordable_refusal_is_still_a_refusal(self, tmp_path, monkeypatch, capsys):
         """The soft-fail contract, which shipped with no test.
 
         A refusal is correct whether or not the record lands, so a store failure
@@ -605,6 +605,19 @@ class TestTheRefusalIsObservable:
         )
         assert result["recorded"] is False, (
             "the refusal claims it was recorded when the append failed"
+        )
+        # Soft is not SILENT. A degraded record that vanishes leaves the yield
+        # question looking answered at zero, so the failure must reach a human
+        # channel with the injected reason attached — not merely be flagged in a
+        # return value no operator sees.
+        err = capsys.readouterr().err
+        assert "NOT recorded" in err, f"the failed append was silent: {err!r}"
+        assert "store unwritable (injected)" in err, (
+            f"the attribution dropped the underlying reason: {err!r}"
+        )
+        assert "lower bound" in err, (
+            "the message does not tell the reader how to read the query it "
+            f"just under-counted: {err!r}"
         )
         _assert_no_dispatch_state(repo)
 
