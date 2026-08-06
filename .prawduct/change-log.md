@@ -5,7 +5,15 @@
 
 ## 2026-08-06: a title boundary for the backlog importer, and what "atomic" actually means
 
-<!-- prawduct: type=fix | scope=backlog-import-title-boundary -->
+<!-- prawduct: type=fix -->
+
+<!-- Deliberately NO `scope=` tag. A scope-tagged entry is release-pending and
+     `regen-views` looks for a matching build-plan file to regenerate a `## Status`
+     from; this work went requirements → fix with no build plan, so a scope here
+     names a view that cannot be written and fails the real-artifacts scope check.
+     The discovery artifact declares `artifact: discovery`, so it is correctly
+     excluded from that search rather than mistaken for a plan. When the enforcement
+     work is planned, that plan carries the scope. -->
 
 **A 396-item migration was permanently pinned at 7%, and the loud failure was not the defect.**
 One GitHub 422 killed the whole run at item 28, and resuming made zero further progress because
