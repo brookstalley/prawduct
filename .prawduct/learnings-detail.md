@@ -1842,7 +1842,33 @@ Scope of the three bars: "cannot be absorbed" means own design, own review, or g
 
 Because "file the rest" is a disposal route and thorough reviewers produce many findings. An ACCEPT is Principle 2's *explicit descope*: recorded as a fact (`prawduct-hook disposition … --accept "<reason>"`) and rendered into the change-log entry for that work with `render-dispositions`, where the next reader of the change meets it — not a backlog id nobody will action, and not a count hand-written into prose, which drifts. Measured on this repo when the rule was still "file the rest": open items **50 → 180 in 26 days**, 67 of them Critic-sourced, **53 of those never touched since filing**, 58% of all Critic items ever filed still open, and 42 of 67 sitting at `effort: S` — the band where filing costs more reader-attention over its lifetime than the fix costs. The compounding tell is the sharpest signal: **`verify-chunk-refs` alone accumulated SIX open items**, each a facet found by a *later* review of the same still-unfixed gate — filing made every pass re-discover the mechanism instead of closing it, so the backlog grew while the defect stayed. A double-digit filing count is not thoroughness, it is undisposed review. Framework-specific corollary: a framework that does this to itself does it once per build plan to every repo that adopts it. Relates to Principle 2 and [[When a scope narrowing is recorded, it is a CASCADE, not an annotation]]
 
-## Widening a predicate takes TWO searches: grepping the pattern finds its DUPLICATE COPIES, never the CALLERS that branch on the predicate it backs. So grep the *shape* for copies, then the *predicate's name* for branches; a survey that ran only the first is incomplete however clean it looked. Generalizes to any shared predicate — a validator, a feature flag, a type guard
+## Surveying a shared thing takes TWO searches: grepping the thing finds its DUPLICATE COPIES, never what DEPENDS on it. Widening a predicate — grep the *shape* for copies, then the *predicate's name* for the callers that branch on it (any shared predicate: a validator, a feature flag, a type guard). Relocating a fact — grep the fact, then grep prose naming its OLD HOME, because "the rule lives in X" goes false the moment you empty X. A survey that ran only the first is incomplete however clean it looked
+
+**The relocation instance (2026-08-05, `critic-review-identity`).** A PR-review finding said the
+path-resolution rule for a reviewer's rendezvous entry was stated nowhere, so I added it to two
+surfaces: `review-protocol.md` (the coordinator's dispatch template) and `agents/critic-reviewer.md`
+(the reviewer itself). That pushed `review-protocol.md` past its token ceiling, and the budget
+test's own comment held the answer — a prior trim had already moved "never compose the filenames
+yourself" out of that file because *it is a reviewer instruction whose home is the agent
+definition*. Path resolution is the same class of fact about the same actor, so I deleted the
+coordinator copy. Correct call, incomplete edit: a `_rendezvous` docstring three files away still
+asserted that "the surfaces that hand a reviewer its entry — `review-protocol.md`'s dispatch
+template and `agents/critic-reviewer.md` — say to join it onto the project directory." The commit
+message stated the one-home choice; the docstring stated its opposite.
+
+**Why the second grep is the one you skip.** Moving a fact feels like *one* decision, and it is —
+but it is *two* edits, and the second has no syntactic relationship to the first. Nothing links a
+docstring in `critic_consolidate.py` to a paragraph in `review-protocol.md` except the English
+sentence naming it, so no compiler, test, or shape-grep finds it. The guard test this very plan
+built enforces that no surface *spells a filename*; it cannot enforce that a surface's claim about
+*where a rule lives* is still true, and the plan says so honestly (criterion 4: "what it cannot
+enforce is prose meaning").
+
+**What it cost:** the next review round caught it, which bought a whole extra
+`verify-resolutions` pass for a one-hunk fix — an instance of the round pump filed as
+`brookstalley/prawduct#167`, and a *different* generator than the ones recorded there.
+
+
 
 Chunk 05c widened an id-shape regex; `grep -rn "A-Za-z0-9"` correctly found all four copies (and caught a third the inherited plan had missed), so the survey felt complete and stopped. It was blind by construction to `core.resolve_ref`, which gates an alias round-trip on `is_pfx` — the Critic found it. `grep -rn "is_pfx"` takes seconds and was never run. The consequence was cost plus a widened ambiguity class, not a break, but nothing about the method would have caught a break either. . Relates to [[A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing]] (same enumeration-wearing-a-query's-clothes failure, one level up: a correct query against the wrong axis) and Root Cause Discipline (#16)
 
