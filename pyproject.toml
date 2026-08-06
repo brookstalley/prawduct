@@ -13,9 +13,17 @@ dev = [
     "pyyaml>=6.0",
 ]
 
-# The dev extra above is the only home for the test dependencies, and a CI job
-# that re-listed them would be a second one. `pip install ".[dev]"` is how CI
-# reads it — which means this repo has to be *installable*, and until this stanza
+# The dev extra above is the only home for WHICH test dependencies this repo has,
+# and a CI job that re-listed them would be a second one. It is deliberately not the
+# home for WHICH VERSIONS are installed: the floors above say what is supported, and
+# `constraints.txt` records the one resolution that is authoritative (clause 5 of
+# `plugin/docs/upstream-dependency-policy.md`). Adding a package here without pinning
+# it there leaves it free to re-resolve on every run — `tests/preferences/
+# test_dependency_resolution_pinning.py` is what makes that a red test rather than a
+# silent hole.
+#
+# `pip install -c constraints.txt ".[dev]"` is how CI reads both — which means this
+# repo has to be *installable*, and until this stanza
 # existed it was not: setuptools' flat-layout discovery finds `plugin/` beside
 # other top-level directories and refuses to guess. Nothing is packaged
 # (`packages = []`) because nothing here is importable-as-installed — tests reach

@@ -3,6 +3,66 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-06: on what terms does someone else's code become yours
+
+<!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=upstream-dependency-policy -->
+
+**The governing sentence is the whole design: this is about dependencies, not package managers.**
+The policy governs any upstream artifact whose release someone else controls, independent of
+delivery mechanism — and registry packages are the obvious case and the least complete one. CI
+actions are the sharpest: upstream code executing with the repository's credentials, referenced by
+a mutable tag, present in no manifest at all. `plugin/docs/upstream-dependency-policy.md` is the
+canonical home for the six clauses, the three enforcement tiers and a mapping appendix marked
+non-normative; every other surface cites it rather than restating it.
+
+**The sentence is enforced rather than asserted.** `_POLICY_SURFACES` in
+`tests/test_v5_templates.py` sweeps every surface that states the policy and fails any that names
+an ecosystem, restates the numeric default, or drops its citation of the spec — across three
+scopes, with the scope derived from whether the region's own name says it is dedicated rather than
+resting on a declaration. The detector was red-verified against the real files, not planted
+strings: naming a lockfile inside a clause failed with its line number and was reverted.
+
+**Detection keys off the decision, never off the ecosystems.** Every mechanism here asks only
+whether an answer was recorded — because any file-list that decided "does this rule apply?" would
+be the allowlist the policy exists to reject, and it under-enumerates by construction. So the
+advisory probe (`plugin/lib/dependency_policy_probes.py`) has no codebase scan at all, and that
+absence is pinned by a test rather than left to a comment. The conformance scan that *does* read
+the tree is agent-performed (doctor Health Check #15), which is what lets it recognise surfaces no
+allowlist would enumerate and report a third verdict, *unclassified* — a scan reporting any
+unclassified surface does not report clean.
+
+**Seven pipeline legs**, recorded as a new *Upstream dependency intake* row in
+`cross-cutting-concerns.md`, distinct from *Dependency management* (which owns justification)
+exactly as *API design (produced)* is distinct from *Foreign API verification*: discovery elicits,
+planning and building carry it, the Critic warns on an undeclared dependency change, doctor finds it
+retroactively, the advisory nudges ambiently, and the janitor surveys — the last of which also
+gained the counterweight it lacked, having asked only whether dependencies were *current*.
+
+**A standing framework position was overturned, and recorded as a reversal.** Known Gaps read
+"Dependency management has no discovery trigger. Dependencies are a planning concern. This is by
+design." Half still holds — *justification* is a planning concern. Half does not: *intake terms* are
+universal, answerable before any dependency is chosen, and invisible to planning. The original
+reasoning is kept rather than deleted, because it was correct for its scope and was overtaken by a
+change in the threat model rather than by a mistake.
+
+**Prawduct now conforms to it as a product, not only as its author** — a rule whose author's own
+repo ignores it is the aspirational shape the norm lifecycle exists to catch. The policy is recorded
+in `project-state.yaml` and `security-model.md`, and `constraints.txt` plus `pip install -c` raises
+this repo's own test dependencies to tier 1. **It bound its author on day one**: the resolver's
+choice of `packaging` was a release published two days earlier, which the minimum-release-age clause
+excluded. Two surfaces are recorded at tier 3, one of them — the build backend — named as knowingly
+below its best reachable tier, because no constraints mechanism reaches pip's isolated build
+environment (verified by pinning below the declared floor and watching the install succeed anyway).
+Listing it would have been a pin that reads as coverage and provides none.
+
+**One test was consolidated, and this is the entry that records it.** Chunk 03 deleted
+`test_does_not_restate_the_numeric_default`; it is subsumed by
+`test_no_policy_surface_restates_the_numeric_default`, which sweeps the same file and heading for
+the same `\d+\s*days?` property, across every surface instead of one. Nothing else on this branch
+deleted a test — Chunk 05 renamed
+`test_the_declared_scope_follows_whether_the_heading_is_dedicated` to `..._the_region_is_...` while
+strictly widening it, which is not a consolidation.
+
 ## 2026-08-05: an archived review can be brought back as itself
 
 <!-- prawduct: chunks=2 | type=fix | scope=critic-review-identity -->

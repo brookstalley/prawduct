@@ -136,7 +136,11 @@ action be reversed to restore the original condition?* Decide read-do vs do-conf
 frequent work gets a short do-confirm verification list; rare, irreversible, or order-critical work
 gets the full read-do script.
 
-**Step 4 — Decide the sections, then draft.** Copy `templates/runbook.md`. Before filling anything
+**Step 4 — Decide the sections, then draft.** Copy `templates/runbook.md` — unless a situation-
+specific blank already exists, in which case copy that one instead and skip the derivation you
+would otherwise repeat. Today there is one: `templates/upstream-dependency-update-runbook.md`, for
+taking upstream releases into the product, which arrives with its steps, its trusted/eligible/held
+sort and its confusable neighbour already written. Before filling anything
 in, run the template's include-test for every optional section and **delete the ones that fail**.
 Do not leave a section with "N/A" or a restated generality — an empty section still costs the reader
 a read to discover it is empty.

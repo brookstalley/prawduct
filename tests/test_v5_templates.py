@@ -555,7 +555,24 @@ _POLICY_SURFACES = (
     ("skills/doctor/SKILL.md", "## Health Check Flow (current dir is a product repo)", "bullet"),
     ("skills/janitor/SKILL.md", "### Dependency Health", "bullet"),
     ("lib/dependency_policy_probes.py", None, "module"),
+    ("templates/upstream-dependency-update-runbook.md", None, "module"),
 )
+
+
+def _names_the_policy(name: str) -> bool:
+    """Does this region's own name say it is dedicated to the intake policy?
+
+    One question, asked of whatever names the region — a heading for a section, a
+    filename for a module. Two spellings are accepted because the surfaces
+    genuinely spell it two ways and neither is wrong: markdown surfaces say
+    "upstream" (the policy's own word, and what every dedicated heading uses),
+    while the Python module is named for the thing it implements. Separators are
+    normalised so a hyphenated markdown filename and an underscored module name
+    answer the same, which is the property that was accidentally Python-specific
+    when only one module surface existed.
+    """
+    normalised = re.sub(r"[-_.]+", "_", name.lower())
+    return "upstream" in normalised or "dependency_policy" in normalised
 
 
 def surface_region(rel_path: str, heading: str | None, scope: str) -> str:
@@ -925,17 +942,17 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
                 "surface's region is the whole file, so a heading would be ignored"
             )
             stem = rel_path.rsplit("/", 1)[-1]
-            assert "dependency_policy" in stem, (
+            assert _names_the_policy(stem), (
                 f"{rel_path} is scanned whole, but its name does not say it is "
                 "about this policy — either it is the wrong scope or the file "
-                "holds unrelated code the negative guards would police"
+                "holds unrelated content the negative guards would police"
             )
             return
         assert heading is not None, (
             f"{rel_path} declares scope {scope!r}, which anchors on a heading, but "
             "has none — a non-markdown surface takes 'module'"
         )
-        dedicated = "upstream" in heading.lower()
+        dedicated = _names_the_policy(heading)
         expected = "section" if dedicated else "bullet"
         assert scope == expected, (
             f"{rel_path}'s {heading!r} is declared {scope!r} but its heading "
@@ -947,7 +964,7 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
     def test_the_sweep_covers_the_surfaces_that_exist(self):
         """Guards against the roster silently emptying — a parametrized sweep over
         an empty tuple passes and proves nothing."""
-        assert len(_POLICY_SURFACES) >= 7
+        assert len(_POLICY_SURFACES) >= 8
         for rel_path, heading, scope in _POLICY_SURFACES:
             text = read_file_under_plugin(rel_path)
             if heading is None:

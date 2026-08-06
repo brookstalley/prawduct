@@ -1,0 +1,66 @@
+# The resolved test-dependency set, pinned and authoritative.
+#
+# This file exists because of clause 5 of `plugin/docs/upstream-dependency-policy.md`:
+# the resolved dependency set is committed, and installs — in CI or by an agent — do
+# not re-resolve. Until it existed, `pip install ".[dev]"` asked PyPI what the newest
+# satisfying release was on the day it ran, so two CI runs a week apart could install
+# different upstream code with no commit in between.
+#
+# **This is not a second home for the dependency list.** `pyproject.toml`'s `dev` extra
+# declares WHICH packages this repo depends on and the floors it supports; this file
+# records WHICH RESOLUTION is authoritative. The split is structural, not a convention
+# anyone has to remember: a constraint is inert on its own. `pip install -c
+# constraints.txt` installs nothing — constraints only bound versions for packages
+# something else requests. Delete a name from the `dev` extra and it stops being
+# installed no matter what this file says.
+#
+# ## What is pinned, and why the list is longer than the extra
+#
+# The extra names four packages. Pinning only those four leaves every transitive
+# dependency free to move, which is the same hole one rung down — so this is the whole
+# closure.
+#
+# Three entries are marker-gated and will not install on every environment. They are
+# pinned anyway because a constraint costs nothing where nothing requests it, and
+# because the CI matrix's floor leg is Python 3.10, where two of them are real:
+#
+#   * `exceptiongroup`, `tomli` — pytest requires both on `python_version < "3.11"`.
+#   * `colorama`              — pytest requires it on `sys_platform == "win32"`.
+#
+# **The trap that hides them.** `pip --python-version 3.10` does NOT evaluate
+# environment markers for 3.10; it selects wheel tags only, and evaluates markers
+# against the interpreter actually running. A closure resolved that way on a 3.12 host
+# silently omits `exceptiongroup` and `tomli`, and the resulting file looks complete.
+# Re-derive this list against a real interpreter of the floor version, or read the
+# markers out of the metadata — not from a `--python-version` resolution.
+#
+# ## Why `setuptools` is absent
+#
+# `[build-system] requires = ["setuptools>=61"]` is resolved in pip's *isolated build
+# environment*, which no constraints mechanism reaches. Verified on pip 26.2.1: a
+# `setuptools==60.0.0` pin — below the floor, so a conflict if it were honoured — was
+# ignored via both `-c` and `PIP_CONSTRAINT`, and the build env fetched 83.0.0 anyway.
+# Listing it here would be a pin that reads as coverage and provides none, which the
+# policy's tier rule 2 calls worse than no claim at all. It is recorded as an unpinned
+# residual in `security-model.md`'s Upstream Dependencies norm.
+#
+# ## Changing a pin
+#
+# Follow the product's update procedure rather than editing a number here: the versions
+# below are subject to clause 1 (minimum release age) like any other adoption. When this
+# set was first derived, the resolver's choice of `packaging` was 26.3, published two
+# days earlier — under the 7-day minimum, so 26.2 is pinned instead. That is the policy
+# working, and re-deriving the file with a plain resolver run would quietly undo it.
+
+colorama==0.4.6
+exceptiongroup==1.3.1
+execnet==2.1.2
+iniconfig==2.3.0
+packaging==26.2
+pluggy==1.6.0
+Pygments==2.20.0
+pytest==9.1.1
+pytest-timeout==2.4.0
+pytest-xdist==3.8.0
+PyYAML==6.0.3
+tomli==2.4.1

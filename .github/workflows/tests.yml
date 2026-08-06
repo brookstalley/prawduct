@@ -78,13 +78,24 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: pyproject.toml
+          # Both files decide what gets installed, so both belong in the cache key.
+          # With only `pyproject.toml` here, changing a pin would reuse the cache
+          # keyed to the previous resolution.
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
 
       - name: Install test dependencies
         # The `dev` extra is the one home for these; see the header. The install
         # carries the dependency list only — `packages = []`, and the tests reach
         # `plugin/` through `tests/conftest.py`'s path shim, not through site-packages.
-        run: python -m pip install ".[dev]"
+        #
+        # `-c constraints.txt` is clause 5 of the upstream dependency policy expressed
+        # at tier 1: this step installs exactly the committed resolution and never asks
+        # the index what is newest today. The extra stays the reference — the constraints
+        # file bounds versions and declares nothing, so it cannot become a second home
+        # for the dependency list.
+        run: python -m pip install -c constraints.txt ".[dev]"
 
       - name: Run the suite
         run: python -m pytest

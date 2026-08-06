@@ -44,6 +44,10 @@ runs on a developer's machine on Claude Code lifecycle events** (supply-chain / 
   Status: in-transition — tracking item **BKL-7Q4M** (safe upstream filing: content minimization, redaction, and owner preview-and-consent for the outbound payload), the named 3.2.0 release blocker. **Requirements settled 2026-07-23**, captured in the single durable requirements doc `documentation/backlog-service-requirements.md` (Upstream bug reporting — XP4–XP7); the norm stays `in-transition` because the capability is still **unbuilt** (design + build pending). The end state is *not* permanent prohibition: a private repo filing upstream is a capability prawduct wants, and BKL-7Q4M is the work that makes it safe to have. Interim rule: **no surface that sends product content to a foreign owner ships until BKL-7Q4M's requirements are settled and its design reviewed.** Local-only channels (the `incoming-bugs/` drop-box, the product's own `backlog_service_repo`) are unaffected and remain the supported path meanwhile.
   Mechanism: `tests/preferences/test_no_upstream_content_egress.py` — fails if a `file-upstream` surface appears anywhere in the plugin, or if prawduct's own tracker reaches the backlog adapter. This is *interim* enforcement of the interim rule; when BKL-7Q4M lands, the test is **replaced** by one asserting the XP7 adapter contract (target-pinned, authenticated, refuses-without-owner-approval, no self-file), and this norm is amended to its steady-state form. It is never weakened to let an unreviewed surface through.
   Retroactivity: none required — no shipped surface departs from this at birth. Verified 2026-07-21: `file-upstream` has zero occurrences plugin-wide, `/prawduct:report-bug` writes only to a local `incoming-bugs/` drop-box and explicitly refuses a remote write when no local checkout is reachable, and `backlog_service_repo` names the product's own repo.
+- **Code someone else releases enters this repo only on the terms recorded in `## Upstream Dependencies` below.** The clauses, the tier model and the per-ecosystem mapping are the framework's and are stated once in `plugin/docs/upstream-dependency-policy.md`; what this norm binds is that prawduct's *own* intake is governed by them rather than exempt from them.
+  Why: prawduct ships this policy to every product it governs, and a rule its author's own repo ignores is the aspirational-rule shape the norm lifecycle exists to catch. There is also a direct exposure and it is not hypothetical — the repo runs GitHub Actions with its credentials and installs test dependencies that execute in CI and on contributors' machines. The clause-1 default earned its keep on the day this norm was written: the resolver's choice of `packaging` was a release published two days earlier, which the 7-day minimum excluded (see the tier record below).
+  Status: steady-state, with one surface knowingly below its best reachable tier — recorded in the tier table rather than left for a later reader to discover.
+  Retroactivity: applied at birth to both existing intake surfaces, not deferred. The CI-action pins were already conformant on their own recorded reasoning; the Python dev extra was not, and was raised to tier 1 in the same commit as this entry rather than filed.
 
 ## Authentication & Authorization
 
@@ -133,3 +137,46 @@ The abuse surface is small and local. The controls that matter:
   steps proceed without re-confirmation. The one destructive migration lands as a single revertible
   commit. *This control tracks the `## Direction` norm as amended 2026-07-24 — the pre-amendment
   absolute form is recorded there as history, and must not be restated here as live.*
+
+## Upstream Dependencies
+
+The six clauses, the three enforcement tiers and the ecosystem mapping live in
+`plugin/docs/upstream-dependency-policy.md` and are not restated here. What follows is only what is
+this repo's own: the chosen values, the trusted register, and the tier each intake surface reaches.
+
+**Chosen values — the framework defaults, unmodified.** Minimum release age 7 days; the security
+fast path is adopted; new-dependency intake requires verifying package identity, not merely that a
+name resolves. Nothing is departed from, so nothing needs a departure rationale — but the defaults
+are *chosen*, not inherited by omission, and the decision block in `project-state.yaml` records them
+so the choice is legible to the checks that read it.
+
+**Declared trusted parties — one, with its why.**
+
+- **`actions/*` — GitHub's own organisation.** Taken at the floating major tag (`@v7`) with no
+  minimum age. Why: the major tag is the publisher's documented contract, and floating on it is what
+  picks up their security fixes without a bump — pinning to a SHA here would trade a real benefit for
+  protection against a compromise of the platform that is already executing the workflow. The
+  reasoning was recorded in `.github/workflows/tests.yml` before this policy existed; declaring it
+  here makes it auditable rather than a comment.
+- **Deliberately NOT trusted: `pytest`, `pytest-xdist`, `pytest-timeout`, `pyyaml`, `setuptools`.**
+  Widely-used and reputable, which is the property the 2026 campaigns exploited via maintainer-account
+  compromise — the spec's accepted-risk note applies to them exactly. They are untrusted, so clause 1
+  governs them, which is what `constraints.txt` enforces.
+
+**Per-surface tier record.** Rule 2 of the tier model is to record the tier actually reached, not the
+one aspired to.
+
+| Intake surface | Tier reached | Basis |
+|---|---|---|
+| GitHub Actions (`.github/workflows/`) | 3 | Trusted party, so clause 1 does not apply; the standing rule that a *third-party* action would be SHA-pinned is the tier-3 procedure. No update bot, so tier 2 is unavailable. |
+| Python test dependencies (`pyproject.toml` `dev` extra) | 1 | `constraints.txt` pins the full resolved closure and CI installs through it, so clauses 1, 2 and 5 bind every actor rather than an agent's diligence. |
+| Runtime dependencies | n/a | There are none. `architecture.md` § Direction forbids third-party runtime dependencies, and the plugin imports only the standard library. |
+
+**Below best reachable tier, knowingly — the build backend.** `[build-system] requires =
+["setuptools>=61"]` resolves in pip's isolated build environment, which **no constraints mechanism
+reaches**: verified on pip 26.2.1, a `setuptools==60.0.0` pin below the declared floor was ignored
+via both `-c` and `PIP_CONSTRAINT`, and the build environment fetched 83.0.0 regardless. So setuptools
+re-resolves on every CI install and is enforced at tier 3 only. It is deliberately absent from
+`constraints.txt` rather than listed there: a pin that cannot bind would read as coverage this repo
+does not have, which rule 2 calls worse than an absent claim. Closing it needs `--no-build-isolation`
+with setuptools pre-installed, or dropping the local build step altogether — filed, not forgotten.

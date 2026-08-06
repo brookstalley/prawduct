@@ -178,6 +178,22 @@ design_decisions:
     status: active
     rationale: "declared at the backlog-service cutover alongside the architecture.md local-first amendment; recording it re-enables the Critic's infrastructure-coherence and real-dependency checks, which sit dormant while the field is null"
     date: 2026-07-21
+  upstream_dependency_policy:
+    minimum_release_age: "the framework default, adopted unmodified — the figure lives in docs/upstream-dependency-policy.md clause 1 and is deliberately not copied here"
+    trusted: "actions/* (GitHub's own org) — taken at the floating major tag, because that tag is the publisher's documented contract and is what picks up their security fixes without a bump; SHA-pinning it would trade a real benefit for protection against compromise of the platform already running the workflow. Nothing else is trusted: pytest, pytest-xdist, pytest-timeout, pyyaml and setuptools are reputable and widely used, which is precisely the property maintainer-account compromise exploits. Each party's why is in artifacts/security-model.md"
+    security_fast_path: "adopted as the spec states it — a release fixing a known exposure is taken on its merits, immediately, and the exercise is recorded rather than silent"
+    install_time_execution: "NOT denied. pip builds the local project from source on every install, so --only-binary :all: is unavailable without restructuring the install. Recorded as an accepted state, not as coverage"
+    resolution_pinning: "committed and frozen for the Python test dependencies — constraints.txt pins the whole resolved closure and CI installs through it. One residual: [build-system] requires resolves in pip's isolated build environment, which no constraints mechanism reaches (verified empirically, pip 26.2.1), so setuptools re-resolves per install and is deliberately absent from constraints.txt rather than pinned decoratively"
+    new_dependency_intake: "the age floor applies like any other adoption, plus identity verification — source repository, publication history and maintainer confirmed to be the ones the decision was about. A name that resolves is not a name that was verified"
+    surfaces:
+      github_actions: "tier 3 — trusted party so clause 1 does not apply; no update bot, so tier 2 is unavailable. The standing rule that a third-party action would be SHA-pinned is the procedure"
+      python_test_dependencies: "tier 1 — constraints.txt plus `pip install -c constraints.txt` in CI; binds every actor, not just an attentive agent"
+      python_build_backend: "tier 3 — knowingly below its best reachable tier; see resolution_pinning above"
+      runtime_dependencies: "n/a — there are none, and architecture.md § Direction forbids them"
+    status: active
+    rationale: "prawduct ships this policy to every product it governs, so exempting its own repo would be the aspirational-rule shape the norm lifecycle exists to catch. The exposure is also real rather than symbolic: GitHub Actions run with the repository's credentials and test dependencies execute in CI and on contributors' machines. Recording it at the tiers actually reached — including the one surface below its best — is rule 2 of the tier model applied to the framework itself"
+    detailed_in: artifacts/security-model.md
+    date: 2026-08-06
 
 # =============================================================================
 # OPEN QUESTIONS
@@ -580,6 +596,19 @@ operator_verification_required: false
 # nudge. See artifacts/api-contract.md for the full decision.
 
 api_versioning_decided: "plugin-semver + evidence-schema-version; CLI internal, external-consumer versioning deferred (revisit: first non-prawduct caller of prawduct-hook)"
+
+# =============================================================================
+# UPSTREAM DEPENDENCY POLICY (advisory-probe resolution signal)
+# =============================================================================
+# Flat top-level mirror of design_decisions.upstream_dependency_policy — the
+# dependency-policy advisory probe reads only column-0 scalars, so this is its
+# readable resolution signal. Truthy = a policy was recorded → suppress the
+# nudge. Doctor Health Check #15 accepts EITHER this fact or the decision block,
+# so a filled block with no mirror here is graded healthy while the nudge keeps
+# firing; both are set deliberately. See artifacts/security-model.md for the
+# rationale, the trusted register, and the per-surface tier record.
+
+upstream_dependency_policy_decided: "framework defaults adopted unmodified; actions/* the sole trusted party; test dependencies pinned at tier 1 via constraints.txt, CI actions and the build backend at tier 3 (the latter knowingly below its best reachable tier)"
 
 # =============================================================================
 # NORM REGISTRY RATIFICATION (advisory-probe resolution signal)

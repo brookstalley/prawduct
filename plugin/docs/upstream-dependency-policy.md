@@ -99,6 +99,14 @@ available updates, obtain each candidate's publication time, classify by trust t
 clause, act. A procedure is auditable and re-runnable by someone who was not there; an
 instruction to "check the age first" is neither.
 
+**Start from `templates/upstream-dependency-update-runbook.md`**, which is that procedure
+pre-shaped — those four steps, with the trusted/eligible/held sort and the identity check
+already written, and the security fast path called out as the neighbouring procedure most
+easily taken by mistake. Copy it into the product and fill it in; a product that cites it
+where it stands has a prompt again rather than a procedure. It names no tool, registry or
+manifest, for the reason the appendix below gives — the filled-in copy is where your own
+commands belong.
+
 ## Recording the policy
 
 The decision lives in `project-state.yaml` under `design_decisions.upstream_dependency_policy`

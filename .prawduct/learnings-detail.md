@@ -2758,3 +2758,60 @@ the advisory type as a bare literal with nothing coupling them to `PROBE_TYPE`, 
 have left all three routing readers to an advisory that no longer existed, suite green. That half is
 already covered by the denormalized-state and grep-for-the-new-symbol rules; the part not covered
 elsewhere is the first one, where the claim is about agreement rather than about a copied token.
+
+---
+
+## Detection keyed off the decision, not off the ecosystem list
+
+The upstream intake policy governs any artifact whose release someone else controls, across
+ecosystems prawduct has never heard of. Every instinct said the advisory probe should first ask
+"does this product even have dependencies?" — and every way of answering that is a list of the
+files that constitute an intake surface, which is precisely the allowlist the policy exists to
+reject. It under-enumerates by construction: the sharpest surfaces (CI actions running with the
+repository's credentials, base images, vendored trees, install scripts, agent extensions) appear
+in no manifest, so the scan would report clean on the exposures that matter most.
+
+Making the trigger universal removes the scan entirely. The probe asks one question — has an
+answer been recorded — which is answerable for every product including one that takes no upstream
+code at all ("none" is one line, and it resolves the nudge permanently). The absence of a detector
+is the design, which is why it is pinned by a test using a `Codebase` stand-in whose every
+attribute access raises, called directly rather than through the roster (the roster swallows probe
+exceptions, so a violated design property would surface as a missing advisory rather than a red
+test).
+
+## `jurisdiction` before the plan, not at review
+
+`prawduct-hook jurisdiction` surfaced that the requirements document's §7 ("conformance drift is
+offered and applied on confirmation") read as *prawduct writes the product's package-manager and CI
+config*, which two ratified `architecture.md` norms forbid outright. Caught at plan-authoring, it
+became a design input: the resolution — prawduct reports the drift and presents the exact edit, the
+agent in session applies it with the owner's yes — satisfies the owner's ruling exactly, conforms to
+both norms, and is the better design, because an agent can act on surfaces a scanner would have to
+enumerate. It also deleted a planned chunk: a Python conformance scanner walking a hardcoded list of
+config filenames would have re-introduced the allowlist trap in code.
+
+The same conflict found at review is rework on a written plan and a built tree. The cost asymmetry
+is the whole lesson.
+
+## A tool that accepts an input has not necessarily applied it
+
+Two instances in one session, both from pip, both of which would have shipped a pin that binds
+nothing while reading as coverage.
+
+**`--python-version` emulates less than it appears to.** It selects wheel *tags* for the named
+version but evaluates environment *markers* against the interpreter actually running. Resolving the
+test closure as `--python-version 3.10` on a 3.12 host silently omitted `exceptiongroup` and `tomli`
+— both of which pytest requires on `python_version < "3.11"`, and both of which the real 3.10 CI leg
+therefore installs unpinned. The output looked like a complete closure. Reading the package metadata
+(`requires_dist`) is what exposed it.
+
+**Constraints do not reach pip's isolated build environment.** `[build-system] requires` is resolved
+in a separate environment that neither `-c` nor `PIP_CONSTRAINT` reaches. The discriminating test is
+the shape worth keeping: pin the package *below* its declared floor, so the install MUST fail if the
+constraint is honoured. It succeeded, and verbose output showed the build environment fetching the
+newest release regardless. A pin that looks respected proves nothing — only a pin that must break
+something does.
+
+The recorded outcome was to leave the package unpinned and say so in the tier record, rather than
+list it and inherit a claim of coverage the repo does not have. The policy's own rule is that a
+policy claiming coverage it lacks is worse than an absent one.
