@@ -42,9 +42,14 @@ leans on the predicate.
 
 ## Status
 
-- [ ] Chunk 01: The dispatcher asks the gate before it spends a reviewer
+- [x] Chunk 01: The dispatcher asks the gate before it spends a reviewer
 - [ ] Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
-Context: Plan written 2026-08-06 after PR #615 merged; nothing built yet. Requirements in
+Context: **Chunk 01 built and committed at `586ae1d`** (suite 3823 passed / 0 failed / 7 skipped).
+Step 0 settled against the code by owner ruling: `change-log.md` is correctly non-judgeable, and
+`learnings-detail.md`'s CRT-7M2D bullet was wrong on three of its five named files — corrected there.
+The refusal is mutation-verified on both conjuncts, and the retroactive replay refuses exactly rounds
+3/4/5 of `fix/backlog-import-title-boundary` while dispatching 1/2/6/7. Awaiting the `cumulative`
+review before Chunk 02. Requirements in
 `.prawduct/artifacts/gate-as-dispatcher-requirements.md` — read it first, it carries the
 measurements, the safety argument, and the withdrawn layers. `active_build_plan` still points at
 `artifacts/build-plan-critic-review-identity.md` and **must not be repointed** until the
@@ -104,8 +109,14 @@ Tests carry most of this, but two things tests cannot say:
      one. **Read the mechanism; do not assume the learning is stale because it is inconvenient.**
      Nothing else in this chunk may be built before this is settled.
   1. Acceptance criteria met and tests pass
-  2. `/prawduct:critic` run and blocking findings resolved
-  3. Committed and chunk marked `[x]` in Status
+  2. **Commit first**, then `/prawduct:critic cumulative`, and resolve blocking findings.
+     <!-- Not the template's default order (review the dirty tree, then commit). `chunk`/`final`
+          both diff HEAD against the WORKING tree, so on a clean tree their interval is empty and
+          the dispatch is refused; only `cumulative` reads `merge-base...HEAD`, which is where
+          committed work lives. Both chunks of this plan land in one PR, so `cumulative` is the
+          right mode for each — and ordering it after the commit means the reviewed tree IS the
+          commit's tree. Corrected 2026-08-06 after the first dispatch refused for exactly this. -->
+  3. Chunk marked `[x]` in Status
 
 ### Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
 
