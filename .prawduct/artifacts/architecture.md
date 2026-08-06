@@ -153,6 +153,14 @@ The flagship multi-process flow, and the clearest expression of invariant 1.
   on any gap (missing role, wrong reviewed-commit, malformed partial → no fact). On success it
   appends the review fact (and any resolution facts) to the evidence store, regenerates the derived
   findings view, anchors a telemetry event, clears the marker, and removes the partials.
+- **A review that never consolidates is archived, not deleted — and the archive is addressable.**
+  A dispatch sweeping leftovers, and `critic-discard` clearing a stranded roster, both move the
+  manifest + partials to `.prawduct/.critic-partials-archive/<review-id>/` (newest three kept).
+  `critic-restore <review-id>` copies a set back so it consolidates **as itself**. That inverse is
+  only sound because partials carry review identity: the recovery it replaces copied one review's
+  partials into another's directory, which succeeded precisely because a partial was bound to a
+  commit rather than to a review, and therefore recorded findings under the wrong review's id.
+  Restoring the manifest alongside the partials is what makes the round trip lossless.
 
 **Why consolidation is decoupled from dispatch.** The harness backgrounds dispatched subagents, so
 the coordinator cannot reliably resume to aggregate. Instead, consolidation runs from three

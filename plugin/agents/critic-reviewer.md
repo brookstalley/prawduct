@@ -23,7 +23,9 @@ your **assigned goals**, the **project directory**, the **changed-files list**, 
 summary, the **commit under review** (a SHA), the **review id**, and the **two paths you
 write** — your started marker and your partial. Those paths and the review id are recorded in
 `.prawduct/.critic-partials/manifest.json` as `rendezvous.<your role>` and `id`; read them there
-if your prompt omits them, and never compose the filenames yourself. The role → goal mapping
+if your prompt omits them, and never compose the filenames yourself. **Both paths must be absolute
+when you write** — your `Write` tool requires it, and the manifest records them relative to the
+project directory, so join a relative one onto the project directory your prompt carries. The role → goal mapping
 (definitions in `review-protocol.md`, read it from your skill/critic directory):
 
 - **correctness** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended).
@@ -84,8 +86,9 @@ whole consolidation closed, so match it exactly):
 clean pass. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
 given — the consolidator checks that every reviewer reviewed the commit the manifest dispatched
 *and* was dispatched by the review it is consolidating; either mismatch fails closed. Note that
-`dispatch_id` is your OWN review; `resolutions[].review_id`, if you ever write one, is a
-different review entirely.
+`dispatch_id` is your OWN review; `resolutions[].review_id`, which you never write, means a
+different review entirely — you exist only for a coordinator roster, and `resolutions` belongs
+to `verify-resolutions`, which is always single-pass. Emitting one fails the whole review closed.
 
 Your final assistant message is not read by any gate — the partial file is your entire
 output. Once it is written, you are done.

@@ -1387,14 +1387,10 @@ def cmd_critic_restore(project_dir: Path, argv: list[str]) -> int:
         # The missing argument raises exactly one question — which review? — and
         # it is answerable from disk, so answer it instead of printing a usage
         # line that sends the reader to `ls` a dot-directory.
-        available = consolidate.archived_reviews(prawduct_dir)
-        listing = (
-            "\n  Restorable now: " + ", ".join(available)
-            if available
-            else "\n  The archive holds nothing to restore."
-        )
+        available, problem = consolidate.archived_reviews(prawduct_dir)
         print(
-            "critic-restore: which review? Usage: critic-restore <review-id>" + listing,
+            "critic-restore: which review? Usage: critic-restore <review-id>"
+            + consolidate.archive_listing(available, problem),
             file=sys.stderr,
         )
         return 1
@@ -1410,16 +1406,27 @@ def cmd_critic_restore(project_dir: Path, argv: list[str]) -> int:
         f"{result['source']} back into .prawduct/.critic-partials/ "
         "(the archive is untouched)."
     )
-    if result["has_manifest"]:
+    if result["consolidatable"]:
         print(
             "PRAWDUCT: run `prawduct-hook critic-consolidate` to record it — the "
             "fact will carry that review's own id, not a new one."
         )
     else:
+        # Reachable exactly at the v3.2.6 -> v3.2.7 upgrade: a set archived before
+        # reviews carried identity has no `rendezvous`, so consolidation
+        # fail-closes on it. Saying "run critic-consolidate" here and letting the
+        # operator meet that refusal would be a remedy that cannot reach the
+        # state — so say what the files ARE good for instead of what they are not.
+        # The reason is quoted, not paraphrased: `validate_manifest` owns what a
+        # usable manifest is AND what to do about each way it is not, so adding a
+        # remedy here would make a second home for that advice — and did, briefly,
+        # printing the same sentence twice in one message.
         print(
-            "PRAWDUCT: this set carries no dispatch manifest, so `critic-consolidate` "
-            "will no-op on it — the partials are back for reading, not for recording. "
-            "The next `/prawduct:critic` will sweep them to the archive again."
+            f"PRAWDUCT: this set cannot be recorded as a review fact — "
+            f"{result['blocked_reason']}. What the restored files ARE good for: "
+            "each partial holds a `findings` array with the reviewer's own text, "
+            "readable now. The next `/prawduct:critic` will sweep them back to "
+            "the archive."
         )
     return 0
 

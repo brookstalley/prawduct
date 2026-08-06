@@ -4140,7 +4140,12 @@ class TestPartialBelongsToItsReview:
         assert source.count('f"{role}.{review_id}.json"') == 1
         assert source.count('f"{role}.{review_id}.started"') == 1
 
-        pattern = re.compile(r'\.critic-partials/[A-Za-z<][^/ `")]*\.json')
+        # Both suffixes `partial_path`/`started_path` own, not just `.json`:
+        # `started_path` owns its shape on exactly the same terms, so a surface
+        # reintroducing `.critic-partials/<role>.started` would pass a
+        # json-only guard while breaking the identical invariant. No live
+        # offender — this closes the axis rather than fixing a defect.
+        pattern = re.compile(r'\.critic-partials/[A-Za-z<][^/ `")]*\.(?:json|started)')
         offenders = []
         for path in sorted((ROOT / "skills").rglob("*.md")) + \
                 sorted((ROOT / "agents").rglob("*.md")) + \

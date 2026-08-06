@@ -195,7 +195,8 @@ its interval spans both chunks either way.
 
   The honest replacement restores the archived review **as itself** and consolidates it:
   `prawduct-hook critic-restore <review-id>` copies that review's manifest and partials
-  back out of `.critic-partials-archive/`, refusing while anything is pending so it can
+  back out of the review archive (a runtime-created, gitignored directory under
+  `.prawduct/`, named by `ARCHIVE_DIRNAME`), refusing while anything is pending so it can
   never merge two reviews' files into one directory. Because Chunk 1 keys the names by
   review id, a restored set is self-identifying and the round trip is lossless — the same
   property that makes the mis-attributing copy impossible makes the honest one safe.

@@ -635,11 +635,22 @@ def _rendezvous(project_dir: Path, prawduct_dir: Path, roster: list[str],
                 review_id: str) -> dict[str, dict[str, str]]:
     """The per-role write paths recorded in the manifest.
 
-    Project-relative where possible, because that is the form a reviewer can
-    use: it runs with the project directory as its working directory, and a
-    relative path is what its dispatch prompt and its own instructions can hand
-    it verbatim. An absolute fallback covers the case where ``.prawduct/`` does
-    not resolve under the project dir — a wrong path is worse than a long one.
+    Project-relative where possible, because the manifest is read from more than
+    one place — the coordinator composing dispatch prompts, the reviewer reading
+    its own entry, a human inspecting the file — and an absolute path bakes in
+    the worktree that wrote it, which is wrong the moment the clone moves. An
+    absolute fallback covers the case where ``.prawduct/`` does not resolve under
+    the project dir; a wrong path is worse than a long one.
+
+    **The relative form is NOT usable verbatim by a reviewer, and saying so is
+    part of the contract.** A reviewer writes with the ``Write`` tool, which
+    requires an absolute path. So the surfaces that hand a reviewer its entry —
+    ``review-protocol.md``'s dispatch template and ``agents/critic-reviewer.md``
+    — say to join it onto the project directory the prompt already carries. That
+    used to happen anyway, silently, because a coordinator would absolutize
+    without being told to; an unstated transformation the mechanism depends on is
+    exactly the class this module's review-identity work removes elsewhere, so it
+    is written down rather than relied upon.
     """
     def _rel(p: Path) -> str:
         try:
@@ -746,7 +757,7 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
     return dest
 
 
-def archived_reviews(prawduct_dir: Path) -> list[str]:
+def archived_reviews(prawduct_dir: Path) -> tuple[list[str], str]:
     """The archived sets :func:`restore_review` can bring back, newest first.
 
     The names :func:`_archive_leftovers` wrote: a review id when the archived
@@ -756,16 +767,51 @@ def archived_reviews(prawduct_dir: Path) -> list[str]:
     review that still exists somewhere. The not-found refusal and the bare
     invocation both render it for that reason, rather than leaving the reader to
     `ls` a dot-directory for names nobody memorised.
+
+    **An unreadable archive is not an empty one, and the two must not render
+    alike.** An absence-claim is evidence only when the place it read actually
+    resolved: a permission error or a non-directory at that path would otherwise
+    produce the identical empty list, and the caller — an operator deciding
+    whether an unconsolidated review's findings are gone — would be told they
+    are and act on it. So the reason rides along with the list, and every
+    renderer says which case it is.
+
+    Returns ``(names, problem)`` where ``problem`` is empty when the directory
+    was read (including when it simply does not exist, the normal case) and
+    names the fault otherwise.
     """
+    adir = archive_dir(prawduct_dir)
+    if not adir.exists():
+        return [], ""
+    if not adir.is_dir():
+        return [], f"{adir} exists but is not a directory"
     try:
         entries = sorted(
-            (d for d in archive_dir(prawduct_dir).iterdir() if d.is_dir()),
+            (d for d in adir.iterdir() if d.is_dir()),
             key=lambda d: d.stat().st_mtime,
             reverse=True,
         )
-    except OSError:
-        return []
-    return [d.name for d in entries]
+    except OSError as exc:
+        return [], f"the review archive at {adir} could not be read ({exc})"
+    return [d.name for d in entries], ""
+
+
+def archive_listing(available: list[str], problem: str) -> str:
+    """The "here is what you could restore" tail, rendered once.
+
+    Both places that report a review they could not find append this, and both
+    would otherwise have to remember that an empty list is only an absence-claim
+    when the directory actually resolved. One home for that distinction.
+    """
+    if problem:
+        return (
+            f"\n  Cannot list what IS restorable: {problem}. That is not the same"
+            " as the archive being empty — fix the read before concluding a"
+            " review's findings are gone."
+        )
+    if available:
+        return "\n  Restorable now: " + ", ".join(available)
+    return "\n  The archive holds nothing to restore."
 
 
 def restore_refusal(prawduct_dir: Path, present: list[str], active: bool) -> str:
@@ -811,9 +857,15 @@ def restore_refusal(prawduct_dir: Path, present: list[str], active: bool) -> str
             "  (`critic-end` clears the marker only; these files would still be here.)"
         )
     live = " (a review is also still marked active)" if active else ""
+    # Says what is THERE, not whose it is. The obvious phrasing — "files from
+    # another review" — is false in the path a caller reaches most often: an
+    # operator re-running restore to check it worked, or retrying after a
+    # consolidation that fail-closed, meets this message about the very files
+    # they just restored. The remedy is right in that path either way; the
+    # headline was the only part that was not.
     return (
-        f"refusing — {len(present)} file(s) from another review are in the partials\n"
-        f"  directory{live}. Restoring on top would merge two reviews into one\n"
+        f"refusing — {len(present)} file(s) are already in the partials\n"
+        f"  directory{live}. Restoring on top would put two reviews' files in one\n"
         "  directory, which is the mis-attribution restoring by id exists to avoid.\n"
         "\n"
         + remedy
@@ -840,11 +892,15 @@ def restore_review(prawduct_dir: Path, review_id: str) -> dict:
     restore that consumed it would mean a restored-then-swept review leaves
     nothing at all.
 
-    Returns ``{"status": "ok", ...}`` or ``{"status": "error", "kind", "reason"}``
-    — ``kind`` is ``pending`` (something is in the way), ``unknown`` (no such
-    archived set), ``unusable`` (the set is there but holds nothing readable) or
-    ``write-failed`` (the destination refused the copy). Per project convention
-    the failure is a return value, not an exception; the CLI renders it.
+    Returns ``{"status": "ok", ..., "consolidatable", "blocked_reason"}`` or
+    ``{"status": "error", "kind", "reason"}`` — ``kind`` is ``pending``
+    (something is in the way), ``unknown`` (no such archived set), ``unusable``
+    (the set is there but holds nothing readable) or ``write-failed`` (the
+    destination refused the copy). A successful restore whose set predates this
+    hook is ``status: ok`` with ``consolidatable: False``: the files ARE back,
+    which is the operation asked for, and the thing that cannot happen next is
+    named rather than discovered. Per project convention the failure is a return
+    value, not an exception; the CLI renders it.
     """
     pdir = partials_dir(prawduct_dir)
     try:
@@ -862,22 +918,18 @@ def restore_review(prawduct_dir: Path, review_id: str) -> dict:
             "reason": restore_refusal(prawduct_dir, present, active),
         }
 
-    available = archived_reviews(prawduct_dir)
+    available, archive_problem = archived_reviews(prawduct_dir)
     # Same gate the archive's own directory name goes through, for the same
     # reason: this id arrives from a caller and becomes a path segment, so
     # `../../x` walks out of the archive and an absolute one replaces the base.
     src = archive_dir(prawduct_dir) / review_id
     if not _path_component_safe(review_id) or not src.is_dir():
-        listing = (
-            "\n  Restorable now: " + ", ".join(available)
-            if available
-            else "\n  The archive holds nothing to restore."
-        )
         return {
             "status": "error",
             "kind": "unknown",
             "reason": (
-                f"no archived review named {review_id!r}." + listing
+                f"no archived review named {review_id!r}."
+                + archive_listing(available, archive_problem)
             ),
         }
 
@@ -923,16 +975,36 @@ def restore_review(prawduct_dir: Path, review_id: str) -> dict:
                 "files were removed, so the archive is still the only copy."
             ),
         }
+    # **Whether the restored set can actually be recorded, decided here rather
+    # than left to the caller to discover.** Filename presence is not the
+    # question — a manifest can be present and still unconsolidatable, and the
+    # reachable case is the upgrade this release IS: a set archived by v3.2.6
+    # carries no ``rendezvous``, so `consolidate` fail-closes on it. Telling an
+    # operator "run critic-consolidate" and letting them meet that refusal would
+    # hand them a remedy that cannot reach the state — the exact failure this
+    # subsystem's refusals were rewritten to stop producing.
+    #
+    # Asked by running the consolidator's OWN validator rather than re-deriving
+    # the shape here, so this never becomes a second opinion about what a usable
+    # manifest is.
+    restored_manifest = pdir / MANIFEST_NAME
+    if MANIFEST_NAME not in {c.name for c in children}:
+        usable, why = False, "the archived set carries no dispatch manifest"
+    else:
+        try:
+            usable, why = validate_manifest(json.loads(restored_manifest.read_text()))
+        except (OSError, json.JSONDecodeError) as exc:
+            usable, why = False, f"its manifest is unreadable ({exc})"
     return {
         "status": "ok",
         "id": review_id,
         "source": str(src),
         "restored": [c.name for c in children],
-        # A set archived from an unreadable/absent manifest restores as files an
-        # operator can read but `consolidate` cannot act on. Advice fails soft,
-        # not silent: the CLI says so rather than implying a consolidation is
-        # waiting.
-        "has_manifest": MANIFEST_NAME in {c.name for c in children},
+        "consolidatable": usable,
+        # Advice fails soft, not silent: when the set cannot be recorded the CLI
+        # says WHY and what the files are still good for, rather than implying a
+        # consolidation is waiting.
+        "blocked_reason": "" if usable else why,
     }
 
 
@@ -1675,8 +1747,13 @@ def validate_manifest(data) -> tuple[bool, str]:
     if not isinstance(rendezvous, dict):
         return False, (
             "missing 'rendezvous' (per-role partial/started paths). A manifest "
-            "without it was written by a hook older than this one — re-dispatch "
-            "the review so the paths are recorded"
+            "without it was written by a hook older than this one. If this is the "
+            "PENDING review, the sequence is: reload the plugin (/reload-plugins, "
+            "or restart the session), then `prawduct-hook critic-end` to abandon "
+            "it, then dispatch again — a bare re-dispatch is refused while the "
+            "marker is live, so the abandon step is not optional. If this is a "
+            "RESTORED review, no dispatch can record it: a dispatch reviews the "
+            "tree now, not what that review read"
         )
     if sorted(rendezvous) != sorted(data["roster"]):
         return False, (

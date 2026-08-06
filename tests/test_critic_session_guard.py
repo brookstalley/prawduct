@@ -21,6 +21,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -731,6 +733,183 @@ class TestCriticRestore:
         result = _run_real("critic-restore", repo, "rev-anything")
         assert result.returncode == 1
         assert "archive" in result.stderr.lower()
+
+
+class TestRestoreArgumentIsUntrusted:
+    """The review id comes from a caller and becomes a path segment.
+
+    `_archive_leftovers` learned this the expensive way: it built its destination
+    directory from an id read raw off disk, so `rev-../../escape` walked out of
+    the archive and `/tmp/x` replaced the base outright — and because an archive
+    failure degrades to DELETE, both failed silently. That guard was added at the
+    use, and this is the second use of the same value in the same direction, so
+    it gets the same gate and its own test rather than inheriting the lesson by
+    proximity."""
+
+    @staticmethod
+    def _archive_with_one_set(tmp_path: Path) -> Path:
+        prawduct = tmp_path / ".prawduct"
+        archived = prawduct / cc.ARCHIVE_DIRNAME / "rev-real"
+        archived.mkdir(parents=True)
+        (archived / cc.MANIFEST_NAME).write_text("{}")
+        return prawduct
+
+    @pytest.mark.parametrize(
+        "hostile",
+        ["../../escape", "..", "a/b", "a\\b", "/tmp/absolute", ""],
+    )
+    def test_a_traversing_id_is_refused_like_any_unknown_one(self, tmp_path, hostile):
+        prawduct = self._archive_with_one_set(tmp_path)
+
+        result = cc.restore_review(prawduct, hostile)
+
+        assert result["status"] == "error"
+        assert result["kind"] == "unknown"
+        assert not cc.partials_dir(prawduct).exists(), (
+            "a refused restore must not create the destination it was refused"
+        )
+
+    def test_a_traversing_id_cannot_reach_a_directory_that_does_exist(self, tmp_path):
+        """The gate has to fire on the NAME, not merely on the target missing —
+        otherwise it is an accident of layout rather than a guard."""
+        prawduct = self._archive_with_one_set(tmp_path)
+        # `<archive>/../.critic-partials-archive/rev-real` resolves to a real
+        # directory, so `is_dir()` alone would let this through.
+        result = cc.restore_review(
+            prawduct, f"../{cc.ARCHIVE_DIRNAME}/rev-real"
+        )
+
+        assert result["status"] == "error"
+        assert result["kind"] == "unknown"
+
+
+class TestRestoreEdgeStates:
+    """The branches the round-trip tests do not walk."""
+
+    def test_an_archived_set_with_no_files_is_named_as_such(self, tmp_path):
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / cc.ARCHIVE_DIRNAME / "rev-hollow").mkdir(parents=True)
+
+        result = cc.restore_review(prawduct, "rev-hollow")
+
+        assert result["status"] == "error"
+        assert result["kind"] == "unusable"
+        assert "rev-hollow" in result["reason"]
+
+    def test_a_manifestless_set_restores_but_says_it_cannot_consolidate(self, tmp_path):
+        """`_archive_leftovers` names a set `unmanifested-<stamp>` when the
+        manifest was unreadable or absent. Those files come back for reading, not
+        for recording — and advice that fails soft still names its consequence,
+        rather than leaving the reader to infer a consolidation is waiting."""
+        prawduct = tmp_path / ".prawduct"
+        archived = prawduct / cc.ARCHIVE_DIRNAME / "unmanifested-20260806T000000Z"
+        archived.mkdir(parents=True)
+        (archived / "correctness.rev-gone.json").write_text("{}")
+
+        result = cc.restore_review(prawduct, "unmanifested-20260806T000000Z")
+
+        assert result["status"] == "ok"
+        assert result["consolidatable"] is False
+        assert "no dispatch manifest" in result["blocked_reason"]
+        assert result["restored"] == ["correctness.rev-gone.json"]
+
+    def test_a_pre_keying_archive_restores_but_cannot_be_recorded(self, tmp_path):
+        """The upgrade case, and the one the Governance Checkpoint names as this
+        plan's exposure. A set archived by v3.2.6 carries a manifest with no
+        `rendezvous`, so `consolidate` fail-closes on it. Telling the operator to
+        run `critic-consolidate` and letting them meet that refusal would be a
+        remedy that cannot reach the state — the failure this subsystem's
+        refusals were rewritten to stop producing."""
+        prawduct = tmp_path / ".prawduct"
+        archived = prawduct / cc.ARCHIVE_DIRNAME / "rev-20260801T000000Z-old"
+        archived.mkdir(parents=True)
+        (archived / cc.MANIFEST_NAME).write_text(json.dumps({
+            "id": "rev-20260801T000000Z-old",
+            "mode": "cumulative (bundle review, ready for merge)",
+            "mode_chosen_by": "legacy",
+            "roster": ["reviewer"],
+            "roster_chosen_by": "legacy",
+            # No `rendezvous` — the key Chunk 1 added.
+            "commit_reviewed": "a" * 40,
+            "base_commit": "b" * 40,
+            "base_tree": "c" * 40,
+            "head_tree": "d" * 40,
+            "head_commit": "a" * 40,
+            "files_changed": ["x.py"],
+            "files_reviewed": ["x.py"],
+            "base_reviewed": True,
+        }))
+        (archived / "reviewer.json").write_text("{}")
+
+        result = cc.restore_review(prawduct, "rev-20260801T000000Z-old")
+
+        assert result["status"] == "ok", "the files still come back — that is the ask"
+        assert result["consolidatable"] is False, (
+            "a manifest without `rendezvous` cannot consolidate; saying otherwise "
+            "sends the operator into a refusal whose remedy cannot reach them"
+        )
+        assert "rendezvous" in result["blocked_reason"]
+
+    def test_an_unreadable_archive_is_not_reported_as_an_empty_one(self, tmp_path):
+        """An absence-claim is evidence only when the place it read resolved. A
+        permission error rendering as "the archive holds nothing to restore" tells
+        an operator their unconsolidated findings are gone, and they act on it."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        # A file where the archive directory belongs: exists, cannot be listed.
+        (prawduct / cc.ARCHIVE_DIRNAME).write_text("not a directory")
+
+        names, problem = cc.archived_reviews(prawduct)
+
+        assert names == []
+        assert problem, "an unreadable archive must not render as an empty one"
+        rendered = cc.archive_listing(names, problem)
+        assert "holds nothing to restore" not in rendered
+        assert "not the same" in rendered
+
+    def test_an_absent_archive_is_a_clean_empty(self, tmp_path):
+        """The other side of the same seam: absent IS empty, and must not be
+        dressed up as a fault."""
+        names, problem = cc.archived_reviews(tmp_path / ".prawduct")
+        assert (names, problem) == ([], "")
+        assert "holds nothing to restore" in cc.archive_listing(names, problem)
+
+    def test_a_live_marker_with_no_partials_is_refused_with_critic_end(self, tmp_path):
+        """The one state where `critic-end` IS the remedy that reaches: nothing is
+        on disk to clear, so clearing the marker is the whole job."""
+        prawduct = tmp_path / ".prawduct"
+        archived = prawduct / cc.ARCHIVE_DIRNAME / "rev-real"
+        archived.mkdir(parents=True)
+        (archived / cc.MANIFEST_NAME).write_text("{}")
+        cm.write_marker(prawduct)
+
+        result = cc.restore_review(prawduct, "rev-real")
+
+        assert result["status"] == "error"
+        assert result["kind"] == "pending"
+        assert "prawduct-hook critic-end" in result["reason"]
+        assert "critic-discard" not in result["reason"], (
+            "there are no partials to discard — naming it would not reach the state"
+        )
+
+    def test_an_unreadable_manifest_in_the_way_still_names_a_working_remedy(
+        self, tmp_path
+    ):
+        """`pending_state` reports `unreadable` for a manifest that will not parse.
+        The files are still in the way, so the remedy is still the one that
+        removes files."""
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / cc.ARCHIVE_DIRNAME / "rev-real").mkdir(parents=True)
+        (prawduct / cc.ARCHIVE_DIRNAME / "rev-real" / cc.MANIFEST_NAME).write_text("{}")
+        partials = cc.partials_dir(prawduct)
+        partials.mkdir(parents=True)
+        (partials / cc.MANIFEST_NAME).write_text("not json{")
+
+        result = cc.restore_review(prawduct, "rev-real")
+
+        assert result["status"] == "error"
+        assert result["kind"] == "pending"
+        assert "prawduct-hook critic-discard" in result["reason"]
 
 
 class TestRestoreIsAllOrNothing:
