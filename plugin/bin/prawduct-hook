@@ -1119,10 +1119,10 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     past the demotion threshold (the skill falls back to `final`); exit 1 =
     any other dispatch failure (reason on stderr).
 
-    Also resets `.critic-partials/` before writing the fresh manifest:
-    consolidate removes partials only on success, so a waived or stale-failed
-    review leaves them behind — and a leftover partial at the SAME commit as a
-    fresh dispatch would merge as if the new reviewer had written it.
+    Also resets `.critic-partials/` before writing the fresh manifest —
+    archive-first, and `critic_consolidate.remove_partials` states why (it is
+    hygiene now, not correctness: partials carry review identity, so a leftover
+    can no longer merge into a later review).
     """
     flags = {
         "--mode": "mode_token",
@@ -1180,9 +1180,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         return 2 if result.get("kind") == "scope-widened" else 1
 
     if result.get("archived_leftovers"):
+        archived_name = Path(result["archived_leftovers"]).name
         print(
             "PRAWDUCT: a prior review's leftover .critic-partials were archived "
-            f"to {result['archived_leftovers']} (not deleted)."
+            f"to {result['archived_leftovers']} (not deleted) — recoverable with "
+            f"`prawduct-hook critic-restore {archived_name}` once this review is done."
         )
     elif result["cleared_leftovers"]:
         print("PRAWDUCT: cleared leftover .critic-partials from a prior review.")
@@ -1294,6 +1296,138 @@ def cmd_critic_end(project_dir: Path) -> int:
     is still running in)."""
     prawduct_dir = get_prawduct_dir(project_dir)
     _critic_marker().clear_marker(prawduct_dir)
+    return 0
+
+
+def cmd_critic_discard(project_dir: Path) -> int:
+    """Deliberately discard a dispatched review's partials so a fresh dispatch
+    can proceed. Archives first — never deletes outright.
+
+    The escape hatch for the one state `critic-end` cannot reach. `critic-begin`
+    refuses while a complete roster is on disk, at any age, because a complete
+    roster is finished work and age says nothing about whether it is worth
+    keeping. But consolidation fail-closes WITHOUT removing partials (so the
+    cause can be fixed and retried), and `critic-end` clears only the marker —
+    so a failed consolidate strands a complete roster that nothing expires and
+    no other command clears. Without this, that state refuses every dispatch
+    forever, which is exactly the "a crashed review must not permanently brick
+    anything" property `lib/critic_marker` is built around.
+
+    Deliberately NOT folded into `critic-end`: that command is what an agent
+    reaches for whenever a review looks dead, and making it destructive would
+    hand back the loss this guard exists to prevent. Discarding a completed
+    review's findings is a decision, so it gets its own name and its own
+    invocation. The archive keeps it recoverable either way.
+    """
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        print("PRAWDUCT: not an onboarded repo — nothing to discard.")
+        return 0
+    consolidate = _critic_consolidate()
+    archived = consolidate._archive_leftovers(prawduct_dir)
+    consolidate.remove_partials(prawduct_dir)
+    _critic_marker().clear_marker(prawduct_dir)
+    if archived:
+        print(
+            f"PRAWDUCT: discarded the dispatched review — partials archived to "
+            f"{archived} (not deleted). A fresh `/prawduct:critic` can now dispatch; "
+            f"to change your mind, `prawduct-hook critic-restore {archived.name}` "
+            "brings that review back as itself."
+        )
+    else:
+        print(
+            "PRAWDUCT: nothing to discard (no partials on disk); critic-active "
+            "marker cleared."
+        )
+    return 0
+
+
+def cmd_critic_restore(project_dir: Path, argv: list[str]) -> int:
+    """Bring an archived review back so it can consolidate AS ITSELF.
+
+    Usage: critic-restore <review-id>
+
+    The counterpart to `critic-discard` and to the leftover sweep at dispatch:
+    both archive rather than delete, and until this existed the story stopped
+    there — a preserved file nobody can act on is not a recovery. The recovery
+    that WAS documented (copy an archived review's partials into the current
+    review's directory) worked only because a partial was bound to the commit it
+    reviewed rather than to the review that dispatched it, so it recorded one
+    review's findings under another's id. That is now impossible, which is why
+    the honest replacement restores the manifest alongside the partials.
+
+    Both this and `critic-discard` belong to the MAIN session, not to a reviewer:
+    deciding what happens to a completed review's findings is an operator call,
+    and the reviewer's tool allow-list excludes them for that reason.
+
+    Exit 0 = restored; 1 = usage error, a pending review in the way, an unknown
+    id (stderr lists what IS restorable), or an unreadable archived set.
+    """
+    review_id = ""
+    for arg in argv:
+        if arg.startswith("-") or review_id:
+            print(
+                f"critic-restore: unexpected argument {arg!r} — "
+                "usage: critic-restore <review-id>",
+                file=sys.stderr,
+            )
+            return 1
+        review_id = arg
+
+    prawduct_dir = get_prawduct_dir(project_dir)
+    if not prawduct_dir.is_dir():
+        print(
+            "critic-restore: not an onboarded repo — there is no review archive here.",
+            file=sys.stderr,
+        )
+        return 1
+
+    consolidate = _critic_consolidate()
+    if not review_id:
+        # The missing argument raises exactly one question — which review? — and
+        # it is answerable from disk, so answer it instead of printing a usage
+        # line that sends the reader to `ls` a dot-directory.
+        available, problem = consolidate.archived_reviews(prawduct_dir)
+        print(
+            "critic-restore: which review? Usage: critic-restore <review-id>"
+            + consolidate.archive_listing(available, problem),
+            file=sys.stderr,
+        )
+        return 1
+
+    result = consolidate.restore_review(prawduct_dir, review_id)
+    if result["status"] != "ok":
+        print(f"critic-restore: {result['reason']}", file=sys.stderr)
+        return 1
+
+    count = len(result["restored"])
+    print(
+        f"PRAWDUCT: restored {result['id']} — {count} file(s) copied from "
+        f"{result['source']} back into .prawduct/.critic-partials/ "
+        "(the archive is untouched)."
+    )
+    if result["consolidatable"]:
+        print(
+            "PRAWDUCT: run `prawduct-hook critic-consolidate` to record it — the "
+            "fact will carry that review's own id, not a new one."
+        )
+    else:
+        # Reachable exactly at the v3.2.6 -> v3.2.7 upgrade: a set archived before
+        # reviews carried identity has no `rendezvous`, so consolidation
+        # fail-closes on it. Saying "run critic-consolidate" here and letting the
+        # operator meet that refusal would be a remedy that cannot reach the
+        # state — so say what the files ARE good for instead of what they are not.
+        # The reason is quoted, not paraphrased: `validate_manifest` owns what a
+        # usable manifest is AND what to do about each way it is not, so adding a
+        # remedy here would make a second home for that advice — and did, briefly,
+        # printing the same sentence twice in one message.
+        print(
+            f"PRAWDUCT: this set cannot be recorded as a review fact — "
+            f"{result['blocked_reason']}. What the restored files ARE good for: "
+            "each partial holds a `findings` array with the reviewer's own text, "
+            "readable now. The next `/prawduct:critic` will sweep them back to "
+            "the archive."
+        )
     return 0
 
 
@@ -4770,7 +4904,8 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 #    That is the only reason the sentences above talk around it.
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-consolidate|"
+    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-discard|"
+    "critic-restore <review-id>|critic-consolidate|"
     "subagent-stop|"
     "stop|build-index|user-prompt-submit|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
@@ -5076,7 +5211,9 @@ _HARNESS_INVOKED_COMMANDS = frozenset({
 _DATA_PLANE_COMMANDS = frozenset({
     "critic-begin",
     "critic-consolidate",
+    "critic-discard",
     "critic-end",
+    "critic-restore",
     "disposition",
     "ledger-append",
 })
@@ -5453,6 +5590,10 @@ def main() -> int:
         return cmd_critic_begin(project_dir, sys.argv[2:])
     elif command == "critic-end":
         return cmd_critic_end(project_dir)
+    elif command == "critic-discard":
+        return cmd_critic_discard(project_dir)
+    elif command == "critic-restore":
+        return cmd_critic_restore(project_dir, sys.argv[2:])
     elif command == "critic-consolidate":
         return cmd_critic_consolidate(project_dir)
     elif command == "subagent-stop":

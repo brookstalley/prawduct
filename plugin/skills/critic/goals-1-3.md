@@ -12,8 +12,8 @@ observation, never in `findings`.
 ## Before you review
 
 1. Read `.prawduct/.critic-partials/manifest.json` — `files_changed`, `files_reviewed`, the review
-   interval, `commit_reviewed`, and `record_lint` (below) are your scope. Code-written and
-   authoritative — derive no interval yourself.
+   interval, `commit_reviewed`, `rendezvous` (where you write) and `record_lint` (below) are your
+   scope. Code-written and authoritative — derive no interval yourself.
 2. Read `.prawduct/project-state.yaml`, then the changed files and `git diff` over the interval.
 3. Read the `.prawduct/artifacts/` a change touches — its build plan, and any artifact it cites.
 4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes.
@@ -33,7 +33,7 @@ norms exist; with none, **NOTE** naming the capture path. Tell: amending a norm 
 code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
 `/prawduct:doctor`; never a downgrade.
 
-**Record checks are already answered — read the manifest's `record_lint`, never re-derive it.** Never
+**Record checks are already answered — read the manifest's `record_lint`.** Never
 recount what it counted: that is how a record defect buys a review round. Each entry carries its own
 explanation — raise it, don't restate it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
 **WARNING** under Goal 2. `suite-total-claim` and `learnings-entry-shape` → **NOTE**.
@@ -66,7 +66,7 @@ chunk, and plan file. `null` there, or in any `counts` entry, means **no answer*
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
 - **Requirements Confidence field present** (`High | Medium | Low`). Missing → **WARNING**. If Medium/Low, the plan must list open assumptions and what would resolve them — missing either → **WARNING**.
-- Record checks (including chunk deliverables) come from `record_lint` above — raise them at the severities given there.
+- Record checks, chunk deliverables included, come from `record_lint` above.
 - **Behavioral choices**: workflow features configurable via `project-preferences.md` (safe default); hardcoded when two paths reasonable → **WARNING**.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
@@ -97,7 +97,7 @@ structural change.
 
 ## Record your judgment
 
-Write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook
+Write ONE partial to your `rendezvous.reviewer.partial` path, then run `prawduct-hook
 critic-consolidate` yourself. You write nothing else. **Its `NEXT-ACTION:` line is the
 builder's, not yours: relay it verbatim as your report's last line.** Everything else it printed
 dies in your context, and the builder is what terminates the review loop.
@@ -106,6 +106,7 @@ dies in your context, and the builder is what terminates the review loop.
 {
   "role": "reviewer",
   "goals": "1-3",
+  "dispatch_id": "<the manifest's id, verbatim>",
   "commit_reviewed": "<the manifest's commit_reviewed, verbatim>",
   "model": "<the model id the review ran as, or null>",
   "duration_seconds": 120,
@@ -113,7 +114,7 @@ dies in your context, and the builder is what terminates the review loop.
     {"name": "<short title>", "goal": "Nothing Is Unintended", "severity": "warning", "recommendation": "<what to do>", "files": ["file1"]}
   ],
   "resolutions": [
-    {"review_id": "<prior fact id>", "fid": "R-1", "disposition": "fixed"}
+    {"review_id": "<the PRIOR review's id, not yours>", "fid": "R-1", "disposition": "fixed"}
   ],
   "summary": "N warnings. Changes ready to proceed."
 }

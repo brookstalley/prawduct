@@ -384,6 +384,36 @@ The detectable shape is a sentence of the form *"X is uncertain, but that's fine
 
 Ask, for any claimed mitigation: **on the failure path I am worried about, does this code execute at all?** Here the answer was no, and no amount of correctness inside the guard could change it.
 
+## A message that names the caller's NEXT step must ask the gate that will judge that step, never a cheaper proxy for it — else the promise and the gate disagree and the caller pays the difference. Fires on SUCCESS paths, not only refusals: "a refusal names a remedy that reaches the state" is this rule's better-known half
+
+**The instance (2026-08-05, `critic-restore`).** The new command restores an archived Critic review
+so it can consolidate. Its output branched on `has_manifest` — whether a `manifest.json` was among
+the copied files — and printed "run `prawduct-hook critic-consolidate` to record it." But
+`consolidate` does not decide usability by file presence; it decides with `validate_manifest`. A set
+archived before partials carried review identity has a manifest with no `rendezvous`, so the restore
+promised a consolidation and the consolidator fail-closed on it — and that refusal's own remedy
+("re-dispatch") cannot reach an archived review, so the caller was two dead ends deep.
+
+**Why the proxy was tempting, which is the transferable part.** `MANIFEST_NAME in names` is right
+there, costs nothing, and is *correlated* with the real answer — it is wrong only in the skew case.
+The real gate was equally available: one call to the function the next step runs. The tell is
+grammatical rather than technical: the message said *you can now do X*, and nothing in the producer
+had asked X's judge. Whenever output names a next step, that question has an owner, and the owner
+is downstream.
+
+**It is the mirror of a rule this same subsystem already enforces on its refusals.** Part 1 of this
+work established "a refusal must name a remedy that reaches the state" after a guard offered
+`critic-end` for a condition `critic-end` cannot clear. The success side had no such rule, and got
+the identical defect three weeks later — including in the plan whose own Governance Checkpoint
+named release skew as its exposure. A rule stated for one polarity does not fire on the other
+unless it is stated for both.
+
+**Fix shape:** ask the downstream validator and carry its verdict (`consolidatable` +
+`blocked_reason`), so the producer never becomes a second opinion about what the consumer will
+accept. Related: [[When defense-in-depth is offered as the reason a risk needn't be verified]] — a
+guard that is unreachable from the failure, and a promise that never consulted its gate, are the
+same error about who actually decides.
+
 ## A deferral queue whose enforcing gate is disabled is a WRITE-ONLY queue — check the gate is ON at the moment you defer work into it, because the deferral itself feels like diligence: `operator-verification.md` named the CRT-2J8N matcher as the thing to investigate 17 days before it was found, and sat `pending` the whole time behind `operator_verification_required: false`, with 6 of 8 entries in the same state
 
 The process worked right up to the point where it had to be enforced. The Chunk 03 Critic flagged three unverifiable integration facts; a VRF entry was filed; its verification steps were correct and specific, ending with "investigate the matcher string (`prawduct:critic-reviewer` vs `critic-reviewer`) against the installed version." Every step of that is good practice. The entry then sat `pending` for seventeen days because `project-state.yaml` sets `operator_verification_required: false`, so `check-operator-verification` short-circuits to exit 0 and `/prawduct:pr create` Step 2b never blocks.
@@ -1812,7 +1842,38 @@ Scope of the three bars: "cannot be absorbed" means own design, own review, or g
 
 Because "file the rest" is a disposal route and thorough reviewers produce many findings. An ACCEPT is Principle 2's *explicit descope*: recorded as a fact (`prawduct-hook disposition … --accept "<reason>"`) and rendered into the change-log entry for that work with `render-dispositions`, where the next reader of the change meets it — not a backlog id nobody will action, and not a count hand-written into prose, which drifts. Measured on this repo when the rule was still "file the rest": open items **50 → 180 in 26 days**, 67 of them Critic-sourced, **53 of those never touched since filing**, 58% of all Critic items ever filed still open, and 42 of 67 sitting at `effort: S` — the band where filing costs more reader-attention over its lifetime than the fix costs. The compounding tell is the sharpest signal: **`verify-chunk-refs` alone accumulated SIX open items**, each a facet found by a *later* review of the same still-unfixed gate — filing made every pass re-discover the mechanism instead of closing it, so the backlog grew while the defect stayed. A double-digit filing count is not thoroughness, it is undisposed review. Framework-specific corollary: a framework that does this to itself does it once per build plan to every repo that adopts it. Relates to Principle 2 and [[When a scope narrowing is recorded, it is a CASCADE, not an annotation]]
 
-## Widening a predicate takes TWO searches: grepping the pattern finds its DUPLICATE COPIES, never the CALLERS that branch on the predicate it backs. So grep the *shape* for copies, then the *predicate's name* for branches; a survey that ran only the first is incomplete however clean it looked. Generalizes to any shared predicate — a validator, a feature flag, a type guard
+## Surveying a shared thing takes TWO searches: grepping the thing finds its DUPLICATE COPIES, never what DEPENDS on it. Widen a predicate — grep the *shape*, then its *name* for callers that branch on it. Relocate a fact — grep the fact, then grep prose naming its OLD HOME, because "the rule lives in X" goes false the moment you empty X
+
+**A survey that ran only the first search is incomplete however clean it looked**, and the predicate
+half generalizes to any shared predicate — a validator, a feature flag, a type guard. (Both clauses
+were in the rule heading until the union pushed it past the 400-char limit; they are statements, not
+instances, so they move here rather than being dropped.)
+
+**The relocation instance (2026-08-05, `critic-review-identity`).** A PR-review finding said the
+path-resolution rule for a reviewer's rendezvous entry was stated nowhere, so I added it to two
+surfaces: `review-protocol.md` (the coordinator's dispatch template) and `agents/critic-reviewer.md`
+(the reviewer itself). That pushed `review-protocol.md` past its token ceiling, and the budget
+test's own comment held the answer — a prior trim had already moved "never compose the filenames
+yourself" out of that file because *it is a reviewer instruction whose home is the agent
+definition*. Path resolution is the same class of fact about the same actor, so I deleted the
+coordinator copy. Correct call, incomplete edit: a `_rendezvous` docstring three files away still
+asserted that "the surfaces that hand a reviewer its entry — `review-protocol.md`'s dispatch
+template and `agents/critic-reviewer.md` — say to join it onto the project directory." The commit
+message stated the one-home choice; the docstring stated its opposite.
+
+**Why the second grep is the one you skip.** Moving a fact feels like *one* decision, and it is —
+but it is *two* edits, and the second has no syntactic relationship to the first. Nothing links a
+docstring in `critic_consolidate.py` to a paragraph in `review-protocol.md` except the English
+sentence naming it, so no compiler, test, or shape-grep finds it. The guard test this very plan
+built enforces that no surface *spells a filename*; it cannot enforce that a surface's claim about
+*where a rule lives* is still true, and the plan says so honestly (criterion 4: "what it cannot
+enforce is prose meaning").
+
+**What it cost:** the next review round caught it, which bought a whole extra
+`verify-resolutions` pass for a one-hunk fix — an instance of the round pump filed as
+`brookstalley/prawduct#167`, and a *different* generator than the ones recorded there.
+
+
 
 Chunk 05c widened an id-shape regex; `grep -rn "A-Za-z0-9"` correctly found all four copies (and caught a third the inherited plan had missed), so the survey felt complete and stopped. It was blind by construction to `core.resolve_ref`, which gates an alias round-trip on `is_pfx` — the Critic found it. `grep -rn "is_pfx"` takes seconds and was never run. The consequence was cost plus a widened ambiguity class, not a break, but nothing about the method would have caught a break either. . Relates to [[A completeness claim states the COMMAND that would falsify it and asserts that command now returns nothing]] (same enumeration-wearing-a-query's-clothes failure, one level up: a correct query against the wrong axis) and Root Cause Discipline (#16)
 
@@ -2627,3 +2688,50 @@ Owner rule (2026-08-05): never fund a budget by moving prose to another file —
 footprint is the only number that matters, so relocation satisfies the assertion and achieves
 nothing. Order: simplify genuine duplication, then raise the ceiling and record what bought the
 increase **at the assertion**, where the next person to hit it will be reading.
+
+## A fixture's world is narrower than the requirement it certifies
+
+The common instance narrows the requirement to itself. The framework's OWN state stands in for the
+propagated contract, so assert what reaches consumer repos. One moment stands in for the procedure's
+transitions. The collision case is unwritten when the fan-out key is not unique.
+
+**2026-08-06 instance — the guard redefined the criterion, silently.** Acceptance criterion 4 of
+`build-plan-critic-review-identity` read "the partial-path shape appears in exactly one place in the
+codebase; no instruction surface spells it", and its guard test — written in the same breath — scanned
+`plugin/skills`, `plugin/agents`, `plugin/methodology`. Six live sites outside that scan still spelled
+the superseded name, including two artifacts the plan's own `governed_by:` block cites and a *pending*
+`operator-verification.md` entry that would have made an operator record a false failure. The criterion
+read as verified. The repair was to narrow the criterion to what the guard enforces and state what it
+cannot — not to widen the guard, because the superseded name legitimately appears wherever prose
+CONTRASTS it with the new one.
+
+## When a trim is justified by the surrounding prose's OWN instruction
+
+The dangerous cut is not the one you cannot justify — it is the one the file appears to endorse.
+
+**First instance.** A record-lint explanation read as redundant under its own "raise it, don't restate
+it" rule, and was the only witness to a two-shape contract.
+
+**2026-08-06 instance — placement is not duplication.** `goals-1-3.md` had 6 tokens of headroom under
+its budget, whose comment carries the standing rule "THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT
+BUMP". That licensed compressing the closing "**Either way** your last line is consolidate's
+`NEXT-ACTION:` … the clean pass is where it matters most" to a single word, on the reasoning that it
+restated a rule 30 lines above. It did restate it — and
+`test_goals_1_3_relay_survives_the_clean_pass_shorthand` exists precisely because the sentence sits
+where a reader shortcuts the rule, and pins the phrase for that reason. The test caught it. The
+question that separates a copy from a placement: *does this sentence sit where the rule gets skipped?*
+The same instinct then reached for `review-protocol.md`'s reviewer-model prose — an emergency patch
+with its own test — and stopped; that refusal is now recorded in the budget comment itself.
+
+## When you add a validator because a value became DANGEROUS
+
+**2026-08-06 instance.** A Critic review id became a filename component, so
+`critic_consolidate._path_component_safe` was added and applied to both paths the change created.
+`_archive_leftovers` — already in the same file — kept deriving an archive directory name from the
+same id, read raw off disk, unchecked: `rev-../../escape` walked up out of the archive, `/tmp/x`
+replaced the base outright, and because an archive failure degrades to DELETE it failed silently in
+both directions. It reads the manifest raw deliberately (it must work when the manifest is unreadable),
+so `validate_manifest`'s gate never covers it. Found by the review OF the commit that added the gate.
+The generalisation is about attention, not about paths: reviewing your own change shows you the new
+call sites, and the vulnerable one is the line that did not move.
+

@@ -140,13 +140,13 @@ The manifest is authoritative and you never re-derive it; the derivation rule (r
 
 ### Coordinator Pattern
 
-Persistence is **decoupled from the review** (the coordinator never resumes to aggregate): reviewers write partials; `critic-consolidate` merges them against the code-written manifest into the evidence fact + `.critic-findings.json` + the ledger anchor — no model authors any file the data plane trusts.
+Persistence is **decoupled from the review**: reviewers write partials; `critic-consolidate` merges them against the code-written manifest into the evidence fact + `.critic-findings.json` + the ledger anchor — no model authors any file the data plane trusts.
 
 1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`), run git diff, and determine signals (size, type, boundaries). Reviewers run on the **current session model** — do **not** pass a `model:` override; whatever model the session is on reviews the work. The manifest's `tier` is telemetry only and selects no model.
 
-2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY its partial to `.critic-partials/<role>.json` — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template (substitute `<ROLE>`/`<GOALS>`/`<SHA>` — the SHA is the manifest's `commit_reviewed`):
+2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY the two files the manifest's `rendezvous` names for its role — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template — substitute `<ROLE>`/`<GOALS>`/`<SHA>`/`<ID>`/`<STARTED>`/`<PARTIAL>` from the manifest (`commit_reviewed`, `id`, and `rendezvous.<ROLE>`):
 
-   > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `.critic-partials/<ROLE>.started` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. NO tests/builds. Write ONLY your partial to `.critic-partials/<ROLE>.json`; nothing else."
+   > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `<STARTED>` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. Review id: `<ID>` — record it verbatim as `dispatch_id`. NO tests/builds. Write ONLY your partial to `<PARTIAL>`; nothing else."
 
    - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3.
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
@@ -178,12 +178,13 @@ Persistence is **decoupled from the review** (the coordinator never resumes to a
 
 If no findings: "No issues found. Changes are ready to proceed."
 
-**Record your judgment (single-pass only — coordinator reviewers get this schema from their agent definition):** write ONE partial to `.prawduct/.critic-partials/reviewer.json`, then run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else). **Its `NEXT-ACTION:` line is the builder's: relay it verbatim as your report's last line** — everything else it prints dies in your context, and the builder terminates the review loop:
+**Record your judgment (single-pass only — coordinator reviewers get this schema from their agent definition):** write ONE partial to your `rendezvous.reviewer.partial` path, then run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else). **Its `NEXT-ACTION:` line is the builder's: relay it verbatim as your report's last line** — everything else it prints dies in your context, and the builder terminates the review loop:
 
 ```json
 {
   "role": "reviewer",
   "goals": "<the goals you ran, e.g. \"1-3\" or \"all 7\">",
+  "dispatch_id": "<the manifest's id, verbatim>",
   "commit_reviewed": "<the manifest's commit_reviewed, verbatim>",
   "model": "<the model id the review ran as, or null>",
   "duration_seconds": 120,

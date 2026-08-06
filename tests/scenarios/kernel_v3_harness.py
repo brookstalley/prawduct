@@ -90,13 +90,16 @@ def _run_review(repo: Path, mode: str, *, findings: "list[dict] | None" = None) 
     partial = {
         "role": "reviewer",
         "goals": ["Nothing Is Broken", "Nothing Is Missing", "Nothing Is Unintended"],
+        "dispatch_id": manifest["id"],
         "commit_reviewed": manifest["commit_reviewed"],
         "model": None,
         "duration_seconds": 1,
         "findings": findings or [],
         "summary": "scenario review",
     }
-    (repo / ".prawduct" / ".critic-partials" / "reviewer.json").write_text(
+    # The manifest names where each role writes; composing the path here would
+    # make the harness a second home for a shape only `partial_path` owns.
+    (repo / manifest["rendezvous"]["reviewer"]["partial"]).write_text(
         json.dumps(partial)
     )
     consolidate = _hook(repo, "critic-consolidate")

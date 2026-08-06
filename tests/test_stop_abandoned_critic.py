@@ -116,15 +116,40 @@ _FINAL_MODE = "final (full review, ready for push)"
 _ROSTER = ["correctness", "design", "sustainability"]
 
 
+_FAKE_REVIEW_ID = "rev-test-0001"
+
+
+def _rendezvous(roster, review_id: str) -> dict:
+    """The per-role write paths, exactly as `begin_review` records them — a
+    partial is keyed by the review that dispatched it, so a fixture that
+    composes `<role>.json` writes where nothing looks."""
+    return {
+        role: {
+            "partial": f".prawduct/.critic-partials/{role}.{review_id}.json",
+            "started": f".prawduct/.critic-partials/{role}.{review_id}.started",
+        }
+        for role in roster
+    }
+
+
+def _review_id(prawduct: Path) -> str:
+    try:
+        mpath = prawduct / ".critic-partials" / "manifest.json"
+        return json.loads(mpath.read_text())["id"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return _FAKE_REVIEW_ID
+
+
 def _write_manifest(prawduct: Path, *, commit: str = _MOCK_HEAD) -> None:
     # v3 dispatch-manifest shape (kernel v3 ch.03) — tree SHAs are opaque to
     # the consolidator, so fakes suffice here.
     d = prawduct / ".critic-partials"
     d.mkdir(parents=True, exist_ok=True)
     (d / "manifest.json").write_text(json.dumps({
-        "id": "rev-test-0001",
+        "id": _FAKE_REVIEW_ID,
         "mode": _FINAL_MODE, "mode_chosen_by": "rule-3", "roster": _ROSTER,
         "roster_chosen_by": "test fixture",
+        "rendezvous": _rendezvous(_ROSTER, _FAKE_REVIEW_ID),
         "commit_reviewed": commit,
         "base_commit": commit, "base_tree": "basetree000000000000",
         "head_tree": "headtree000000000000", "head_commit": None,
@@ -136,8 +161,9 @@ def _write_manifest(prawduct: Path, *, commit: str = _MOCK_HEAD) -> None:
 def _write_partial(prawduct: Path, role: str, *, commit: str = _MOCK_HEAD) -> None:
     d = prawduct / ".critic-partials"
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"{role}.json").write_text(json.dumps({
-        "role": role, "goals": "1-3", "commit_reviewed": commit,
+    rid = _review_id(prawduct)
+    (d / f"{role}.{rid}.json").write_text(json.dumps({
+        "role": role, "goals": "1-3", "dispatch_id": rid, "commit_reviewed": commit,
         "model": "opus", "duration_seconds": 60, "findings": [],
         "summary": f"{role} clean.",
     }))

@@ -32,11 +32,17 @@ Two defect families die here rather than being patched:
   (``base_commit``/``base_tree`` → ``head_tree``/``head_commit``, D3 tree
   keying via ``evidence.capture_tree``), the ``files_changed`` snapshot
   (``git diff`` between exactly those trees, so the recorded set and the
-  D6 edge-validity check agree by construction), ``files_reviewed``, and
-  telemetry/attribution (``tier``, ``scope``, ``chunk``).
-- ``<role>.json`` — one partial per roster role, written by that reviewer.
-  Carries the reviewer's findings, and — for a verify-resolutions dispatch
-  only — its ``resolutions`` judgments (D5).
+  D6 edge-validity check agree by construction), ``files_reviewed``,
+  ``rendezvous`` (each role's resolved partial + started paths — see below),
+  and telemetry/attribution (``tier``, ``scope``, ``chunk``).
+- One partial per roster role, written by that reviewer, at the path
+  :func:`partial_path` owns and the manifest's ``rendezvous`` records — keyed
+  by review id, so two reviews in one worktree never contend for one name and
+  a straggler cannot satisfy a roster it never reviewed. Carries the
+  reviewer's findings, the ``dispatch_id`` binding it to the review that
+  dispatched it, and — for a verify-resolutions dispatch only — its
+  ``resolutions`` judgments (D5). The filename SHAPE is deliberately not
+  spelled anywhere but :func:`partial_path`, this sentence included.
 
 **Consolidation is idempotent and fail-closed.** It persists ONLY when every
 roster role has reported a schema-valid partial at the manifest's dispatch
@@ -576,25 +582,98 @@ def manifest_path(prawduct_dir: Path) -> Path:
     return partials_dir(prawduct_dir) / MANIFEST_NAME
 
 
-def partial_path(prawduct_dir: Path, role: str) -> Path:
-    return partials_dir(prawduct_dir) / f"{role}.json"
+def _path_component_safe(value: str) -> bool:
+    """True when ``value`` can be used as ONE filename component.
+
+    Both halves of a rendezvous filename — the role and the review id — arrive
+    from the manifest, and the manifest is a file on disk. Neither was
+    constrained before, because a role was the only interpolated component and
+    it came straight from a fixed roster; adding the review id widens the
+    surface, so both are checked at the one place that can still refuse
+    (:func:`validate_manifest`) rather than at the paths themselves, where a
+    raise would turn a malformed record into a crash instead of a verdict.
+    """
+    return bool(value) and "/" not in value and "\\" not in value and ".." not in value
 
 
-def started_path(prawduct_dir: Path, role: str) -> Path:
+def partial_path(prawduct_dir: Path, role: str, review_id: str) -> Path:
+    """Where ``role``'s partial lives for the review ``review_id`` dispatched.
+
+    **Keyed by the review, not by the role alone**, and that is load-bearing.
+    A role-only name is one rendezvous shared by every review the worktree ever
+    runs: two dispatches contend for it, the loser's only signal is a failed
+    write with nothing in the protocol saying what that means, and a straggler
+    from an abandoned review lands in a later review's directory where it is
+    schema-valid, commit-valid at an unchanged HEAD, and satisfies a roster it
+    never reviewed. Keying by review id makes all three unrepresentable: each
+    review has its own names, so a straggler can neither overwrite a live
+    partial nor be mistaken for one.
+
+    Nothing outside this module builds this name. The resolved paths ride the
+    manifest (``rendezvous``), so the instruction surfaces that tell reviewers
+    where to write reference that entry instead of spelling the shape — one
+    home for the fact, and a future change to it needs no doc edit.
+    """
+    return partials_dir(prawduct_dir) / f"{role}.{review_id}.json"
+
+
+def started_path(prawduct_dir: Path, role: str, review_id: str) -> Path:
     """The per-role liveness marker a coordinator-dispatched reviewer writes as
     its FIRST action. Its mtime is the signal (reviewers have no clock tool —
     their toolset is read-only file/git plus Write); the content is irrelevant.
     Without it, "no partial yet" and "reviewer never started" are the same
     on-disk state for the reviewer's whole multi-minute run, and callers infer
-    death from the silence (the observed double-dispatch failure)."""
-    return partials_dir(prawduct_dir) / f"{role}.started"
+    death from the silence (the observed double-dispatch failure).
+
+    Keyed by review id for the same reason as :func:`partial_path`: an abandoned
+    review's marker sitting under a shared name would age into a later review's
+    liveness verdict and report a reviewer that never started as one at work."""
+    return partials_dir(prawduct_dir) / f"{role}.{review_id}.started"
 
 
-def started_age_minutes(prawduct_dir: Path, role: str) -> float | None:
+def _rendezvous(project_dir: Path, prawduct_dir: Path, roster: list[str],
+                review_id: str) -> dict[str, dict[str, str]]:
+    """The per-role write paths recorded in the manifest.
+
+    Project-relative where possible, because the manifest is read from more than
+    one place — the coordinator composing dispatch prompts, the reviewer reading
+    its own entry, a human inspecting the file — and an absolute path bakes in
+    the worktree that wrote it, which is wrong the moment the clone moves. An
+    absolute fallback covers the case where ``.prawduct/`` does not resolve under
+    the project dir; a wrong path is worse than a long one.
+
+    **The relative form is NOT usable verbatim by a reviewer, and saying so is
+    part of the contract.** A reviewer writes with the ``Write`` tool, which
+    requires an absolute path. ``agents/critic-reviewer.md`` is the one place
+    that says to resolve it — the reviewer is the actor that writes, so the rule
+    is a reviewer instruction, and it belongs where "never compose the filenames
+    yourself" already lives rather than being restated in the coordinator's
+    dispatch template. That resolution used to happen anyway, silently, because a
+    coordinator would absolutize without being told to; an unstated
+    transformation the mechanism depends on is exactly the class this module's
+    review-identity work removes elsewhere, so it is written down rather than
+    relied upon.
+    """
+    def _rel(p: Path) -> str:
+        try:
+            return str(p.relative_to(project_dir))
+        except ValueError:
+            return str(p)
+
+    return {
+        role: {
+            "partial": _rel(partial_path(prawduct_dir, role, review_id)),
+            "started": _rel(started_path(prawduct_dir, role, review_id)),
+        }
+        for role in roster
+    }
+
+
+def started_age_minutes(prawduct_dir: Path, role: str, review_id: str) -> float | None:
     """Minutes since ``role``'s started marker was written, or None when the
     marker is absent/unreadable. Clamped at zero for clock skew."""
     try:
-        mtime = started_path(prawduct_dir, role).stat().st_mtime
+        mtime = started_path(prawduct_dir, role, review_id).stat().st_mtime
     except OSError:
         return None
     age_s = datetime.now(timezone.utc).timestamp() - mtime
@@ -637,7 +716,15 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
         try:
             raw = json.loads(mpath.read_text())
             candidate = raw.get("id") if isinstance(raw, dict) else None
-            if isinstance(candidate, str) and candidate.strip():
+            # Same gate as the rendezvous paths, for the same reason: this id
+            # comes off disk and becomes a directory name, so `../../x` walks up
+            # and `/tmp/x` replaces the base outright. Unlike those paths there
+            # is no validator upstream — this reads the manifest raw, precisely
+            # because it must also work when the manifest is unreadable — and an
+            # archive failure degrades to DELETE, so getting it wrong here loses
+            # the evidence silently. Falls through to the timestamp name.
+            if (isinstance(candidate, str) and candidate.strip()
+                    and _path_component_safe(candidate.strip())):
                 name = candidate.strip()
         except (OSError, json.JSONDecodeError):
             name = None
@@ -670,6 +757,257 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
     except OSError:
         pass
     return dest
+
+
+def archived_reviews(prawduct_dir: Path) -> tuple[list[str], str]:
+    """The archived sets :func:`restore_review` can bring back, newest first.
+
+    The names :func:`_archive_leftovers` wrote: a review id when the archived
+    manifest was readable, ``unmanifested-<stamp>`` when it was not. The list is
+    the WHOLE truth about what is restorable — :data:`_ARCHIVE_KEEP` bounds it,
+    so a caller that names an older review is not being told "not found" about a
+    review that still exists somewhere. The not-found refusal and the bare
+    invocation both render it for that reason, rather than leaving the reader to
+    `ls` a dot-directory for names nobody memorised.
+
+    **An unreadable archive is not an empty one, and the two must not render
+    alike.** An absence-claim is evidence only when the place it read actually
+    resolved: a permission error or a non-directory at that path would otherwise
+    produce the identical empty list, and the caller — an operator deciding
+    whether an unconsolidated review's findings are gone — would be told they
+    are and act on it. So the reason rides along with the list, and every
+    renderer says which case it is.
+
+    Returns ``(names, problem)`` where ``problem`` is empty when the directory
+    was read (including when it simply does not exist, the normal case) and
+    names the fault otherwise.
+    """
+    adir = archive_dir(prawduct_dir)
+    if not adir.exists():
+        return [], ""
+    if not adir.is_dir():
+        return [], f"{adir} exists but is not a directory"
+    try:
+        entries = sorted(
+            (d for d in adir.iterdir() if d.is_dir()),
+            key=lambda d: d.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError as exc:
+        return [], f"the review archive at {adir} could not be read ({exc})"
+    return [d.name for d in entries], ""
+
+
+def archive_listing(available: list[str], problem: str) -> str:
+    """The "here is what you could restore" tail, rendered once.
+
+    Both places that report a review they could not find append this, and both
+    would otherwise have to remember that an empty list is only an absence-claim
+    when the directory actually resolved. One home for that distinction.
+    """
+    if problem:
+        return (
+            f"\n  Cannot list what IS restorable: {problem}. That is not the same"
+            " as the archive being empty — fix the read before concluding a"
+            " review's findings are gone."
+        )
+    if available:
+        return "\n  Restorable now: " + ", ".join(available)
+    return "\n  The archive holds nothing to restore."
+
+
+def restore_refusal(prawduct_dir: Path, present: list[str], active: bool) -> str:
+    """Why a restore is refused, and the ONE command that clears the way.
+
+    Restoring writes an archived review's manifest and partials into the
+    partials directory. Doing that over files already there merges two reviews
+    into one directory — precisely the mis-attribution review-id keying exists to
+    make impossible — so restore refuses instead of writing.
+
+    **The remedy is chosen by what is on disk, and one function owns the whole
+    message** so no call site can lead with advice that does not reach the state.
+    `critic-end` clears the MARKER only: naming it while files are present would
+    send the caller straight back to an identical refusal, which is the
+    failure mode the sibling dispatch refusal was rewritten to avoid. So files
+    present ⇒ consolidate (when the roster is complete and the work is worth
+    recording) or discard (otherwise); marker only ⇒ `critic-end`.
+    """
+    if not present:
+        return (
+            "refusing — a Critic review is active in this worktree, and restoring\n"
+            "  would put a second review's files where that one's belong.\n"
+            "  No partials are on disk yet, so clearing the marker is enough:\n"
+            "    prawduct-hook critic-end"
+        )
+    state, missing = pending_state(prawduct_dir)
+    if state == "complete":
+        remedy = (
+            "  On disk: every reviewer has reported. That review is FINISHED and needs\n"
+            "  only consolidation — record it first, then restore:\n"
+            "    prawduct-hook critic-consolidate"
+        )
+    else:
+        waiting = (
+            f" still waiting on {', '.join(missing)}"
+            if state == "incomplete"
+            else " no readable dispatch manifest"
+        )
+        remedy = (
+            f"  On disk:{waiting}. To set that review aside — archived, never deleted\n"
+            "  outright — and free the directory:\n"
+            "    prawduct-hook critic-discard\n"
+            "  (`critic-end` clears the marker only; these files would still be here.)"
+        )
+    live = " (a review is also still marked active)" if active else ""
+    # Says what is THERE, not whose it is. The obvious phrasing — "files from
+    # another review" — is false in the path a caller reaches most often: an
+    # operator re-running restore to check it worked, or retrying after a
+    # consolidation that fail-closed, meets this message about the very files
+    # they just restored. The remedy is right in that path either way; the
+    # headline was the only part that was not.
+    return (
+        f"refusing — {len(present)} file(s) are already in the partials\n"
+        f"  directory{live}. Restoring on top would put two reviews' files in one\n"
+        "  directory, which is the mis-attribution restoring by id exists to avoid.\n"
+        "\n"
+        + remedy
+    )
+
+
+def restore_review(prawduct_dir: Path, review_id: str) -> dict:
+    """Copy an archived review's manifest + partials back so it can consolidate
+    AS ITSELF. The inverse of :func:`_archive_leftovers`, and adjacent to it so
+    the write and its undo stay in one place.
+
+    **Restores the review as itself, and that is the whole point.** The recovery
+    this replaces copied an archived review's partials into the CURRENT review's
+    directory; a partial bound only to the commit it reviewed was schema- and
+    commit-valid against whatever manifest was there, so one review's findings
+    were recorded under another's id. That copy is now inert — correctly, because
+    it was always a mis-attribution — and the honest replacement brings the
+    manifest back alongside the partials. The same keying that makes the
+    mis-attributing copy impossible is what makes this round trip lossless: a
+    restored set is self-identifying.
+
+    **Copies, never moves.** The archive is the last trace an unconsolidated
+    review ever ran (:func:`_archive_leftovers` exists for exactly that). A
+    restore that consumed it would mean a restored-then-swept review leaves
+    nothing at all.
+
+    Returns ``{"status": "ok", ..., "consolidatable", "blocked_reason"}`` or
+    ``{"status": "error", "kind", "reason"}`` — ``kind`` is ``pending``
+    (something is in the way), ``unknown`` (no such archived set), ``unusable``
+    (the set is there but holds nothing readable) or ``write-failed`` (the
+    destination refused the copy). A successful restore whose set predates this
+    hook is ``status: ok`` with ``consolidatable: False``: the files ARE back,
+    which is the operation asked for, and the thing that cannot happen next is
+    named rather than discovered. Per project convention the failure is a return
+    value, not an exception; the CLI renders it.
+    """
+    pdir = partials_dir(prawduct_dir)
+    try:
+        present = sorted(p.name for p in pdir.iterdir() if p.is_file())
+    except OSError:
+        present = []
+    # `sweep=False` for the same reason `begin_review` reads it that way:
+    # refusing is not the moment to also decide a crashed review is over, and the
+    # Stop hook's abandoned-review branch is gated on the marker it would delete.
+    active, _age = critic_marker.review_active(prawduct_dir, sweep=False)
+    if present or active:
+        return {
+            "status": "error",
+            "kind": "pending",
+            "reason": restore_refusal(prawduct_dir, present, active),
+        }
+
+    available, archive_problem = archived_reviews(prawduct_dir)
+    # Same gate the archive's own directory name goes through, for the same
+    # reason: this id arrives from a caller and becomes a path segment, so
+    # `../../x` walks out of the archive and an absolute one replaces the base.
+    src = archive_dir(prawduct_dir) / review_id
+    if not _path_component_safe(review_id) or not src.is_dir():
+        return {
+            "status": "error",
+            "kind": "unknown",
+            "reason": (
+                f"no archived review named {review_id!r}."
+                + archive_listing(available, archive_problem)
+            ),
+        }
+
+    try:
+        children = sorted(c for c in src.iterdir() if c.is_file())
+    except OSError as exc:
+        return {
+            "status": "error",
+            "kind": "unusable",
+            "reason": f"the archived set {review_id!r} is unreadable ({exc}).",
+        }
+    if not children:
+        return {
+            "status": "error",
+            "kind": "unusable",
+            "reason": f"the archived set {review_id!r} holds no files to restore.",
+        }
+
+    # All-or-nothing. A copy that dies halfway leaves files in the partials
+    # directory, and every subsequent restore reads those as "another review is
+    # in the way" and refuses — a failure that converts itself into the refusing
+    # state. Nothing re-runs this transition on the caller's behalf, so it has to
+    # undo its own leavings rather than rely on a retry that would meet a
+    # different refusal than the one that fired.
+    written: list[Path] = []
+    try:
+        pdir.mkdir(parents=True, exist_ok=True)
+        for child in children:
+            dest = pdir / child.name
+            shutil.copy2(child, dest)
+            written.append(dest)
+    except OSError as exc:
+        for path in written:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        return {
+            "status": "error",
+            "kind": "write-failed",
+            "reason": (
+                f"could not restore {review_id!r} ({exc}) — the partially copied "
+                "files were removed, so the archive is still the only copy."
+            ),
+        }
+    # **Whether the restored set can actually be recorded, decided here rather
+    # than left to the caller to discover.** Filename presence is not the
+    # question — a manifest can be present and still unconsolidatable, and the
+    # reachable case is the upgrade this release IS: a set archived by v3.2.6
+    # carries no ``rendezvous``, so `consolidate` fail-closes on it. Telling an
+    # operator "run critic-consolidate" and letting them meet that refusal would
+    # hand them a remedy that cannot reach the state — the exact failure this
+    # subsystem's refusals were rewritten to stop producing.
+    #
+    # Asked by running the consolidator's OWN validator rather than re-deriving
+    # the shape here, so this never becomes a second opinion about what a usable
+    # manifest is.
+    restored_manifest = pdir / MANIFEST_NAME
+    if MANIFEST_NAME not in {c.name for c in children}:
+        usable, why = False, "the archived set carries no dispatch manifest"
+    else:
+        try:
+            usable, why = validate_manifest(json.loads(restored_manifest.read_text()))
+        except (OSError, json.JSONDecodeError) as exc:
+            usable, why = False, f"its manifest is unreadable ({exc})"
+    return {
+        "status": "ok",
+        "id": review_id,
+        "source": str(src),
+        "restored": [c.name for c in children],
+        "consolidatable": usable,
+        # Advice fails soft, not silent: when the set cannot be recorded the CLI
+        # says WHY and what the files are still good for, rather than implying a
+        # consolidation is waiting.
+        "blocked_reason": "" if usable else why,
+    }
 
 
 #: The keys :func:`_mark_cache_superseded` owns. Named once so the marker is
@@ -903,6 +1241,48 @@ def begin_review(
         }
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
 
+    # IN-FLIGHT GUARD — refuse rather than displace a review that is still live.
+    # First, because everything below derives state that a refusal would waste,
+    # and because the mutation this protects (`_archive_leftovers` + the manifest
+    # overwrite, further down) is the single most destructive act against another
+    # review. `active_dispatch_refusal` carries the full failure story.
+    #
+    # Two independent conditions, and the second is the one the observed
+    # incidents needed:
+    #
+    #   (a) a live critic-active marker — reviewers are plausibly still running.
+    #   (b) a COMPLETE roster on disk, at ANY age — finished work. Age tells you
+    #       whether more reviewers are coming; it says nothing about whether
+    #       already-written findings are worth keeping. The review destroyed in
+    #       the 2026-08-05 report had all three partials written and was swept a
+    #       minute later; a purely time-based guard would still have swept it had
+    #       the dispatching agent waited the window out first.
+    #
+    # Keyed on the MARKER, not on the manifest's age, and that is load-bearing:
+    # the standing contract (`test_begin_clears_leftover_partials`) is that an
+    # orphaned partial from a waived or stale-failed review IS swept, and that
+    # test writes its leftovers fresh — so file age cannot tell orphaned from
+    # live, while the marker can. It is also why `_INFLIGHT_GRACE_MINUTES` is NOT
+    # reused here despite #171 asking for it: that constant grades per-role
+    # `.started` ages on the consolidate side, and the marker already carries its
+    # own documented TTL for precisely this question. Reusing the number while
+    # changing the signal would CREATE the second notion of "live" rather than
+    # avoid it.
+    # `sweep=False`: refusing a dispatch is not the moment to also decide a
+    # crashed review is over. The Stop hook's abandoned-review branch is gated on
+    # `marker_present` and is what prints the manual-recovery remedy, so sweeping
+    # here would delete the signal that produces those instructions — the first
+    # refused dispatch past the TTL would strip the correct advice out of the
+    # subsystem. `clear` keeps the sweeping default; see `critic_marker`.
+    active, age_s = critic_marker.review_active(prawduct_dir, sweep=False)
+    roster_state, _missing = pending_state(prawduct_dir)
+    if active or roster_state == "complete":
+        return {
+            "status": "error",
+            "kind": "review-in-flight",
+            "reason": active_dispatch_refusal(prawduct_dir, age_s, active),
+        }
+
     # Which plan this review is OF. An unbounded `active_build_plan` has
     # attributed the manifest, the review fact and the ledger event to an
     # unrelated plan — with the pointer *correct* every time, which is why this
@@ -1134,6 +1514,11 @@ def begin_review(
         "mode_chosen_by": (chosen_by or "").strip() or "not-recorded",
         "roster": roster,
         "roster_chosen_by": roster_chosen_by,
+        # Where each reviewer writes, resolved HERE so the filename shape has
+        # exactly one home. Every instruction surface reads its role's entry
+        # instead of composing the name, which is what keeps a change to the
+        # shape (this one, and the next) out of four prose files.
+        "rendezvous": _rendezvous(project_dir, prawduct_dir, roster, review_id),
         "commit_reviewed": dispatch_commit,
         "base_commit": base_commit,
         "base_tree": base_tree,
@@ -1218,8 +1603,8 @@ def _str_list(val) -> bool:
 def validate_partial(data) -> tuple[bool, str]:
     """Validate a single reviewer partial.
 
-    Schema: ``{role, goals, commit_reviewed, model?, duration_seconds?,
-    findings:[{name, goal, severity, recommendation, files?}],
+    Schema: ``{role, goals, dispatch_id, commit_reviewed, model?,
+    duration_seconds?, findings:[{name, goal, severity, recommendation, files?}],
     resolutions?:[{review_id, fid, disposition, rationale?}], summary}``.
     ``model``/``duration_seconds`` are nullable telemetry; everything else is
     load-bearing. ``severity`` must be one of the known vocabulary so a typo
@@ -1227,11 +1612,24 @@ def validate_partial(data) -> tuple[bool, str]:
     verify-resolutions judgment payload (D5): ``disposition`` is ``fixed`` or
     ``waived``, and ``waived`` REQUIRES a non-empty ``rationale`` (R7 — a
     waiver carries its justification).
+
+    ``dispatch_id`` is the id of the review that dispatched this reviewer, and
+    it is deliberately NOT named ``review_id``: ``resolutions[].review_id`` in
+    this same record means the *prior* review whose finding is being
+    dispositioned. Two referents under one token, in a record a model writes
+    from prose, is the seam where an identifier degrades silently — so the two
+    get different names, and this one matches the module's existing
+    ``dispatch_commit``/``dispatch_age_minutes`` vocabulary.
     """
     if not isinstance(data, dict):
         return False, "partial is not a JSON object"
     if not _nonempty_str(data.get("role")):
         return False, "missing/empty 'role'"
+    if not _nonempty_str(data.get("dispatch_id")):
+        return False, (
+            "missing/empty 'dispatch_id' — a partial must name the review that "
+            "dispatched it (the manifest's 'id')"
+        )
     goals = data.get("goals")
     if not (_nonempty_str(goals) or _nonempty_str_list(goals)):
         return False, "missing 'goals' (non-empty string or list)"
@@ -1302,7 +1700,9 @@ def validate_manifest(data) -> tuple[bool, str]:
     only).
 
     Required: ``id``, verbose ``mode``, ``mode_chosen_by``, ``roster``,
-    ``roster_chosen_by``, ``commit_reviewed``, ``base_tree``, ``head_tree``,
+    ``roster_chosen_by``, ``rendezvous`` (one ``{partial, started}`` entry per
+    roster role — the resolved write paths, so no instruction surface has to
+    spell the filename shape), ``commit_reviewed``, ``base_tree``, ``head_tree``,
     non-empty ``files_reviewed``, ``files_changed`` (a list, possibly empty —
     a same-tree verify-resolutions pass legitimately changes nothing).
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
@@ -1331,6 +1731,43 @@ def validate_manifest(data) -> tuple[bool, str]:
             return False, f"missing/empty '{req}'"
     if not _nonempty_str_list(data.get("roster")):
         return False, "missing 'roster' (non-empty list of role names)"
+    # The id and every role become filename components of the rendezvous paths.
+    # Refused here rather than at the paths: a validator returns a verdict the
+    # caller can name, while a raise inside path construction would turn a
+    # malformed record into a crash on the session-end backstop's read.
+    for label, value in [("id", data["id"])] + [
+        ("roster entry", r) for r in data["roster"]
+    ]:
+        # The RAW value, not a stripped copy: what is checked has to be what
+        # becomes the filename, or the check grades a string nothing writes.
+        if not _path_component_safe(value):
+            return False, (
+                f"{label} {value!r} is not usable as a filename component "
+                "(no '/', '\\' or '..')"
+            )
+    rendezvous = data.get("rendezvous")
+    if not isinstance(rendezvous, dict):
+        return False, (
+            "missing 'rendezvous' (per-role partial/started paths). A manifest "
+            "without it was written by a hook older than this one. If this is the "
+            "PENDING review, the sequence is: reload the plugin (/reload-plugins, "
+            "or restart the session), then `prawduct-hook critic-end` to abandon "
+            "it, then dispatch again — a bare re-dispatch is refused while the "
+            "marker is live, so the abandon step is not optional. If this is a "
+            "RESTORED review, no dispatch can record it: a dispatch reviews the "
+            "tree now, not what that review read"
+        )
+    if sorted(rendezvous) != sorted(data["roster"]):
+        return False, (
+            f"'rendezvous' covers {sorted(rendezvous)} but the roster is "
+            f"{sorted(data['roster'])} — every role needs exactly one entry"
+        )
+    for role, entry in rendezvous.items():
+        if not isinstance(entry, dict):
+            return False, f"rendezvous[{role!r}] is not an object"
+        for key in ("partial", "started"):
+            if not _nonempty_str(entry.get(key)):
+                return False, f"rendezvous[{role!r}] missing/empty {key!r}"
     if not _nonempty_str_list(data.get("files_reviewed")):
         return False, "missing 'files_reviewed' (non-empty list)"
     if not _str_list(data.get("files_changed")):
@@ -1376,11 +1813,109 @@ def pending_state(prawduct_dir: Path) -> tuple[str, list[str]]:
     missing = [
         role
         for role in manifest["roster"]
-        if not partial_path(prawduct_dir, role).is_file()
+        if not partial_path(prawduct_dir, role, manifest["id"]).is_file()
     ]
     if missing:
         return "incomplete", missing
     return "complete", []
+
+
+def active_dispatch_refusal(
+    prawduct_dir: Path, age_seconds: float | None, active: bool = True
+) -> str:
+    """The message a ``critic-begin`` prints when it refuses to displace a review
+    that is still in flight.
+
+    **Why the refusal exists.** ``critic-begin`` resets the partials directory
+    (:func:`_archive_leftovers`; :func:`remove_partials` states why). That
+    treatment is right for an *orphaned* leftover and catastrophic for a *live*
+    review's: dispatching over one archives partials that may be complete,
+    overwrites the manifest and re-stamps the marker, so a finished review —
+    blocking findings included — leaves no fact and no ledger anchor until
+    someone notices and restores it by name (``critic-restore``). Refusing costs
+    one command; the alternative costs a whole review round.
+
+    That second-order harm — a displaced review's straggler landing in the new
+    review's directory and consolidating as it — is no longer possible, and this
+    message no longer argues from it. A partial is keyed by review id and
+    declares its ``dispatch_id``, so a straggler is named as foreign rather than
+    merged. What survives is the first-order harm above, which is enough: this
+    refusal exists to protect findings that have already been written.
+
+    **This message is also the missing observability.** ``methodology/building.md``
+    tells an agent whose review looks slow to "wait; if it fails, re-invoke", and
+    nothing distinguished *in flight* from *dead* — so the guide's own failure
+    path led into the destructive dispatch. The refusal is emitted at exactly the
+    moment that judgment is being made, and answers it with the on-disk state
+    rather than leaving it to a guess.
+    """
+    age_note = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
+    prior_id = "(id unavailable — manifest unreadable)"
+    try:
+        prior_id = json.loads(manifest_path(prawduct_dir).read_text())["id"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        pass
+    state, missing = pending_state(prawduct_dir)
+    if state == "complete":
+        situation = (
+            "  On disk: every reviewer has reported. That review is FINISHED and needs\n"
+            "  only consolidation — dispatching now would discard it:\n"
+            "    prawduct-hook critic-consolidate\n"
+        )
+    elif state == "incomplete":
+        situation = (
+            f"  On disk: still waiting on {', '.join(missing)}. Those reviewers are\n"
+            "  most likely still running — consolidation fires as they finish. Wait.\n"
+        )
+    else:
+        situation = (
+            "  On disk: no readable dispatch manifest — a review set the marker but\n"
+            "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
+        )
+
+    # The remedy has to REACH the state that is refusing, and the two conditions
+    # strand a caller differently. A live marker expires and `critic-end` clears
+    # it. A complete roster with NO live marker does neither: consolidation
+    # fail-closes without removing partials (its two `remove_partials` call sites
+    # are `begin_review` — now behind this guard — and consolidate-on-success),
+    # so a failed consolidate leaves a complete roster that `critic-end` cannot
+    # touch and no TTL expires. Naming the marker's TTL there would be false, and
+    # a refusal whose stated remedy does not work is worse than none.
+    if active:
+        escape = (
+            "  If that review is genuinely dead, abandon it explicitly and re-dispatch:\n"
+            "    prawduct-hook critic-end\n"
+            f"  The marker also expires on its own after "
+            f"{critic_marker.CRITIC_ACTIVE_TTL_SECONDS // 60} minutes."
+        )
+    else:
+        escape = (
+            "  No live marker — these partials are STRANDED, most likely by a\n"
+            "  consolidation that failed (it leaves them in place so the fix can retry).\n"
+            "  Consolidate them if the cause is fixable; `critic-end` will NOT clear this\n"
+            "  state and nothing expires it. To discard them deliberately and dispatch\n"
+            "  fresh — archiving first, never deleting outright:\n"
+            "    prawduct-hook critic-discard\n"
+            "  That archive is not a dead end: `prawduct-hook critic-restore <review-id>`\n"
+            "  brings the discarded review back as itself, ready to consolidate."
+        )
+    opening = (
+        f"refusing — a Critic review is already in flight in this "
+        f"worktree ({prior_id}, dispatched {age_note}).\n"
+        if active
+        else f"refusing — a completed review's partials are still on disk ({prior_id}).\n"
+    )
+    # No "critic-begin:" prefix — the CLI renders this as `f"critic-begin: {reason}"`.
+    return (
+        opening
+        + "  Dispatching now would archive its partials and overwrite its manifest, so\n"
+        "  a finished review would leave no fact and no ledger anchor until someone\n"
+        "  noticed and ran `prawduct-hook critic-restore` on it by name.\n"
+        "\n"
+        + situation
+        + "\n"
+        + escape
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1688,8 +2223,8 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
     periodic progress readout, so a session that correctly decides to wait
     does not idle its prompt cache into expiry while doing so.
 
-    Per-role liveness: each coordinator-dispatched reviewer writes
-    ``<role>.started`` as its first action, so a missing role is judged by its
+    Per-role liveness: each coordinator-dispatched reviewer writes the started
+    marker :func:`started_path` names as its first action, so a missing role is judged by its
     OWN started-marker age when one exists — a reviewer that started late (e.g.
     resumed against a moved HEAD) is not declared dead by dispatch age. The
     past-grace advice fires only when EVERY missing role is past the grace
@@ -1702,7 +2237,10 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
         counts += f"; dispatched {age:.1f} min ago"
     started: dict[str, float | None] = {}
     if prawduct_dir is not None and total > 1:
-        started = {role: started_age_minutes(prawduct_dir, role) for role in missing}
+        started = {
+            role: started_age_minutes(prawduct_dir, role, review_id)
+            for role in missing
+        }
 
     def _label(role: str) -> str:
         s_age = started.get(role)
@@ -1749,7 +2287,68 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
             " `prawduct-hook critic-end` first."
         )
         line += _CACHE_WARM_DIRECTIVE
+    if prawduct_dir is not None:
+        line += _stray_partial_note(prawduct_dir, missing, review_id)
     return line
+
+
+def _stray_partial_note(prawduct_dir: Path, missing: list[str],
+                        review_id: str) -> str:
+    """Name a partial that is on disk but not this review's, and say what to do.
+
+    Without this, the two ways a reviewer's work goes uncounted are both
+    invisible. A **straggler** from an abandoned review sits under that review's
+    own name and is correctly ignored — but silence reads as "the reviewer never
+    wrote anything", which is the death verdict that produced the double
+    dispatch in the first place. A **legacy** partial at the pre-keyed
+    ``<role>.json`` is worse: it means the skill that wrote it is older than
+    this hook, the reviewer did its whole run, and the file will never be read.
+    Accepting it instead would reopen the hole this keying closes, so the answer
+    is to say so and name the remedy.
+
+    Advice, so it fails soft: any read error yields no note rather than an
+    exception on a message-building path.
+    """
+    pdir = partials_dir(prawduct_dir)
+    try:
+        names = {p.name for p in pdir.iterdir() if p.is_file()}
+    except OSError:
+        return ""
+    legacy = [r for r in missing if f"{r}.json" in names]
+    foreign: list[str] = []
+    for role in missing:
+        # `partial_path` owns the shape; asking it for the name this review
+        # would use keeps this reader from becoming a second home for it.
+        mine = partial_path(prawduct_dir, role, review_id).name
+        for name in sorted(names):
+            if (name.startswith(f"{role}.") and name.endswith(".json")
+                    and name not in (f"{role}.json", mine)):
+                foreign.append(name)
+    note = ""
+    if legacy:
+        # The remedy has to REACH the state, and a bare "re-dispatch" does not:
+        # this note is appended to a message whose roster branch has just said
+        # "do not re-dispatch", and `critic-begin` refuses anyway while the
+        # marker is live. So the sequence is stated in full, in order, and the
+        # abandon step comes first.
+        note += (
+            f" NOTE: {', '.join(sorted(f'{r}.json' for r in legacy))} in that"
+            " directory is a partial written to the path this hook used before"
+            " reviews were keyed by id — the skill that wrote it is older than"
+            " this hook, so its work cannot be read and waiting will not"
+            " produce it. This one case overrides the wait advice above:"
+            " reload the plugin (/reload-plugins, or restart the session),"
+            " then `prawduct-hook critic-end` to abandon this review, then"
+            " dispatch again."
+        )
+    if foreign:
+        note += (
+            f" NOTE: {', '.join(sorted(set(foreign)))} in that directory"
+            " belongs to an earlier review, not this one — a straggler that is"
+            " correctly ignored here. It is not evidence about whether this"
+            " review's reviewers are alive."
+        )
+    return note
 
 
 def _already_consolidated_note(prawduct_dir: Path) -> str:
@@ -1859,7 +2458,7 @@ def consolidate(project_dir: Path) -> int:
     partials: list[dict] = []
     missing: list[str] = []
     for role in roster:
-        ppath = partial_path(prawduct_dir, role)
+        ppath = partial_path(prawduct_dir, role, review_id)
         if not ppath.is_file():
             missing.append(role)
             continue
@@ -1884,6 +2483,24 @@ def consolidate(project_dir: Path) -> int:
             print(
                 f"critic-consolidate: partial for {role!r} declares role "
                 f"{data['role']!r} — roster mismatch, fail-closed.",
+                file=sys.stderr,
+            )
+            return 1
+        # Belt-and-braces against the commit binding being the ONLY one. The
+        # keyed filename already stops a straggler from another review landing
+        # here; this catches the case the name cannot — a reviewer handed the
+        # wrong id in its dispatch prompt, writing to the right file with the
+        # wrong review's identity. Stripped before comparing, because
+        # surrounding whitespace normalizes identically and must not abort a
+        # whole consolidation (the `files: []` lesson, same module): hard-fail
+        # is for genuine ambiguity, which a different id is and a padded one
+        # is not.
+        if data["dispatch_id"].strip() != review_id.strip():
+            print(
+                f"critic-consolidate: reviewer {role!r} was dispatched by "
+                f"{data['dispatch_id'].strip()} but this manifest is "
+                f"{review_id} — the partial belongs to a different review, "
+                "fail-closed.",
                 file=sys.stderr,
             )
             return 1
@@ -2111,10 +2728,16 @@ def remove_partials(prawduct_dir: Path) -> None:
     """Remove the manifest + every partial + the partials directory. Best-effort
     and idempotent — a missing file is fine (the point is that nothing pending
     remains). Public: ``critic-begin`` also calls this so every review starts
-    from a clean partials dir — consolidate removes partials only on success,
-    so a waived or stale-failed review leaves them behind, and a leftover
-    partial at the same commit as a fresh dispatch would otherwise merge as if
-    the new reviewer had written it."""
+    from a clean partials dir — consolidate removes partials only on success, so
+    a waived or stale-failed review leaves them behind.
+
+    **The reason changed when partials gained review identity, and this is its
+    one home.** It used to be a correctness requirement: a leftover partial at
+    the same commit as a fresh dispatch would merge as if the new reviewer had
+    written it. Keying by review id makes that impossible — a leftover is named
+    as foreign, never merged. What remains is hygiene, and it is still worth
+    doing: the directory stops accumulating debris no reader can use, and the
+    archive stays the single place an unconsolidated review's trace lives."""
     pdir = partials_dir(prawduct_dir)
     if not pdir.is_dir():
         return

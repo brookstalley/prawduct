@@ -463,6 +463,24 @@ views_enabled: true
 # now, let `/prawduct:pr` apply its documented rule at merge, and if the
 # conflict still stands afterwards it is a real one to settle once — not
 # per-branch, and not by whoever is holding the merge.
+#
+# SET 2026-08-05 on branch fix/critic-review-identity to the plan this branch
+# builds. The slot was null when the branch was cut — v3.2.6 shipped and nothing
+# was in flight — so this is a fresh set inheriting none of the staleness the
+# incidents above record, and no plan is orphaned by the move. The work is part 2
+# of the concurrent-dispatch defect (#602/#171), sequenced by the owner.
+#
+# REPOINTED 2026-08-05 resolving the develop -> upstream-dependency-policy merge,
+# where both sides had set this slot. This is NOT the both-sides-repointed case the
+# CLEARED note above settles, and the difference is the whole resolution: there,
+# both candidates named plans that had finished building, so neither side won and
+# the slot went empty. Here only ONE has finished — critic-review-identity merged
+# to develop at 4f98a2d with both chunks built and reviewed — while this branch's
+# plan is genuinely mid-build (Chunk 01 of 06 shipped). Clearing would orphan work
+# in flight, which is the one thing every incident above agrees the slot must not
+# do, and taking develop's side would name a finished plan, which is the dormant
+# pointer those same incidents record. So the live plan wins on the merits, not by
+# virtue of whose merge it was.
 active_build_plan: artifacts/build-plan-upstream-dependency-policy.md
 
 # =============================================================================
@@ -637,6 +655,9 @@ scope_rollups:
   critic-burndown:
     chunks: ["01", "02", "03"]
     releases: ["v3.2.3"]
+  critic-concurrent-dispatch:
+    chunks: ["1", "2"]
+    releases: ["v3.2.6"]
   critic-death-signals:
     chunks: ["1"]
     releases: ["v3.2.3"]

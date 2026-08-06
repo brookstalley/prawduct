@@ -145,13 +145,24 @@ def _marker_age_seconds(marker: Path) -> float | None:
             return None
 
 
-def review_active(prawduct_dir: Path) -> tuple[bool, float | None]:
+def review_active(prawduct_dir: Path, sweep: bool = True) -> tuple[bool, float | None]:
     """Is a Critic review plausibly in progress right now?
 
     Returns ``(active, age_seconds)``. ``active`` is True only when the marker
     exists AND its age is within :data:`CRITIC_ACTIVE_TTL_SECONDS`. A
     stale/unreadable marker is swept (best-effort ``unlink``) and reported as
     not active, so a crashed review self-heals on the next check.
+
+    ``sweep=False`` answers the same question WITHOUT unlinking, and exists
+    because the sweep is a side effect that not every caller can afford. The
+    Stop hook's abandoned-review branch is gated on :func:`marker_present` and
+    is the surface that prints the manual-recovery remedy (``rm`` the marker and
+    the partials, then waive). A caller that sweeps on the way past therefore
+    deletes the signal that would have produced those instructions — so the
+    Critic *dispatch* path reads with ``sweep=False``: refusing a dispatch is
+    not the moment to also decide a crashed review is over. ``clear``, whose
+    whole problem is that a dead marker must not brick it forever, keeps the
+    sweeping default.
     """
     marker = _marker_path(prawduct_dir)
     if not marker.is_file():
@@ -159,9 +170,11 @@ def review_active(prawduct_dir: Path) -> tuple[bool, float | None]:
     age = _marker_age_seconds(marker)
     if age is not None and age <= CRITIC_ACTIVE_TTL_SECONDS:
         return (True, age)
-    # Stale or unreadable → sweep and proceed (fail toward availability).
-    try:
-        marker.unlink()
-    except OSError:
-        pass
+    # Stale or unreadable → report not active. Sweeping is the default because a
+    # crashed review must not brick `clear`; see the docstring for who opts out.
+    if sweep:
+        try:
+            marker.unlink()
+        except OSError:
+            pass
     return (False, None)
