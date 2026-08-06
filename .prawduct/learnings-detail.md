@@ -2627,3 +2627,50 @@ Owner rule (2026-08-05): never fund a budget by moving prose to another file —
 footprint is the only number that matters, so relocation satisfies the assertion and achieves
 nothing. Order: simplify genuine duplication, then raise the ceiling and record what bought the
 increase **at the assertion**, where the next person to hit it will be reading.
+
+## A fixture's world is narrower than the requirement it certifies
+
+The common instance narrows the requirement to itself. The framework's OWN state stands in for the
+propagated contract, so assert what reaches consumer repos. One moment stands in for the procedure's
+transitions. The collision case is unwritten when the fan-out key is not unique.
+
+**2026-08-06 instance — the guard redefined the criterion, silently.** Acceptance criterion 4 of
+`build-plan-critic-review-identity` read "the partial-path shape appears in exactly one place in the
+codebase; no instruction surface spells it", and its guard test — written in the same breath — scanned
+`plugin/skills`, `plugin/agents`, `plugin/methodology`. Six live sites outside that scan still spelled
+the superseded name, including two artifacts the plan's own `governed_by:` block cites and a *pending*
+`operator-verification.md` entry that would have made an operator record a false failure. The criterion
+read as verified. The repair was to narrow the criterion to what the guard enforces and state what it
+cannot — not to widen the guard, because the superseded name legitimately appears wherever prose
+CONTRASTS it with the new one.
+
+## When a trim is justified by the surrounding prose's OWN instruction
+
+The dangerous cut is not the one you cannot justify — it is the one the file appears to endorse.
+
+**First instance.** A record-lint explanation read as redundant under its own "raise it, don't restate
+it" rule, and was the only witness to a two-shape contract.
+
+**2026-08-06 instance — placement is not duplication.** `goals-1-3.md` had 6 tokens of headroom under
+its budget, whose comment carries the standing rule "THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT
+BUMP". That licensed compressing the closing "**Either way** your last line is consolidate's
+`NEXT-ACTION:` … the clean pass is where it matters most" to a single word, on the reasoning that it
+restated a rule 30 lines above. It did restate it — and
+`test_goals_1_3_relay_survives_the_clean_pass_shorthand` exists precisely because the sentence sits
+where a reader shortcuts the rule, and pins the phrase for that reason. The test caught it. The
+question that separates a copy from a placement: *does this sentence sit where the rule gets skipped?*
+The same instinct then reached for `review-protocol.md`'s reviewer-model prose — an emergency patch
+with its own test — and stopped; that refusal is now recorded in the budget comment itself.
+
+## When you add a validator because a value became DANGEROUS
+
+**2026-08-06 instance.** A Critic review id became a filename component, so
+`critic_consolidate._path_component_safe` was added and applied to both paths the change created.
+`_archive_leftovers` — already in the same file — kept deriving an archive directory name from the
+same id, read raw off disk, unchecked: `rev-../../escape` walked up out of the archive, `/tmp/x`
+replaced the base outright, and because an archive failure degrades to DELETE it failed silently in
+both directions. It reads the manifest raw deliberately (it must work when the manifest is unreadable),
+so `validate_manifest`'s gate never covers it. Found by the review OF the commit that added the gate.
+The generalisation is about attention, not about paths: reviewing your own change shows you the new
+call sites, and the vulnerable one is the line that did not move.
+
