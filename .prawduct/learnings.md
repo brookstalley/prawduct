@@ -162,6 +162,8 @@ dropping them.
 
 ## When verifying an assumption, build the instrument WIDER than the proposition — the confirm/deny answer is rarely where the value is
 
+## When a check's subject is a SET (files scanned, paths matched, items collected), assert the set is non-empty and contains what the check names — otherwise green means "nothing was looked at", and the check passes forever
+
 ## After a clean cumulative (0 blocking/0 warning), NOTEs are advisory — don't chase cosmetic ones; fixing them reopens the coverage gate on judgeable governance files and forces a no-value review pass
 
 ## A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start

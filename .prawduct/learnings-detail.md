@@ -2747,3 +2747,38 @@ so `validate_manifest`'s gate never covers it. Found by the review OF the commit
 The generalisation is about attention, not about paths: reviewing your own change shows you the new
 call sites, and the vulnerable one is the line that did not move.
 
+
+## When a check's subject is a SET (files scanned, paths matched, items collected), assert the set is non-empty and contains what the check names — otherwise green means "nothing was looked at", and the check passes forever
+
+**Pattern**: three independent instances in one session (2026-08-06), which is why this is a rule
+and not an anecdote.
+
+1. **`test_subprocess_safety.py` scanned `plugin/tests`** — a directory that has never existed on any
+   branch. The repo's largest Python tree had never been checked for `shell=True`. The suite stayed
+   green for the check's entire life, because a missing root yields no files rather than an error.
+   Green meant *no files*, not *no violations*.
+2. **A mutation-escape in `test_critic_dispatch_refusal.py`.** The test asserting that a
+   governance-protected `.md` still dispatches passed under a mutation that keyed the refusal on
+   `.md` instead of the predicate — because the fixture's `git add -A` had swept `.prawduct/`
+   artifacts into the delta, so a stray non-`.md` path forced the dispatch. The judgeable `.md` the
+   test named was never what made it pass.
+3. **`_assert_no_dispatch_state`'s partial-reset clause** (caught by the Critic, not by me).
+   It asserted the partials dir held no leftovers — but the sweep it guards returns early when there
+   are no children, and every fixture had already had its partials removed. True at all three call
+   sites regardless of behaviour.
+
+**Root cause**: a predicate over a collection has two failure modes, and tests routinely cover only
+one. "No violations in the set" and "the set is empty" are indistinguishable from the outside, and
+the empty-set case is the one that fails silently *and* permanently — it never goes red, so nothing
+ever prompts a look.
+
+**Reusable rule**: any check that iterates — a scan root, a glob, a filtered list, a mutation-verified
+assertion — carries a companion assertion that the iteration reached its subject. Concretely:
+assert the roots exist (`test_scan_roots_all_exist`), assert a known member is present
+(`test_scan_reaches_the_repo_test_tree`), and for absence-assertions **seed the thing that must
+survive** rather than checking that nothing is there. Mutation testing is the cheap detector: mutate
+the predicate and confirm the test that names it goes red — if a *different* test dies instead, the
+named test is passing for the wrong reason. Instance 2 was found exactly that way.
+
+**Ties to**: the free-edge/judgeable work in `gate-as-dispatcher-requirements.md` (instances 2-3) and
+`.prawduct/change-log.md`'s 2026-08-06 entry (instance 1).

@@ -71,8 +71,11 @@ here goes stale silently and nothing consults it).
 Step 0 settled against the code by owner ruling: `change-log.md` is correctly non-judgeable, and
 `learnings-detail.md`'s CRT-7M2D bullet was wrong on three of its five named files — corrected there.
 The refusal is mutation-verified on both conjuncts, and the retroactive replay refuses exactly rounds
-3/4/5 of `fix/backlog-import-title-boundary` while dispatching 1/2/6/7. Awaiting the `cumulative`
-review before Chunk 02. Requirements in
+3/4/5 of `fix/backlog-import-title-boundary` while dispatching 1/2/6/7. Chunk 01 is CLOSED: the cumulative
+(`rev-20260806T204908Z-8a18af57`, 2 blocking / 13 warning / 11 note) and its verify pass
+(0/0/0, 11 resolutions) both landed, and `check-cumulative-critic` is satisfied at HEAD. Four of the
+verify pass's demoted observations ride into Chunk 02 — see its carried-in block. Next: Chunk 02,
+starting by reading #596 to settle the telemetry sink BEFORE writing it. Requirements in
 `.prawduct/artifacts/gate-as-dispatcher-requirements.md` — read it first, it carries the
 measurements, the safety argument, and the withdrawn layers. `active_build_plan` still points at
 `artifacts/build-plan-critic-review-identity.md` and **must not be repointed** until the
@@ -161,6 +164,23 @@ Tests carry most of this, but two things tests cannot say:
     adopt its sink or record why this one differs; do not add a second telemetry path for the same
     class of event by default. This is a real decision, not a formality — the ledger is gitignored
     and per-worktree, so a yield question spanning clones cannot be answered from it.
+- **Carried in from the Chunk 01 verify pass** (`verify-resolutions` over `991417b..c287b88`, which
+  returned 0/0/0 — these are its demoted observations, deliberately left out of its `resolutions`
+  because the reviewer could not settle them from the tree). Riding this chunk's commit; each is
+  small, and none is worth a round of its own:
+  - **The `_assert_no_dispatch_state` partial-reset clause is asserted VACUOUSLY** — the highest-value
+    item here. It checks the partials dir holds no `*.json` and no archive exists, but
+    `_archive_leftovers` returns before creating anything when there are no children, and every
+    fixture calling the helper has already had its partials removed by consolidate. So all three call
+    sites pass regardless of what the refusal does. **Fix by seeding a leftover partial that must
+    SURVIVE the refusal** — absence of a thing that was never there proves nothing. This is the third
+    instance of that shape in one session (the `plugin/tests` scan root, the governance-`.md` mutation
+    escape, this) and it is now a durable rule in `learnings.md`.
+  - **`--force` is wired 2 of 4.** SKILL.md step 4's instruction and the printed remedy are done;
+    still missing from the skill's `argument-hint` frontmatter and from step 4's command template
+    (which shows `[--scope] [--chunk]` with no `[--force]` slot).
+  - **`_USAGE` residue** — `plugin/bin/prawduct-hook` `_USAGE` still spells `critic-begin --mode <m>`
+    with no `[--force]`. The docstring is already corrected; this is the other half.
 - **Deliverables:**
   - refusal telemetry, sink decided per R-26 above (the `ledger-append` path is the *proposal*,
     not the ruling), carrying the interval and the free file list — enough to answer the yield
