@@ -730,7 +730,19 @@ plan. Relates to Root Cause Discipline (#16) and Validate Before Propagating (#1
 **Reusable rule**: self-scrub hard BEFORE the first cumulative (the methodology's "deep-scrub while the Critic runs" only helps if there's a gap to use; a synchronous skill return leaves none — so scrub before invoking). When notes land: fix `.md` notes in place (free), and weigh each `.py` cosmetic note against one opus re-run — fixing a false docstring + dropping dead code was worth it here, but a pure tense-nit was not (left as a defensible description). Route low-value `.py` notes to a backlog item rather than re-reviewing. Ties directly to the Review-wall-clock-is-P0 priority.
 
 **Correction (2026-07-14, ephemeral-ref-firewall).** Two claims above are wrong, proven by direct observation this session — keep the narrative for history but do not act on the struck reasoning:
-- **"`.md` fixes ride free" is false for JUDGEABLE files.** The CRT-7M2D docs-only free-edge covers only *non-judgeable* files (pure docs). Governance/instruction `.md` — `docs/principles.md`, `methodology/`, `skills/*/` protocols, `learnings.md`, `change-log.md` — is judgeable, so a `.md`-only note-fix commit to those left `check-cumulative-critic` **`uncovered`**. The real axis is judgeable-vs-non-judgeable, not `.md`-vs-`.py`.
+- **"`.md` fixes ride free" is false for JUDGEABLE files.** The CRT-7M2D docs-only free-edge covers only *non-judgeable* files (pure docs). The real axis is judgeable-vs-non-judgeable, not `.md`-vs-`.py` — that part stands. **The enumeration that followed it did not: corrected 2026-08-06 (gate-as-dispatcher, owner ruling).** Checked directly against `coverage_algebra.is_judgeable_path`, a `.md` is judgeable **only** when `buildplan_refs.protected_path_violation` matches it — `methodology/`, `skills/`, `templates/`, root `CLAUDE.md` — and **nothing** under `gitstate.METADATA_PREFIXES` (`.prawduct/`, `.claude/settings.json`) is judgeable at all, whatever its extension. So of the five files this bullet originally named, three were wrong:
+
+  | path | claimed | actual |
+  |---|---|---|
+  | `methodology/building.md` | judgeable | **judgeable** ✓ |
+  | `skills/critic/review-protocol.md` | judgeable | **judgeable** ✓ |
+  | `docs/principles.md` | judgeable | **not** — `docs/` is not a protected bound |
+  | `.prawduct/learnings.md` | judgeable | **not** — under `.prawduct/` |
+  | `.prawduct/change-log.md` | judgeable | **not** — under `.prawduct/` |
+
+  **Owner ruling 2026-08-06: `change-log.md` is correctly non-judgeable and stays that way** (it is also over-heavy; reducing its weight is separate follow-on work). The code was right and this learning was stale.
+
+  **The over-claim was not harmless, and its direction is the interesting part.** Believing a change-log or learnings edit is judgeable makes a builder run a review round after every such commit — which is exactly the treadmill `gate-as-dispatcher-requirements.md` measures: on `fix/backlog-import-title-boundary`, rounds 3, 4 and 5 followed docs commits, were all free edges, and all returned 0/0/0. A stale *belief* about the predicate cost real review rounds. When a rule about a mechanism matters, re-derive it from the mechanism (`is_judgeable_path` is four lines) rather than citing a remembered list.
 - **"verify-resolutions demotes to `final` when no blocking/warning remains" is false.** With 0 prior blocking/warning AND a real delta, verify-resolutions ran as a LIGHT single-pass (Goals 1-3, one reviewer, ~1-2 min) and closed coverage — it did NOT demote. Demotion fires only when the anchor is missing, history was rewritten, the delta widens past 2×prior+5 files, or the prior was clean *and nothing changed since* (`review-cycle.md` demotion table); the original rule omitted the "and nothing changed" clause.
 So the post-fix cost is ONE light pass, not a full re-review — but that is beside the point. The load-bearing lesson is upstream of cost: **a clean cumulative (0 blocking/0 warning) is already "ready to proceed" — NOTEs are advisory.** Don't chase cosmetic ones (they only reopen the gate for a no-value pass); self-scrub before the first review, fix only high-value notes (filing a deferred item = Complete Delivery), and batch ALL durable edits so there is ONE review, not three. Owner flagged this directly during ephemeral-ref-firewall: "avoid excessive reviews when they add no value."
 
@@ -2735,3 +2747,38 @@ so `validate_manifest`'s gate never covers it. Found by the review OF the commit
 The generalisation is about attention, not about paths: reviewing your own change shows you the new
 call sites, and the vulnerable one is the line that did not move.
 
+
+## When a check's subject is a SET (files scanned, paths matched, items collected), assert the set is non-empty and contains what the check names — otherwise green means "nothing was looked at", and the check passes forever
+
+**Pattern**: three independent instances in one session (2026-08-06), which is why this is a rule
+and not an anecdote.
+
+1. **`test_subprocess_safety.py` scanned `plugin/tests`** — a directory that has never existed on any
+   branch. The repo's largest Python tree had never been checked for `shell=True`. The suite stayed
+   green for the check's entire life, because a missing root yields no files rather than an error.
+   Green meant *no files*, not *no violations*.
+2. **A mutation-escape in `test_critic_dispatch_refusal.py`.** The test asserting that a
+   governance-protected `.md` still dispatches passed under a mutation that keyed the refusal on
+   `.md` instead of the predicate — because the fixture's `git add -A` had swept `.prawduct/`
+   artifacts into the delta, so a stray non-`.md` path forced the dispatch. The judgeable `.md` the
+   test named was never what made it pass.
+3. **`_assert_no_dispatch_state`'s partial-reset clause** (caught by the Critic, not by me).
+   It asserted the partials dir held no leftovers — but the sweep it guards returns early when there
+   are no children, and every fixture had already had its partials removed. True at all three call
+   sites regardless of behaviour.
+
+**Root cause**: a predicate over a collection has two failure modes, and tests routinely cover only
+one. "No violations in the set" and "the set is empty" are indistinguishable from the outside, and
+the empty-set case is the one that fails silently *and* permanently — it never goes red, so nothing
+ever prompts a look.
+
+**Reusable rule**: any check that iterates — a scan root, a glob, a filtered list, a mutation-verified
+assertion — carries a companion assertion that the iteration reached its subject. Concretely:
+assert the roots exist (`test_scan_roots_all_exist`), assert a known member is present
+(`test_scan_reaches_the_repo_test_tree`), and for absence-assertions **seed the thing that must
+survive** rather than checking that nothing is there. Mutation testing is the cheap detector: mutate
+the predicate and confirm the test that names it goes red — if a *different* test dies instead, the
+named test is passing for the wrong reason. Instance 2 was found exactly that way.
+
+**Ties to**: the free-edge/judgeable work in `gate-as-dispatcher-requirements.md` (instances 2-3) and
+`.prawduct/change-log.md`'s 2026-08-06 entry (instance 1).

@@ -1595,6 +1595,107 @@ class TestVerifyRatesBlockingOnlyDirective:
                 "Bash grant in skills/critic/SKILL.md covers."
             )
 
+    def test_blocking_is_defined_as_a_claim_about_the_tree(self):
+        """BLOCKING must be stated as a SCHEDULING claim, not only a risk rating.
+
+        Measured on `feat/gate-as-dispatcher` (2026-08-06): the same finding
+        class was a WARNING in the cumulative (a stale registry row — dispositioned,
+        no round) and BLOCKING in a verify pass (a registry row — a full round),
+        decided by which mode noticed it rather than by its cost. The verify
+        reviewer wrote both halves of the contradiction in one report — "it rides
+        the commit already owed ... it does not need one of its own", then rated
+        it BLOCKING, which by the gates' own semantics guarantees it gets one.
+        It knew the schedule and had no severity to say it in.
+
+        Pinned as STRUCTURE, like every sibling here: the directive must (a)
+        define BLOCKING against whether the TREE may move rather than whether
+        the fix is owed, and (b) distinguish the two on record-class gaps. The
+        wording is free. This clause lives ONLY in this constant — not in
+        `goals-1-3.md`, not in `review-cycle.md`, both of which sit against
+        their token ceilings — so without a pin a prose-diet pass deletes the
+        whole distinction with the suite green.
+        """
+        d = cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE
+
+        assert "tree" in d.lower(), (
+            "the directive no longer defines BLOCKING against the TREE. Without "
+            "that anchor 'blocking' collapses back to 'important', which is what "
+            "made a one-row doc gap cost a full review round"
+        )
+        # The distinction itself: something is owed AND the tree is still fine.
+        assert "owed" in d.lower(), (
+            "the directive no longer separates 'the tree must not move' from "
+            "'this fix is owed' — the two coming apart is the entire point"
+        )
+        # The class the distinction exists for, and its escape. `"record"` alone
+        # would be worthless here: the constant already says "record-lint",
+        # "recorded here" and "the record demands" elsewhere, so a bare
+        # substring passes on pre-existing text and guards nothing while its
+        # failure message claims otherwise. Pin the compound.
+        assert "record gap" in d.lower(), (
+            "the directive no longer names RECORD GAPS as the class the "
+            "distinction exists for, so a reviewer holding a registry row is "
+            "back to choosing between forcing a round and saying nothing"
+        )
+        assert "ride" in d.lower(), (
+            "the directive no longer offers the ride-along route for a demoted "
+            "record gap"
+        )
+        # A demotion with no destination is a drop. The route only works if the
+        # reviewer is told WHERE the builder must write it — deleting just this
+        # parenthetical would leave the clause reading fine and silently turn
+        # every demoted record gap into lost work.
+        assert ".handoff-notes.md" in d, (
+            "the ride-along route no longer names where the builder must write "
+            "the demoted gap. Without a destination the demotion is a drop, "
+            "which is the one way this rule could lose something real"
+        )
+        # The exemption must survive too, or the distinction silently weakens
+        # the five classes that mean the tree is ALREADY wrong.
+        assert "exempt" in d.lower() or "already wrong" in d.lower(), (
+            "the record-gap carve-out no longer states that the five BLOCKING "
+            "classes are exempt — as written it could be read as licensing a "
+            "demotion of a weakened test or an untested behavior change"
+        )
+        # And the close case, or the escape becomes a permanent deferral: a
+        # chunk with no further commit has nothing for the gap to ride.
+        assert "clos" in d.lower(), (
+            "the directive no longer says a record gap blocks a chunk CLOSE. "
+            "Without it the ride-along route has no terminator and a registry "
+            "row can be deferred forever by a chunk that never commits again"
+        )
+
+    def test_the_directive_has_a_size_ceiling(self):
+        """Its two alternative homes are capped and it is not, which makes it
+        the overflow route by default — the clause added on 2026-08-06 went here
+        precisely because `goals-1-3.md` and `review-cycle.md` sat 2 and 4 tokens
+        under their ceilings.
+
+        A dispatch directive is read by a model on every verify pass, so it
+        competes with the review itself for attention; unbounded growth here is
+        the same defect as unbounded growth there, minus the test that catches
+        it.
+
+        Measured in TOKENS with the same estimator every budgeted file in this
+        repo uses, and with the current reading pinned — a ceiling alone lets
+        growth accrete silently inside the headroom, which is the failure the
+        `LAST_MEASURED_TOKENS` convention exists to prevent. Two numbers, two
+        jobs: the pin fails on any drift and carries the new figure; the ceiling
+        says how much drift is allowed before a clause has to move out.
+        """
+        tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
+
+        assert tokens == 707, (
+            f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
+            f"says 707. Update it to {tokens} and say in the docstring what paid "
+            f"for the change — the ceiling below is not a budget to spend."
+        )
+        assert tokens < 900, (
+            f"the directive is ~{tokens} tokens. It is delivered on every verify "
+            f"dispatch and competes with the review for attention. Trim, or move "
+            f"a clause to the protocol file that owns it."
+        )
+
     def test_it_descends_rather_than_only_stating_a_rule(self):
         """Structure, not wording — the same property its sibling is held to,
         and for the same measured reason: a reviewer agrees that re-reviews
@@ -3712,6 +3813,12 @@ class TestScopeAttribution:
         (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
         _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
         (repo / ".prawduct" / "artifacts" / "notes.md").write_text("# Notes\n\nplain\n")
+        # A judgeable file in the diff, or there is no dispatch to attribute:
+        # an interval of `.prawduct/` prose alone is a free edge, and
+        # `critic-begin` now declines it (exit 3) rather than spending a
+        # reviewer the coverage gate never asked for. This test is about what
+        # record-lint REPORTS on a real dispatch, so it needs one.
+        (repo / "src" / "app.py").write_text("x = 2\n")
 
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 0, f"stderr={result.stderr!r}"

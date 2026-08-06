@@ -591,6 +591,73 @@ class TestDegradedProgressNotice:
         assert _bpr.DEGRADED_PROGRESS_TOKEN == "degraded-chunk-reading"
 
 
+class TestChunkRefWaiver:
+    """A chunk body DISCUSSES paths as well as declaring them, and a backtick
+    scan cannot tell the two apart.
+
+    The forcing case: a carried-in review observation naming the path a past
+    defect was about — a scan root that never existed on any branch. The prose
+    is correct *because* the path is missing, so the check fires on every future
+    run and the only escapes are to launder the record to satisfy the linter or
+    to carry a permanent blocking finding. The exemption is the repo's ordinary
+    waiver pragma, so it demands a reason and stays visible where it applies.
+    """
+
+    _REASON = "the path is the SUBJECT of a recorded defect, not a deliverable"
+
+    def test_a_waived_line_contributes_no_refs(self, tmp_path: Path):
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            f"- <!-- prawduct:allow prawduct/chunk-ref-missing -- {self._REASON} -->\n"
+            "  the `lib/never_existed.py` scan root\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_the_same_line_without_the_waiver_still_reports(self, tmp_path: Path):
+        """The paired positive. Without it, the test above is satisfied by an
+        extractor that stopped reporting anything at all."""
+        _project, prawduct = _project_with_chunk(
+            tmp_path, "- the `lib/never_existed.py` scan root\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/never_existed.py"]
+
+    def test_a_reasonless_waiver_does_not_waive(self, tmp_path: Path):
+        """`waivers.line_waives` requires a reason, and this check must inherit
+        that rather than accept a bare pragma — an unexplained exemption is the
+        thing the waiver mechanism exists to prevent."""
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- <!-- prawduct:allow prawduct/chunk-ref-missing -->\n"
+            "  the `lib/never_existed.py` scan root\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/never_existed.py"]
+
+    def test_the_waiver_does_not_leak_to_other_lines(self, tmp_path: Path):
+        """Scoped to the line it sits on (and the one below, per `waivers.waives`)
+        — a chunk-wide exemption would silently stop checking real deliverables."""
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            f"- <!-- prawduct:allow prawduct/chunk-ref-missing -- {self._REASON} -->\n"
+            "  the `lib/never_existed.py` scan root\n"
+            "\n"
+            "- touches `lib/also_missing.py`\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/also_missing.py"]
+
+    def test_an_unrelated_rule_id_does_not_waive(self, tmp_path: Path):
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- <!-- prawduct:allow prawduct/broad-except -- unrelated -->\n"
+            "  the `lib/never_existed.py` scan root\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/never_existed.py"]
+
+
 class TestNewQualifierExpiry:
     """#224(a): `new `path`` is a forward reference only while the chunk is open.
 

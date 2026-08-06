@@ -44,7 +44,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
-from . import gitstate
+from . import gitstate, waivers
 from .core import read_bool_yaml_key, read_str_yaml_key, resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
@@ -1240,6 +1240,12 @@ def _parse_build_plan_chunk_refs(
     reduced by ``_ref_path_part`` — any ``::symbol`` or ``:line`` suffix is
     dropped, so a missing-ref message names the file rather than the citation.
     Symbol and backlog-ID verification remain deferred.
+
+    A line carrying ``prawduct:allow prawduct/chunk-ref-missing -- <reason>``
+    (or the same pragma on the line above) contributes no refs: that is the
+    escape for prose which *discusses* a path rather than declaring it, where
+    the path's absence is the point being recorded. It needs a reason like every
+    other waiver, and the Critic checks that the reason is legitimate.
     """
     result: dict = {"file_paths": [], "error": None}
     if plan_path is None:
@@ -1290,7 +1296,30 @@ def _parse_build_plan_chunk_refs(
         forward_refs = set()
 
     seen: set[tuple[str, int]] = set()
-    for line_num, line in section_lines:
+    # Waiver lookup needs the line ABOVE as well as the line itself (both
+    # placements are supported — `waivers.waives`), and a plan puts the pragma
+    # above far more often than beside: the path usually sits mid-sentence in
+    # wrapped prose, where a trailing comment would land on whichever line the
+    # wrap happened to end on.
+    section_texts = [text for _, text in section_lines]
+    for index, (line_num, line) in enumerate(section_lines):
+        # A chunk body does not only DECLARE paths — it also DISCUSSES them, and
+        # the two are indistinguishable to a backtick scan. The case that forced
+        # this: a carried-in review observation naming the path a past defect was
+        # about (`plugin/tests`, a scan root that never existed on any branch).
+        # The prose is correct precisely BECAUSE the path is missing, so the
+        # check fires forever and the only ways out are to launder the record to
+        # satisfy the linter or to leave a permanent blocking finding.
+        #
+        # The exemption is the repo's ordinary waiver pragma (`docs/waivers.md`)
+        # rather than a new rule of its own: it demands a reason, it is visible
+        # to the next reader at the line it applies to, the Critic verifies each
+        # one is legitimate, and a reason-less waiver still fires. Deliberately
+        # NOT solved by scoping extraction to `**Deliverables:**` — a chunk names
+        # load-bearing paths in Tests, Done-when and Artifacts-consumed too, and
+        # narrowing the scan would stop checking them to silence prose.
+        if waivers.waives(section_texts, index, "prawduct/chunk-ref-missing"):
+            continue
         for match in _BUILD_PLAN_PATH_RE.finditer(line):
             path_part = _ref_path_part(match.group(1))
             if not _looks_like_file_path(path_part):

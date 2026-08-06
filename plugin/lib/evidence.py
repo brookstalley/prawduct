@@ -49,6 +49,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,7 +67,15 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # from ``resolution``: only ``resolution`` facts with a resolving disposition
 # can unblock a BLOCKING finding, and the coverage algebra filters on kind
 # before reading any body — so no disposition can ever weaken a gate.
-KNOWN_KINDS = frozenset({"review", "resolution", "disposition"})
+#
+# ``guard-refusal`` records that a PRE-DISPATCH GUARD fired — a control that
+# declined to spend something (a reviewer, a build) before spending it. It is
+# purely observational: no gate reads it, and it CANNOT be read into one,
+# because ``coverage_algebra`` derives graph edges from ``kind == "review"``
+# facts alone, so a refusal contributes neither an edge nor a node. It lives
+# here rather than in the per-worktree governance ledger because these guards
+# fire in worktrees that are then deleted — see :func:`append_guard_refusal`.
+KNOWN_KINDS = frozenset({"review", "resolution", "disposition", "guard-refusal"})
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
@@ -178,6 +187,79 @@ def append_fact(
     except OSError as exc:
         return {"status": "error", "reason": f"store unwritable ({exc})"}
     return {"status": "appended", "path": str(path), "id": fact_id}
+
+
+def append_guard_refusal(project_dir: Path, guard: str, body: dict) -> dict:
+    """Record that a pre-dispatch guard fired. One sink for the whole class.
+
+    A guard that declines to spend something leaves no trace by default: its
+    message goes to stderr, the shell exits, and the question "has this guard
+    ever fired, and did it ever refuse something that turned out to be needed?"
+    has no answer but memory. The nonfunctional norm *a control names the yield
+    it expects and emits it observably* makes that answer load-bearing — a
+    yield claim nothing can falsify is not a yield claim.
+
+    **Why this store and not the governance ledger** (#596, and the
+    gate-as-dispatcher build plan's R-26, whose ``ledger-append`` proposal this
+    ruling overrides). Four reasons, in the order they decided it:
+
+    1. *Durability.* The ledger lives at ``.prawduct/.governance-ledger.jsonl``
+       — inside the worktree. The guards in this class fire in worktrees that
+       are then deleted (``_check_ephemeral_worktree`` is the naming case), and
+       a record deleted with its worktree answers nothing. This store is at the
+       clone's git common dir, which every worktree shares and none owns.
+    2. *A reader already exists.* ``prawduct-hook evidence list --kind
+       guard-refusal`` is the yield query. The ledger's reader
+       (``telemetry.review-stats``) reports ``review.*`` kinds only, so that
+       route needed a new event kind AND a whole new reader; this one needed the
+       lister taught to render `guard=` and `free=` off a nested interval — a
+       column, not a reader. Counting and grouping worked unchanged; the payload
+       did not, and a query that shows only "a refusal happened, at this time"
+       cannot answer the retirement question, so the claim would have been false
+       without it.
+    3. *Envelope fit.* The ledger's envelope is review-cost-shaped
+       (``duration_seconds``, ``actor.model``, roster). A refusal has no
+       reviewer, no model and no duration; it would be a mostly-null row. This
+       store's envelope — ``ts``, ``actor.{session,worktree,plugin}`` — is
+       exactly what a firing record wants, and ``actor.worktree`` makes
+       :func:`is_ephemeral_fact` classify these retroactively for free.
+    4. *One path per event class.* #596 owns pre-dispatch-guard telemetry as a
+       class and names this sink; a second path for the same class is the thing
+       it forbids.
+
+    **Neither store answers a cross-CLONE question** — this one lives inside
+    ``.git`` and is never committed, exactly like the ledger. The axis this
+    ruling turns on is cross-*worktree* durability plus an existing reader, not
+    cross-clone reach, and a yield question spanning clones still needs an
+    exporter nobody has built.
+
+    Safe by construction: ``coverage_algebra`` builds its graph from
+    ``kind == "review"`` facts alone, so no refusal can add an edge, a node, or
+    a hop to any coverage path.
+
+    ``guard`` names the control (stable across firings — it is the grouping
+    key); ``body`` carries whatever that guard needs to answer its own yield
+    question later. Returns :func:`append_fact`'s result. Callers must treat a
+    failure as **soft**: a guard's refusal is correct whether or not the record
+    lands, so a store error must never convert it into an error exit. It must
+    not be silent either (``learnings.md``: "'advice fails soft' is not 'advice
+    fails silent'") — attribute it on stderr and carry on.
+    """
+    if not isinstance(guard, str) or not guard.strip():
+        return {"status": "error", "reason": "guard name must be a non-empty string"}
+    if not isinstance(body, dict):
+        return {"status": "error", "reason": "fact body must be an object"}
+    fact_id = "guard-{}-{}-{}".format(
+        guard.strip(),
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        uuid.uuid4().hex[:8],
+    )
+    # `guard` LAST, not first: the id was minted from the parameter, so a body
+    # carrying its own "guard" key must not win — a record whose grouping key
+    # disagrees with its own id is worse than a rejected write.
+    return append_fact(
+        project_dir, "guard-refusal", fact_id, {**body, "guard": guard.strip()}
+    )
 
 
 def read_facts(project_dir: Path) -> dict:
@@ -564,10 +646,20 @@ TREE_COUNT_ADVISORY = 10_000
 
 
 def distinct_trees(facts: list[dict]) -> set[str]:
-    """Every tree id the store's facts mention, on either side of an edge —
-    the node set coverage composition actually walks."""
+    """Every tree id the store's REVIEW facts mention, on either side of an
+    edge — the node set coverage composition actually walks.
+
+    The kind filter is the whole contract, not a detail: only review facts
+    become edges (``coverage_algebra`` line-one filter), so only their trees
+    are nodes. Reading every kind's body for a ``base_tree`` key would let a
+    purely observational fact — a ``guard-refusal``, a future ``test-run`` —
+    inflate ``evidence status``'s tree count with trees no review covers,
+    which reads as coverage that does not exist.
+    """
     trees: set[str] = set()
     for fact in facts:
+        if fact.get("kind") != "review":
+            continue
         body = fact.get("body") or {}
         for key in ("base_tree", "head_tree"):
             value = body.get(key)
@@ -649,7 +741,11 @@ def _cmd_status(project_dir: Path) -> int:
     print(f"facts: {counts}")
     trees = distinct_trees(result["facts"])
     print(f"trees referenced: {len(trees)}")
-    ephemeral = ephemeral_facts(result["facts"])
+    # Only COVERAGE-BEARING kinds belong in the wasted-cost sentence. A
+    # `guard-refusal` recorded from a disposable worktree covers no branch
+    # either, but saying "the review cost was spent" of it is exactly backwards
+    # — no reviewer ran, which is the entire point of the record.
+    ephemeral = [f for f in ephemeral_facts(result["facts"]) if f.get("kind") == "review"]
     if ephemeral:
         print(
             f"from ephemeral worktrees: {len(ephemeral)} (these COVER NO BRANCH — "
@@ -714,11 +810,31 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         tree = body.get("head_tree") or body.get("at_tree")
         # Opaque bodies stay opaque: a non-string value here is a valid
         # envelope whose body this lister doesn't understand — never crash.
+        if not (isinstance(tree, str) and tree):
+            # A refusal nests its interval under `body.interval` ON PURPOSE, so
+            # no edge-walker can mistake it for a coverage edge — which also
+            # means the top-level lookup above finds nothing. Reach for it
+            # explicitly rather than leaving the row blank: a listing that shows
+            # only "a refusal happened, at this time" cannot answer the question
+            # this record exists for ("did it ever refuse a round that turned
+            # out to be needed?"), and the claim that this command IS the yield
+            # query would be false.
+            interval = body.get("interval")
+            if isinstance(interval, dict):
+                tree = interval.get("head_tree")
         tree_note = f" tree={tree[:12]}" if isinstance(tree, str) and tree else ""
+        guard = body.get("guard") if isinstance(body, dict) else None
+        guard_note = f" guard={guard}" if isinstance(guard, str) and guard else ""
+        free = body.get("free_files") if isinstance(body, dict) else None
+        if isinstance(free, list) and free:
+            shown = ", ".join(str(p) for p in free[:3])
+            more = f" +{len(free) - 3}" if len(free) > 3 else ""
+            guard_note += f" free=[{shown}{more}]"
         # Marked inline rather than filtered: the fact is real and stays listed;
         # what it does not do is cover a branch.
         origin = " [ephemeral — covers no branch]" if is_ephemeral_fact(fact) else ""
         print(
-            f"{fact.get('ts', '-')}  {fact['kind']:<10} {fact['id']}{tree_note}{origin}"
+            f"{fact.get('ts', '-')}  {fact['kind']:<10} {fact['id']}"
+            f"{tree_note}{guard_note}{origin}"
         )
     return 0

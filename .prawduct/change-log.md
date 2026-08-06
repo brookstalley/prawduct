@@ -3,6 +3,86 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-06: the refusal became countable, and the prose stopped teaching the round
+
+<!-- prawduct: chunks=01,02 | type=feat | scope=gate-as-dispatcher -->
+
+**A control that cannot be counted cannot be retired.** Chunk 01 taught `critic-begin` to refuse a
+review the coverage gate would not require — and it did so silently. The governing norm is
+*a control names the yield it expects and emits it observably*, and the yield argument for this one
+rests on a measurement taken **before** the guard existed (62 of 492 reviews, 12.6%, ~5.2 opus-hours,
+spent on intervals that were free the whole time). Only a record of real firings can ever falsify
+that, or answer the question that eventually retires the guard: *did it ever refuse a round that
+turned out to be needed?* Every refusal now appends one `guard-refusal` fact, queryable as
+`prawduct-hook evidence list --kind guard-refusal`, carrying the interval and the files it waved
+through.
+
+**The sink was a ruling, not a default.** The build plan proposed the governance ledger; #596 already
+owned pre-dispatch-guard telemetry *as a class* and named the clone-shared evidence store instead.
+#596 wins on four counts — the ledger lives inside the worktree and these guards fire in worktrees
+that are then deleted; `evidence list --kind` is the yield query today while the ledger's reader
+handles `review.*` only; the ledger's envelope is review-cost-shaped (`duration_seconds`,
+`actor.model`) and a refusal has none of that; and a second path for one event class is the thing
+#596 forbids. The plan's own stated reason was corrected in passing: it argued the ledger cannot
+answer a *cross-clone* question, which is true and equally true of the evidence store — that store
+lives inside `.git` and is never committed either. The real axis is cross-*worktree* durability.
+
+**Putting an observational record into the store gates compose over needed proof it stays inert.**
+`coverage_algebra` derives edges from `kind == "review"` facts alone, so a refusal contributes
+neither an edge nor a node — asserted through the algebra rather than by reading the filter, using a
+fact deliberately shaped like an edge. One kind-blind reader turned up next door: `distinct_trees`
+harvested `base_tree`/`head_tree` from any body, which would have let a refusal inflate
+`evidence status`'s tree count with trees no review covers. Its docstring already claimed to return
+"the node set coverage composition actually walks"; now it does.
+
+**A test that passed no matter what the code did.** `_assert_no_dispatch_state` asserted that a
+refusal left no leftover partials — but `_archive_leftovers` returns before creating anything when
+the directory has no children, and every fixture had already had its partials swept by consolidate.
+All three call sites passed regardless. The fix inverts it: plant a partial that must **survive**,
+and the assertion becomes a real one. Mutation-checked — a refusal made to reach the sweep now fails
+four tests that previously slept through it. Third instance of this shape in two sessions, and the
+rule is durable: *absence of a thing that was never there proves nothing.*
+
+**Four things landed after the first draft of this entry, from the branch's own review rounds, and
+three of them change behavior a consuming repo will notice.**
+
+1. **A new waivable rule, `prawduct/chunk-ref-missing`.** A build-plan chunk body *discusses* paths as
+   well as declaring them, and a backtick scan cannot tell them apart — a carried-in review
+   observation naming the path a past defect was about is correct *because* that path is missing, so
+   `verify-chunk-refs` fired on it forever with no exit but laundering the record. The escape is the
+   ordinary pragma on the line or the one above; the rule is registered in `docs/waivers.md` with its
+   legitimacy test. `#552` (reconciling the two path extractors) is still the durable fix.
+2. **`waivers._clean_reason` now truncates at `-->`, and this one is worth reading twice.** A waiver in
+   any markdown file has to live inside `<!-- ... -->`, and the closing token parsed as the `--`
+   separator plus a reason of `>`. So a bare, reason-less pragma in markdown **silently waived** —
+   defeating the single guarantee the mandatory-reason rule exists to provide, repo-wide and in every
+   consuming repo. It now fires as reason-less, which is the correct and stricter behavior. Nothing in
+   this repo regresses (no live waiver puts its reason after the terminator); a consumer relying on
+   the old accident will start seeing the underlying check fire, which is the point.
+3. **`verify-resolutions` severity gained a middle.** The mode is BLOCKING-or-nothing by design, so a
+   reviewer holding a one-row registry gap had to either force a commit and a full round or say
+   nothing that enters `findings`. Measured on this very branch: the same finding class was a WARNING
+   in the cumulative and BLOCKING in a verify pass, decided by which mode noticed it. The dispatch
+   directive now separates *the tree must not move* from *this fix is owed* — record gaps ride a
+   commit already coming and are named with a destination, the five hard classes stay BLOCKING, and a
+   gap met while a chunk is CLOSING blocks that close.
+4. **`tests/preferences/test_registry_completeness.py`.** Four registries went stale in this one chunk
+   while the code that enumerates their members moved on. Now a suite-time set-difference for the two
+   instances that have an enumerated set in code (waiver rule ids, evidence fact kinds); exit codes and
+   concerns rows have no left-hand side and stay reviewer work, said plainly in the test so a green
+   suite is not read as full coverage.
+
+**Two of the three prose corrections held; one was withdrawn on its merits.** The plan said
+`check-cumulative-critic`'s remedy should name the free-interval check first. It should not:
+`coverage_verdict` already grants a direct free edge between the two endpoint trees whenever their
+diff holds no judgeable path, so an `uncovered` verdict *entails* the span is not free. Writing that
+line would have taught a false rule. The plan also mis-attributed the `NEXT-ACTION` text to
+`review-protocol.md` (it lives in `next_action_line`), and the "unconditional" round it proposed
+replacing turned out to be the BLOCKING arm's — which is correct, and is precisely why the refusal
+predicate has a second conjunct. What did need saying, at the two live decision points and in the
+findings carrier itself: **asking is free.** The builder no longer has to reason about judgeability
+after a fix commit; dispatch answers in under a second.
+
 ## 2026-08-06: a title boundary for the backlog importer, and what "atomic" actually means
 
 <!-- prawduct: type=fix -->

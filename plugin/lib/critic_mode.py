@@ -244,10 +244,22 @@ def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
     :func:`_get_uncommitted_code_files` — those answer different questions, and
     the difference is exactly a record-only work cycle. That helper drops every
     path under ``.prawduct/``, while the interval comes from ``capture_tree``,
-    which stages everything tracked; so uncommitted plan and change-log edits ARE
-    reviewable content. Redirecting them to ``cumulative`` would note-and-exclude
-    the records just written and stamp "working tree is clean" into
-    ``mode_chosen_by`` — a durable field of the review fact — over a dirty tree.
+    which stages everything tracked; so uncommitted plan and change-log edits DO
+    make the interval non-empty. Redirecting them to ``cumulative`` would
+    note-and-exclude the records just written and stamp "working tree is clean"
+    into ``mode_chosen_by`` — a durable field of the review fact — over a dirty
+    tree.
+
+    **What such a dispatch then does changed on 2026-08-06, and this distinction
+    survived it.** A record-only interval is non-empty but holds nothing
+    *judgeable*, so ``critic-begin`` now answers exit 3 (no review needed) rather
+    than reviewing it. The reason to keep the two helpers apart is therefore no
+    longer "those edits get reviewed" — it is that the two refusals are different
+    answers and only one of them is true here: an empty interval is "there is
+    nothing here", while a record-only interval is "there is something here and
+    the gate does not need it reviewed". Redirecting the second to ``cumulative``
+    would still stamp a false claim into a durable field, and would still name a
+    remedy the caller does not need.
 
     **Only redirects when the redirect works.** ``cumulative`` needs a resolvable
     base and at least one commit beyond it, or it refuses in its own way; and a

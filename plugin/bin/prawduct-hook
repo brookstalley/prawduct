@@ -1108,6 +1108,7 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
            [--chosen-by <rationale>] [--chunk <id>] [--scope <s>] [--tier <t>]
+           [--force]
 
     `--mode` is REQUIRED — a bare invocation means a stale cached skill is
     driving a newer hook (version skew), and refusing at dispatch with the
@@ -1116,8 +1117,14 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     No-op (still exit 0) outside an onboarded repo — no session to protect,
     no store to dispatch against. Exit 2 = verify-resolutions scope widened
-    past the demotion threshold (the skill falls back to `final`); exit 1 =
-    any other dispatch failure (reason on stderr).
+    past the demotion threshold (the skill falls back to `final`); **exit 3 =
+    no review needed** — the interval holds no judgeable file and no finding
+    this mode could resolve, so the coverage gate already composes it as a free
+    edge (`--force` dispatches anyway; no session state is written and no marker
+    is set, so a 3 needs no `critic-end` — it does append one inert
+    `guard-refusal` fact, which no gate reads); exit 1 = any other dispatch failure (reason
+    on stderr). The scheme these cite is `artifacts/api-contract.md`
+    § Error Model.
 
     Also resets `.critic-partials/` before writing the fresh manifest —
     archive-first, and `critic_consolidate.remove_partials` states why (it is
@@ -1131,10 +1138,16 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         "--scope": "scope",
         "--tier": "tier",
     }
-    opts: dict[str, str] = {}
+    opts: dict[str, object] = {}
     i = 0
     while i < len(argv):
         arg = argv[i]
+        # `--force` is the escape hatch for the free-interval refusal below: it
+        # takes no value, so it is parsed before the value-pair loop body.
+        if arg == "--force":
+            opts["force"] = True
+            i += 1
+            continue
         if arg not in flags:
             print(f"critic-begin: unknown argument {arg!r}", file=sys.stderr)
             return 1
@@ -1175,6 +1188,24 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     consolidate = _critic_consolidate()
     result = consolidate.begin_review(project_dir, **opts)
+    if result["status"] == "no-review-needed":
+        # Exit 3, not 0: 0 means "dispatched, go review", and the skill would
+        # proceed to spawn a reviewer against a manifest that was never
+        # written. Not an error either — this is the gate answering "nothing
+        # here needs a review", which is the whole point of asking it first.
+        # Goes to STDOUT because it is a normal, correct outcome.
+        free = result.get("free_files") or []
+        shown = ", ".join(free[:5]) + (f" (+{len(free) - 5} more)" if len(free) > 5 else "")
+        print(
+            f"PRAWDUCT: no review needed — {result['reason']}.\n"
+            f"  free files: {shown}\n"
+            "  Nothing to do: the coverage gate already passes this interval.\n"
+            "  To review anyway: `/prawduct:critic <mode> --force`. Prefer that over a "
+            "raw `critic-begin --force` — a hand-run dispatch sets the critic-active "
+            "marker with no reviewer behind it, and the next `/prawduct:critic` then "
+            "refuses as if a review were live (clear it with `prawduct-hook critic-end`)."
+        )
+        return 3
     if result["status"] != "ok":
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
         return 2 if result.get("kind") == "scope-widened" else 1
@@ -4904,7 +4935,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 #    That is the only reason the sentences above talk around it.
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m>|critic-end|critic-discard|"
+    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--force]|critic-end|critic-discard|"
     "critic-restore <review-id>|critic-consolidate|"
     "subagent-stop|"
     "stop|build-index|user-prompt-submit|"

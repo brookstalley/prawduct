@@ -390,7 +390,11 @@ def next_action_line(
         " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
         " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
         " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
-        " prices `free` moves no coverage and needs no pass at all."
+        " prices `free` moves no coverage and needs no pass at all. AFTER committing,"
+        " you no longer have to judge it either: dispatch asks the same predicate and"
+        " exits 3 (`no review needed`, under a second, no session state written) rather than"
+        " spending a reviewer on a free interval — so asking costs nothing, and a"
+        " refusal is the answer, not a reason to retry in another mode."
         " Do NOT start another round to 'close coverage' before committing, and do"
         " not infer that you need one from gate output printed before your fix —"
         " commit, then re-run the gate and let it answer."
@@ -542,7 +546,24 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " fix just wrote — measured at ten rounds on one branch, where rounds five"
     " onward were entirely self-inflicted. The builder still reads your"
     " observations and can act on them; they are simply not work the record"
-    " demands. Apply this to the one you are surest deserves a WARNING: that"
+    " demands."
+    " **BLOCKING means the tree must not move again without this fix — not"
+    " merely that the fix is owed.** The two come apart on RECORD gaps: a"
+    " registry row, a doc table, an artifact that lags the code it describes."
+    " Those are real and they are owed, but nothing is wrong with the TREE"
+    " until they land, so if the chunk has a commit still coming they ride it"
+    " — say so under Observations and name where the builder must write it"
+    " (the build plan or `.prawduct/.handoff-notes.md`), which is the"
+    " ride-along route their own NEXT-ACTION advertises. Rating a one-row doc"
+    " gap BLOCKING spends a commit and a full round on it, which is the round"
+    " this rule exists to prevent; and it is the failure mode to watch for,"
+    " because a reviewer who has just reasoned 'this rides the commit already"
+    " owed' and then rates it BLOCKING has contradicted itself, and the gates"
+    " read the severity, not the sentence. The five classes above are exempt"
+    " and stay BLOCKING: each of them means the tree is ALREADY wrong. A record"
+    " gap met while the chunk is CLOSING, with no further commit to ride,"
+    " blocks that close — rate it BLOCKING and say so."
+    " Apply all of this to the one you are surest deserves a WARNING: that"
     " finding is the next round's first item, and demoting it is the whole"
     " point."
 )
@@ -1208,13 +1229,19 @@ def begin_review(
     chunk: str | None = None,
     scope: str | None = None,
     tier: str | None = None,
+    force: bool = False,
 ) -> dict:
     """Derive and write the dispatch manifest for one review. All code.
 
     Returns ``{"status": "ok", "id", "roster", "path", "notes": [...],
     "cleared_leftovers": bool, "manifest": {...}}`` or ``{"status": "error",
     "reason", "kind"?}`` where ``kind == "scope-widened"`` tells the CLI to
-    exit 2 (the skill's fall-back-to-final signal).
+    exit 2 (the skill's fall-back-to-final signal), or ``{"status":
+    "no-review-needed", "reason", "free_files"}`` when the interval holds no
+    judgeable file and no finding this mode could resolve — the CLI exits 3.
+    That is a NO-OP, not a failure: the coverage gate already composes such an
+    interval as a free edge, so the review would record a fact nothing needs.
+    ``force=True`` dispatches anyway.
 
     Per-mode interval (design D8, chunk-03 refinements):
 
@@ -1314,6 +1341,12 @@ def begin_review(
     notes: list[str] = []
     base_reviewed = None
     files_reviewed: list[str] | None = None
+    # Findings a THIS-mode review could still resolve. Only verify-resolutions
+    # records resolution facts, so it is the only mode that can carry a nonzero
+    # value; for every other mode there is nothing outstanding that running it
+    # would clear. Read by the free-interval refusal below, where it is the
+    # conjunct that keeps the gate from deadlocking.
+    pending_actionable = 0
 
     if mode_token in ("chunk", "final"):
         base_commit = dispatch_commit
@@ -1455,6 +1488,7 @@ def begin_review(
         actionable = (prior_counts.get("blocking") or 0) + (
             prior_counts.get("warning") or 0
         )
+        pending_actionable = actionable
         if not delta and not actionable:
             # Name the tree that was compared. Under the tree-inequality anchor
             # above, an empty delta means the working tree AND committed HEAD
@@ -1491,6 +1525,82 @@ def begin_review(
                 "a committed bundle is cumulative's scope)"
             ),
         }
+    # GATE AS DISPATCHER — do not spend a reviewer on a review the gate would
+    # not require. `coverage_algebra.is_judgeable_path` already decides which
+    # paths need coverage, and `coverage_verdict` already grants a FREE EDGE to
+    # an interval holding none; until this check the predicate was consulted
+    # only when GRADING coverage, so `check-cumulative-critic` could tell you a
+    # round was unnecessary — but only after you had paid for it. Measured
+    # 2026-08-06: 62 of 492 review facts (12.6%, ~5.2 opus-hours) covered
+    # entirely non-judgeable intervals.
+    #
+    # THE SAFETY ARGUMENT: this refuses only what the gate would already pass.
+    # Same predicate, same inputs, moved upstream of the cost — so nothing that
+    # could not already merge becomes mergeable, and this is not a new escape
+    # hatch. Do NOT re-key it on "looks like docs": `skills/`, `methodology/`,
+    # `templates/` and root `CLAUDE.md` are judgeable `.md`, and a private
+    # notion of "docs" is how a skip-gate and its gate drift apart.
+    #
+    # BOTH conjuncts are load-bearing. Without the first, reviews of real code
+    # are refused. Without the second the gate DEADLOCKS: a `blocked` verdict's
+    # only remedy is a verify-resolutions pass, and refusing that pass over a
+    # free interval would leave findings raised on prose permanently
+    # unresolvable, with no command that clears them.
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    if (
+        not force
+        and not coverage_algebra.judgeable_files(files_changed)
+        and not pending_actionable
+    ):
+        # Record the firing. The norm this control ships under ("a control
+        # names the yield it expects and emits it observably") is what makes
+        # this mandatory rather than nice: the yield argument above cites a
+        # measurement taken BEFORE the guard existed, and only a record of
+        # actual firings can ever falsify it — or answer the question that
+        # retires the guard, "did it ever refuse a round that turned out to be
+        # needed?". Sink ruling and its four reasons: `evidence.append_guard_refusal`.
+        #
+        # SOFT: the refusal is correct whether or not the record lands, so a
+        # store failure must not turn a correct exit-3 into an error. Not
+        # silent, though — a degraded record that vanishes leaves the yield
+        # question looking answered at zero.
+        recorded = evidence.append_guard_refusal(
+            project_dir,
+            "critic-dispatch-free-interval",
+            {
+                # Nested, not spread across the body's top level, because a
+                # top-level base_tree/head_tree is the shape a coverage EDGE
+                # has. Keeping the interval one level down means no reader that
+                # walks bodies looking for edges can mistake a refusal for one.
+                "interval": {"base_tree": base_tree, "head_tree": head_tree},
+                "mode": mode_token,
+                "free_files": list(files_changed),
+                "scope": scope,
+                "chunk": chunk,
+                "branch": gitstate.current_branch(project_dir),
+                "dispatch_commit": dispatch_commit,
+            },
+        )
+        if recorded.get("status") != "appended":
+            print(
+                "critic-begin: the refusal is correct but was NOT recorded "
+                f"({recorded.get('reason', 'unknown')}) — this firing is missing "
+                "from `prawduct-hook evidence list --kind guard-refusal`, so read "
+                "that query as a lower bound.",
+                file=sys.stderr,
+            )
+        return {
+            "status": "no-review-needed",
+            "reason": (
+                f"no judgeable file in {base_tree[:12]}..{head_tree[:12]} — the "
+                "coverage gate already composes this interval as a free edge, so "
+                "a review would record a fact nothing needs"
+            ),
+            "free_files": list(files_changed),
+            "recorded": recorded.get("status") == "appended",
+        }
+
     if files_reviewed is None:
         files_reviewed = list(files_changed)
 
