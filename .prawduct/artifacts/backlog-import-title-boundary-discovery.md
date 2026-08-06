@@ -123,6 +123,32 @@ Note this makes the report's Layer-1 guardrails *cheaper*, not redundant: pre-fl
 a 422 for over-length becomes unreachable, but per-item isolation still matters for every other
 422 cause.
 
+## 4c. Owner directive 2026-08-06 — atomicity has two failure directions, not one
+
+`[DECISION: atomicity is a property of the FIX, not of the sentence — the test is "would a single
+change close all of these?". Over-splitting (a family of near-identical titles one fix would
+close) is a first-class failure alongside under-splitting, and the standard must name both |
+owner: "we don't get issues like 'personas crash on emoji' and 'on unicode' and 'on UTF-16' when
+the correct thing is to uplevel to 'personas crash on character encoding'" | owner ruled
+2026-08-06]`
+
+Standard §1 amended. Two consequences that are **not** yet built:
+
+1. **No per-title lint can catch over-splitting**, because it is a fact *between* issues. The
+   detection surface is the dedup/merge sweep, which today groups by "title-keyword + body
+   overlap" — a *duplicate* test, not a *shared-root-cause* test. Two issues can share a root cause
+   with almost no keyword overlap (`crash on emoji` / `crash on UTF-16`). The sweep needs the
+   altitude question added, and it is the only place it can live.
+2. **The migration scrub must work across the corpus, not item-by-item.** A pre-pass that rewrites
+   400 titles one at a time cannot see that 3 of them are one defect — and rewriting each to a
+   *tighter* ≤72 title actively entrenches the over-split, because a sharper symptom title reads
+   more like a well-formed issue. Enforcing §1's budget without §1's altitude test would make this
+   corpus worse in exactly the way the owner is guarding against.
+
+**Sequencing consequence:** the enforcement work in §4b must not ship the length/shape half alone.
+Shipping "conform to ≤72" first, and the altitude test later, uses the intervening window to
+produce a large, tidy, over-split backlog that then has to be merged back by hand.
+
 ## 5. Scope
 
 **In scope**, in dependency order:

@@ -21,10 +21,27 @@ issues*: brevity, clarity, specificity.
 
 - **Budget ≤ 72 chars** (warn > 72, aim 50–70). **Shape: `area: specific summary`** — lowercase area
   prefix, then a noun-phrase stating *what failed + where* (bug) or *what to do* (task).
-- **One atomic problem.** Two clauses / a `—`/`;` join usually means the issue is non-atomic → split
-  (net-new) or flag for manual split (migration — see §5).
+- **One atomic problem — and atomicity is a property of the FIX, not of the sentence.** The test is
+  one question: **would a single change close all of these?** If yes they are one issue written at
+  too low an altitude; if no they are separate issues that happen to share a scene.
+- **Splitting is the failure in one direction, and the standard used to name only that one.**
+  - *Under-split* → a title joining two claims with **independent fixes** (`—`/`;` is the usual
+    tell) → split (net-new) or flag for manual split (migration — see §5).
+  - *Over-split* → sibling titles differing only in a noun that names an **instance of a category**
+    → uplevel to the category. `personas crash on emoji` + `on unicode` + `on UTF-16` are one
+    defect: `personas: crash on non-ASCII character encoding`. Three issues, one fix, three times
+    the triage — and the root cause is stated nowhere.
+  - Being wrong in this direction is the more expensive error: a split backlog looks *more*
+    thorough, so nothing prompts a re-read, while an under-split one is loud the moment someone
+    tries to close it.
+- **Only the under-split direction is visible from a single title.** Over-splitting is a fact
+  *between* issues, so no per-title lint can catch it — it is the dedup/merge sweep's job
+  (`skills/backlog/SKILL.md` — group by `area:`, then look for shared root cause, not just shared
+  keywords), and the migration scrub's, which must therefore look across the corpus and not
+  rewrite items one at a time in isolation.
 - ✅ `importer: PFX alias read-resolution unwired, breaks import idempotency` (69)
-- ❌ vague (`Bug in the thing`), non-specific (`Fix backlog`), or em-dash chains of ≥2 claims.
+- ❌ vague (`Bug in the thing`), non-specific (`Fix backlog`), em-dash chains of ≥2 claims, or a
+  family of near-identical titles that one fix would close.
 
 ## 2. Body
 
