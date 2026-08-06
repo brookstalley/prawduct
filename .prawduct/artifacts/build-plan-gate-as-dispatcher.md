@@ -65,9 +65,9 @@ leans on the predicate.
 
 - [x] Chunk 01: The dispatcher asks the gate before it spends a reviewer
 - [x] Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
-Context: **BOTH CHUNKS COMPLETE.** Chunk 01 at `586ae1d`; Chunk 02 across `e55b6e3` (the feature),
-`5612999` / `b0df883` / `93b4afb` / `1298d31` (five review rounds' findings) and `8ba8b3e` (two
-framework defects the rounds exposed). Suite green — the count lives in `.prawduct/.test-evidence.json`
+Context: **BOTH CHUNKS COMPLETE.** Chunk 01 at `586ae1d`; Chunk 02 from `e55b6e3` (the feature)
+through `165f08a` — `git log --oneline 586ae1d..HEAD` is the enumeration, because a list written here
+stops growing the moment a commit edits this paragraph without adding itself (which `e1cf61c` did). Suite green — the count lives in `.prawduct/.test-evidence.json`
 and `prawduct-hook test-status` is the reader; a figure transcribed here goes stale silently.
 `check-cumulative-critic` is SATISFIED at HEAD — run it rather than trusting a tally written here; it recomputes, and a transcribed count is stale the next time anything lands.
 
@@ -82,8 +82,11 @@ Two deliverables changed on their merits: the `coverage.py` remedy line was WITH
 verdict entails the span is not free, so it would have taught a false rule), and the "unconditional
 verify-resolutions" the plan wanted replaced turned out to be the BLOCKING arm's, which is correct.
 
-**What the review rounds cost, and what came of it.** Five rounds, ~1h of reviewer time. The dominant
-finding class was not judgment but REGISTRATION — a primitive added to an enumerated set in code while
+**What the review rounds cost, and what came of it.** Read the count and the spend from
+`prawduct-hook review-stats` and the branch tally in `check-cumulative-critic`'s output — a figure
+typed here is stale by the next round, which is the rule stated fourteen lines above and then broken
+here in the first draft. What does not go stale: the dominant finding class was not judgment but
+REGISTRATION — a primitive added to an enumerated set in code while
 the registry documenting that set went stale (four times: api-contract § Error Model, data-model kinds,
 the concerns row, the waivers vocabulary). Three of those cost a round each. Both underlying framework
 defects are fixed in `8ba8b3e` per the owner's standing rule (fix in place, never file):
