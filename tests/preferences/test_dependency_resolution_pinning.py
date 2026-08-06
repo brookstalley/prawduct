@@ -6,17 +6,27 @@ ships that policy, so prawduct is bound by it — a framework whose own repo ign
 nudge is the aspirational-rule shape the norm lifecycle exists to catch.
 
 The mechanism is `constraints.txt` plus `pip install -c constraints.txt ".[dev]"` in
-`.github/workflows/tests.yml`. Three ways that can rot, one test each:
+`.github/workflows/tests.yml`. Four ways it can rot that are answerable from the tree,
+one test class each — a checked set, not a claim that nothing else can go wrong:
 
 1. **A dependency is added to the `dev` extra and never pinned.** The suite stays green,
-   CI keeps passing, and exactly one package silently re-resolves on every run. This is
-   the failure this file exists for — the others are cheap by comparison.
-2. **A pin softens into a floor.** `pytest>=9.1.1` in a constraints file bounds nothing
+   CI keeps passing, and exactly one package silently re-resolves on every run.
+2. **A transitive dependency is never pinned** — the same hole one rung down, and the one
+   that actually shipped: `typing-extensions` sat unpinned because it is reached only
+   *through* a marker-gated package, and a guard comparing against the four declared names
+   could never fail for it. See `TestTheClosureIsClosed` for what that check can and
+   cannot reach.
+3. **A pin softens into a floor.** `pytest>=9.1.1` in a constraints file bounds nothing
    below the newest release; it reads like a pin and behaves like the absence of one.
    Requiring `==` throughout also keeps the file from becoming a second declaration of
    *what* this repo depends on, which is the `dev` extra's job.
-3. **The workflow stops reading the file.** A pinned resolution nothing installs through
+4. **The workflow stops reading the file.** A pinned resolution nothing installs through
    is documentation, not enforcement.
+
+This sentence read "Three ways that can rot" while the module carried four classes, which
+is the defect the module is about wearing the module's own clothes: a docstring asserting
+completeness is a claim, and prose goes stale silently because nothing tests it. If you add
+a class here, this list is part of the change.
 
 Deliberately NOT asserted here: that the pinned versions satisfy clause 1's minimum
 release age. That check needs each version's publication time, which needs the index —

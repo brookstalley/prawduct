@@ -10,7 +10,11 @@ and the workflow keeps testing the old one, silently, forever.
 So the floor is allowed to appear in the matrix — a matrix cannot be computed from
 a constraint expression — and this file is what makes it a *checked* copy rather
 than a second home. The dependency list is not allowed to appear at all; there the
-reference (`pip install ".[dev]"`) is available and is what CI must use.
+reference to the extra is available and is what CI must use. (CI's actual line is
+`pip install -c constraints.txt ".[dev]"` — the `-c` half is clause 5 of the
+upstream intake policy and is guarded next door in
+`test_dependency_resolution_pinning.py`. This file cares only that the dependency
+list is referenced rather than restated, which is true of either form.)
 
 Also pinned here: the two things about `verify-release.yml` that are decisions
 rather than details — it never publishes, and it never waves through an

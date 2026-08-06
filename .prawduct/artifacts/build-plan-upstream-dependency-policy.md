@@ -349,7 +349,51 @@ couples them, red-verified by renaming the type. **No `verify-resolutions` round
 `cost-of-commit` prices 6 of 8 paths as moving coverage, and Chunk 06's `cumulative` is the
 designated gate that spans them.
 
-Next: Chunk 06 — coherence & close. It now carries **5b**, the framework's own unanswered nudge.
+**Chunk 06 DONE — and the branch's designated gate is satisfied.**
+
+**Chunk 06 review dispositions** (`rev-20260806T135915Z-cef611d8`, `cumulative`, three-reviewer
+coordinator roster over `5cabd2a..421cc6f` — the whole `develop...HEAD` span — 2 blocking / 7 warning
+/ 12 note): **17 fixed in one commit (`57d2743`), 4 accepted as recorded facts.**
+- **BLOCKING R-15 — `constraints.txt` did not pin the closure it claimed to.** `typing-extensions` is
+required by `exceptiongroup` on `python_version < "3.13"`, and pytest requires `exceptiongroup` on the
+3.10 leg — so it is reached only *through* a marker-gated package, which a one-level read of the roots'
+markers cannot find. Four durable records asserted full coverage. Fixed, and the guard rewritten: it now
+walks the real metadata of every installed pinned distribution, with its partial reach stated rather
+than implied. The whole closure was re-derived across all three target environments to confirm the gap
+was exactly one package.
+- **BLOCKING R-1/R-18 — the record-time conformance-scan trigger was never delivered or descoped.**
+Requirements §3.4 and §7 say setting the policy triggers the scan; the capture point ended at setting
+the fact. Orphaned by the ROUTING NOTE pivot — when the Python scanner became an agent-performed
+procedure, "triggers" lost its owner and nothing carried it. Fixed with one pointer sentence (citing,
+not restating, since that section is `section`-scope).
+- **WARNINGS, all fixed.** R-2/R-16: the tier-1 claim was wider than its mechanism, so the record now
+splits CI (tier 1) from local and agent installs (tier 3), and `project-preferences.md`'s install line —
+injected verbatim into every subagent briefing — no longer tells agents the unconstrained form. R-8: the
+"nothing is departed from" claim contradicted the block's own `install_time_execution: NOT denied`;
+clause 4's departure is now stated and the Direction Status no longer undercounts. R-17: the new norm had
+no Enforcement-table row. R-3: `#609` now cited literally. R-9: the roster claimed completeness it did
+not have — the two digests and `planning.md` are now swept, the YAML legend recorded as a deliberate
+exclusion, floor `>= 8` → `>= 11`.
+- **ACCEPTED as facts:** R-5 (3× `suite-total-claim`, inert counts the protocol says to leave alone),
+R-6 (2× `learnings-entry-shape`, pre-existing and tracked by the compaction advisory), R-12 (doctor #15's
+paragraph length — chunk 04's prose, better carried), R-21 (Learnings Cross-Check, nothing reintroduced).
+
+**Chunk 06 verify pass CLEAN** — `rev-20260806T142724Z-805ae85b` over `421cc6f..bb7870b`, **0 blocking /
+0 findings**, all 9 resolutions recorded. The reviewer confirmed the closure guard actually reaches the
+gap (the 3.10 leg installs `exceptiongroup`, so its requirement is checked there) and that the
+`assert checked` guard stops a vacuous pass. **`check-cumulative-critic` reports `satisfied`** — composed
+coverage spans the full span with **0 unresolved blocking**, which is what finally clears Chunk 01's
+blocking finding, open in the evidence store since the start of this branch.
+
+**Four verify-pass observations were fixed rather than accepted**, because all four were prose asserting
+something untrue and none moved meaningful coverage: the guard module's "Three ways that can rot" opening
+while it carried four classes (the compounding defect of R-15 wearing R-15's own clothes), one surviving
+"7-day" copy in a *Why* line of the file whose Chosen-values paragraph refuses to copy it,
+`test_ci_workflow_conventions.py`'s docstring naming the pre-`-c` install line as what CI must use, and
+this dispositions record itself. The remaining three were accepted: `typing-extensions`' release age is
+unevidenced either way (it matches the repo's own existing resolution record), `record_lint`'s delta-scoped
+counts are consistent with the accepted R-5/R-6, and the uv path needs no `surfaces` row now that
+`.gitignore` names `constraints.txt` as the sole committed resolution.
 
 ## Yield Declarations
 
