@@ -79,8 +79,7 @@ starting by reading #596 to settle the telemetry sink BEFORE writing it. Require
 `.prawduct/artifacts/gate-as-dispatcher-requirements.md` — read it first, it carries the
 measurements, the safety argument, and the withdrawn layers. `active_build_plan` still points at
 `artifacts/build-plan-critic-review-identity.md` and **must not be repointed** until the
-`develop`→`main` release ships (gitflow rule, `methodology/planning.md` "Plan lifecycle"). Next:
-Chunk 01 step 0.
+`develop`→`main` release ships (gitflow rule, `methodology/planning.md` "Plan lifecycle").
 
 ## Verification Strategy
 
