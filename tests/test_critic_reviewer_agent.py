@@ -186,7 +186,13 @@ class TestAgentToolsAreRestricted:
 class TestAgentWritesOnlyItsPartial:
     def test_directs_partial_path(self):
         body = AGENT_DEF.read_text()
-        assert ".prawduct/.critic-partials/" in body
+        # Two halves of one contract: the reviewer is sent to its `rendezvous`
+        # entry (never composing a filename), and it is told where that entry
+        # lives so a prompt that omits the paths is recoverable rather than
+        # fatal. The old assertion — the partials directory appearing anywhere
+        # in the body — passed on prose that merely mentioned the directory.
+        assert "rendezvous" in body
+        assert ".prawduct/.critic-partials/manifest.json" in body
 
     def test_forbids_inline_consolidation_and_findings(self):
         body = AGENT_DEF.read_text()
@@ -234,7 +240,10 @@ class TestCoordinatorProseRewritten:
         consolidate itself; the skill never instructs authoring the findings
         file or a ledger line."""
         text = SKILL.read_text()
-        assert ".critic-partials/reviewer.json" in text
+        # The write TARGET is now the manifest's rendezvous entry, not a literal
+        # filename — the shape has one home, in `partial_path`. Pinning the old
+        # literal would now pass only on prose naming a path nothing reads.
+        assert "rendezvous.reviewer.partial" in text
         assert "run `prawduct-hook critic-consolidate` yourself" in text
         assert "ledger-append" not in text, (
             "the skill must not instruct hand-appending the ledger — "

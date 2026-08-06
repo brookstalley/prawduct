@@ -82,6 +82,8 @@ dropping them.
 
 ## When defense-in-depth is offered as the reason a risk needn't be verified, check the defense is REACHABLE from the failure it is meant to absorb — a guard downstream of the thing that fails never runs, so it buys nothing: `cmd_subagent_stop`'s `agent_type.endswith(...)` check was cited as making matcher uncertainty tolerable, but it sits behind the matcher, and a matcher that never fires never reaches it
 
+## A message that names the caller's NEXT step must ask the gate that will judge that step, never a cheaper proxy for it — else the promise and the gate disagree and the caller pays the difference. Fires on SUCCESS paths, not only refusals: "a refusal names a remedy that reaches the state" is this rule's better-known half — [learnings-detail.md]
+
 ## A deferral queue whose enforcing gate is disabled is a WRITE-ONLY queue — check the gate is ON at the moment you defer work into it, because the deferral itself feels like diligence: `operator-verification.md` named the CRT-2J8N matcher as the thing to investigate 17 days before it was found, and sat `pending` the whole time behind `operator_verification_required: false`, with 6 of 8 entries in the same state
 
 ## When a test asserts a VALUE and its comment claims that value feeds a downstream contract, assert the CONTRACT instead — the comment does the reasoning the test never performs, so it reads as coverage while providing none: `test_name_is_critic_reviewer` checked the agent's frontmatter name and commented that the name "is the SubagentStop matcher target", true of dispatch and false of the matcher, and never opened `hooks.json`
@@ -362,7 +364,7 @@ dropping them.
 
 ## A passing assertion may be satisfied by something other than the property — an unimplemented flag passes because the arg guard REJECTED it (assert success BEFORE absence); a prose SUBSTRING stays green under any longer sentence containing it (when prose changes meaning, grep tests asserting FRAGMENTS, not just failing ones); a proxy passes every test you thought to write — gate on the named event
 
-## A fixture's world is narrower than the requirement it certifies — the COMMON instance narrows the requirement to itself, so check coverage against its stated BREADTH; the framework's OWN state stands in for the propagated contract, so assert what reaches consumer repos; one moment stands in for the procedure's transitions; and the collision case is unwritten when the fan-out key is not unique
+## A fixture's world is narrower than the requirement it certifies — check coverage against the requirement's stated BREADTH, not against the common instance, because a guard silently redefines the claim to its own scope and the claim then reads as verified — [learnings-detail.md]
 
 ## A test inherits inputs nobody declared and properties nothing observes — machine state, a load-dependent race in setup, and a value silent by construction, so a stage whose worth is SPEED needs a test that fails when it stops being fast. Mutation is one-directional — reverting removes the damage alongside the fix — so pair it with branch coverage of the function you touched
 
@@ -398,6 +400,8 @@ dropping them.
 
 ## When you fix a defect of a named class, re-run that class's own check against your fix — the fix is the likeliest place to reintroduce the class, because attention sits on the content of the claim and not on its mechanics. A citation repaired by renaming it, then line-wrapped inside its backticks, is still unresolvable to the grep that would find it
 
-## When a trim is justified by the surrounding prose's OWN instruction, that is exactly when to run the suite before trusting it — the dangerous cut is not the one you cannot justify but the one the file appears to endorse. A record-lint explanation read as redundant under its own "raise it, don't restate it" rule, and was the only witness to a two-shape contract
+## When a trim is justified by the surrounding prose's OWN instruction, run the suite before trusting it — the dangerous cut is the one the file appears to endorse, and a sentence that restates a nearby rule where the reader SKIPS it is placement, not a copy — [learnings-detail.md]
 
 ## Making a capability conditional on the RUNTIME retroactively conditions every existing test whose fixture touches it — the affected set is not the set you wrote, since shared fixtures carry it into tests that never mention it. Simulate the degraded runtime over the whole file before commit; a reviewer surfaces one and it reads like the one — [learnings-detail.md]
+
+## When you add a validator because a value became DANGEROUS, sweep every existing use of that value, not the uses you are writing — the vulnerable line is already in the file and therefore not in your diff. Tell: the helper is new and you never grepped the value's other readers — [learnings-detail.md]

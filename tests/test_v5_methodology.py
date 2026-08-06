@@ -85,9 +85,9 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4807,
-    "skills/critic/review-protocol.md": 3589,
-    "skills/critic/goals-1-3.md": 1994,
-    "skills/critic/review-cycle.md": 9471,
+    "skills/critic/review-protocol.md": 3611,
+    "skills/critic/goals-1-3.md": 1998,
+    "skills/critic/review-cycle.md": 9532,
     "skills/critic/framework-checks.md": 1116,
 }
 
@@ -772,6 +772,23 @@ class TestCriticSkill:
         # per-review payload is the same class the goals-1-3.md budget comment
         # records cutting twice. Relocated, not deleted -- review-cycle.md is the
         # maintainer's companion file and carries no ceiling.
+        #
+        # 3589 -> 3611 (2026-08-05) -- a partial is now bound to the review that
+        # dispatched it, not to the commit alone, so the coordinator template
+        # carries the review id and the two rendezvous paths, and the single-pass
+        # schema carries `dispatch_id`. Two trims paid part of it, both this
+        # comment's own first rule: "the coordinator never resumes to aggregate"
+        # was the parenthetical form of step 3's own heading, and "never compose
+        # the paths yourself" is a REVIEWER instruction whose home is
+        # agents/critic-reviewer.md.
+        #
+        # NOT paid in full, and deliberately so. The obvious remaining cut is
+        # step 2's `model:` restatement -- and it must not be taken: that prose
+        # is an emergency patch against reviewer-model tiering, pinned by
+        # tests/preferences/test_reviewer_model_dispatch_prose.py, and buying
+        # tokens by thinning a safety instruction is the wrong trade at any
+        # exchange rate. 9 tokens of headroom remain, which is the intended
+        # state, not an oversight: the next addition trims or relocates.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 
@@ -937,6 +954,37 @@ class TestCriticGoals13:
         # are asserted, not assumed -- `assert_inert_count_cap` requires the cap
         # INSIDE the legend entry, and the ordering pin keeps the narrowing above
         # goal 1.
+        #
+        # 1994 -> 1998 (2026-08-05) -- +4 across two passes: the
+        # write path now points at the manifest's `rendezvous` entry instead of
+        # a literal filename, and the schema gained `dispatch_id`. Paid by two
+        # cuts of this comment's own kind, and the record here is the SECOND
+        # attempt, kept because the first is the more useful lesson.
+        #
+        # The first attempt funded the addition by compressing the closing
+        # "**Either way** your last line is consolidate's `NEXT-ACTION:` ... the
+        # clean pass is where it matters most" down to one word. It looked like
+        # de-duplication -- the relay order IS stated 30 lines above -- and it
+        # was not: `test_goals_1_3_relay_survives_the_clean_pass_shorthand`
+        # exists precisely because that sentence's job is to stop the
+        # no-findings shorthand swallowing the relay, and it pins "Either way"
+        # for that reason. THE LESSON: a sentence that restates a nearby rule in
+        # the one place a reader is about to shortcut it is not a copy, it is
+        # placement -- and a guard that names a phrase is naming a function.
+        # Reverted in full.
+        #
+        # What paid instead: "read the manifest's `record_lint`, never re-derive
+        # it" carried an imperative that the very next sentence carries WITH its
+        # reason attached ("never recount what it counted: that is how a record
+        # defect buys a review round"), and Goal 2's record-checks bullet ended
+        # "raise them at the severities given there" -- a pointer to severities
+        # the preamble had already assigned, eight lines up.
+        #
+        # The +4 is the cumulative review's R-9, paid at face value: the
+        # `dispatch_id` / `resolutions[].review_id` disambiguation had landed in
+        # agents/critic-reviewer.md, whose reader never writes `resolutions`.
+        # THIS file is the only surface whose reader writes both, and they sat
+        # eight lines apart with no cue. Three words in the schema example.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 
@@ -1274,6 +1322,17 @@ class TestReviewCycle:
         # commit that added this. It is true now because the sibling test below
         # was added to MAKE it true, which is the only honest way to keep a
         # universal claim: bound the last case, or do not make the claim.
+        #
+        # 9471 -> 9532 (2026-08-05) -- the manifest key list gained `rendezvous`
+        # and the consolidation contract gained the `dispatch_id` binding. Not
+        # paid by a trim, and the reason is this file's own role: it is the
+        # maintainer's companion and the one home for the manifest's key list,
+        # so a key that exists and is not listed here has no home at all. The
+        # additions are two clauses on lines that already existed. The last +2
+        # is the cumulative review's R-13: the entry called `rendezvous` "the
+        # one home for those filenames", which it is not -- `partial_path` and
+        # `started_path` own the shape and every reader recomputes from them.
+        # A key list that misdescribes what it records is worse than a long one.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"

@@ -177,9 +177,20 @@ only a compact `change_log_history`).
   still leave the last completed review anchorable. Consolidation rewrites the whole record, so the
   keys clear themselves.
 - **Dispatch manifest + partials** — `.prawduct/.critic-partials/manifest.json` (code-written at
-  `critic-begin`: the tree interval + roster a review will attest) and `<role>.json` partials (one
-  per reviewer, model-written, schema-validated before consolidation). The whole directory is removed
-  on successful consolidation.
+  `critic-begin`: the tree interval, the roster a review will attest, and `rendezvous`, the resolved
+  per-role write paths) and one partial per reviewer at those paths (model-written, schema-validated
+  before consolidation, each declaring the `dispatch_id` that binds it to its review). Partial paths
+  are keyed by review id, so two reviews in one worktree never share a name; the shape lives in
+  `critic_consolidate.partial_path` and nothing else spells it. The whole directory is removed on
+  successful consolidation.
+- **Review archive** — `.prawduct/.critic-partials-archive/<review-id>/` (gitignored) — where a
+  review's manifest + partials go instead of being deleted, whenever a dispatch sweeps leftovers or
+  `critic-discard` clears a stranded roster. **Not debris**: it is the last trace an unconsolidated
+  review ever ran, and it is operator-addressable — `critic-restore <review-id>` copies a set back
+  so it consolidates under its *own* id, which is sound only because partials carry review identity.
+  Bounded: the newest three sets are kept, pruned best-effort at dispatch. A set archived before
+  review-id keying carries no `rendezvous` and therefore restores as readable evidence that cannot
+  be recorded as a fact; the restore says so rather than promising a consolidation.
 - **Critic-active marker** — `.prawduct/.critic-active` — presence signals a review is in flight;
   guards against a reviewer mutating the session under review, and carries a TTL so a crashed review
   self-clears.
@@ -218,9 +229,12 @@ references or overrides it)`. No transition ever mutates a prior fact; supersess
 ### Critic review (data-plane lifecycle)
 `begin (manifest + active-marker written) → partials-collecting → consolidated (all roster partials
 valid → review fact appended, view regenerated, partials + marker removed)`. Off-ramps:
-`abandoned` (`critic-end` clears the marker with no fact) and `expired` (active-marker TTL elapses).
-Consolidation is fail-closed: it persists only when *every* roster role has a schema-valid partial
-at the dispatch commit.
+`abandoned` (`critic-end` clears the marker with no fact), `expired` (active-marker TTL elapses),
+and `archived` — a sweep at dispatch or a `critic-discard` moves the manifest + partials to the
+review archive rather than deleting them. `archived` is the one off-ramp that is not terminal:
+`critic-restore <review-id>` returns a set to `partials-collecting` **as the same review**, so it
+can consolidate to a fact carrying its own id. Consolidation is fail-closed: it persists only when
+*every* roster role has a schema-valid partial at the dispatch commit.
 
 ### Backlog item
 `idea → requirements → design → ready` (stage) and `open → shipped | dropped` (status). Shipped/

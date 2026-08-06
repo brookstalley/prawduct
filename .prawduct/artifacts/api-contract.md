@@ -68,7 +68,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `user-prompt-submit`, `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin` (write dispatch manifest, mutating), `critic-consolidate`
-  (merge partials → evidence fact, mutating), `critic-end`, `evidence status|list`, `ledger-append`
+  (merge partials → evidence fact, mutating), `critic-end`, `critic-discard` (archive-then-remove a
+  stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
+  manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
+  inverse), `evidence status|list`, `ledger-append`
   (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE
   disposition fact, mutating), `render-dispositions` (derive the disposition census), plus the
   coverage/mode gate wrappers (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`,

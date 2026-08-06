@@ -3,6 +3,104 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: an archived review can be brought back as itself
+
+<!-- prawduct: chunks=2 | type=fix | scope=critic-review-identity -->
+
+**Binding a partial to its review removed a recovery that worked, and owing a replacement is why
+this shipped in the same plan rather than the backlog.** The documented way to rescue an archived
+review was to copy its partials into the *current* review's directory, and #602 named the
+uncomfortable part out loud: that copy worked *precisely because of the defect*. A partial bound
+only to the commit it reviewed was valid against whatever manifest happened to be there, so the
+rescue recorded one review's findings under another review's id. Keying the filenames and checking
+`dispatch_id` makes the copy inert — correctly, because it was always a mis-attribution — and
+leaves the subsystem archiving work it could no longer hand back.
+
+**`prawduct-hook critic-restore <review-id>` restores the review as itself.** It copies that
+review's manifest *and* its partials out of `.prawduct/.critic-partials-archive/`, so consolidation
+appends a fact carrying that review's own id, its own trees, its own findings. The property that
+makes the mis-attributing copy impossible is the same one that makes the honest restore lossless: a
+restored set is self-identifying, so nothing has to be re-stamped and nothing can be silently
+merged into the wrong review.
+
+**It copies rather than moves, and refuses rather than merges.** The archive is the last trace an
+unconsolidated review ever ran — consuming it to restore would mean a restored-then-swept review
+leaves nothing at all. And restoring on top of files already in the partials directory would put
+two reviews in one place, which is the mis-attribution the whole binding exists to prevent, so it
+refuses instead. The refusal names the remedy for the state actually on disk: a complete roster is
+finished work, so *record* it (`critic-consolidate`); anything else is cleared with
+`critic-discard`. `critic-end` is never offered while files are present — it clears the marker
+only, so it would send the caller back to an identical refusal, which is the failure the sibling
+dispatch refusal was rewritten to avoid.
+
+**Every message that ended at "archived to X" now names the way back.** Discard, the leftover
+sweep at dispatch, and the in-flight refusal all preserved work and then stopped talking — a
+preserved file nobody can act on is not a recovery. The refusal's line was the sharpest case: *"recoverable
+only by someone who knows the archive exists and still has the review id"* was an accurate
+description of a subsystem with no way out, and leaving it standing would understate the remedy at
+the exact moment someone is deciding whether to force past the guard.
+
+**What the restore does not pretend to be.** A set archived from an unreadable or absent manifest
+comes back as files an operator can read and `critic-consolidate` cannot act on; it says so rather
+than implying a consolidation is waiting. An unknown id, and a bare invocation, both answer the
+question they raise by listing what *is* restorable — the archive keeps only the newest three under
+names nobody memorised, so "not found" without a listing sends the reader to `ls` a dot-directory.
+
+## 2026-08-05: a reviewer's partial now belongs to the review that dispatched it
+
+<!-- prawduct: chunks=1 | type=fix | scope=critic-review-identity -->
+
+**Part 1 made the collision unreachable; this makes it unrepresentable.** v3.2.6 stopped a dispatch
+displacing a live review, and left the class open: a partial declared the commit it reviewed and
+nothing else, and its filename was keyed by role alone. So two reviews in one worktree still
+contended for one path — on 2026-07-30 the loser's only signal was a failed write, with nothing in
+the protocol saying what that meant, and a BLOCKING finding went unrecorded — and a straggler from
+an abandoned review, landing at an unchanged HEAD, was still schema-valid *and* commit-valid against
+whatever manifest was on disk.
+
+**Both layers now carry the review's identity.** A partial lives at `<role>.<review-id>.json` and
+its started marker beside it, so two reviews' writes are disjoint by construction: a straggler can
+neither satisfy another roster nor overwrite a live partial. And each partial declares
+`dispatch_id`, checked against the manifest — the case a filename cannot catch, where a reviewer is
+handed the wrong id and writes to a path that happens to be right. The comparison strips before it
+judges: a fail-closed validator over a model-written field rejects genuine ambiguity and tolerates
+the variant that normalizes identically, which is the lesson this same module already paid for when
+`"files": []` aborted whole consolidations.
+
+**The field is `dispatch_id`, not `review_id`, and the name is the finding.** A partial already
+carries `resolutions[].review_id`, meaning the *prior* review whose finding is being dispositioned.
+Two referents under one token, in a record a model writes from prose, is exactly the seam where an
+identifier degrades silently.
+
+**The filename shape has one home, which is why this is not five edits.** It was about to be
+restated in the code plus four instruction surfaces — and a fact needing N edits already has N−1
+wrong copies. `critic-begin` now resolves the per-role paths and records them in the manifest as
+`rendezvous`; the agent definition, the coordinator's dispatch template, `goals-1-3.md` and
+`SKILL.md` all send the reviewer to its entry instead of spelling a name. A future change to the
+shape needs no prose edit, and a guard test fails if any surface starts spelling one again.
+
+**Version skew is refused loudly, never accepted quietly.** A skill older than this hook writes the
+pre-keyed `<role>.json`, does its whole run, and would never be read. Accepting it as a fallback
+would reopen the hole for precisely the straggler this closes, so the incomplete no-op names the
+file, says a stale skill wrote it, and gives the reload remedy. A manifest with no `rendezvous` is
+likewise a loud validation failure rather than a silent skip.
+
+**A traversal the same change created the guard for, and did not apply.** `_archive_leftovers`
+builds its destination directory from the manifest `id`, read raw off disk — deliberately raw,
+since it must work when the manifest is unreadable, which is exactly why `validate_manifest`'s new
+component gate never runs on that path. `rev-../../escape` walked up out of the archive; `/tmp/x`
+replaced the base outright; and because an archive failure degrades to *delete*, both failed
+silently. Now gated at the use, falling through to the existing timestamped fallback name. Found by
+the review of the change that introduced the gate, and the honest reading is that the vulnerable
+line was not in the diff I was looking at.
+
+**One thing the token budget did not buy.** The first attempt funded the additions to
+`goals-1-3.md` by compressing the closing "**Either way** your last line is consolidate's
+`NEXT-ACTION:`" — which looked like removing a copy and was not: that sentence sits where a reader
+is about to shortcut it, and a test pins the phrase for that reason. Reverted, and paid for
+elsewhere; the file ended the same size it started. The remaining obvious cut in
+`review-protocol.md` is a reviewer-model safety instruction, and it stays.
+
 ## 2026-08-05: a dispatch no longer displaces a review that is still live
 
 <!-- prawduct: chunks=1,2 | type=fix | scope=critic-concurrent-dispatch | release=v3.2.6 | status=shipped -->
