@@ -25,6 +25,7 @@ _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from lib import critic_consolidate as cc  # noqa: E402
 from lib import critic_marker as cm  # noqa: E402
 
 # Reuse the proven plugin-runtime subprocess harness (same tests/ dir → importable
@@ -550,3 +551,308 @@ class TestConcurrentDispatchGuard:
         assert not (partials / "reviewer.json").exists(), (
             "an orphaned partial with no marker is still swept"
         )
+
+
+class TestCriticRestore:
+    """`critic-restore` — the recovery the review-identity binding replaces.
+
+    Before a partial carried review identity, an archived review was recovered by
+    copying its partials into the CURRENT review's directory: a partial bound only
+    to the commit it reviewed was schema- and commit-valid against whatever
+    manifest happened to be there, so review A's findings landed in the record
+    under review B's id. Keying the filenames by review id and checking
+    ``dispatch_id`` makes that copy inert — correctly, since it was always a
+    mis-attribution — which is why the recovery it removes is owed a replacement
+    that restores the review AS ITSELF, manifest included.
+
+    The archive is also reachable only through a listing that is bounded (newest
+    three), so the refusals here name what IS available rather than leaving the
+    caller to guess an id.
+    """
+
+    @staticmethod
+    def _partial_for(manifest: dict, role: str = "reviewer") -> str:
+        return json.dumps({
+            "role": role,
+            "goals": ["Nothing Is Broken"],
+            "dispatch_id": manifest["id"],
+            "commit_reviewed": manifest["commit_reviewed"],
+            "model": None,
+            "duration_seconds": 1,
+            "findings": [],
+            "summary": "the review being restored",
+        })
+
+    def _archived_complete_review(self, tmp_path) -> tuple[Path, str]:
+        """A complete, unconsolidated review sitting in the archive.
+
+        `critic-discard` is the archiving path used here because it is the one
+        that reaches this state: since the in-flight guard landed, a later
+        dispatch REFUSES a complete roster rather than sweeping it, so discard is
+        how a finished-but-unconsolidated review gets archived at all."""
+        repo = _real_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
+        begin = _run_real("critic-begin", repo, "--mode", "chunk")
+        assert begin.returncode == 0, begin.stderr
+        partials = prawduct / ".critic-partials"
+        manifest = json.loads((partials / "manifest.json").read_text())
+        (repo / manifest["rendezvous"]["reviewer"]["partial"]).write_text(
+            self._partial_for(manifest)
+        )
+        discard = _run_real("critic-discard", repo)
+        assert discard.returncode == 0, discard.stderr
+        assert not (partials / "manifest.json").exists(), "precondition: nothing pending"
+        return repo, manifest["id"]
+
+    def test_restore_then_consolidate_records_the_archived_reviews_own_id(self, tmp_path):
+        """The load-bearing round trip: what comes back consolidates as ITSELF.
+
+        The recovery this replaces recorded the restored findings under whichever
+        review's manifest was in the directory. The fact appended here must carry
+        the archived review's id, or the replacement has reproduced the defect."""
+        repo, review_id = self._archived_complete_review(tmp_path)
+
+        restore = _run_real("critic-restore", repo, review_id)
+        assert restore.returncode == 0, restore.stderr
+        assert review_id in restore.stdout, "the restore names the review it brought back"
+        assert "critic-consolidate" in restore.stdout, (
+            "a restored review is inert until it is consolidated — say so"
+        )
+
+        consolidated = _run_real("critic-consolidate", repo)
+        assert consolidated.returncode == 0, consolidated.stderr
+        assert "consolidated" in consolidated.stdout, consolidated.stdout
+
+        facts = (repo / ".git" / "prawduct" / "evidence.jsonl").read_text()
+        assert review_id in facts, (
+            "the fact must carry the RESTORED review's id, not a fresh one"
+        )
+
+    def test_restore_copies_and_leaves_the_archive_intact(self, tmp_path):
+        """The archive is the last trace an unconsolidated review ever ran. A
+        restore that consumed it would mean a restored-then-swept review leaves
+        nothing at all — so restore copies."""
+        repo, review_id = self._archived_complete_review(tmp_path)
+        archived = repo / ".prawduct" / ".critic-partials-archive" / review_id
+        before = sorted(p.name for p in archived.iterdir())
+
+        assert _run_real("critic-restore", repo, review_id).returncode == 0
+
+        assert sorted(p.name for p in archived.iterdir()) == before, (
+            "restore must not consume the archive"
+        )
+        restored = sorted(
+            p.name for p in (repo / ".prawduct" / ".critic-partials").iterdir()
+        )
+        assert restored == before, "every archived file comes back"
+
+    def test_restore_refuses_onto_a_non_empty_partials_directory(self, tmp_path):
+        """Merging two reviews' files into one directory is the mis-attribution
+        this whole binding exists to prevent — so restore refuses rather than
+        writing, and names the command that actually clears what is in the way.
+
+        `critic-end` is deliberately NOT the remedy here: it clears the marker
+        only, so the files would still be there and the next restore would refuse
+        identically. A refusal whose remedy does not reach the state is worse
+        than none."""
+        repo, review_id = self._archived_complete_review(tmp_path)
+        second = _run_real("critic-begin", repo, "--mode", "chunk")
+        assert second.returncode == 0, second.stderr
+        live_manifest = json.loads(
+            (repo / ".prawduct" / ".critic-partials" / "manifest.json").read_text()
+        )
+
+        refused = _run_real("critic-restore", repo, review_id)
+
+        assert refused.returncode == 1
+        assert "prawduct-hook critic-discard" in refused.stderr, (
+            "the remedy must be the command that clears files, not just the marker"
+        )
+        assert "prawduct-hook critic-end\n" not in refused.stderr, (
+            "critic-end leaves the files in place — offering it as the remedy here "
+            "would send the caller back to an identical refusal"
+        )
+        # Nothing of the live review was disturbed.
+        assert json.loads(
+            (repo / ".prawduct" / ".critic-partials" / "manifest.json").read_text()
+        )["id"] == live_manifest["id"]
+
+    def test_restore_refuses_a_complete_roster_by_naming_consolidate(self, tmp_path):
+        """State-specific remedies: a complete roster in the way is finished work,
+        and the way to clear it without losing anything is to record it."""
+        repo, review_id = self._archived_complete_review(tmp_path)
+        assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 0
+        partials = repo / ".prawduct" / ".critic-partials"
+        manifest = json.loads((partials / "manifest.json").read_text())
+        (repo / manifest["rendezvous"]["reviewer"]["partial"]).write_text(
+            self._partial_for(manifest)
+        )
+
+        refused = _run_real("critic-restore", repo, review_id)
+
+        assert refused.returncode == 1
+        assert "critic-consolidate" in refused.stderr
+
+    def test_restore_of_an_unknown_id_names_what_is_available(self, tmp_path):
+        """The archive holds at most a handful of sets under names nobody memorised.
+        An id-not-found that does not list them sends the caller to `ls`."""
+        repo, review_id = self._archived_complete_review(tmp_path)
+
+        refused = _run_real("critic-restore", repo, "rev-does-not-exist")
+
+        assert refused.returncode == 1
+        assert review_id in refused.stderr, (
+            "an unknown id must name the ids that ARE restorable"
+        )
+
+    def test_bare_restore_lists_the_archive_instead_of_a_usage_line(self, tmp_path):
+        """Missing argument is a usage error, and the question it raises — which
+        review? — is answerable from disk, so answer it."""
+        repo, review_id = self._archived_complete_review(tmp_path)
+
+        bare = _run_real("critic-restore", repo)
+
+        assert bare.returncode == 1
+        assert review_id in bare.stderr
+
+    def test_unknown_argument_is_a_usage_error(self, tmp_path):
+        repo, _review_id = self._archived_complete_review(tmp_path)
+        assert _run_real("critic-restore", repo, "--wat").returncode == 1
+
+    def test_restore_outside_an_onboarded_repo_refuses(self, tmp_path):
+        repo = _real_repo(tmp_path)
+        result = _run_real("critic-restore", repo, "rev-anything")
+        assert result.returncode == 1
+
+    def test_an_empty_archive_says_so(self, tmp_path):
+        repo = _real_repo(tmp_path)
+        (repo / ".prawduct").mkdir()
+        result = _run_real("critic-restore", repo, "rev-anything")
+        assert result.returncode == 1
+        assert "archive" in result.stderr.lower()
+
+
+class TestRestoreIsAllOrNothing:
+    """A restore that dies halfway must not leave the files that make the NEXT
+    restore refuse.
+
+    The refusal `restore_review` fires on a non-empty partials directory is
+    correct and load-bearing — but a failed copy that leaves its first file
+    behind converts its own failure into that refusing state, and the caller's
+    retry then meets a different refusal than the one that fired. Nothing
+    re-runs this transition on the caller's behalf, so it undoes its own
+    leavings rather than relying on a retry."""
+
+    def test_a_failed_copy_leaves_the_partials_directory_empty(
+        self, tmp_path, monkeypatch
+    ):
+        prawduct = tmp_path / ".prawduct"
+        archived = prawduct / cc.ARCHIVE_DIRNAME / "rev-abc"
+        archived.mkdir(parents=True)
+        # Sorted order puts the partial first, so the failure lands with one file
+        # already written — the state the rollback exists for.
+        (archived / "correctness.rev-abc.json").write_text("{}")
+        (archived / cc.MANIFEST_NAME).write_text("{}")
+
+        real_copy = cc.shutil.copy2
+        seen: list[object] = []
+
+        def flaky(src, dst):
+            seen.append(dst)
+            if len(seen) > 1:
+                raise OSError("no space left on device")
+            return real_copy(src, dst)
+
+        monkeypatch.setattr(cc.shutil, "copy2", flaky)
+
+        result = cc.restore_review(prawduct, "rev-abc")
+
+        assert result["status"] == "error"
+        assert result["kind"] == "write-failed"
+        assert len(seen) == 2, "precondition: the failure lands mid-copy"
+        assert list(cc.partials_dir(prawduct).iterdir()) == [], (
+            "a half-restored set would refuse every subsequent restore"
+        )
+        assert sorted(p.name for p in archived.iterdir()) == [
+            "correctness.rev-abc.json",
+            cc.MANIFEST_NAME,
+        ], "the archive is still the only copy"
+
+
+class TestArchiveMessagesNameTheWayBack:
+    """Every message that ends at "archived to X" names how to get X back.
+
+    A preserved file nobody can act on is not a recovery — before
+    `critic-restore` existed these messages were the whole story, and the story
+    stopped at the archive path. The pin is behavioral (what the commands print),
+    not a source grep, because the claim is about what a reader is told."""
+
+    def test_discard_names_the_restore(self, tmp_path):
+        repo = _real_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
+        assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 0
+        manifest = json.loads(
+            (prawduct / ".critic-partials" / "manifest.json").read_text()
+        )
+        (repo / manifest["rendezvous"]["reviewer"]["partial"]).write_text("{}")
+
+        discard = _run_real("critic-discard", repo)
+
+        assert discard.returncode == 0, discard.stderr
+        assert "critic-restore" in discard.stdout, (
+            "discard archives — it must say how to undo that"
+        )
+        assert manifest["id"] in discard.stdout, "…and under which name"
+
+    def test_dispatch_archiving_leftovers_names_the_restore(self, tmp_path):
+        repo = _real_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
+        partials = prawduct / ".critic-partials"
+        partials.mkdir()
+        (partials / "manifest.json").write_text("{}")
+        (partials / "reviewer.json").write_text('{"role": "reviewer"}')
+
+        begin = _run_real("critic-begin", repo, "--mode", "chunk")
+
+        assert begin.returncode == 0, begin.stderr
+        assert "archived" in begin.stdout
+        assert "critic-restore" in begin.stdout
+
+    def test_the_in_flight_refusal_names_the_restore(self, tmp_path):
+        """The refusal's own argument is "dispatching would archive this" — so it
+        is an archive message, and it used to end at "recoverable only by someone
+        who knows the archive exists and still has the review id." That sentence
+        was the accurate description of a subsystem with no way back; leaving it
+        standing once there is one would understate the remedy at the exact moment
+        someone is deciding whether to force past the guard."""
+        repo = _real_repo(tmp_path)
+        (repo / ".prawduct").mkdir()
+        assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 0
+
+        refused = _run_real("critic-begin", repo, "--mode", "chunk")
+
+        assert refused.returncode == 1
+        assert "already in flight" in refused.stderr
+        assert "critic-restore" in refused.stderr
+
+    def test_the_stranded_roster_refusal_names_the_restore(self, tmp_path):
+        """`critic-discard` is the escape offered there, and it archives — so the
+        escape has to carry its own undo too."""
+        repo = _real_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir()
+        assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 0
+        manifest = json.loads(
+            (prawduct / ".critic-partials" / "manifest.json").read_text()
+        )
+        (repo / manifest["rendezvous"]["reviewer"]["partial"]).write_text("{}")
+        assert _run_real("critic-end", repo).returncode == 0
+
+        refused = _run_real("critic-begin", repo, "--mode", "chunk")
+
+        assert refused.returncode == 1
+        assert "prawduct-hook critic-discard" in refused.stderr
+        assert "critic-restore" in refused.stderr

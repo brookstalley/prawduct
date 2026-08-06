@@ -746,6 +746,196 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
     return dest
 
 
+def archived_reviews(prawduct_dir: Path) -> list[str]:
+    """The archived sets :func:`restore_review` can bring back, newest first.
+
+    The names :func:`_archive_leftovers` wrote: a review id when the archived
+    manifest was readable, ``unmanifested-<stamp>`` when it was not. The list is
+    the WHOLE truth about what is restorable — :data:`_ARCHIVE_KEEP` bounds it,
+    so a caller that names an older review is not being told "not found" about a
+    review that still exists somewhere. The not-found refusal and the bare
+    invocation both render it for that reason, rather than leaving the reader to
+    `ls` a dot-directory for names nobody memorised.
+    """
+    try:
+        entries = sorted(
+            (d for d in archive_dir(prawduct_dir).iterdir() if d.is_dir()),
+            key=lambda d: d.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return []
+    return [d.name for d in entries]
+
+
+def restore_refusal(prawduct_dir: Path, present: list[str], active: bool) -> str:
+    """Why a restore is refused, and the ONE command that clears the way.
+
+    Restoring writes an archived review's manifest and partials into the
+    partials directory. Doing that over files already there merges two reviews
+    into one directory — precisely the mis-attribution review-id keying exists to
+    make impossible — so restore refuses instead of writing.
+
+    **The remedy is chosen by what is on disk, and one function owns the whole
+    message** so no call site can lead with advice that does not reach the state.
+    `critic-end` clears the MARKER only: naming it while files are present would
+    send the caller straight back to an identical refusal, which is the
+    failure mode the sibling dispatch refusal was rewritten to avoid. So files
+    present ⇒ consolidate (when the roster is complete and the work is worth
+    recording) or discard (otherwise); marker only ⇒ `critic-end`.
+    """
+    if not present:
+        return (
+            "refusing — a Critic review is active in this worktree, and restoring\n"
+            "  would put a second review's files where that one's belong.\n"
+            "  No partials are on disk yet, so clearing the marker is enough:\n"
+            "    prawduct-hook critic-end"
+        )
+    state, missing = pending_state(prawduct_dir)
+    if state == "complete":
+        remedy = (
+            "  On disk: every reviewer has reported. That review is FINISHED and needs\n"
+            "  only consolidation — record it first, then restore:\n"
+            "    prawduct-hook critic-consolidate"
+        )
+    else:
+        waiting = (
+            f" still waiting on {', '.join(missing)}"
+            if state == "incomplete"
+            else " no readable dispatch manifest"
+        )
+        remedy = (
+            f"  On disk:{waiting}. To set that review aside — archived, never deleted\n"
+            "  outright — and free the directory:\n"
+            "    prawduct-hook critic-discard\n"
+            "  (`critic-end` clears the marker only; these files would still be here.)"
+        )
+    live = " (a review is also still marked active)" if active else ""
+    return (
+        f"refusing — {len(present)} file(s) from another review are in the partials\n"
+        f"  directory{live}. Restoring on top would merge two reviews into one\n"
+        "  directory, which is the mis-attribution restoring by id exists to avoid.\n"
+        "\n"
+        + remedy
+    )
+
+
+def restore_review(prawduct_dir: Path, review_id: str) -> dict:
+    """Copy an archived review's manifest + partials back so it can consolidate
+    AS ITSELF. The inverse of :func:`_archive_leftovers`, and adjacent to it so
+    the write and its undo stay in one place.
+
+    **Restores the review as itself, and that is the whole point.** The recovery
+    this replaces copied an archived review's partials into the CURRENT review's
+    directory; a partial bound only to the commit it reviewed was schema- and
+    commit-valid against whatever manifest was there, so one review's findings
+    were recorded under another's id. That copy is now inert — correctly, because
+    it was always a mis-attribution — and the honest replacement brings the
+    manifest back alongside the partials. The same keying that makes the
+    mis-attributing copy impossible is what makes this round trip lossless: a
+    restored set is self-identifying.
+
+    **Copies, never moves.** The archive is the last trace an unconsolidated
+    review ever ran (:func:`_archive_leftovers` exists for exactly that). A
+    restore that consumed it would mean a restored-then-swept review leaves
+    nothing at all.
+
+    Returns ``{"status": "ok", ...}`` or ``{"status": "error", "kind", "reason"}``
+    — ``kind`` is ``pending`` (something is in the way), ``unknown`` (no such
+    archived set), ``unusable`` (the set is there but holds nothing readable) or
+    ``write-failed`` (the destination refused the copy). Per project convention
+    the failure is a return value, not an exception; the CLI renders it.
+    """
+    pdir = partials_dir(prawduct_dir)
+    try:
+        present = sorted(p.name for p in pdir.iterdir() if p.is_file())
+    except OSError:
+        present = []
+    # `sweep=False` for the same reason `begin_review` reads it that way:
+    # refusing is not the moment to also decide a crashed review is over, and the
+    # Stop hook's abandoned-review branch is gated on the marker it would delete.
+    active, _age = critic_marker.review_active(prawduct_dir, sweep=False)
+    if present or active:
+        return {
+            "status": "error",
+            "kind": "pending",
+            "reason": restore_refusal(prawduct_dir, present, active),
+        }
+
+    available = archived_reviews(prawduct_dir)
+    # Same gate the archive's own directory name goes through, for the same
+    # reason: this id arrives from a caller and becomes a path segment, so
+    # `../../x` walks out of the archive and an absolute one replaces the base.
+    src = archive_dir(prawduct_dir) / review_id
+    if not _path_component_safe(review_id) or not src.is_dir():
+        listing = (
+            "\n  Restorable now: " + ", ".join(available)
+            if available
+            else "\n  The archive holds nothing to restore."
+        )
+        return {
+            "status": "error",
+            "kind": "unknown",
+            "reason": (
+                f"no archived review named {review_id!r}." + listing
+            ),
+        }
+
+    try:
+        children = sorted(c for c in src.iterdir() if c.is_file())
+    except OSError as exc:
+        return {
+            "status": "error",
+            "kind": "unusable",
+            "reason": f"the archived set {review_id!r} is unreadable ({exc}).",
+        }
+    if not children:
+        return {
+            "status": "error",
+            "kind": "unusable",
+            "reason": f"the archived set {review_id!r} holds no files to restore.",
+        }
+
+    # All-or-nothing. A copy that dies halfway leaves files in the partials
+    # directory, and every subsequent restore reads those as "another review is
+    # in the way" and refuses — a failure that converts itself into the refusing
+    # state. Nothing re-runs this transition on the caller's behalf, so it has to
+    # undo its own leavings rather than rely on a retry that would meet a
+    # different refusal than the one that fired.
+    written: list[Path] = []
+    try:
+        pdir.mkdir(parents=True, exist_ok=True)
+        for child in children:
+            dest = pdir / child.name
+            shutil.copy2(child, dest)
+            written.append(dest)
+    except OSError as exc:
+        for path in written:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        return {
+            "status": "error",
+            "kind": "write-failed",
+            "reason": (
+                f"could not restore {review_id!r} ({exc}) — the partially copied "
+                "files were removed, so the archive is still the only copy."
+            ),
+        }
+    return {
+        "status": "ok",
+        "id": review_id,
+        "source": str(src),
+        "restored": [c.name for c in children],
+        # A set archived from an unreadable/absent manifest restores as files an
+        # operator can read but `consolidate` cannot act on. Advice fails soft,
+        # not silent: the CLI says so rather than implying a consolidation is
+        # waiting.
+        "has_manifest": MANIFEST_NAME in {c.name for c in children},
+    }
+
+
 #: The keys :func:`_mark_cache_superseded` owns. Named once so the marker is
 #: re-stamped rather than stacked when a re-dispatch marks an already-marked
 #: record, and so a reader can strip them mechanically.
@@ -1562,9 +1752,9 @@ def active_dispatch_refusal(
     treatment is right for an *orphaned* leftover and catastrophic for a *live*
     review's: dispatching over one archives partials that may be complete,
     overwrites the manifest and re-stamps the marker, so a finished review —
-    blocking findings included — leaves no fact and no ledger anchor. It is
-    recoverable only by someone who knows the archive exists and still has the
-    review id.
+    blocking findings included — leaves no fact and no ledger anchor until
+    someone notices and restores it by name (``critic-restore``). Refusing costs
+    one command; the alternative costs a whole review round.
 
     That second-order harm — a displaced review's straggler landing in the new
     review's directory and consolidating as it — is no longer possible, and this
@@ -1626,7 +1816,9 @@ def active_dispatch_refusal(
             "  Consolidate them if the cause is fixable; `critic-end` will NOT clear this\n"
             "  state and nothing expires it. To discard them deliberately and dispatch\n"
             "  fresh — archiving first, never deleting outright:\n"
-            "    prawduct-hook critic-discard"
+            "    prawduct-hook critic-discard\n"
+            "  That archive is not a dead end: `prawduct-hook critic-restore <review-id>`\n"
+            "  brings the discarded review back as itself, ready to consolidate."
         )
     opening = (
         f"refusing — a Critic review is already in flight in this "
@@ -1638,8 +1830,8 @@ def active_dispatch_refusal(
     return (
         opening
         + "  Dispatching now would archive its partials and overwrite its manifest, so\n"
-        "  a finished review would leave no fact and no ledger anchor — recoverable\n"
-        "  only by someone who knows the archive exists and still has the review id.\n"
+        "  a finished review would leave no fact and no ledger anchor until someone\n"
+        "  noticed and ran `prawduct-hook critic-restore` on it by name.\n"
         "\n"
         + situation
         + "\n"

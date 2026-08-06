@@ -73,13 +73,15 @@ two narrower alternatives before planning began.
 - [ ] Chunk 1: The rendezvous carries review identity
 - [ ] Chunk 2: `critic-restore` — the recovery this binding replaces
 Context: Built on `fix/critic-review-identity` off `develop` at `5812a02` (v3.2.6 released,
-nothing else in flight). **Chunk 1 is complete** — commit `d7e4efd`, reviewed
-by `rev-20260806T011753Z-41c17624` (`cumulative`, 0 blocking) with a green suite
-(`prawduct-hook test-status`; the evidence store holds the counts). The boxes stay `[ ]` because
-`views_enabled` flips them from a `status=shipped` change-log entry at release, not by hand.
-That review consumed a bundle pass over `5812a02..d7e4efd`, so Chunk 2's `cumulative-final` is
-the second one this branch buys — its interval will span both chunks either way.
-Next: Chunk 2 (`critic-restore`).
+nothing else in flight). **Both chunks are built.** Chunk 1 landed at `d7e4efd`, reviewed by
+`rev-20260806T011753Z-41c17624` (`cumulative`, 0 blocking); the follow-up commits through `258d12c`
+carried its findings and the learnings entries. Chunk 2 adds `prawduct-hook critic-restore
+<review-id>` — the recovery Chunk 1's binding replaced — with a green suite (`prawduct-hook
+test-status`; the evidence store holds the counts). The boxes stay `[ ]` because `views_enabled`
+flips them from a `status=shipped` change-log entry at release, not by hand.
+Next: the `cumulative` review over both chunks, then `/prawduct:pr`. Chunk 1's review already
+consumed one bundle pass over `5812a02..d7e4efd`, so this is the second one this branch buys —
+its interval spans both chunks either way.
 
 ## Build Chunks
 

@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: an archived review can be brought back as itself
+
+<!-- prawduct: chunks=2 | type=fix | scope=critic-review-identity -->
+
+**Binding a partial to its review removed a recovery that worked, and owing a replacement is why
+this shipped in the same plan rather than the backlog.** The documented way to rescue an archived
+review was to copy its partials into the *current* review's directory, and #602 named the
+uncomfortable part out loud: that copy worked *precisely because of the defect*. A partial bound
+only to the commit it reviewed was valid against whatever manifest happened to be there, so the
+rescue recorded one review's findings under another review's id. Keying the filenames and checking
+`dispatch_id` makes the copy inert — correctly, because it was always a mis-attribution — and
+leaves the subsystem archiving work it could no longer hand back.
+
+**`prawduct-hook critic-restore <review-id>` restores the review as itself.** It copies that
+review's manifest *and* its partials out of `.prawduct/.critic-partials-archive/`, so consolidation
+appends a fact carrying that review's own id, its own trees, its own findings. The property that
+makes the mis-attributing copy impossible is the same one that makes the honest restore lossless: a
+restored set is self-identifying, so nothing has to be re-stamped and nothing can be silently
+merged into the wrong review.
+
+**It copies rather than moves, and refuses rather than merges.** The archive is the last trace an
+unconsolidated review ever ran — consuming it to restore would mean a restored-then-swept review
+leaves nothing at all. And restoring on top of files already in the partials directory would put
+two reviews in one place, which is the mis-attribution the whole binding exists to prevent, so it
+refuses instead. The refusal names the remedy for the state actually on disk: a complete roster is
+finished work, so *record* it (`critic-consolidate`); anything else is cleared with
+`critic-discard`. `critic-end` is never offered while files are present — it clears the marker
+only, so it would send the caller back to an identical refusal, which is the failure the sibling
+dispatch refusal was rewritten to avoid.
+
+**Every message that ended at "archived to X" now names the way back.** Discard, the leftover
+sweep at dispatch, and the in-flight refusal all preserved work and then stopped talking — a
+preserved file nobody can act on is not a recovery. The refusal's line was the sharpest case: *"recoverable
+only by someone who knows the archive exists and still has the review id"* was an accurate
+description of a subsystem with no way out, and leaving it standing would understate the remedy at
+the exact moment someone is deciding whether to force past the guard.
+
+**What the restore does not pretend to be.** A set archived from an unreadable or absent manifest
+comes back as files an operator can read and `critic-consolidate` cannot act on; it says so rather
+than implying a consolidation is waiting. An unknown id, and a bare invocation, both answer the
+question they raise by listing what *is* restorable — the archive keeps only the newest three under
+names nobody memorised, so "not found" without a listing sends the reader to `ls` a dot-directory.
+
 ## 2026-08-05: a reviewer's partial now belongs to the review that dispatched it
 
 <!-- prawduct: chunks=1 | type=fix | scope=critic-review-identity -->
