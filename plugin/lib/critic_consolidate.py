@@ -644,13 +644,15 @@ def _rendezvous(project_dir: Path, prawduct_dir: Path, roster: list[str],
 
     **The relative form is NOT usable verbatim by a reviewer, and saying so is
     part of the contract.** A reviewer writes with the ``Write`` tool, which
-    requires an absolute path. So the surfaces that hand a reviewer its entry —
-    ``review-protocol.md``'s dispatch template and ``agents/critic-reviewer.md``
-    — say to join it onto the project directory the prompt already carries. That
-    used to happen anyway, silently, because a coordinator would absolutize
-    without being told to; an unstated transformation the mechanism depends on is
-    exactly the class this module's review-identity work removes elsewhere, so it
-    is written down rather than relied upon.
+    requires an absolute path. ``agents/critic-reviewer.md`` is the one place
+    that says to resolve it — the reviewer is the actor that writes, so the rule
+    is a reviewer instruction, and it belongs where "never compose the filenames
+    yourself" already lives rather than being restated in the coordinator's
+    dispatch template. That resolution used to happen anyway, silently, because a
+    coordinator would absolutize without being told to; an unstated
+    transformation the mechanism depends on is exactly the class this module's
+    review-identity work removes elsewhere, so it is written down rather than
+    relied upon.
     """
     def _rel(p: Path) -> str:
         try:
