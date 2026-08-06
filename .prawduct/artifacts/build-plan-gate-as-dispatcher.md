@@ -5,19 +5,40 @@ scope: gate-as-dispatcher
 depends_on:
   - artifact: gate-as-dispatcher-requirements
 governed_by:
+  # Every norm in each artifact gets a line — "that one doesn't apply" is an
+  # interpretation, and it belongs where a reviewer can disagree with it.
   - artifact: architecture
     dispositions:
-      - "Authority fails closed; advice fails soft → conforms — the refusal produces no merge verdict, and every uncomputable input (diff failure, unreadable tree, missing store) dispatches"
-      - "An independent reviewer never mutates the session it reviews → inapplicable because this changes whether a review starts, never what a reviewer may touch"
+      - "Authority fails closed; advice fails soft → conforms — the refusal produces no merge verdict, and no uncomputable input can produce a refusal (a failed diff returns an error before the check is reached)"
+      - "An independent reviewer never mutates the session it reviews → conforms, and strengthens it — a refusal returns before the marker and the partials sweep, so it mutates strictly less than a dispatch"
       - "Goals and verification bind; prescribed method is advice → conforms — the verification structure is unchanged; only the decision to spend a round moves"
+      - "Local-first: governance coordination is process-spawn + atomically-written files + the git object database → conforms — the predicate reads a git diff and the local store; no new coordination surface"
+      - "The plugin writes nothing into a governed repo except its own .prawduct/ state → conforms — the refusal path writes nothing at all"
+      - "Written in Python, never specific to Python → conforms — the predicate is path-based (is_judgeable_path), language-agnostic by construction"
+      - "Prawduct guides and reviews; it never implements → inapplicable because this changes prawduct's own governance plane, not any product's code"
+      - "Every fact has one home; every other mention is a reference → conforms — exit 3's meaning is stated once in api-contract.md § Error Model; SKILL.md and the hook docstring cite it"
   - artifact: nonfunctional-requirements
     dispositions:
       - "Review wall-clock is P0: cost = unit-cost x run-count → conforms — this is a run-count lever, the one the norm names first"
-      - "Proportionality ratchets both ways; adding a control names its expected yield and emits it observably → conforms — the mirror obligation for removing a firing is met by the requirements §1 measurement plus Chunk 02's refusal telemetry"
+      - "Proportionality ratchets both ways; adding a control names its expected yield and emits it observably → PARTIAL until Chunk 02. Requirements §1 is the recorded yield argument, but the refusal currently fires with no emitted record, so the 'observably' half is owed. Chunk 02 discharges it; see the R-19/R-26 note there"
+      - "State-file growth past its threshold is surfaced as an advisory → inapplicable because this work adds no state file"
   - artifact: data-model
     dispositions:
       - "Governance verdicts are computed from the append-only fact ledger, never mutable model-written state → conforms — the predicate reads the interval diff and the store; no model writes to the decision path"
+      - "Facts are immutable and append-only → conforms — the refusal writes no fact; declining to create one is not a mutation"
       - "Derived views are disposable and never authoritative → conforms — nothing here reads .critic-findings.json"
+      - "Every issue conforms to the issue standard's §1 title rules → inapplicable because this work writes no backlog issue"
+      - "A fact written by a newer schema is a loud block → inapplicable because no fact is read for its schema on this path"
+      - "Two stores, two lifetimes → conforms — the refusal reads the shared evidence store and writes neither store"
+      - "backlog_service_repo selects the authoritative backlog store → inapplicable because this work touches no backlog store"
+  - artifact: api-contract
+    # Added 2026-08-06 after the cumulative review's R-12: exit 3 ships on this
+    # contract surface, so the artifact governs and its omission here was an
+    # unruled departure, not an inapplicable one.
+    dispositions:
+      - "Exit codes are the contract, on a documented and consistent scheme; new subcommands cite it rather than inventing a return convention → conforms as of the R-12 fix — exit 3 is registered in § Error Model's sentinel list with its fail-direction rationale, and § Operations carries --force"
+      - "Additive-first evolution: new subcommands and flags are added; existing exit-code meanings are never repurposed → conforms — 3 was unused on critic-begin, and 0/1/2 keep their meanings exactly"
+      - "Whole-surface semver; the internal CLI carries no per-subcommand version → conforms — critic-begin is internal/unstable, outside the two-member stable tier, so no version handle is owed"
 last_validated: 2026-08-06
 ---
 
@@ -44,7 +65,9 @@ leans on the predicate.
 
 - [x] Chunk 01: The dispatcher asks the gate before it spends a reviewer
 - [ ] Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
-Context: **Chunk 01 built and committed at `586ae1d`** (suite 3823 passed / 0 failed / 7 skipped).
+Context: **Chunk 01 built and committed at `586ae1d`**, suite green (the count lives in
+`.prawduct/.test-evidence.json`; `prawduct-hook test-status` is the reader — a figure transcribed
+here goes stale silently and nothing consults it).
 Step 0 settled against the code by owner ruling: `change-log.md` is correctly non-judgeable, and
 `learnings-detail.md`'s CRT-7M2D bullet was wrong on three of its five named files — corrected there.
 The refusal is mutation-verified on both conjuncts, and the retroactive replay refuses exactly rounds
@@ -128,9 +151,20 @@ Tests carry most of this, but two things tests cannot say:
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `gate-as-dispatcher-requirements.md` §7 (the prose surfaces), §4 (the
   proportionality norm)
+- **Carried in from the Chunk 01 cumulative review** (`rev-20260806T204908Z-8a18af57`) — riding a
+  commit already being made, not deferred to a later round:
+  - **R-19** — the refusal fires with no record. Three surfaces independently require one: the NFR
+    "proportionality ratchets both ways" norm (disposed PARTIAL above precisely because of this),
+    the opt-out-must-be-a-recorded-artifact learning, and issue **#596**.
+  - **R-26** — **settle the sink before writing it.** #596 already owns pre-dispatch-guard telemetry
+    *as a class* and disagrees with the `ledger-append` sink named below. Read #596 first and either
+    adopt its sink or record why this one differs; do not add a second telemetry path for the same
+    class of event by default. This is a real decision, not a formality — the ledger is gitignored
+    and per-worktree, so a yield question spanning clones cannot be answered from it.
 - **Deliverables:**
-  - refusal telemetry via the existing ledger path (`ledger-append`), carrying the interval and the
-    free file list — enough to answer the yield question later
+  - refusal telemetry, sink decided per R-26 above (the `ledger-append` path is the *proposal*,
+    not the ruling), carrying the interval and the free file list — enough to answer the yield
+    question later
   - `plugin/skills/critic/review-protocol.md` — the `NEXT-ACTION` text: *ask the gate; review only if
     it reports uncovered*, replacing the unconditional "then run ONE verify-resolutions"
   - `plugin/lib/coverage.py` — `check-cumulative-critic`'s remedy text names the free-interval check

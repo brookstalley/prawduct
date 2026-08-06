@@ -1108,6 +1108,7 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
            [--chosen-by <rationale>] [--chunk <id>] [--scope <s>] [--tier <t>]
+           [--force]
 
     `--mode` is REQUIRED — a bare invocation means a stale cached skill is
     driving a newer hook (version skew), and refusing at dispatch with the
@@ -1116,8 +1117,13 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     No-op (still exit 0) outside an onboarded repo — no session to protect,
     no store to dispatch against. Exit 2 = verify-resolutions scope widened
-    past the demotion threshold (the skill falls back to `final`); exit 1 =
-    any other dispatch failure (reason on stderr).
+    past the demotion threshold (the skill falls back to `final`); **exit 3 =
+    no review needed** — the interval holds no judgeable file and no finding
+    this mode could resolve, so the coverage gate already composes it as a free
+    edge (`--force` dispatches anyway; nothing is written and no marker is set,
+    so a 3 needs no `critic-end`); exit 1 = any other dispatch failure (reason
+    on stderr). The scheme these cite is `artifacts/api-contract.md`
+    § Error Model.
 
     Also resets `.critic-partials/` before writing the fresh manifest —
     archive-first, and `critic_consolidate.remove_partials` states why (it is
@@ -1192,8 +1198,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         print(
             f"PRAWDUCT: no review needed — {result['reason']}.\n"
             f"  free files: {shown}\n"
-            "  Nothing to do: the coverage gate already passes this interval. "
-            "Run `critic-begin --mode <m> --force` to review anyway."
+            "  Nothing to do: the coverage gate already passes this interval.\n"
+            "  To review anyway: `/prawduct:critic <mode> --force`. Prefer that over a "
+            "raw `critic-begin --force` — a hand-run dispatch sets the critic-active "
+            "marker with no reviewer behind it, and the next `/prawduct:critic` then "
+            "refuses as if a review were live (clear it with `prawduct-hook critic-end`)."
         )
         return 3
     if result["status"] != "ok":

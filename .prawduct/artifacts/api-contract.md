@@ -67,7 +67,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary — `--brief-only` skips it, mutating), `build-index`,
   `user-prompt-submit`, `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
-- **Critic data plane** — `critic-begin` (write dispatch manifest, mutating), `critic-consolidate`
+- **Critic data plane** — `critic-begin [--force]` (write dispatch manifest, mutating; `--force`
+  overrides the exit-3 no-review-needed refusal — see § Error Model), `critic-consolidate`
   (merge partials → evidence fact, mutating), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
@@ -211,11 +212,23 @@ Fail-direction is deliberate and per-purpose:
   state, but an unrun check must never read as a clean one — inside a single run, the same rule
   appears per check as the `unchecked` list rather than a silently absent result.
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
+  `critic-begin` **3** = no review needed (added 2026-08-06);
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
   `backlog verify-migration` **4** = completeness failure (a source item with no target issue);
   `regen-views` **3** = partial — one or more scopes' `## Status` views were withheld by their own
   validation errors while every other view WAS written (the regen-views-is-advice ruling; 2 still
   means nothing was written).
+
+  **`critic-begin` 3 — no review needed.** The dispatch interval holds no judgeable file
+  (`coverage_algebra.is_judgeable_path`) and no finding this mode could resolve, so the coverage gate
+  already composes it as a **free edge** and a review would record a fact nothing needs. It is a
+  distinct code for the same reason `check-released` 3 is: both foldings are wrong. Folded into
+  **0** the caller proceeds to spawn reviewers against a manifest that was never written; folded into
+  **1** a correct, expected outcome reads as a dispatch failure and invites a retry in another mode —
+  which is the review round this exit exists to prevent. Message goes to **stdout** (agent-facing:
+  it is a normal outcome the caller acts on, not a diagnostic), names the free files, and names the
+  override. `--force` dispatches anyway. Nothing is written and no critic-active marker is set, so a
+  3 needs no `critic-end`.
 
 **Message vocabulary:** `CRITICAL:` / `WARNING:` / `NOTE:` / `PRAWDUCT:` / `BLOCKED —…`, with a
 channel split — **stdout is agent-facing** (composed into model context), **stderr is

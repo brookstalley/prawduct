@@ -78,8 +78,16 @@ exact split the evidence supports.
    (`skills/`, `methodology/`, `templates/`, root `CLAUDE.md`), which **is** judgeable.
 3. A dispatch that could resolve unresolved blocking findings always proceeds, even over an entirely
    free interval. No input wedges the gate.
-4. Anything the check cannot compute (diff failure, unreadable tree, missing store) **dispatches**.
-   Uncertainty never buys a skip.
+4. Anything the check cannot compute (diff failure, unreadable tree) **never refuses**. Uncertainty
+   never buys a skip.
+
+   **Corrected 2026-08-06** after the Chunk 01 cumulative review (R-1). This criterion originally
+   said such inputs "dispatch", which the code does not do and should not: an uncomputable diff
+   returns an *error* (exit 1) before the refusal is reached, so the caller is told rather than
+   silently reviewed. "Never refuses" is the property that actually matters, and unlike "dispatches"
+   it is falsifiable at the `begin_review` boundary — which is where it is now pinned. A missing
+   evidence store is deliberately **not** in this list: with no store there are no facts, so nothing
+   can be outstanding, and refusing a free interval is then correct rather than uncertain.
 5. An explicit override forces a review regardless.
 6. `check-cumulative-critic`'s verdict is unchanged by this work for every input. The refusal must
    never widen what can merge.

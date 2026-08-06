@@ -170,6 +170,15 @@ def _assert_no_dispatch_state(repo: Path) -> None:
     assert not (repo / PARTIALS_REL / "manifest.json").is_file(), (
         "refusal wrote a dispatch manifest"
     )
+    # The partial-reset half. `begin_review` archives/clears leftover partials
+    # as part of dispatching, and that sweep is the single most destructive act
+    # against another review — so a refusal reaching it would be worse than the
+    # wasted review it was avoiding.
+    leftovers = sorted(p.name for p in (repo / PARTIALS_REL).glob("*.json")) \
+        if (repo / PARTIALS_REL).is_dir() else []
+    assert leftovers == [], f"refusal disturbed the partials dir: {leftovers}"
+    archive = repo / ".prawduct" / ".critic-partials-archive"
+    assert not archive.exists(), "refusal archived partials it should not have touched"
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +206,42 @@ class TestRefusesWhatTheGateWouldPass:
         assert "docs/notes.md" in result.stdout, (
             "the refusal must name the free files — an unexplained skip is "
             "indistinguishable from a broken gate"
+        )
+        _assert_no_dispatch_state(repo)
+
+    @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
+    def test_the_rule_is_mode_uniform(self, tmp_path, mode):
+        """The refusal is not a verify-resolutions special case.
+
+        `begin_review`'s neighbouring empty-diff refusal exempts
+        verify-resolutions, so "which modes does this apply to" is a real
+        question here rather than an obvious one — and the answer shipped
+        untested. A free interval is free whatever mode is asked for: only
+        verify-resolutions can carry outstanding findings, and for every other
+        mode `pending_actionable` is 0 by construction.
+
+        `chunk`/`final` diff HEAD against the WORKING tree, so their free
+        interval is an uncommitted `.prawduct/` edit; `cumulative` diffs
+        `merge-base...HEAD`, so its is a committed one.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        if mode == "cumulative":
+            # cumulative's interval is `merge-base(base, HEAD)...HEAD`, so it
+            # needs a branch to be measured against. Without one the interval is
+            # EMPTY, and the pre-existing empty-diff refusal fires first — which
+            # would make this test pass for a reason unrelated to judgeability.
+            _git(repo, "checkout", "--quiet", "-b", "feat/x")
+            _commit_file(repo, ".prawduct/notes.md", "prose\n", "docs: a note")
+        else:
+            (repo / ".prawduct" / "notes.md").write_text("prose\n")
+
+        result = _run_begin(repo, "--mode", mode)
+
+        assert result.returncode == EXIT_NO_REVIEW_NEEDED, (
+            f"mode {mode} did not honour the free-interval refusal — "
+            f"rc={result.returncode} out={result.stdout!r} err={result.stderr!r}"
         )
         _assert_no_dispatch_state(repo)
 
@@ -233,7 +278,13 @@ class TestNeverRefusesJudgeableWork:
             (repo / f"docs/n{i}.md").parent.mkdir(parents=True, exist_ok=True)
             (repo / f"docs/n{i}.md").write_text(f"prose {i}\n")
         (repo / "src/app.py").write_text("x = 3\n")  # the one that matters
-        _git(repo, "add", "-A")
+        # Named paths, not `-A`: sweeping in the `.prawduct/` artifacts left by
+        # the seed's consolidate would widen the delta by files this test did not
+        # choose — both re-admitting the scope-widening threshold the file counts
+        # above were picked to stay under, and padding the delta with extra
+        # non-judgeable paths so the 5:1 ratio the test asserts is no longer the
+        # ratio it exercises.
+        _git(repo, "add", "docs", "src")
         _git(repo, "commit", "-m", "docs + one code line", "--quiet")
 
         result = _run_begin(repo, "--mode", "verify-resolutions")
@@ -309,21 +360,82 @@ class TestNeverRefusesJudgeableWork:
 
 
 class TestUncertaintyNeverBuysASkip:
-    def test_unknown_paths_are_treated_as_judgeable(self):
-        """The classifier's default. Anything not positively recognized as
-        metadata or unprotected `.md` is judgeable, so a path shape nobody
-        anticipated dispatches rather than skips."""
-        from lib.coverage_algebra import is_judgeable_path
+    """The property: an input the check cannot evaluate never produces a refusal.
 
-        for path in ("src/app.py", "Makefile", "weird", "a/b/c.rs", ".github/x.yml"):
-            assert is_judgeable_path(path), f"{path} must be judgeable by default"
+    Note what these assert and what they do NOT. An earlier version of this class
+    called `coverage_algebra` directly — which passes unchanged against code that
+    has no refusal at all, so it could never have caught a refusal firing on an
+    uncomputable input. These drive `begin_review` through the real CLI, because
+    the boundary is where the property either holds or does not.
+
+    The property is **"never refuses"**, not "dispatches". A diff that cannot be
+    computed returns an error (exit 1) *before* the refusal is reached — the
+    caller is told, and no review is skipped. Both non-refusal outcomes are safe;
+    conflating them is what made the original criterion unfalsifiable.
+    """
+
+    def test_an_uncomputable_diff_never_refuses(self, tmp_path):
+        """A corrupted object store cannot yield a file list, so the interval's
+        judgeability is unknown — and unknown must not resolve to "free"."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+        # Break the object store so `tree_diff` cannot answer.
+        for pack in (repo / ".git" / "objects").rglob("*"):
+            if pack.is_file():
+                pack.chmod(0o000)
+        try:
+            result = _run_begin(repo, "--mode", "verify-resolutions")
+        finally:
+            for pack in (repo / ".git" / "objects").rglob("*"):
+                if pack.is_file():
+                    pack.chmod(0o644)
+
+        assert result.returncode != EXIT_NO_REVIEW_NEEDED, (
+            "an interval whose diff could not be computed was refused as free — "
+            f"uncertainty must never buy a skip. stdout={result.stdout!r}"
+        )
+        _assert_no_dispatch_state(repo)
+
+    def test_no_evidence_store_never_refuses_judgeable_work(self, tmp_path):
+        """With no store there are no facts, so nothing can be outstanding —
+        the refusal must then rest entirely on judgeability, and judgeable work
+        still dispatches."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / "src/app.py").write_text("x = 2\n")
+
+        result = _run_begin(repo, "--mode", "chunk")  # no prior review anywhere
+
+        assert result.returncode == 0, (
+            f"judgeable work with no store must dispatch — rc={result.returncode}"
+        )
+
+    def test_unknown_paths_are_treated_as_judgeable(self, tmp_path):
+        """The classifier's default, asserted THROUGH the dispatcher: a path
+        shape nobody anticipated dispatches rather than skips. Driven at the
+        boundary so it fails if the refusal ever grows its own path rules."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "Makefile", "all:\n\techo hi\n", "add a Makefile")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, (
+            "an extensionless, unrecognized path must be treated as judgeable — "
+            f"rc={result.returncode} out={result.stdout!r}"
+        )
 
     def test_the_refusal_agrees_with_the_gate_predicate(self):
-        """The safety invariant, asserted against the algebra rather than
-        against a sentence: the dispatcher refuses only intervals the coverage
-        gate already treats as free. If `is_judgeable_path` changes, this test
-        moves with it — which is the point. A refusal keyed on its own private
-        notion of "docs" is how the two drift apart.
+        """The safety invariant: the dispatcher refuses only intervals the
+        coverage gate already treats as free. Unit-level on purpose — it pins
+        the SHARED predicate, so if `is_judgeable_path` changes, this moves with
+        it. It is the companion to the boundary tests above, not a substitute:
+        a refusal keyed on its own private notion of "docs" is how a skip-gate
+        and its gate drift apart.
         """
         from lib.coverage_algebra import judgeable_files
 
