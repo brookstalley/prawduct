@@ -64,22 +64,35 @@ leans on the predicate.
 ## Status
 
 - [x] Chunk 01: The dispatcher asks the gate before it spends a reviewer
-- [ ] Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
-Context: **Chunk 01 built and committed at `586ae1d`**, suite green (the count lives in
-`.prawduct/.test-evidence.json`; `prawduct-hook test-status` is the reader — a figure transcribed
-here goes stale silently and nothing consults it).
-Step 0 settled against the code by owner ruling: `change-log.md` is correctly non-judgeable, and
-`learnings-detail.md`'s CRT-7M2D bullet was wrong on three of its five named files — corrected there.
-The refusal is mutation-verified on both conjuncts, and the retroactive replay refuses exactly rounds
-3/4/5 of `fix/backlog-import-title-boundary` while dispatching 1/2/6/7. Chunk 01 is CLOSED: the cumulative
-(`rev-20260806T204908Z-8a18af57`, 2 blocking / 13 warning / 11 note) and its verify pass
-(0/0/0, 11 resolutions) both landed, and `check-cumulative-critic` is satisfied at HEAD. Four of the
-verify pass's demoted observations ride into Chunk 02 — see its carried-in block. Next: Chunk 02,
-starting by reading #596 to settle the telemetry sink BEFORE writing it. Requirements in
-`.prawduct/artifacts/gate-as-dispatcher-requirements.md` — read it first, it carries the
-measurements, the safety argument, and the withdrawn layers. `active_build_plan` still points at
-`artifacts/build-plan-critic-review-identity.md` and **must not be repointed** until the
-`develop`→`main` release ships (gitflow rule, `methodology/planning.md` "Plan lifecycle").
+- [x] Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
+Context: **BOTH CHUNKS COMPLETE.** Chunk 01 at `586ae1d`; Chunk 02 across `e55b6e3` (the feature),
+`5612999` / `b0df883` / `93b4afb` / `1298d31` (five review rounds' findings) and `8ba8b3e` (two
+framework defects the rounds exposed). Suite green — the count lives in `.prawduct/.test-evidence.json`
+and `prawduct-hook test-status` is the reader; a figure transcribed here goes stale silently.
+`check-cumulative-critic` is SATISFIED at HEAD (5 review facts, 0 free edges, 0 unresolved blocking).
+
+Step 0 settled by owner ruling: `change-log.md` is correctly non-judgeable, and `learnings-detail.md`'s
+CRT-7M2D bullet was wrong on three of its five named files. The refusal is mutation-verified on both
+conjuncts and refuses exactly rounds 3/4/5 of `fix/backlog-import-title-boundary` while dispatching
+1/2/6/7.
+
+**Chunk 02's R-26 ruling: #596's sink, not the `ledger-append` this plan proposed** — reasons on
+`evidence.append_guard_refusal` and now on #596 itself, so the next reader does not re-litigate it.
+Two deliverables changed on their merits: the `coverage.py` remedy line was WITHDRAWN (an `uncovered`
+verdict entails the span is not free, so it would have taught a false rule), and the "unconditional
+verify-resolutions" the plan wanted replaced turned out to be the BLOCKING arm's, which is correct.
+
+**What the review rounds cost, and what came of it.** Five rounds, ~1h of reviewer time. The dominant
+finding class was not judgment but REGISTRATION — a primitive added to an enumerated set in code while
+the registry documenting that set went stale (four times: api-contract § Error Model, data-model kinds,
+the concerns row, the waivers vocabulary). Three of those cost a round each. Both underlying framework
+defects are fixed in `8ba8b3e` per the owner's standing rule (fix in place, never file):
+`tests/preferences/test_registry_completeness.py` makes the class a suite-time set-difference, and the
+verify-mode severity directive now separates "the tree must not move" from "this fix is owed".
+
+`active_build_plan` still points at `artifacts/build-plan-critic-review-identity.md` and **must not be
+repointed** until the `develop`→`main` release ships (gitflow, `methodology/planning.md`
+"Plan lifecycle"). No PR yet — the user has not asked for one.
 
 ## Verification Strategy
 
