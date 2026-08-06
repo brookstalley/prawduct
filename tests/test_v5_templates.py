@@ -496,8 +496,8 @@ def extract_section(text: str, heading: str) -> str:
 #: Requirement 1 of the appendix binds "no policy statement, gate, or check",
 #: which is broader than the spec file alone — so the guards below sweep every
 #: surface that exists today rather than only the one this chunk created. The
-#: doctor check and the janitor theme joined as they landed; the advisory probe
-#: belongs here too when it lands. The detector is already reusable.
+#: doctor check, the janitor theme and the advisory probe each joined as they
+#: landed.
 #:
 #: The two Critic entries are the "gate, or check" arm of that requirement: the
 #: Goal 2 bullet is what actually enforces the policy, and it exists twice
@@ -536,9 +536,17 @@ def extract_section(text: str, heading: str) -> str:
 #:   in general-purpose files too — one numbered governance check inside a flow
 #:   of them, one maintenance theme inside a list of them — so they take
 #:   ``bullet`` as well.
+#: ``module``  — the surface is not markdown and has no heading to anchor on, so
+#:   the FILE is the region and its second element is ``None``. The advisory
+#:   probe is the case: what it states to a reader is a handful of Python string
+#:   literals plus the docstring that says why it has no detector, and those are
+#:   read in every session briefing of every product — the widest-read statement
+#:   of this policy anywhere in the plugin. Scanning the whole file is honest
+#:   only because the file exists for nothing else, which is exactly what the
+#:   scope test below insists on.
 #:
-#: Which of the two applies is not left to taste: see
-#: ``test_the_declared_scope_follows_whether_the_heading_is_dedicated``.
+#: Which of the three applies is not left to taste: see
+#: ``test_the_declared_scope_follows_whether_the_region_is_dedicated``.
 _POLICY_SURFACES = (
     ("methodology/discovery.md", "## Surface Upstream Dependency Policy", "section"),
     ("templates/security-model.md", "## Upstream Dependencies", "section"),
@@ -546,10 +554,25 @@ _POLICY_SURFACES = (
     ("skills/critic/goals-1-3.md", "## 2. Nothing Is Missing", "bullet"),
     ("skills/doctor/SKILL.md", "## Health Check Flow (current dir is a product repo)", "bullet"),
     ("skills/janitor/SKILL.md", "### Dependency Health", "bullet"),
+    ("lib/dependency_policy_probes.py", None, "module"),
 )
 
 
-def policed_text(rel_path: str, heading: str, scope: str) -> str:
+def surface_region(rel_path: str, heading: str | None, scope: str) -> str:
+    """The whole region a surface owns, before the negative guards narrow it.
+
+    Markdown surfaces own one section; a ``module`` surface owns its whole file.
+    Split out from :func:`policed_text` because the citation guard asks about the
+    region and the negative guards ask about the policed subset of it, and the
+    two questions were drifting apart in a single function.
+    """
+    text = read_file_under_plugin(rel_path)
+    if scope == "module":
+        return text
+    return extract_section(text, heading)
+
+
+def policed_text(rel_path: str, heading: str | None, scope: str) -> str:
     """The region the negative guards scan, per the surface's declared scope.
 
     For ``bullet`` scope the declaring lines are found by their citation of the
@@ -558,11 +581,11 @@ def policed_text(rel_path: str, heading: str, scope: str) -> str:
     same failure ``test_the_sweep_covers_the_surfaces_that_exist`` exists to
     prevent one level up.
     """
-    section = extract_section(read_file_under_plugin(rel_path), heading)
-    if scope == "section":
-        return section
+    region = surface_region(rel_path, heading, scope)
+    if scope in ("section", "module"):
+        return region
     assert scope == "bullet", f"unknown surface scope {scope!r}"
-    declaring = [line for line in section.split("\n") if _POLICY_SPEC in line]
+    declaring = [line for line in region.split("\n") if _POLICY_SPEC in line]
     assert declaring, (
         f"{rel_path}'s {heading!r} carries no line citing {_POLICY_SPEC} — the "
         "negative guards would scan nothing and pass vacuously"
@@ -862,14 +885,14 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
         these files are read, and asserting only the basename would let one
         through — every surface carries the prefix today, so this pins the
         current state rather than asking for a change."""
-        section = extract_section(read_file_under_plugin(rel_path), heading)
+        section = surface_region(rel_path, heading, scope)
         assert f"docs/{_POLICY_SPEC}" in section, (
             f"{rel_path}'s policy section must cite docs/{_POLICY_SPEC} — it is the "
             "only home for the clauses, the defaults and the tiers"
         )
 
     @pytest.mark.parametrize("rel_path,heading,scope", _POLICY_SURFACES)
-    def test_the_declared_scope_follows_whether_the_heading_is_dedicated(
+    def test_the_declared_scope_follows_whether_the_region_is_dedicated(
         self, rel_path, heading, scope
     ):
         """The scope *choice* was the unpinned half of this roster.
@@ -882,14 +905,36 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
         guard accusing its author of restating a policy they never mentioned.
 
         So the choice is derived from the one property that actually decides it
-        and is decidable by reading: **a section is dedicated when its heading
-        says so.** Every ``section`` surface is titled after the policy; every
+        and is decidable by reading: **a region is dedicated when its name says
+        so.** Every ``section`` surface is titled after the policy; every
         ``bullet`` surface sits under a heading about something else and merely
         carries a policy line or two. A dedicated section whose title avoids the
         word is the one shape this misjudges — rename the heading (which its
         readers want anyway) or widen the rule here deliberately, but do not
         silently flip the third element to route around it.
+
+        A ``module`` surface has no heading, so the same question is asked of the
+        thing that does name its region: the filename. Whole-file scanning is
+        only honest for a file that exists for this policy alone, and a module
+        named after something else would be one whose unrelated code the negative
+        guards were about to police.
         """
+        if scope == "module":
+            assert heading is None, (
+                f"{rel_path} is declared 'module' but carries a heading — a module "
+                "surface's region is the whole file, so a heading would be ignored"
+            )
+            stem = rel_path.rsplit("/", 1)[-1]
+            assert "dependency_policy" in stem, (
+                f"{rel_path} is scanned whole, but its name does not say it is "
+                "about this policy — either it is the wrong scope or the file "
+                "holds unrelated code the negative guards would police"
+            )
+            return
+        assert heading is not None, (
+            f"{rel_path} declares scope {scope!r}, which anchors on a heading, but "
+            "has none — a non-markdown surface takes 'module'"
+        )
         dedicated = "upstream" in heading.lower()
         expected = "section" if dedicated else "bullet"
         assert scope == expected, (
@@ -902,12 +947,18 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
     def test_the_sweep_covers_the_surfaces_that_exist(self):
         """Guards against the roster silently emptying — a parametrized sweep over
         an empty tuple passes and proves nothing."""
-        assert len(_POLICY_SURFACES) >= 6
+        assert len(_POLICY_SURFACES) >= 7
         for rel_path, heading, scope in _POLICY_SURFACES:
             text = read_file_under_plugin(rel_path)
-            assert re.search(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE), (
-                f"{rel_path} no longer carries {heading!r} — the sweep is scanning nothing"
-            )
+            if heading is None:
+                # No anchor to lose; what a `module` surface can lose instead is
+                # the file itself — `read_file_under_plugin` has already raised
+                # if so, and an emptied one is caught by the region check below.
+                assert scope == "module"
+            else:
+                assert re.search(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE), (
+                    f"{rel_path} no longer carries {heading!r} — the sweep is scanning nothing"
+                )
             # And that the region actually policed is non-empty, which for a
             # `bullet` surface is a different question from the heading existing.
             assert policed_text(rel_path, heading, scope).strip()

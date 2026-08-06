@@ -63,7 +63,9 @@ different questions at different altitudes — that is why they are not duplicat
   parties still trusted and still carrying a why, do install-time execution and pinning still match
   practice — and supplies the counterweight to a currency-only dependency survey. doctor grades the
   repo against the record; the janitor grades the record against the world
-  (`upstream-dependency-policy.md`).
+  (`upstream-dependency-policy.md`). As with API versioning, the recorded decision is the gated
+  part (the forward Critic check + the ambient `dependency-policy` advisory), and neither of these
+  two checks is a gate.
 
 ## Adjacencies that are handoffs, not overlaps
 

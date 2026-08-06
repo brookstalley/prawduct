@@ -116,7 +116,7 @@ feature's seven legs, which is the direct structural precedent.
 - [x] Chunk 02: The canonical policy spec + the security-model home
 - [x] Chunk 03: Forward Critic gate + the `**Dependency change:**` field
 - [x] Chunk 04: Retroactive — doctor check #15 (incl. the conformance procedure) + janitor
-- [ ] Chunk 05: Migration nudge — the dependency-policy advisory probe (CODE)
+- [x] Chunk 05: Migration nudge — the dependency-policy advisory probe (CODE)
 - [ ] Chunk 06: Coherence & close — matrix row, Known Gaps overturn, update-procedure template
 Context: Plan authored 2026-08-05 on `feature/upstream-dependency-policy` (off `develop`); requirements ruled the same day. Owner confirmed both post-ruling design changes (agent-performed conformance — *"it needs to be adaptable to any platform"* — and the tier-3 fillable runbook template).
 
@@ -328,8 +328,28 @@ invariant that actually decides the split. R-3 — this plan's own Tests line sa
 paths as moving it), and Chunk 06's `cumulative` is the designated gate that spans them — closing
 it early buys a round and nothing else.
 
-Next: Chunk 05 — the advisory probe (the only code chunk). Its deliverable **2b** carries the
-check↔advisory pairing this chunk deliberately did not assert forward.
+**Chunk 05 DONE.** `plugin/lib/dependency_policy_probes.py` (type `dependency-policy`, feature
+`upstream-dependency-policy`), its composition-root line, `tests/test_dependency_policy_probe.py`,
+the `_POLICY_SURFACES` `module`-scope entry, and deliverable 2b's pairing across doctor #15, the
+routing row, the janitor closer and the probe's own `recommended_action`. 3872 green. The advisory
+was observed firing and then resolving in a fixture repo (criterion 2 above).
+
+**Chunk 05 review** (`rev-20260806T125257Z-969df380`, 0 blocking / 3 warnings / 1 note): R-1 to R-3
+FIXED, R-4 carried into Chunk 06 deliverable 5b. R-1 — the pairing sentence claimed both surfaces
+"resolve on the same recorded fact"; they do not, because #15(a) is satisfied by *either* the block
+or the flat fact while the probe sees only the flat fact. Found and fixed during the builder's own
+scrub *before* the review landed (the reviewer read the pre-`critic-begin` tree), by naming the
+asymmetry rather than softening the claim: a filled block with no mirror now has its own reported
+state, pinned by a test that reads a real state file through the real loader. R-2 — criterion 2's
+end-to-end check *was* run, in a fixture that was then deleted, so nothing on disk showed it;
+recorded above instead. R-3 — three prose surfaces named the advisory as a bare literal with
+nothing coupling them to `PROBE_TYPE`, so a rename would leave all three routing readers to an
+advisory that no longer exists with the suite green; one parametrized assert per surface now
+couples them, red-verified by renaming the type. **No `verify-resolutions` round was spent** —
+`cost-of-commit` prices 6 of 8 paths as moving coverage, and Chunk 06's `cumulative` is the
+designated gate that spans them.
+
+Next: Chunk 06 — coherence & close. It now carries **5b**, the framework's own unanswered nudge.
 
 ## Yield Declarations
 
@@ -445,10 +465,12 @@ principle. Three controls are added here:
   2. `plugin/lib/probe_families.py` — register the new family alongside the existing eight in `register_all()`.
   2b. **Carried from Chunk 04 — wire the check↔advisory pair in both directions, which is the half of #9's shape Chunk 04 could not land.** #9 says "this is the on-demand health-check surface for the same signal the `api-versioning` session-start advisory raises ambiently; both resolve on a recorded decision," and #15 was deliberately written *without* that sentence rather than asserting a probe that did not exist yet (the same deferral Chunk 01 made for the `docs/` pointer, for the same reason — a forward reference is a claim, and this branch has already been burned once by one). So here: add the pairing sentence to `plugin/skills/doctor/SKILL.md` check #15 naming the probe's actual advisory type, add the routing-table row's advisory phrasing to match #11-#14's, point the probe's `recommended_action` at check #15 as well as at recording the decision, and restore the "and the ambient nudge" clause to `plugin/skills/janitor/SKILL.md`'s Dependency Health closer. Verify the type string against the shipped probe rather than against this line.
   3. new `tests/test_dependency_policy_probe.py` — fires when the fact is unset; suppressed when set; suppressed when explicitly recorded as "none"; roster registration; and a regression test asserting the probe consults **no** codebase scan (the design property above, pinned so it cannot be silently changed).
-- **Tests:** `tests/test_dependency_policy_probe.py` above. Each behavior has a case that fails before the probe exists and passes after.
+  4. **The probe joins `_POLICY_SURFACES`** in `tests/test_v5_templates.py` — the roster's own comment had reserved it a slot ("the advisory probe belongs here too when it lands"). What the probe states to a reader is a few string literals rendered into *every session briefing of every product*, which makes it the widest-read statement of this policy in the plugin and the last surface that should be unguarded. The roster is heading-anchored and the probe is not markdown, so this adds a third scope, `module` (region = the whole file, second element `None`), and the scope test asks of a module the same question it asks of a heading — does the region's own name say it is dedicated to this policy.
+- **Tests:** `tests/test_dependency_policy_probe.py` above, plus the three existing sweep guards now covering the probe via the roster entry (deliverable 4). Each behavior has a case that fails before the probe exists and passes after.
+- **Also edited, beyond the deliverable list:** `plugin/docs/doctor-vs-janitor.md`. Its "legitimately both" entry for API versioning names that concern's ambient advisory alongside the Critic as the gated part; the upstream entry could not say the same until this chunk, and leaving the sibling bullets asymmetric is the cascade failure the previous chunk's review already caught once on this file.
 - **Acceptance criteria:**
   1. New tests pass; `python3 -m pytest -q` green.
-  2. Probe is registered — a session-start sync in a repo with no recorded policy surfaces the advisory in the briefing; recording the fact suppresses it. Verify end-to-end, not by unit test alone.
+  2. Probe is registered — a session-start sync in a repo with no recorded policy surfaces the advisory in the briefing; recording the fact suppresses it. Verify end-to-end, not by unit test alone. **Observed**, against a throwaway fixture repo (`git init` + a minimal `.prawduct/project-state.yaml`), by running `prawduct-hook clear --session-start` twice: the first printed the nudge in the ADVISORIES block with both routes rendered, as `upstream-dependency-policy-dependency-policy-v1-d7cfb2`; appending the one-line fact and re-running moved that entry to `state: "resolved"` and the briefing reported "Resolved since last session: 1". The fixture was deleted afterwards, which is why this line records what was seen — a criterion asking for observation is not met by a test file, and it is not evidenced by a directory that no longer exists.
   3. No new broad `except` without a `# prawduct:allow` waiver; the probe fails open on any read error (advisory infrastructure convention).
 - **Critic mode:** chunk
 - **Type:** code
@@ -467,6 +489,7 @@ principle. Three controls are added here:
   2. `.prawduct/cross-cutting-concerns.md` Known Gaps — **overturn the standing position.** The bullet currently reads *"Dependency management has no discovery trigger. Dependencies are a planning concern. This is by design."* Replace it: the justification half remains a planning concern; the **intake** half now has a discovery trigger, and say why the original position no longer holds (the threat model it predates). Do not delete the sentence silently — a reversed position is recorded as a reversal.
   3. new `plugin/templates/dependency-update-runbook.md` — the tier-3 deliverable (requirements §5): a fillable procedure a product derives from its recorded policy — enumerate available updates, obtain publication times, classify by tier and clause, act — built on the existing runbook machinery and pointed at from `plugin/docs/upstream-dependency-policy.md`. Written per `plugin/docs/runbook-authoring.md`.
   4. `.prawduct/learnings.md` — capture the two meta-lessons this work produced: (a) a policy for a multi-ecosystem concern must key its detection off *the decision being recorded*, not off enumerating the ecosystems, or the detector becomes the allowlist the policy exists to avoid; (b) `prawduct-hook jurisdiction` caught a norm conflict that plain review would have shipped — the conformance-write routing — which is evidence about *when* to run it (before writing the plan, not at review).
+  5b. **Carried from Chunk 05's review — the framework has not answered its own nudge.** This repo's `project-state.yaml` carries neither `upstream_dependency_policy_decided` nor the decision block, so from Chunk 05 onward the advisory fires against prawduct itself at every session start, and no chunk in this plan homes the answer. That the nudge fires here is the feature working (prawduct runs CI actions and dev dependencies — it is squarely in scope, and this is the dogfooding case), but shipping a framework-wide nudge that its own repo ignores is the "aspirational rule" shape the norm lifecycle exists to catch. **The terms themselves are an owner decision, not one to infer** — record `design_decisions.upstream_dependency_policy` with the values the owner chooses (defaults-with-why per `docs/upstream-dependency-policy.md`) plus the flat fact, and put the rationale and the trusted register in this repo's `security-model.md` as a `## Direction` entry, exactly as the feature asks of any product.
   5. `.prawduct/change-log.md` — the feature entry, tagged `scope=upstream-dependency-policy` per the bundle-at-release convention. **Must name one test consolidation**: Chunk 03 deleted `test_does_not_restate_the_numeric_default` (subsumed by `test_no_policy_surface_restates_the_numeric_default`, which sweeps the same file, heading and `\d+\s*days?` property). Goal 1's rule is that legitimate consolidation needs a change-log entry, and this branch bundles change-log at release — so this is where that debt is paid, and naming it here is what stops it being reconstructed from a diff three chunks later.
 - **Tests:** `python3 -m pytest -q` green; all touched token budgets pass.
 - **Acceptance criteria:**

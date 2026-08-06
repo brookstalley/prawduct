@@ -119,7 +119,7 @@ Are external dependencies current, justified, minimal, and secure — and do the
 - **The trusted register** (`…policy.trusted`; clause 2 of `docs/upstream-dependency-policy.md`) — is every declared-trusted party still trusted, and does each still carry its why? A why that has stopped holding is the finding; an entry that never had one was never auditable.
 - **Install-time execution and pinning** (`…policy.install_time_execution`, `…policy.resolution_pinning`; clauses 4 and 5 of `docs/upstream-dependency-policy.md`) — do the repo's actual behaviours still match what was recorded: is upstream code still denied arbitrary execution at install time, with any allowlist still carrying live reasons; do CI and agent-performed installs still install exactly what is pinned rather than quietly re-resolving?
 
-Survey, not gate. The recorded *decision* is the gated part and lives elsewhere (`/prawduct:doctor` check #15); this theme asks whether terms recorded once still fit the product. The clauses, the enforcement tiers and the per-ecosystem mapping are stated once in `docs/upstream-dependency-policy.md` — cite it rather than restating any of it here.
+Survey, not gate. The recorded *decision* is the gated part and lives elsewhere (`/prawduct:doctor` check #15 flags a missing one; the `dependency-policy` advisory nudges ambiently); this theme asks whether terms recorded once still fit the product. The clauses, the enforcement tiers and the per-ecosystem mapping are stated once in `docs/upstream-dependency-policy.md` — cite it rather than restating any of it here.
 
 ### API Design & Versioning Hygiene
 

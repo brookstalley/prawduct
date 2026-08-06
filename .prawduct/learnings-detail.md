@@ -2735,3 +2735,26 @@ so `validate_manifest`'s gate never covers it. Found by the review OF the commit
 The generalisation is about attention, not about paths: reviewing your own change shows you the new
 call sites, and the vulnerable one is the line that did not move.
 
+
+## A cross-reference claiming two surfaces AGREE is a claim about the OTHER one
+
+**2026-08-06 instance.** The upstream-dependency-policy feature wired doctor Health Check #15 to
+the `dependency-policy` advisory in both directions — the deliverable's words were "wire the
+check<->advisory pair". Writing #15's half, the sentence came out as "both resolve on the same
+recorded fact". #15(a) reports degraded only when the decision block is null AND the flat fact is
+unset, so either one satisfies it; the probe reads `ProjectState`, a column-0 scan that cannot see
+nested keys at all, so only the flat fact suppresses it. Block-filled-mirror-unset therefore grades
+healthy and nudges forever. Caught in the builder's own scrub and independently by the review of
+the same tree, which also identified the root: check #9's equivalent sentence says "both resolve on
+a recorded decision" precisely because its two surfaces read different things.
+
+Resolved by naming the asymmetry rather than retreating to the vague wording — #15 now tells the
+reader to report that pair and present the one-line fact edit — and pinned by a test that builds a
+real state file and reads it through the real loader, since a hand-built `ProjectState` is exactly
+the object that cannot express "the nested block is filled".
+
+The same chunk produced the mirror failure at the code/prose boundary: three prose surfaces named
+the advisory type as a bare literal with nothing coupling them to `PROBE_TYPE`, so a rename would
+have left all three routing readers to an advisory that no longer existed, suite green. That half is
+already covered by the denormalized-state and grep-for-the-new-symbol rules; the part not covered
+elsewhere is the first one, where the claim is about agreement rather than about a copied token.
