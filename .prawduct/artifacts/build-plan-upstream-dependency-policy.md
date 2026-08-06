@@ -133,7 +133,80 @@ Context: Plan authored 2026-08-05 on `feature/upstream-dependency-policy` (off `
 
 **Persisted-schema consumer queries, enumerated before the fields were designed** (planning.md's lock-in rule): the advisory probe asks *does an answer exist* (top-level fact); doctor #15 asks *does it exist* and *is it expressed per surface* (`surfaces`); janitor asks *are trusted parties still trusted and still carrying a why* (`trusted`) and *do install-time execution and pinning still match* (`install_time_execution`, `resolution_pinning`); the Critic asks *is a policy recorded* (presence). Every query has a field.
 
-Next: Chunk 01 `final` Critic review, then Chunk 02.
+**Chunk 02 BUILT, under review.** `develop` was merged in first (the branch was cut before
+v3.2.6 and the critic-review-identity work; Chunk 03 edits `review-protocol.md` and
+`goals-1-3.md`, so it needed their current text and current budgets, not the pre-merge ones).
+The `active_build_plan` merge conflict resolved to THIS plan on the merits — develop's side
+named a plan that had finished building, which is the dormant-pointer state that slot's own
+incident history is made of.
+
+New `plugin/docs/upstream-dependency-policy.md` is the canonical home: governing sentence, six
+clauses, three tiers with their three rules, and the mapping appendix marked non-normative.
+`templates/security-model.md` gained an `## Upstream Dependencies` section that POINTS at it and
+asks only for what is the product's own (chosen values, the trusted register each-with-its-why,
+the per-surface tier reached), plus a `## Direction` routing note. The Chunk 01 `docs/` pointer
+deferred to here landed on all three surfaces — `discovery.md`, `planning.md`, and the
+`project-state.yaml` legend — each citing the spec directly rather than hopping through another.
+
+**The agnosticism guard was red-verified end to end**, not just against planted strings: a
+`yarn.lock` planted in Clause 5 of the real file failed
+`test_no_normative_statement_names_an_ecosystem` with its line number, and was reverted. Its
+form-family covers package managers, both update bots, AND manifest/lockfile names — naming a
+manifest file is the allowlist trap even when no tool is named. Tokens colliding with English
+(`go`, `pub`, `hex`) are guarded at their qualified spellings so the check cannot cry wolf. A
+companion test pins that the same detector fires ≥5 times in the appendix, so green over the
+normative body means the property holds rather than the regex being broken.
+
+**Two one-home copies removed while writing the pointers, both self-inflicted by the same
+sentence.** Adding "the clauses have one home" above prose that restated the 7-day default made
+`security-model.md` and the `project-state.yaml` legend contradict themselves in place; both now
+point at the spec, and a `\d+\s*days?` guard keeps the template from regaining a numeric default.
+**Left deliberately:** `discovery.md` still carries the defaults in conversational form, because
+its job is the elicitation script and an interviewer should not need a second file mid-interview
+— the new sentence marks it as such ("what follows is how to elicit them"). Flagged for review
+rather than silently kept.
+
+**The Chunk 01 blocking finding is still unresolved in the evidence store** (line above: no
+`verify-resolutions` ran, by owner instruction). `check-cumulative-critic` reports the span
+uncovered. This chunk's review is the one that covers the same files.
+
+**Chunk 02 review dispositions** (`rev-20260806T043411Z-61463dc4`, `chunk`, 1 blocking / 1 warning
+/ 2 notes — all FIXED, none accepted or filed):
+
+- **BLOCKING — the `governed_by` one-home claim was false of the tree.** `discovery.md` restated
+  the 7-day default with its why, five clause substances, the tier model's Binds column and the
+  intake-surface enumeration, in a form a reader can act on without following the pointer — which
+  is the norm's own stated line. The finding's decisive evidence was empirical, not theoretical:
+  the copies had **already diverged on day one**, before anyone edited either (spec 9 intake
+  surfaces, discovery 7; "extensions" vs "plugins"). Offered an exception as the cheap route and
+  it was declined on the merits — the divergence had already happened, so an exception would be
+  recording a defect rather than accepting a trade. Fixed by splitting on ownership: **the spec
+  owns what the policy says, `discovery.md` owns how to elicit it.** The clause substance, the
+  number and the tier semantics are now citations; the trigger, the stance, the prompt-with-CI-
+  actions guidance, the risk scaling and Chunk 01's reasoned sub-key list all stay, because those
+  are discovery's own and not the spec's.
+- **WARNING — the template's pointer did not resolve from the repo it ships into.** `security-
+  model.md` is instantiated as a *product's* artifact where no `docs/` exists, and the section's
+  entire routing rests on "read them there". Now qualified "in the prawduct plugin (not a path in
+  this repo)", following `templates/runbook.md`, which is the one other template aimed at an
+  author standing in their own repo.
+- **NOTE — the guard covered one of seven surfaces.** Closed rather than accepted: the guards are
+  now a parametrized sweep over `_POLICY_SURFACES`, and a roster-non-empty test stops it silently
+  scanning nothing. Chunks 03-05 add their Critic bullet, doctor check, janitor theme and probe to
+  that tuple; `_ECOSYSTEM_RE` is already reusable.
+- **NOTE — the Deliverables list did not name the pointer edits.** Added as deliverable 4.
+
+**A defect the fix commit found in its own tests.** Qualifying the template pointer added the
+string `` `## Upstream Dependencies` `` to the Direction comment — and the test's section
+extraction used `str.index`, which then bound to that *mid-sentence mention* instead of the real
+heading, silently widening the scanned region to include four unrelated sections. Every assertion
+still passed. `extract_section` is now line-anchored. The general shape: a test that locates its
+subject by substring is one prose edit away from testing the wrong region, and it fails silently
+because the wrong region usually still contains the right words.
+
+Next: Chunk 03 — which lands against ~9/2/3 tokens of headroom on
+`review-protocol.md`/`goals-1-3.md`/`building.md` respectively, so its trim is real work, not a
+rider.
 
 ## Yield Declarations
 
@@ -181,7 +254,8 @@ principle. Three controls are added here:
 - **Deliverables:**
   1. new `plugin/docs/upstream-dependency-policy.md` — the canonical spec. Sections: the governing sentence (dependencies, not package managers); the six clauses stated with no ecosystem named; the three enforcement tiers with their three rules (prefer strongest available; record the tier reached per surface; tier 3 is where judgment lives everywhere, not a consolation prize); and a **clearly-marked non-normative mapping appendix** carrying §9's three requirements verbatim — no policy statement may be phrased in terms of a named ecosystem, an absent ecosystem is fully covered at its best reachable tier, and a stale table is a documentation defect and never a coverage gap.
   2. `plugin/templates/security-model.md` — a new "Upstream Dependencies" section in the template's comment style, proportionate-to-risk like its siblings, pointing at the spec above for the clauses and telling the author what belongs *here*: the product's chosen values, its declared trusted parties **each with a why**, and its per-surface tier record. Note in the existing `## Direction` guidance comment that the intake policy is norm-shaped (it binds future work) so it lands as a Direction entry, not loose prose.
-  3. **Guard tests** (`tests/test_v5_templates.py`): the spec file states the governing sentence; the mapping appendix is marked non-normative; no clause statement names an ecosystem (the agnosticism guard — this is the test that makes the governing sentence enforceable rather than aspirational); the security-model section exists and points at the spec rather than restating the clauses.
+  3. **Guard tests** (`tests/test_v5_templates.py`): the spec file states the governing sentence; the mapping appendix is marked non-normative; no clause statement names an ecosystem (the agnosticism guard — this is the test that makes the governing sentence enforceable rather than aspirational); the security-model section exists and points at the spec rather than restating the clauses. The agnosticism and one-home guards sweep **every** surface that states the policy, not the spec alone: requirement 1 binds "policy statement, gate, or check", and a guard on one file is what let the same defect sit unnoticed on a neighbouring one.
+  4. **The `docs/` pointers Chunk 01 deferred to here** — `methodology/discovery.md`, `methodology/planning.md`, and the `templates/project-state.yaml` legend each cite the spec directly once it exists. Chunk 01's carried note 3 assigns them to this chunk; listing them here so the deliverable roster matches what the chunk lands.
 - **Tests:** the guard tests above. Each fails before the deliverable exists.
 - **Acceptance criteria:**
   1. new `plugin/docs/upstream-dependency-policy.md` exists with all sections; the appendix is explicitly non-normative.

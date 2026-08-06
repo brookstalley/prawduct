@@ -20,6 +20,7 @@ project-preferences.md).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -403,3 +404,364 @@ class TestApiContractTemplate:
         assert "stability" in self.content.lower()                  # surface inventory / tiers
         assert "ISO-8601" in self.content                           # wire conventions
         assert "tolerant reader" in self.content.lower()            # evolution rules
+
+
+# =============================================================================
+# docs/upstream-dependency-policy.md — the canonical intake spec
+# =============================================================================
+
+#: Ecosystem, tool, and manifest-filename tokens. The list is the FORM-FAMILY of
+#: "phrased in terms of a named ecosystem", not one spelling of it: package
+#: managers and registries, the two update bots, and — the case that matters most
+#: — manifest and lockfile names. Naming manifest filenames is precisely the
+#: allowlist trap the requirements reject (an allowlist under-enumerates package
+#: managers, and mistakes "package manager" for "delivery mechanism"), so a clause
+#: that reached for `package.json` would be the defect even though no tool is named.
+#:
+#: Tokens whose bare form collides with ordinary English are spelled at their
+#: qualified form instead — `go.mod`/`go modules` not `go`, `pub.dev` not `pub`,
+#: `hex.pm` not `hex`. A guard that fires on the word "go" gets deleted the first
+#: time it cries wolf, and then guards nothing.
+_ECOSYSTEM_TOKENS = (
+    # Package managers and registries
+    "npm", "pnpm", "yarn", "bun", "deno", "PyPI", "pip", "uv", "poetry", "PDM",
+    "pipenv", "pixi", "conda", "cargo", "crates.io", "maven", "gradle", "nuget",
+    "composer", "packagist", "rubygems", "bundler", "cocoapods", "swiftpm",
+    "homebrew", "nix", "cpan", "hex.pm", "pub.dev", "go.mod", "go modules",
+    # Update bots
+    "dependabot", "renovate", "snyk",
+    # Manifests and lockfiles
+    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "pyproject.toml", "requirements.txt", "uv.lock", "Gemfile", "Cargo.toml",
+    "pom.xml", "build.gradle", "composer.json", "mix.exs", "go.sum",
+)
+
+_ECOSYSTEM_RE = re.compile(
+    r"\b(?:"
+    + "|".join(re.escape(t) for t in sorted(_ECOSYSTEM_TOKENS, key=len, reverse=True))
+    + r")\b",
+    re.IGNORECASE,
+)
+
+#: The normative body ends where the appendix begins. Keyed on the NON-NORMATIVE
+#: marker rather than the word "Appendix" alone, so an appendix that loses its
+#: marker does not silently widen the scanned region — it fails
+#: ``test_the_mapping_appendix_is_marked_non_normative`` first.
+_APPENDIX_RE = re.compile(r"^##\s+Appendix\b[^\n]*NON-NORMATIVE", re.MULTILINE)
+
+_POLICY_SPEC = "upstream-dependency-policy.md"
+
+
+def read_doc(name: str) -> str:
+    """Read a shipped ``plugin/docs/`` spec file."""
+    return (FRAMEWORK_DIR / "docs" / name).read_text(encoding="utf-8")
+
+
+def read_file_under_plugin(rel_path: str) -> str:
+    """Read any shipped plugin file by its plugin-relative path."""
+    return (FRAMEWORK_DIR / rel_path).read_text(encoding="utf-8")
+
+
+def extract_section(text: str, heading: str) -> str:
+    """Return one ``## `` section, from its heading to the next one (or EOF).
+
+    Anchored at LINE START, which is load-bearing rather than fussy: prose
+    routinely *names* a heading mid-sentence — this template's own Direction
+    comment says "the `## Upstream Dependencies` section below" — and a plain
+    ``str.index`` binds to that mention instead, silently scanning a region that
+    starts in the wrong place. The bug is invisible because the wrong region
+    usually still contains the right text, so every assertion keeps passing.
+    """
+    match = re.search(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE)
+    assert match, f"section {heading!r} not found as a heading"
+    rest = text[match.end():]
+    nxt = re.search(r"^## ", rest, re.MULTILINE)
+    return heading + (rest[: nxt.start()] if nxt else rest)
+
+
+#: Every surface that STATES the intake policy to a reader, paired with the
+#: section that does the stating. The spec is the home; these cite it.
+#:
+#: Requirement 1 of the appendix binds "no policy statement, gate, or check",
+#: which is broader than the spec file alone — so the guards below sweep every
+#: surface that exists today rather than only the one this chunk created. Chunks
+#: adding a Critic bullet, a doctor check, a janitor theme or a probe belong in
+#: this tuple too; the detector is already reusable.
+_POLICY_SURFACES = (
+    ("methodology/discovery.md", "## Surface Upstream Dependency Policy"),
+    ("templates/security-model.md", "## Upstream Dependencies"),
+)
+
+
+class TestUpstreamDependencyPolicySpec:
+    """Guards the canonical intake spec: the governing sentence, the six clauses,
+    the three tiers, and — the load-bearing one — that no normative statement is
+    phrased in terms of a named ecosystem.
+
+    The agnosticism guard is what makes the governing sentence *enforceable*
+    rather than aspirational. Without it, "this policy is about dependencies, not
+    package managers" is a sentence anyone can contradict two paragraphs later.
+    """
+
+    def setup_method(self):
+        self.content = read_doc(_POLICY_SPEC)
+        #: Whitespace-normalized. Every prose assertion below runs against this,
+        #: because these files are hard-wrapped: a phrase that reads as one
+        #: sentence is routinely split across a newline plus indentation, and a
+        #: raw substring check then fails for a reason that has nothing to do
+        #: with the property it is guarding. The line-numbered scans keep using
+        #: the raw text — they report positions.
+        self.flat = " ".join(self.content.split())
+
+    def test_states_the_governing_sentence(self):
+        # The one sentence every other rule in the file answers to.
+        assert "dependencies, not package managers" in self.flat
+        # ...and the reason it is not merely a slogan: the delivery mechanism is
+        # what varies, so the scope is defined by who controls the release.
+        assert "independent of delivery mechanism" in self.flat
+
+    def test_names_the_non_manifest_intake_surfaces(self):
+        """The governing sentence is only meaningful if the file shows what it
+        excludes an allowlist from missing. CI actions are the sharpest case —
+        upstream code running with the repository's credentials, in no manifest."""
+        lower = self.flat.lower()
+        for surface in ("base image", "ci action", "submodule", "vendored", "model weight"):
+            assert surface in lower, f"the spec stopped naming {surface!r} as an intake surface"
+
+    def test_all_six_clauses_are_stated(self):
+        for n in range(1, 7):
+            assert f"**Clause {n} —" in self.flat, f"clause {n} is missing"
+
+    def test_the_three_enforcement_tiers_and_their_rules(self):
+        for tier in ("1 — Declarative", "2 — Bot", "3 — Agent-mediated"):
+            assert tier in self.flat, f"tier {tier!r} is missing"
+        lower = self.flat.lower()
+        # Rule 2 is the honesty rule: record the tier REACHED, never assume it.
+        assert "record the tier actually reached" in lower
+        # Rule 3 keeps tier 3 from reading as a consolation prize.
+        assert "not a consolation prize" in lower
+
+    def test_the_mapping_appendix_is_marked_non_normative(self):
+        """A mapping table WILL go stale. It is only safe to ship if a reader
+        cannot mistake it for the policy."""
+        assert _APPENDIX_RE.search(self.content), (
+            "the mapping appendix must carry an explicit NON-NORMATIVE marker in "
+            "its heading — the agnosticism guard's scan boundary keys on it"
+        )
+        assert "This appendix is non-normative" in self.flat
+
+    def test_the_appendix_carries_its_three_consequences(self):
+        """The three requirements that make a stale table harmless."""
+        lower = self.flat.lower()
+        assert "may be phrased in terms of a named ecosystem" in lower
+        assert "absent from this table is fully covered" in lower
+        assert "documentation defect, never a coverage gap" in lower
+
+    # -- the agnosticism guard ------------------------------------------------
+
+    def test_no_normative_statement_names_an_ecosystem(self):
+        """THE guard. Every policy statement above the appendix must be stated in
+        terms of dependencies, never of a named toolchain or manifest file."""
+        match = _APPENDIX_RE.search(self.content)
+        assert match, "cannot scope the guard without the appendix marker"
+        normative = self.content[: match.start()]
+
+        offenders = []
+        for line_num, line in enumerate(normative.splitlines(), start=1):
+            for hit in _ECOSYSTEM_RE.finditer(line):
+                offenders.append(f"  line {line_num}: {hit.group(0)!r} in {line.strip()[:90]!r}")
+        assert not offenders, (
+            "a normative statement in docs/" + _POLICY_SPEC + " names an ecosystem. "
+            "The policy governs dependencies, not package managers; move the naming "
+            "into the non-normative appendix:\n" + "\n".join(offenders)
+        )
+
+    def test_the_agnosticism_guard_is_not_vacuous(self):
+        """Green above must mean *the property holds*, not *the regex is broken*.
+
+        The same detector, run over the same file's appendix, must fire — and fire
+        on several distinct tokens. This is the check that would have caught a
+        typo'd character class or a `\\b` that never matches.
+        """
+        match = _APPENDIX_RE.search(self.content)
+        assert match
+        appendix = self.content[match.start():]
+        found = {hit.group(0).lower() for hit in _ECOSYSTEM_RE.finditer(appendix)}
+        assert len(found) >= 5, (
+            "the detector found fewer than 5 distinct ecosystem names in the very "
+            f"appendix that exists to name them (found: {sorted(found)}) — the scan "
+            "over the normative body cannot be trusted"
+        )
+
+    @pytest.mark.parametrize(
+        "planted",
+        [
+            # Deliberately DIFFERENT phrasings from anything in the file today —
+            # a guard verified red only against the wording that prompted it is a
+            # copy of that wording, not a check on the property.
+            "**Clause 1 — Minimum release age.** Set `minimumReleaseAge` to 7 in pnpm.",
+            "Adding a dependency means editing package.json and committing the lockfile.",
+            "The update bot must be Renovate, configured with a cooldown.",
+            "For Python products, pin with uv.lock; Gemfile.lock is the equivalent elsewhere.",
+            "Tier 1 is only reachable where Cargo.toml or pyproject.toml can express it.",
+        ],
+    )
+    def test_the_agnosticism_guard_is_red_on_a_planted_statement(self, planted):
+        assert _ECOSYSTEM_RE.search(planted), (
+            f"the detector missed a named ecosystem in {planted!r} — it would not "
+            "have caught this clause being rewritten"
+        )
+
+    @pytest.mark.parametrize(
+        "benign",
+        [
+            # Prose that TALKS ABOUT the rule, or states the policy correctly,
+            # must not trip it. A guard that cannot tell a prohibition from an
+            # instance gets deleted the first time it cries wolf.
+            "This policy is about dependencies, not package managers.",
+            "An upstream release is not adopted until it has been publicly available.",
+            "No policy statement may be phrased in terms of a named ecosystem.",
+            "Prefer the strongest tier the ecosystem allows.",
+            "Upstream code is not granted arbitrary execution at install time.",
+            "The resolved dependency set is committed and authoritative.",
+            "Go ahead and record the tier reached for each intake surface.",
+        ],
+    )
+    def test_the_agnosticism_guard_ignores_correct_policy_prose(self, benign):
+        hit = _ECOSYSTEM_RE.search(benign)
+        assert not hit, (
+            f"the detector fired on {hit.group(0)!r} in correct policy prose: {benign!r}"
+        )
+
+
+class TestSecurityModelUpstreamDependencies:
+    """The product-facing home: the template must POINT at the spec and tell the
+    author what belongs *here*, never carry a second copy of the clauses.
+
+    `architecture.md`'s *every fact has one home* norm is the live constraint —
+    "a reader who can act on your text without following the pointer is holding a
+    copy." These tests are that norm made mechanical for this one pair of files.
+    """
+
+    def setup_method(self):
+        self.content = read_template("security-model.md")
+        self.section = extract_section(self.content, "## Upstream Dependencies")
+        # Hard-wrapped prose — see the note in TestUpstreamDependencyPolicySpec.
+        self.flat = " ".join(self.section.split())
+
+    def test_points_at_the_canonical_spec(self):
+        assert f"docs/{_POLICY_SPEC}" in self.flat, (
+            "the section must cite the canonical spec — it is the only home for "
+            "the clauses, the tiers, and the mapping"
+        )
+
+    def test_tells_the_author_not_to_restate_the_clauses(self):
+        assert "Do NOT restate them here" in self.flat
+
+    def test_does_not_carry_a_second_copy_of_the_clauses(self):
+        """The enumeration itself is the thing that must not be duplicated."""
+        assert "Clause 1" not in self.flat and "Clause 2" not in self.flat
+
+    def test_does_not_restate_the_numeric_default(self):
+        """The one fact most likely to be copied and then drift. Any "<n> day(s)"
+        default in the template is a second home for a number the spec owns —
+        matched as a property so a change from 7 to 10 does not slip through."""
+        hit = re.search(r"\d+\s*days?\b", self.flat)
+        assert not hit, (
+            f"the section states a numeric default ({hit.group(0)!r}); the spec owns "
+            "it — point at the spec instead so the two cannot drift"
+        )
+
+    def test_asks_for_what_belongs_here(self):
+        """Three things are the product's own, not the framework's."""
+        lower = self.flat.lower()
+        assert "chosen values" in lower                     # its answers
+        assert "each with its why" in lower                 # the trusted register
+        assert "tier record" in lower and "reached" in lower  # the honest tier
+
+    def test_routes_the_policy_to_direction_as_a_norm(self):
+        """It BINDS future work, so it is a norm, not loose prose."""
+        assert "norm-shaped" in self.flat
+        assert "## Direction" in self.flat
+
+    def test_the_direction_guidance_names_the_intake_policy(self):
+        """The routing has to be discoverable from the Direction comment too — an
+        author who reads top-down meets that comment before the section."""
+        head = self.content[: self.content.index("## Authentication")]
+        assert "upstream dependency intake policy" in head.lower()
+
+    def test_stays_proportionate_to_risk_like_its_siblings(self):
+        lower = self.flat.lower()
+        assert "proportionate to risk" in lower
+        for band in ("low-risk", "medium-risk", "high-risk"):
+            assert band in lower
+
+    def test_a_product_with_no_upstream_code_can_record_that(self):
+        """Force the decision, don't mandate the answer."""
+        assert "no upstream code records that in one line" in self.flat
+
+    def test_the_pointer_is_qualified_for_a_reader_in_their_own_repo(self):
+        """This template is instantiated as a PRODUCT's own artifact, where no
+        `docs/` directory exists. A bare `docs/…` path reads as a repo-relative
+        one and resolves nowhere — and the whole section's routing depends on the
+        author actually going and reading it. `templates/runbook.md` sets the
+        precedent for the one other template aimed at an author standing in their
+        own repo: qualify it as living in the plugin."""
+        assert "in the prawduct plugin" in self.flat
+
+
+class TestUpstreamPolicyAgnosticismAcrossSurfaces:
+    """The agnosticism and one-home guards, swept over every surface that states
+    the policy — not just the file this chunk created.
+
+    The blocking finding this closes: `discovery.md` restated the 7-day default,
+    the clause substances and the tier model in a form a reader could act on
+    without following the pointer, and the copies had ALREADY diverged from the
+    spec on day one — nine intake surfaces there, seven here, "extensions" versus
+    "plugins". A norm violated in the same chunk that added a guard against it on
+    two neighbouring files is the inconsistency, so the guard now covers all of
+    them rather than the number being removed from whichever file was noticed.
+    """
+
+    @pytest.mark.parametrize("rel_path,heading", _POLICY_SURFACES)
+    def test_no_policy_surface_names_an_ecosystem(self, rel_path, heading):
+        section = extract_section(read_file_under_plugin(rel_path), heading)
+        offenders = [hit.group(0) for hit in _ECOSYSTEM_RE.finditer(section)]
+        assert not offenders, (
+            f"{rel_path}'s policy section names {offenders!r}. Requirement 1 binds "
+            "every policy statement, not only the spec: the naming belongs in the "
+            "spec's non-normative appendix."
+        )
+
+    @pytest.mark.parametrize("rel_path,heading", _POLICY_SURFACES)
+    def test_no_policy_surface_restates_the_numeric_default(self, rel_path, heading):
+        """The single most copy-prone fact in this feature, and the one that was
+        actually copied. Matched as a property so a change from 7 to 10 cannot
+        slip through, and swept across surfaces so removing it from one file does
+        not just relocate the defect to the next."""
+        section = extract_section(read_file_under_plugin(rel_path), heading)
+        hit = re.search(r"\d+\s*days?\b", section)
+        assert not hit, (
+            f"{rel_path}'s policy section states a numeric default ({hit.group(0)!r}); "
+            f"docs/{_POLICY_SPEC} owns it — cite the spec instead so the two cannot drift."
+        )
+
+    @pytest.mark.parametrize("rel_path,heading", _POLICY_SURFACES)
+    def test_every_policy_surface_cites_the_spec(self, rel_path, heading):
+        """The other half of one-home: a surface that neither states the facts nor
+        points at them has simply dropped the reader."""
+        section = extract_section(read_file_under_plugin(rel_path), heading)
+        assert _POLICY_SPEC in section, (
+            f"{rel_path}'s policy section must cite docs/{_POLICY_SPEC} — it is the "
+            "only home for the clauses, the defaults and the tiers"
+        )
+
+    def test_the_sweep_covers_the_surfaces_that_exist(self):
+        """Guards against the roster silently emptying — a parametrized sweep over
+        an empty tuple passes and proves nothing."""
+        assert len(_POLICY_SURFACES) >= 2
+        for rel_path, heading in _POLICY_SURFACES:
+            text = read_file_under_plugin(rel_path)
+            assert re.search(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE), (
+                f"{rel_path} no longer carries {heading!r} — the sweep is scanning nothing"
+            )

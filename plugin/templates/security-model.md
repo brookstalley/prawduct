@@ -28,7 +28,10 @@ last_validated: null
      entry: a bare `## Direction` heading reads as ratified norms to the advisory probes. A
      product with no norms to declare leaves this comment as-is — "none to ratify" is recorded
      owner-confirmed through the doctor's Norm Ratification Flow (/prawduct:doctor), never as a
-     side effect of authoring this artifact. Don't restate the rules here. -->
+     side effect of authoring this artifact. Don't restate the rules here.
+     The upstream dependency intake policy (the `## Upstream Dependencies` section below) is
+     norm-shaped and lands HERE as an entry — it binds what future work may take in, rather
+     than describing what the product already does. -->
 
 ## Authentication
 
@@ -71,3 +74,38 @@ last_validated: null
      - Low-risk family app: minimal abuse vectors (maybe input validation)
      - Medium-risk: rate limiting, input sanitization, spam prevention
      - High-risk: fraud detection, content moderation, account takeover prevention -->
+
+## Upstream Dependencies
+
+<!-- On what terms does code someone else releases enter this product?
+
+     The six clauses, the three enforcement tiers, and the per-ecosystem mapping
+     are the framework's, stated once in `docs/upstream-dependency-policy.md` in
+     the prawduct plugin (not a path in this repo — it ships with the plugin).
+     Do NOT restate them here — read them there and record THIS product's answers:
+
+     - The chosen values, where they depart from the framework defaults, and why.
+       The defaults themselves live in the spec; read them there rather than
+       trusting a second copy that has drifted.
+     - The declared trusted parties, EACH WITH ITS WHY. A bare list is not a
+       register: a trusted party is an accepted risk, and the why is what makes it
+       auditable and revisitable later.
+     - The per-surface tier record — for each place upstream code enters (not only
+       package manifests: base images, CI actions, submodules, vendored code,
+       install scripts, extensions, model weights), which enforcement tier was
+       actually REACHED. "Enforced at tier 3" is honest; a claim of coverage the
+       product does not have is worse than no policy at all.
+
+     This is norm-shaped — it BINDS future work, so it belongs in `## Direction`
+     above as an entry with its Why, not as loose prose here. Each declared trusted
+     party reads naturally as its own named entry.
+
+     Proportionate to risk:
+     - Low-risk: record the framework defaults and the intake surfaces; move on.
+     - Medium-risk: name the trusted parties and the tier reached per surface.
+     - High-risk: add the install-time-execution allowlist with reasons, and a
+       named owner for the security fast path.
+
+     A product that genuinely incorporates no upstream code records that in one
+     line. Mirror the decision into `project-state.yaml` under
+     `design_decisions.upstream_dependency_policy`. -->
