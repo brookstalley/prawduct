@@ -79,9 +79,11 @@ carried its findings and the learnings entries. Chunk 2 adds `prawduct-hook crit
 <review-id>` — the recovery Chunk 1's binding replaced — with a green suite (`prawduct-hook
 test-status`; the evidence store holds the counts). The boxes stay `[ ]` because `views_enabled`
 flips them from a `status=shipped` change-log entry at release, not by hand.
-Next: the `cumulative` review over both chunks, then `/prawduct:pr`. Chunk 1's review already
-consumed one bundle pass over `5812a02..d7e4efd`, so this is the second one this branch buys —
-its interval spans both chunks either way.
+Chunk 2 was reviewed by `rev-20260806T025942Z-6aaa7cf8` (`cumulative` over both chunks, 1 blocking
++ 7 warning + 6 note); its findings landed in `424e20a`, and two `verify-resolutions` passes —
+`rev-20260806T032746Z-89f2d4a3` and `rev-20260806T033609Z-410ef5c4` — closed them and returned
+clean. `check-cumulative-critic` reports satisfied over the whole bundle.
+Next: `/prawduct:pr`, then the v3.2.7 release flips these boxes.
 
 ## Build Chunks
 
