@@ -121,6 +121,24 @@ class TestReasonRequired:
         line = "except Exception:  # prawduct:allow prawduct/broad-except --"
         assert not waivers.line_waives(line, "prawduct/broad-except")
 
+    def test_an_html_comment_terminator_is_not_a_reason(self):
+        """A waiver in a markdown file must live inside `<!-- ... -->`, and the
+        closing token parses as the `--` separator followed by a reason of `>`.
+        Left alone, every bare pragma in markdown would satisfy the reason
+        requirement — the requirement's whole point being that an unexplained
+        exemption is itself a finding."""
+        bare = "<!-- prawduct:allow prawduct/chunk-ref-missing -->"
+        assert not waivers.line_waives(bare, "prawduct/chunk-ref-missing")
+        assert [w.ref for w in waivers.invalid_waivers([bare])] == [
+            "prawduct/chunk-ref-missing"
+        ]
+
+    def test_a_real_reason_survives_the_terminator_strip(self):
+        """The paired positive: stripping `-->` must not eat the reason with it."""
+        line = "<!-- prawduct:allow prawduct/chunk-ref-missing -- names a dead path -->"
+        assert waivers.line_waives(line, "prawduct/chunk-ref-missing")
+        assert waivers.parse_waivers(line)[0].reason == "names a dead path"
+
     def test_invalid_waivers_collects_reasonless(self):
         lines = [
             "ok  # prawduct:allow prawduct/broad-except -- has reason",

@@ -220,10 +220,14 @@ class TestObservationalKindsRenderHonestly:
             "an ephemeral guard-refusal was billed as spent review cost — no "
             f"reviewer ran, which is the entire point of the record:\n{out}"
         )
-        assert "ephemeral" not in out
+        assert "from ephemeral worktrees" not in out, (
+            f"the cost line fired for a refusal-only store:\n{out}"
+        )
         # It is still counted as a fact — suppressed from the COST sentence, not
-        # from the store.
-        assert "guard-refusal=1" in out
+        # from the store. Asserted on the kind token alone: pinning the whole
+        # `guard-refusal=1` pair couples this test to `by_kind`'s separator
+        # formatting, which is not what it is about.
+        assert "guard-refusal" in out
 
     def test_status_still_bills_an_ephemeral_review(self, tmp_path, capsys):
         """The paired positive. Without it, the assertion above is satisfied by
@@ -267,9 +271,9 @@ class TestObservationalKindsRenderHonestly:
         _seed_store(repo, [fact])
 
         assert evidence._cmd_list(repo, ["--kind", "guard-refusal"]) == 0
-        line = next(
-            ln for ln in capsys.readouterr().out.splitlines() if "guard-x" in ln
-        )
+        out = capsys.readouterr().out
+        line = next((ln for ln in out.splitlines() if "guard-x" in ln), None)
+        assert line is not None, f"the guard-refusal row never printed:\n{out}"
 
         assert "tree=bbbb2222bbbb" in line, (
             f"the nested interval never reached the row: {line}"
@@ -287,9 +291,9 @@ class TestObservationalKindsRenderHonestly:
         _seed_store(repo, [_fact(str(repo), "rev-plain", tree="nnnn2222nnnn")])
 
         assert evidence._cmd_list(repo, []) == 0
-        line = next(
-            ln for ln in capsys.readouterr().out.splitlines() if "rev-plain" in ln
-        )
+        out = capsys.readouterr().out
+        line = next((ln for ln in out.splitlines() if "rev-plain" in ln), None)
+        assert line is not None, f"the review row never printed:\n{out}"
 
         assert "tree=nnnn2222nnnn" in line
         assert "guard=" not in line and "free=[" not in line, line

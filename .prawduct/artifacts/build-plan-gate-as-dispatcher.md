@@ -173,6 +173,7 @@ Tests carry most of this, but two things tests cannot say:
     fixture calling the helper has already had its partials removed by consolidate. So all three call
     sites pass regardless of what the refusal does. **Fix by seeding a leftover partial that must
     SURVIVE the refusal** — absence of a thing that was never there proves nothing. This is the third
+    <!-- prawduct:allow prawduct/chunk-ref-missing -- the next line NAMES a path that never existed on any branch; that absence is the recorded defect, so the reference must stay broken -->
     instance of that shape in one session (the `plugin/tests` scan root, the governance-`.md` mutation
     escape, this) and it is now a durable rule in `learnings.md`.
   - **`--force` is wired 2 of 4.** SKILL.md step 4's instruction and the printed remedy are done;
