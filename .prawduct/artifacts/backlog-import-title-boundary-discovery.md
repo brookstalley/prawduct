@@ -88,6 +88,41 @@ coverage gap: they will be skipped, not duplicated — which is exactly what mak
 recorded ruling (**retitle-in-place on skip**) the repair path for their polluted titles, without
 needing the delete permission the operator structurally cannot hold on a user-owned repo.
 
+## 4b. Owner directive 2026-08-06 — the norm binds on every path
+
+`[NORM BIRTH: issue titles must conform to the standard's §1 budget and shape on EVERY write path
+— migrated, created, or modified. The agent rewrites where a source title does not conform; a
+non-conforming title is not imported. | owner: "we need to enforce on migration. fine if the agent
+has to rewrite. They must be EXCELLENT issue titles, always, whether migrated or created new or
+modified" | owner ruled 2026-08-06]`
+
+**This strengthens the existing standard rather than inventing one.**
+`documentation/backlog-service-issue-standard.md` §1 already specifies the budget (≤72, aim 50–70),
+the shape (`area: specific summary` — a noun phrase saying *what failed + where*, or *what to do*),
+atomicity (one problem; a `—`/`;` join usually means two), and the ❌ set (vague, non-specific,
+em-dash chains). `issuefmt._lint_title` already implements all four checks
+(`title-too-long` / `-too-short` / `-placeholder` / `-non-atomic`).
+
+**What changes is enforcement, on three paths:**
+
+| Path | Today | Required |
+|---|---|---|
+| `file` (create) | lint runs, **advisory** — a `body-too-long` warning shipped an issue on 2026-08-06 | conform or refuse |
+| `update` (modify) | not verified to run the title lint at all | conform or refuse |
+| `import` (migrate) | **no lint at all** — raw bullets went to GitHub, which is the whole defect | conform or refuse |
+
+**The migration design that satisfies both this directive and "no model in the data plane":**
+§5's LLM scrub pre-pass stays where it is — *before* the deterministic import. The importer does
+not call a model; it **validates** and refuses. So a non-conforming corpus fails **pre-flight, in
+the first second, with the full list** — which is also the report's fix #1 — and the agent then
+runs the scrub to rewrite the named items, preserving originals verbatim in `original_title:` per
+§5.2. The owner still approves in aggregate. The importer never writes a title the standard
+rejects, and never needs a model to guarantee that.
+
+Note this makes the report's Layer-1 guardrails *cheaper*, not redundant: pre-flight refusal means
+a 422 for over-length becomes unreachable, but per-item isolation still matters for every other
+422 cause.
+
 ## 5. Scope
 
 **In scope**, in dependency order:
