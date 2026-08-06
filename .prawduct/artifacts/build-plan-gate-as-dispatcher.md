@@ -63,9 +63,19 @@ leans on the predicate.
 
 ## Status
 
-- [x] Chunk 01: The dispatcher asks the gate before it spends a reviewer
-- [x] Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
-Context: **BOTH CHUNKS COMPLETE.** Chunk 01 at `586ae1d`; Chunk 02 from `e55b6e3` (the feature)
+- [ ] Chunk 01: The dispatcher asks the gate before it spends a reviewer
+- [ ] Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
+Context: **BOTH CHUNKS COMPLETE — the empty boxes above are correct and must stay empty.**
+`views_enabled: true`, so `## Status` is a DERIVED VIEW, not a record: `regen-views` rewrites every
+checkbox from the change-log's shipped set, and this branch's entry is deliberately statusless because
+its base is `develop` (statusless IS the release-pending state on gitflow). Hand-flipping them to `[x]`
+— which this plan did until the PR review caught it — buys nothing and is silently reverted at the
+release: `regenerate_status_section(lines, set())` returns `[('01','x',' '), ('02','x',' ')]`, verified
+rather than assumed. Completion is recorded HERE in prose and by the tagged change-log entry; the
+`develop`→`main` release flips the entry to `status=shipped` and regen fills the boxes in one pass.
+(The chunks' own Done-when step 3 says "mark `[x]` in Status" — copied verbatim from
+`plugin/templates/build-plan.md`, which is where the framework contradicts `views_enabled`. Left
+as-is: it is a template defect, not this bundle's to fix.) Chunk 01 at `586ae1d`; Chunk 02 from `e55b6e3` (the feature)
 through `165f08a` — `git log --oneline 586ae1d..HEAD` is the enumeration, because a list written here
 stops growing the moment a commit edits this paragraph without adding itself (which `e1cf61c` did). Suite green — the count lives in `.prawduct/.test-evidence.json`
 and `prawduct-hook test-status` is the reader; a figure transcribed here goes stale silently.

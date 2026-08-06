@@ -43,6 +43,35 @@ and the assertion becomes a real one. Mutation-checked — a refusal made to rea
 four tests that previously slept through it. Third instance of this shape in two sessions, and the
 rule is durable: *absence of a thing that was never there proves nothing.*
 
+**Four things landed after the first draft of this entry, from the branch's own review rounds, and
+three of them change behavior a consuming repo will notice.**
+
+1. **A new waivable rule, `prawduct/chunk-ref-missing`.** A build-plan chunk body *discusses* paths as
+   well as declaring them, and a backtick scan cannot tell them apart — a carried-in review
+   observation naming the path a past defect was about is correct *because* that path is missing, so
+   `verify-chunk-refs` fired on it forever with no exit but laundering the record. The escape is the
+   ordinary pragma on the line or the one above; the rule is registered in `docs/waivers.md` with its
+   legitimacy test. `#552` (reconciling the two path extractors) is still the durable fix.
+2. **`waivers._clean_reason` now truncates at `-->`, and this one is worth reading twice.** A waiver in
+   any markdown file has to live inside `<!-- ... -->`, and the closing token parsed as the `--`
+   separator plus a reason of `>`. So a bare, reason-less pragma in markdown **silently waived** —
+   defeating the single guarantee the mandatory-reason rule exists to provide, repo-wide and in every
+   consuming repo. It now fires as reason-less, which is the correct and stricter behavior. Nothing in
+   this repo regresses (no live waiver puts its reason after the terminator); a consumer relying on
+   the old accident will start seeing the underlying check fire, which is the point.
+3. **`verify-resolutions` severity gained a middle.** The mode is BLOCKING-or-nothing by design, so a
+   reviewer holding a one-row registry gap had to either force a commit and a full round or say
+   nothing that enters `findings`. Measured on this very branch: the same finding class was a WARNING
+   in the cumulative and BLOCKING in a verify pass, decided by which mode noticed it. The dispatch
+   directive now separates *the tree must not move* from *this fix is owed* — record gaps ride a
+   commit already coming and are named with a destination, the five hard classes stay BLOCKING, and a
+   gap met while a chunk is CLOSING blocks that close.
+4. **`tests/preferences/test_registry_completeness.py`.** Four registries went stale in this one chunk
+   while the code that enumerates their members moved on. Now a suite-time set-difference for the two
+   instances that have an enumerated set in code (waiver rule ids, evidence fact kinds); exit codes and
+   concerns rows have no left-hand side and stay reviewer work, said plainly in the test so a green
+   suite is not read as full coverage.
+
 **Two of the three prose corrections held; one was withdrawn on its merits.** The plan said
 `check-cumulative-critic`'s remedy should name the free-interval check first. It should not:
 `coverage_verdict` already grants a direct free edge between the two endpoint trees whenever their
