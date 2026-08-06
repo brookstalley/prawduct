@@ -115,7 +115,7 @@ feature's seven legs, which is the direct structural precedent.
 - [x] Chunk 01: Keystone — the policy decision record + capture-point wiring
 - [x] Chunk 02: The canonical policy spec + the security-model home
 - [x] Chunk 03: Forward Critic gate + the `**Dependency change:**` field
-- [ ] Chunk 04: Retroactive — doctor check #15 (incl. the conformance procedure) + janitor
+- [x] Chunk 04: Retroactive — doctor check #15 (incl. the conformance procedure) + janitor
 - [ ] Chunk 05: Migration nudge — the dependency-policy advisory probe (CODE)
 - [ ] Chunk 06: Coherence & close — matrix row, Known Gaps overturn, update-procedure template
 Context: Plan authored 2026-08-05 on `feature/upstream-dependency-policy` (off `develop`); requirements ruled the same day. Owner confirmed both post-ruling design changes (agent-performed conformance — *"it needs to be adaptable to any platform"* — and the tier-3 fillable runbook template).
@@ -296,8 +296,40 @@ round after exactly that sentence.
 4. **Full digest headroom is 10 chars against a hard 10,000-char gate.** The next digest edit
    trims before it adds — this is now the tightest-bound surface in the framework.
 
-Next: Chunk 04 — doctor check #15 + the janitor Dependency Health extension. Both are
-`_POLICY_SURFACES` additions at `bullet` scope, and observation 1's scope pin rides that commit.
+**Chunk 04 DONE.** doctor Health Check #15 (two parts: policy recorded, then the agent-performed
+conformance scan with its three verdicts and the *unclassified-is-not-clean* rule), the janitor
+Dependency Health extension (three intake questions naming their sub-keys, plus the currency
+counterweight the theme lacked), a third "legitimately both" entry in `docs/doctor-vs-janitor.md`,
+and both new surfaces registered in `_POLICY_SURFACES`. 3850 green.
+
+**Observation 1 is DISCHARGED, not carried again.** `test_the_declared_scope_follows_whether_the_heading_is_dedicated`
+derives `section`/`bullet` from whether the heading names the policy, so the choice is a contract
+rather than a comment. Verified red three ways: a planted ecosystem name in #15, a planted numeric
+default in the janitor closer, and a scope flip on the doctor entry.
+
+**The tool grant widened: doctor's `allowed-tools` gained `Grep`.** #15(b) has to find upstream code
+entering by routes no filename predicts, and `learnings.md` records this exact trap on this exact
+file ("doctor #9's prose implied a grep its tool-grant lacked"), whose active rule is *extend the
+primitive rather than narrow the requirement to fit the tool*. Read/Glob-only would have made
+*unclassified* over-report by construction. Three neighbouring claims were reconciled in the same
+pass: the Health Check Flow preamble, #9's "read/Glob-only" parenthetical (now a scope claim —
+"does not attempt"), and the Important Note bounding Health Check to `.prawduct/`. **Not done, and
+deliberately:** #9's own import scan was left alone even though Grep now makes it possible — that is
+a behaviour change to an existing check, outside this chunk.
+
+**Chunk 04 review** (`rev-20260806T121807Z-962f8803`, 0 blocking / 2 warnings / 1 note): all three
+FIXED in the same commit, none accepted. R-1 — the janitor's new bullets cited nothing, so `bullet`
+scope scanned only the closer and the three substantive bullets escaped both negative guards; each
+now cites the clause it re-asks, taking the policed set from 1 line to 5, re-verified red. R-2 — the
+canonical boundary doc's Subject row and placement rule 1 still bounded doctor to `.prawduct/`,
+which #15(b) is the first check to break; both extended, with the Action-model row named as the
+invariant that actually decides the split. R-3 — this plan's own Tests line said "none new". **No
+`verify-resolutions` round was spent**: the fixes cost coverage (`cost-of-commit` prices 3 of 5
+paths as moving it), and Chunk 06's `cumulative` is the designated gate that spans them — closing
+it early buys a round and nothing else.
+
+Next: Chunk 05 — the advisory probe (the only code chunk). Its deliverable **2b** carries the
+check↔advisory pairing this chunk deliberately did not assert forward.
 
 ## Yield Declarations
 
@@ -390,7 +422,8 @@ principle. Three controls are added here:
 - **Deliverables:**
   1. `plugin/skills/doctor/SKILL.md` — health check #15 "Upstream dependency policy", modelled on #9's report-and-recommend shape (no auto-edit). Two parts: **(a)** policy recorded? → `degraded` if not; **(b)** the conformance procedure — enumerate this repo's intake surfaces *by reading, not by matching a filename list*, and for each report **conformant / drifted / unclassified**, present the exact edit for the drifted ones, and write nothing without the owner's yes. Must state explicitly that unclassified surfaces are reported and that a scan finding them **does not report clean**. Extend the degraded-classification line. Add the routing note's rule in one sentence: prawduct reports, the agent applies.
   2. `plugin/skills/janitor/SKILL.md` — extend the existing **Dependency Health** theme with intake questions (is the recorded policy expressed at the best available tier per surface; are declared trusted parties still trusted and still carrying a why; are install-time execution and pinning still as recorded) and add the counterweight the theme currently lacks: today it asks only whether dependencies are *current*, which is one-directional pressure toward taking updates. Survey, not gate.
-- **Tests:** none new (skill prose). Guard: any existing skill-file structure tests must pass.
+- **Tests:** *(revised during the build — the original line read "none new (skill prose)", which the diff outgrew.)* Both new surfaces join `_POLICY_SURFACES` in `tests/test_v5_templates.py`, which the roster's own comment had already invited ("a doctor check, a janitor theme… belong in this tuple as they land") — so the sweep, its floor (`>=4` → `>=6`) and its citation guard now cover them. Plus **one genuinely new test**, `test_the_declared_scope_follows_whether_the_heading_is_dedicated`, which is where Chunk 03's carried observation 1 is discharged: the `section`/`bullet` choice is derived from whether the heading names the policy, instead of resting on a comment nobody is bound by. Guard: existing skill-file structure tests must pass.
+- **Also edited, listed above as consumed rather than as a deliverable:** `plugin/docs/doctor-vs-janitor.md`. Required by its own placement rule 3 — a concern with both facets must appear there — and it additionally said in prose that API versioning and gitignore were *the only* two such concerns, which this chunk falsifies. The Subject-axis row and placement rule 1 were extended in the same pass, because #15(b) is the first doctor check whose verdict is computed from the product's own tree.
 - **Acceptance criteria:**
   1. Check #15 mirrors #9's shape, numbers correctly after #14, and states both the three-valued verdict and the reports-not-writes rule.
   2. The janitor change **extends Dependency Health** rather than adding a theme, and adds the current-ness counterweight.
@@ -410,6 +443,7 @@ principle. Three controls are added here:
 - **Deliverables:**
   1. new `plugin/lib/dependency_policy_probes.py` — `FEATURE = "upstream-dependency-policy"`, type `dependency-policy`, v1. Fires an `info` `AdvisoryCandidate` when the top-level `upstream_dependency_policy_decided` fact is falsy; suppressed by the recorded fact. `recommended_action` points at recording the decision. Includes a `register()` mirroring the api-versioning probe's. The module docstring must record *why there is no `Codebase` scan*, so a later reader does not "fix" the omission by adding one.
   2. `plugin/lib/probe_families.py` — register the new family alongside the existing eight in `register_all()`.
+  2b. **Carried from Chunk 04 — wire the check↔advisory pair in both directions, which is the half of #9's shape Chunk 04 could not land.** #9 says "this is the on-demand health-check surface for the same signal the `api-versioning` session-start advisory raises ambiently; both resolve on a recorded decision," and #15 was deliberately written *without* that sentence rather than asserting a probe that did not exist yet (the same deferral Chunk 01 made for the `docs/` pointer, for the same reason — a forward reference is a claim, and this branch has already been burned once by one). So here: add the pairing sentence to `plugin/skills/doctor/SKILL.md` check #15 naming the probe's actual advisory type, add the routing-table row's advisory phrasing to match #11-#14's, point the probe's `recommended_action` at check #15 as well as at recording the decision, and restore the "and the ambient nudge" clause to `plugin/skills/janitor/SKILL.md`'s Dependency Health closer. Verify the type string against the shipped probe rather than against this line.
   3. new `tests/test_dependency_policy_probe.py` — fires when the fact is unset; suppressed when set; suppressed when explicitly recorded as "none"; roster registration; and a regression test asserting the probe consults **no** codebase scan (the design property above, pinned so it cannot be silently changed).
 - **Tests:** `tests/test_dependency_policy_probe.py` above. Each behavior has a case that fails before the probe exists and passes after.
 - **Acceptance criteria:**

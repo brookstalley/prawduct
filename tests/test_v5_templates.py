@@ -495,9 +495,9 @@ def extract_section(text: str, heading: str) -> str:
 #:
 #: Requirement 1 of the appendix binds "no policy statement, gate, or check",
 #: which is broader than the spec file alone — so the guards below sweep every
-#: surface that exists today rather than only the one this chunk created. A
-#: doctor check, a janitor theme and an advisory probe belong in this tuple as
-#: they land; the detector is already reusable.
+#: surface that exists today rather than only the one this chunk created. The
+#: doctor check and the janitor theme joined as they landed; the advisory probe
+#: belongs here too when it lands. The detector is already reusable.
 #:
 #: The two Critic entries are the "gate, or check" arm of that requirement: the
 #: Goal 2 bullet is what actually enforces the policy, and it exists twice
@@ -506,31 +506,46 @@ def extract_section(text: str, heading: str) -> str:
 #: `final`/`cumulative`). A guard on one of them would leave the check's wording
 #: free to drift in whichever mode was not swept.
 #:
-#: NOT here, deliberately: `templates/build-plan.md`'s `**Dependency change:**`
-#: field. That is the author's *declaration* that trips the check, not a
-#: statement of the policy or a check on it — the same reason the
-#: `**Exposed API:**` field is not a surface of the versioning decision. It is
-#: still written ecosystem-neutrally; nothing but this note stops a later editor
-#: reading its absence as an oversight.
+#: NOT here, deliberately, and each for a different reason:
+#:
+#: * `templates/build-plan.md`'s `**Dependency change:**` field. That is the
+#:   author's *declaration* that trips the check, not a statement of the policy
+#:   or a check on it — the same reason the `**Exposed API:**` field is not a
+#:   surface of the versioning decision. It is still written ecosystem-neutrally;
+#:   nothing but this note stops a later editor reading its absence as an
+#:   oversight.
+#: * `docs/doctor-vs-janitor.md`'s "legitimately both" entry. It describes what
+#:   the two checks each ask; it neither states the policy nor enforces it, and
+#:   it cites the spec as a *sibling* path (both files live in `docs/`), which
+#:   `test_every_policy_surface_cites_the_spec` — which asserts the `docs/`
+#:   prefix a reader elsewhere in the plugin needs — would fail for a reason that
+#:   has nothing to do with the property being guarded.
 #:
 #: The third element is the scope the two NEGATIVE guards police:
 #:
 #: ``section`` — a DEDICATED policy section, where every line states the policy,
 #:   so scanning the whole region is exactly right.
-#: ``bullet``  — the policy is ONE bullet inside a general-purpose section. Only
-#:   the declaring line(s) are scanned, because the rest of that section is
-#:   unrelated prose a future author may legitimately write with a manifest name
-#:   or an interval in days in it — and the Critic protocol is the likeliest
-#:   place in the plugin for exactly such an illustration. Scanning the whole
-#:   Goal 2 section would fail that edit with a message claiming it restated the
-#:   policy, and the next author would either weaken the guard or contort the
-#:   prose. The surfaces Chunks 04-05 add (a doctor check, a janitor theme, a
-#:   probe) live in general-purpose files too, so they take ``bullet`` as well.
+#: ``bullet``  — the policy is ONE bullet (or one long numbered check) inside a
+#:   general-purpose section. Only the declaring line(s) are scanned, because the
+#:   rest of that section is unrelated prose a future author may legitimately
+#:   write with a manifest name or an interval in days in it — and the Critic
+#:   protocol is the likeliest place in the plugin for exactly such an
+#:   illustration. Scanning the whole Goal 2 section would fail that edit with a
+#:   message claiming it restated the policy, and the next author would either
+#:   weaken the guard or contort the prose. The doctor and janitor surfaces sit
+#:   in general-purpose files too — one numbered governance check inside a flow
+#:   of them, one maintenance theme inside a list of them — so they take
+#:   ``bullet`` as well.
+#:
+#: Which of the two applies is not left to taste: see
+#: ``test_the_declared_scope_follows_whether_the_heading_is_dedicated``.
 _POLICY_SURFACES = (
     ("methodology/discovery.md", "## Surface Upstream Dependency Policy", "section"),
     ("templates/security-model.md", "## Upstream Dependencies", "section"),
     ("skills/critic/review-protocol.md", "### 2. Nothing Is Missing", "bullet"),
     ("skills/critic/goals-1-3.md", "## 2. Nothing Is Missing", "bullet"),
+    ("skills/doctor/SKILL.md", "## Health Check Flow (current dir is a product repo)", "bullet"),
+    ("skills/janitor/SKILL.md", "### Dependency Health", "bullet"),
 )
 
 
@@ -853,10 +868,41 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
             "only home for the clauses, the defaults and the tiers"
         )
 
+    @pytest.mark.parametrize("rel_path,heading,scope", _POLICY_SURFACES)
+    def test_the_declared_scope_follows_whether_the_heading_is_dedicated(
+        self, rel_path, heading, scope
+    ):
+        """The scope *choice* was the unpinned half of this roster.
+
+        Both values were live in the tuple, the comment above explained which to
+        pick, and flipping any entry to the other value failed nothing — the
+        reasoning was advice, not a contract. That is the shape of a rule that
+        holds only while the person who wrote it is still reading: the cost of
+        getting it wrong lands much later, on an unrelated edit, as a negative
+        guard accusing its author of restating a policy they never mentioned.
+
+        So the choice is derived from the one property that actually decides it
+        and is decidable by reading: **a section is dedicated when its heading
+        says so.** Every ``section`` surface is titled after the policy; every
+        ``bullet`` surface sits under a heading about something else and merely
+        carries a policy line or two. A dedicated section whose title avoids the
+        word is the one shape this misjudges — rename the heading (which its
+        readers want anyway) or widen the rule here deliberately, but do not
+        silently flip the third element to route around it.
+        """
+        dedicated = "upstream" in heading.lower()
+        expected = "section" if dedicated else "bullet"
+        assert scope == expected, (
+            f"{rel_path}'s {heading!r} is declared {scope!r} but its heading "
+            f"{'names' if dedicated else 'does not name'} the policy, so the "
+            f"whole region {'is' if dedicated else 'is not'} the policy and the "
+            f"negative guards should scan {expected!r}"
+        )
+
     def test_the_sweep_covers_the_surfaces_that_exist(self):
         """Guards against the roster silently emptying — a parametrized sweep over
         an empty tuple passes and proves nothing."""
-        assert len(_POLICY_SURFACES) >= 4
+        assert len(_POLICY_SURFACES) >= 6
         for rel_path, heading, scope in _POLICY_SURFACES:
             text = read_file_under_plugin(rel_path)
             assert re.search(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE), (

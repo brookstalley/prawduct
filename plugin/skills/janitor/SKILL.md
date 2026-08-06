@@ -108,12 +108,18 @@ Are tests earning their maintenance cost? Do they catch real bugs and document r
 
 ### Dependency Health
 
-Are external dependencies current, justified, minimal, and secure?
+Are external dependencies current, justified, minimal, and secure — and do they still enter on the terms the product recorded?
 
 - Unused dependencies — imported but not used, or listed but not imported
 - Deprecated or unmaintained dependencies with no migration plan
 - Known security vulnerabilities in current dependency versions
 - Version constraints that are too tight (blocking updates) or too loose (risking breakage)
+- **The counterweight the four above lack.** Three of them grade *currency*, and asked alone they become standing pressure to run at the newest thing available — while the newest release is also the least examined one, which is the direction intake risk actually travels. Ask it the other way in the same pass: did anything land here newer than the product's own recorded terms allow, and did anything land without passing through them at all? (The terms: `docs/upstream-dependency-policy.md`.)
+- **Tier fitness, per intake surface** (`design_decisions.upstream_dependency_policy.surfaces`; the tier model is in `docs/upstream-dependency-policy.md`) — is the recorded policy expressed at the **strongest tier each surface can now reach**, or is it sitting at a weaker one? A tier recorded honestly still drifts, because toolchains gain the ability to express more and nothing re-asks. (Whether each surface *conforms to* the record is `/prawduct:doctor` check #15; this asks whether the record is still the best available answer.)
+- **The trusted register** (`…policy.trusted`; clause 2 of `docs/upstream-dependency-policy.md`) — is every declared-trusted party still trusted, and does each still carry its why? A why that has stopped holding is the finding; an entry that never had one was never auditable.
+- **Install-time execution and pinning** (`…policy.install_time_execution`, `…policy.resolution_pinning`; clauses 4 and 5 of `docs/upstream-dependency-policy.md`) — do the repo's actual behaviours still match what was recorded: is upstream code still denied arbitrary execution at install time, with any allowlist still carrying live reasons; do CI and agent-performed installs still install exactly what is pinned rather than quietly re-resolving?
+
+Survey, not gate. The recorded *decision* is the gated part and lives elsewhere (`/prawduct:doctor` check #15); this theme asks whether terms recorded once still fit the product. The clauses, the enforcement tiers and the per-ecosystem mapping are stated once in `docs/upstream-dependency-policy.md` — cite it rather than restating any of it here.
 
 ### API Design & Versioning Hygiene
 

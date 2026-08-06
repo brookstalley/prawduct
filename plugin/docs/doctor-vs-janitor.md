@@ -19,7 +19,7 @@ full version.
 
 | Axis | doctor | janitor |
 |---|---|---|
-| **Subject** | prawduct scaffolding & recorded decisions (`.prawduct/`, `.claude/settings.json`, the CLAUDE.md anchor, the gitignore *contract*) | the product's own source, tests, docs, dependencies, git history |
+| **Subject** | prawduct scaffolding & recorded decisions (`.prawduct/`, `.claude/settings.json`, the CLAUDE.md anchor, the gitignore *contract*) — plus, where a recorded decision is only checkable against the tree it governs, the product material that decision speaks about, read to grade it (Health-Check #15's conformance scan is the instance, and the reason the skill's grant carries Grep) | the product's own source, tests, docs, dependencies, git history |
 | **Action model** | report & present the exact edit; never auto-fixes (plus the bounded `prawduct-hook` operations it drives, each owner-invoked — `skills/doctor/SKILL.md` and its flows are their one roster, so this row does not keep a second copy) | survey, then fix through a full build plan + Critic |
 | **Question type** | "is X present / recorded / correct?" — conformance, roughly binary | "is X well-built / current / proportionate?" — craft, graded |
 
@@ -31,16 +31,20 @@ time away.
 
 1. Does it ask whether prawduct governance is set up, or a required decision/state is
    *recorded · present · correct*? → **doctor** (a conformance check answered by reading
-   `.prawduct/` / `.claude/` / the anchor; reported-and-guided, never auto-fixed).
+   `.prawduct/` / `.claude/` / the anchor; reported-and-guided, never auto-fixed). **Reading past
+   those to reach a verdict does not move a concern to janitor.** Where a recorded decision is
+   only checkable against the product material it governs, doctor reads that material to grade
+   conformance and still writes nothing — Health-Check #15 is the precedent. The invariant that
+   decides the split is the Action-model row, not the Subject row: doctor reports, janitor fixes.
 2. Does it ask whether the product's own code/docs/tests/deps are *well-built · current ·
    proportionate*? → **janitor** (a craft survey resolved by fixing through the build cycle).
 3. Does it have **both** facets — a governance-conformance facet *and* a craft-quality facet? →
    **both skills**, but each owns only its facet and cross-references the other. This is the
    exception, not the default; most concerns land in exactly one skill.
 
-## "Legitimately both" — the two worked examples
+## "Legitimately both" — the worked examples
 
-These are the only concerns that genuinely live in both skills today. In each, the two checks ask
+These are the concerns that genuinely live in both skills today. In each, the two checks ask
 different questions at different altitudes — that is why they are not duplication.
 
 - **API versioning.** doctor Health-Check #9 asks *"is a versioning decision recorded?"*
@@ -52,6 +56,14 @@ different questions at different altitudes — that is why they are not duplicat
   present; the retired `build-plan.md` entry not re-added). The janitor Version Control Hygiene
   theme checks *general* hygiene (build artifacts, editor files, secrets). Different objects, same
   file.
+- **Upstream dependency intake.** doctor Health-Check #15 asks *"is an intake policy recorded, and
+  does each intake surface conform to what was recorded?"* (conformance — three verdicts per
+  surface, reported and never applied). The janitor Dependency Health theme asks *"do the recorded
+  terms still fit?"* — is each surface's tier still the strongest available, are the trusted
+  parties still trusted and still carrying a why, do install-time execution and pinning still match
+  practice — and supplies the counterweight to a currency-only dependency survey. doctor grades the
+  repo against the record; the janitor grades the record against the world
+  (`upstream-dependency-policy.md`).
 
 ## Adjacencies that are handoffs, not overlaps
 
