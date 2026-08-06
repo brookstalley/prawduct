@@ -108,6 +108,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
          "Choosing a Chunk Type"; behavior tables in skills/critic/review-cycle.md.
          Mode missing, unrecognized, or inference unconfident → the review runs `final`.
        `Foreign API:` / `Exposed API:` / `Visual change:` — methodology/planning.md.
+       `Dependency change:` — docs/upstream-dependency-policy.md.
        `Trivial because:` — required iff `Type: trivial`. -->
 
 ### Chunk 01: Walking skeleton — list page backed by SQLite
@@ -162,6 +163,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 - **Type:** trivial
 - **Trivial because:** project-wide rename of ListItem to Item; no behavior change
 - **Exposed API:** pantry-http-api   (requires recorded versioning + error-model decisions)
+- **Dependency change:** adds an HTTP client; repins the CI action   (any upstream code the chunk adds, bumps or vendors — manifest or not — or any edit to an updater's config, which changes the terms upstream enters on; requires a recorded intake policy)
 -->
 
 ## Early Feedback Milestone

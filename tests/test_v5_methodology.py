@@ -84,8 +84,8 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4807,
-    "skills/critic/review-protocol.md": 3611,
+    "methodology/building.md": 4808,
+    "skills/critic/review-protocol.md": 3617,
     "skills/critic/goals-1-3.md": 1998,
     "skills/critic/review-cycle.md": 9532,
     "skills/critic/framework-checks.md": 1116,
@@ -545,6 +545,22 @@ class TestBuildingMethodology:
         # real commit that deleted three test files under a message asserting no
         # test was deleted, and the HEAD-snapshot hazard put a subagent's
         # governing artifact in contradiction with its own prompt.
+        #
+        # 4807 -> 4808 (2026-08-05) -- Decision Research's **external
+        # dependency** trigger now covers the *terms* of entry, not only whether
+        # to depend at all, in POINTER form (the recorded upstream intake policy;
+        # docs/upstream-dependency-policy.md owns the substance, and that file's
+        # one-home norm is what makes restating it here a defect rather than a
+        # convenience). PAID FOR by the trim-or-relocate rule: the "Test-last"
+        # Common Trap went, which restated "Write tests" ~150 lines above it in
+        # the same file -- the exact class three earlier traps were cut as, and
+        # this comment records that class twice already. Its one non-duplicated
+        # half, the CONSEQUENCE (tests written afterward document the bugs as
+        # behavior), was not dropped: it folded into the "Write tests" step,
+        # where it is now the reason attached to the rule rather than a
+        # free-floating trap. "Uninvestigated decisions" was the better-looking
+        # cut -- it re-lists this very trigger enumeration -- and is pinned by
+        # test_build_cycle_structure; checked before cutting, not after.
         tokens = estimate_tokens(self.content)
         assert tokens < 4810, f"building.md is ~{tokens} tokens, should be <4810"
 
@@ -789,6 +805,42 @@ class TestCriticSkill:
         # tokens by thinning a safety instruction is the wrong trade at any
         # exchange rate. 9 tokens of headroom remain, which is the intended
         # state, not an oversight: the next addition trims or relocates.
+        #
+        # 3611 -> 3617 (2026-08-05) -- Goal 2 gained the `**Dependency change:**`
+        # check (a chunk changing dependencies against no recorded upstream
+        # intake policy -> WARNING), and PAID FOR IT with room to spare. Three
+        # cuts, each this comment's own recorded classes:
+        #   (1)+(2) the BLOCKING and WARNING legend example lists ("(broken
+        #   tests, dropped requirements, security vulnerabilities, unlisted
+        #   deps)" / "(missing coverage, scope drift, stale artifacts, design
+        #   problems)"). The goals-1-3.md budget comment records cutting the
+        #   identical BLOCKING list there and generalizes it -- a legend that
+        #   re-lists its own section's contents is paying twice for one
+        #   instruction -- and the sibling cut was simply never applied here.
+        #   (3) Goal 4's CLAUDE.md-size bullet opened by DEFINING CLAUDE.md
+        #   ("an instruction file, not an architecture reference"); the
+        #   operational check that follows (>~150 lines of project-specific
+        #   content -> WARNING, naming what to move where) is untouched and
+        #   needs no definition to apply. methodology/building.md owns that
+        #   definition in full.
+        # Two obvious candidates were NOT taken because this comment says not
+        # to, and both were checked rather than assumed: Goal 4's `**Norms**`
+        # bullet (the trap above -- a third editor nearly cut it) and step 2's
+        # `model:` restatement. Headroom (ceiling minus tokens) 9 -> 3, after
+        # the chunk review's R-1 widened the bullet to name updater-config
+        # edits -- the trigger the chunk's own Description carried and no
+        # delivered surface expressed.
+        #
+        # A fourth cut was tried and PARTLY reverted, which is the entry worth
+        # reading. Goal 7's closing "Prioritize what compounds: leaked
+        # abstractions others build on, spreading coupling, accumulating
+        # complexity" was cut to the bare imperative -- and "prioritize what
+        # compounds" alone does not say what compounding looks like, so the
+        # sentence stopped being a check and became a slogan. Two examples went
+        # back. The generalization, and why it is not the same as the legend
+        # cuts above: a legend re-listing its own section's contents is paying
+        # twice for ONE instruction, but an enumeration that is the only place a
+        # word like "compounds" is made concrete is the instruction.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 
@@ -985,6 +1037,32 @@ class TestCriticGoals13:
         # agents/critic-reviewer.md, whose reader never writes `resolutions`.
         # THIS file is the only surface whose reader writes both, and they sat
         # eight lines apart with no cue. Three words in the schema example.
+        #
+        # 1998 -> 1998 (2026-08-05) -- Goal 2 gained the `**Dependency change:**`
+        # check, the twin of the one review-protocol.md gained in the same
+        # commit. It has to exist in BOTH files or the check fires or not
+        # depending on review mode, and
+        # `test_no_check_from_goals_1_3_was_dropped` enforces that direction
+        # anyway. PAID FOR by three cuts, taken in the order this comment's own
+        # divergence rule sets -- claims that assign NO verdict go from this file
+        # first:
+        #   "Correctness shapes the recommendation, never the need" and "Tell:
+        #   amending a norm to match your own code", both in the standing-
+        #   candidate normative-authority block, both assigning no verdict. Every
+        #   verdict-assigning claim there is untouched, which is the rule the
+        #   divergence from review-protocol.md was chosen under.
+        #   Goal 1's "(behavior not implementation, ...)" parenthetical, which
+        #   restated the bullet TWO lines above it verbatim ("Tests verify
+        #   behavior, not implementation"), plus the exact-match bullet's
+        #   worked-example parenthetical.
+        #   The preamble's "everything you need is here, so", which is what
+        #   "**Self-contained by design**" on the same line already says; the
+        #   concrete prohibition `test_is_self_contained` contracts on is intact.
+        # Net zero: the chunk review's R-1 then widened the bullet to name
+        # updater-config edits, spending the four tokens the cuts had banked.
+        # Headroom (ceiling minus tokens) 2 -> 2. The pointer here is bare
+        # parentheses rather than review-protocol.md's "see", because this file
+        # is the compressed twin and its sibling bullets carry no pointer at all.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 

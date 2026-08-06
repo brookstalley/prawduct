@@ -21,7 +21,7 @@ Artifacts are specification files that guide building — catching issues at the
 - **Non-Functional Requirements** — Performance, scalability, uptime, cost constraints.
 - **Operational Specification** — Deployment, monitoring, alerting, failure recovery.
 - **Observability Strategy** — Signal types, correlation context, sensitive data filtering, instrumentation. Scales from "error logging" to full three-signal architecture.
-- **Dependency Manifest** — Every external library with justification and alternatives considered. Justification is only half the concern: the *terms* on which any upstream release enters — minimum age, who is trusted, the security fast path, install-time execution, pinning — are recorded once as `design_decisions.upstream_dependency_policy` (the clauses and enforcement tiers: `docs/upstream-dependency-policy.md`) and carried by any chunk that adds or updates a dependency.
+- **Dependency Manifest** — Every external library with justification and alternatives considered. Justification is only half the concern: the *terms* on which any upstream release enters — minimum age, who is trusted, the security fast path, install-time execution, pinning — are recorded once as `design_decisions.upstream_dependency_policy` (the clauses and enforcement tiers: `docs/upstream-dependency-policy.md`) and carried by any chunk that adds or updates a dependency, or edits an updater's config — that config sets the terms upstream enters on, so changing it changes the policy's enforcement without touching a manifest.
 
 **Structurally-triggered artifacts** (from characteristics detected in discovery):
 - *Human interface*: Interaction design, information architecture, accessibility specification, onboarding flow

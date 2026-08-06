@@ -114,7 +114,7 @@ feature's seven legs, which is the direct structural precedent.
 
 - [x] Chunk 01: Keystone — the policy decision record + capture-point wiring
 - [x] Chunk 02: The canonical policy spec + the security-model home
-- [ ] Chunk 03: Forward Critic gate + the `**Dependency change:**` field
+- [x] Chunk 03: Forward Critic gate + the `**Dependency change:**` field
 - [ ] Chunk 04: Retroactive — doctor check #15 (incl. the conformance procedure) + janitor
 - [ ] Chunk 05: Migration nudge — the dependency-policy advisory probe (CODE)
 - [ ] Chunk 06: Coherence & close — matrix row, Known Gaps overturn, update-procedure template
@@ -228,9 +228,50 @@ round on a one-hunk fix after exactly that sentence, and none of these three ear
 runs from `develop`'s merge-base and takes in Chunk 01 plus the `develop` merge, which no single
 review covers. Chunk 06's `cumulative` is the designated PR gate for exactly this span.
 
-Next: Chunk 03 — which lands against ~9/2/3 tokens of headroom on
-`review-protocol.md`/`goals-1-3.md`/`building.md` respectively, so its trim is real work, not a
-rider.
+**Chunk 03 BUILT, reviewed, fixed.** The Goal 2 `**Dependency change:**` check landed in BOTH
+Critic roster files, plus the build-plan field, the session-digest line (both variants) and
+`building.md`'s Decision Research extension. Every budgeted file funded by trim, no check
+weakened: review-protocol.md 3611→3617, goals-1-3.md 1998→1998, building.md 4807→4808, full
+digest 9990/10000.
+
+**Two first-choice trims were forbidden by the files' own budget comments, and reading them
+first is what saved the change.** Goal 4's `**Norms**` bullet reads as a pure restatement of the
+Normative-authority preamble and is pinned by `test_project_preferences_blocking` contracting on
+a single LINE — two editors have cut it and put it back, and I would have been the third. Step
+2's `model:` restatement is an emergency patch against reviewer-model tiering. What paid
+instead: the two severity-legend example lists (the sibling cut `goals-1-3.md` recorded and
+generalized, never applied here), the CLAUDE.md-size bullet's definition (`building.md` owns
+it), the normative block's two no-verdict claims (the class that file's own divergence rule
+marks droppable there first), and the `Test-last` trap (restated `Write tests` in the same
+file; its unique consequence clause folded into that step rather than dropped).
+
+**Chunk 03 review dispositions** (`rev-20260806T052204Z-9eb39b07`, `chunk`, 1 blocking / 3
+warnings / 2 notes — R-1 to R-5 FIXED, R-6 accepted-as-carry):
+- **BLOCKING R-1 — the "or edits an updater config" trigger reached no declaration surface.**
+  The chunk's own Description and requirements §7 both name it; every delivered surface scoped
+  to upstream *code* ("adds, bumps or vendors"), which an updater-config edit does none of —
+  while the spec makes bot-config enforcement **tier 2**, the only tier expressing the security
+  fast path. Not descoped anywhere (§11 assumption 4 defers diff-*detection*, not this scope).
+  Fixed on all four surfaces: both Critic bullets, the build-plan comment, and `planning.md`.
+- **WARNING R-2 — `extract_section`'s new level-derived terminator was untested.** Reverting it
+  failed nothing: only one surface uses a `###` heading and neither negative guard has a hit
+  anywhere in that file, so all three sweeps passed identically before and after. Now pinned by
+  `TestExtractSectionTerminator`, verified to fail against the old fixed `^## ` terminator.
+- **WARNING R-3 — `session-digest-slim.md` did not get the rule.** Slim is what THIS repo's
+  sessions get, and prawduct's CLAUDE.md does not restate the policy — while prawduct itself
+  runs two GitHub Actions workflows, the spec's headline non-manifest intake surface. Added.
+- **WARNING R-4 — the two new guards policed whole general-purpose sections.** The Goal 2
+  sections are not dedicated policy sections, so the negative guards would have failed a future
+  bullet that merely *illustrates* a manifest name or an interval — in the likeliest file in the
+  plugin for such an illustration. `_POLICY_SURFACES` entries now carry a scope
+  (`section`/`bullet`); `bullet` scopes the negative guards to the declaring line and asserts it
+  is non-empty so the narrowing cannot become a vacuous scan. **Chunks 04-05 take `bullet`.**
+- **NOTE R-5 — both budget comments understated headroom by one.** Reviewer wanted no edit
+  (inert count), but the figures changed anyway with R-1, so the true ones are written.
+- **NOTE R-6 — ACCEPTED as a carry**, recorded in Chunk 06 deliverable 5.
+
+Next: Chunk 04 — doctor check #15 + the janitor Dependency Health extension. Both are
+`_POLICY_SURFACES` additions at `bullet` scope.
 
 ## Yield Declarations
 
@@ -366,7 +407,7 @@ principle. Three controls are added here:
   2. `.prawduct/cross-cutting-concerns.md` Known Gaps — **overturn the standing position.** The bullet currently reads *"Dependency management has no discovery trigger. Dependencies are a planning concern. This is by design."* Replace it: the justification half remains a planning concern; the **intake** half now has a discovery trigger, and say why the original position no longer holds (the threat model it predates). Do not delete the sentence silently — a reversed position is recorded as a reversal.
   3. new `plugin/templates/dependency-update-runbook.md` — the tier-3 deliverable (requirements §5): a fillable procedure a product derives from its recorded policy — enumerate available updates, obtain publication times, classify by tier and clause, act — built on the existing runbook machinery and pointed at from `plugin/docs/upstream-dependency-policy.md`. Written per `plugin/docs/runbook-authoring.md`.
   4. `.prawduct/learnings.md` — capture the two meta-lessons this work produced: (a) a policy for a multi-ecosystem concern must key its detection off *the decision being recorded*, not off enumerating the ecosystems, or the detector becomes the allowlist the policy exists to avoid; (b) `prawduct-hook jurisdiction` caught a norm conflict that plain review would have shipped — the conformance-write routing — which is evidence about *when* to run it (before writing the plan, not at review).
-  5. `.prawduct/change-log.md` — the feature entry, tagged `scope=upstream-dependency-policy` per the bundle-at-release convention.
+  5. `.prawduct/change-log.md` — the feature entry, tagged `scope=upstream-dependency-policy` per the bundle-at-release convention. **Must name one test consolidation**: Chunk 03 deleted `test_does_not_restate_the_numeric_default` (subsumed by `test_no_policy_surface_restates_the_numeric_default`, which sweeps the same file, heading and `\d+\s*days?` property). Goal 1's rule is that legitimate consolidation needs a change-log entry, and this branch bundles change-log at release — so this is where that debt is paid, and naming it here is what stops it being reconstructed from a diff three chunks later.
 - **Tests:** `python3 -m pytest -q` green; all touched token budgets pass.
 - **Acceptance criteria:**
   1. The matrix row is present and accurate; the Known Gaps reversal is recorded as a reversal with its reason.

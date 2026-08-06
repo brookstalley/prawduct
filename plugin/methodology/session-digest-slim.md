@@ -13,6 +13,9 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)
+- **Upstream intake follows the product's recorded policy** — adding, bumping or vendoring
+  upstream code, or editing an updater's config, in a manifest or not (this repo's own CI
+  actions are the case in point). `docs/upstream-dependency-policy.md`.
 - **Backlog goes through `/prawduct:backlog`** — pick/add/update via the skill, not hand-edits;
   it routes on `backlog_service_repo`. "Done" = `update status=shipped` (markdown backend: moves
   to `## Archive`, never strikethrough; Issues backend: closes the issue). An early-`stage:`

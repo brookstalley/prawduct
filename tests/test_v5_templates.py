@@ -463,7 +463,8 @@ def read_file_under_plugin(rel_path: str) -> str:
 
 
 def extract_section(text: str, heading: str) -> str:
-    """Return one ``## `` section, from its heading to the next one (or EOF).
+    """Return one section, from its heading to the next heading of the same or a
+    higher level (or EOF).
 
     Anchored at LINE START, which is load-bearing rather than fussy: prose
     routinely *names* a heading mid-sentence — this template's own Direction
@@ -471,11 +472,21 @@ def extract_section(text: str, heading: str) -> str:
     ``str.index`` binds to that mention instead, silently scanning a region that
     starts in the wrong place. The bug is invisible because the wrong region
     usually still contains the right text, so every assertion keeps passing.
+
+    The terminator is derived from the heading's own level rather than fixed at
+    ``## ``, because the surfaces differ: ``goals-1-3.md`` puts each goal at
+    ``## `` while ``review-protocol.md`` nests them under ``### ``. A fixed
+    ``## `` terminator would run a ``### `` section on through its five
+    siblings, which is the same silently-widened region this docstring's first
+    paragraph is about — the scan would then be reporting on prose the surface
+    does not own.
     """
     match = re.search(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE)
     assert match, f"section {heading!r} not found as a heading"
+    level = len(heading) - len(heading.lstrip("#"))
+    assert level, f"{heading!r} is not a markdown heading"
     rest = text[match.end():]
-    nxt = re.search(r"^## ", rest, re.MULTILINE)
+    nxt = re.search(rf"^#{{1,{level}}} ", rest, re.MULTILINE)
     return heading + (rest[: nxt.start()] if nxt else rest)
 
 
@@ -484,13 +495,64 @@ def extract_section(text: str, heading: str) -> str:
 #:
 #: Requirement 1 of the appendix binds "no policy statement, gate, or check",
 #: which is broader than the spec file alone — so the guards below sweep every
-#: surface that exists today rather than only the one this chunk created. Chunks
-#: adding a Critic bullet, a doctor check, a janitor theme or a probe belong in
-#: this tuple too; the detector is already reusable.
+#: surface that exists today rather than only the one this chunk created. A
+#: doctor check, a janitor theme and an advisory probe belong in this tuple as
+#: they land; the detector is already reusable.
+#:
+#: The two Critic entries are the "gate, or check" arm of that requirement: the
+#: Goal 2 bullet is what actually enforces the policy, and it exists twice
+#: because the two files are the two roster paths (`goals-1-3.md` serves
+#: `chunk`/`verify-resolutions`, `review-protocol.md` serves
+#: `final`/`cumulative`). A guard on one of them would leave the check's wording
+#: free to drift in whichever mode was not swept.
+#:
+#: NOT here, deliberately: `templates/build-plan.md`'s `**Dependency change:**`
+#: field. That is the author's *declaration* that trips the check, not a
+#: statement of the policy or a check on it — the same reason the
+#: `**Exposed API:**` field is not a surface of the versioning decision. It is
+#: still written ecosystem-neutrally; nothing but this note stops a later editor
+#: reading its absence as an oversight.
+#:
+#: The third element is the scope the two NEGATIVE guards police:
+#:
+#: ``section`` — a DEDICATED policy section, where every line states the policy,
+#:   so scanning the whole region is exactly right.
+#: ``bullet``  — the policy is ONE bullet inside a general-purpose section. Only
+#:   the declaring line(s) are scanned, because the rest of that section is
+#:   unrelated prose a future author may legitimately write with a manifest name
+#:   or an interval in days in it — and the Critic protocol is the likeliest
+#:   place in the plugin for exactly such an illustration. Scanning the whole
+#:   Goal 2 section would fail that edit with a message claiming it restated the
+#:   policy, and the next author would either weaken the guard or contort the
+#:   prose. The surfaces Chunks 04-05 add (a doctor check, a janitor theme, a
+#:   probe) live in general-purpose files too, so they take ``bullet`` as well.
 _POLICY_SURFACES = (
-    ("methodology/discovery.md", "## Surface Upstream Dependency Policy"),
-    ("templates/security-model.md", "## Upstream Dependencies"),
+    ("methodology/discovery.md", "## Surface Upstream Dependency Policy", "section"),
+    ("templates/security-model.md", "## Upstream Dependencies", "section"),
+    ("skills/critic/review-protocol.md", "### 2. Nothing Is Missing", "bullet"),
+    ("skills/critic/goals-1-3.md", "## 2. Nothing Is Missing", "bullet"),
 )
+
+
+def policed_text(rel_path: str, heading: str, scope: str) -> str:
+    """The region the negative guards scan, per the surface's declared scope.
+
+    For ``bullet`` scope the declaring lines are found by their citation of the
+    spec, and their absence is an assertion rather than an empty scan: a
+    parametrized guard over zero text passes and proves nothing, which is the
+    same failure ``test_the_sweep_covers_the_surfaces_that_exist`` exists to
+    prevent one level up.
+    """
+    section = extract_section(read_file_under_plugin(rel_path), heading)
+    if scope == "section":
+        return section
+    assert scope == "bullet", f"unknown surface scope {scope!r}"
+    declaring = [line for line in section.split("\n") if _POLICY_SPEC in line]
+    assert declaring, (
+        f"{rel_path}'s {heading!r} carries no line citing {_POLICY_SPEC} — the "
+        "negative guards would scan nothing and pass vacuously"
+    )
+    return "\n".join(declaring)
 
 
 class TestUpstreamDependencyPolicySpec:
@@ -662,15 +724,12 @@ class TestSecurityModelUpstreamDependencies:
         """The enumeration itself is the thing that must not be duplicated."""
         assert "Clause 1" not in self.flat and "Clause 2" not in self.flat
 
-    def test_does_not_restate_the_numeric_default(self):
-        """The one fact most likely to be copied and then drift. Any "<n> day(s)"
-        default in the template is a second home for a number the spec owns —
-        matched as a property so a change from 7 to 10 does not slip through."""
-        hit = re.search(r"\d+\s*days?\b", self.flat)
-        assert not hit, (
-            f"the section states a numeric default ({hit.group(0)!r}); the spec owns "
-            "it — point at the spec instead so the two cannot drift"
-        )
+    # The numeric-default guard that used to sit here is gone, not weakened:
+    # `test_no_policy_surface_restates_the_numeric_default` sweeps this exact
+    # file and heading as one of `_POLICY_SURFACES`, with the same
+    # `\d+\s*days?` property. Keeping both meant one surface carried two copies
+    # of one guard while three others carried one — which reads as this file
+    # being the guarded one and is how a roster stops being read as the roster.
 
     def test_asks_for_what_belongs_here(self):
         """Three things are the product's own, not the framework's."""
@@ -710,6 +769,38 @@ class TestSecurityModelUpstreamDependencies:
         assert "in the prawduct plugin" in self.flat
 
 
+class TestExtractSectionTerminator:
+    """`extract_section` stops at the next heading of the SAME OR HIGHER level.
+
+    Pinned directly because the sweep cannot pin it: only one `_POLICY_SURFACES`
+    entry uses a `###` heading, and neither negative guard has a single hit
+    anywhere in that file — so under the old fixed `^## ` terminator the region
+    silently widened to Goals 2-7 and all three sweeps passed identically. A
+    property nothing can fail is not a guarded property.
+    """
+
+    DOC = "## Top\nintro\n\n### A\nalpha\n\n#### A-sub\nnested\n\n### B\nbeta\n\n## Next\nouter\n"
+
+    def test_a_subheading_does_not_terminate_the_section(self):
+        assert "nested" in extract_section(self.DOC, "### A")
+
+    def test_a_same_level_heading_terminates_the_section(self):
+        section = extract_section(self.DOC, "### A")
+        assert "beta" not in section, "### A ran on into its sibling ### B"
+
+    def test_a_higher_level_heading_terminates_the_section(self):
+        section = extract_section(self.DOC, "### B")
+        assert "beta" in section and "outer" not in section
+
+    def test_a_top_level_section_still_stops_at_its_sibling(self):
+        section = extract_section(self.DOC, "## Top")
+        assert "alpha" in section and "outer" not in section
+
+    def test_a_non_heading_anchor_is_rejected(self):
+        with pytest.raises(AssertionError):
+            extract_section("not a heading\n", "not a heading")
+
+
 class TestUpstreamPolicyAgnosticismAcrossSurfaces:
     """The agnosticism and one-home guards, swept over every surface that states
     the policy — not just the file this chunk created.
@@ -723,9 +814,9 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
     them rather than the number being removed from whichever file was noticed.
     """
 
-    @pytest.mark.parametrize("rel_path,heading", _POLICY_SURFACES)
-    def test_no_policy_surface_names_an_ecosystem(self, rel_path, heading):
-        section = extract_section(read_file_under_plugin(rel_path), heading)
+    @pytest.mark.parametrize("rel_path,heading,scope", _POLICY_SURFACES)
+    def test_no_policy_surface_names_an_ecosystem(self, rel_path, heading, scope):
+        section = policed_text(rel_path, heading, scope)
         offenders = [hit.group(0) for hit in _ECOSYSTEM_RE.finditer(section)]
         assert not offenders, (
             f"{rel_path}'s policy section names {offenders!r}. Requirement 1 binds "
@@ -733,25 +824,31 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
             "spec's non-normative appendix."
         )
 
-    @pytest.mark.parametrize("rel_path,heading", _POLICY_SURFACES)
-    def test_no_policy_surface_restates_the_numeric_default(self, rel_path, heading):
+    @pytest.mark.parametrize("rel_path,heading,scope", _POLICY_SURFACES)
+    def test_no_policy_surface_restates_the_numeric_default(self, rel_path, heading, scope):
         """The single most copy-prone fact in this feature, and the one that was
         actually copied. Matched as a property so a change from 7 to 10 cannot
         slip through, and swept across surfaces so removing it from one file does
         not just relocate the defect to the next."""
-        section = extract_section(read_file_under_plugin(rel_path), heading)
+        section = policed_text(rel_path, heading, scope)
         hit = re.search(r"\d+\s*days?\b", section)
         assert not hit, (
             f"{rel_path}'s policy section states a numeric default ({hit.group(0)!r}); "
             f"docs/{_POLICY_SPEC} owns it — cite the spec instead so the two cannot drift."
         )
 
-    @pytest.mark.parametrize("rel_path,heading", _POLICY_SURFACES)
-    def test_every_policy_surface_cites_the_spec(self, rel_path, heading):
+    @pytest.mark.parametrize("rel_path,heading,scope", _POLICY_SURFACES)
+    def test_every_policy_surface_cites_the_spec(self, rel_path, heading, scope):
         """The other half of one-home: a surface that neither states the facts nor
-        points at them has simply dropped the reader."""
+        points at them has simply dropped the reader.
+
+        The `docs/` prefix is part of the assertion, matching the sibling
+        message. A bare basename is not a path the reader can follow from where
+        these files are read, and asserting only the basename would let one
+        through — every surface carries the prefix today, so this pins the
+        current state rather than asking for a change."""
         section = extract_section(read_file_under_plugin(rel_path), heading)
-        assert _POLICY_SPEC in section, (
+        assert f"docs/{_POLICY_SPEC}" in section, (
             f"{rel_path}'s policy section must cite docs/{_POLICY_SPEC} — it is the "
             "only home for the clauses, the defaults and the tiers"
         )
@@ -759,9 +856,12 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
     def test_the_sweep_covers_the_surfaces_that_exist(self):
         """Guards against the roster silently emptying — a parametrized sweep over
         an empty tuple passes and proves nothing."""
-        assert len(_POLICY_SURFACES) >= 2
-        for rel_path, heading in _POLICY_SURFACES:
+        assert len(_POLICY_SURFACES) >= 4
+        for rel_path, heading, scope in _POLICY_SURFACES:
             text = read_file_under_plugin(rel_path)
             assert re.search(rf"^{re.escape(heading)}\s*$", text, re.MULTILINE), (
                 f"{rel_path} no longer carries {heading!r} — the sweep is scanning nothing"
             )
+            # And that the region actually policed is non-empty, which for a
+            # `bullet` surface is a different question from the heading existing.
+            assert policed_text(rel_path, heading, scope).strip()

@@ -1,7 +1,7 @@
 This repo is governed by **Prawduct** (installed as a plugin). Apply its principles with
 judgment, not mechanically. This is a supplemental session-start reminder — the full
-methodology lives in the plugin and is read on demand (see "Read on demand" below). It does
-not replace the authoritative rules in CLAUDE.md; it reinforces them.
+methodology lives in the plugin and is read on demand. It does not replace the
+authoritative rules in CLAUDE.md; it reinforces them.
 
 ## How work is governed here
 
@@ -27,8 +27,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   anchor its meaning to an ephemeral build id (a chunk, build-plan or work-cycle name) — those are
   deleted when the work ships, so carry the *why* inline. Exception: bookkeeping that records the
   work (change-log `chunks=`, backlog `closed-by:`, PR/commit text).
-- **Prefer an invariant to a tally in durable prose.** "Every fork launched after the fix" cannot
-  go stale; "three forks" went stale inside one branch. When a number is essential, compute it as
+- **Prefer an invariant to a tally in durable prose.** When a number is essential, compute it as
   you write it — never copy one from an adjacent line or an earlier entry — and where a mechanism
   can own the figure (a test, a lint), let it.
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
@@ -43,9 +42,11 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   critic-consolidate` before reading the findings (idempotent no-op if the SubagentStop
   trigger already landed them — never read a stale file).
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
-  `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
-  (`prawduct:allow <scope>/<rule-id> -- reason` is the general intentional-waiver
-  pragma — see `docs/waivers.md`.)
+  `# prawduct:allow prawduct/broad-except -- reason` — general form
+  `prawduct:allow <scope>/<rule-id> -- reason` (`docs/waivers.md`); never swallow errors silently.
+- **Upstream intake follows the recorded policy** — adding, bumping or vendoring upstream
+  code, or editing an updater config, manifest or not (CI actions).
+  `docs/upstream-dependency-policy.md`.
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
   `.session-reflected`, its backward-looking twin), and the session channel that carries your

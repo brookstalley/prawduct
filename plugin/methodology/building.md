@@ -72,7 +72,7 @@ There is no "pre-existing" exception — tests, broad exceptions, stale artifact
 
 **Persist plans immediately.** When scope evolves — new chunks, discovered gaps — update `build-plan.md` at once. *Writing* it is not enough before you delegate: a worktree-isolated subagent reads HEAD, so an uncommitted amendment is invisible to it (see "Delegating Work to Subagents").
 
-**Write tests.** Tests come first or alongside implementation, not after. If you can't write the test, you don't understand the requirement well enough to implement it.
+**Write tests.** Tests come first or alongside implementation — written last, they document bugs as behavior. If you can't write the test, you don't understand the requirement well enough to implement it.
 
 Test at the right level — **unit** (functions, logic), **integration** (component interactions, data flow, state), **end-to-end** (critical user flows, acceptance criteria). Depth proportionate to risk.
 
@@ -149,7 +149,7 @@ When you modify files that affect a contract surface:
 
 ### Decision Research (when choices constrain future options)
 
-A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format is always lock-in, measured by reversal cost not LOC; enumerate the data's future consumer queries before designing fields), **pervasiveness** (many files), **structural impact** (shapes architecture), **external dependency** (long-term library/service reliance), or **volatility** (correctness rests on fast-moving / post-cutoff data — web-research it, don't recall; see `methodology/discovery.md` "Calibrate Rigor").
+A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format is always lock-in, measured by reversal cost not LOC; enumerate the data's future consumer queries before designing fields), **pervasiveness** (many files), **structural impact** (shapes architecture), **external dependency** (long-term library/service reliance, and the *terms* of entry — `docs/upstream-dependency-policy.md`), or **volatility** (correctness rests on fast-moving / post-cutoff data — web-research it, don't recall; see `methodology/discovery.md` "Calibrate Rigor").
 
 Research scales to impact: **medium** (pervasive pattern, non-core dep) → quick in-context research; **high** (lock-in, structural, core dep) → a research subagent returns a concise recommendation on patterns and library health. Presentation scales to engagement: **low** → decide and state briefly; **medium** (default) → recommend and invite feedback; **high** → present options with trade-offs for the user to choose. Record major decisions in the most affected artifact: what, alternatives, rationale, trade-offs.
 
@@ -234,8 +234,6 @@ Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) 
 `prawduct:allow <scope>/<rule-id> -- reason` is the general waiver mechanism (`docs/waivers.md`). The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt." Broad catches that swallow errors without logging are always findings — no waiver can justify silencing errors.
 
 ## Common Traps
-
-**Test-last**: Tests written to pass against existing implementation document behavior, including bugs.
 
 **Uninvestigated decisions**: Major technology or architectural choices without research — lock-in, pervasiveness, structural impact, and external dependencies warrant investigation.
 

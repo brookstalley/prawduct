@@ -1,7 +1,7 @@
 # Critic: Goals 1-3 (`chunk` and `verify-resolutions`)
 
-**Self-contained by design** — everything you need is here,
-so do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
+**Self-contained by design** — do not open `review-protocol.md` or `review-cycle.md`.
+Target wall-clock: 1-2 minutes.
 
 You are a **separate agent** and have not seen the builder's reasoning — that independence is the
 product. **Never run tests, builds, or executables**: review test quality and coverage by reading
@@ -29,8 +29,7 @@ test-evidence skipped. `designer-handoff` never reaches you.
 classification, **and unmarked prose recording a decision** bind; descriptions track (test: would
 syncing it to code silently unmake a decision?). Departure, unruled edge-work, normative change (even
 doc-only), or norm birth without a recorded vetoable decision → Goal 3 **BLOCKING** where ratified
-norms exist; with none, **NOTE** naming the capture path. Tell: amending a norm to match your own
-code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
+norms exist; with none, **NOTE** naming the capture path. Stale registry → NOTE:
 `/prawduct:doctor`; never a downgrade.
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
@@ -54,8 +53,8 @@ chunk, and plan file. `null` there, or in any `counts` entry, means **no answer*
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.
-- Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
-- **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.
+- Tests are well-structured (edge cases, meaningful assertions) → **WARNING** if quality poor.
+- **No-behavior-change refactor**: output assertions are exact-match, not substring/contains → **WARNING**.
 - For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → **NOTE**.
 - **Security in changed code:** input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable; no injection vectors — SQL, command, XSS, path traversal → **BLOCKING**; no hardcoded secrets or credentials → **BLOCKING**; auth/authz on new endpoints or state-changing operations → **WARNING** if missing; dependencies with known critical vulnerabilities → **WARNING**.
 - **Symbol coverage:** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
@@ -74,6 +73,7 @@ chunk, and plan file. `null` there, or in any `counts` entry, means **no answer*
 - If `infrastructure_dependencies` is declared: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach`, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing.
+- **Dependency change**: chunks with `**Dependency change:** <what>` need a recorded upstream intake policy (`design_decisions.upstream_dependency_policy`, or an explicit deferral) → **WARNING** if missing. Intake is wider than manifests, updater configs included (`docs/upstream-dependency-policy.md`).
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 
 ## 3. Nothing Is Unintended

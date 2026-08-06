@@ -70,6 +70,7 @@ downgrade.
 - If `infrastructure_dependencies` is declared in project-state.yaml: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when (read source or probe before drafting handlers — see `methodology/planning.md`) → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach` present, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. The produced-surface mirror of Foreign API — see `methodology/planning.md`.
+- **Dependency change**: chunks with `**Dependency change:** <what>` need a recorded upstream intake policy (`design_decisions.upstream_dependency_policy` present, or an explicit deferral) → **WARNING** if missing. Intake is wider than manifests, updater configs included — see `docs/upstream-dependency-policy.md`.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 
 ### 3. Nothing Is Unintended
@@ -88,7 +89,7 @@ downgrade.
 - **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact rides its meaning on an ephemeral build id (chunk number, build-plan, work-cycle name), which dangles once the plan is deleted → **WARNING**; build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, operator-verification) is exempt.
 - **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
 - **Derived views**: `views_enabled` ⇒ Status, `release-notes.md`, and `scope_rollups:` derive from change-log tags via `regen-views`. Tag is canonical; view↔tag mismatch → **WARNING** ("run regen-views"). Flag tags, not derived files.
-- **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`. Applies to the current changeset.
+- **CLAUDE.md size**: check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`. Applies to the current changeset.
 - For framework changes: concept ripple check — renamed/removed terms still referenced in *active* files (not changelogs or archives) → **WARNING**.
 
 ### 5. Decisions Were Deliberate
@@ -113,7 +114,7 @@ downgrade.
 - **Idiomatic language usage**: Non-idiomatic code that ignores language best practices (e.g., `for i in range(len(items))` vs `for item in items`) → **WARNING**. Check `project-preferences.md` for declared conventions.
 - **Unmodeled state-based problems**: When correctness depends on multiple parts of the code agreeing which discrete condition the system is in, but state is reconstructed from interdependent booleans / scattered order-of-events conditionals rather than a single-source-of-truth model. Mechanism is an implementation choice — flag absence of the *model*. **BLOCKING** when invalid combos are reachable, double-transitions possible, or persisted state can diverge. **WARNING** when 3+ interdependent state signals lack a SoT and transition logic spans multiple call sites. **NOTE** borderline (two signals, localized). Enumerate the conditions you observed.
 
-Applies proportionally — a 2-line helper needs no design review. Prioritize what compounds: leaked abstractions others build on, spreading coupling, accumulating complexity.
+Applies proportionally — a 2-line helper needs no design review. Prioritize what compounds: leaked abstractions, spreading coupling.
 
 ## Framework-Specific Checks
 
@@ -125,8 +126,8 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 ## Severity Levels
 
-- **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
-- **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
+- **BLOCKING**: Must fix before proceeding.
+- **WARNING**: True *and* worth the builder's time. Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
 - **NOTE**: Genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads someone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 
 ## Review Execution
