@@ -145,8 +145,10 @@ The flagship multi-process flow, and the clearest expression of invariant 1.
   repo: line-scoped checks read one `git diff --unified=0` over the changed records and see only
   added lines.
 - **Reviewers write partials (model judgment as content).** Single-pass: the fork writes one
-  partial. Coordinator: each worker writes exactly its own `<role>.json` and nothing else. Every
-  partial is schema-validated.
+  partial. Coordinator: each worker writes exactly the two paths the manifest's `rendezvous`
+  records for its role — its started marker and its partial — and nothing else. Every partial is
+  schema-validated, and declares the `dispatch_id` of the review that dispatched it, so a
+  straggler from an abandoned review cannot satisfy a roster it never reviewed.
 - **`critic-consolidate` (code).** Reads the manifest, collects the partials, and **fails closed**
   on any gap (missing role, wrong reviewed-commit, malformed partial → no fact). On success it
   appends the review fact (and any resolution facts) to the evidence store, regenerates the derived

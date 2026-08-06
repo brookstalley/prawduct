@@ -177,9 +177,12 @@ only a compact `change_log_history`).
   still leave the last completed review anchorable. Consolidation rewrites the whole record, so the
   keys clear themselves.
 - **Dispatch manifest + partials** — `.prawduct/.critic-partials/manifest.json` (code-written at
-  `critic-begin`: the tree interval + roster a review will attest) and `<role>.json` partials (one
-  per reviewer, model-written, schema-validated before consolidation). The whole directory is removed
-  on successful consolidation.
+  `critic-begin`: the tree interval, the roster a review will attest, and `rendezvous`, the resolved
+  per-role write paths) and one partial per reviewer at those paths (model-written, schema-validated
+  before consolidation, each declaring the `dispatch_id` that binds it to its review). Partial paths
+  are keyed by review id, so two reviews in one worktree never share a name; the shape lives in
+  `critic_consolidate.partial_path` and nothing else spells it. The whole directory is removed on
+  successful consolidation.
 - **Critic-active marker** — `.prawduct/.critic-active` — presence signals a review is in flight;
   guards against a reviewer mutating the session under review, and carries a TTL so a crashed review
   self-clears.

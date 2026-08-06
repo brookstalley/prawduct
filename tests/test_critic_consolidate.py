@@ -1046,6 +1046,15 @@ class TestIncompleteNoopLiveness:
             assert "rendezvous" in text, f"{surface} does not route through the manifest"
             assert "liveness marker" in text, f"{surface} no longer instructs the marker"
         assert "FIRST" in agent_doc
+        # The coordinator SUBSTITUTES; it needs a slot per value it substitutes.
+        # Trading these for a bare `"rendezvous" in text` was too loose — the
+        # template could lose the started-marker slot entirely and still pass on
+        # the word appearing in the surrounding sentence.
+        for slot in ("<STARTED>", "<PARTIAL>", "<ID>"):
+            assert slot in protocol, (
+                f"the coordinator prompt template no longer carries {slot} — a "
+                "reviewer cannot be told where to write, or which review it is for"
+            )
         # The other half of the contract: what begin_review records IS what
         # started_path reads. A rendezvous entry that drifted from the reader
         # would leave the prose correct and the marker unread.

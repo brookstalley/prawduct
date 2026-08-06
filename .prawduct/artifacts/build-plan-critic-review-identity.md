@@ -72,8 +72,13 @@ two narrower alternatives before planning began.
 
 - [ ] Chunk 1: The rendezvous carries review identity
 - [ ] Chunk 2: `critic-restore` — the recovery this binding replaces
-Context: Plan written 2026-08-05 on `fix/critic-review-identity` off `develop` at `5812a02`
-(v3.2.6 released, nothing else in flight). Nothing built yet. Next: Chunk 1.
+Context: Built on `fix/critic-review-identity` off `develop` at `5812a02` (v3.2.6 released,
+nothing else in flight). **Chunk 1 is complete** — commit `d7e4efd`, suite 3762 green, reviewed
+by `rev-20260806T011753Z-41c17624` (`cumulative`, 0 blocking). The boxes stay `[ ]` because
+`views_enabled` flips them from a `status=shipped` change-log entry at release, not by hand.
+That review consumed a bundle pass over `5812a02..d7e4efd`, so Chunk 2's `cumulative-final` is
+the second one this branch buys — its interval will span both chunks either way.
+Next: Chunk 2 (`critic-restore`).
 
 ## Build Chunks
 

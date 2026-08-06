@@ -86,8 +86,8 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4807,
     "skills/critic/review-protocol.md": 3611,
-    "skills/critic/goals-1-3.md": 1994,
-    "skills/critic/review-cycle.md": 9530,
+    "skills/critic/goals-1-3.md": 1998,
+    "skills/critic/review-cycle.md": 9532,
     "skills/critic/framework-checks.md": 1116,
 }
 
@@ -955,7 +955,7 @@ class TestCriticGoals13:
         # INSIDE the legend entry, and the ordering pin keeps the narrowing above
         # goal 1.
         #
-        # 1994 -> 1994 (2026-08-05) -- UNCHANGED while adding two things: the
+        # 1994 -> 1998 (2026-08-05) -- +4 across two passes: the
         # write path now points at the manifest's `rendezvous` entry instead of
         # a literal filename, and the schema gained `dispatch_id`. Paid by two
         # cuts of this comment's own kind, and the record here is the SECOND
@@ -979,6 +979,12 @@ class TestCriticGoals13:
         # defect buys a review round"), and Goal 2's record-checks bullet ended
         # "raise them at the severities given there" -- a pointer to severities
         # the preamble had already assigned, eight lines up.
+        #
+        # The +4 is the cumulative review's R-9, paid at face value: the
+        # `dispatch_id` / `resolutions[].review_id` disambiguation had landed in
+        # agents/critic-reviewer.md, whose reader never writes `resolutions`.
+        # THIS file is the only surface whose reader writes both, and they sat
+        # eight lines apart with no cue. Three words in the schema example.
         tokens = estimate_tokens(self.content)
         assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
 
@@ -1317,12 +1323,16 @@ class TestReviewCycle:
         # was added to MAKE it true, which is the only honest way to keep a
         # universal claim: bound the last case, or do not make the claim.
         #
-        # 9471 -> 9530 (2026-08-05) -- the manifest key list gained `rendezvous`
+        # 9471 -> 9532 (2026-08-05) -- the manifest key list gained `rendezvous`
         # and the consolidation contract gained the `dispatch_id` binding. Not
         # paid by a trim, and the reason is this file's own role: it is the
         # maintainer's companion and the one home for the manifest's key list,
         # so a key that exists and is not listed here has no home at all. The
-        # additions are two clauses on lines that already existed.
+        # additions are two clauses on lines that already existed. The last +2
+        # is the cumulative review's R-13: the entry called `rendezvous` "the
+        # one home for those filenames", which it is not -- `partial_path` and
+        # `started_path` own the shape and every reader recomputes from them.
+        # A key list that misdescribes what it records is worse than a long one.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"

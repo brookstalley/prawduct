@@ -32,11 +32,17 @@ Two defect families die here rather than being patched:
   (``base_commit``/``base_tree`` → ``head_tree``/``head_commit``, D3 tree
   keying via ``evidence.capture_tree``), the ``files_changed`` snapshot
   (``git diff`` between exactly those trees, so the recorded set and the
-  D6 edge-validity check agree by construction), ``files_reviewed``, and
-  telemetry/attribution (``tier``, ``scope``, ``chunk``).
-- ``<role>.json`` — one partial per roster role, written by that reviewer.
-  Carries the reviewer's findings, and — for a verify-resolutions dispatch
-  only — its ``resolutions`` judgments (D5).
+  D6 edge-validity check agree by construction), ``files_reviewed``,
+  ``rendezvous`` (each role's resolved partial + started paths — see below),
+  and telemetry/attribution (``tier``, ``scope``, ``chunk``).
+- One partial per roster role, written by that reviewer, at the path
+  :func:`partial_path` owns and the manifest's ``rendezvous`` records — keyed
+  by review id, so two reviews in one worktree never contend for one name and
+  a straggler cannot satisfy a roster it never reviewed. Carries the
+  reviewer's findings, the ``dispatch_id`` binding it to the review that
+  dispatched it, and — for a verify-resolutions dispatch only — its
+  ``resolutions`` judgments (D5). The filename SHAPE is deliberately not
+  spelled anywhere but :func:`partial_path`, this sentence included.
 
 **Consolidation is idempotent and fail-closed.** It persists ONLY when every
 roster role has reported a schema-valid partial at the manifest's dispatch
@@ -697,7 +703,15 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
         try:
             raw = json.loads(mpath.read_text())
             candidate = raw.get("id") if isinstance(raw, dict) else None
-            if isinstance(candidate, str) and candidate.strip():
+            # Same gate as the rendezvous paths, for the same reason: this id
+            # comes off disk and becomes a directory name, so `../../x` walks up
+            # and `/tmp/x` replaces the base outright. Unlike those paths there
+            # is no validator upstream — this reads the manifest raw, precisely
+            # because it must also work when the manifest is unreadable — and an
+            # archive failure degrades to DELETE, so getting it wrong here loses
+            # the evidence silently. Falls through to the timestamp name.
+            if (isinstance(candidate, str) and candidate.strip()
+                    and _path_component_safe(candidate.strip())):
                 name = candidate.strip()
         except (OSError, json.JSONDecodeError):
             name = None
@@ -1553,14 +1567,12 @@ def active_dispatch_refusal(
     recoverable only by someone who knows the archive exists and still has the
     review id.
 
-    The second-order harm is worse than the first, because it is silent. The
-    displaced review's reviewers keep running and write into what is now the NEW
-    review's directory, and a partial is bound to the **commit** it reviewed
-    (:func:`consolidate` validates ``commit_reviewed`` against the manifest and
-    nothing else ties the two). At an unchanged HEAD a straggler from the
-    displaced review is therefore schema-valid and commit-valid against the new
-    manifest, satisfies its roster, and consolidates as the new review — a fact
-    attributed to a review that never read those files.
+    That second-order harm — a displaced review's straggler landing in the new
+    review's directory and consolidating as it — is no longer possible, and this
+    message no longer argues from it. A partial is keyed by review id and
+    declares its ``dispatch_id``, so a straggler is named as foreign rather than
+    merged. What survives is the first-order harm above, which is enough: this
+    refusal exists to protect findings that have already been written.
 
     **This message is also the missing observability.** ``methodology/building.md``
     tells an agent whose review looks slow to "wait; if it fails, re-invoke", and
@@ -1626,11 +1638,9 @@ def active_dispatch_refusal(
     # No "critic-begin:" prefix — the CLI renders this as `f"critic-begin: {reason}"`.
     return (
         opening
-        + "  Dispatching now would archive its partials and overwrite its manifest, "
-        "and any\n"
-        "  still-running reviewer would write into THIS review's directory, where a "
-        "partial\n"
-        "  at the same commit is indistinguishable from one written for it.\n"
+        + "  Dispatching now would archive its partials and overwrite its manifest, so\n"
+        "  a finished review would leave no fact and no ledger anchor — recoverable\n"
+        "  only by someone who knows the archive exists and still has the review id.\n"
         "\n"
         + situation
         + "\n"
@@ -2046,12 +2056,20 @@ def _stray_partial_note(prawduct_dir: Path, missing: list[str],
                 foreign.append(name)
     note = ""
     if legacy:
+        # The remedy has to REACH the state, and a bare "re-dispatch" does not:
+        # this note is appended to a message whose roster branch has just said
+        # "do not re-dispatch", and `critic-begin` refuses anyway while the
+        # marker is live. So the sequence is stated in full, in order, and the
+        # abandon step comes first.
         note += (
             f" NOTE: {', '.join(sorted(f'{r}.json' for r in legacy))} in that"
             " directory is a partial written to the path this hook used before"
             " reviews were keyed by id — the skill that wrote it is older than"
-            " this hook, so its work cannot be read. Reload the plugin"
-            " (/reload-plugins, or restart the session) and re-dispatch."
+            " this hook, so its work cannot be read and waiting will not"
+            " produce it. This one case overrides the wait advice above:"
+            " reload the plugin (/reload-plugins, or restart the session),"
+            " then `prawduct-hook critic-end` to abandon this review, then"
+            " dispatch again."
         )
     if foreign:
         note += (

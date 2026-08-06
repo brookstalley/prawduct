@@ -114,7 +114,7 @@ dies in your context, and the builder is what terminates the review loop.
     {"name": "<short title>", "goal": "Nothing Is Unintended", "severity": "warning", "recommendation": "<what to do>", "files": ["file1"]}
   ],
   "resolutions": [
-    {"review_id": "<prior fact id>", "fid": "R-1", "disposition": "fixed"}
+    {"review_id": "<the PRIOR review's id, not yours>", "fid": "R-1", "disposition": "fixed"}
   ],
   "summary": "N warnings. Changes ready to proceed."
 }

@@ -36,10 +36,11 @@ if your prompt omits them, and never compose the filenames yourself. The role �
 
 ## What to do
 
-1. **FIRST — before reading anything — write your liveness marker** at your `rendezvous.started`
-   path (content: your role, nothing else). The file's mtime is the signal — it lets a waiting
-   session distinguish "reviewer at work" from "reviewer never started" for the minutes before
-   your partial lands. Skipping it makes your whole run indistinguishable from a dead dispatch.
+1. **FIRST — before anything else — write your liveness marker** at your
+   `rendezvous.<your role>.started` path (content: your role, nothing else). If your prompt did
+   not carry it, reading the manifest for that path is part of this step, not a departure from
+   it. The file's mtime is the signal — it lets a waiting session distinguish "reviewer at work"
+   from "reviewer never started" for the minutes before your partial lands. Skipping it makes your whole run indistinguishable from a dead dispatch.
 2. Read the goal definitions for YOUR goals from `review-protocol.md` (in the Critic skill
    directory). Review ONLY your assigned goals — the other reviewers cover the rest.
 3. Read the changed files and inspect the diff (read-only git). Do NOT run tests or builds.
@@ -49,8 +50,8 @@ if your prompt omits them, and never compose the filenames yourself. The role �
 
 ## What to write — your started marker, then ONLY your partial
 
-Besides the started marker above, write a single JSON file at your `rendezvous.partial` path,
-and write **nothing else**. Do NOT write `.prawduct/.critic-findings.json`, do NOT run
+Besides the started marker above, write a single JSON file at your
+`rendezvous.<your role>.partial` path, and write **nothing else**. Do NOT write `.prawduct/.critic-findings.json`, do NOT run
 `prawduct-hook critic-consolidate`, and do NOT run `prawduct-hook critic-end` — a
 deterministic step external to you merges the partials and persists the canonical record.
 That decoupling is what makes the review survive the harness backgrounding subagents.
