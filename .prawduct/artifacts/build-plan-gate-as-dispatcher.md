@@ -69,7 +69,7 @@ Context: **BOTH CHUNKS COMPLETE.** Chunk 01 at `586ae1d`; Chunk 02 across `e55b6
 `5612999` / `b0df883` / `93b4afb` / `1298d31` (five review rounds' findings) and `8ba8b3e` (two
 framework defects the rounds exposed). Suite green — the count lives in `.prawduct/.test-evidence.json`
 and `prawduct-hook test-status` is the reader; a figure transcribed here goes stale silently.
-`check-cumulative-critic` is SATISFIED at HEAD (5 review facts, 0 free edges, 0 unresolved blocking).
+`check-cumulative-critic` is SATISFIED at HEAD — run it rather than trusting a tally written here; it recomputes, and a transcribed count is stale the next time anything lands.
 
 Step 0 settled by owner ruling: `change-log.md` is correctly non-judgeable, and `learnings-detail.md`'s
 CRT-7M2D bullet was wrong on three of its five named files. The refusal is mutation-verified on both
@@ -91,8 +91,9 @@ defects are fixed in `8ba8b3e` per the owner's standing rule (fix in place, neve
 two instances that HAVE an enumerated set in code (waiver rule ids, evidence fact kinds); exit codes and
 concerns rows have no left-hand side to difference and stay reviewer work, stated in the test's own
 docstring so a green suite is not read as full coverage. And the verify-mode severity directive now
-separates "the tree must not move" from "this fix is owed", pinned structurally in
-`tests/test_critic_consolidate.py`.
+separates "the tree must not move" from "this fix is owed" — pinned structurally in
+`tests/test_critic_consolidate.py` by `8664bc8`, because `8ba8b3e` shipped the clause with no test and
+the next round caught it.
 
 `active_build_plan` still points at `artifacts/build-plan-critic-review-identity.md` and **must not be
 repointed** until the `develop`→`main` release ships (gitflow, `methodology/planning.md`
