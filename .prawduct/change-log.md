@@ -5,7 +5,7 @@
 
 ## 2026-08-06: the refusal became countable, and the prose stopped teaching the round
 
-<!-- prawduct: chunks=2 | type=feat | scope=gate-as-dispatcher -->
+<!-- prawduct: chunks=01,02 | type=feat | scope=gate-as-dispatcher -->
 
 **A control that cannot be counted cannot be retired.** Chunk 01 taught `critic-begin` to refuse a
 review the coverage gate would not require — and it did so silently. The governing norm is
@@ -48,7 +48,7 @@ rule is durable: *absence of a thing that was never there proves nothing.*
 `coverage_verdict` already grants a direct free edge between the two endpoint trees whenever their
 diff holds no judgeable path, so an `uncovered` verdict *entails* the span is not free. Writing that
 line would have taught a false rule. The plan also mis-attributed the `NEXT-ACTION` text to
-`review-protocol.md` (it lives in `_next_action`), and the "unconditional" round it proposed
+`review-protocol.md` (it lives in `next_action_line`), and the "unconditional" round it proposed
 replacing turned out to be the BLOCKING arm's — which is correct, and is precisely why the refusal
 predicate has a second conjunct. What did need saying, at the two live decision points and in the
 findings carrier itself: **asking is free.** The builder no longer has to reason about judgeability

@@ -97,7 +97,7 @@ An absent file is the empty store.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition` today; `test-run`, `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal` today; `test-run`, `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` — provenance: which session, which worktree, which plugin version wrote it |
@@ -123,6 +123,21 @@ An absent file is the empty store.
   and never on its own. Compaction that violated this would silently un-answer a finding; the
   sequenced id defends against it by stepping past ids already present rather than counting
   surviving history.
+- **Guard-refusal fact `body`** — that a **pre-dispatch guard** fired: a control that declined to
+  spend something (a reviewer, a build) *before* spending it. Carries the `guard` name (the grouping
+  key every yield query groups on, and the authority even if a caller's body offers its own), the
+  `interval` it judged, and whatever that guard needs to answer its own yield question later — for
+  `critic-dispatch-free-interval`, the `free_files` it waved through plus `mode`/`scope`/`chunk`/
+  `branch`. **The interval is nested under `interval`, never spread to the body's top level**, which
+  is where a coverage edge carries `base_tree`/`head_tree`: one level down, no reader walking bodies
+  for edges can mistake a refusal for one. **This kind is purely observational and CANNOT become
+  authoritative** — composition derives edges from `kind == "review"` alone, so a refusal contributes
+  neither node nor edge and can only ever coexist with a verdict, never produce one. It exists
+  because `nonfunctional-requirements.md` requires a control to emit its expected yield observably;
+  a guard whose only output is stderr can never be measured, and therefore never retired.
+  **Droppability:** a refusal sits on no coverage path and targets no other fact, so it is droppable
+  at any time — dropping one loses a data point about the guard's yield, never a governance answer.
+  Written by `evidence.append_guard_refusal`, the one sink for the whole class (#596).
 
 **Tree-keying (the load-bearing idea).** Facts reference git *tree SHAs*, captured via a temporary
 index that never touches the session's working tree or real index. Because a verbatim commit

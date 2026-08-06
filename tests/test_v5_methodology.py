@@ -87,7 +87,7 @@ LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4807,
     "skills/critic/review-protocol.md": 3611,
     "skills/critic/goals-1-3.md": 1998,
-    "skills/critic/review-cycle.md": 9586,
+    "skills/critic/review-cycle.md": 9596,
     "skills/critic/framework-checks.md": 1116,
 }
 
@@ -1343,6 +1343,14 @@ class TestReviewCycle:
         # PAID FOR, not spent: the "do not retry in another mode" clause came
         # back out, because SKILL.md's exit-3 step already owns it and that is
         # the surface that reads the exit code. Net of both, +54.
+        #
+        # 9586 -> 9596 (2026-08-06) -- the cumulative's R-11: the exit-3 answer
+        # had been hung on the gate's FAILING branch, the one branch where a
+        # refusal cannot fire (an `uncovered` verdict entails the span is not
+        # free) -- the same false implication this bundle withdrew a sibling
+        # deliverable for. Moved to the post-fix `verify-resolutions` decision,
+        # where free deltas genuinely occur, and the correction itself now rides
+        # the existing "if it passes" sentence rather than adding one. +10.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"

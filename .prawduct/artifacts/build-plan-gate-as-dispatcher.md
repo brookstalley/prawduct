@@ -21,15 +21,15 @@ governed_by:
     dispositions:
       - "Review wall-clock is P0: cost = unit-cost x run-count → conforms — this is a run-count lever, the one the norm names first"
       - "Proportionality ratchets both ways; adding a control names its expected yield and emits it observably → conforms as of Chunk 02. Requirements §1 is the recorded yield argument; the 'observably' half is discharged by a `guard-refusal` fact appended to the clone-shared evidence store on every firing, queryable as `prawduct-hook evidence list --kind guard-refusal`. It carries the interval and the free file list, so the question that retires the guard — did it ever refuse a round that turned out to be needed? — is answerable from the record rather than from memory"
-      - "State-file growth past its threshold is surfaced as an advisory → inapplicable because this work adds no state file"
+      - "State-file growth past its threshold is surfaced as an advisory → conforms as of Chunk 02. No NEW state file is added, but the shared evidence store now takes one line per refusal. Its growth advisory is keyed on distinct TREES, and a refusal contributes none (`distinct_trees` filters to review facts), so refusals grow the file without moving that advisory — a deliberate choice, since the advisory measures composition cost and a refusal adds none"
   - artifact: data-model
     dispositions:
       - "Governance verdicts are computed from the append-only fact ledger, never mutable model-written state → conforms — the predicate reads the interval diff and the store; no model writes to the decision path"
-      - "Facts are immutable and append-only → conforms — the refusal writes no fact; declining to create one is not a mutation"
+      - "Facts are immutable and append-only → conforms — the refusal appends one immutable `guard-refusal` fact (Chunk 02) and never rewrites one; Chunk 01's refusal wrote none at all"
       - "Derived views are disposable and never authoritative → conforms — nothing here reads .critic-findings.json"
       - "Every issue conforms to the issue standard's §1 title rules → inapplicable because this work writes no backlog issue"
       - "A fact written by a newer schema is a loud block → inapplicable because no fact is read for its schema on this path"
-      - "Two stores, two lifetimes → conforms — the refusal reads the shared evidence store and writes neither store"
+      - "Two stores, two lifetimes → conforms, and the R-26 ruling turns on exactly this norm — the refusal reads the shared evidence store and now appends its `guard-refusal` fact there rather than to the per-worktree governance ledger, because these guards fire in worktrees that are then deleted. The ledger stays untouched"
       - "backlog_service_repo selects the authoritative backlog store → inapplicable because this work touches no backlog store"
   - artifact: api-contract
     # Added 2026-08-06 after the cumulative review's R-12: exit 3 ships on this
@@ -204,7 +204,7 @@ Tests carry most of this, but two things tests cannot say:
     the free file list — enough to answer the yield question later
   - the `NEXT-ACTION` text's 0-blocking arms: *asking is free — dispatch exits 3 rather than spending
     a reviewer*. **Two corrections to this plan as written.** (a) The text lives in
-    `plugin/lib/critic_consolidate.py` (`_next_action`), not in `review-protocol.md`, which only
+    `plugin/lib/critic_consolidate.py` (`next_action_line`), not in `review-protocol.md`, which only
     relays it. (b) The "unconditional then run ONE verify-resolutions" this plan proposed replacing
     is the **BLOCKING** arm's, and it is CORRECT — a blocking finding is cleared only by the
     resolution facts a verify pass records, which is precisely why the refusal predicate's second
@@ -219,12 +219,18 @@ Tests carry most of this, but two things tests cannot say:
   - `plugin/skills/critic/review-cycle.md` — the "before running another pass to close coverage"
     block, which IS a live decision point, gets the answer instead
   - `plugin/skills/pr/SKILL.md` — Step 2's sequencing paragraph, same correction
-- **Tests:** a preference-style test pinning that the `NEXT-ACTION` text no longer prescribes an
-  unconditional review round (the same shape as
+- **Tests:** a preference-style test pinning that the surfaces deciding whether a round is spent
+  carry the free-interval answer (the same shape as
   `tests/preferences/test_critic_skill_structure.py`); a test that a refusal appends exactly one
-  ledger event and a dispatch appends none of that kind.
-- **Acceptance criteria:** full suite green; a refusal is queryable from the ledger; no prose surface
-  still instructs an unconditional post-fix review round.
+  `guard-refusal` fact and that a dispatch — and a `--force` override — append none. Plus a proof
+  the fact cannot compose as coverage, driven through `coverage_algebra` with a body deliberately
+  shaped like an edge (it must read `covered` under kind `review` and `uncovered` as itself, or the
+  test is vacuous).
+- **Acceptance criteria:** full suite green; a refusal is queryable as
+  `prawduct-hook evidence list --kind guard-refusal`, WITH its guard and free-file payload rendered
+  (a listing that shows only "a refusal happened, at this time" does not answer the retirement
+  question, and the R-26 "a reader already exists" claim would be false); no prose surface still
+  instructs an unconditional post-fix review round.
 - **Type:** cumulative-final
 - **Done when:**
   1. Acceptance criteria met and tests pass

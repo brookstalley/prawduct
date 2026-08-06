@@ -392,7 +392,7 @@ def next_action_line(
         " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
         " prices `free` moves no coverage and needs no pass at all. AFTER committing,"
         " you no longer have to judge it either: dispatch asks the same predicate and"
-        " exits 3 (`no review needed`, under a second, nothing written) rather than"
+        " exits 3 (`no review needed`, under a second, no session state written) rather than"
         " spending a reviewer on a free interval — so asking costs nothing, and a"
         " refusal is the answer, not a reason to retry in another mode."
         " Do NOT start another round to 'close coverage' before committing, and do"

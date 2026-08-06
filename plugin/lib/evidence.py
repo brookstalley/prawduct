@@ -209,9 +209,14 @@ def append_guard_refusal(project_dir: Path, guard: str, body: dict) -> dict:
        a record deleted with its worktree answers nothing. This store is at the
        clone's git common dir, which every worktree shares and none owns.
     2. *A reader already exists.* ``prawduct-hook evidence list --kind
-       guard-refusal`` is the yield query, today, with no new code. The ledger's
-       reader (``telemetry.review-stats``) reports ``review.*`` kinds only, so
-       that route needed a new event kind AND a new reader.
+       guard-refusal`` is the yield query. The ledger's reader
+       (``telemetry.review-stats``) reports ``review.*`` kinds only, so that
+       route needed a new event kind AND a whole new reader; this one needed the
+       lister taught to render `guard=` and `free=` off a nested interval — a
+       column, not a reader. Counting and grouping worked unchanged; the payload
+       did not, and a query that shows only "a refusal happened, at this time"
+       cannot answer the retirement question, so the claim would have been false
+       without it.
     3. *Envelope fit.* The ledger's envelope is review-cost-shaped
        (``duration_seconds``, ``actor.model``, roster). A refusal has no
        reviewer, no model and no duration; it would be a mostly-null row. This
@@ -249,8 +254,11 @@ def append_guard_refusal(project_dir: Path, guard: str, body: dict) -> dict:
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
         uuid.uuid4().hex[:8],
     )
+    # `guard` LAST, not first: the id was minted from the parameter, so a body
+    # carrying its own "guard" key must not win — a record whose grouping key
+    # disagrees with its own id is worse than a rejected write.
     return append_fact(
-        project_dir, "guard-refusal", fact_id, {"guard": guard.strip(), **body}
+        project_dir, "guard-refusal", fact_id, {**body, "guard": guard.strip()}
     )
 
 
@@ -733,7 +741,11 @@ def _cmd_status(project_dir: Path) -> int:
     print(f"facts: {counts}")
     trees = distinct_trees(result["facts"])
     print(f"trees referenced: {len(trees)}")
-    ephemeral = ephemeral_facts(result["facts"])
+    # Only COVERAGE-BEARING kinds belong in the wasted-cost sentence. A
+    # `guard-refusal` recorded from a disposable worktree covers no branch
+    # either, but saying "the review cost was spent" of it is exactly backwards
+    # — no reviewer ran, which is the entire point of the record.
+    ephemeral = [f for f in ephemeral_facts(result["facts"]) if f.get("kind") == "review"]
     if ephemeral:
         print(
             f"from ephemeral worktrees: {len(ephemeral)} (these COVER NO BRANCH — "
@@ -798,11 +810,31 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         tree = body.get("head_tree") or body.get("at_tree")
         # Opaque bodies stay opaque: a non-string value here is a valid
         # envelope whose body this lister doesn't understand — never crash.
+        if not (isinstance(tree, str) and tree):
+            # A refusal nests its interval under `body.interval` ON PURPOSE, so
+            # no edge-walker can mistake it for a coverage edge — which also
+            # means the top-level lookup above finds nothing. Reach for it
+            # explicitly rather than leaving the row blank: a listing that shows
+            # only "a refusal happened, at this time" cannot answer the question
+            # this record exists for ("did it ever refuse a round that turned
+            # out to be needed?"), and the claim that this command IS the yield
+            # query would be false.
+            interval = body.get("interval")
+            if isinstance(interval, dict):
+                tree = interval.get("head_tree")
         tree_note = f" tree={tree[:12]}" if isinstance(tree, str) and tree else ""
+        guard = body.get("guard") if isinstance(body, dict) else None
+        guard_note = f" guard={guard}" if isinstance(guard, str) and guard else ""
+        free = body.get("free_files") if isinstance(body, dict) else None
+        if isinstance(free, list) and free:
+            shown = ", ".join(str(p) for p in free[:3])
+            more = f" +{len(free) - 3}" if len(free) > 3 else ""
+            guard_note += f" free=[{shown}{more}]"
         # Marked inline rather than filtered: the fact is real and stays listed;
         # what it does not do is cover a branch.
         origin = " [ephemeral — covers no branch]" if is_ephemeral_fact(fact) else ""
         print(
-            f"{fact.get('ts', '-')}  {fact['kind']:<10} {fact['id']}{tree_note}{origin}"
+            f"{fact.get('ts', '-')}  {fact['kind']:<10} {fact['id']}"
+            f"{tree_note}{guard_note}{origin}"
         )
     return 0

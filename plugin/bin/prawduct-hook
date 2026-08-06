@@ -1120,8 +1120,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     past the demotion threshold (the skill falls back to `final`); **exit 3 =
     no review needed** — the interval holds no judgeable file and no finding
     this mode could resolve, so the coverage gate already composes it as a free
-    edge (`--force` dispatches anyway; nothing is written and no marker is set,
-    so a 3 needs no `critic-end`); exit 1 = any other dispatch failure (reason
+    edge (`--force` dispatches anyway; no session state is written and no marker
+    is set, so a 3 needs no `critic-end` — it does append one inert
+    `guard-refusal` fact, which no gate reads); exit 1 = any other dispatch failure (reason
     on stderr). The scheme these cite is `artifacts/api-contract.md`
     § Error Model.
 

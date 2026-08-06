@@ -283,11 +283,11 @@ most reliable way an agent talks itself into a round nothing asked for:
 prawduct-hook check-cumulative-critic   # PR path
 ```
 
-If it passes, you are done — stop. **And when it does not, you still need not judge whether the round
-is worth it: ask.** `critic-begin` applies the gate's own judgeability predicate before spending a
-reviewer, and exits 3 (`no review needed`, sub-second, nothing written) over a free interval.
+If it passes, you are done — stop; if it does not, the span is not free and the round is real.
 
-**Batch the fixes: ONE commit, then ONE `verify-resolutions`.**
+**Batch the fixes: ONE commit, then ONE `verify-resolutions`** — and there, don't judge whether the
+pass is warranted: ask. `critic-begin` exits 3 (`no review needed`, no session state written) when
+the post-fix delta is free, applying the same predicate the gate charges by.
 Fix-commit-verify per finding multiplies 5-10 minute rounds and hands each new round the prose the
 last fix wrote. `critic-consolidate` prints this verbatim whenever a review lands findings
 (`_BATCH_FIX_DIRECTIVE`), so the builder meets it holding the findings rather than remembering it

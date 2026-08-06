@@ -227,8 +227,11 @@ Fail-direction is deliberate and per-purpose:
   **1** a correct, expected outcome reads as a dispatch failure and invites a retry in another mode —
   which is the review round this exit exists to prevent. Message goes to **stdout** (agent-facing:
   it is a normal outcome the caller acts on, not a diagnostic), names the free files, and names the
-  override. `--force` dispatches anyway. Nothing is written and no critic-active marker is set, so a
-  3 needs no `critic-end`.
+  override. `--force` dispatches anyway. **No session state is written** — no dispatch manifest, no
+  critic-active marker, and the partials directory is not swept — so a 3 needs no `critic-end`. It is
+  not a silent no-op, though: since 2026-08-06 a 3 appends exactly one `guard-refusal` fact to the
+  clone-shared evidence store, which is what makes the guard's own yield falsifiable. That fact is
+  inert by construction (no gate reads a non-`review` kind), so it changes no verdict.
 
 **Message vocabulary:** `CRITICAL:` / `WARNING:` / `NOTE:` / `PRAWDUCT:` / `BLOCKED —…`, with a
 channel split — **stdout is agent-facing** (composed into model context), **stderr is

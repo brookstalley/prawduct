@@ -18,6 +18,17 @@ was produced by builders following exactly these instructions correctly.
 must not carry the specific unconditional phrasing that predates the guard. It
 does not check that the surrounding explanation is good — that is the Critic's
 job (Goal 4: Coherence).
+
+**Why `methodology/building.md` is deliberately NOT in `_SURFACES`.** Its
+"Resolve findings" paragraph is the fifth carrier a builder reads, and it says
+"every fix in ONE commit, then ONE `/prawduct:critic verify-resolutions`" — which
+is *correct unchanged* under this design: running it and letting the exit code
+answer is exactly the desired behaviour, and the guard makes that instruction
+cheaper rather than wrong. Adding the qualifier there would spend that file's
+token budget restating a mechanism the command itself now enforces, on the one
+surface whose job is the shape of the cycle rather than the cost of a round.
+Recorded here because the omission is a judgement, not an oversight (cumulative
+`rev-20260806T215117Z-31201027`, R-15).
 """
 
 from __future__ import annotations

@@ -568,6 +568,80 @@ class TestTheRefusalIsObservable:
         ).returncode == 0
         assert self._guard_facts(repo) == []
 
+    def test_an_unrecordable_refusal_is_still_a_refusal(self, tmp_path, monkeypatch):
+        """The soft-fail contract, which shipped with no test.
+
+        A refusal is correct whether or not the record lands, so a store failure
+        must NOT convert a correct exit 3 into an error — that would hand the
+        builder a review round because telemetry broke. It must not be silent
+        either: a degraded record that vanishes leaves the yield question
+        looking answered at zero (`learnings.md`: "'advice fails soft' is not
+        'advice fails silent'").
+
+        Driven in-process rather than through the CLI because the failure has to
+        be *injected*: `append_fact` catches `OSError`, and there is no
+        filesystem state that reliably produces one at that path on every
+        machine (a chmod'd store is still writable as root, and the store's
+        parent is created on demand).
+        """
+        import lib.critic_consolidate as cc
+        import lib.evidence as ev
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        _seed_leftover_partial(repo)
+        monkeypatch.setattr(
+            ev, "append_guard_refusal",
+            lambda *a, **k: {"status": "error", "reason": "store unwritable (injected)"},
+        )
+        result = cc.begin_review(repo, "verify-resolutions")
+
+        assert result["status"] == "no-review-needed", (
+            "a telemetry failure turned a correct refusal into something else — "
+            f"the builder would pay a review round for a broken store: {result}"
+        )
+        assert result["recorded"] is False, (
+            "the refusal claims it was recorded when the append failed"
+        )
+        _assert_no_dispatch_state(repo)
+
+    def test_a_recorded_refusal_says_so(self, tmp_path):
+        """The other half of `recorded` — otherwise the False case above is
+        consistent with a key that is always False."""
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        result = cc.begin_review(repo, "verify-resolutions")
+
+        assert result["status"] == "no-review-needed"
+        assert result["recorded"] is True
+
+    def test_a_body_cannot_override_the_guard_name(self, tmp_path):
+        """`append_guard_refusal` mints the fact id from the `guard` PARAMETER,
+        so a body key of the same name must not win: a record whose grouping key
+        disagrees with its own id would split one guard's firings across two
+        buckets in the only query that answers the yield question."""
+        import lib.evidence as ev
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+
+        assert ev.append_guard_refusal(
+            repo, "real-guard", {"guard": "impostor", "free_files": []}
+        )["status"] == "appended"
+
+        fact = self._guard_facts(repo)[0]
+        assert fact["body"]["guard"] == "real-guard"
+        assert "real-guard" in fact["id"]
+
     def test_a_refusal_fact_cannot_cover_anything(self, tmp_path):
         """The safety property. These facts sit in the store every coverage gate
         composes over, so the one thing they must never do is help a gate pass.
