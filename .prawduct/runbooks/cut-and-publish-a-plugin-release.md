@@ -519,9 +519,11 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > a runner boots. At v3.2.4 that margin was **9 seconds** and the only thing defending
     > it was typing speed — a pause here to read output would have turned a correct
     > release red. Creating both in one call means no instant exists at which the tag is
-    > there without its Release. It also sharpens what a red tag-push run means: a tag
-    > that arrived by some route other than this step, which is exactly the case worth a
-    > red build.*
+    > there without its Release — **and that, not the absence of a trigger, is what makes the
+    > race unlosable.** The tag-push run does fire on this path (measured at v3.2.5; see step
+    > 21), it simply cannot catch the tag Release-less. It also sharpens what a **red** tag-push
+    > run means: not this path, which is green by construction, but a tag that arrived by some
+    > other route — exactly the case worth a red build.*
 
     > *Why the whole section, not just the headline: `plugin/CHANGELOG.md` ships **inside**
     > the plugin, so it is unreadable to anyone who has not installed it. The Releases page
@@ -552,23 +554,34 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     dispatch — wait and re-run. Do not grade the release on it.
 
     > *Why `--event workflow_dispatch` rather than the newest run of any kind: it names the run
-    > you just asked for. A tag-push run appearing beside it is not an error — see below — but
-    > it is a different run, and "newest" would let the two trade places.*
+    > you just asked for. A tag-push run **will** be sitting beside it — see below — and it is a
+    > different run, so "newest" would let the two trade places. This filter is not a nicety;
+    > it is what makes the query deterministic.*
 
     > *Why the fetch: step 20 created the tag on the remote, so your clone does not have
     > it yet and every local command naming `vX.Y.Z` — including `check-released` and the
     > install-sha check in `Done when` — would fail on an unknown ref.*
 
-    > *Why the CI run is dispatched by hand here rather than arriving on its own: a tag
-    > created through the Releases API emits `create` and `release` webhook events, not
-    > `push`, so the tag-push trigger does not fire on this path. That is the trade step
-    > 20 makes — a race you could lose replaced by a step you must not skip. A
-    > push-triggered run appearing anyway is not an error; read it the same way.*
+    > *Why the CI run is dispatched by hand here rather than relied on to arrive: **expect
+    > two runs, and dispatch anyway.** A tag created through the Releases API **does** emit a
+    > `push` event — measured at v3.2.5, run `31049244616`, `headBranch: v3.2.5`, `--event push`,
+    > green, firing on its own beside the hand-dispatched `31049256434`. The dispatch stays because
+    > it names a run you asked for at a time you know, which is what the `--event workflow_dispatch`
+    > query above depends on; the arriving run is a bonus, not the check. Two green runs is the
+    > normal shape of this step.*
     >
-    > 🚧 **UNVERIFIED** — that a Release-created tag emits no `push` event is reasoned
-    > from GitHub's event model, not yet measured here; v3.2.4 tagged the old way. The
-    > dispatch above is correct either way. Confirm at the next release and delete this
-    > note: if a push-triggered run *did* appear on its own, say so instead.
+    > *This corrects a prediction that stood here until v3.2.5 and was **wrong**: that a
+    > Releases-API tag emits `create` and `release` but not `push`, so the tag-push trigger
+    > would not fire on this path. It fires. The note was labelled UNVERIFIED and asked to be
+    > measured at the next release, which is how it got caught — reasoned from GitHub's event
+    > model and never given a number, the same shape `learnings.md` records against v3.2.4's
+    > release plan.*
+    >
+    > *Step 20's design survives its own warrant being wrong, for a better reason than the one
+    > originally written down. The race is not avoided by removing the trigger — the trigger is
+    > there. It is avoided because **one call leaves no instant at which the tag exists without
+    > its Release**, so the push-triggered job cannot observe the absence it would go red on.
+    > v3.2.4 won that race by ~9 seconds of typing speed; v3.2.5 could not have lost it.*
 
 ---
 
@@ -604,21 +617,53 @@ mean the withheld work shipped.*
   echo "installed: $(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")"
   ```
 
+  > **This is the one `Done when` item that is not a fact about the release.** The other four
+  > grade what you published; this one grades **your machine**, and a mismatch is compatible
+  > with a perfect release. It also has more than one cause — see *If this doesn't work*
+  > below, which is where the three get separated. Do not read a differing sha as "the release
+  > is wrong."
+
 ## If this doesn't work
 
 - **If a step doesn't match what you're seeing:** stop where you are.
   Everything before step 19 is undoable, so stopping costs nothing but time,
   and a step that doesn't make sense is a defect in this document, not in you.
-- **If the two shas in `Done when` differ:** your install cached the prep tree under
-  this release's version key during the Phase 1–2 gap, and will not refresh on its
-  own because the key never changed. The release itself is fine and consumers are
-  unaffected — this is a `directory:` marketplace symptom, local to you. Fix it before
-  you test anything against "the release."
+- **If the two shas in `Done when` differ:** there are **three** causes and they need different
+  responses. Read `installPath` and `version` out of `plugins/installed_plugins.json` first —
+  they are what tell the three apart. In every case the release itself is fine and consumers are
+  unaffected: this is a `directory:` marketplace symptom, local to you.
 
-  > 🚧 **UNVERIFIED** — the remedy is to delete the cache directory named by
-  > `installPath` in `plugins/installed_plugins.json` and start a new session. The
-  > *detection* above is measured; this re-resolve has not been executed. Confirm the
-  > shas match afterwards before trusting it.
+  1. **`version` is the *previous* release, and no cache directory exists for the new one** —
+     **nothing is wrong.** Your install is simply still on the last release and re-resolves at
+     the next session start. This is the ordinary state immediately after a promotion, because
+     the session you cut the release from began before the release existed. Start a new session
+     and re-check; do nothing else. *(Measured at v3.2.5: installed `3.2.4`, no `3.2.5` cache
+     directory, shas differ, release verified 3 of 3.)*
+  2. **`version` is the new release, and the sha is the *prep* commit** — the failure this bullet
+     was written for. The cache was filled during the Phase 1–2 gap, and it will not refresh on
+     its own because the version key never changed between prep and promotion. Fix it before you
+     test anything against "the release."
+  3. **`version` is a release, but the sha is not an ancestor of that tag** — a `develop` tree
+     cached under a *release's* version key. Same class as (2), different route: no Phase 1–2 gap
+     involved, just a session that resolved a `directory:` marketplace while `develop` was checked
+     out. It is silent and it persists across releases. *(Live instance found at v3.2.5:
+     `plugins/cache/prawduct/prawduct/3.2.4` at `a0c2468`, which is on `develop` and not an
+     ancestor of `v3.2.4` — i.e. dating from the v3.2.4 release, undetected for a full release.)*
+
+  The test that separates (2) and (3) from (1), and is worth running rather than eyeballing:
+
+  ```
+  git merge-base --is-ancestor "$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")" \
+    "v$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['version'])")" \
+    && echo "cache holds a released tree — case 1" || echo "cache holds a NON-release tree — case 2 or 3"
+  ```
+
+  **Remedy for (2) and (3):** delete the cache directory named by `installPath` and start a new
+  session.
+
+  > 🚧 **UNVERIFIED** — the *detections* above are all measured, including the case (3) instance.
+  > The **re-resolve remedy** has still not been executed. Confirm the shas match afterwards
+  > before trusting it.
 - **Escalate to:** this repo has one maintainer, so escalating means stopping —
   leave `develop` as it is and come back to it. An unfinished release is
   invisible to consumers.
