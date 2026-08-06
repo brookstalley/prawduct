@@ -154,7 +154,7 @@ a name resolves. The defaults are *chosen*, not inherited by omission, and the d
 strongest mechanism the ecosystem allows, so the mechanism that expresses clause 5 is itself a
 decision and is recorded rather than left to look inevitable. Three were weighed. A **committed
 lockfile** (`uv.lock`, `poetry.lock`) was rejected because it requires adopting that resolver as the
-repo's install path, which is a toolchain commitment out of proportion to a five-package dev extra —
+repo's install path, which is a toolchain commitment out of proportion to a dev extra this small —
 and `.gitignore` already records that a second resolved set would be redundant beside this one.
 **Hash-pinned requirements** (`pip install --require-hashes`) is the genuinely stronger declarative
 form and is the one worth naming, because rejecting it is not obvious: it pins *artifacts* rather
