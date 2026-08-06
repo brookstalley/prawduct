@@ -21,6 +21,8 @@ dropping them.
 
 ---
 
+## A content-egress norm enforced only against CODE surfaces does not bind the agent writing PROSE — so before committing any document that quotes, cites or narrates another repo, ask whether THIS repo is public and whether that one is, because the author is an egress path and the guard cannot see them. The `file-upstream` egress norm's test inspects the plugin for a code surface; a hand-authored audit carrying private repos' verbatim `learnings.md` quotes, a named governance-bypass narrative and a data-loss incident walked into a PUBLIC repo past it, was pushed, and was caught only by the PR reviewer. Tell: you are about to commit prose whose evidence came from somewhere the reader cannot reach. Naming a sibling repo has precedent here; verbatim internal prose and conduct narratives do not
+
 ## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
