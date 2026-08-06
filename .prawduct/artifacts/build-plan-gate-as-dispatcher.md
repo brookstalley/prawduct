@@ -10,17 +10,17 @@ governed_by:
   - artifact: architecture
     dispositions:
       - "Authority fails closed; advice fails soft → conforms — the refusal produces no merge verdict, and no uncomputable input can produce a refusal (a failed diff returns an error before the check is reached)"
-      - "An independent reviewer never mutates the session it reviews → conforms, and strengthens it — a refusal returns before the marker and the partials sweep, so it mutates strictly less than a dispatch"
+      - "An independent reviewer never mutates the session it reviews → conforms, and strengthens it — a refusal returns before the marker and the partials sweep, so it mutates strictly less than a dispatch. Chunk 02 adds one append to the clone-shared evidence store, which is not session state: no marker, no manifest, no partials. The partials clause is now proved by SURVIVAL of a planted leftover rather than by its absence — the Chunk 01 form was vacuous"
       - "Goals and verification bind; prescribed method is advice → conforms — the verification structure is unchanged; only the decision to spend a round moves"
       - "Local-first: governance coordination is process-spawn + atomically-written files + the git object database → conforms — the predicate reads a git diff and the local store; no new coordination surface"
-      - "The plugin writes nothing into a governed repo except its own .prawduct/ state → conforms — the refusal path writes nothing at all"
+      - "The plugin writes nothing into a governed repo except its own .prawduct/ state → conforms. Chunk 01's refusal path wrote nothing at all; Chunk 02 adds ONE append to <git-common-dir>/prawduct/evidence.jsonl, which is inside .git — never committed, no gitignore contract, and already the plugin's own store. Nothing is written to the working tree"
       - "Written in Python, never specific to Python → conforms — the predicate is path-based (is_judgeable_path), language-agnostic by construction"
       - "Prawduct guides and reviews; it never implements → inapplicable because this changes prawduct's own governance plane, not any product's code"
       - "Every fact has one home; every other mention is a reference → conforms — exit 3's meaning is stated once in api-contract.md § Error Model; SKILL.md and the hook docstring cite it"
   - artifact: nonfunctional-requirements
     dispositions:
       - "Review wall-clock is P0: cost = unit-cost x run-count → conforms — this is a run-count lever, the one the norm names first"
-      - "Proportionality ratchets both ways; adding a control names its expected yield and emits it observably → PARTIAL until Chunk 02. Requirements §1 is the recorded yield argument, but the refusal currently fires with no emitted record, so the 'observably' half is owed. Chunk 02 discharges it; see the R-19/R-26 note there"
+      - "Proportionality ratchets both ways; adding a control names its expected yield and emits it observably → conforms as of Chunk 02. Requirements §1 is the recorded yield argument; the 'observably' half is discharged by a `guard-refusal` fact appended to the clone-shared evidence store on every firing, queryable as `prawduct-hook evidence list --kind guard-refusal`. It carries the interval and the free file list, so the question that retires the guard — did it ever refuse a round that turned out to be needed? — is answerable from the record rather than from memory"
       - "State-file growth past its threshold is surfaced as an advisory → inapplicable because this work adds no state file"
   - artifact: data-model
     dispositions:
@@ -180,14 +180,44 @@ Tests carry most of this, but two things tests cannot say:
     (which shows `[--scope] [--chunk]` with no `[--force]` slot).
   - **`_USAGE` residue** — `plugin/bin/prawduct-hook` `_USAGE` still spells `critic-begin --mode <m>`
     with no `[--force]`. The docstring is already corrected; this is the other half.
+- **R-26 RULING (2026-08-06): adopt #596's sink — the clone-shared evidence store, kind
+  `guard-refusal` — and NOT the `ledger-append` path this plan proposed.** Four reasons, recorded in
+  full on `evidence.append_guard_refusal` so the next reader meets them at the code:
+  1. *Durability.* The ledger lives in the worktree (`.prawduct/.governance-ledger.jsonl`); the
+     guards in this class fire in worktrees that are then deleted. The evidence store is at the
+     clone's git common dir.
+  2. *A reader already exists.* `prawduct-hook evidence list --kind guard-refusal` is the yield
+     query today. `review-stats` reads `review.*` only, so the ledger needed a new kind AND a new
+     reader.
+  3. *Envelope fit.* The ledger's envelope is review-cost-shaped (`duration_seconds`, `actor.model`,
+     roster); a refusal has none of those and would be a mostly-null row. The evidence envelope's
+     `actor.worktree` also makes `is_ephemeral_fact` classify these for free.
+  4. *One path per class.* #596 owns pre-dispatch-guard telemetry as a class and names this sink.
+  **Correction to this plan's own stated reason:** it argued the ledger cannot answer a *cross-clone*
+  yield question. True — but the evidence store cannot either; it lives inside `.git` and is never
+  committed. The axis is cross-*worktree* durability plus an existing reader, not cross-clone reach.
+  A cross-clone question still needs an exporter nobody has built.
+  **Scope line:** this builds the shared sink and routes THIS guard through it. `_check_ephemeral_worktree`
+  and `_check_binary_skew` remain #596's own work — the sink they were blocked on now exists.
 - **Deliverables:**
-  - refusal telemetry, sink decided per R-26 above (the `ledger-append` path is the *proposal*,
-    not the ruling), carrying the interval and the free file list — enough to answer the yield
-    question later
-  - `plugin/skills/critic/review-protocol.md` — the `NEXT-ACTION` text: *ask the gate; review only if
-    it reports uncovered*, replacing the unconditional "then run ONE verify-resolutions"
-  - `plugin/lib/coverage.py` — `check-cumulative-critic`'s remedy text names the free-interval check
-    before prescribing a review
+  - refusal telemetry into the evidence store per the R-26 ruling above, carrying the interval and
+    the free file list — enough to answer the yield question later
+  - the `NEXT-ACTION` text's 0-blocking arms: *asking is free — dispatch exits 3 rather than spending
+    a reviewer*. **Two corrections to this plan as written.** (a) The text lives in
+    `plugin/lib/critic_consolidate.py` (`_next_action`), not in `review-protocol.md`, which only
+    relays it. (b) The "unconditional then run ONE verify-resolutions" this plan proposed replacing
+    is the **BLOCKING** arm's, and it is CORRECT — a blocking finding is cleared only by the
+    resolution facts a verify pass records, which is precisely why the refusal predicate's second
+    conjunct exists. Replacing it would wedge the gate. The 0-blocking arms are the ones that carry
+    the condition, and they keep it.
+  - ~~`plugin/lib/coverage.py` — `check-cumulative-critic`'s remedy text names the free-interval
+    check~~ **WITHDRAWN: the premise is false.** `coverage_verdict` already grants a direct free edge
+    between the two endpoint trees whenever their diff holds no judgeable path, and both are always
+    graph nodes — so an `uncovered` verdict *entails* the span is not free, and there is no
+    free-interval check to name there. `cumulative`'s dispatch interval is that same span, so the
+    dispatcher will not refuse it either. Writing the line would have taught a false rule.
+  - `plugin/skills/critic/review-cycle.md` — the "before running another pass to close coverage"
+    block, which IS a live decision point, gets the answer instead
   - `plugin/skills/pr/SKILL.md` — Step 2's sequencing paragraph, same correction
 - **Tests:** a preference-style test pinning that the `NEXT-ACTION` text no longer prescribes an
   unconditional review round (the same shape as

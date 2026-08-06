@@ -158,6 +158,35 @@ def _seed_prior_review(repo: Path, *, findings=None) -> str:
     return _git(repo, "rev-parse", "HEAD").stdout.strip()
 
 
+#: Content of the sentinel partial :func:`_seed_leftover_partial` plants. Its
+#: value is irrelevant; that it is byte-identical afterwards is the assertion.
+_SURVIVOR_NAME = "reviewer.rev-19700101T000000Z-leftover.json"
+_SURVIVOR_BODY = '{"role": "reviewer", "note": "another review\'s unconsolidated work"}'
+
+
+def _seed_leftover_partial(repo: Path) -> None:
+    """Plant an unconsolidated partial that a refusal must leave ALONE.
+
+    Without this the partial-reset half of :func:`_assert_no_dispatch_state`
+    is **vacuous**, and was: `_archive_leftovers` returns before creating
+    anything when the partials dir has no children, and every fixture here has
+    already had its partials removed by consolidate. So "no leftovers remain"
+    held no matter what the refusal did — absence of a thing that was never
+    there proves nothing, and all three call sites passed on that.
+
+    Seeding inverts the assertion from an absence to a SURVIVAL: the sweep a
+    dispatch performs would move this file into the archive directory, so a
+    refusal that fell through to it now fails loudly.
+
+    Safe against the interval under test: the file lands under `.prawduct/`,
+    which `is_judgeable_path` classifies non-judgeable, so it cannot turn a
+    free interval into a reviewable one for the working-tree modes.
+    """
+    pdir = repo / PARTIALS_REL
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / _SURVIVOR_NAME).write_text(_SURVIVOR_BODY)
+
+
 def _assert_no_dispatch_state(repo: Path) -> None:
     """A refusal must disturb nothing a real dispatch would create.
 
@@ -165,6 +194,9 @@ def _assert_no_dispatch_state(repo: Path) -> None:
     marker, so a leftover of either would mean it fired too late — and a stray
     marker is worse than a wasted review, because `clear` refuses to run while
     one is live.
+
+    Call :func:`_seed_leftover_partial` first: the partials clause below only
+    means something when there is something there to disturb.
     """
     assert not (repo / MARKER_REL).is_file(), "refusal left a critic-active marker"
     assert not (repo / PARTIALS_REL / "manifest.json").is_file(), (
@@ -173,10 +205,21 @@ def _assert_no_dispatch_state(repo: Path) -> None:
     # The partial-reset half. `begin_review` archives/clears leftover partials
     # as part of dispatching, and that sweep is the single most destructive act
     # against another review — so a refusal reaching it would be worse than the
-    # wasted review it was avoiding.
-    leftovers = sorted(p.name for p in (repo / PARTIALS_REL).glob("*.json")) \
-        if (repo / PARTIALS_REL).is_dir() else []
-    assert leftovers == [], f"refusal disturbed the partials dir: {leftovers}"
+    # wasted review it was avoiding. Asserted as SURVIVAL of a planted sentinel,
+    # never as emptiness: emptiness is the state the fixture is already in.
+    survivor = repo / PARTIALS_REL / _SURVIVOR_NAME
+    assert survivor.is_file(), (
+        "the refusal swept away another review's unconsolidated partial — it "
+        "reached the dispatch-time partials reset it must return before "
+        f"(seed missing: {survivor})"
+    )
+    assert survivor.read_text() == _SURVIVOR_BODY, (
+        "the refusal rewrote another review's partial"
+    )
+    leftovers = sorted(p.name for p in (repo / PARTIALS_REL).glob("*.json"))
+    assert leftovers == [_SURVIVOR_NAME], (
+        f"refusal disturbed the partials dir: {leftovers}"
+    )
     archive = repo / ".prawduct" / ".critic-partials-archive"
     assert not archive.exists(), "refusal archived partials it should not have touched"
 
@@ -197,6 +240,7 @@ class TestRefusesWhatTheGateWouldPass:
         _init_repo(repo)
         _seed_prior_review(repo, findings=[])
         _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+        _seed_leftover_partial(repo)
 
         result = _run_begin(repo, "--mode", "verify-resolutions")
 
@@ -236,6 +280,7 @@ class TestRefusesWhatTheGateWouldPass:
             _commit_file(repo, ".prawduct/notes.md", "prose\n", "docs: a note")
         else:
             (repo / ".prawduct" / "notes.md").write_text("prose\n")
+        _seed_leftover_partial(repo)
 
         result = _run_begin(repo, "--mode", mode)
 
@@ -381,6 +426,7 @@ class TestUncertaintyNeverBuysASkip:
         _init_repo(repo)
         _seed_prior_review(repo, findings=[])
         _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+        _seed_leftover_partial(repo)
         # Break the object store so `tree_diff` cannot answer.
         for pack in (repo / ".git" / "objects").rglob("*"):
             if pack.is_file():
@@ -429,6 +475,131 @@ class TestUncertaintyNeverBuysASkip:
             f"rc={result.returncode} out={result.stdout!r}"
         )
 
+class TestTheRefusalIsObservable:
+    """A silent skip is indistinguishable from a broken gate.
+
+    The governing norm — *a control names the yield it expects and emits it
+    observably* — is why this is a test and not a nicety. The yield argument for
+    the whole guard rests on a measurement taken BEFORE it existed; only a
+    record of real firings can ever falsify it, or answer the question that
+    retires the guard: did it ever refuse a round that turned out to be needed?
+
+    Sink: the clone-shared evidence store, per #596 (which owns pre-dispatch
+    guard telemetry as a class) rather than the per-worktree governance ledger
+    the build plan first proposed. Reasons live on
+    `evidence.append_guard_refusal`; these tests pin the behaviour that ruling
+    has to produce.
+    """
+
+    @staticmethod
+    def _guard_facts(repo: Path) -> list[dict]:
+        store = repo / ".git" / "prawduct" / "evidence.jsonl"
+        if not store.is_file():
+            return []
+        facts = []
+        for line in store.read_text().splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if record.get("kind") == "guard-refusal":
+                facts.append(record)
+        return facts
+
+    def test_a_refusal_records_exactly_one_fact(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == EXIT_NO_REVIEW_NEEDED
+
+        facts = self._guard_facts(repo)
+        assert len(facts) == 1, f"expected one guard-refusal fact, got {facts}"
+        body = facts[0]["body"]
+        assert body["guard"] == "critic-dispatch-free-interval"
+        assert body["mode"] == "verify-resolutions"
+        # The free file list is the whole point: "did this guard ever refuse a
+        # round that turned out to be needed" is answerable only if the record
+        # says what it waved through.
+        assert body["free_files"] == ["docs/notes.md"]
+        assert body["interval"]["base_tree"] and body["interval"]["head_tree"]
+
+    def test_every_refusal_records_its_own_fact(self, tmp_path):
+        """Counting is the yield question. Two refusals that collapse into one
+        record would under-report the guard's own saving — and a fixed id is
+        the ordinary way that happens (the review store dedupes on
+        ``(kind, id)``, keeping the first)."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        for _ in range(2):
+            assert _run_begin(
+                repo, "--mode", "verify-resolutions"
+            ).returncode == EXIT_NO_REVIEW_NEEDED
+
+        facts = self._guard_facts(repo)
+        assert len(facts) == 2, f"two refusals collapsed into {len(facts)} record(s)"
+        assert facts[0]["id"] != facts[1]["id"]
+
+    def test_a_dispatch_records_no_refusal(self, tmp_path):
+        """The other half of a count that means something: a guard that records
+        when it did NOT fire makes every yield figure an overstatement."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "src/app.py", "x = 9\n", "code: a real change")
+
+        assert _run_begin(repo, "--mode", "verify-resolutions").returncode == 0
+        assert self._guard_facts(repo) == []
+
+    def test_force_records_no_refusal(self, tmp_path):
+        """`--force` dispatches over a free interval, so the guard did not fire
+        and must not claim it did."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        assert _run_begin(
+            repo, "--mode", "verify-resolutions", "--force"
+        ).returncode == 0
+        assert self._guard_facts(repo) == []
+
+    def test_a_refusal_fact_cannot_cover_anything(self, tmp_path):
+        """The safety property. These facts sit in the store every coverage gate
+        composes over, so the one thing they must never do is help a gate pass.
+        `coverage_algebra` derives edges from `kind == "review"` alone — asserted
+        here through the algebra rather than by reading the filter, so it fails
+        if the filter is ever loosened."""
+        from lib import coverage_algebra
+
+        refusal = {
+            "schema": 1,
+            "kind": "guard-refusal",
+            "id": "guard-x",
+            "body": {
+                "guard": "critic-dispatch-free-interval",
+                # The edge shape, deliberately: if a reader ever walked bodies
+                # kind-blind, THIS is the record that would forge a hop.
+                "base_tree": "a" * 40,
+                "head_tree": "b" * 40,
+                "files_changed": [],
+                "files_reviewed": [],
+            },
+        }
+        verdict = coverage_algebra.coverage_verdict(
+            [refusal], "a" * 40, "b" * 40, lambda *_: ["src/app.py"]
+        )
+        assert verdict["status"] != "covered", (
+            "a guard-refusal fact composed as coverage — the algebra's kind "
+            f"filter no longer holds: {verdict}"
+        )
+
+
+class TestTheRefusalAgreesWithTheGate:
     def test_the_refusal_agrees_with_the_gate_predicate(self):
         """The safety invariant: the dispatcher refuses only intervals the
         coverage gate already treats as free. Unit-level on purpose — it pins

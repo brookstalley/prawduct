@@ -390,7 +390,11 @@ def next_action_line(
         " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
         " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
         " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
-        " prices `free` moves no coverage and needs no pass at all."
+        " prices `free` moves no coverage and needs no pass at all. AFTER committing,"
+        " you no longer have to judge it either: dispatch asks the same predicate and"
+        " exits 3 (`no review needed`, under a second, nothing written) rather than"
+        " spending a reviewer on a free interval — so asking costs nothing, and a"
+        " refusal is the answer, not a reason to retry in another mode."
         " Do NOT start another round to 'close coverage' before committing, and do"
         " not infer that you need one from gate output printed before your fix —"
         " commit, then re-run the gate and let it answer."
@@ -1532,6 +1536,43 @@ def begin_review(
         and not coverage_algebra.judgeable_files(files_changed)
         and not pending_actionable
     ):
+        # Record the firing. The norm this control ships under ("a control
+        # names the yield it expects and emits it observably") is what makes
+        # this mandatory rather than nice: the yield argument above cites a
+        # measurement taken BEFORE the guard existed, and only a record of
+        # actual firings can ever falsify it — or answer the question that
+        # retires the guard, "did it ever refuse a round that turned out to be
+        # needed?". Sink ruling and its four reasons: `evidence.append_guard_refusal`.
+        #
+        # SOFT: the refusal is correct whether or not the record lands, so a
+        # store failure must not turn a correct exit-3 into an error. Not
+        # silent, though — a degraded record that vanishes leaves the yield
+        # question looking answered at zero.
+        recorded = evidence.append_guard_refusal(
+            project_dir,
+            "critic-dispatch-free-interval",
+            {
+                # Nested, not spread across the body's top level, because a
+                # top-level base_tree/head_tree is the shape a coverage EDGE
+                # has. Keeping the interval one level down means no reader that
+                # walks bodies looking for edges can mistake a refusal for one.
+                "interval": {"base_tree": base_tree, "head_tree": head_tree},
+                "mode": mode_token,
+                "free_files": list(files_changed),
+                "scope": scope,
+                "chunk": chunk,
+                "branch": gitstate.current_branch(project_dir),
+                "dispatch_commit": dispatch_commit,
+            },
+        )
+        if recorded.get("status") != "appended":
+            print(
+                "critic-begin: the refusal is correct but was NOT recorded "
+                f"({recorded.get('reason', 'unknown')}) — this firing is missing "
+                "from `prawduct-hook evidence list --kind guard-refusal`, so read "
+                "that query as a lower bound.",
+                file=sys.stderr,
+            )
         return {
             "status": "no-review-needed",
             "reason": (
@@ -1540,6 +1581,7 @@ def begin_review(
                 "a review would record a fact nothing needs"
             ),
             "free_files": list(files_changed),
+            "recorded": recorded.get("status") == "appended",
         }
 
     if files_reviewed is None:

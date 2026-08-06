@@ -87,7 +87,7 @@ LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4807,
     "skills/critic/review-protocol.md": 3611,
     "skills/critic/goals-1-3.md": 1998,
-    "skills/critic/review-cycle.md": 9532,
+    "skills/critic/review-cycle.md": 9586,
     "skills/critic/framework-checks.md": 1116,
 }
 
@@ -1333,6 +1333,16 @@ class TestReviewCycle:
         # one home for those filenames", which it is not -- `partial_path` and
         # `started_path` own the shape and every reader recomputes from them.
         # A key list that misdescribes what it records is worse than a long one.
+        #
+        # 9532 -> 9586 (2026-08-06) -- the "close coverage" block now answers the
+        # question it raises: dispatch itself refuses a round the gate would not
+        # require (exit 3), so a builder standing at that decision asks instead
+        # of reasoning about judgeability. This is the decision point the
+        # measured waste came from -- 62 of 492 reviews spent on free intervals
+        # -- so the file that owns the close-coverage rule is where it belongs.
+        # PAID FOR, not spent: the "do not retry in another mode" clause came
+        # back out, because SKILL.md's exit-3 step already owns it and that is
+        # the surface that reads the exit code. Net of both, +54.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"

@@ -648,6 +648,28 @@ class TestStoreGrowthAdvisory:
         ]
         assert evidence.distinct_trees(facts) == {"a", "b", "c"}
 
+    def test_only_review_facts_contribute_trees(self):
+        """Nodes are what coverage composition walks, and only review facts
+        become edges — so only their trees are nodes.
+
+        The sibling assertion in `test_dispositions.py` states this intent for
+        dispositions, but it holds there only because a disposition body has no
+        `base_tree` key: it would pass unchanged against a kind-blind reader.
+        This states it as the rule, with a fact that DOES carry the edge shape.
+        A purely observational record inflating the tree count reads in
+        `evidence status` as coverage that does not exist.
+        """
+        observational = [
+            {"kind": "guard-refusal",
+             "body": {"guard": "g", "base_tree": "x", "head_tree": "y"}},
+            {"kind": "test-run", "body": {"base_tree": "p", "head_tree": "q"}},
+        ]
+        assert evidence.distinct_trees(observational) == set()
+        assert evidence.distinct_trees(
+            observational + [{"kind": "review",
+                              "body": {"base_tree": "a", "head_tree": "b"}}]
+        ) == {"a", "b"}
+
     def test_advisory_constant_matches_the_documented_trigger(self):
         # The compaction deferral's trigger is ~10,000 trees; the constant and
         # the plan must not drift apart silently.
