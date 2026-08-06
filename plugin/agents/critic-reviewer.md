@@ -20,8 +20,11 @@ validates the partial and treats anything else as out of bounds.
 
 Your dispatch prompt carries: your **role** (`correctness` | `design` | `sustainability`),
 your **assigned goals**, the **project directory**, the **changed-files list**, a **signals**
-summary, and the **commit under review** (a SHA). The role → goal mapping (definitions in
-`review-protocol.md`, read it from your skill/critic directory):
+summary, the **commit under review** (a SHA), the **review id**, and the **two paths you
+write** — your started marker and your partial. Those paths and the review id are recorded in
+`.prawduct/.critic-partials/manifest.json` as `rendezvous.<your role>` and `id`; read them there
+if your prompt omits them, and never compose the filenames yourself. The role → goal mapping
+(definitions in `review-protocol.md`, read it from your skill/critic directory):
 
 - **correctness** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended).
 - **design** — Goals 4 (Everything Is Coherent), 7 (The Design Is Sound); ALSO run the
@@ -33,11 +36,10 @@ summary, and the **commit under review** (a SHA). The role → goal mapping (def
 
 ## What to do
 
-1. **FIRST — before reading anything — write your liveness marker**:
-   `.prawduct/.critic-partials/<role>.started` (substitute your role; content: your role,
-   nothing else). The file's mtime is the signal — it lets a waiting session distinguish
-   "reviewer at work" from "reviewer never started" for the minutes before your partial
-   lands. Skipping it makes your whole run indistinguishable from a dead dispatch.
+1. **FIRST — before reading anything — write your liveness marker** at your `rendezvous.started`
+   path (content: your role, nothing else). The file's mtime is the signal — it lets a waiting
+   session distinguish "reviewer at work" from "reviewer never started" for the minutes before
+   your partial lands. Skipping it makes your whole run indistinguishable from a dead dispatch.
 2. Read the goal definitions for YOUR goals from `review-protocol.md` (in the Critic skill
    directory). Review ONLY your assigned goals — the other reviewers cover the rest.
 3. Read the changed files and inspect the diff (read-only git). Do NOT run tests or builds.
@@ -47,8 +49,7 @@ summary, and the **commit under review** (a SHA). The role → goal mapping (def
 
 ## What to write — your started marker, then ONLY your partial
 
-Besides the started marker above, write a single JSON file to
-`.prawduct/.critic-partials/<role>.json` (substitute your role),
+Besides the started marker above, write a single JSON file at your `rendezvous.partial` path,
 and write **nothing else**. Do NOT write `.prawduct/.critic-findings.json`, do NOT run
 `prawduct-hook critic-consolidate`, and do NOT run `prawduct-hook critic-end` — a
 deterministic step external to you merges the partials and persists the canonical record.
@@ -61,6 +62,7 @@ whole consolidation closed, so match it exactly):
 {
   "role": "<your role, verbatim>",
   "goals": "<the goals you covered, e.g. \"1-3\" or \"4,7\">",
+  "dispatch_id": "<the review id from your dispatch prompt, verbatim>",
   "commit_reviewed": "<the commit SHA from your dispatch prompt, verbatim>",
   "model": "<the model you are running as, or null>",
   "duration_seconds": <your best-estimate wall-clock, or null>,
@@ -78,8 +80,11 @@ whole consolidation closed, so match it exactly):
 ```
 
 `files` on a finding is optional (omit when not file-specific). `findings` is `[]` for a
-clean pass. `commit_reviewed` MUST be the SHA you were given — the consolidator checks every
-reviewer reviewed the commit the manifest dispatched; a mismatch fails closed.
+clean pass. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
+given — the consolidator checks that every reviewer reviewed the commit the manifest dispatched
+*and* was dispatched by the review it is consolidating; either mismatch fails closed. Note that
+`dispatch_id` is your OWN review; `resolutions[].review_id`, if you ever write one, is a
+different review entirely.
 
 Your final assistant message is not read by any gate — the partial file is your entire
 output. Once it is written, you are done.

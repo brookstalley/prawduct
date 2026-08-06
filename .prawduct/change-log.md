@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-05: a reviewer's partial now belongs to the review that dispatched it
+
+<!-- prawduct: chunks=1 | type=fix | scope=critic-review-identity -->
+
+**Part 1 made the collision unreachable; this makes it unrepresentable.** v3.2.6 stopped a dispatch
+displacing a live review, and left the class open: a partial declared the commit it reviewed and
+nothing else, and its filename was keyed by role alone. So two reviews in one worktree still
+contended for one path — on 2026-07-30 the loser's only signal was a failed write, with nothing in
+the protocol saying what that meant, and a BLOCKING finding went unrecorded — and a straggler from
+an abandoned review, landing at an unchanged HEAD, was still schema-valid *and* commit-valid against
+whatever manifest was on disk.
+
+**Both layers now carry the review's identity.** A partial lives at `<role>.<review-id>.json` and
+its started marker beside it, so two reviews' writes are disjoint by construction: a straggler can
+neither satisfy another roster nor overwrite a live partial. And each partial declares
+`dispatch_id`, checked against the manifest — the case a filename cannot catch, where a reviewer is
+handed the wrong id and writes to a path that happens to be right. The comparison strips before it
+judges: a fail-closed validator over a model-written field rejects genuine ambiguity and tolerates
+the variant that normalizes identically, which is the lesson this same module already paid for when
+`"files": []` aborted whole consolidations.
+
+**The field is `dispatch_id`, not `review_id`, and the name is the finding.** A partial already
+carries `resolutions[].review_id`, meaning the *prior* review whose finding is being dispositioned.
+Two referents under one token, in a record a model writes from prose, is exactly the seam where an
+identifier degrades silently.
+
+**The filename shape has one home, which is why this is not five edits.** It was about to be
+restated in the code plus four instruction surfaces — and a fact needing N edits already has N−1
+wrong copies. `critic-begin` now resolves the per-role paths and records them in the manifest as
+`rendezvous`; the agent definition, the coordinator's dispatch template, `goals-1-3.md` and
+`SKILL.md` all send the reviewer to its entry instead of spelling a name. A future change to the
+shape needs no prose edit, and a guard test fails if any surface starts spelling one again.
+
+**Version skew is refused loudly, never accepted quietly.** A skill older than this hook writes the
+pre-keyed `<role>.json`, does its whole run, and would never be read. Accepting it as a fallback
+would reopen the hole for precisely the straggler this closes, so the incomplete no-op names the
+file, says a stale skill wrote it, and gives the reload remedy. A manifest with no `rendezvous` is
+likewise a loud validation failure rather than a silent skip.
+
+**One thing the token budget did not buy.** The first attempt funded the additions to
+`goals-1-3.md` by compressing the closing "**Either way** your last line is consolidate's
+`NEXT-ACTION:`" — which looked like removing a copy and was not: that sentence sits where a reader
+is about to shortcut it, and a test pins the phrase for that reason. Reverted, and paid for
+elsewhere; the file ended the same size it started. The remaining obvious cut in
+`review-protocol.md` is a reviewer-model safety instruction, and it stays.
+
 ## 2026-08-05: a dispatch no longer displaces a review that is still live
 
 <!-- prawduct: chunks=1,2 | type=fix | scope=critic-concurrent-dispatch | release=v3.2.6 | status=shipped -->

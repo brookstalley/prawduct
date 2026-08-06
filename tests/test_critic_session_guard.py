@@ -376,12 +376,24 @@ class TestConcurrentDispatchGuard:
         assert (repo / ".prawduct" / cm.MARKER_NAME).is_file()
         return repo
 
+    @staticmethod
+    def _complete_the_roster(repo: Path) -> Path:
+        """Write the dispatched review's one partial where that review expects
+        it, and return the path. Partials are keyed by review id, so a fixture
+        writing a bare `reviewer.json` leaves the roster INCOMPLETE and every
+        assertion about a complete roster silently tests the wrong state."""
+        partials = repo / ".prawduct" / ".critic-partials"
+        manifest = json.loads((partials / "manifest.json").read_text())
+        path = repo / manifest["rendezvous"]["reviewer"]["partial"]
+        path.write_text('{"role": "reviewer"}')
+        return path
+
     def test_refuses_while_a_review_is_live_and_leaves_it_intact(self, tmp_path):
         """The core incident: a second dispatch must not touch the first's state."""
         repo = self._dispatch(tmp_path)
         partials = repo / ".prawduct" / ".critic-partials"
         first_id = json.loads((partials / "manifest.json").read_text())["id"]
-        (partials / "reviewer.json").write_text('{"role": "reviewer"}')
+        partial = self._complete_the_roster(repo)
 
         second = _run_real("critic-begin", repo, "--mode", "chunk")
 
@@ -390,7 +402,7 @@ class TestConcurrentDispatchGuard:
         assert first_id in second.stderr, "the refusal names the review it protected"
         # The whole point: nothing of the first review was disturbed.
         assert json.loads((partials / "manifest.json").read_text())["id"] == first_id
-        assert (partials / "reviewer.json").read_text() == '{"role": "reviewer"}'
+        assert partial.read_text() == '{"role": "reviewer"}'
         assert not (repo / ".prawduct" / ".critic-partials-archive").exists(), (
             "a refused dispatch must not archive the live review's partials"
         )
@@ -403,7 +415,7 @@ class TestConcurrentDispatchGuard:
         repo = self._dispatch(tmp_path)
         prawduct = repo / ".prawduct"
         partials = prawduct / ".critic-partials"
-        (partials / "reviewer.json").write_text('{"role": "reviewer"}')
+        partial = self._complete_the_roster(repo)
         # Expire the marker: strictly past the TTL, so review_active() is False.
         stale = datetime.now(timezone.utc) - timedelta(
             seconds=cm.CRITIC_ACTIVE_TTL_SECONDS + 60
@@ -420,7 +432,7 @@ class TestConcurrentDispatchGuard:
         assert "critic-consolidate" in second.stderr, (
             "the remedy for a complete roster is to consolidate it, not to discard it"
         )
-        assert (partials / "reviewer.json").is_file()
+        assert partial.is_file()
 
     def test_critic_end_escapes_a_live_marker_with_an_incomplete_roster(self, tmp_path):
         """`critic-end` is the escape for condition (a) ONLY — a live marker whose
@@ -446,7 +458,7 @@ class TestConcurrentDispatchGuard:
         """
         repo = self._dispatch(tmp_path)
         prawduct = repo / ".prawduct"
-        (prawduct / ".critic-partials" / "reviewer.json").write_text('{"role": "reviewer"}')
+        self._complete_the_roster(repo)
         assert _run_real("critic-end", repo).returncode == 0  # marker gone, partials stay
         assert not (prawduct / cm.MARKER_NAME).exists()
         return repo, prawduct
@@ -491,7 +503,7 @@ class TestConcurrentDispatchGuard:
         instructions — so the guard reads with `sweep=False`."""
         repo = self._dispatch(tmp_path)
         prawduct = repo / ".prawduct"
-        (prawduct / ".critic-partials" / "reviewer.json").write_text('{"role": "reviewer"}')
+        self._complete_the_roster(repo)
         stale = datetime.now(timezone.utc) - timedelta(
             seconds=cm.CRITIC_ACTIVE_TTL_SECONDS + 60
         )

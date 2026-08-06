@@ -71,14 +71,39 @@ def _partials_dir(repo: Path) -> Path:
     return d
 
 
+_FAKE_REVIEW_ID = "rev-test-0001"
+
+
+def _rendezvous(roster, review_id: str) -> dict:
+    """The per-role write paths, exactly as `begin_review` records them — a
+    partial is keyed by the review that dispatched it, so a fixture that
+    composes `<role>.json` writes where nothing looks."""
+    return {
+        role: {
+            "partial": f".prawduct/.critic-partials/{role}.{review_id}.json",
+            "started": f".prawduct/.critic-partials/{role}.{review_id}.started",
+        }
+        for role in roster
+    }
+
+
+def _review_id(repo: Path) -> str:
+    try:
+        return json.loads((_partials_dir(repo) / "manifest.json").read_text())["id"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return _FAKE_REVIEW_ID
+
+
 def _write_manifest(repo: Path, head: str) -> None:
     # v3 dispatch-manifest shape (kernel v3 ch.03) — tree SHAs are opaque to
     # the consolidator, so fakes suffice here.
     (_partials_dir(repo) / "manifest.json").write_text(json.dumps({
-        "id": "rev-test-0001",
+        "id": _FAKE_REVIEW_ID,
         "mode": FINAL_MODE, "mode_chosen_by": "rule-3",
         "roster": ["correctness", "design", "sustainability"],
         "roster_chosen_by": "test fixture",
+        "rendezvous": _rendezvous(
+            ["correctness", "design", "sustainability"], _FAKE_REVIEW_ID),
         "commit_reviewed": head,
         "base_commit": head, "base_tree": "basetree000000000000",
         "head_tree": "headtree000000000000", "head_commit": None,
@@ -88,8 +113,9 @@ def _write_manifest(repo: Path, head: str) -> None:
 
 
 def _write_partial(repo: Path, role: str, head: str) -> None:
-    (_partials_dir(repo) / f"{role}.json").write_text(json.dumps({
-        "role": role, "goals": "1-3", "commit_reviewed": head,
+    rid = _review_id(repo)
+    (_partials_dir(repo) / f"{role}.{rid}.json").write_text(json.dumps({
+        "role": role, "goals": "1-3", "dispatch_id": rid, "commit_reviewed": head,
         "model": "opus", "duration_seconds": 60, "findings": [],
         "summary": f"{role} clean.",
     }))
@@ -166,8 +192,11 @@ class TestSubagentStopNeverBlocks:
         _set_marker(repo)
         _write_manifest(repo, head)
         _full_roster(repo, head)
-        # One partial is malformed → consolidate fails closed with exit 1.
-        (repo / PARTIALS_REL / "sustainability.json").write_text("{not json")
+        # One partial is malformed → consolidate fails closed with exit 1. It
+        # must overwrite the roster partial, not sit beside it under the old
+        # unkeyed name — a file consolidate never reads cannot fail it closed.
+        (repo / PARTIALS_REL / f"sustainability.{_review_id(repo)}.json").write_text(
+            "{not json")
         result = _run(repo, {"agent_type": "critic-reviewer", "cwd": str(repo)})
         assert result.returncode == 0, "advisory hook must never block the subagent"
         assert not (repo / FINDINGS_REL).is_file()

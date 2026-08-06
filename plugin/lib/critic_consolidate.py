@@ -576,25 +576,85 @@ def manifest_path(prawduct_dir: Path) -> Path:
     return partials_dir(prawduct_dir) / MANIFEST_NAME
 
 
-def partial_path(prawduct_dir: Path, role: str) -> Path:
-    return partials_dir(prawduct_dir) / f"{role}.json"
+def _path_component_safe(value: str) -> bool:
+    """True when ``value`` can be used as ONE filename component.
+
+    Both halves of a rendezvous filename — the role and the review id — arrive
+    from the manifest, and the manifest is a file on disk. Neither was
+    constrained before, because a role was the only interpolated component and
+    it came straight from a fixed roster; adding the review id widens the
+    surface, so both are checked at the one place that can still refuse
+    (:func:`validate_manifest`) rather than at the paths themselves, where a
+    raise would turn a malformed record into a crash instead of a verdict.
+    """
+    return bool(value) and "/" not in value and "\\" not in value and ".." not in value
 
 
-def started_path(prawduct_dir: Path, role: str) -> Path:
+def partial_path(prawduct_dir: Path, role: str, review_id: str) -> Path:
+    """Where ``role``'s partial lives for the review ``review_id`` dispatched.
+
+    **Keyed by the review, not by the role alone**, and that is load-bearing.
+    A role-only name is one rendezvous shared by every review the worktree ever
+    runs: two dispatches contend for it, the loser's only signal is a failed
+    write with nothing in the protocol saying what that means, and a straggler
+    from an abandoned review lands in a later review's directory where it is
+    schema-valid, commit-valid at an unchanged HEAD, and satisfies a roster it
+    never reviewed. Keying by review id makes all three unrepresentable: each
+    review has its own names, so a straggler can neither overwrite a live
+    partial nor be mistaken for one.
+
+    Nothing outside this module builds this name. The resolved paths ride the
+    manifest (``rendezvous``), so the instruction surfaces that tell reviewers
+    where to write reference that entry instead of spelling the shape — one
+    home for the fact, and a future change to it needs no doc edit.
+    """
+    return partials_dir(prawduct_dir) / f"{role}.{review_id}.json"
+
+
+def started_path(prawduct_dir: Path, role: str, review_id: str) -> Path:
     """The per-role liveness marker a coordinator-dispatched reviewer writes as
     its FIRST action. Its mtime is the signal (reviewers have no clock tool —
     their toolset is read-only file/git plus Write); the content is irrelevant.
     Without it, "no partial yet" and "reviewer never started" are the same
     on-disk state for the reviewer's whole multi-minute run, and callers infer
-    death from the silence (the observed double-dispatch failure)."""
-    return partials_dir(prawduct_dir) / f"{role}.started"
+    death from the silence (the observed double-dispatch failure).
+
+    Keyed by review id for the same reason as :func:`partial_path`: an abandoned
+    review's marker sitting under a shared name would age into a later review's
+    liveness verdict and report a reviewer that never started as one at work."""
+    return partials_dir(prawduct_dir) / f"{role}.{review_id}.started"
 
 
-def started_age_minutes(prawduct_dir: Path, role: str) -> float | None:
+def _rendezvous(project_dir: Path, prawduct_dir: Path, roster: list[str],
+                review_id: str) -> dict[str, dict[str, str]]:
+    """The per-role write paths recorded in the manifest.
+
+    Project-relative where possible, because that is the form a reviewer can
+    use: it runs with the project directory as its working directory, and a
+    relative path is what its dispatch prompt and its own instructions can hand
+    it verbatim. An absolute fallback covers the case where ``.prawduct/`` does
+    not resolve under the project dir — a wrong path is worse than a long one.
+    """
+    def _rel(p: Path) -> str:
+        try:
+            return str(p.relative_to(project_dir))
+        except ValueError:
+            return str(p)
+
+    return {
+        role: {
+            "partial": _rel(partial_path(prawduct_dir, role, review_id)),
+            "started": _rel(started_path(prawduct_dir, role, review_id)),
+        }
+        for role in roster
+    }
+
+
+def started_age_minutes(prawduct_dir: Path, role: str, review_id: str) -> float | None:
     """Minutes since ``role``'s started marker was written, or None when the
     marker is absent/unreadable. Clamped at zero for clock skew."""
     try:
-        mtime = started_path(prawduct_dir, role).stat().st_mtime
+        mtime = started_path(prawduct_dir, role, review_id).stat().st_mtime
     except OSError:
         return None
     age_s = datetime.now(timezone.utc).timestamp() - mtime
@@ -1176,6 +1236,11 @@ def begin_review(
         "mode_chosen_by": (chosen_by or "").strip() or "not-recorded",
         "roster": roster,
         "roster_chosen_by": roster_chosen_by,
+        # Where each reviewer writes, resolved HERE so the filename shape has
+        # exactly one home. Every instruction surface reads its role's entry
+        # instead of composing the name, which is what keeps a change to the
+        # shape (this one, and the next) out of four prose files.
+        "rendezvous": _rendezvous(project_dir, prawduct_dir, roster, review_id),
         "commit_reviewed": dispatch_commit,
         "base_commit": base_commit,
         "base_tree": base_tree,
@@ -1260,8 +1325,8 @@ def _str_list(val) -> bool:
 def validate_partial(data) -> tuple[bool, str]:
     """Validate a single reviewer partial.
 
-    Schema: ``{role, goals, commit_reviewed, model?, duration_seconds?,
-    findings:[{name, goal, severity, recommendation, files?}],
+    Schema: ``{role, goals, dispatch_id, commit_reviewed, model?,
+    duration_seconds?, findings:[{name, goal, severity, recommendation, files?}],
     resolutions?:[{review_id, fid, disposition, rationale?}], summary}``.
     ``model``/``duration_seconds`` are nullable telemetry; everything else is
     load-bearing. ``severity`` must be one of the known vocabulary so a typo
@@ -1269,11 +1334,24 @@ def validate_partial(data) -> tuple[bool, str]:
     verify-resolutions judgment payload (D5): ``disposition`` is ``fixed`` or
     ``waived``, and ``waived`` REQUIRES a non-empty ``rationale`` (R7 — a
     waiver carries its justification).
+
+    ``dispatch_id`` is the id of the review that dispatched this reviewer, and
+    it is deliberately NOT named ``review_id``: ``resolutions[].review_id`` in
+    this same record means the *prior* review whose finding is being
+    dispositioned. Two referents under one token, in a record a model writes
+    from prose, is the seam where an identifier degrades silently — so the two
+    get different names, and this one matches the module's existing
+    ``dispatch_commit``/``dispatch_age_minutes`` vocabulary.
     """
     if not isinstance(data, dict):
         return False, "partial is not a JSON object"
     if not _nonempty_str(data.get("role")):
         return False, "missing/empty 'role'"
+    if not _nonempty_str(data.get("dispatch_id")):
+        return False, (
+            "missing/empty 'dispatch_id' — a partial must name the review that "
+            "dispatched it (the manifest's 'id')"
+        )
     goals = data.get("goals")
     if not (_nonempty_str(goals) or _nonempty_str_list(goals)):
         return False, "missing 'goals' (non-empty string or list)"
@@ -1344,7 +1422,9 @@ def validate_manifest(data) -> tuple[bool, str]:
     only).
 
     Required: ``id``, verbose ``mode``, ``mode_chosen_by``, ``roster``,
-    ``roster_chosen_by``, ``commit_reviewed``, ``base_tree``, ``head_tree``,
+    ``roster_chosen_by``, ``rendezvous`` (one ``{partial, started}`` entry per
+    roster role — the resolved write paths, so no instruction surface has to
+    spell the filename shape), ``commit_reviewed``, ``base_tree``, ``head_tree``,
     non-empty ``files_reviewed``, ``files_changed`` (a list, possibly empty —
     a same-tree verify-resolutions pass legitimately changes nothing).
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
@@ -1373,6 +1453,38 @@ def validate_manifest(data) -> tuple[bool, str]:
             return False, f"missing/empty '{req}'"
     if not _nonempty_str_list(data.get("roster")):
         return False, "missing 'roster' (non-empty list of role names)"
+    # The id and every role become filename components of the rendezvous paths.
+    # Refused here rather than at the paths: a validator returns a verdict the
+    # caller can name, while a raise inside path construction would turn a
+    # malformed record into a crash on the session-end backstop's read.
+    for label, value in [("id", data["id"])] + [
+        ("roster entry", r) for r in data["roster"]
+    ]:
+        # The RAW value, not a stripped copy: what is checked has to be what
+        # becomes the filename, or the check grades a string nothing writes.
+        if not _path_component_safe(value):
+            return False, (
+                f"{label} {value!r} is not usable as a filename component "
+                "(no '/', '\\' or '..')"
+            )
+    rendezvous = data.get("rendezvous")
+    if not isinstance(rendezvous, dict):
+        return False, (
+            "missing 'rendezvous' (per-role partial/started paths). A manifest "
+            "without it was written by a hook older than this one — re-dispatch "
+            "the review so the paths are recorded"
+        )
+    if sorted(rendezvous) != sorted(data["roster"]):
+        return False, (
+            f"'rendezvous' covers {sorted(rendezvous)} but the roster is "
+            f"{sorted(data['roster'])} — every role needs exactly one entry"
+        )
+    for role, entry in rendezvous.items():
+        if not isinstance(entry, dict):
+            return False, f"rendezvous[{role!r}] is not an object"
+        for key in ("partial", "started"):
+            if not _nonempty_str(entry.get(key)):
+                return False, f"rendezvous[{role!r}] missing/empty {key!r}"
     if not _nonempty_str_list(data.get("files_reviewed")):
         return False, "missing 'files_reviewed' (non-empty list)"
     if not _str_list(data.get("files_changed")):
@@ -1418,7 +1530,7 @@ def pending_state(prawduct_dir: Path) -> tuple[str, list[str]]:
     missing = [
         role
         for role in manifest["roster"]
-        if not partial_path(prawduct_dir, role).is_file()
+        if not partial_path(prawduct_dir, role, manifest["id"]).is_file()
     ]
     if missing:
         return "incomplete", missing
@@ -1845,7 +1957,10 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
         counts += f"; dispatched {age:.1f} min ago"
     started: dict[str, float | None] = {}
     if prawduct_dir is not None and total > 1:
-        started = {role: started_age_minutes(prawduct_dir, role) for role in missing}
+        started = {
+            role: started_age_minutes(prawduct_dir, role, review_id)
+            for role in missing
+        }
 
     def _label(role: str) -> str:
         s_age = started.get(role)
@@ -1892,7 +2007,60 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
             " `prawduct-hook critic-end` first."
         )
         line += _CACHE_WARM_DIRECTIVE
+    if prawduct_dir is not None:
+        line += _stray_partial_note(prawduct_dir, missing, review_id)
     return line
+
+
+def _stray_partial_note(prawduct_dir: Path, missing: list[str],
+                        review_id: str) -> str:
+    """Name a partial that is on disk but not this review's, and say what to do.
+
+    Without this, the two ways a reviewer's work goes uncounted are both
+    invisible. A **straggler** from an abandoned review sits under that review's
+    own name and is correctly ignored — but silence reads as "the reviewer never
+    wrote anything", which is the death verdict that produced the double
+    dispatch in the first place. A **legacy** partial at the pre-keyed
+    ``<role>.json`` is worse: it means the skill that wrote it is older than
+    this hook, the reviewer did its whole run, and the file will never be read.
+    Accepting it instead would reopen the hole this keying closes, so the answer
+    is to say so and name the remedy.
+
+    Advice, so it fails soft: any read error yields no note rather than an
+    exception on a message-building path.
+    """
+    pdir = partials_dir(prawduct_dir)
+    try:
+        names = {p.name for p in pdir.iterdir() if p.is_file()}
+    except OSError:
+        return ""
+    legacy = [r for r in missing if f"{r}.json" in names]
+    foreign: list[str] = []
+    for role in missing:
+        # `partial_path` owns the shape; asking it for the name this review
+        # would use keeps this reader from becoming a second home for it.
+        mine = partial_path(prawduct_dir, role, review_id).name
+        for name in sorted(names):
+            if (name.startswith(f"{role}.") and name.endswith(".json")
+                    and name not in (f"{role}.json", mine)):
+                foreign.append(name)
+    note = ""
+    if legacy:
+        note += (
+            f" NOTE: {', '.join(sorted(f'{r}.json' for r in legacy))} in that"
+            " directory is a partial written to the path this hook used before"
+            " reviews were keyed by id — the skill that wrote it is older than"
+            " this hook, so its work cannot be read. Reload the plugin"
+            " (/reload-plugins, or restart the session) and re-dispatch."
+        )
+    if foreign:
+        note += (
+            f" NOTE: {', '.join(sorted(set(foreign)))} in that directory"
+            " belongs to an earlier review, not this one — a straggler that is"
+            " correctly ignored here. It is not evidence about whether this"
+            " review's reviewers are alive."
+        )
+    return note
 
 
 def _already_consolidated_note(prawduct_dir: Path) -> str:
@@ -2002,7 +2170,7 @@ def consolidate(project_dir: Path) -> int:
     partials: list[dict] = []
     missing: list[str] = []
     for role in roster:
-        ppath = partial_path(prawduct_dir, role)
+        ppath = partial_path(prawduct_dir, role, review_id)
         if not ppath.is_file():
             missing.append(role)
             continue
@@ -2027,6 +2195,24 @@ def consolidate(project_dir: Path) -> int:
             print(
                 f"critic-consolidate: partial for {role!r} declares role "
                 f"{data['role']!r} — roster mismatch, fail-closed.",
+                file=sys.stderr,
+            )
+            return 1
+        # Belt-and-braces against the commit binding being the ONLY one. The
+        # keyed filename already stops a straggler from another review landing
+        # here; this catches the case the name cannot — a reviewer handed the
+        # wrong id in its dispatch prompt, writing to the right file with the
+        # wrong review's identity. Stripped before comparing, because
+        # surrounding whitespace normalizes identically and must not abort a
+        # whole consolidation (the `files: []` lesson, same module): hard-fail
+        # is for genuine ambiguity, which a different id is and a padded one
+        # is not.
+        if data["dispatch_id"].strip() != review_id.strip():
+            print(
+                f"critic-consolidate: reviewer {role!r} was dispatched by "
+                f"{data['dispatch_id'].strip()} but this manifest is "
+                f"{review_id} — the partial belongs to a different review, "
+                "fail-closed.",
                 file=sys.stderr,
             )
             return 1
