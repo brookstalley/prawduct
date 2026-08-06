@@ -60,8 +60,17 @@ final split makes an over-cap title unreachable **by construction** for any corp
 `0`, and the artifact now says why that is a property rather than a measurement. The marker count is
 labelled the upper bound it always was — it matches title *or* body, because the rule moves the
 marker into the body. And `tools/` was a scan-free root: the `from __future__ import annotations`
-and `shell=True` conventions checked `plugin/` and `tests/` only, so the second script to land there
-could have skipped both silently. Both scans now cover it, red-verified by mutation.
+and `shell=True` conventions never looked there, so the second script to land under the root this
+branch resurrects could have skipped both silently. Both scans now cover it, red-verified by
+mutation.
+
+**Widening those roots then exposed a dead one — the same defect, one layer down.** The
+subprocess-safety scan bound `tests` to the *plugin* base, and `plugin/tests` has never existed: the
+repo's largest Python surface had never been checked for `shell=True`, and said nothing, because a
+missing root yields no files rather than an error. Green meant "no files", not "no violations". Both
+scans now assert every root exists (`test_scan_roots_all_exist`), and the subprocess scan names the
+repo test tree explicitly so a future root-list rewrite cannot drop it and stay green. The
+correction found no live `shell=True` anywhere — the exposure was latent, not exploited.
 
 **`TestTitleBoundary` is the coverage that should have existed first.** The parser gained four
 behaviours with zero tests; the discovery artifact had itself required one (the PFX-less

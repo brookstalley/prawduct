@@ -22,15 +22,25 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent / "plugin"
 SUBPROCESS_FUNCS = frozenset({"run", "check_output", "check_call", "call", "Popen"})
 
+# Every Python root this preference is enforced over. `lib` and `hooks` are
+# plugin-root; `tests` and `tools` are REPO-root — and getting that base wrong is not
+# hypothetical. Until 2026-08-06 `tests` was bound to the plugin base, and
+# `plugin/tests` has never existed: the repo's largest Python surface went unscanned
+# for `shell=True` and the suite stayed green, because a missing root yields no files
+# rather than an error. Green meant "no files", not "no violations".
+# `test_scan_roots_all_exist` is what distinguishes a root that is legitimately absent
+# from one that is misaddressed.
+SCAN_ROOTS = (
+    ("lib", REPO_ROOT),
+    ("hooks", REPO_ROOT),
+    ("tests", REPO_ROOT.parent),
+    ("tools", REPO_ROOT.parent),
+)
+
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    # `tools/` sits at the repo root, not under `plugin/` — derivation scripts kept
-    # runnable so an artifact's figures stay falsifiable. Scanned here for the same
-    # reason as everything else: an unscanned root is where `shell=True` lands next.
-    for root, base in (("lib", REPO_ROOT), ("tests", REPO_ROOT), ("hooks", REPO_ROOT), ("tools", REPO_ROOT.parent)):
-        if not (base / root).is_dir():
-            continue
+    for root, base in SCAN_ROOTS:
         for path in (base / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
@@ -74,4 +84,25 @@ class TestSubprocessSafety:
             "Subprocess safety violation — shell=True enables command injection. "
             "Use the list-form (subprocess.run([\"cmd\", \"arg\"])) instead.\n  - "
             + "\n  - ".join(violations)
+        )
+
+    def test_scan_roots_all_exist(self):
+        # A misaddressed root scans nothing and passes forever. This is the only check
+        # that can tell "no violations" from "no files"; without it the `tests` root sat
+        # on the wrong base unnoticed.
+        missing = [str(base / root) for root, base in SCAN_ROOTS if not (base / root).is_dir()]
+        assert not missing, (
+            "Scan root does not exist — this preference silently enforces nothing over it:\n  - "
+            + "\n  - ".join(missing)
+            + "\n\nFix the path (check whether the root is repo-level or plugin-level), "
+            "or drop it from SCAN_ROOTS."
+        )
+
+    def test_scan_reaches_the_repo_test_tree(self):
+        # The specific regression: `plugin/tests` for a `tests/` tree that lives at the
+        # repo root. Naming the tree explicitly means a future root-list rewrite cannot
+        # drop it and stay green.
+        scanned = {p.relative_to(REPO_ROOT.parent).as_posix() for p in _python_files()}
+        assert "tests/preferences/test_subprocess_safety.py" in scanned, (
+            f"The repo's tests/ tree is not being scanned for shell=True — SCAN_ROOTS is {SCAN_ROOTS}"
         )
