@@ -118,12 +118,17 @@ retroactivity; the quote above is only the statement):
   time, and §4c's altitude constraint says it must not run before the shared-root-cause check
   exists, or it entrenches an over-split backlog.
 - **Enforcement home:** `issuefmt._lint_title` already implements all four checks; what is missing
-  is that `file`/`update` treat them as advisory and `import` never calls them. **Unresolved
-  collision, flagged not settled:** standard §4 ratifies these lints as *"WARN only, never
-  blocks"*. This directive requires blocking. **Both cannot hold** — the amendment to §4, or an
-  exception to it, is owed before enforcement ships and is NOT recorded here.
-- **Registry home:** this artifact is a discovery record, not a strategy artifact. The norm needs a
-  `## Direction` entry in the artifact that owns backlog behaviour before it is ratified.
+  is that `file`/`update` treat them as advisory and `import` never calls them. **Tracked as #614.**
+- **Collision with standard §4 — RULED 2026-08-06 (owner), not left open.** §4 ratified these lints
+  as *"WARN only, never blocks"*, which this directive contradicts. Owner ruled the directive
+  supersedes: **§4 is amended so the four §1 TITLE checks block on all three write paths, while
+  every body lint stays WARN-only.** The narrowing is deliberate — a title is the handle every
+  reader triages by and is cheap to rewrite; a body budget blocking an edit to an unrelated field
+  is the confirmation-fatigue shape `security-model.md`'s approval norm already rejects. The
+  amendment is recorded in §4 itself, where a reader meets the rule.
+- **Tracking ref for `Status: in-transition`:** **#614** (enforcement on all three paths + the
+  co-shipping shared-root-cause check). #612 (import guardrails) and #613 (retitle-in-place on
+  skip) carry the other deferred scope items.
 
 **This strengthens the existing standard rather than inventing one.**
 `documentation/backlog-service-issue-standard.md` §1 already specifies the budget (≤72, aim 50–70),

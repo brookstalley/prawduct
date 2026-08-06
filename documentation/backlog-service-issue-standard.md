@@ -76,22 +76,41 @@ The adapter already models the recommended taxonomy: `kind/area/effort/impact/so
 
 ## 4. Enforcement — two homes, one standard
 
+**Amended 2026-08-06 (owner ruling) — the TITLE lints block; everything else stays WARN-only.**
+This section previously read "WARN only, never blocks" for all lints. Owner: *"we need to enforce
+on migration. fine if the agent has to rewrite. They must be EXCELLENT issue titles, always,
+whether migrated or created new or modified."* The old posture and that directive cannot both
+hold, and the directive supersedes: a WARN the migration path never even called is what let a
+396-item corpus reach GitHub with titles up to 2319 characters.
+
+**Scope of the amendment, deliberately narrow.** Blocking applies to the four **§1 title** checks
+(`title-too-long` / `-too-short` / `-placeholder` / `-non-atomic`) on all three write paths
+(`file`, `update`, `import`). The **body** lints — `body-too-long`, missing sections, the Env
+nudge — stay WARN-only: a title is the handle every later reader triages by and is cheap to
+rewrite, while a body budget blocking an edit to an unrelated field is the confirmation-fatigue
+shape `security-model.md`'s approval norm already rejects. **Not yet built** — tracked as **#614**,
+which also carries the co-shipping constraint (the shared-root-cause check in the dedup sweep must
+land with it, or enforcing ≤72 alone entrenches an over-split backlog; §1).
+
 > **Implemented (programmatic home):** `lib/backlog/issuefmt.py` — `normalize_title` (§1),
-> `render_body` (§2 composer, shared with migration), and `lint` (§4, WARN-only). Wired into the
+> `render_body` (§2 composer, shared with migration), and `lint` (§4 — title checks blocking as
+> of 2026-08-06, all others WARN-only). Wired into the
 > `file` path (`core.file_item`): the title is normalized on create and the result is audited, with
-> findings in the envelope's `lint` field (never blocks). The **MG6 migration pre-pass (§5) is
+> findings in the envelope's `lint` field (title findings blocking per the amendment above;
+> body findings advisory). The **MG6 migration pre-pass (§5) is
 > implemented** — `lib/backlog/restructure.py` (fail-closed plan validation, application through
 > the shared composer, `original_*` preservation per Data Model §2) + `import --restructure` +
 > the offline `restructure-preview` owner-review artifact. Issue Forms (consumer-UI home,
 > BKL-7F3D) remain to build.
 
 - **`file` CLI + migration (programmatic):** a standard-aware **serializer** emits the title + section
-  contract; a **WARN-only linter** audits. Issue *Forms* do NOT gate programmatic creation.
+  contract; the linter audits — **title findings block, body findings warn** (amendment above).
+  Issue *Forms* do NOT gate programmatic creation.
 - **Consumers filing via the GitHub UI:** ship **YAML Issue Forms** (`.github/ISSUE_TEMPLATE/`, one per
   variant; required `textarea`s = the sections, `dropdown`s pin `kind/area/stage/impact`). Forms require
   labels to pre-exist — `provision` already creates them.
-- **Linter (WARN only, never blocks — matches prawduct's never-block posture; this path was never a
-  blocking gate):** title > 72 / < 15 / placeholder; title joins ≥2 claims; missing or empty required
+- **Linter — §1 title checks BLOCK (2026-08-06); all other lints WARN only:** title > 72 / < 15 /
+  placeholder; title joins ≥2 claims **→ blocking**. Missing or empty required
   section; > ~175 visible words (`issuefmt.BODY_MAX_WORDS` — the one implementation constant, §2's
   number and this threshold are the same budget); unwrapped evidence > 30 lines; no `kind:`/`area:`; > ~6 labels;
   acceptance prose without `- [ ]`; a `kind:bug` issue with **no Env line** (`bug-missing-env` — the
