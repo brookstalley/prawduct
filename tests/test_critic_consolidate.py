@@ -1627,11 +1627,28 @@ class TestVerifyRatesBlockingOnlyDirective:
             "the directive no longer separates 'the tree must not move' from "
             "'this fix is owed' — the two coming apart is the entire point"
         )
-        # The class the distinction exists for, and its escape.
-        assert "record" in d.lower() and "ride" in d.lower(), (
-            "the directive no longer names record-class gaps or the ride-along "
-            "route for them, so a reviewer holding a registry row is back to "
-            "choosing between forcing a round and saying nothing"
+        # The class the distinction exists for, and its escape. `"record"` alone
+        # would be worthless here: the constant already says "record-lint",
+        # "recorded here" and "the record demands" elsewhere, so a bare
+        # substring passes on pre-existing text and guards nothing while its
+        # failure message claims otherwise. Pin the compound.
+        assert "record gap" in d.lower(), (
+            "the directive no longer names RECORD GAPS as the class the "
+            "distinction exists for, so a reviewer holding a registry row is "
+            "back to choosing between forcing a round and saying nothing"
+        )
+        assert "ride" in d.lower(), (
+            "the directive no longer offers the ride-along route for a demoted "
+            "record gap"
+        )
+        # A demotion with no destination is a drop. The route only works if the
+        # reviewer is told WHERE the builder must write it — deleting just this
+        # parenthetical would leave the clause reading fine and silently turn
+        # every demoted record gap into lost work.
+        assert ".handoff-notes.md" in d, (
+            "the ride-along route no longer names where the builder must write "
+            "the demoted gap. Without a destination the demotion is a drop, "
+            "which is the one way this rule could lose something real"
         )
         # The exemption must survive too, or the distinction silently weakens
         # the five classes that mean the tree is ALREADY wrong.
@@ -1657,15 +1674,26 @@ class TestVerifyRatesBlockingOnlyDirective:
         A dispatch directive is read by a model on every verify pass, so it
         competes with the review itself for attention; unbounded growth here is
         the same defect as unbounded growth there, minus the test that catches
-        it. The cap is deliberately loose — this is a backstop against drift,
-        not a budget to spend.
+        it.
+
+        Measured in TOKENS with the same estimator every budgeted file in this
+        repo uses, and with the current reading pinned — a ceiling alone lets
+        growth accrete silently inside the headroom, which is the failure the
+        `LAST_MEASURED_TOKENS` convention exists to prevent. Two numbers, two
+        jobs: the pin fails on any drift and carries the new figure; the ceiling
+        says how much drift is allowed before a clause has to move out.
         """
-        words = len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split())
-        assert words < 700, (
-            f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{words} words. It is "
-            f"delivered on every verify dispatch and competes with the review "
-            f"for attention. Trim, or move a clause to the protocol file that "
-            f"owns it — do not raise this without saying what paid for it."
+        tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
+
+        assert tokens == 707, (
+            f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
+            f"says 707. Update it to {tokens} and say in the docstring what paid "
+            f"for the change — the ceiling below is not a budget to spend."
+        )
+        assert tokens < 900, (
+            f"the directive is ~{tokens} tokens. It is delivered on every verify "
+            f"dispatch and competes with the review for attention. Trim, or move "
+            f"a clause to the protocol file that owns it."
         )
 
     def test_it_descends_rather_than_only_stating_a_rule(self):
