@@ -6,27 +6,32 @@ ships that policy, so prawduct is bound by it — a framework whose own repo ign
 nudge is the aspirational-rule shape the norm lifecycle exists to catch.
 
 The mechanism is `constraints.txt` plus `pip install -c constraints.txt ".[dev]"` in
-`.github/workflows/tests.yml`. Four ways it can rot that are answerable from the tree,
+`.github/workflows/tests.yml`. Five ways it can rot that are answerable from the tree,
 one test class each — a checked set, not a claim that nothing else can go wrong:
 
-1. **A dependency is added to the `dev` extra and never pinned.** The suite stays green,
+1. **The file is deleted or emptied.** Listed first because it is the one that makes every
+   assertion below pass *vacuously* — a guard that cannot fail against a repo pinning
+   nothing at all is not a guard.
+2. **A dependency is added to the `dev` extra and never pinned.** The suite stays green,
    CI keeps passing, and exactly one package silently re-resolves on every run.
-2. **A transitive dependency is never pinned** — the same hole one rung down, and the one
+3. **A transitive dependency is never pinned** — the same hole one rung down, and the one
    that actually shipped: `typing-extensions` sat unpinned because it is reached only
    *through* a marker-gated package, and a guard comparing against the four declared names
    could never fail for it. See `TestTheClosureIsClosed` for what that check can and
    cannot reach.
-3. **A pin softens into a floor.** `pytest>=9.1.1` in a constraints file bounds nothing
+4. **A pin softens into a floor.** `pytest>=9.1.1` in a constraints file bounds nothing
    below the newest release; it reads like a pin and behaves like the absence of one.
    Requiring `==` throughout also keeps the file from becoming a second declaration of
    *what* this repo depends on, which is the `dev` extra's job.
-4. **The workflow stops reading the file.** A pinned resolution nothing installs through
+5. **The workflow stops reading the file.** A pinned resolution nothing installs through
    is documentation, not enforcement.
 
-This sentence read "Three ways that can rot" while the module carried four classes, which
-is the defect the module is about wearing the module's own clothes: a docstring asserting
-completeness is a claim, and prose goes stale silently because nothing tests it. If you add
-a class here, this list is part of the change.
+This sentence has now been wrong twice in the same way. It read "Three ways that can rot"
+while the module carried four classes; the fix counted four while the module carried five,
+because `TestTheConstraintsFileExists` reads as a precondition rather than a rot mode and
+got waved past. Both times the defect was the module's own subject wearing the module's own
+clothes: a docstring asserting completeness is a claim, and prose goes stale silently
+because nothing tests it. If you add a class here, this list is part of the change.
 
 Deliberately NOT asserted here: that the pinned versions satisfy clause 1's minimum
 release age. That check needs each version's publication time, which needs the index —

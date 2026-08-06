@@ -40,10 +40,8 @@ preferences rows, project-state classification, **and unmarked prose recording a
 bind; descriptions track (test: would syncing it to code silently unmake a decision?).
 Departure, unruled edge-work, normative change (even doc-only), or norm birth without a
 recorded vetoable decision → Goal 3 **BLOCKING** where ratified norms exist; with none,
-**NOTE** naming the capture path. Tell: amending a norm to match your own code.
-Correctness shapes the recommendation, never the need. Judge jurisdiction yourself;
-applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a
-downgrade.
+**NOTE** naming the capture path. Judge jurisdiction yourself; applicability is recorded,
+never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a downgrade.
 
 ### 1. Nothing Is Broken
 - **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
@@ -52,7 +50,7 @@ downgrade.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.
 - Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
-- **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.
+- **No-behavior-change refactor**: output assertions are exact-match, not substring/contains → **WARNING**.
 - For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → **NOTE**.
 - **Security in changed code:** input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable; no injection vectors — SQL, command, XSS, path traversal → **BLOCKING**; no hardcoded secrets or credentials → **BLOCKING**; auth/authz on new endpoints or state-changing operations → **WARNING** if missing; dependencies with known critical vulnerabilities → **WARNING**.
 - **Symbol coverage:** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
@@ -70,7 +68,7 @@ downgrade.
 - If `infrastructure_dependencies` is declared in project-state.yaml: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when (read source or probe before drafting handlers — see `methodology/planning.md`) → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach` present, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. The produced-surface mirror of Foreign API — see `methodology/planning.md`.
-- **Dependency change**: chunks with `**Dependency change:** <what>` need a recorded upstream intake policy (`design_decisions.upstream_dependency_policy` present, or an explicit deferral) → **WARNING** if missing. Intake is wider than manifests, updater configs included — see `docs/upstream-dependency-policy.md`.
+- **Dependency change**: chunks with `**Dependency change:** <what>` need a recorded upstream intake policy (`design_decisions.upstream_dependency_policy` present, or an explicit deferral) → **WARNING** if missing, and **WARNING** if the change contradicts a recorded one on what the tree answers — pinning, trusted parties, install-time execution, the tier `surfaces` records for the surface touched. Minimum release age needs the package index, so it is `/prawduct:doctor` #15(b)'s half, never yours. Intake is wider than manifests, updater configs included — see `docs/upstream-dependency-policy.md`.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 
 ### 3. Nothing Is Unintended

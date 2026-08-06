@@ -112,11 +112,11 @@ feature's seven legs, which is the direct structural precedent.
 
 ## Status
 
-- [x] Chunk 01: Keystone — the policy decision record + capture-point wiring
-- [x] Chunk 02: The canonical policy spec + the security-model home
-- [x] Chunk 03: Forward Critic gate + the `**Dependency change:**` field
-- [x] Chunk 04: Retroactive — doctor check #15 (incl. the conformance procedure) + janitor
-- [x] Chunk 05: Migration nudge — the dependency-policy advisory probe (CODE)
+- [ ] Chunk 01: Keystone — the policy decision record + capture-point wiring
+- [ ] Chunk 02: The canonical policy spec + the security-model home
+- [ ] Chunk 03: Forward Critic gate + the `**Dependency change:**` field
+- [ ] Chunk 04: Retroactive — doctor check #15 (incl. the conformance procedure) + janitor
+- [ ] Chunk 05: Migration nudge — the dependency-policy advisory probe (CODE)
 - [ ] Chunk 06: Coherence & close — matrix row, Known Gaps overturn, update-procedure template
 Context: Plan authored 2026-08-05 on `feature/upstream-dependency-policy` (off `develop`); requirements ruled the same day. Owner confirmed both post-ruling design changes (agent-performed conformance — *"it needs to be adaptable to any platform"* — and the tier-3 fillable runbook template).
 

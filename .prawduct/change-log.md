@@ -3,6 +3,61 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-06: the Critic's dependency check regains the half that was dropped
+
+<!-- prawduct: type=fix | scope=upstream-dependency-policy -->
+
+**A step-back audit of this branch found one requirement delivered at half its width.** The
+requirements artifact commits the Critic to warn on a dependency change made "against no recorded
+policy **or against the recorded one**." Only the presence half ever shipped, and the narrowing
+happened at plan-authoring with no descope recorded anywhere — so a release adopted *against* a
+product's own recorded terms passed review unremarked, and goal 2 of this whole feature
+(conformance) had no build-time surface at all. This is the same requirement-dropped-by-a-pivot
+class the cumulative review caught twice elsewhere (R-1, R-18) and missed here, which is the part
+worth keeping: the review that was looking for exactly this shape did not find it, because nothing
+asked.
+
+**The restore is deliberately partial, and the boundary is delivered inline.** The Critic now warns
+when a change contradicts a recorded policy on the terms the tree can answer — pinning, the trusted
+register, install-time execution, and the tier each surface records. It does **not** check clause
+1's minimum release age: that is answerable only against the package index, and the Critic reviews
+with no network and no execution, so asking for it would be an aspirational rule — which the tier
+model's own rule 2 calls worse than an absent claim. Release age stays with the two surfaces that
+can reach the index, doctor #15(b) and the tier-3 update procedure, and both Critic bullets name
+that split where a reviewer meets it. The narrowing is now a recorded `[DECISION: …]` in the
+requirements artifact rather than a silence.
+
+**Both protocol files carry it, and a test now asks.** `review-protocol.md` and `goals-1-3.md` are
+read by different modes and never together, so a check present in one and absent from the other
+fires or not depending on how the review was invoked — which is exactly how the presence-only
+version looked complete from whichever file you opened. `TestTheCriticChecksConformanceNotOnlyPresence`
+asserts both legs and the stated exclusion, per file, behaviourally rather than verbatim so the
+compressed twin stays free to word it its own way. Token budgets: +57 and +46, of which 29 was paid
+by two cuts in the recorded classes (a no-verdict claim pair Goal 4 already carries in
+verdict-bearing form, and a worked-example parenthetical); the residual is a recorded ceiling move,
+because what remains in the cheap classes is verdict-bearing or safety prose and thinning that to
+buy characters is the wrong trade at any exchange rate.
+
+**Recording the policy owes the conformance scan, and that sentence is now pinned.** It was one
+line of unpinned prose in `discovery.md` — load-bearing, because nothing in the data plane
+distinguishes a `surfaces` record that was scanned from one authored from memory, and a remembered
+list is precisely the under-enumeration this design exists to prevent, arriving through the author
+instead of through a filename allowlist. `TestRecordingThePolicyOwesTheScan` pins both ends: that
+the capture step routes to the scan by number, and that doctor still carries a check by that name to
+receive the reader.
+
+**Four coherence fixes, each the same shape — a claim wider than what it covers.** The top-level
+`upstream_dependency_policy_decided` fact said test dependencies were pinned at tier 1, dropping the
+local-and-agent tier-3 row the detailed records carry: the one-line summary a skimming reader meets
+first was the last copy still overstating. The `surfaces` values led with "tier 3 —" while the
+schema this framework ships names those values `declarative | bot | agent` — three vocabularies for
+one enum, in the record products copy as the exemplar; they now lead with the enum token and keep
+the tier number in parentheses. `constraints.txt` carried a second literal copy of the release-age
+figure in a worked example, which the single-homing check missed because that check greps `plugin/`
+and the file is at the repo root — the jurisdiction-narrower-than-the-claim shape, inside this
+branch's own verification step. And `tests.yml`'s header quoted the pre-`-c` install line as what CI
+runs.
+
 ## 2026-08-06: on what terms does someone else's code become yours
 
 <!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=upstream-dependency-policy -->

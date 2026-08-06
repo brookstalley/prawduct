@@ -24,7 +24,9 @@
 # `testpaths` all live in `pyproject.toml`, and repeating them in this file would
 # make it a second home for the same fact — the next person to tune parallelism
 # would tune one of the two. Same reason the dependency list is read out of the
-# `dev` extra rather than restated: `pip install ".[dev]"` is a reference to it.
+# `dev` extra rather than restated: the `".[dev]"` in the install step below is a
+# reference to it, and the `-c constraints.txt` beside it is the same move for the
+# resolved versions — neither is a second declaration of what this repo depends on.
 
 name: tests
 

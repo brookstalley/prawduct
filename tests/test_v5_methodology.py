@@ -85,8 +85,8 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4808,
-    "skills/critic/review-protocol.md": 3617,
-    "skills/critic/goals-1-3.md": 1998,
+    "skills/critic/review-protocol.md": 3643,
+    "skills/critic/goals-1-3.md": 2043,
     "skills/critic/review-cycle.md": 9532,
     "skills/critic/framework-checks.md": 1116,
 }
@@ -841,8 +841,36 @@ class TestCriticSkill:
         # cuts above: a legend re-listing its own section's contents is paying
         # twice for ONE instruction, but an enumeration that is the only place a
         # word like "compounds" is made concrete is the instruction.
+        #
+        # 3617 -> 3643 (2026-08-06) -- the Dependency-change bullet regained its
+        # CONFORMANCE leg. The requirements artifact committed the Critic to
+        # WARN on a dependency change "against no recorded policy OR against the
+        # recorded one"; only the presence half was ever delivered, and no
+        # descope was recorded -- so a release adopted against the product's own
+        # recorded terms passed review unremarked. The restore is deliberately
+        # PARTIAL and the bullet says so: clause 1's minimum release age needs
+        # the package index, and a reviewer with no network cannot judge it, so
+        # doctor #15(b) keeps that half. The narrowing is now recorded in the
+        # requirements artifact rather than left silent a second time.
+        #
+        # +57 for the leg; 29 paid by two cuts in this comment's own recorded
+        # classes. (1) The normative-authority block's two no-verdict claims:
+        # "Tell: amending a norm to match your own code" -- which Goal 4's
+        # "never fix divergence by artifact edit" already carries in
+        # verdict-bearing form, so it was paying twice -- and "Correctness
+        # shapes the recommendation, never the need". Both are the exact pair
+        # goals-1-3.md cut on 2026-08-05 under the same rule. (2) The
+        # exact-match bullet's worked-example parenthetical, that file's other
+        # cut in the same class.
+        #
+        # The residual 28 is a CEILING MOVE, 3620 -> 3645, and the reason it is
+        # not more cuts is this comment's own standing rule: what remains in the
+        # cheap classes is verdict-bearing or safety prose, and buying tokens by
+        # thinning a safety instruction is the wrong trade at any exchange rate.
+        # A restored requirement is not discretionary content to be squeezed in
+        # around the edges. Headroom (ceiling minus tokens) 3 -> 2.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
+        assert tokens < 3645, f"review-protocol.md is ~{tokens} tokens, should be <3645"
 
 
 # =============================================================================
@@ -1063,8 +1091,27 @@ class TestCriticGoals13:
         # Headroom (ceiling minus tokens) 2 -> 2. The pointer here is bare
         # parentheses rather than review-protocol.md's "see", because this file
         # is the compressed twin and its sibling bullets carry no pointer at all.
+        #
+        # 1998 -> 2043 (2026-08-06) -- the conformance leg's twin, restored for
+        # the same reason and scoped the same way; review-protocol.md's entry
+        # carries the full account. It has to exist in BOTH files or the check
+        # fires or not depending on review mode, which
+        # `test_no_check_from_goals_1_3_was_dropped` enforces anyway.
+        #
+        # NOT paid for by cuts, and the reason is already on the record above:
+        # this file's cheap classes were harvested on 2026-08-05 -- the two
+        # standing-candidate no-verdict claims and the worked-example
+        # parentheticals all went then. What is left assigns verdicts or is
+        # safety prose. One further cut was tried and reverted inside this
+        # round, which is the entry worth reading: the closing report contract
+        # does restate the `NEXT-ACTION:` rule from the "Record your judgment"
+        # preamble thirty lines up, but the restatement is precisely where
+        # "**Either way**" and the clean-pass no-exemption guard live -- and
+        # compressing it bought ONE token in exchange for a vaguer instruction.
+        # A restatement that carries the edge case is not a restatement.
+        # Ceiling 2000 -> 2045. Headroom (ceiling minus tokens) 2 -> 2.
         tokens = estimate_tokens(self.content)
-        assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
+        assert tokens < 2045, f"goals-1-3.md is ~{tokens} tokens, should be <2045"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion

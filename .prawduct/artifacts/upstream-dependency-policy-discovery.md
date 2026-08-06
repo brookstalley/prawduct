@@ -246,6 +246,29 @@ document's own standing rule that the two must not disagree; the delivered surfa
 it correctly (doctor #15: "This check writes nothing — least of all the product's own build, CI,
 or package configuration … prawduct reports; the agent applies").
 
+**Amended 2026-08-06: the Critic row's conformance half is delivered *partially*, and the
+missing part is named rather than dropped.** The row commits the Critic to WARN on a change made
+"against no recorded policy **or against the recorded one**." What shipped in
+`plugin/skills/critic/review-protocol.md` and `goals-1-3.md` at plan-authoring checked **presence
+only** — the second disjunct went missing with no descope recorded anywhere, which is precisely
+the requirement-dropped-by-a-pivot class this document's own §7 exists to prevent, and the
+cumulative review caught the same class twice elsewhere (R-1, R-18) while missing it here.
+
+`[DECISION: the Critic checks conformance against the recorded terms the tree can answer —
+pinning, the trusted register, install-time execution, and the tier each surface records — and
+does NOT check clause 1's minimum release age | release age is answerable only against the
+package index, and the Critic reviews with no network and no execution (CRT-3X9D); a check it
+cannot perform would be an aspirational rule, which §5 rule 2 calls worse than an absent one |
+agent-proposed, owner ruled 2026-08-06]`
+
+Release age is therefore held by the two surfaces that *can* reach the index: `/prawduct:doctor`
+check #15(b)'s conformance scan and the tier-3 update procedure
+(`templates/upstream-dependency-update-runbook.md`). The delivered bullets name that split
+inline, so a reviewer meets the boundary at the moment it binds rather than inferring it — and
+`tests/preferences/test_dependency_resolution_pinning.py` already draws the identical line for
+the same reason ("Deliberately NOT asserted here: that the pinned versions satisfy clause 1's
+minimum release age").
+
 ## 8. Scope
 
 **In scope (v1):** all six clauses in the recorded policy; the three-tier enforcement

@@ -777,6 +777,137 @@ class TestUpstreamDependencyPolicySpec:
         )
 
 
+class TestRecordingThePolicyOwesTheScan:
+    """Recording the policy is when the conformance scan is owed — and the only
+    surface that says so is one sentence of prose in `discovery.md`.
+
+    The design's whole reason for existing is that `surfaces` must not be authored
+    from memory: a remembered list is a list of the intake routes the author
+    happened to recall, which is the under-enumeration an allowlist would produce,
+    arriving through the author instead. The scan is the one procedure that walks
+    the repo instead. But nothing in the data plane distinguishes a scanned record
+    from a remembered one, so the routing sentence *is* the mechanism — and an
+    unpinned sentence is one that goes quiet without a test going red.
+
+    Two ends, both asserted, because a pointer is only worth as much as its
+    target: `discovery.md` must send the reader to the scan at the moment they set
+    the fact, and doctor must still carry a check by that name to receive them.
+    The sequencing matters and is asserted too — at onboard the fact silences the
+    ambient nudge that would otherwise carry the reader to doctor later, so if the
+    trigger does not fire *here* there is no second chance.
+    """
+
+    def setup_method(self):
+        self.discovery = " ".join(read_file_under_plugin("methodology/discovery.md").split())
+        self.section = " ".join(
+            extract_section(
+                read_file_under_plugin("methodology/discovery.md"),
+                "## Surface Upstream Dependency Policy",
+            ).split()
+        )
+        self.doctor = " ".join(read_file_under_plugin("skills/doctor/SKILL.md").split())
+
+    def test_the_capture_step_routes_to_the_conformance_scan(self):
+        assert "run the conformance scan" in self.section.lower(), (
+            "discovery.md's capture step stopped telling the author to run the "
+            "conformance scan after recording the policy — `surfaces` then gets "
+            "authored from memory, which is the under-enumeration this design exists "
+            "to prevent, and no state distinguishes that from a scanned record"
+        )
+        assert "#15(b)" in self.section, (
+            "the routing sentence must name the check by number; 'run the scan' with "
+            "no destination is an instruction the reader cannot follow"
+        )
+
+    def test_it_says_reconciling_surfaces_is_what_the_scan_is_for(self):
+        # The trigger without its purpose degrades into a ritual: the reader runs
+        # a scan, reads a report, and never writes the record it was owed.
+        assert "reconcile" in self.section.lower()
+        assert "`surfaces`" in self.section
+
+    def test_doctor_still_carries_the_check_the_sentence_points_at(self):
+        assert "**(b) Does the repo match the record? — the conformance scan.**" in self.doctor, (
+            "discovery.md routes the author to doctor #15(b) by name; that check's "
+            "heading moved or was renamed, so the only route to the scan at onboard "
+            "now dangles"
+        )
+
+
+class TestTheCriticChecksConformanceNotOnlyPresence:
+    """The Critic's dependency bullet has TWO legs, and the second one has gone
+    missing before.
+
+    The requirements artifact commits the Critic to warn on a dependency change
+    made "against no recorded policy **or against the recorded one**". What shipped
+    at plan-authoring checked presence only, with no descope recorded anywhere — so
+    a release adopted against the product's own recorded terms passed review
+    unremarked, and the feature's conformance goal had no build-time surface at
+    all. Nothing went red, because nothing asked.
+
+    That is what this class asks. It is deliberately a *behavioural* assertion
+    about the bullet's content rather than a byte-for-byte pin: the two files word
+    the leg differently by design (`goals-1-3.md` is the compressed twin), and a
+    pin that forced them to agree verbatim would be re-litigated into uselessness
+    the first time either file paid for a trim.
+    """
+
+    #: Both Critic protocol files, because a check that exists in one and not the
+    #: other fires or not depending on review mode — the same split that let the
+    #: presence-only version look complete from whichever file you happened to open.
+    PROTOCOLS = ("skills/critic/review-protocol.md", "skills/critic/goals-1-3.md")
+
+    def _bullet(self, rel_path: str) -> str:
+        lines = [
+            line
+            for line in read_file_under_plugin(rel_path).split("\n")
+            if "**Dependency change**" in line
+        ]
+        assert len(lines) == 1, (
+            f"{rel_path} carries {len(lines)} Dependency-change bullets, expected 1"
+        )
+        return " ".join(lines[0].split())
+
+    @pytest.mark.parametrize("rel_path", PROTOCOLS)
+    def test_the_presence_leg_survives(self, rel_path):
+        bullet = self._bullet(rel_path)
+        assert "design_decisions.upstream_dependency_policy" in bullet
+        assert "**WARNING** if missing" in bullet
+
+    @pytest.mark.parametrize("rel_path", PROTOCOLS)
+    def test_the_conformance_leg_survives(self, rel_path):
+        """The leg that was dropped once. A change made *against* a recorded
+        policy is the failure the policy exists to prevent, and presence-only
+        review passes it silently."""
+        bullet = self._bullet(rel_path)
+        assert "contradicts a recorded one" in bullet, (
+            f"{rel_path}'s Dependency-change bullet checks only whether a policy "
+            "EXISTS. A 2-day-old release adopted under a 7-day policy then passes "
+            "review unremarked — the second disjunct the requirements artifact "
+            "commits to. If this is being narrowed deliberately, record the descope "
+            "in the requirements artifact first; that omission is the whole reason "
+            "this test exists"
+        )
+
+    @pytest.mark.parametrize("rel_path", PROTOCOLS)
+    def test_the_release_age_exclusion_is_stated_where_it_binds(self, rel_path):
+        """The restore is partial, and the boundary is delivered inline rather
+        than left to inference.
+
+        A reviewer has no network and cannot execute anything, so clause 1's
+        minimum release age is unanswerable from the tree — asking for it would be
+        an aspirational rule, which the tier model's rule 2 calls worse than an
+        absent claim. Naming the owner of that half in the same breath keeps the
+        exclusion from reading as an oversight the next editor should 'fix'.
+        """
+        bullet = self._bullet(rel_path)
+        assert "release age" in bullet.lower()
+        assert "#15(b)" in bullet, (
+            f"{rel_path} excludes release age without naming the surface that DOES "
+            "own it; an unexplained gap invites a reviewer to fill it with a check "
+            "they cannot actually perform"
+        )
+
+
 class TestSecurityModelUpstreamDependencies:
     """The product-facing home: the template must POINT at the spec and tell the
     author what belongs *here*, never carry a second copy of the clauses.

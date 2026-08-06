@@ -58,8 +58,10 @@
 # Follow the product's update procedure rather than editing a number here: the versions
 # below are subject to clause 1 (minimum release age) like any other adoption. When this
 # set was first derived, the resolver's choice of `packaging` was 26.3, published two
-# days earlier — under the 7-day minimum, so 26.2 is pinned instead. That is the policy
-# working, and re-deriving the file with a plain resolver run would quietly undo it.
+# days earlier — inside clause 1's minimum age, so 26.2 is pinned instead. That is the
+# policy working, and re-deriving the file with a plain resolver run would quietly undo
+# it. The figure itself is not repeated here: clause 1 owns it, and a second copy in a
+# worked example is still a second copy.
 
 colorama==0.4.6
 exceptiongroup==1.3.1

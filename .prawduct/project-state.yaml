@@ -186,10 +186,10 @@ design_decisions:
     resolution_pinning: "committed and frozen for the Python test dependencies — constraints.txt pins the whole resolved closure and CI installs through it. One residual: [build-system] requires resolves in pip's isolated build environment, which no constraints mechanism reaches (verified empirically, pip 26.2.1), so setuptools re-resolves per install and is deliberately absent from constraints.txt rather than pinned decoratively"
     new_dependency_intake: "the age floor applies like any other adoption, plus identity verification — source repository, publication history and maintainer confirmed to be the ones the decision was about. A name that resolves is not a name that was verified"
     surfaces:
-      github_actions: "tier 3 — trusted party so clause 1 does not apply; no update bot, so tier 2 is unavailable. The standing rule that a third-party action would be SHA-pinned is the procedure"
-      python_test_dependencies_ci: "tier 1 — constraints.txt plus `pip install -c constraints.txt` on the workflow's install step; that path cannot re-resolve"
-      python_test_dependencies_local: "tier 3 — the -c flag lives only on the CI line. No committed pip config and no exported PIP_CONSTRAINT, so a contributor or in-session agent running the documented command is bound by procedure rather than by the toolchain. Recorded separately rather than folded into the CI row, because clause 5 names installs performed by an agent explicitly"
-      python_build_backend: "tier 3 — knowingly below its best reachable tier; see resolution_pinning above"
+      github_actions: "agent (tier 3) — trusted party so clause 1 does not apply; no update bot, so tier 2 is unavailable. The standing rule that a third-party action would be SHA-pinned is the procedure"
+      python_test_dependencies_ci: "declarative (tier 1) — constraints.txt plus `pip install -c constraints.txt` on the workflow's install step; that path cannot re-resolve"
+      python_test_dependencies_local: "agent (tier 3) — the -c flag lives only on the CI line. No committed pip config and no exported PIP_CONSTRAINT, so a contributor or in-session agent running the documented command is bound by procedure rather than by the toolchain. Recorded separately rather than folded into the CI row, because clause 5 names installs performed by an agent explicitly"
+      python_build_backend: "agent (tier 3) — knowingly below its best reachable tier; see resolution_pinning above"
       runtime_dependencies: "n/a — there are none, and architecture.md § Direction forbids them"
     status: active
     rationale: "prawduct ships this policy to every product it governs, so exempting its own repo would be the aspirational-rule shape the norm lifecycle exists to catch. The exposure is also real rather than symbolic: GitHub Actions run with the repository's credentials and test dependencies execute in CI and on contributors' machines. Recording it at the tiers actually reached — including the one surface below its best — is rule 2 of the tier model applied to the framework itself"
@@ -609,7 +609,7 @@ api_versioning_decided: "plugin-semver + evidence-schema-version; CLI internal, 
 # firing; both are set deliberately. See artifacts/security-model.md for the
 # rationale, the trusted register, and the per-surface tier record.
 
-upstream_dependency_policy_decided: "framework defaults adopted unmodified; actions/* the sole trusted party; test dependencies pinned at tier 1 via constraints.txt, CI actions and the build backend at tier 3 (the latter knowingly below its best reachable tier)"
+upstream_dependency_policy_decided: "framework defaults adopted unmodified; actions/* the sole trusted party; test dependencies at tier 1 in CI via constraints.txt but tier 3 for local and agent installs, which the workflow's -c flag does not reach; CI actions and the build backend at tier 3 (the backend knowingly below its best reachable tier)"
 
 # =============================================================================
 # NORM REGISTRY RATIFICATION (advisory-probe resolution signal)

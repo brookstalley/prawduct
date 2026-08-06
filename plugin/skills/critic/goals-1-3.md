@@ -73,7 +73,7 @@ chunk, and plan file. `null` there, or in any `counts` entry, means **no answer*
 - If `infrastructure_dependencies` is declared: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach`, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing.
-- **Dependency change**: chunks with `**Dependency change:** <what>` need a recorded upstream intake policy (`design_decisions.upstream_dependency_policy`, or an explicit deferral) → **WARNING** if missing. Intake is wider than manifests, updater configs included (`docs/upstream-dependency-policy.md`).
+- **Dependency change**: chunks with `**Dependency change:** <what>` need a recorded upstream intake policy (`design_decisions.upstream_dependency_policy`, or an explicit deferral) → **WARNING** if missing, and **WARNING** if the change contradicts a recorded one on what the tree answers — pinning, trusted parties, install-time execution, the tier `surfaces` records. Release age needs the package index: `/prawduct:doctor` #15(b)'s half, never yours. Intake is wider than manifests, updater configs included (`docs/upstream-dependency-policy.md`).
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 
 ## 3. Nothing Is Unintended
