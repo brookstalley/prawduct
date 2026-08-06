@@ -93,6 +93,28 @@ verify-resolutions round, and R-7's consequence is what justifies paying it.
   check presence only. A `> **Status:**` banner in the house convention now names the anchor commit
   and every closed item.
 
+**A ratified norm gained an owner ruling, which is the part of this entry that outlives the
+branch.** The PR reviewer found that `documentation/prawduct-fable-audit-20260806.md` publishes
+cross-repo content — verbatim `learnings.md` quotes with file:line citations, store sizes, a named
+governance-bypass narrative and a data-loss incident, from sibling repos that are private — into
+this **public** repo. `security-model.md`'s content-egress Direction norm makes a public-plane
+disclosure **"an owner decision, never an increment"**, so the question went to the owner rather
+than being resolved in-session: ruled **accepted** ("they are not secret"), recorded as a
+`Ruling 2026-08-06 (owner)` field against the norm, with a scope banner on the document saying the
+disclosure is sanctioned and that the next such document asks again rather than citing this one.
+The norm is **not** weakened — the change to `security-model.md` is purely additive, and
+`test_no_upstream_content_egress.py` is untouched.
+
+**What the incident changed is the norm's jurisdiction, not its rule**, and that is filed rather
+than patched. The mechanism inspects the plugin for a `file-upstream` **code** surface, so the
+actual egress path here — an agent authoring prose — was never in its view; the document was
+committed and pushed before anyone noticed, and a gate never fired. Filed on **#194** as
+requirement input for the content-minimizing upstream filing path, with the observation that
+matters for that design: minimization sanitizing *adapter payloads* leaves the *author*
+unguarded, and a redaction rule keyed on repo **names** would both over- and under-fire, since
+this repo already names `hallucinote` and `discodon` publicly in `.prawduct/archive/artifacts/`.
+The line the ruling actually drew is quoted-internal-content vs. aggregate metrics.
+
 Accepted (10): the record-lint inert counts and learnings entry-shape pair (record-only, pre-existing,
 tracked); the audit document's out-of-plan status and placement (declared in its commit message);
 the clause-5 install guard's scope (zero exposure — the only other workflow installs no Python

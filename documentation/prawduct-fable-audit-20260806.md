@@ -1,7 +1,11 @@
 # Prawduct Step-Back Audit — 2026-08-06
 
-> **Cross-repo content, published by owner ruling (2026-08-06).** §2c quotes and characterises
-> sibling product repos, some of them private. `security-model.md`'s content-egress Direction norm
+> **Cross-repo content, published by owner ruling (2026-08-06).** **This document as a whole** —
+> not §2c alone — quotes, names and characterises sibling product repos, some of them private.
+> §2c is the densest passage, but named repos also appear in §4 and throughout the prioritization
+> tables and quick wins, including the governance-bypass and data-loss narratives. The ruling
+> covers all of it; this sentence says so explicitly because a scope stated as "§2c" would tell a
+> later reader the tables were clean. `security-model.md`'s content-egress Direction norm
 > makes a public-plane disclosure an owner decision rather than an increment; that decision was
 > asked for and given — *"they are not secret. All good. Accept."* — and is recorded against the
 > norm. Read §2c as owner-sanctioned, not as precedent for the next document: the next one asks
