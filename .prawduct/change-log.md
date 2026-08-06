@@ -3,6 +3,68 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-06: a title boundary for the backlog importer, and what "atomic" actually means
+
+<!-- prawduct: type=fix | scope=backlog-import-title-boundary -->
+
+**A 396-item migration was permanently pinned at 7%, and the loud failure was not the defect.**
+One GitHub 422 killed the whole run at item 28, and resuming made zero further progress because
+the failure is deterministic and position-ordered. The cause sat one layer down:
+`legacy._parse_title_line` had **no title boundary at all** — it stripped `**`/`~~` and returned
+the entire bullet line. Correct for products that put body prose on the *following* lines;
+catastrophic for one that writes provenance, title, areas and body on a single line, where the
+parsed "title" reached 2319 characters against a 72-character authoring norm.
+
+**The boundary was derived from the corpora, not guessed.** The upstream report was unusually good
+— root cause analysed, idempotency verified, a companion permissions defect found — and it still
+said it could not characterise 342 of its 396 lines and warned against trusting its regex. The
+rule is the inline `[areas: …]` marker: strip a leading `(orig …)` provenance parenthetical, cut
+at the marker, split anything still over GitHub's hard cap on a word boundary. Overflow **moves**
+to the body. Re-derive the effect with `tools/measure-backlog-titles.py` rather than citing
+figures — the script is committed precisely so the numbers stay falsifiable as either corpus grows.
+
+**The property that makes it shippable to a fleet is that it is a MARKER rule, not a length rule.**
+This repo's own long titles are *genuine authored statements*; the other corpus's are prose bleed.
+A length-based fix — the obvious one — would have damaged the working shape to repair the broken
+one. Only comparing two corpora exposed that. This repo had the defect latent too.
+
+**Three defects of my own, all caught before merge.** The first cut stripped the `[PFX]` marker
+from titles and two existing tests went red — correctly: it is the display string consumers
+expect, and `migrate.py` strips it downstream where the id lives in the alias. The cap was
+budgeted *before* re-adding the id prefix, leaving the exact items this fixes still over the
+limit. And the hard cap was named `TITLE_MAX` while `issuefmt.TITLE_MAX = 72` sits one module away
+— two constants, one name, one subsystem, meaning "the cap" and "the norm", which is how a later
+reader enforces 256 believing it is the standard. Renamed `GITHUB_TITLE_HARD_CAP`.
+
+**The cumulative review then found two more, both silent data loss in the fix itself**, which is
+the defect class this work is about wearing its own clothes. Slicing around the marker match left
+the authored `[areas: …]` span in *neither* field — dropped, not moved, under a docstring
+promising "loses none". And a bullet *leading* with the marker cut to an empty title, which
+`migrate._records_from_backlog` then skips with no collision record and no diagnostic — a silent
+drop. Both are fixed and both are pinned by tests red-verified against the code that shipped them.
+
+**`TestTitleBoundary` is the coverage that should have existed first.** The parser gained four
+behaviours with zero tests; the discovery artifact had itself required one (the PFX-less
+idempotency-key hazard "must be guarded by a test rather than left to luck").
+
+**Standard §1 amended: atomicity is a property of the FIX, not of the sentence.** The rule was
+biased — every tell it offered (two clauses, an em-dash, a semicolon) pointed toward *splitting*,
+so an author following it faithfully over-splits and gets no signal back. One test now decides
+which direction applies: *would a single change close all of these?* `personas crash on emoji` +
+`on unicode` + `on UTF-16` is one defect at too low an altitude. Over-splitting is the more
+expensive error, because a split backlog looks *more* thorough and nothing prompts a re-read.
+Named plainly: **nothing screens for it today** — the dedup sweep pairs on keyword overlap, a
+duplicate test, and the two come apart exactly here.
+
+**Enforcement is designed and NOT built, deliberately.** The owner's directive is that titles
+conform on every write path, agent rewriting where needed. The design: the importer validates and
+refuses pre-flight (no model in the data plane), the scrub rewrites beforehand, the owner approves
+in aggregate. It must ship as one unit with the shared-root-cause check — shipping the length half
+first would use that window to build a large, tidy, over-split backlog. Two things are owed before
+it lands and are recorded rather than resolved: the norm needs a `## Direction` home in a strategy
+artifact, and it **collides with standard §4's ratified "WARN only, never blocks"** posture, which
+needs an amendment or an exception.
+
 ## 2026-08-05: an archived review can be brought back as itself
 
 <!-- prawduct: chunks=2 | type=fix | scope=critic-review-identity -->

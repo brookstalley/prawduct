@@ -274,8 +274,22 @@ def _parse_title_line(raw: str) -> tuple[str | None, str, bool, str]:
     overflow = ""
     marker = INLINE_AREAS_RE.search(text)
     if marker:
-        overflow = text[marker.end() :].strip()
-        text = text[: marker.start()].strip()
+        # The marker span itself goes to the body WITH the prose after it. Slicing
+        # around it (`[:start]` + `[end:]`) drops the authored `[areas: …]` text
+        # into neither field — a silent loss on 100 of 401 items in the corpus that
+        # motivated this, under a docstring promising nothing is lost.
+        # `migrate._block_for` preserves only the backtick metadata bar, so nothing
+        # downstream recovers it.
+        remainder = f"{marker.group(0).strip()} {text[marker.end():].strip()}".strip()
+        head = text[: marker.start()].strip()
+        # A bullet that LEADS with the marker (no title before it) would cut to an
+        # empty title, and `migrate._records_from_backlog` skips falsy titles — the
+        # item would vanish from a migration with no collision record and no
+        # diagnostic. Keep the line whole instead: a long title is a lint finding,
+        # a dropped item is data loss.
+        if head:
+            overflow = remainder
+            text = head
 
     # A title still over the remote cap is split rather than rejected. Break on a
     # word boundary where one is reachable, so the issue does not read as cut

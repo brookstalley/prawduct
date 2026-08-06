@@ -23,6 +23,11 @@ Two layers, and the loud one is not the real defect:
 
 ## 2. What the numbers actually say — measured, not inferred
 
+> **Re-derive, do not cite.** `tools/measure-backlog-titles.py <backlog.md> …` prints every figure
+> in this section. The tables below are a 2026-08-06 reading and will drift as either corpus
+> grows; the discodon corpus is not in this repo, so nothing here re-checks itself. Where a figure
+> matters to a decision, run the command.
+
 The report could not characterise 342 of 396 lines and explicitly warned against trusting its
 regex. Re-derived here against both real corpora:
 
@@ -96,6 +101,30 @@ non-conforming title is not imported. | owner: "we need to enforce on migration.
 has to rewrite. They must be EXCELLENT issue titles, always, whether migrated or created new or
 modified" | owner ruled 2026-08-06]`
 
+**Lifecycle capture** (`docs/norms.md` requires statement + why + scope + status + enforcement +
+retroactivity; the quote above is only the statement):
+
+- **Why:** an issue title is the handle every later reader triages by. A backlog whose titles are
+  run-on prose cannot be scanned, and the 401-item corpus that motivated this proves the failure is
+  silent — only the items breaching GitHub's 256 cap announced themselves; the rest simply read
+  badly forever.
+- **Scope:** every write path of the backlog adapter — `file`, `update`, `import`. Not the markdown
+  backend's hand-authored bullets, which are the *source* the scrub rewrites.
+- **Status:** **in-transition.** Enforcement is designed (§4b) and **not built**; three paths are
+  non-conforming today and this branch changes none of them.
+- **Retroactivity: existing corpora are NOT retro-conformed by this branch, and that is a decision,
+  not an oversight.** Re-derive the counts with the command in §2 — a large majority of both
+  corpora exceed the 72-char budget. Retro-conformance is the scrub pre-pass's job at migration
+  time, and §4c's altitude constraint says it must not run before the shared-root-cause check
+  exists, or it entrenches an over-split backlog.
+- **Enforcement home:** `issuefmt._lint_title` already implements all four checks; what is missing
+  is that `file`/`update` treat them as advisory and `import` never calls them. **Unresolved
+  collision, flagged not settled:** standard §4 ratifies these lints as *"WARN only, never
+  blocks"*. This directive requires blocking. **Both cannot hold** — the amendment to §4, or an
+  exception to it, is owed before enforcement ships and is NOT recorded here.
+- **Registry home:** this artifact is a discovery record, not a strategy artifact. The norm needs a
+  `## Direction` entry in the artifact that owns backlog behaviour before it is ratified.
+
 **This strengthens the existing standard rather than inventing one.**
 `documentation/backlog-service-issue-standard.md` §1 already specifies the budget (≤72, aim 50–70),
 the shape (`area: specific summary` — a noun phrase saying *what failed + where*, or *what to do*),
@@ -166,6 +195,14 @@ produce a large, tidy, over-split backlog that then has to be merged back by han
 5. **Retitle-in-place on skip** (owner ruling) — repairs issues already written with polluted
    titles, including closed ones.
 
+**Delivery status of the five, recorded so nothing is silently dropped (Principle 2).** This
+branch delivers **1 and 2 only**. Items **3, 4 and 5 are DEFERRED, not descoped** — they remain
+required, and the reporter's second failure mode (one bad row ending a 396-row run) survives until
+item 4 lands. Their tracked home is `.prawduct/.handoff-notes.md` plus this section; they must be
+filed to the backlog before this branch merges, because a handoff note is consumed at `/clear` and
+is not a tracker. The same applies to §4b's three-path enforcement table and §4c's two named
+consequences.
+
 **Out of scope, recorded not forgotten:**
 
 - The rollback/run-manifest design from the report's companion defect (`import --rollback`,
@@ -173,6 +210,20 @@ produce a large, tidy, over-split backlog that then has to be merged back by han
   import's data model.
 - The three smaller observations in the report (progress counter disagreeing with item count,
   unexplained `1 collision(s)`, the stale advisory count frozen at first-seen).
+
+## 5b. Why `BacklogItem.title` changed rather than a derived value (§5.1 departure)
+
+§5.1 preferred a derived value the import path reads, so the briefing's display string stayed a
+separate decision. The implementation changed the shared parser value instead. **Recorded as a
+departure with its reason rather than left as drift:** the run-on title is wrong for *every*
+consumer, not only the importer — the briefing displaying 1055 characters of body prose as an item
+title is the same defect wearing a different hat, and a derived value would have fixed the import
+while leaving every reader looking at the polluted string.
+
+Consumers swept before the change: `briefing.py:891`, `norm_probes.py:252,519`,
+`release_readiness.py:169`, `backlog_probes.py`, `migrate.py`. All consume the title as display or
+as a search haystack; none parses it or keys on it. The one place identity is keyed —
+`ImportRecord.key_label` — uses the `id:PFX` alias for PFX items and is title-independent (§4).
 
 ## 6. Open assumptions
 

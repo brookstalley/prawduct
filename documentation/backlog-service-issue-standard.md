@@ -35,10 +35,14 @@ issues*: brevity, clarity, specificity.
     thorough, so nothing prompts a re-read, while an under-split one is loud the moment someone
     tries to close it.
 - **Only the under-split direction is visible from a single title.** Over-splitting is a fact
-  *between* issues, so no per-title lint can catch it — it is the dedup/merge sweep's job
-  (`skills/backlog/SKILL.md` — group by `area:`, then look for shared root cause, not just shared
-  keywords), and the migration scrub's, which must therefore look across the corpus and not
-  rewrite items one at a time in isolation.
+  *between* issues, so no per-title lint can catch it. **Nothing screens for it today** — say this
+  plainly rather than delegating to a mechanism that does not exist: the dedup/merge sweep
+  (`skills/backlog/SKILL.md`) pairs on *title-keyword + body overlap*, which is a **duplicate**
+  test, and the two come apart exactly here — `crash on emoji` and `crash on UTF-16` share a root
+  cause and almost no keywords. Adding the shared-root-cause question to that sweep is the
+  intended home and is **unbuilt**. Until it exists, over-splitting is caught by a human reading
+  the backlog or not at all, and the migration scrub must therefore look across the corpus rather
+  than rewriting items one at a time in isolation.
 - ✅ `importer: PFX alias read-resolution unwired, breaks import idempotency` (69)
 - ❌ vague (`Bug in the thing`), non-specific (`Fix backlog`), em-dash chains of ≥2 claims, or a
   family of near-identical titles that one fix would close.
