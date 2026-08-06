@@ -407,3 +407,8 @@ dropping them.
 ## When you add a validator because a value became DANGEROUS, sweep every existing use of that value, not the uses you are writing — the vulnerable line is already in the file and therefore not in your diff. Tell: the helper is new and you never grepped the value's other readers — [learnings-detail.md]
 
 ## When a check's subject is a SET (files scanned, paths matched, items collected), assert the set is non-empty and contains what the check names — otherwise green means "nothing was looked at", and the check passes forever
+
+## When you add a member to an enumerated set in code (a fact kind, a waiver rule id, an exit code), the registry that DOCUMENTS that set is owed a row in the SAME commit — four went stale in one chunk, and three cost a full review round each because the gap is cheap to fix and expensive to notice
+
+## A reviewer severity is a SCHEDULING decision, not just a risk rating — BLOCKING means "the tree must not move again without this", so a record gap that can ride a commit already owed is an observation; rating it BLOCKING spends a whole round on a one-row edit
+
