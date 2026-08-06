@@ -26,6 +26,15 @@
 #
 #   * `exceptiongroup`, `tomli` — pytest requires both on `python_version < "3.11"`.
 #   * `colorama`              — pytest requires it on `sys_platform == "win32"`.
+#   * `typing-extensions`     — required by `exceptiongroup` on `python_version < "3.13"`,
+#                               so it is reached only THROUGH a marker-gated package.
+#
+# That last one is the trap one rung deeper than the one below, and it is worth naming
+# because the first version of this file missed it: walking the roots' own markers is not
+# the same as walking the closure. `typing-extensions` is not gated by any marker pytest
+# declares — it is an ordinary requirement of a package that is itself gated, so it
+# appears only once you follow `exceptiongroup` on the floor leg. Derive this list by
+# transitive walk, evaluating markers per target environment, never by reading one level.
 #
 # **The trap that hides them.** `pip --python-version 3.10` does NOT evaluate
 # environment markers for 3.10; it selects wheel tags only, and evaluates markers
@@ -42,7 +51,7 @@
 # ignored via both `-c` and `PIP_CONSTRAINT`, and the build env fetched 83.0.0 anyway.
 # Listing it here would be a pin that reads as coverage and provides none, which the
 # policy's tier rule 2 calls worse than no claim at all. It is recorded as an unpinned
-# residual in `security-model.md`'s Upstream Dependencies norm.
+# residual in `security-model.md`'s Upstream Dependencies norm and tracked as **#609**.
 #
 # ## Changing a pin
 #
@@ -64,3 +73,4 @@ pytest-timeout==2.4.0
 pytest-xdist==3.8.0
 PyYAML==6.0.3
 tomli==2.4.1
+typing-extensions==4.16.0

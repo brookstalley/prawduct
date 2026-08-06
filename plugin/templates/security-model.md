@@ -108,4 +108,8 @@ last_validated: null
 
      A product that genuinely incorporates no upstream code records that in one
      line. Mirror the decision into `project-state.yaml` under
-     `design_decisions.upstream_dependency_policy`. -->
+     `design_decisions.upstream_dependency_policy` — AND set the top-level
+     `upstream_dependency_policy_decided` fact, which is the one that resolves the
+     ambient nudge. Both, not either: the block is what the health check grades and
+     the flat fact is all the advisory can see, so filling only the block leaves you
+     decided and still being nagged for a mirror nobody asked you to set. -->

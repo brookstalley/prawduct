@@ -187,7 +187,8 @@ design_decisions:
     new_dependency_intake: "the age floor applies like any other adoption, plus identity verification — source repository, publication history and maintainer confirmed to be the ones the decision was about. A name that resolves is not a name that was verified"
     surfaces:
       github_actions: "tier 3 — trusted party so clause 1 does not apply; no update bot, so tier 2 is unavailable. The standing rule that a third-party action would be SHA-pinned is the procedure"
-      python_test_dependencies: "tier 1 — constraints.txt plus `pip install -c constraints.txt` in CI; binds every actor, not just an attentive agent"
+      python_test_dependencies_ci: "tier 1 — constraints.txt plus `pip install -c constraints.txt` on the workflow's install step; that path cannot re-resolve"
+      python_test_dependencies_local: "tier 3 — the -c flag lives only on the CI line. No committed pip config and no exported PIP_CONSTRAINT, so a contributor or in-session agent running the documented command is bound by procedure rather than by the toolchain. Recorded separately rather than folded into the CI row, because clause 5 names installs performed by an agent explicitly"
       python_build_backend: "tier 3 — knowingly below its best reachable tier; see resolution_pinning above"
       runtime_dependencies: "n/a — there are none, and architecture.md § Direction forbids them"
     status: active

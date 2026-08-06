@@ -520,6 +520,24 @@ def extract_section(text: str, heading: str) -> str:
 #:   `test_every_policy_surface_cites_the_spec` — which asserts the `docs/`
 #:   prefix a reader elsewhere in the plugin needs — would fail for a reason that
 #:   has nothing to do with the property being guarded.
+#: * `templates/project-state.yaml`'s legend for the decision block. It states the
+#:   sub-key semantics and the scope, so it IS a policy statement — but it is a
+#:   column-0 YAML comment with no markdown heading to anchor a `section` or
+#:   `bullet` scope, and `module` would scan an entire template that is almost
+#:   entirely about something else. Recorded here as an unswept surface rather
+#:   than left to look like an oversight; closing it needs a scope that anchors
+#:   on a comment block, which no surface has yet needed twice.
+#:
+#: WHAT "EVERY SURFACE" MEANS HERE, precisely, because the looser reading is what
+#: let four policy-stating surfaces sit outside both lists at once: the roster is
+#: every surface *known to state the policy* minus the exclusions above, and for
+#: `bullet` scope the guards police only the lines that cite the spec — not the
+#: whole bullet, and not the surrounding section. A multi-line rule whose citation
+#: sits on one line is guarded on that line alone. That is deliberate (see the
+#: scope notes below) and it is also the roster's real limit: prose claiming this
+#: sweep covers "every surface that states the policy" overstates it, and the
+#: honest phrasing, used in `cross-cutting-concerns.md`, is "every surface in the
+#: `_POLICY_SURFACES` roster".
 #:
 #: The third element is the scope the two NEGATIVE guards police:
 #:
@@ -554,6 +572,14 @@ _POLICY_SURFACES = (
     ("skills/critic/goals-1-3.md", "## 2. Nothing Is Missing", "bullet"),
     ("skills/doctor/SKILL.md", "## Health Check Flow (current dir is a product repo)", "bullet"),
     ("skills/janitor/SKILL.md", "### Dependency Health", "bullet"),
+    # The two digests state the rule's SCOPE ("adding, bumping or vendoring upstream
+    # code, or editing an updater config, manifest or not") — the same content as the
+    # two Critic bullets above, and the only carrier that reaches a migrated repo. They
+    # are also the tightest-budget files in the plugin, which makes them the likeliest
+    # place a future editor abbreviates to a named ecosystem to buy characters.
+    ("methodology/session-digest.md", "## The hardest rules (these degrade at scale — hold them)", "bullet"),
+    ("methodology/session-digest-slim.md", "## Hardest rules CLAUDE.md does not restate", "bullet"),
+    ("methodology/planning.md", "## Artifact Generation", "bullet"),
     ("lib/dependency_policy_probes.py", None, "module"),
     ("templates/upstream-dependency-update-runbook.md", None, "module"),
 )
@@ -964,7 +990,7 @@ class TestUpstreamPolicyAgnosticismAcrossSurfaces:
     def test_the_sweep_covers_the_surfaces_that_exist(self):
         """Guards against the roster silently emptying — a parametrized sweep over
         an empty tuple passes and proves nothing."""
-        assert len(_POLICY_SURFACES) >= 8
+        assert len(_POLICY_SURFACES) >= 11
         for rel_path, heading, scope in _POLICY_SURFACES:
             text = read_file_under_plugin(rel_path)
             if heading is None:

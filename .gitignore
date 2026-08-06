@@ -17,7 +17,13 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 
-# uv lock file — resolved fresh per environment (not committed)
+# uv lock file — a local byproduct, never this repo's resolution authority.
+# `constraints.txt` is the committed resolution (clause 5 of the recorded intake
+# policy), and it is deliberately the ONLY one: a second committed lock would be a
+# second home for the same fact, and the two would diverge on the first bump. This
+# entry used to read "resolved fresh per environment", which described re-resolution
+# as the intent — the exact posture clause 5 forbids — and is corrected here rather
+# than left to read as a policy exemption.
 uv.lock
 
 # Prawduct session files

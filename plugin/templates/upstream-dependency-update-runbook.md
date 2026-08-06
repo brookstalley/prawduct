@@ -39,6 +39,17 @@
 
          > 🚧 UNVERIFIED — <what could not be confirmed, and who can confirm it>
 
+     THIS FILE RESTATES CLAUSE SUBSTANCE, AND THAT IS DELIBERATE. Everywhere else in
+     the framework the clauses have exactly one home and every other surface cites
+     it. A procedure cannot: "consult clause 3" is a prompt, and the spec's own rule
+     is that tier 3 must be a procedure rather than a prompt. So steps 5-6 and the
+     "When NOT to use this" entries encode clause substance operationally, and this
+     is the one sanctioned second home for it.
+
+     THE COST, NAMED: if a clause is ever amended, this file does not follow
+     automatically and no guard compares the two. Amending a clause means editing
+     here as well. That is the trade the tier-3 requirement forces, not an oversight.
+
      WHY NO TOOL, REGISTRY OR MANIFEST IS NAMED ANYWHERE BELOW. The policy governs
      dependencies, not package managers, and its first stated requirement is that
      no policy statement may be phrased in terms of a named ecosystem. This

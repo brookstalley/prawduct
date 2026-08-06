@@ -30,7 +30,7 @@ governed_by:
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state, the evidence store, and the files it must reconcile → conforms, same routing"
       - "written in Python, never specific to Python; a language with no populated rules is reported as *unchecked*, never silently passed → conforms — the scan's third verdict (*unclassified*) IS this norm applied to intake surfaces"
       - "local-first: no network, no daemon, no third-party runtime dependencies → conforms — the probe and doctor check are offline; registry reads live in the product's own tier-3 procedure, which is the product's tooling, not the governance runtime"
-      - "every fact has one home; every other mention is a reference → conforms — the six clauses, the tier model and the mapping appendix live only in `plugin/docs/upstream-dependency-policy.md`; all six other surfaces cite it"
+      - "every fact has one home; every other mention is a reference → conforms with ONE sanctioned exception, named rather than glossed. The six clauses, the tier model and the mapping appendix live only in `plugin/docs/upstream-dependency-policy.md`, and every surface in the `_POLICY_SURFACES` roster cites rather than restates — pinned by the `\\d+\\s*days?` and ecosystem sweeps. The exception is `plugin/templates/upstream-dependency-update-runbook.md`, which restates clause substance operationally because the spec's own rule is that tier 3 must be a procedure and not a prompt: 'consult clause 3' is precisely the prompt that rule rejects. The cost is recorded in that file's header — amending a clause means editing it too, and no guard compares the two"
       - "goals and verification bind; prescribed method is advice → conforms"
       - "authority fails closed; advice fails soft → conforms — every control added here is advisory or WARNING; none blocks"
   - artifact: security-model
@@ -519,6 +519,8 @@ principle. Three controls are added here:
        marker's job is to tell the gate this is the span-closing review, and that is still
        true. The code deliverable changes what the review must look at, not which review
        this is. -->
+- **Dependency change:** yes — `constraints.txt` (new) pins the resolved test-dependency closure and `.github/workflows/tests.yml` installs through it. Declared because this is exactly the trigger this feature invented, and the chunk that shipped the field changing dependency resolution without using it is the first thing that would teach every later reader the field is decorative. Recorded policy: `design_decisions.upstream_dependency_policy` (this repo's own, added in deliverable 5b).
+- **Also edited, beyond the deliverable list:** `plugin/skills/runbook/SKILL.md` — its `new` operation's step 4 told the author to copy the blank `templates/runbook.md`, which for this situation would have meant re-deriving the template deliverable 3 just shipped. Reachability from the spec (which the deliverable required) and reachability from the entry point people actually invoke are different claims, and only the second gets used. One sentence, no budget on that file (checked).
 - **Also edited, beyond the deliverable list:** `pyproject.toml` — a pointer comment from the
   `dev` extra to `constraints.txt`. The extra's existing comment calls itself "the only home for
   the test dependencies", which stays true of *which* dependencies but would read as covering

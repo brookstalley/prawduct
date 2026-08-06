@@ -46,7 +46,7 @@ runs on a developer's machine on Claude Code lifecycle events** (supply-chain / 
   Retroactivity: none required — no shipped surface departs from this at birth. Verified 2026-07-21: `file-upstream` has zero occurrences plugin-wide, `/prawduct:report-bug` writes only to a local `incoming-bugs/` drop-box and explicitly refuses a remote write when no local checkout is reachable, and `backlog_service_repo` names the product's own repo.
 - **Code someone else releases enters this repo only on the terms recorded in `## Upstream Dependencies` below.** The clauses, the tier model and the per-ecosystem mapping are the framework's and are stated once in `plugin/docs/upstream-dependency-policy.md`; what this norm binds is that prawduct's *own* intake is governed by them rather than exempt from them.
   Why: prawduct ships this policy to every product it governs, and a rule its author's own repo ignores is the aspirational-rule shape the norm lifecycle exists to catch. There is also a direct exposure and it is not hypothetical — the repo runs GitHub Actions with its credentials and installs test dependencies that execute in CI and on contributors' machines. The clause-1 default earned its keep on the day this norm was written: the resolver's choice of `packaging` was a release published two days earlier, which the 7-day minimum excluded (see the tier record below).
-  Status: steady-state, with one surface knowingly below its best reachable tier — recorded in the tier table rather than left for a later reader to discover.
+  Status: steady-state, with one clause departed from (clause 4, install-time execution) and two surfaces knowingly below their best reachable tier (the build backend, and local/agent installs as distinct from CI). All three are named in the section below rather than left for a later reader to discover — a record that counts its own exceptions low is the failure mode this norm's own subject matter is about.
   Retroactivity: applied at birth to both existing intake surfaces, not deferred. The CI-action pins were already conformant on their own recorded reasoning; the Python dev extra was not, and was raised to tier 1 in the same commit as this entry rather than filed.
 
 ## Authentication & Authorization
@@ -144,11 +144,19 @@ The six clauses, the three enforcement tiers and the ecosystem mapping live in
 `plugin/docs/upstream-dependency-policy.md` and are not restated here. What follows is only what is
 this repo's own: the chosen values, the trusted register, and the tier each intake surface reaches.
 
-**Chosen values — the framework defaults, unmodified.** Minimum release age 7 days; the security
-fast path is adopted; new-dependency intake requires verifying package identity, not merely that a
-name resolves. Nothing is departed from, so nothing needs a departure rationale — but the defaults
-are *chosen*, not inherited by omission, and the decision block in `project-state.yaml` records them
-so the choice is legible to the checks that read it.
+**Chosen values.** Clauses 1, 3 and 6 take the framework defaults unmodified — the minimum release
+age is the figure in clause 1 of the spec and is deliberately not copied here, the security fast path
+is adopted, and new-dependency intake requires verifying package identity rather than accepting that
+a name resolves. The defaults are *chosen*, not inherited by omission, and the decision block in
+`project-state.yaml` records them so the choice is legible to the checks that read it.
+
+**One clause is departed from, and this is its rationale.** **Clause 4 (install-time execution) is
+not satisfied:** upstream code is not denied execution at install time. `pip` builds the local
+project from source on every install, so `--only-binary :all:` would refuse the install itself rather
+than merely deny upstream build scripts — the denial is unavailable without restructuring how this
+repo is installed at all. Recorded as an accepted state rather than as coverage. The janitor's intake
+question ("is install-time execution still as recorded") therefore grades against *not denied*, which
+is what the decision block says and what this paragraph now says too.
 
 **Declared trusted parties — one, with its why.**
 
@@ -169,8 +177,17 @@ one aspired to.
 | Intake surface | Tier reached | Basis |
 |---|---|---|
 | GitHub Actions (`.github/workflows/`) | 3 | Trusted party, so clause 1 does not apply; the standing rule that a *third-party* action would be SHA-pinned is the tier-3 procedure. No update bot, so tier 2 is unavailable. |
-| Python test dependencies (`pyproject.toml` `dev` extra) | 1 | `constraints.txt` pins the full resolved closure and CI installs through it, so clauses 1, 2 and 5 bind every actor rather than an agent's diligence. |
+| Python test dependencies — **in CI** | 1 | `constraints.txt` pins the full resolved closure and the workflow installs through it, so clauses 1, 2 and 5 bind that path mechanically. |
+| Python test dependencies — **local and agent installs** | 3 | The `-c` flag lives on one workflow line. Nothing pip reads on its own carries it — no committed pip config, no exported `PIP_CONSTRAINT` — so a contributor or an in-session agent running the documented command is bound by the procedure, not by the toolchain. Splitting the row rather than claiming tier 1 for both is rule 2 applied: the CI path really is tier 1, and the other really is not. |
 | Runtime dependencies | n/a | There are none. `architecture.md` § Direction forbids third-party runtime dependencies, and the plugin imports only the standard library. |
+
+**What "tier 3" currently denotes here.** For the surfaces recorded at tier 3 above, the procedure is
+the sentence in this section and in the decision record — not a filled copy of
+`templates/upstream-dependency-update-runbook.md`, which this repo has not authored for itself. The
+spec is explicit that tier 3 must be a procedure rather than a prompt, so this is the weaker form and
+is named as such. Blast radius is small: the CI-action surface is trusted, so clause 1 does not reach
+it, and the build backend below is one package. Recording what the tier denotes is rule 2 again — a
+reader comparing this record against the spec should not have to infer which sense of tier 3 is meant.
 
 **Below best reachable tier, knowingly — the build backend.** `[build-system] requires =
 ["setuptools>=61"]` resolves in pip's isolated build environment, which **no constraints mechanism
@@ -179,4 +196,5 @@ via both `-c` and `PIP_CONSTRAINT`, and the build environment fetched 83.0.0 reg
 re-resolves on every CI install and is enforced at tier 3 only. It is deliberately absent from
 `constraints.txt` rather than listed there: a pin that cannot bind would read as coverage this repo
 does not have, which rule 2 calls worse than an absent claim. Closing it needs `--no-build-isolation`
-with setuptools pre-installed, or dropping the local build step altogether — filed, not forgotten.
+with setuptools pre-installed, or dropping the local build step altogether — tracked as **#609**,
+cited literally so the residual's tracking is checkable rather than taken on trust.

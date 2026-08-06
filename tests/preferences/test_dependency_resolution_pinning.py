@@ -148,6 +148,63 @@ class TestEveryDeclaredDependencyIsPinned:
         )
 
 
+class TestTheClosureIsClosed:
+    """The pin set must be closed under dependency, not merely cover what is declared.
+
+    `test_dev_extra_names_all_appear_in_constraints` compares against the four names in
+    the `dev` extra, so a transitive dependency can never fail it — which is how
+    `typing-extensions` sat unpinned while four durable records said the closure was
+    complete. It is reached only *through* a marker-gated package (`exceptiongroup`
+    requires it on `python_version < "3.13"`, and pytest requires `exceptiongroup` on
+    `< "3.11"`), so walking the roots' own markers one level does not find it.
+
+    **Scope, stated because it is not total.** This checks the requirements of pinned
+    distributions that are *installed in the environment running the test*, using their
+    real metadata. On a modern interpreter the marker-gated packages are absent, so the
+    check cannot see them here — and the CI matrix's floor leg is exactly where they are
+    installed, which is what makes the two legs together cover the union. A gap this
+    misses locally is caught there rather than nowhere, and no assertion below claims
+    more than the environment can support.
+    """
+
+    def test_every_requirement_of_an_installed_pin_is_itself_pinned(self):
+        from importlib.metadata import PackageNotFoundError, distribution
+
+        pinned = {
+            _normalize(match.group(1)): entry
+            for entry in _constraint_entries()
+            if (match := _NAME.match(entry))
+        }
+        gaps: list[str] = []
+        checked = 0
+        for name in sorted(pinned):
+            try:
+                dist = distribution(name)
+            except PackageNotFoundError:
+                continue  # not installed on this interpreter — the other CI leg covers it
+            checked += 1
+            for raw in dist.requires or []:
+                requirement = raw.split(";", 1)
+                marker = requirement[1].strip() if len(requirement) > 1 else ""
+                # Extras are opt-in and nothing here installs them.
+                if "extra ==" in marker:
+                    continue
+                dep = _NAME.match(requirement[0].strip())
+                if dep and _normalize(dep.group(1)) not in pinned:
+                    gaps.append(f"{name} requires {dep.group(1)}, which is not pinned")
+        assert checked, (
+            "no pinned distribution is installed, so this check proved nothing — run the "
+            "suite in an environment where the dev extra is actually installed"
+        )
+        assert not gaps, (
+            "constraints.txt is not closed under dependency:\n  "
+            + "\n  ".join(gaps)
+            + "\nAn unpinned transitive dependency re-resolves on every install exactly "
+            "like an unpinned direct one; the records that call this set 'the whole "
+            "closure' are wrong until it is added"
+        )
+
+
 class TestConstraintsAreExactPins:
     def test_every_entry_is_an_exact_version(self):
         """`==` throughout, for two reasons that happen to want the same rule.

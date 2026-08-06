@@ -230,9 +230,21 @@ Modelled on the api-design coverage pattern, which is the closest precedent in t
 | **Agent** | The tier-3 update procedure (§5), generated into the product from the recorded policy. |
 
 **Conformance drift posture: offer, apply on confirmation.** The scan reports drift and
-presents the exact per-surface edit; it writes only on an explicit yes. These are the
+presents the exact per-surface edit; the edit is made only on an explicit yes. These are the
 product's build and CI configs — mutating them is an owner decision, consistent with
 `coverage-scaffold`'s `--apply` gate and doctor's read-and-guide posture.
+
+**Reconciled 2026-08-06 to the build plan's ROUTING NOTE, which resolved *who holds the file
+handle*.** This sentence originally read "it writes only on an explicit yes", which named the
+scan as the writer — the posture two ratified `architecture.md` norms forbid, since a product's
+build and CI configs are in neither set the plugin may write. `prawduct-hook jurisdiction`
+surfaced the conflict at plan-authoring and it was resolved by conforming rather than by
+exception: **prawduct reports the drift and presents the exact edit; the agent in session makes
+it, with the owner's confirmation.** The owner's ruling is untouched — it was always about *who
+decides*, never about which process writes. Amended here rather than only in the plan, on this
+document's own standing rule that the two must not disagree; the delivered surfaces already say
+it correctly (doctor #15: "This check writes nothing — least of all the product's own build, CI,
+or package configuration … prawduct reports; the agent applies").
 
 ## 8. Scope
 

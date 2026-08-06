@@ -16,10 +16,12 @@ canonical home for the six clauses, the three enforcement tiers and a mapping ap
 non-normative; every other surface cites it rather than restating it.
 
 **The sentence is enforced rather than asserted.** `_POLICY_SURFACES` in
-`tests/test_v5_templates.py` sweeps every surface that states the policy and fails any that names
-an ecosystem, restates the numeric default, or drops its citation of the spec — across three
-scopes, with the scope derived from whether the region's own name says it is dedicated rather than
-resting on a declaration. The detector was red-verified against the real files, not planted
+`tests/test_v5_templates.py` sweeps every surface in its roster and fails any that names an
+ecosystem, restates the numeric default, or drops its citation of the spec — across three scopes,
+with the scope derived from whether the region's own name says it is dedicated rather than resting
+on a declaration. The roster carries its own exclusions with reasons, and states what `bullet` scope
+does and does not reach; "every surface that states the policy" is the claim it deliberately does
+not make. The detector was red-verified against the real files, not planted
 strings: naming a lockfile inside a clause failed with its line number and was reverted.
 
 **Detection keys off the decision, never off the ecosystems.** Every mechanism here asks only
