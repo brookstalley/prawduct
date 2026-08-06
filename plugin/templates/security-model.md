@@ -100,9 +100,12 @@ last_validated: null
      above as an entry with its Why, not as loose prose here. Each declared trusted
      party reads naturally as its own named entry.
 
-     Proportionate to risk:
+     Proportionate to risk — note that the per-surface tier record is NOT on this
+     ladder. Every product records it, at every risk level, because doctor
+     #15(b)'s reconcile and the janitor's tier-fitness question read that key by
+     name and have nothing to grade without it:
      - Low-risk: record the framework defaults and the intake surfaces; move on.
-     - Medium-risk: name the trusted parties and the tier reached per surface.
+     - Medium-risk: name the trusted parties, each with its why.
      - High-risk: add the install-time-execution allowlist with reasons, and a
        named owner for the security fast path.
 

@@ -1,5 +1,20 @@
 # Prawduct Step-Back Audit — 2026-08-06
 
+> **Status: read as-of `e05dae9`; seven items were discharged before this document was
+> committed.** The audit was written against `e05dae9`, and commit `2027969` — its immediate
+> predecessor on this branch — acted on the branch-scoped subset. **The following read as open
+> below and are closed:** §2a.1 (the Critic leg was silently narrowed — restored partially, with
+> the release-age exclusion recorded as a decision), §2a.2 (the scan-trigger sentence is unpinned
+> — now pinned at both ends by `TestRecordingThePolicyOwesTheScan`), §2a.5 (the flat fact
+> overstates tier 1 — corrected), §2a.6 (tier 1 recorded but CI never ran — branch pushed), §2a.7
+> (three ride-along residuals — the `constraints.txt` release-age copy and the `tests.yml` header
+> are fixed; the docstring claim was already fixed in `e05dae9` and was corrected again here for
+> an off-by-one the first fix introduced), Tier-2 item 4's Critic-clause leg, and Quick wins 1, 2
+> and 3. **Everything else stands and is deliberately deferred past the merge** — the four gap
+> shapes, the prompt-surface work, the worktree family, v3 fleet health, and the learning loop.
+> Treat §2a and the two priority tables as partially drained; the rest of the document was not
+> re-verified after `2027969` and its figures remain a snapshot, per Method below.
+
 **Scope**: the `feature/upstream-dependency-policy` branch (14 commits, +3,190/−47 across 36 files), the unreleased work on `develop` (~988 commits ahead of `main`, spanning the kernel-v3 Critic data plane, review-round pricing, release integrity, worktree fixes), the full prompt surface (~480KB across CLAUDE.md, digests, methodology, skills, docs), and 26 sibling product repos carrying `.prawduct/` state.
 
 **Method**: six parallel read-only audit agents (domain-stack inventory; branch correctness; develop-machinery correctness; prompt-style audit against Anthropic's Claude-5 context-engineering guidance and prompt-audit patterns; self-hosting exemplar check; consumer-repo survey), plus direct recon. File:line citations are as-read on 2026-08-06 at `e05dae9`; numeric figures are a snapshot and will rot — treat the *shapes* as the findings, the numbers as evidence.

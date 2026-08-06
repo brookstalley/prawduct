@@ -9,7 +9,8 @@ substrate — web frontend, backend service, embedded device, data pipeline, mob
 | | what it is | reach for it when |
 |---|---|---|
 | **`/prawduct:runbook`** | the skill — `survey` proposes what your product is missing, `new` authors one, `review` checks an existing one, `list` inventories them | you want the work done rather than the rules. It reads this guide first, so you are not skipping anything by starting there |
-| **`${CLAUDE_PLUGIN_ROOT}/templates/runbook.md`** | the blank, with each section cross-referenced back into the rules here | you are writing one by hand, or you want to see the shape before reading 1,600 lines |
+| **`${CLAUDE_PLUGIN_ROOT}/templates/runbook.md`** | the general blank, with each section cross-referenced back into the rules here | you are writing one by hand, or you want to see the shape before reading 1,600 lines |
+| **`${CLAUDE_PLUGIN_ROOT}/templates/upstream-dependency-update-runbook.md`** | a pre-shaped blank for one recurring procedure — adopting an upstream release under the product's recorded intake policy, with the clause checks already written in | you are authoring the tier-3 update procedure `docs/upstream-dependency-policy.md` calls for. Start here, not from the general blank: deriving it again is how the shipped template goes unused |
 | **this guide** | the rules, the reasoning, and the evidence appendix separating what is verified from what is convention | you are deciding a judgment call, reviewing someone else's runbook, or the template's inline note is not enough |
 
 Runbooks live in your product's `.prawduct/runbooks/`. The three prawduct templates that ask for

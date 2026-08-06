@@ -58,6 +58,50 @@ and the file is at the repo root — the jurisdiction-narrower-than-the-claim sh
 branch's own verification step. And `tests.yml`'s header quoted the pre-`-c` install line as what CI
 runs.
 
+**Cumulative review dispositions** (`rev-20260806T155141Z-a099b72d`, 0 blocking / 6 warning / 11
+note). All six warnings fixed in one batch; ten notes accepted; one filed. The batch was priced
+before it was made — `cost-of-commit` reported two of seven paths judgeable, so it buys exactly one
+verify-resolutions round, and R-7's consequence is what justifies paying it.
+
+- **R-6 — the registry row this commit falsified.** `cross-cutting-concerns.md` still described the
+  Critic check as presence-only and still summarised the repo's own test dependencies as tier 1 flat.
+  The first cell would have let a later author re-narrow the bullet on the registry's authority; the
+  second made this entry's own claim that the flat fact "was the last copy still overstating" untrue
+  the moment it was written. Both cells now carry both legs and the CI/local tier split.
+- **R-7 — the risk ladder disagreed across two surfaces, and one contradicted itself.**
+  `discovery.md` put the per-surface tier record at *high*; the `security-model.md` template put it
+  at *medium*; and `discovery.md`'s own capture step asks every author for `surfaces`
+  unconditionally. A medium-risk product elicited from the ladder recorded no `surfaces` at all, so
+  doctor #15(b)'s reconcile and the janitor's tier-fitness question — both of which read that key by
+  name — had nothing to grade. Resolved by taking the tier record **off** the ladder in both files:
+  every product records it, and the high rung keeps the allowlist and the fast-path owner.
+- **R-8 — the spec's "cites rather than restates" claim had one unnamed exception.** The update
+  runbook template restates clause substance by design, and the "amend both, no guard compares them"
+  warning lived only inside the file that goes stale. The exception is now named in the spec's
+  opening, so the file you open to amend a clause is the file that warns you.
+- **R-1 — a chunk 06 deliverable landed through one door only.** `skills/runbook/SKILL.md` was
+  taught to route to the new template; `docs/runbook-authoring.md`, which that same SKILL reads
+  first, still presented the general blank as *the* blank. Added as a fourth routing row.
+- **R-12 — the clause-5 mechanism was chosen with no alternatives recorded.** Tier rule 1 says
+  prefer the strongest mechanism the ecosystem allows, and this record is the exemplar products
+  copy, so "constraints file" needed to be visibly a choice. The rejection of `--require-hashes`
+  was **verified, not reasoned**: the first draft blamed build isolation, and the experiment
+  falsified it — pip refuses to hash a directory requirement at all, one rung earlier and unrelated
+  to the build backend. Checked on pip 26.2.1 with a control proving hashed wheels install fine.
+- **R-9 — the audit document shipped stale at birth.** It reads as-of `e05dae9` but landed after
+  `2027969` discharged seven of its items, asserting in the present tense that the Critic bullets
+  check presence only. A `> **Status:**` banner in the house convention now names the anchor commit
+  and every closed item.
+
+Accepted (10): the record-lint inert counts and learnings entry-shape pair (record-only, pre-existing,
+tracked); the audit document's out-of-plan status and placement (declared in its commit message);
+the clause-5 install guard's scope (zero exposure — the only other workflow installs no Python
+dependencies); doctor #15's word count (a datapoint for the queued layering, not this branch's work);
+`constraints.txt` pointing at a procedure this repo hasn't authored (the honest record is one file
+away); and the three cross-check results. Filed (1): R-11, the `**Dependency change:**` token that
+the Critic keys on but no methodology file names — author-declared means an un-annotated chunk is a
+check that never fires.
+
 ## 2026-08-06: on what terms does someone else's code become yours
 
 <!-- prawduct: chunks=01,02,03,04,05,06 | type=feature | scope=upstream-dependency-policy -->

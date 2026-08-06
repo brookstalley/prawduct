@@ -150,6 +150,28 @@ is adopted, and new-dependency intake requires verifying package identity rather
 a name resolves. The defaults are *chosen*, not inherited by omission, and the decision block in
 `project-state.yaml` records them so the choice is legible to the checks that read it.
 
+**Why an exact-version constraints file, and not something stronger.** Tier rule 1 says prefer the
+strongest mechanism the ecosystem allows, so the mechanism that expresses clause 5 is itself a
+decision and is recorded rather than left to look inevitable. Three were weighed. A **committed
+lockfile** (`uv.lock`, `poetry.lock`) was rejected because it requires adopting that resolver as the
+repo's install path, which is a toolchain commitment out of proportion to a five-package dev extra —
+and `.gitignore` already records that a second resolved set would be redundant beside this one.
+**Hash-pinned requirements** (`pip install --require-hashes`) is the genuinely stronger declarative
+form and is the one worth naming, because rejecting it is not obvious: it pins *artifacts* rather
+than versions, so a re-uploaded or substituted wheel fails the install instead of passing it.
+It is not adopted here for a reason that was **verified rather than reasoned about**: this repo's CI
+line installs the local project itself (`pip install ".[dev]"`), and pip refuses to hash a directory
+requirement at all — `ERROR: Can't verify hashes for these file:// requirements because they point
+to directories` (checked on pip 26.2.1, with a control proving the same command succeeds against
+hashed wheels alone). So the flag does not degrade on this install shape, it fails it. The first
+draft of this paragraph blamed build isolation — the mechanism that defeats constraints for
+setuptools — and the experiment falsified that; the real blocker is one rung earlier and has nothing
+to do with the build backend. **So: exact-version constraints today, and hash pinning becomes
+reachable only if the local-project install leaves the hashed command** (installing the project
+separately, or not at all in the test job) — not a mechanism nobody considered. A product copying
+this record should copy the reasoning, not the conclusion: a product that installs only third-party
+wheels can reach `--require-hashes` immediately and should.
+
 **One clause is departed from, and this is its rationale.** **Clause 4 (install-time execution) is
 not satisfied:** upstream code is not denied execution at install time. `pip` builds the local
 project from source on every install, so `--only-binary :all:` would refuse the install itself rather

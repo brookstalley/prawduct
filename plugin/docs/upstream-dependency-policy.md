@@ -15,6 +15,13 @@ This is the canonical statement of the policy. Every other surface — the disco
 the planning and building guidance, the Critic bullet, the doctor check, the janitor theme,
 the advisory probe — **cites this file rather than restating it.**
 
+**One sanctioned exception**, named here so the file you open to amend a clause is the file
+that tells you: `templates/upstream-dependency-update-runbook.md` restates clause substance,
+because a tier-3 procedure has to be executable at the moment it is needed and a pointer is
+not a procedure. **Amending any clause below means editing that template too — no guard
+compares the two.** Every other surface citing this file remains a pointer, and a second
+restating copy anywhere else is a defect, not a precedent.
+
 ## The six clauses
 
 Each clause is stated in terms of *dependencies*. How each is enforced is the tier model
