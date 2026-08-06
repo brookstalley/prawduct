@@ -1119,10 +1119,10 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     past the demotion threshold (the skill falls back to `final`); exit 1 =
     any other dispatch failure (reason on stderr).
 
-    Also resets `.critic-partials/` before writing the fresh manifest:
-    consolidate removes partials only on success, so a waived or stale-failed
-    review leaves them behind — and a leftover partial at the SAME commit as a
-    fresh dispatch would merge as if the new reviewer had written it.
+    Also resets `.critic-partials/` before writing the fresh manifest —
+    archive-first, and `critic_consolidate.remove_partials` states why (it is
+    hygiene now, not correctness: partials carry review identity, so a leftover
+    can no longer merge into a later review).
     """
     flags = {
         "--mode": "mode_token",

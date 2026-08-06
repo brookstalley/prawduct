@@ -42,6 +42,15 @@ would reopen the hole for precisely the straggler this closes, so the incomplete
 file, says a stale skill wrote it, and gives the reload remedy. A manifest with no `rendezvous` is
 likewise a loud validation failure rather than a silent skip.
 
+**A traversal the same change created the guard for, and did not apply.** `_archive_leftovers`
+builds its destination directory from the manifest `id`, read raw off disk — deliberately raw,
+since it must work when the manifest is unreadable, which is exactly why `validate_manifest`'s new
+component gate never runs on that path. `rev-../../escape` walked up out of the archive; `/tmp/x`
+replaced the base outright; and because an archive failure degrades to *delete*, both failed
+silently. Now gated at the use, falling through to the existing timestamped fallback name. Found by
+the review of the change that introduced the gate, and the honest reading is that the vulnerable
+line was not in the diff I was looking at.
+
 **One thing the token budget did not buy.** The first attempt funded the additions to
 `goals-1-3.md` by compressing the closing "**Either way** your last line is consolidate's
 `NEXT-ACTION:`" — which looked like removing a copy and was not: that sentence sits where a reader

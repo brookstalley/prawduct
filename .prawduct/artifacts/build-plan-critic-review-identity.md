@@ -73,8 +73,9 @@ two narrower alternatives before planning began.
 - [ ] Chunk 1: The rendezvous carries review identity
 - [ ] Chunk 2: `critic-restore` — the recovery this binding replaces
 Context: Built on `fix/critic-review-identity` off `develop` at `5812a02` (v3.2.6 released,
-nothing else in flight). **Chunk 1 is complete** — commit `d7e4efd`, suite 3762 green, reviewed
-by `rev-20260806T011753Z-41c17624` (`cumulative`, 0 blocking). The boxes stay `[ ]` because
+nothing else in flight). **Chunk 1 is complete** — commit `d7e4efd`, reviewed
+by `rev-20260806T011753Z-41c17624` (`cumulative`, 0 blocking) with a green suite
+(`prawduct-hook test-status`; the evidence store holds the counts). The boxes stay `[ ]` because
 `views_enabled` flips them from a `status=shipped` change-log entry at release, not by hand.
 That review consumed a bundle pass over `5812a02..d7e4efd`, so Chunk 2's `cumulative-final` is
 the second one this branch buys — its interval will span both chunks either way.
@@ -163,8 +164,18 @@ Next: Chunk 2 (`critic-restore`).
   3. A partial at the pre-keyed `<role>.json` path is reported by name in the incomplete
      no-op, together with the reason (a skill older than this hook) and a remedy that
      reaches the state.
-  4. The partial-path shape appears in exactly one place in the codebase; no instruction
-     surface spells it.
+  4. The partial-path shape is composed in exactly one place in executable code
+     (`partial_path`/`started_path`), and no instruction surface an agent loads spells it —
+     pinned by a guard test over `plugin/skills`, `plugin/agents`, `plugin/methodology`.
+     **Scoped deliberately, and narrowed from "anywhere in the codebase" after the cumulative
+     review found the claim wider than its guard.** A blanket ban is the wrong shape: the
+     superseded name legitimately appears where prose *contrasts* it with the new one — this
+     plan's own defect statement, `_stray_partial_note`'s legacy branch, the shipped
+     `critic-death-signals` plan's historical record. What the guard can enforce is that no
+     surface an agent reads as *instruction* names a path it should get from the manifest;
+     what it cannot enforce is prose meaning, so stale describing prose stays a review
+     question. That is the honest boundary, and stating it beats a criterion that reads as
+     verified where nothing checks.
   5. Suite green.
 - **Critic mode:** final
 - **Type:** code

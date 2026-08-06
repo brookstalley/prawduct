@@ -2667,6 +2667,27 @@ class TestBeginArchivesLeftovers:
         assert entries[0].name.startswith("unmanifested-")
         assert (entries[0] / "correctness.json").is_file()
 
+    def test_a_traversal_shaped_manifest_id_archives_under_the_fallback_name(self, tmp_path):
+        # The hostile twin of the fallback test above. `_archive_leftovers`
+        # reads the manifest RAW — deliberately, since it must also work when
+        # the manifest is unreadable — so `validate_manifest`'s component gate
+        # never runs on this path, and the id becomes a directory name
+        # unchecked. `rev-../../escape` walked up out of the archive dir; and
+        # the failure is silent by construction, because a successful traversal
+        # prints nothing and an OSError degrades to DELETE.
+        repo = self._repo_with_leftovers(tmp_path, "rev-../../escape")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        entries = [d for d in (repo / self.ARCHIVE_REL).iterdir() if d.is_dir()]
+        assert len(entries) == 1
+        assert entries[0].name.startswith("unmanifested-"), (
+            f"a traversal-shaped id was used as a directory name: {entries[0].name}"
+        )
+        assert (entries[0] / "correctness.json").is_file(), "the partial still archived"
+        # Nothing landed outside the repo — the assertion the name check exists for.
+        assert not (tmp_path / "escape").exists()
+        assert not (repo / ".prawduct" / "escape").exists()
+
     def test_archive_prunes_to_the_newest_three(self, tmp_path):
         import os
         repo = self._repo_with_leftovers(tmp_path, "rev-20260802T190415Z-0e2cd074")
@@ -4075,6 +4096,14 @@ class TestPartialBelongsToItsReview:
         assert "sustainability.json" in out
         assert "older than this hook" in out
         assert "/reload-plugins" in out
+        # The remedy must REACH the state, which is the whole criterion. This
+        # note is appended to a message whose roster branch has just said "do
+        # not re-dispatch", and a bare re-dispatch is refused while the marker
+        # is live — so the abandon step and the override are both load-bearing,
+        # and pinning only the reload leaves the half that makes it work
+        # unasserted.
+        assert "critic-end" in out
+        assert "overrides the wait advice" in out
         assert _store_lines(repo) == []
 
     def test_a_manifest_without_a_rendezvous_is_refused_loudly(self, tmp_path):

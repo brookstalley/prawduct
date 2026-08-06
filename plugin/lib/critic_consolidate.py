@@ -1558,8 +1558,7 @@ def active_dispatch_refusal(
     that is still in flight.
 
     **Why the refusal exists.** ``critic-begin`` resets the partials directory
-    (:func:`_archive_leftovers`) because a leftover partial at the same commit as
-    a fresh dispatch would merge as if the new reviewer had written it. That
+    (:func:`_archive_leftovers`; :func:`remove_partials` states why). That
     treatment is right for an *orphaned* leftover and catastrophic for a *live*
     review's: dispatching over one archives partials that may be complete,
     overwrites the manifest and re-stamps the marker, so a finished review —
@@ -1953,8 +1952,8 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
     periodic progress readout, so a session that correctly decides to wait
     does not idle its prompt cache into expiry while doing so.
 
-    Per-role liveness: each coordinator-dispatched reviewer writes
-    ``<role>.started`` as its first action, so a missing role is judged by its
+    Per-role liveness: each coordinator-dispatched reviewer writes the started
+    marker :func:`started_path` names as its first action, so a missing role is judged by its
     OWN started-marker age when one exists — a reviewer that started late (e.g.
     resumed against a moved HEAD) is not declared dead by dispatch age. The
     past-grace advice fires only when EVERY missing role is past the grace
@@ -2458,10 +2457,16 @@ def remove_partials(prawduct_dir: Path) -> None:
     """Remove the manifest + every partial + the partials directory. Best-effort
     and idempotent — a missing file is fine (the point is that nothing pending
     remains). Public: ``critic-begin`` also calls this so every review starts
-    from a clean partials dir — consolidate removes partials only on success,
-    so a waived or stale-failed review leaves them behind, and a leftover
-    partial at the same commit as a fresh dispatch would otherwise merge as if
-    the new reviewer had written it."""
+    from a clean partials dir — consolidate removes partials only on success, so
+    a waived or stale-failed review leaves them behind.
+
+    **The reason changed when partials gained review identity, and this is its
+    one home.** It used to be a correctness requirement: a leftover partial at
+    the same commit as a fresh dispatch would merge as if the new reviewer had
+    written it. Keying by review id makes that impossible — a leftover is named
+    as foreign, never merged. What remains is hygiene, and it is still worth
+    doing: the directory stops accumulating debris no reader can use, and the
+    archive stays the single place an unconsolidated review's trace lives."""
     pdir = partials_dir(prawduct_dir)
     if not pdir.is_dir():
         return
