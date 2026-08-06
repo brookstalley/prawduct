@@ -22,6 +22,23 @@ to take off reviewers — "record-class findings were 57% of one day's review
 output, and none of them needed judgment." This test extends that argument to the
 class `record_lint` did not cover.
 
+**It mechanizes the first two rows of that table, not all four**, and the
+difference is what a set-difference can express rather than what matters most:
+
+- *Exit codes vs `api-contract.md`* — there is no enumerated set in code to
+  difference against. Exit codes are `return` statements scattered across command
+  functions, so extracting "the sentinels this subcommand can return" means
+  reading control flow, not a literal. A check built on a regex over `return N`
+  would be noise, and a noisy registry check is one nobody acts on.
+- *`cross-cutting-concerns.md` rows* — the registry's members are *concerns*, a
+  human judgement about what recurs across the pipeline. Nothing in code
+  enumerates them, so there is no left-hand side.
+
+Both remain reviewer work (Framework Check 10 already asks for the concerns
+sweep). Stated here so the next reader does not take a green suite as proof the
+whole class is covered — which is the same over-claim this file exists to catch
+one level down.
+
 **Set-difference, not diff inspection.** The check is "is the registry complete
 *now*", not "did this commit update it" — so it holds no matter which commit
 introduced the gap, cannot be satisfied by a stale baseline, and fires at suite

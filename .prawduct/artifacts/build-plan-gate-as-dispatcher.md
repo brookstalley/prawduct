@@ -87,8 +87,12 @@ finding class was not judgment but REGISTRATION — a primitive added to an enum
 the registry documenting that set went stale (four times: api-contract § Error Model, data-model kinds,
 the concerns row, the waivers vocabulary). Three of those cost a round each. Both underlying framework
 defects are fixed in `8ba8b3e` per the owner's standing rule (fix in place, never file):
-`tests/preferences/test_registry_completeness.py` makes the class a suite-time set-difference, and the
-verify-mode severity directive now separates "the tree must not move" from "this fix is owed".
+`tests/preferences/test_registry_completeness.py` makes the class a suite-time set-difference — for the
+two instances that HAVE an enumerated set in code (waiver rule ids, evidence fact kinds); exit codes and
+concerns rows have no left-hand side to difference and stay reviewer work, stated in the test's own
+docstring so a green suite is not read as full coverage. And the verify-mode severity directive now
+separates "the tree must not move" from "this fix is owed", pinned structurally in
+`tests/test_critic_consolidate.py`.
 
 `active_build_plan` still points at `artifacts/build-plan-critic-review-identity.md` and **must not be
 repointed** until the `develop`→`main` release ships (gitflow, `methodology/planning.md`
