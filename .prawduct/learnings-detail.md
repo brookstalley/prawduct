@@ -2815,3 +2815,48 @@ something does.
 The recorded outcome was to leave the package unpinned and say so in the tier record, rather than
 list it and inherit a claim of coverage the repo does not have. The policy's own rule is that a
 policy claiming coverage it lacks is worse than an absent one.
+
+---
+
+## Discovering a missed category names the category, not the boundary
+
+Pinning this repo's test dependencies, `pip --python-version 3.10` returned a closure that silently
+omitted `exceptiongroup` and `tomli` — the flag selects wheel tags and evaluates environment markers
+against the *running* interpreter. Catching that felt like the finding. I read pytest's
+`requires_dist`, hand-added the three marker-gated packages it declares, and wrote a header saying
+"this is the whole closure."
+
+It was not. `exceptiongroup` requires `typing-extensions` on `python_version < "3.13"` — an ordinary
+requirement of a package that is itself gated, so it appears only if you follow the gated package
+rather than merely include it. One rung deeper, invisible to the same one-level read that missed the
+first three. A transitive walk evaluating markers per target environment found it immediately, and
+confirmed it was the only one.
+
+The trap is that the first catch supplies a *name* for what was missed ("marker-gated packages"),
+and the name feels like a boundary. It is not — it is a description of the examples in hand. Once you
+know a set was derived wrongly, re-derive it mechanically; do not add the members the discovery made
+visible.
+
+The compounding failure was the guard. `test_dev_extra_names_all_appear_in_constraints` compares
+against the four names declared in the extra, so no transitive gap can ever fail it — while the
+module docstring said "Three ways that can rot, one test each," which reads as exhaustive. Four
+durable records then inherited the completeness claim from a test that could not check it. A guard
+whose docstring asserts completeness is making a claim that needs verifying like any other.
+
+## A design pivot orphans requirements without leaving a diff
+
+Requirements §3.4 and §7 both said that *setting* the policy triggers the conformance scan. The plan
+then pivoted on a norm conflict: a Python conformance scanner became an agent-performed procedure,
+which was the better design and correctly recorded. But "triggers" had been the scanner's
+responsibility, and the pivot gave it to nobody. No chunk delivered it, no chunk descoped it, and
+nothing removed the requirement — so every completeness check that looks for something *deleted*
+stayed green, and the capture point shipped ending at "set the fact" with no route onward.
+
+It landed where it did the most harm: at onboard, the one universal path, where the ambient advisory
+that would otherwise carry a reader to the scan has just been silenced by the fact they set. And the
+field it feeds, `surfaces`, is then authored from memory — the under-enumeration the whole design
+exists to prevent, arriving through the author instead of through a filename list.
+
+The general shape: a pivot re-homes some obligations and orphans others, and orphaning leaves no
+trace in the diff. After any design change that moves responsibility between components, walk the
+requirements list and name the new owner of each — the ones with no owner are the silent drops.

@@ -413,3 +413,7 @@ dropping them.
 ## Run `prawduct-hook jurisdiction` BEFORE writing the plan, not at review — it surfaced a requirements-vs-ratified-norm conflict that plain review would have shipped, and resolving it improved the design instead of merely blocking it (a planned scanner chunk disappeared). The same conflict found at review is rework; found at authoring it is a design input — [learnings-detail.md]
 
 ## A tool that ACCEPTS a configuration input has not necessarily APPLIED it to the scope you meant — prove it with a value that MUST fail loudly if honoured, never one that merely looks respected. Two instances in one session, from one tool, and both would have shipped a pin that binds nothing — [learnings-detail.md]
+
+## Discovering you missed a CATEGORY of thing names the category, not the boundary — so re-derive the whole set mechanically instead of adding the members you can now see. Catching that marker-gated packages were absent, then hand-adding the three the roots declared, still missed the one reached THROUGH them; a transitive walk found it in seconds — [learnings-detail.md]
+
+## A design pivot orphans requirements without leaving a diff — nobody deletes them, so every check that looks for something REMOVED stays green. When a pivot re-homes obligations, re-read the requirements list against the new design and name each one's new owner, or the ones that lost theirs ship as silently absent — [learnings-detail.md]
