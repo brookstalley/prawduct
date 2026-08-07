@@ -36,14 +36,14 @@ governed_by:
       - "A destructive or irreversible operation requires explicit owner approval at the OPERATION level → inapplicable because nothing here is destructive. The rebuild path drops and re-derives a cache whose every row exists in the provider; losing it costs a re-fetch, not data. This is exactly the property that lets `backlog-service-data-model.md` §7 answer a schema mismatch with rebuild rather than migration"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "Proportionality ratchets both ways: a control that has fired repeatedly and never produced a blocking finding is removed by default; adding a control names the yield it expects AND emits that yield observably → conforms, and this is the second load-bearing norm. It cuts both ways here and the plan honours both directions. **Removal:** three enumerated consumers are retired rather than restored (spec §2.1 — `revisit-due`, janitor checks 6 and 7), which is the ratchet running down. **Addition:** every consumer restored in Chunks 05–06 is a control being re-added, so each names its expected yield in the same edit that restores it. `tags` is held to the same standard, and `backlog-service-data-model.md` §6 states the schema-level form of the same rule — every column is a Q-projection, no dead fields"
+      - "Proportionality ratchets both ways: a control that has fired repeatedly and never produced a blocking finding is removed by default; adding a control names the yield it expects AND emits that yield observably → conforms, and this is the second load-bearing norm. It cuts both ways here and the plan honours both directions. **Removal:** three enumerated consumers are retired rather than restored (spec §2.1 — `revisit-due`, janitor checks 6 and 7), which is the ratchet running down; and Chunk 05 retires the whole claim / `claimed_at` / TTL-reap mechanism, which is the ratchet running down on a *control* rather than a check — a stored expiry policy replaced by an observable one, per spec §3. **Addition:** every consumer restored in Chunks 05–06 is a control being re-added, so each names its expected yield in the same edit that restores it. `tags` is held to the same standard, and `backlog-service-data-model.md` §6 states the schema-level form of the same rule — every column is a Q-projection, no dead fields"
       - "Review wall-clock is a P0 constraint → conforms, and the plan is shaped by it. Six chunks means six reviews, which is the cost this norm asks to be deliberate about; the alternative of three fat chunks trades run-count for unit-cost on a chunk too large to review in one pass, which is the worse trade. Chunk 06's `cumulative-final` is one review, not a `final` plus a `cumulative`"
       - "State-file growth past its size threshold is an advisory warning, never a hard block → inapplicable because the cache is not a state file and has no size threshold; it is uncommitted and rebuildable, so growth costs disk, not merge conflicts or review payload"
   - artifact: api-contract
     dispositions:
       - "Persisted data that outlives a plugin version is independently schema-versioned with forward-incompatibility detection → conforms — the cache carries `schema_version` and detects a mismatch, per `backlog-service-data-model.md` §7. The norm's 'a schema-ahead fact blocks loudly' clause is scoped to facts and does not reach here; the cache's detection resolves to rebuild-and-report. An earlier draft of this plan proposed amending the norm to say so, which was wrong twice over — the question was already answered in the backlog-service data model, and `snapshot.py` already ships the behaviour"
       - "Exit codes are the contract; errors are attributed, never raised as stack traces across the boundary → conforms — cache commands follow the existing scheme, and `sqlite3.Error` is caught and returned as a `status`/`reason` dict per the preferences error-handling norm, never allowed to escape"
-      - "Additive-first evolution: flag names, exit-code meanings, and `--json` keys are never repurposed; readers tolerate unknown keys → conforms — Chunk 03 adds `affected`, `tags`, and `working-branch` to the body block, which is already additive-only-forever by `Block.fields` preserving every unknown key in source order (ENC-4), and which `backlog-service-data-model.md` §7 binds explicitly: a genuine semantics change mints a new key, never a `v:` reinterpretation. No existing key changes meaning"
+      - "Additive-first evolution: flag names, exit-code meanings, and `--json` keys are never repurposed; readers tolerate unknown keys → conforms on the additions, WITH ONE NAMED REMOVAL a reviewer should weigh rather than skim. The additions are clean: Chunk 03 adds `affected`, `tags`, and `working-branch` to the body block, which is already additive-only-forever by `Block.fields` preserving every unknown key in source order (ENC-4), and which `backlog-service-data-model.md` §7 binds explicitly — a genuine semantics change mints a new key, never a `v:` reinterpretation. No existing key changes meaning. **The removal:** Chunk 05 deletes the shipped `claim` / `unclaim` ops and `pick`'s `--claim` / `--claim-ttl` flags (owner ruling). The norm forbids REPURPOSING and this is not that — no removed name is reused for anything, `claimed_at` keys already written stay readable as unknown keys, and exit code 4 keeps its `conflict` meaning through `update`'s CAS path. But a removal from a released CLI surface is a breaking change the norm's letter does not cover, and the argument for it is the owner's: `working-branch` ships in the SAME release, and every in-tree consumer of the removed ops is retired in the same chunk. An out-of-tree caller scripting `prawduct-hook backlog claim` breaks with no deprecation window — accepted, because the op is release-current rather than long-established and the release notes carry it"
   - artifact: project-preferences
     dispositions:
       - "Sync-only architecture (no `async def`, no `asyncio`) → conforms — concurrency is SQLite WAL plus a busy timeout, which is DB-lock based, exactly as the preference anticipates. Test-enforced"
@@ -81,14 +81,13 @@ check §6 first.
 
 **Open assumptions / unknowns:**
 
-- `[ASSUMPTION: W1 adds working-branch and does NOT retire the existing claim / claimed_at /
-  TTL-reap machinery | MED impact | user can correct / override / defer]` — spec §3 says
-  `working-branch` "replaces the claimed-by concept," but `core.claim`, `claimed_at`,
-  `_claim_eligibility` and `DEFAULT_CLAIM_TTL_SECONDS` are shipped and `pick --claim` depends on
-  them. Two mechanisms for one concept is the state this plan leaves behind, deliberately:
-  retiring claim is a behaviour change to `pick` with its own proportionality argument, not a cache
-  concern. **Check this one first** — if the intent was that W1 retires claim, Chunk 05 grows and
-  `pick`'s contract changes.
+- ~~`[ASSUMPTION: W1 adds working-branch and does NOT retire the existing claim / claimed_at /
+  TTL-reap machinery]`~~ — **RESOLVED, owner ruling 2026-08-07: W1 DOES retire it.** Spec §3's
+  "`working-branch` replaces the claimed-by concept" is literal. The reasoning is the one the
+  assumption did not weigh: **W1 ships as a single atomic release**, so the interval in which two
+  mechanisms for one concept coexist is a handful of unreleased commits that no operator ever runs
+  — maintaining both across it is work spent on a state that never exists in the field. Chunk 05
+  grows accordingly and `pick`'s contract changes there; the scope is enumerated in that chunk.
 - `[ASSUMPTION: tags ships in Chunk 03 with a named consumer (a `--tag` filter on
   `/prawduct:backlog list` / `find`), not as a bare field | MED impact | user can override]` —
   `tags` appears in none of spec §2's fifteen consumer queries, and spec §3 forbids anything gating
@@ -100,15 +99,22 @@ check §6 first.
   inside Chunk 06 costs almost nothing and avoids leaving two dormancy lines behind after the thing
   they waited for has landed.
 - `[ASSUMPTION: pick stays advisory — claiming happens at branch creation, not by pick writing the
-  branch name | MED impact | user can override]` — spec §9's own recommendation. It leaves the
-  pick-window race unsolved but visible as two branches on one item, which spec §7's deferral of
-  backend races already accepts.
+  branch name | MED impact, RAISED by the claim retirement | user can override]` — spec §9's own
+  recommendation. It leaves the pick-window race unsolved but visible as two branches on one item,
+  which spec §7's deferral of backend races already accepts. **The retirement makes this assumption
+  carry more weight than when it was written:** with `claim` gone, `pick --claim` gone, and nothing
+  auto-populating `working-branch`, W1 has *no* automatic claim of any kind. An actor who picks and
+  forgets to record the branch is invisible to the next picker. That is the intended trade — the
+  claim it replaces was itself soft, and a stamp nobody refreshes was never a lock — but it is now
+  the only thing standing between two actors and one item, so it should be a decision rather than a
+  side effect of the retirement.
 - **Unverified, by design:** the exact `since` semantics on the GitHub REST issues endpoint. Spec
   §6 says to verify at design time rather than from recall; Chunk 02 carries it as a `verify-api`
   step rather than as an assumption.
 
-**What would raise confidence:** answering the first assumption. One sentence from the owner, and
-the only one that changes a chunk's size.
+**What would raise confidence:** the one assumption that changed a chunk's size is answered. What
+remains is the `pick`-advisory question above, which changes no chunk's size but does change what
+W1 promises about double-picks.
 
 ## Status
 
@@ -116,23 +122,23 @@ the only one that changes a chunk's size.
 - [ ] Chunk 02: Incremental sync — cursor watermark and conditional revalidation
 - [ ] Chunk 03: The three new domain fields and their write path
 - [ ] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
-- [ ] Chunk 05: Code consumers — the norm probes, and `pick` off the cache
+- [ ] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
 - [ ] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
 Context: Plan authored 2026-08-07 on `feat/backlog-cache` against
 `documentation/backlog-service-cache-spec.md` (committed `cc36cc6`/`4552d09`) and the W1 corpus it
 deltas. Nothing built. Tracking item **#621**; **#230** is discharged by Chunks 02 + 05.
 
-**#529 blocks one consumer, not this plan — but the recorded link edge says otherwise.** #621
-carries a `blocked-by #529` edge, and `pick` is blocker-aware, so #621 will not surface in ranked
-ready-work while #529 is open even though Chunks 01–05 need nothing from it. What #529 actually
-blocks is consumer 12, a sliver of Chunk 06 (see that chunk). Owner's call, and the reason it is
-not a side effect of a stage bump: either drop the edge and let Chunk 06 carry the carve-out it
-already states, or leave it and accept that #621 is picked by name rather than by rank.
-Recommendation: drop the edge — a blocker suppressing the whole item because one of fifteen
-consumers waits is a false blocker, and the carve-out is already written down where the work is.
+**#529 blocks one consumer, not this plan.** #621's `blocked-by #529` edge was **dropped by owner
+ruling (2026-08-07)**: a blocker that suppresses a whole item from ranked ready-work because one of
+fifteen consumers waits on it is a false blocker. What #529 actually blocks is consumer 12, a
+sliver of Chunk 06, and that carve-out is written down in that chunk where the work is. #621 is
+`stage: ready` and now surfaces by rank rather than only by name.
 
-Next: confirm the `claim`-retirement assumption, then Chunk 01.
+**The `claim` machinery is retired by this work** (owner ruling, 2026-08-07 — see Requirements
+Confidence). It lands in Chunk 05, code and prose together.
+
+Next: Chunk 01.
 
 ## Scaffolding
 
@@ -172,9 +178,11 @@ plugin/lib/backlog/
 ├── cache.py       # new — store: open, schema, rebuild-on-mismatch, upsert, WAL config
 ├── cachequery.py  # new — the consumer query surface over the store
 ├── sync.py        # new — cursor watermark, conditional revalidation, full rebuild
-├── encode.py      # + affected / tags / working-branch decode
+├── encode.py      # + affected / tags / working-branch decode; − claimed_at
 ├── transport.py   # + `since` on list_issues
-└── query.py       # pick reads the cache
+├── core.py        # + the three fields' write path (SEC-2 allowlist); − claim / unclaim / TTL
+├── cli.py         # − claim / unclaim ops, − pick --claim / --claim-ttl
+└── query.py       # pick reads the cache; excludes on working-branch; − _claim_eligibility
 ```
 
 ### Module Boundaries
@@ -334,7 +342,9 @@ the same shape that makes `transport.py` the sole egress.
   `documentation/backlog-service-data-model.md` §§6, 7
 - **Deliverables:** `affected` / `tags` / `working-branch` in `plugin/lib/backlog/encode.py`
   (`decode_item` and the `Block` accessors); the three cache columns and the `affected` index; the
-  write path in `plugin/lib/backlog/core.py`; the `--tag` filter on `list` in
+  write path in `plugin/lib/backlog/core.py` — which means **naming all three in the SEC-2
+  mass-assignment allowlist** (`_UPDATE_FACETS`), a deliberate widening of a security control that
+  should read as a decision rather than as a diff nobody mentioned; the `--tag` filter on `list` in
   `plugin/lib/backlog/query.py` and `plugin/lib/backlog/cli.py`
 - **Tests:** new (the catalogue predates these fields) — round-trip through the block for each
   field; an unpublished or repo-unqualified `working-branch` rejected at the write; `affected`
@@ -388,9 +398,10 @@ the same shape that makes `transport.py` the sole egress.
   2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
 
-### Chunk 05: Code consumers — the norm probes, and `pick` off the cache
+### Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
 
-- **Description:** Bind the code-side consumers. Two norm probes come back and one is retired:
+- **Description:** Bind the code-side consumers, and retire the mechanism `working-branch` replaces.
+  Two norm probes come back and one is retired:
   `probe_dead_why` (consumer 14 — id → is-dead, alias-resolving) and `probe_stalled_transition`
   (consumer 15 — id → live? + date floor, from provider `updated_at`) lose their `post_cutover`
   early return; `probe_revisit_due` is **retired, not restored**. The retirement is not a scoping
@@ -411,25 +422,74 @@ the same shape that makes `transport.py` the sole egress.
   be picked. That is also the sharpest instance of the derived-views norm in this plan: `pick` is
   the closest thing here to a decision-driving read, so it is where the never-silently-stale
   revalidation from Chunk 02 has to actually fire.
+
+  **The claim mechanism is retired here, whole** (owner ruling — Requirements Confidence). Removed:
+  `core.claim` / `core.unclaim` / `DEFAULT_CLAIM_TTL_SECONDS`; `query._claim_eligibility`, the
+  reap-vs-free ranking tier, and the `_why` claim clauses; the `claim` / `unclaim` CLI ops and
+  `pick`'s `--claim` / `--claim-ttl` flags; `encode.Block.claimed_at` and its `decode_item` row;
+  `tests/test_backlog_claim.py`. **The prose goes in this chunk with the code, not in Chunk 06** —
+  `plugin/skills/backlog/SKILL.md`'s `accepted-by:` section, its `allowed-tools` grant, the
+  `list --include-claimed` flag and the pick-exclusion rule, plus `adapter-mode.md`'s claim/unclaim
+  op mapping and its `--assignee none` exclusion. Chunk 06 owns prose that *restores dormant
+  consumers*; splitting this one across that boundary would leave a commit where the CLI has no
+  `claim` op and the skill still grants and documents one.
+
+  Three things the retirement deliberately does **not** do, each because a norm says otherwise.
+  **Exit code 4 stays** — `claim_conflict` retires as a *value*, but code 4 is `conflict` and
+  `update`'s optimistic-CAS path still returns it; retiring one producer of a contract code is not
+  repurposing the code, which is the thing api-contract's additive-first norm forbids. **No data
+  migration** — `claimed_at` stamps already written into issue bodies become unknown keys, which
+  `Block.fields` preserves in source order forever (ENC-4). They are inert, and rewriting bodies to
+  delete an inert key is a write with no yield. **`assignee` becomes unwritable by prawduct** — it
+  was reachable only through `claim` (core.py's SEC-2 allowlist comment says so), so it returns to
+  native/protected. GitHub's own UI still assigns; prawduct stops reading assignment as meaning,
+  which is the point of moving the signal to a branch.
+
+  `[DECISION: pick excludes an item whose `working-branch` is populated — full stop. No TTL, no
+  reap tier, and no read of the branch's commit history | the tempting translation of the old
+  predicate ("unassigned ∨ claim past TTL") is to age the *branch* instead of the stamp, and it is
+  wrong twice. It puts a git call — against a ref in a possibly-different, possibly-unfetched repo —
+  inside `pick`'s hot path, which is the NFR §4 budget this very chunk exists to fix (#230, ~12.4s
+  at ~6× the floor); and it reintroduces a stored expiry policy under a new name, when spec §3's
+  whole argument for `working-branch` is that *staleness becomes observable rather than stored*.
+  Observable means the signal is available to a reader, not that `pick` must consult it: `pick`
+  surfaces the branch name in `why` and the human judges whether a three-week-old branch is
+  abandoned. The asymmetry backs it — a wrongly-excluded item costs one `--include-working` flag, a
+  wrongly-included one costs two people on one item | user can veto/override]`
 - **Depends on:** Chunk 04
-- **Artifacts consumed:** `documentation/backlog-service-cache-spec.md` §§2.1, 6;
+- **Artifacts consumed:** `documentation/backlog-service-cache-spec.md` §§2.1, 3, 6;
   `documentation/backlog-service-nfr.md` §§4, 8
 - **Deliverables:** `probe_dead_why` and `probe_stalled_transition` in
   `plugin/lib/norm_probes.py` reading `cachequery`; `probe_revisit_due` removed along with its
-  registry row; `pick` in `plugin/lib/backlog/query.py` sourcing candidates from the cache
+  registry row; `pick` in `plugin/lib/backlog/query.py` sourcing candidates from the cache and
+  excluding on `working-branch`; `--include-working` on `pick` and `list` replacing
+  `--include-claimed`; the claim machinery removed from `plugin/lib/backlog/core.py`,
+  `plugin/lib/backlog/cli.py`, `plugin/lib/backlog/query.py` and `plugin/lib/backlog/encode.py`;
+  the claim prose removed from `plugin/skills/backlog/SKILL.md` and
+  `plugin/skills/backlog/adapter-mode.md`; `tests/test_backlog_claim.py` deleted
 - **Tests:** catalogue — **QRY-2** (ready-work correctness, including the negative: a stale cache
   must not let a blocked item be picked); new — each restored probe fires on a real trigger and
   stays quiet on a clean corpus, each reports unavailable rather than empty when the cache is
   missing, and `pick` returns the same candidate set from the cache as from a live scan on the same
-  corpus
-- **Acceptance criteria:** `pick` completes under the NFR floor on this repo's 178-item backlog;
-  both restored probes produce a finding on a seeded trigger; no probe returns `[]` for a reason
-  other than "nothing matched"
+  corpus. For the retirement: an item with a populated `working-branch` is absent from `pick` and
+  present under `--include-working` with its branch shown; an item whose body still carries a legacy
+  `claimed_at` key round-trips through a write with the key intact and is **not** excluded by it
+  (the ENC-4 inert-key claim, asserted rather than assumed); and a grep-style test that no `claim`
+  op, flag, or `allowed-tools` grant survives in the skill prose — the half-retirement this chunk's
+  code/prose pairing exists to prevent is exactly what a passing unit suite would not catch
+- **Acceptance criteria:** `pick` completes under the NFR floor on this repo's live backlog; both
+  restored probes produce a finding on a seeded trigger; no probe returns `[]` for a reason other
+  than "nothing matched"; `prawduct-hook backlog claim` exits as an unknown op and nothing in the
+  skills tells a reader to run it
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. #230 updated `status=shipped` with the measured before/after, via `/prawduct:backlog update`
-  3. `/prawduct:critic` run and blocking findings resolved
-  4. Committed and chunk marked `[x]` in Status
+  3. `documentation/backlog-service-data-model.md` and
+     `documentation/backlog-service-api-contract.md` reconciled where they specify `claim` /
+     `unclaim` / `claimed_at` — a retired operation still specified is a second home for a decision
+     that no longer holds
+  4. `/prawduct:critic` run and blocking findings resolved
+  5. Committed and chunk marked `[x]` in Status
 
 ### Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
