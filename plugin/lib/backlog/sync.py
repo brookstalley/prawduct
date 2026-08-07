@@ -25,6 +25,7 @@ would be indistinguishable from a backlog that shrank.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -366,3 +367,47 @@ def _revalidate(
         return Validator(changed=True, etag=None)
     except TransportError as exc:
         return from_transport_error(exc)
+
+
+def spawn_sync(
+    hook_cmd: list[str],
+    project_dir: Path,
+    scope: str,
+    *,
+    popen=None,
+    env: dict | None = None,
+) -> bool:
+    """Warm the cache in a **detached** subprocess — the store's only trigger.
+
+    Until this existed, the only writer reachable from outside a test was a human
+    typing ``prawduct-hook backlog sync``: nothing scheduled it and no hook spawned
+    it, so every consumer's freshness had an owner in principle and none in
+    practice — age visible, nothing making it small. That gap is sharpest for the
+    consumers this trigger was added for, which are **restricted-tool agents** (the
+    Critic's reconciliation walk, the PR reviewer's checks): ``cachequery``'s
+    "run ``prawduct-hook backlog sync``" reaches a reader who cannot run anything
+    that writes.
+
+    Deliberately the same shape as ``snapshot.spawn_refresh`` — fire-and-forget,
+    own session, ``PRAWDUCT_UNATTENDED=1``, returns immediately — rather than a new
+    mechanism, because session start must never block on the network and one
+    detached-spawn *policy* shape beside one detached-Popen *mechanism*
+    (``transport.spawn_detached``, the sole subprocess egress) is what keeps that
+    property checkable in one place.
+
+    **Incremental, never ``--rebuild``.** The steady state is a conditional request
+    that takes a rate-free 304, so the recurring cost of the trigger is one
+    unauthenticated-cheap round trip per session; a rebuild on every session start
+    would refetch the whole backlog to learn nothing changed. The incremental path
+    already falls back to a rebuild by itself when no watermark exists, so a first
+    run still fills the store.
+
+    Returns ``True`` if the spawn was issued (never raises — a failed warm just
+    means the next read is staler and says so, which is the visible-age contract
+    doing its job)."""
+    from .transport import spawn_detached  # noqa: PLC0415 — lazy; transport owns egress
+
+    child_env = dict(env if env is not None else os.environ)
+    child_env["PRAWDUCT_UNATTENDED"] = "1"
+    argv = [*hook_cmd, "backlog", "sync", "--repo", scope]
+    return spawn_detached(argv, cwd=project_dir, env=child_env, popen=popen)

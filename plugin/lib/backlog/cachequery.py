@@ -663,14 +663,30 @@ def resolve(
     raw = (id_raw or "").strip()
     if not raw:
         return error("validation", "no ID given")
+    # **A bare `#621` is qualified with the store's own scope**, which
+    # `normalize_id` alone cannot do — it takes a `default_owner` and still needs
+    # a repo, so `#621` fails as "malformed repo". That is the spelling nearly
+    # every citation actually uses: this repo's change-log writes 259 bare refs
+    # against 5 qualified ones, and `closes: #621` is the shape the PR reviewer's
+    # closes/status check reads. Left unqualified, the checks restored on this
+    # query would resolve almost nothing and report it as "no such item" — a
+    # reader matching nothing, which is the failure the whole cache exists to end.
+    #
+    # It is unambiguous **because the store holds exactly one repo by design**
+    # (Security §3's single-repo scoping), so there is no second candidate for the
+    # number to mean. If that ever stops holding, this qualification stops being
+    # sound and has to become an error rather than a guess.
+    spelled = f"{scope}{raw}" if raw.startswith("#") and "/" in scope else raw
 
     def query(conn: sqlite3.Connection) -> dict:
         found, via = None, None
+        # The alias lookup keeps the caller's own spelling: aliases are stored
+        # strings, and a hand-minted `PFX` never wore a scope to begin with.
         claimants = _claimants(conn, "alias", raw)
         if claimants:
             found, via = claimants[0], "alias"
 
-        nid = ids.normalize_id(raw, default_owner=default_owner)
+        nid = ids.normalize_id(spelled, default_owner=default_owner)
         if found is None and nid.ok:
             if _item(conn, nid.canonical) is not None:
                 found, via = nid.canonical, "id"

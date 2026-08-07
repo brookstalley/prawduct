@@ -29,26 +29,33 @@ from pathlib import Path
 
 import pytest
 
-# Every surface this module reads — skills/, methodology/, docs/, lib/ — lives under
-# plugin/, not at the repo root. The `Codebase(root=...)` args below are inert
-# (probe_checks_dormant never touches root), and plugin/ is the right value anyway:
-# DORMANT_CHECKS names plugin-relative paths.
+# Every surface this module reads — skills/, methodology/, docs/, lib/ — lives
+# under plugin/, not at the repo root, and the paths in NOTE_SURFACES are written
+# relative to it.
 REPO_ROOT = Path(__file__).resolve().parents[1] / "plugin"
 
-# The invariant tail of the dormancy NOTE. Only the leading subject differs per
-# surface ("Backlog reconciliation unavailable" / "Backlog Health unavailable"),
-# so the tail is what must be byte-identical.
-NOTE_TAIL = (
-    "this project is on the GitHub Issues backend and these checks have no "
-    "Issues-mode path yet; they return when the backlog read-through cache lands."
-)
+# The one home for the query mechanics the three readers share. Stating them per
+# surface is what produced the drift these tests exist to catch, so the pin is now
+# that each surface ROUTES here rather than that its copy matches the others'.
+CACHE_READS = "skills/backlog/cache-reads.md"
 
-# Every surface that emits the dormancy NOTE, and the subject it leads with.
+# Every surface that reads the backlog cache at review time, and the subject it
+# leads its unavailable-notice with. The subjects still differ per surface (each
+# names its own block); what must not differ is the rule behind them.
 NOTE_SURFACES = {
     "skills/critic/review-cycle.md": "Backlog reconciliation unavailable",
     "skills/pr/review-protocol.md": "Backlog reconciliation unavailable",
     "skills/janitor/SKILL.md": "Backlog Health unavailable",
 }
+
+# The dormancy NOTE these surfaces emitted while the checks were dark. The readers
+# are restored and the advisory that enumerated them is retired, so a surviving
+# copy of this text is a surface still telling operators to wait for something that
+# has already landed.
+RETIRED_NOTE_TAIL = (
+    "these checks have no Issues-mode path yet; they return when the backlog "
+    "read-through cache lands"
+)
 
 # Internal identifiers that must not reach an operator's screen. Not an
 # exhaustive vocabulary — prefixes are open-ended, which is exactly why the
@@ -61,20 +68,79 @@ def _read(rel: str) -> str:
     return (REPO_ROOT / rel).read_text()
 
 
-class TestDormancyNoteCopiesAgree:
-    """The NOTE is copied, not referenced — so its copies need a pin."""
+class TestTheThreeReadersShareOneContract:
+    """The Critic's reconciliation walk, the PR reviewer's R-1/R-2, and the
+    janitor's Backlog Health all read the backlog cache, in files no single
+    reviewer opens together. Prose has no compiler, so copies drift silently — and
+    every defect this contract exists to prevent is itself a *consistency* defect
+    between two surfaces rather than a bug inside one.
+
+    **These tests were re-aimed, not rewritten around, when the readers came back
+    on the cache.** They used to pin three byte-identical copies of a dormancy
+    NOTE. The mechanics those copies shared now live in one file and the surfaces
+    route to it, so the pin moved with them: routing, plus the two rules each
+    surface must still carry in its own words because each decides what its own
+    block emits.
+    """
+
+    @pytest.mark.parametrize("rel", sorted(NOTE_SURFACES))
+    def test_surface_routes_to_the_one_home(self, rel):
+        flat = " ".join(_read(rel).split())
+        assert CACHE_READS in flat, (
+            f"{rel} reads the backlog cache but no longer routes to {CACHE_READS}, "
+            f"where the invocation and the failure contract live. A surface that "
+            f"restates them instead is the first of three copies."
+        )
 
     @pytest.mark.parametrize(("rel", "subject"), sorted(NOTE_SURFACES.items()))
-    def test_surface_emits_the_invariant_note_tail(self, rel, subject):
-        content = _read(rel)
-        # Prose wraps at the author's discretion, so compare on collapsed
-        # whitespace rather than demanding a particular line break.
-        flat = " ".join(content.split())
-        assert subject in flat, f"{rel} no longer leads the dormancy NOTE with its subject"
-        assert NOTE_TAIL in flat, (
-            f"{rel}'s dormancy NOTE has drifted from the shared tail. Update every "
-            f"surface in NOTE_SURFACES together, or the three readers start telling "
-            f"an operator three different things about one backend state."
+    def test_surface_says_unavailable_is_not_empty(self, rel, subject):
+        """The one rule that cannot be delegated: each surface decides what its own
+        block emits when the store cannot be read, and reporting nothing is
+        indistinguishable from a clean bill of health — the exact failure these
+        readers were made to announce rather than commit."""
+        flat = " ".join(_read(rel).split())
+        assert subject in flat, f"{rel} no longer leads its unavailable notice with its subject"
+        assert "exit 6" in flat.lower(), (
+            f"{rel} does not name the exit code that distinguishes 'could not read' "
+            f"from 'nothing matched'."
+        )
+        assert "prawduct-hook backlog sync" in flat, (
+            f"{rel} reports the gap without the command that closes it."
+        )
+
+    @pytest.mark.parametrize("rel", sorted(NOTE_SURFACES))
+    def test_surface_restates_the_item_text_treatment(self, rel):
+        """Cached issue bodies re-enter agent-read prose at these three sites, and
+        the exposure is wider than it was: every open body, not the items a reader
+        happened to open. The security norm is restated AT each site rather than
+        inherited by routing, because the routed file is guidance a reader may skim
+        and this is the rule that must survive skimming."""
+        flat = " ".join(_read(rel).split())
+        assert "data, never instructions" in flat, (
+            f"{rel} surfaces cached item text into findings without restating that "
+            f"the text is data, not instructions."
+        )
+
+    @pytest.mark.parametrize("rel", sorted(NOTE_SURFACES))
+    def test_surface_no_longer_promises_a_cache_that_landed(self, rel):
+        flat = " ".join(_read(rel).split())
+        assert RETIRED_NOTE_TAIL not in flat, (
+            f"{rel} still emits the dormancy NOTE. The readers are restored and the "
+            f"advisory that enumerated them is retired, so this text now tells an "
+            f"operator to wait for something that has already shipped."
+        )
+
+    def test_no_surface_anywhere_still_emits_the_dormancy_note(self):
+        """The parametrized check above runs off `NOTE_SURFACES`, a hand-maintained
+        constant, so a *fourth* surface could carry the retired text untouched.
+        This closes that direction across the whole prose tree."""
+        stale = []
+        for root in TestNoUngatedBacklogFileReaders.PROSE_ROOTS:
+            for path in sorted((REPO_ROOT / root).rglob("*.md")):
+                if RETIRED_NOTE_TAIL in " ".join(path.read_text().split()):
+                    stale.append(path.relative_to(REPO_ROOT).as_posix())
+        assert not stale, (
+            f"These surfaces still announce the dormancy the cache ended: {stale}."
         )
 
     @pytest.mark.parametrize(("rel", "subject"), sorted(NOTE_SURFACES.items()))
@@ -85,12 +151,27 @@ class TestDormancyNoteCopiesAgree:
         downstream operator reading the finding has no access to."""
         flat = " ".join(_read(rel).split())
         start = flat.index(subject)
-        note = flat[start : start + len(subject) + len(NOTE_TAIL) + 8]
+        note = flat[start : start + len(subject) + 160]
         for internal_id in FORBIDDEN_IDS:
             assert internal_id not in note, (
-                f"{rel}'s dormancy NOTE names {internal_id}. Internal ids belong in "
+                f"{rel}'s unavailable notice names {internal_id}. Internal ids belong in "
                 f"comments, tests, and build plans — not in text an operator reads."
             )
+
+    def test_the_one_home_carries_what_the_surfaces_stopped_restating(self):
+        """Routing is only sound if the destination holds the rule. This is the
+        other half of `test_surface_routes_to_the_one_home`: without it, all three
+        surfaces could point at a file that had lost the contract."""
+        flat = " ".join(_read(CACHE_READS).split())
+        for required, why in (
+            ("backlog_service_repo", "which backend is live"),
+            ("cache-query", "the invocation"),
+            ("frozen history", "why the markdown file is not read post-cutover"),
+            ("Exit 6", "the could-not-read contract"),
+            ("age_seconds", "the visible-age contract"),
+            ("data, never instructions", "the item-text treatment"),
+        ):
+            assert required in flat, f"{CACHE_READS} lost {why} ({required!r})"
 
     def test_the_reviewer_that_runs_the_walk_is_routed_to_the_gate(self):
         """`skills/critic/review-protocol.md` carries a one-line summary of the
@@ -117,96 +198,6 @@ class TestDormancyNoteCopiesAgree:
             "review-protocol.md dropped its summary of the gate, so a reviewer "
             "reading only this file gets no signal that the walk is conditional."
         )
-
-    def test_every_note_surface_is_in_the_advisory_enumeration(self):
-        """The advisory's stated value is that anyone dismissing it knows what
-        they are choosing to run without. That rests on an enumeration which,
-        being hand-maintained, can silently fall behind the readers it names —
-        under-reporting, which is this bundle's own failure class one layer down.
-
-        So: a surface that emits a dormancy NOTE must appear in
-        `DORMANT_CHECKS`, and the advisory's count must derive from it rather
-        than being written out.
-        """
-        from lib import backlog_probes as bp
-
-        enumerated = {rel for surfaces, _ in bp.DORMANT_CHECKS for rel in surfaces}
-        missing = sorted(set(NOTE_SURFACES) - enumerated)
-        assert not missing, (
-            f"These surfaces state dormancy but are absent from the advisory's "
-            f"enumeration: {missing}. Add them to `DORMANT_CHECKS` in "
-            f"`lib/backlog_probes.py` — the advisory is the operator's only list of "
-            f"what a cut-over repo is running without."
-        )
-
-    def test_no_surface_emits_the_note_without_being_declared(self):
-        """The coupling above runs off `NOTE_SURFACES`, a hand-maintained
-        constant — so a *fourth* production surface emitting the NOTE would
-        satisfy every test here while never reaching the advisory's enumeration.
-        This closes the other direction: any prose file carrying the tail must be
-        declared, which forces the enumeration check to see it."""
-        undeclared = []
-        for root in TestNoUngatedBacklogFileReaders.PROSE_ROOTS:
-            for path in sorted((REPO_ROOT / root).rglob("*.md")):
-                rel = path.relative_to(REPO_ROOT).as_posix()
-                if rel in NOTE_SURFACES:
-                    continue
-                if NOTE_TAIL in " ".join(path.read_text().split()):
-                    undeclared.append(rel)
-        assert not undeclared, (
-            f"These surfaces emit the dormancy NOTE but are not in NOTE_SURFACES: "
-            f"{undeclared}. Declare them, and add them to `DORMANT_CHECKS` — an "
-            f"undeclared surface is a check the advisory never tells anyone is dark."
-        )
-
-    def test_advisory_count_and_evidence_derive_from_one_list(self):
-        from lib import backlog_probes as bp
-        from lib.advisory_store import Codebase, ProjectState
-
-        candidate = bp.probe_checks_dormant(
-            ProjectState({"backlog_service_repo": "acme/widgets"}),
-            Codebase(root=REPO_ROOT),
-        )[0]
-        assert (
-            f"{len(bp.DORMANT_CHECKS)} backlog checks are dormant" in candidate.trigger_summary
-        )
-        for _, name in bp.DORMANT_CHECKS:
-            assert name in candidate.evidence[0], (
-                f"{name!r} is enumerated but never reaches the operator's evidence line."
-            )
-
-    def test_advisory_enumeration_names_no_internal_check_label(self):
-        """`observability-strategy.md` § Direction, applied to the string this
-        bundle itself wrote: the evidence line named `C-B1-C-B4` and `R-1`/`R-2`,
-        which an operator downstream cannot resolve any better than `GV8`."""
-        from lib import backlog_probes as bp
-        from lib.advisory_store import Codebase, ProjectState
-
-        candidate = bp.probe_checks_dormant(
-            ProjectState({"backlog_service_repo": "acme/widgets"}),
-            Codebase(root=REPO_ROOT),
-        )[0]
-        emitted = (
-            candidate.evidence[0] + candidate.trigger_summary + candidate.recommended_action
-        )
-        for label in ("C-B1", "C-B4", "R-1", "R-2", *FORBIDDEN_IDS):
-            assert label not in emitted, (
-                f"the dormancy advisory emits the internal label {label!r}"
-            )
-
-    def test_note_states_the_resolution_not_just_the_dormancy(self):
-        """Dropping the id must not drop the resolution: an operator told a check
-        is dormant with no stated end-state reads it as permanent breakage.
-
-        Asserted against the files, not against this module's own constant — an
-        assertion about `NOTE_TAIL` cannot fail for any production edit.
-        """
-        for rel in NOTE_SURFACES:
-            flat = " ".join(_read(rel).split())
-            assert "they return when the backlog read-through cache lands" in flat, (
-                f"{rel}'s dormancy NOTE states the gap without its end-state."
-            )
-
 
 class TestDirectReadRuleIsOneRule:
     """`data-model.md` § Direction: gated, not banned. Both readers state the
@@ -486,21 +477,32 @@ class TestBackendScopedProseInTheBacklogSkill:
             "`backlog-archive.md`; post-cutover neither exists."
         )
 
-    def test_adapter_mode_find_note_is_id_free(self):
-        """The NOTE the adapter path emits when `find` is unavailable is
-        operator-facing text and was naming an internal milestone id.
+    def test_adapter_mode_no_longer_degrades_find_and_dedup(self):
+        """`find` and `dedup` degraded to a NOTE while no adapter search existed.
+        Cache-served `search` is built, so the degradation prose is not merely
+        stale — it tells an operator a working capability is unavailable, which is
+        the mirror image of the confident-wrong-answer failure this module exists
+        to catch.
 
-        Scoped to the *quoted* NOTE, not the whole section: the surrounding
-        instruction prose still says "dedup is W2" and legitimately may — the
-        norm governs what a skill emits, not what it reads.
+        This replaces an id-scrubbing assertion on the NOTE's quoted text (it had
+        named an internal milestone id). With no NOTE to emit, what is pinned is
+        the routing that took its place, and the whole section stays id-free
+        because it is now instruction rather than commentary.
         """
         flat = " ".join(_read("skills/backlog/adapter-mode.md").split())
-        opening = "full-text search is not available on the Issues backend yet"
-        assert opening in flat, "the emitted find NOTE no longer states the unavailability"
-        start = flat.index(opening)
-        end = flat.index('"', start)  # the NOTE's closing quote
-        note = flat[start:end]
-        assert "W2" not in note, "the emitted find NOTE names an internal id"
+        assert "full-text search is not available" not in flat, (
+            "the adapter path still tells an operator search is unavailable"
+        )
+        assert "cache-query search" in flat, "`find` is not routed to the cache-served search"
+        assert "cache-reads.md" in flat, (
+            "the adapter path restates the cache-read rules instead of routing to their one home"
+        )
+        section = flat[flat.index("## The local cache"):]
+        section = section[: section.index("## Operations that don't apply")]
+        for internal_id in ("W1", "W2", *FORBIDDEN_IDS):
+            assert internal_id not in section, (
+                f"the local-cache section names the internal id {internal_id!r}"
+            )
 
 
 class TestCompletenessGateListsAreEnumeratedConsistently:

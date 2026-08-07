@@ -888,6 +888,26 @@ class _PopenRecorder:
     poll = wait
 
 
+def _warmed_ops(recorder: _PopenRecorder) -> set[str]:
+    """The backlog ops the recorder saw warmed, by name.
+
+    Two stores are warmed at session start — the briefing counts snapshot
+    (`refresh-counts`) and the backlog cache (`sync`) — and they are separate
+    subprocesses on purpose: two ops against two stores, where deriving a count is
+    not the sync that fills the item rows the review-time consumers read.
+    """
+    return {argv[argv.index("backlog") + 1] for argv, _kwargs in recorder.calls}
+
+
+def _warm_argv(recorder: _PopenRecorder, op: str) -> list[str]:
+    """The argv of the warm for ``op``. Fails loudly if it never fired, so a
+    missing warm reads as a missing warm rather than as an index error."""
+    for argv, _kwargs in recorder.calls:
+        if argv[argv.index("backlog") + 1] == op:
+            return argv
+    raise AssertionError(f"no detached warm fired for `backlog {op}`")
+
+
 class TestBacklogPendingLine:
     def _state(self, prawduct_dir: Path, scope: str | None):
         text = "product_name: t\n"
@@ -924,11 +944,19 @@ class TestBacklogPendingLine:
         assert line is not None
         assert "5 pending on octo/backlog" in line
         assert "snapshot just now" in line
-        # The warm fired, detached, with the refresh argv — and was never waited on.
-        assert len(recorder.calls) == 1
-        argv, kwargs = recorder.calls[0]
-        assert argv[-4:] == ["backlog", "refresh-counts", "--repo", "octo/backlog"]
-        assert kwargs.get("start_new_session") is True
+        # Both warms fired, detached, and neither was waited on. Asserting the
+        # OPS rather than a count: the number is the thing that changes when a
+        # third store gains a trigger, and a count assertion turns that into a
+        # failure about arithmetic instead of about which warms ran.
+        assert _warmed_ops(recorder) == {"refresh-counts", "sync"}
+        for _argv, kwargs in recorder.calls:
+            assert kwargs.get("start_new_session") is True
+        for op in ("refresh-counts", "sync"):
+            argv = _warm_argv(recorder, op)
+            assert argv[-4:] == ["backlog", op, "--repo", "octo/backlog"]
+        # The cache warm is incremental — never `--rebuild`. A rebuild on every
+        # session start would refetch the whole backlog to learn nothing changed.
+        assert "--rebuild" not in _warm_argv(recorder, "sync")
 
     def test_post_cutover_no_snapshot_degrades_visibly(self, tmp_path):
         _init_git_repo(tmp_path)
@@ -937,7 +965,7 @@ class TestBacklogPendingLine:
         recorder = _PopenRecorder()
         line = briefing._backlog_pending_line(prawduct, tmp_path, popen=recorder)
         assert line == "Backlog: counts warming for octo/backlog (/prawduct:backlog to triage)"
-        assert len(recorder.calls) == 1  # warm still fired
+        assert _warmed_ops(recorder) == {"refresh-counts", "sync"}  # warms still fired
 
     def test_post_cutover_zero_pending_suppresses_line_but_warms(self, tmp_path):
         _init_git_repo(tmp_path)
@@ -947,7 +975,7 @@ class TestBacklogPendingLine:
         recorder = _PopenRecorder()
         line = briefing._backlog_pending_line(prawduct, tmp_path, popen=recorder)
         assert line is None
-        assert len(recorder.calls) == 1
+        assert _warmed_ops(recorder) == {"refresh-counts", "sync"}
 
     def test_never_blocks_even_with_a_hanging_backend(self, tmp_path):
         # The G2 real-slowness contract: the briefing path touches no network

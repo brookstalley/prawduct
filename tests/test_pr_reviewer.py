@@ -694,30 +694,35 @@ class TestPrReviewerScoping:
         inconsistency) runs on every markdown-backend review because the Critic
         doesn't do it.
 
-        "Always" is scoped to the markdown backend as of GV8: on the GitHub
-        Issues backend both R-1 and R-2 have nothing live to read, so they state
-        dormancy instead (see the backend-precondition test below). The scoping
-        is asserted here rather than left implicit because "always run" would
-        otherwise keep passing on a substring while meaning the opposite.
+        The scoping clause "always run on this backend" was here while R-1/R-2
+        were dark on the Issues backend and live on markdown. Both now read the
+        backlog cache on either backend, so R-2's "always" is unqualified again —
+        and the assertion follows it, because a scoping phrase left pinned after
+        its scope dissolved keeps passing on a substring while meaning nothing.
         """
         content = self.protocol
         assert "Critic owns this scan" in content
         assert "owns this walk" in content
-        assert "always run on this backend" in content
+        assert "always run — the Critic does not do this check" in content
 
-    def test_backlog_reconciliation_checks_the_backend_first(self):
-        """GV8: post-cutover, `.prawduct/backlog.md` is frozen history, so R-1/R-2
-        must skip and say so rather than reporting confidently from it.
+    def test_backlog_reconciliation_reads_the_cache_and_reports_when_it_cannot(self):
+        """R-1/R-2 read the backlog cache. Two things must hold in this file, and
+        both are about what happens when the read fails rather than when it works:
+        the reviewer must be routed to the contract, and it must know that an
+        unreadable store is reported rather than passed over — because R-2 has no
+        other owner anywhere in the pipeline, so silence here reads as
+        "reconciled" when nothing reconciled it.
 
-        The precondition is a Read of `backlog_service_repo` in project-state —
-        the same contract `skills/critic/review-cycle.md` carries for Backlog
-        Reconciliation, restated here because a reviewer loads one file or the
-        other, never both.
+        This replaces a check-the-backend-first assertion from the period when
+        both checks were dark post-cutover. The backend gate itself now lives in
+        the routed file; what stays pinned here is the part this file must carry
+        for a reviewer that loads only it.
         """
         content = self.protocol
-        assert "backlog_service_repo" in content
-        assert "skip both R-1 and R-2" in content
-        assert "frozen history" in content
+        assert "skills/backlog/cache-reads.md" in content
+        assert "exit 6" in content.lower()
+        assert "data, never instructions" in content
+        assert "skip both checks" in content
 
     def test_skill_prep_step_reads_the_backlog_through_the_skill(self):
         """The prep-while-Critic-runs step audits the backlog via the

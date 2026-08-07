@@ -18,8 +18,16 @@ INV-1), all **return-value** enveloped (project preference):
 
 2. **`export`** (``export_backlog``) — a cheap, full-fidelity **dump** to plain
    files: the body block **plus the native graph** (dependencies, sub-issues,
-   timeline, assignees). Not a lossless one-liner re-import into a non-GitHub
-   backend (out of scope, Data Model §8) — a *backup/inspection* dump (MG2/G5).
+   timeline, assignees). A *backup/inspection* dump (MG2/G5), not a lossless
+   one-liner re-import into a second provider.
+
+   The scope of that caveat has narrowed and the old wording overstated it. Data
+   Model §8 put re-import into a non-GitHub **backend** out of scope, and it still
+   is; what the read-through cache added is a provider-neutral **domain schema**
+   stated in prawduct's vocabulary rather than the provider's (Cache Spec §§3, 8),
+   which is the piece a future adapter would bind to. So the honest statement is
+   that no second adapter exists and none is planned here — not that the model
+   forecloses one.
 
 3. **`merge`** (``merge``) — the minimal fold A→B the migration scrub needs: a
    **redirect-before-close** so a crash leaves the source open-but-redirected (a

@@ -845,17 +845,21 @@ class TestRevisitDueProbe:
         """The one of the three whose dormancy the cache does not end. `revisit:`
         records intent — *granted until date X* — which no age-based query can
         reconstruct, so what it waits on post-cutover is a WRITE path for the
-        field, not a read path. That is why it is absent from `DORMANT_CHECKS`,
-        whose advisory promises its members return when the cache lands."""
-        from lib import backlog_probes
+        field, not a read path.
 
+        The check that this is not *promised* as restored used to live here as an
+        assertion about `DORMANT_CHECKS`. That roster and its advisory are gone
+        (W1 Chunk 06), so the promise has no surface to be made on — and the
+        durable form of the claim, that no probe registers to announce it,
+        now sits with the retirement in `test_backlog_probes.py`. What stays here
+        is this probe's own behaviour, which is the part this file owns."""
         _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
         cutover = ProjectState({"backlog_service_repo": "octo/backlog"})
 
         assert np.probe_revisit_due(cutover, _cb(tmp_path)) == []
-        assert not any(
-            "revisit" in name for _paths, name in backlog_probes.DORMANT_CHECKS
-        ), "the cache cannot restore this check, so it must not be promised as restored"
+        # Pre-cutover it still fires on the same fixture — otherwise this test
+        # would pass just as well against a probe that had stopped working.
+        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path))
 
 
 class TestPostCutoverResolvesThroughTheCache:

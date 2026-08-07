@@ -3,6 +3,61 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-07: the last dormant readers come back, and the advisory that announced them retires
+
+<!-- prawduct: chunks=06 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->
+
+**The three prose readers that went dark at the Issues cutover read the backlog again.** The Critic's
+backlog reconciliation walk and its four hygiene checks, the PR reviewer's R-1 and R-2, and the
+janitor's Backlog Health block each lost their "the live backlog is frozen markdown, so skip and
+announce it" branch and gained a cache-backed query. Against the real 453-item backlog the answers
+are ones a reader would act on: the changed-file intersection over this branch's own diff returns the
+tracking item and nothing else, naming the three `affected:` entries that matched — an inference that
+previously required reading every item's text, and the one capability this work adds rather than
+restores.
+
+**The machinery that announced the dormancy is deleted rather than reworded.** `DORMANT_CHECKS` and
+the `backlog-checks-dormant` probe are gone, and the advisory retires through the ordinary reconcile
+path — a probe that stops producing a candidate resolves its own advisory, so no removal step was
+needed. It shrank as each reader landed, which was always the intended shape. Two checks stay dark
+and each now says so where a reader meets it rather than in a session-start nag: the neglected-hygiene
+sweep, because the `promoted` status value has no Issues equivalent for a query to ask for, and
+norm-exception expiry, which waits on a write path rather than a read path. Two others — counting
+unstructured legacy items, and proposing an archive split — are retired outright, being advice a
+reader could act on to no effect once Issues is system of record.
+
+**Reading the cache needed a door, and the door needed a grant.** Every consumer bound before this
+one was in-process Python; these are agents, so `prawduct-hook backlog cache-query` is new — eight
+read-only queries, no network, no writes. The blocker was the Critic: the walk belongs to the
+sustainability reviewer, whose narrow tool list *is* the no-execution enforcement. It is granted the
+one op, and the sentence in its own prose claiming it could run nothing was corrected in the same
+edit — shipping the grant while leaving that standing would have been a document lying about its own
+enforcement. Two alternatives are recorded in the plan with why each lost; the deciding fact was that
+a dangling-id check resolves ids discovered while reading the diff, which no pre-computed payload can
+enumerate.
+
+**A miss and an unreachable store must never look alike, and that is what the exit code is for.**
+Every query exits 6 with a reason and the command that fixes it when the store cannot be read, and
+each restored surface states that rule in its own words — reporting an empty set instead would have
+rebuilt the silent-reader failure these checks were built to announce, in a new costume. The query
+mechanics themselves live in one file the three surfaces route to, because stating them three times
+is precisely the drift the coherence tripwire exists to catch; routed rather than copied, the
+restored walk came in smaller than the notice it replaced.
+
+**The cache had no trigger until now.** Its only writer reachable from outside a test was a human
+typing the command — while several of the consumers added here are restricted-tool agents that cannot
+run one. It now warms detached at session start beside the counts snapshot, incremental so the steady
+state is a rate-free conditional request. Driven end to end, store age went from 43 minutes to 12
+seconds after one warm.
+
+**A citation spelled `#621` did not resolve, and nearly shipped that way.** The resolver needed a
+repo it could not infer, so bare refs came back as "no such item" — and bare is how they are written:
+this repo's change-log carries 259 of them against 5 qualified. The two checks that read `closes:`
+lines would have matched almost nothing while reporting confidently. Fixed in the query layer rather
+than at the CLI, so the norm probes bound in the previous chunk get it too; it is sound only because
+the store holds exactly one repo by design, and that condition is written where the code depends on
+it.
+
 ## 2026-08-07: ready-work comes off the cache, and the claim mechanism retires
 
 <!-- prawduct: chunks=05 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->

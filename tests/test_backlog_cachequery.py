@@ -998,3 +998,207 @@ class _Locked:
 
     def commit(self):  # pragma: no cover — never reached; execute raises first
         raise sqlite3.OperationalError("database is locked")
+
+
+# --- the CLI door: `prawduct-hook backlog cache-query` ------------------------
+
+
+def _cq(repo_dir, *args, json_mode=True):
+    """Run the op in-process and return ``(exit_code, envelope)``.
+
+    In-process rather than by subprocess because the store lives under this
+    ``repo_dir``'s git-common-dir and the envelope is what consumers bind to;
+    spawning would test argv plumbing this module does not own. The subprocess
+    shape is covered where it matters — `TestNothingDetachedEverRan` below.
+    """
+    import io
+    import json as _json
+    from contextlib import redirect_stdout
+
+    from lib.backlog import cli
+
+    argv = [*args, "--repo", SCOPE] + (["--json"] if json_mode else [])
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        code = cli.run(str(repo_dir), ["cache-query", *argv])
+    out = buf.getvalue().strip()
+    return code, (_json.loads(out) if json_mode and out else out)
+
+
+class TestTheCacheQueryOp:
+    """The agent-facing door onto ``cachequery``.
+
+    Every consumer bound before this one was in-process Python, so the query
+    surface needed no CLI. These consumers are agents — the Critic's
+    reconciliation walk, the PR reviewer's checks, the janitor's Backlog Health —
+    and an agent reaches a Python module only by running something.
+    """
+
+    #: Every sub-query and a valid argument list for it. Parametrized rather than
+    #: written out per test so a query added to `_CACHE_QUERIES` without a case
+    #: here fails the surface test below — the same shape `_every_query` gives the
+    #: library surface one layer down.
+    CASES = {
+        "open": [],
+        "unstaged": [],
+        "by-area": [],
+        "stale": [],
+        "created-since": ["2026-01-01T00:00:00+00:00"],
+        "search": ["item"],
+        "affecting": ["plugin/lib/backlog/sync.py"],
+        "resolve": [f"{SCOPE}#1"],
+    }
+
+    def test_every_dispatched_query_has_a_case_here(self):
+        from lib.backlog import cli
+
+        assert set(cli._CACHE_QUERIES) == set(self.CASES), (
+            "a sub-query was added or removed without its case moving with it, so "
+            "it is dispatched but never exercised"
+        )
+
+    def test_ready_is_not_exposed(self):
+        """`ready_items` has exactly one consumer — `pick`, which is already an op
+        — so exposing it here would give one query two operator-facing doors."""
+        from lib.backlog import cli
+
+        assert "ready" not in cli._CACHE_QUERIES
+        assert "ready_items" in _every_query(Path("."))  # still on the library surface
+
+    @pytest.mark.parametrize("name", sorted(CASES))
+    def test_it_answers_from_a_populated_store(self, name, fake, repo_dir):
+        _file(fake, title="cache: an item the queries can find", area="backlog",
+              affected="plugin/lib/backlog/sync.py")
+        _rebuild(fake, repo_dir)
+
+        code, envelope = _cq(repo_dir, name, *self.CASES[name])
+
+        assert code == 0, envelope
+        assert envelope["status"] == "ok"
+        # The store-level invariants ride out through the op unchanged; a door
+        # that dropped them would be a consumer opting out of both at once.
+        assert "age_seconds" in envelope["data"]
+        assert envelope["data"]["scope"] == SCOPE
+
+    @pytest.mark.parametrize("name", sorted(CASES))
+    def test_an_absent_store_exits_6_rather_than_reporting_nothing(
+        self, name, repo_dir
+    ):
+        """**The contract these consumers actually depend on.** A reader that
+        cannot reach the store must be able to say so, and an exit code says it
+        without the caller parsing prose. Reporting an empty set instead would
+        rebuild, in a new costume, the silent-reader failure the dormant checks
+        were made to announce."""
+        code, envelope = _cq(repo_dir, name, *self.CASES[name])
+
+        assert code == 6, (name, envelope)
+        assert envelope["status"] == "error"
+        assert envelope["error"]["code"] == "unavailable"
+        assert "sync" in envelope["error"]["message"]
+
+    def test_it_never_reaches_the_provider(self, fake, repo_dir):
+        """No transport is resolved at all: the op takes no `transport` argument
+        and imports nothing that egresses. Asserted by running with the network
+        boundary poisoned, because "it reads locally" is the property the Critic
+        reviewer's tool grant rests on."""
+        _file(fake, title="cache: a locally answerable item", area="backlog")
+        _rebuild(fake, repo_dir)
+
+        with mock.patch("lib.backlog.transport.GhTransport.__init__",
+                        side_effect=AssertionError("cache-query reached the provider")):
+            code, envelope = _cq(repo_dir, "open")
+
+        assert code == 0 and envelope["status"] == "ok"
+
+    def test_it_writes_nothing(self, fake, repo_dir):
+        """The other half of the grant's premise. `open_store(create=False)` means
+        a query cannot even bring a store into being, so a reviewer holding this op
+        cannot leave a trace in the tree it is reviewing."""
+        _file(fake, title="cache: an item to read back", area="backlog")
+        _rebuild(fake, repo_dir)
+        before = {p: p.stat().st_mtime_ns for p in repo_dir.rglob("*") if p.is_file()}
+
+        assert _cq(repo_dir, "open")[0] == 0
+
+        after = {p: p.stat().st_mtime_ns for p in repo_dir.rglob("*") if p.is_file()}
+        assert after == before
+
+    def test_a_bare_issue_ref_resolves_against_the_stores_own_scope(self, fake, repo_dir):
+        """`#621` is how citations are nearly always written — this repo's
+        change-log carries 259 bare refs against 5 qualified ones, and `closes:
+        #621` is the shape the PR reviewer's R-2 reads. `normalize_id` cannot
+        qualify one on its own (it takes an owner and still needs a repo), so
+        without this the restored checks would resolve almost nothing and report it
+        as "no such item"."""
+        item = _file(fake, title="cache: an item cited bare", area="backlog")
+        _rebuild(fake, repo_dir)
+        number = item.rsplit("#", 1)[1]
+
+        code, envelope = _cq(repo_dir, "resolve", f"#{number}")
+
+        assert code == 0
+        assert envelope["data"]["resolved"] is True
+        assert envelope["data"]["id"] == item
+
+    def test_an_unresolvable_id_is_a_successful_answer(self, fake, repo_dir):
+        """A miss is consumer 5's entire finding, so it must not arrive as an
+        error — a dangling-id check that could not tell "no such item" from "the
+        store is unreachable" would be exactly as blind as the one it replaced."""
+        _file(fake, title="cache: some other item", area="backlog")
+        _rebuild(fake, repo_dir)
+
+        code, envelope = _cq(repo_dir, "resolve", f"{SCOPE}#999999")
+
+        assert code == 0
+        assert envelope["data"]["resolved"] is False
+
+    def test_an_unknown_query_names_the_ones_that_exist(self, repo_dir):
+        code, envelope = _cq(repo_dir, "nonesuch")
+        assert code == 2
+        assert "open" in envelope["error"]["message"]
+
+    def test_a_missing_query_is_a_validation_error(self, repo_dir):
+        assert _cq(repo_dir, )[0] == 2
+
+    @pytest.mark.parametrize("name", ["open", "stale", "resolve", "search"])
+    def test_all_is_refused_where_it_does_not_apply(self, name, repo_dir):
+        """Refused rather than ignored. `--all` widens the two groupings that
+        default to open-only; on a query whose predicate already IS a status,
+        silently accepting it would hand back an unwidened answer the caller
+        believes was widened."""
+        code, envelope = _cq(repo_dir, name, *TestTheCacheQueryOp.CASES[name], "--all")
+        assert code == 2
+        assert name in envelope["error"]["message"]
+
+    def test_all_widens_the_groupings_that_take_it(self, fake, repo_dir):
+        live = _file(fake, title="cache: a live item", area="backlog")
+        done = _file(fake, title="cache: a shipped item", area="backlog")
+        assert core.set_status(fake, id_raw=done, target="shipped")["status"] == "ok"
+        _rebuild(fake, repo_dir)
+
+        default = _cq(repo_dir, "by-area")[1]["data"]
+        widened = _cq(repo_dir, "by-area", "--all")[1]["data"]
+
+        def _all_ids(payload):
+            return {i["id"] for g in payload["groups"] for i in g["items"]}
+
+        assert _all_ids(default) == {live}
+        assert _all_ids(widened) == {live, done}
+
+    def test_the_ephemeral_guard_classifies_it_read_only(self):
+        """An op missing from the guard's classification is ALLOWED on a
+        service-backed repo, because the service-backed early return fires before
+        the per-op set — precisely the stranded write that guard exists to refuse.
+        So the classification is asserted, not assumed."""
+        import importlib.util
+
+        root = Path(__file__).resolve().parents[1]
+        spec = importlib.util.spec_from_loader("_hook", loader=None)
+        hook = importlib.util.module_from_spec(spec)
+        exec(  # noqa: S102 — the hook is a script, not an importable module
+            compile((root / "plugin" / "bin" / "prawduct-hook").read_text(),
+                    "prawduct-hook", "exec"),
+            hook.__dict__,
+        )
+        assert "cache-query" in hook._EPHEMERAL_READ_ONLY_OPS["backlog"]
+        assert "cache-query" not in hook._BACKLOG_LOCAL_WRITE_OPS

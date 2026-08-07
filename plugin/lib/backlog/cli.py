@@ -48,7 +48,7 @@ _ALL_OPS: tuple[str, ...] = (
     "file", "get", "show", "status", "update", "comment", "list", "pick",
     "counts", "verify-migration", "refresh-counts", "reconcile-labels",
     "link", "unlink", "provision", "import",
-    "restructure-preview", "export", "merge", "sync",
+    "restructure-preview", "export", "merge", "sync", "cache-query",
 )
 
 # code → exit class. A code absent here (should not happen) falls back to 1.
@@ -95,6 +95,12 @@ _HELP = (
     "  refresh-counts   --repo owner/repo   (derive + persist the briefing snapshot)\n"
     "  sync     --repo owner/repo [--rebuild]   (populate the local cache; "
     "incremental unless --rebuild)\n"
+    "  cache-query <query> [args] --repo owner/repo   (read the local cache; "
+    "never touches the network)\n"
+    "           open | unstaged | by-area [--all] | stale [--older-than N] |\n"
+    "           search <text> [--area A] | affecting <path>... [--all] |\n"
+    "           created-since <ISO> | resolve <id>\n"
+    "           exit 6 means the cache could not be read — NOT that nothing matched\n"
 
     "  link     <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  unlink   <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
@@ -177,6 +183,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_refresh_counts(rest, transport, project_dir)
         elif op == "sync":
             result = _run_sync(rest, transport, project_dir)
+        elif op == "cache-query":
+            result = _run_cache_query(rest, project_dir)
         elif op == "reconcile-labels":
             result = _run_reconcile_labels(rest, transport)
         elif op in ("link", "unlink"):
@@ -532,6 +540,113 @@ def _run_sync(rest: list[str], transport, project_dir):
 
     run = sync_mod.full_rebuild if flags.get("rebuild") else sync_mod.incremental_sync
     return run(transport, project_dir=Path(project_dir), owner=owner, repo=repo)
+
+
+#: The default staleness horizon for `cache-query stale`, in days. The janitor's
+#: Backlog Health check has said ">90d" since it was written against the markdown
+#: backend; the number moves here rather than being retyped in the skill, so the
+#: prose and the query cannot disagree about what "stale" means.
+_STALE_DEFAULT_DAYS = 90
+
+#: Each ``cache-query`` sub-query, mapped to the ``cachequery`` function that
+#: answers it and the flags it accepts. ``ready`` is deliberately absent: its only
+#: consumer is ``pick``, which is already an op here, so exposing it would give one
+#: query two operator-facing doors.
+#:
+#: The queries are named for what a reader asks, not for the Python function —
+#: `stale`, not `stale_items` — because the operator typing this has no register
+#: to resolve module names against.
+_CACHE_QUERIES: tuple[str, ...] = (
+    "open", "created-since", "by-area", "affecting", "search",
+    "stale", "unstaged", "resolve",
+)
+
+
+def _run_cache_query(rest: list[str], project_dir):
+    """Read the local backlog cache — the **agent-facing** door onto ``cachequery``.
+
+    Every consumer bound before this one was in-process Python (the norm probes,
+    ``pick``), so the query surface needed no CLI. The consumers this serves are
+    agents — the Critic's backlog-reconciliation walk, the PR reviewer's
+    resolved-items and closes/status checks, the janitor's Backlog Health block —
+    and an agent reaches a Python module only by running something.
+
+    **This op reads and does nothing else**: no provider call, no store write, no
+    session state touched. That is what makes it grantable to the ``critic-reviewer``
+    agent type, whose narrow tool list is the Critic's no-execution enforcement — a
+    reviewer holding this can ask the backlog a question and still cannot run a
+    test, reach the network, or mutate the session it is reviewing.
+
+    ``unavailable`` surfaces as exit 6, which is the whole contract for these
+    consumers: a reader that cannot reach the store must be able to say so rather
+    than report an empty set, and an exit code says it without the caller parsing
+    prose.
+    """
+    flags, positionals, err = _parse_flags(
+        rest,
+        valued={"repo", "area", "older-than"},
+        boolean={"all"},
+    )
+    if err:
+        return core.error("validation", err)
+    if not positionals:
+        return core.error(
+            "validation",
+            f"cache-query requires a query ({'|'.join(_CACHE_QUERIES)})",
+        )
+    name, args = positionals[0], positionals[1:]
+    if name not in _CACHE_QUERIES:
+        return core.error(
+            "validation",
+            f"unknown query {name!r} (expected {'|'.join(_CACHE_QUERIES)})",
+        )
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "cache-query requires --repo owner/repo")
+    scope = f"{parsed[0]}/{parsed[1]}"
+
+    from datetime import datetime, timezone  # noqa: PLC0415 — only this op needs a clock
+    from pathlib import Path  # noqa: PLC0415 — only this op needs a path
+
+    from . import cachequery  # noqa: PLC0415 — lazy; no other op reads the store
+
+    common = {"project_dir": Path(project_dir), "scope": scope,
+              "now": datetime.now(timezone.utc)}
+    # `--all` widens the two groupings that default to open-only. It is refused
+    # rather than ignored on the queries whose predicate already IS a status, so a
+    # caller never gets a silently-unwidened answer back.
+    open_only = not flags.get("all")
+    if flags.get("all") and name not in ("by-area", "affecting"):
+        return core.error("validation", f"--all does not apply to {name!r}")
+
+    if name == "open":
+        return cachequery.open_items(**common)
+    if name == "unstaged":
+        return cachequery.unstaged_items(**common)
+    if name == "by-area":
+        return cachequery.by_area(**common, open_only=open_only)
+    if name == "stale":
+        days, int_err = _int_flag(flags, "older-than", _STALE_DEFAULT_DAYS)
+        if int_err:
+            return core.error("validation", int_err)
+        return cachequery.stale_items(**common, older_than_days=days)
+    if name == "affecting":
+        if not args:
+            return core.error("validation", "affecting requires at least one path")
+        return cachequery.items_affecting(**common, changed_paths=args, open_only=open_only)
+    if name == "created-since":
+        if len(args) != 1:
+            return core.error("validation", "created-since requires exactly one ISO timestamp")
+        return cachequery.items_created_since(**common, since=args[0])
+    if name == "search":
+        if not args:
+            return core.error("validation", "search requires text")
+        return cachequery.search(**common, text=" ".join(args), area=flags.get("area"))
+    # `resolve` — the only remaining member, and the exhaustiveness is guaranteed
+    # by the membership check above rather than by a fallback that could go stale.
+    if len(args) != 1:
+        return core.error("validation", "resolve requires exactly one id")
+    return cachequery.resolve(**common, id_raw=args[0], default_owner=parsed[0])
 
 
 def _run_reconcile_labels(rest: list[str], transport):

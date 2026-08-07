@@ -124,9 +124,45 @@ W1 promises about double-picks.
 - [x] Chunk 03: The three new domain fields and their write path
 - [x] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
 - [x] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
-- [ ] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
+- [x] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
-Context: **Chunk 05 is built and green** — the suite passes clean and every acceptance criterion was
+Context: **All six chunks are built and green — the plan is complete.** Chunk 06 restored the three
+prose consumers onto the cache and deleted the dormancy machinery: `DORMANT_CHECKS` and
+`probe_checks_dormant` are gone, and the `backlog-checks-dormant` advisory retires through the
+ordinary `reconcile` path (`resolved_by: sync`) rather than needing a removal step of its own —
+verified against the live advisory store. Suite **4185 passed / 7 skipped**, from 4151 at chunk start.
+
+Verified against the real 453-item backlog: `affecting` over this branch's own changed files returns
+**#621 and nothing else**, with the three `affected:` entries that matched; `unstaged` returns 7 real
+items; `by-area` returns 51 groups. With the store moved aside, **every query exits 6 with a reason
+and the command that fixes it** — never an empty set. The detached trigger was driven end to end
+through the session-start path: store age went **2615s → 12s** after one warm.
+
+**Two things this chunk built that its Deliverables line did not name.** (1) `cachequery` had no
+CLI, and its consumers here are *agents* — so `prawduct-hook backlog cache-query` is new, and the
+`critic-reviewer` agent type is granted it (the DECISION block at the top of this chunk carries the
+reasoning and the two rejected alternatives). (2) `resolve` could not read a **bare `#N`**, which is
+how citations are almost always written — this repo's change-log carries 259 bare refs against 5
+qualified. Left unfixed, C-B4 and R-2 would have resolved almost nothing and reported it as "no such
+item", which is the failure this whole plan exists to end. Fixed in `cachequery`, not at the CLI, so
+the Chunk 05 probes get it too.
+
+**The query mechanics live in one new file, `plugin/skills/backlog/cache-reads.md`, and that is what
+paid the token budget.** `review-cycle.md` had 4 tokens of headroom against a ceiling whose standing
+rule is *the next addition trims or relocates, it does not bump*. Stating the invocation, the exit-6
+contract and the age contract in each of the three surfaces would have been the first of three
+copies — and drift between exactly those three is what `tests/test_cutover_prose_coherence.py`
+exists to catch. Routed instead, the restored walk came in **18 tokens smaller** than the dormancy
+notice it replaced. That test class was re-aimed rather than deleted: it now pins the routing, plus
+the two rules each surface must still carry in its own words (unavailable-is-not-empty, and item text
+as data), plus a check that the destination still holds what the surfaces stopped restating.
+
+`migrate.py`'s docstring is reconciled — the "out of scope" claim overstated Data Model §8, which
+forecloses a second *backend*, not the provider-neutral domain schema the cache spec added.
+`adapter-mode.md` gained `sync` and `cache-query`, and lost a stale claim that cache-served `search`
+was unbuilt — `find` and `dedup` no longer degrade to a NOTE.
+
+**Previously (Chunk 05):** the suite passed clean and every acceptance criterion was
 verified against the live backlog at **schema 6**. `pick` returns ranked ready work in **~0.9s at
 `--limit 1`** and **~2.0s at `--limit 3`** against the real 453-item store, against the ~12.4s the
 same call took before (#230, ~6x the NFR §4 floor); the whole difference is that the candidate walk
@@ -885,6 +921,37 @@ the same shape that makes `transport.py` the sole egress.
   manual-refresh assumption is what produced this finding.
 
 
+- **[DECISION: the prose consumers reach the cache through a new read-only `cache-query` CLI op, and
+  the `critic-reviewer` agent type is granted it — 2026-08-07, owner-chosen.]** `cachequery` is a
+  *library* surface, and every consumer bound so far (the norm probes, `pick`) was in-process Python.
+  This chunk's three consumers are **agents**, so the module had no reachable door for them. The
+  janitor holds `Bash(python3 *)` and the PR reviewer is an ordinary `Agent`, so both could reach a
+  CLI op immediately; the blocker was the Critic, whose Backlog Reconciliation walk belongs to the
+  **sustainability reviewer** — a `critic-reviewer` agent whose `tools` deliberately stop at
+  read-only git, because that narrowness *is* the no-execution enforcement.
+
+  So the op is added (`prawduct-hook backlog cache-query <query>`: reads the local store, no network,
+  no writes, no session mutation) and `Bash(prawduct-hook backlog cache-query *)` joins the reviewer's
+  tools. **The reviewer's own prose is corrected in the same edit** — it claimed "no way to run tests,
+  builds, or any executable", and shipping the grant while leaving that sentence standing would be a
+  doc making a false claim about its own enforcement.
+
+  **Rejected: the coordinator pre-fetches the open set into the dispatch prompt** (no new tool at
+  all). It fails on C-B4: a dangling-id check resolves ids the reviewer *discovers while reading the
+  diff*, which no pre-fetch can enumerate, so the check would silently degrade to "only ids in the
+  pasted block" — a reader that matches nothing, which is this plan's whole subject.
+
+  **Rejected: `critic-begin` computes a backlog block into the dispatch manifest** beside
+  `record_lint`. It is the most faithful to *the checks the machine already ran* and costs the
+  reviewer nothing at review time, but it is strictly **additive** rather than alternative: the
+  janitor and the PR reviewer still need the CLI op, so the manifest route would make the same
+  queries' second home — against *every fact has one home* — and it moves backlog querying onto the
+  Critic data plane, which this plan's `governed_by` dispositions state it does not touch. Worth
+  revisiting only if reviewer round-trips become the measured wall-clock cost.
+
+  `ready_items` is **not** exposed on the op: its only consumer is `pick`, which is already a CLI op,
+  so exposing it would give one query two operator-facing doors.
+
 - **Description:** The last consumers are prose contracts in the skills, and this is the chunk that
   deletes the dormancy machinery. Restored: the Critic's Backlog Reconciliation walk and C-B1–C-B4
   in `plugin/skills/critic/review-cycle.md`; the PR reviewer's R-1 and R-2 in
@@ -940,6 +1007,19 @@ the same shape that makes `transport.py` the sole egress.
   1. Acceptance criteria met and tests pass
   2. #621 updated `status=shipped`; #564 dispositioned (spec §2.1 makes it a duplicate of a retired
      concern — retire it or fold it into #550, and record which), via `/prawduct:backlog`
+
+     `[DECISION: #564 is dispositioned as NEITHER — it stays open with its rationale corrected |
+     This step offered two answers and the evidence supports a third. §2.1 retired the
+     `revisit-due` **probe**, which is a fact about a *read* path; #564 is about a *write* path,
+     and scheduling it for retirement conflated the two — the same "argument names one substrate,
+     the change reached another" error Chunk 05's review cost two blocking findings for.
+     `docs/norms.md` § *Exceptions expire* still states on **both** backends that "the clock always
+     lives on a backlog item" carrying `revisit:`, so the norm names a mechanism this backend does
+     not have, and #564 is the only tracker for that. Folding is also unavailable: #550 explicitly
+     scoped `reviewed` and `revisit` **out** on 2026-08-07, so there is nothing left to fold into.
+     What did change is the justification, and that is recorded on the item — it is no longer "the
+     probe needs data" but "a live norm names a mechanism this backend lacks" | user can
+     veto/override]`
   3. `migrate.py`'s docstring reconciled — it still says re-import into a non-GitHub backend is
      "out of scope," which spec §8 supersedes for the cache schema; a contradicting second home
   4. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved

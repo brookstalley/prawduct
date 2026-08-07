@@ -27,8 +27,12 @@ interim state, not a defect. The owner decision of 2026-07-19 was that every dor
 served by **one persisted format** rather than each minting a bespoke projection and migrating
 off it later. This document specifies that format.
 
-The enumeration and count of dormant readers has one home: `DORMANT_CHECKS` in
-`plugin/lib/backlog_probes.py`. Do not restate the list elsewhere.
+The enumeration and count of dormant readers had one home while they were dormant —
+`DORMANT_CHECKS` in `plugin/lib/backlog_probes.py`, which shrank as each reader landed. **Both it
+and the advisory it fed are gone**, removed with the last restoration (W1 Chunk 06): a list with no
+members is not a shorter list, and each restored reader now reports an unreadable store at the point
+of use. §2 below remains the record of which consumers this work restored, which one still waits
+(#529), and which were retired outright.
 
 ## 2. Requirements — what the consumers actually query
 

@@ -203,14 +203,31 @@ exception — they are read live on every call, because a blocker can live in a 
 not hold. Surface the age when you render: a stale answer presented as a current one is the failure
 the visible age exists to prevent.
 
-## Deferred operations — search-dependent (land when backend search does)
+## The local cache — `sync` and `cache-query`
 
-No adapter search op exists yet (cache-served `search` is not built yet), so these degrade — do **not**
-fabricate a search:
-- **find `<query>`** → a `NOTE:` — *"full-text search is not available on the Issues backend yet; meanwhile filter with `list
-  --area=`/`--status=`/`--stage=`/`--kind=`, or use GitHub's issue search in the browser."*
-- **dedup** → the duplicate-scan needs search → same `NOTE:`. `merge <source-id> --into
-  <target-id>` still works when you already know both ids (folds A→B, redirect-before-close).
+The store behind `pick` is also queryable directly, and it is what `find` and `dedup` run on.
+
+**`sync`** — `prawduct-hook backlog sync --repo <r> [--rebuild]` is the store's only writer.
+Incremental by default: it fetches what the provider reports changed since the stored watermark and
+takes a rate-free 304 when nothing has. `--rebuild` forces the full scan, which is the answer to a
+corrupt store or a schema bump; the incremental path already falls back to it when no watermark
+exists.
+
+**You rarely need to run it by hand.** Session start fires it detached, beside the counts warm — the
+briefing never blocks on it, so a session opens with the store already warming. Run it explicitly
+after a burst of writes you are about to query, or when a reader reports the store unavailable or
+conspicuously old.
+
+**`cache-query`** — `prawduct-hook backlog cache-query <query> [args] --repo <r> --json` reads that
+store and nothing else: no network, no writes. `find <query>` maps to `cache-query search <text>
+[--area A]`, and `dedup`'s duplicate scan is `search` per area cluster. **Cache-served rather than
+delegated on purpose:** the provider's index is not read-your-writes, and the moment a dedup check is
+asked is exactly the moment the item it should find was just filed.
+
+The other queries — `open`, `by-area`, `stale`, `unstaged`, `created-since`, `resolve`, `affecting` —
+and the two rules every caller binds to (**exit 6 means the store could not be read, not that nothing
+matched**; every payload carries a visible age) are in `cache-reads.md`, which the Critic, PR reviewer
+and janitor read too.
 
 ## Operations that don't apply post-cutover
 

@@ -87,7 +87,7 @@ LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4807,
     "skills/critic/review-protocol.md": 3611,
     "skills/critic/goals-1-3.md": 1998,
-    "skills/critic/review-cycle.md": 9596,
+    "skills/critic/review-cycle.md": 9578,
     "skills/critic/framework-checks.md": 1116,
 }
 
@@ -1351,6 +1351,19 @@ class TestReviewCycle:
         # deliverable for. Moved to the post-fix `verify-resolutions` decision,
         # where free deltas genuinely occur, and the correction itself now rides
         # the existing "if it passes" sentence rather than adding one. +10.
+        #
+        # 9596 -> 9578 (2026-08-07) -- Backlog Reconciliation came off the frozen
+        # markdown file and onto the backlog cache, and the restored walk is
+        # SMALLER than the dormancy notice it replaced. What paid for it was a
+        # RELOCATION, not a trim: the query mechanics the walk needs are the same
+        # ones the PR reviewer and the janitor need, so stating them here would
+        # have been the first of three copies -- and drift between exactly those
+        # three copies is what `tests/test_cutover_prose_coherence.py` exists to
+        # catch. They live in `skills/backlog/cache-reads.md` and this file routes
+        # to it, keeping only what is specific to this walk: which queries it
+        # asks, and the NOTE it emits when the store cannot answer. The addition
+        # that did land is the per-check yield line the proportionality norm
+        # requires of a re-added control. Net -18.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"

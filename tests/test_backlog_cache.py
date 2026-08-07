@@ -1492,3 +1492,122 @@ class TestTheCostSurface:
         assert sync.full_rebuild(fake, project_dir=root, owner=OWNER, repo="gamma")["status"] == "ok"
         back = cachequery.open_items(root, scope=f"{OWNER}/gamma", now=NOW)
         assert back["status"] == "ok" and len(back["data"]["items"]) == 1
+
+
+class TestNothingDetachedEverRan:
+    """**OPS-3 — no server required for correctness** (→ NF2, NFR §8).
+
+    Carried from Chunk 05 to the chunk that builds the store's detached-spawn
+    trigger, because writing it earlier would have asserted a property of a
+    component that did not exist: with nothing spawning a sync at all, "correctness
+    does not depend on the detached refresh" was true for the uninteresting reason.
+
+    The claim is that the trigger is an **optimisation of freshness, never a
+    prerequisite for correctness**. So the whole surface — CRUD write, sync, every
+    cache query, `pick` — runs in one process with the spawn boundary poisoned, and
+    a spawn attempt is a test failure rather than a silent background helper making
+    the result look better than it is.
+    """
+
+    def _poisoned_spawn(*args, **kwargs):  # pragma: no cover - reaching it IS the failure
+        raise AssertionError(
+            "something spawned a detached child during the correctness surface; "
+            "OPS-3 says no supervised process is required for correctness"
+        )
+
+    # Poisoned at `transport.spawn_detached` — the detached-spawn boundary — and
+    # NOT at `subprocess.Popen`. Popen is what `subprocess.run` is built on, so
+    # poisoning it takes out the `git rev-parse` that resolves the store's own
+    # path, and the test then fails for a reason that has nothing to do with the
+    # claim. The boundary this row is about is the one module that spawns.
+
+    def test_the_full_surface_is_correct_with_no_detached_process(self, tmp_path):
+        from fakes.fake_github import FakeGitHub
+        from lib.backlog import cachequery, core as backlog_core, query, sync
+
+        root = tmp_path / "solo"
+        root.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        fake = FakeGitHub(user={"login": "agent-a", "id": 1})
+        now = datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc)
+
+        with mock.patch("lib.backlog.transport.spawn_detached", self._poisoned_spawn):
+            # CRUD, through the same path an operator uses.
+            filed = backlog_core.file_item(
+                fake, owner="octo", repo="repo",
+                title="ops: an item filed with nothing running",
+                body="b", facets={"area": "ops", "stage": "ready"},
+            )
+            assert filed["status"] == "ok", filed
+            item = filed["data"]["id"]
+
+            assert sync.full_rebuild(
+                fake, project_dir=root, owner="octo", repo="repo", now=now
+            )["status"] == "ok"
+
+            # Every query answers, and answers about the item just written.
+            for result in (
+                cachequery.open_items(root, scope="octo/repo", now=now),
+                cachequery.by_area(root, scope="octo/repo", now=now),
+                cachequery.unstaged_items(root, scope="octo/repo", now=now),
+                cachequery.stale_items(root, scope="octo/repo", older_than_days=90, now=now),
+                cachequery.search(root, scope="octo/repo", text="filed", now=now),
+                cachequery.ready_items(root, scope="octo/repo", now=now),
+                cachequery.resolve(root, scope="octo/repo", id_raw=item, now=now),
+            ):
+                assert result["status"] == "ok", result
+
+            assert item in [i["id"] for i in cachequery.open_items(
+                root, scope="octo/repo", now=now)["data"]["items"]]
+
+            picked = query.pick(fake, project_dir=root, owner="octo", repo="repo", limit=3)
+            assert picked["status"] == "ok", picked
+            assert item in [i["id"] for i in picked["data"]["candidates"]], (
+                "the item is ready and unblocked, so a correct `pick` returns it "
+                "without anything having refreshed the store in the background"
+            )
+
+    def test_the_trigger_is_detached_incremental_and_unattended(self, tmp_path):
+        """The trigger itself, asserted where OPS-3 asserts its absence — the two
+        claims are one decision seen from both sides. It must never be waited on
+        (session start does not block on the network), and never `--rebuild` (the
+        steady state is a rate-free 304; a rebuild every session would refetch the
+        whole backlog to learn nothing changed)."""
+        from lib.backlog import sync
+
+        calls = []
+
+        class _Recorder:
+            def __call__(self, argv, **kwargs):
+                calls.append((argv, kwargs))
+                return self
+
+            def wait(self, *a, **k):  # pragma: no cover - reaching this IS the failure
+                raise AssertionError("the cache warm was waited on")
+
+            communicate = wait
+            poll = wait
+
+        recorder = _Recorder()
+        assert sync.spawn_sync(
+            ["python3", "hook"], tmp_path, "octo/repo", popen=recorder, env={}
+        )
+
+        argv, kwargs = calls[0]
+        assert argv[-4:] == ["backlog", "sync", "--repo", "octo/repo"]
+        assert "--rebuild" not in argv
+        assert kwargs["start_new_session"] is True
+        assert kwargs["env"]["PRAWDUCT_UNATTENDED"] == "1"
+
+    def test_a_failed_warm_is_not_an_error(self, tmp_path):
+        """A warm that cannot start costs a staler next read, which every consumer
+        already reports as a visible age — so it must never raise into the briefing
+        path that fired it."""
+        from lib.backlog import sync
+
+        def _refuses(*_a, **_k):
+            raise OSError("no fork for you")
+
+        assert sync.spawn_sync(
+            ["python3", "hook"], tmp_path, "octo/repo", popen=_refuses, env={}
+        ) is False

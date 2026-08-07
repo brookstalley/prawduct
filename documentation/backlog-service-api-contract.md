@@ -117,9 +117,10 @@ same file. (It was seven until W1: `dead-why` and `stalled-transition` now use t
 a backend rather than to retire, resolving their citations against the backlog cache on the far side.
 `post-sync-advisory-spec.md` §8.2 owns the enumeration and carries the amendment.)
 a frozen file must not generate nudges, and `external-backlog-detected` keeps its independent
-premise. Retirement is not silence — `backlog-checks-dormant` starts firing at the same switch,
-naming every backlog check left without an Issues-backend path (full retirement table:
-post-sync-advisory-spec §8.2; shared predicate `backlog_probes.post_cutover`). **Unset:** the briefing parses
+premise. Retirement is not silence — an advisory named every backlog check left without an
+Issues-backend path until W1 restored them onto the backlog cache, at which point it was removed
+rather than reworded (full retirement table: post-sync-advisory-spec §8.2; shared predicate
+`backlog_probes.post_cutover`). **Unset:** the briefing parses
 `.prawduct/backlog.md` exactly as pre-service (coexistence — MG3).
 
 ### 2.5 Migration, exit & provisioning
