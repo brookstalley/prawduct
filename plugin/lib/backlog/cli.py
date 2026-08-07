@@ -71,10 +71,15 @@ _HELP = (
     "  get      <id> [--repo owner/repo]\n"
     "  status   <id> --to submitted|open|in-progress|shipped|dropped [--repo owner/repo]\n"
     "  update   <id> [--title T] [--body B] [--stage S] [--kind K] [--area A] "
-    "[--effort E] [--impact I] [--source SRC] [--if-updated-at TS] [--repo owner/repo]\n"
+    "[--effort E] [--impact I] [--source SRC] [--tags a,b] [--affected p1,p2] "
+    "[--working-branch owner/repo@branch] [--if-updated-at TS] [--repo owner/repo]\n"
+    "           --tags sets the WHOLE tag set (absent ones are stripped; --tags '' clears)\n"
+    "           --affected takes repo-relative paths only, no prose (a directory "
+    "covers everything under it)\n"
+    "           --working-branch must name a PUSHED branch, repo-qualified\n"
     "  comment  <id> --body B [--repo owner/repo]\n"
     "  list     --repo owner/repo [--status S] [--stage S] [--kind K] [--area A] "
-    "[--effort E] [--impact I] [--source SRC] [--assignee A|none|*] "
+    "[--effort E] [--impact I] [--source SRC] [--tag T] [--assignee A|none|*] "
     "[--state open|closed|all] [--sort created|updated] [--direction asc|desc] "
     "[--per-page N] [--page N] [--untriaged]\n"
     "           --untriaged inverts the scope filter: shows only issues with no "
@@ -301,15 +306,22 @@ def _run_update(rest: list[str], transport):
         valued={
             "repo", "title", "body", "stage", "kind", "area",
             "effort", "impact", "source", "if-updated-at",
+            "tags", "affected", "working-branch",
         },
     )
     if err:
         return core.error("validation", err)
     if not positionals:
         return core.error("validation", "update requires an <id>")
+    # `--tags` is plural because it sets the whole set rather than adding one —
+    # the `--tag` on `list` filters by a single tag, which is a different verb on
+    # purpose and is named for it.
     fields = {
         key: flags[key]
-        for key in ("title", "body", "stage", "kind", "area", "effort", "impact", "source")
+        for key in (
+            "title", "body", "stage", "kind", "area", "effort", "impact", "source",
+            "tags", "affected", "working-branch",
+        )
         if key in flags
     }
     default_owner, default_repo, err = _repo_defaults(flags)
@@ -353,6 +365,7 @@ def _run_list(rest: list[str], transport):
         valued={
             "repo", "status", "stage", "kind", "area", "effort", "impact",
             "source", "assignee", "state", "sort", "direction", "per-page", "page",
+            "tag",
         },
         boolean={"untriaged"},
     )
@@ -366,7 +379,7 @@ def _run_list(rest: list[str], transport):
         key: flags[key]
         for key in (
             "status", "stage", "kind", "area", "effort", "impact", "source",
-            "assignee", "state",
+            "assignee", "state", "tag",
         )
         if key in flags
     }

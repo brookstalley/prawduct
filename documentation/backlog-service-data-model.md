@@ -43,6 +43,9 @@ cache (§6) projects the same fields for the queries GitHub can't serve read-you
 | `status` | `submitted \| open \| in-progress \| shipped \| dropped` | open/closed **+ `state_reason`** (closed) **+ `status:` label** (open sub-states) — §4 | DM2, ready-work |
 | `stage` | `idea…ready` (soft) | **`stage:` label only** (not mirrored to block) | DM2, ready-work, `pick` |
 | `area` `effort` `impact` `source` `kind` | soft enums | **labels** (org Fields where owner is an org) | DM1 (`kind` = the soft-enum extension, not a DM1-named field) |
+| `tags` | open folksonomy, **multi-valued** | **`tag:` labels** (several per item) | Cache Spec §3 — `area` is exactly-one taxonomy wired to the title, so ad-hoc per-team metadata has nowhere else to live. **Binding rule: nothing ever gates on `tags`** — no check, gate or verdict may read them, which is what makes synonym drift (`perf`/`performance`/`speed`) harmless rather than corrosive |
+| `affected` | structured path list, **no prose** | **`prawduct:` block `affected`** | Cache Spec §3 — the half of `refs` that can be matched against a changed-file set. Entries are repo-relative paths or directory prefixes (a directory covers everything under it); **not globs**. Annotations belong in the body, and the write path refuses an entry carrying whitespace |
+| `working-branch` | `owner/repo@branch` | **`prawduct:` block `working_branch`** | Cache Spec §3 — replaces the claim concept: if populated, someone is working the item, and the branch's last commit is the staleness signal, so no stored expiry policy is needed. **Must be a pushed ref** (an unpublished branch is an invisible claim) and **must name the repo** (`backlog_service_repo` can differ from the code repo); both are enforced at the write, the first by `GET /repos/{owner}/{repo}/branches/{branch}` |
 | `reviewed` / verification | `{by, on}` | **`prawduct:` block `verified`** (round-trip) + **cache `reviewed`** (the TF2 date-range query) — *no label, no marker-comment* (M6) | TF2 |
 | `assignee` / claim | user/agent + `claimed_at` | issue **assignee** (claim) + block `claimed_at` (visible staleness) | CC3, ready-work |
 | `relationships` | §1.3 | native dependencies / sub-issues / refs | DM3, ready-work |
@@ -63,7 +66,7 @@ ref, no new stored field), with the block `closed_by` only as the **manual-close
 ### 1.2 Field authority & justified mirrors
 - **Native/label-authoritative, block-unmirrored:** `status`, `stage`, `area/effort/impact/kind`,
   `assignee`. Changing them is a label/state call (core budget), never a content-creation.
-- **Block-authoritative, unmirrored:** `verified`, `claimed_at`, `attachments`, `superseded_by`,
+- **Block-authoritative, unmirrored:** `affected`, `working_branch`, `verified`, `claimed_at`, `attachments`, `superseded_by`,
   `automated`/`worker` (the unattended-actor marker — Security §1a/CC4; self-asserted like all block
   fields, trustworthy for audit only insofar as the acting API identity is).
 - **Two justified mirrors** (each side serves a *distinct* consumer, not the same value twice):
@@ -99,6 +102,8 @@ v: 1                         # block schema version (§7 — additive-only-forev
 id_aliases: [BKL-7M4Q]       # migrated PFX; old refs resolve forever (label + here)
 verified: [{by: …, on: …}]   # TF2 round-trip authority (query runs off cache `reviewed`)
 claimed_at: 2026-07-16T…Z    # CC3 visible staleness
+affected: [plugin/lib/backlog, docs/x.md]   # structured path list, no prose (§1.1)
+working_branch: owner/repo@feat/x           # a PUSHED, repo-qualified ref (§1.1)
 provenance: {source: scriob, version: …, session: …}   # XP2 detail (label = coarse filter)
 superseded_by: owner/repo#123                            # merge/duplicate redirect (DM7/AU3)
 attachments: [{name, url, kind}]                         # DM6
@@ -108,6 +113,12 @@ original_title: Add the harbor map overlay               # pre-migration title, 
 original_body: "line one\nline two"                      # pre-migration body, verbatim; JSON-string-encoded to one line
 ```
 ````
+
+**`working_branch` is snake_case here and `working-branch` everywhere else** (the domain name, the
+CLI flag, this document's §1.1 row). The block's keys are snake throughout and are
+additive-only-forever (§7), so the spelling chosen at birth is the spelling always — it matches its
+neighbours rather than the flag. `encode.Block.working_branch` (read) and `core._BLOCK_KEY` (write)
+are the only two places the two spellings meet.
 
 **`original_title` / `original_body` (MG6 restructure preservation).** Written by the importer only
 when an owner-confirmed restructure plan changed the item at create (issue-standard §5); absent
@@ -125,7 +136,9 @@ only the GitHub **API identity** is trustworthy for attribution.
 
 All prawduct labels are **`<facet>:`-namespaced** so they never collide with a repo's existing labels
 (GV6): `stage:`, `status:`, `kind:`, `area:`, `effort:`, `impact:`, `source:`, `id:`, `verified:`,
-and **`superseded-by:`** (the redirect facet used by merge/transfer, §1.3/§5 — m2). Provisioned +
+**`tag:`** (the one **multi-valued** facet — an item carries as many as it likes, and one alone is
+enough to make an issue in-scope; §1.1) and **`superseded-by:`** (the redirect facet used by
+merge/transfer, §1.3/§5 — m2). Provisioned +
 reconciled by `/prawduct:onboard`/`doctor` (GV5). **Non-prawduct issues/labels are out-of-scope, not
 malformed** — the adapter ignores issues carrying no `stage:`/`id:` marker (but see the
 anonymous-quarantine reconciliation, Security Model §6/F7: an unlabeled non-collaborator filing *is*
@@ -232,7 +245,8 @@ authorizes at **fetch** time — cross-repo entries must **revalidate on read** 
 
 | Table / index | Serves | Notes |
 |---|---|---|
-| `item(id, title, body, status, stage, area, effort, impact, source, created_at, updated_at, **etag**, fetched_at)` | Q1-structured, ready-work, Q5 | `etag`/validator = the **conditional-request** column G3's revalidation needs (M2) — **per-item, and written only by a read that actually issues `GET /issues/{n}`**, never by sync, which sees only the list endpoint's query-scoped validator (that one lives on `cursor`; Cache Spec §6 records the live verification that the two do not substitute for each other). It is therefore legitimately NULL until a decision-path read populates it, and a NULL means *no validator yet*, never *fresh*; `fetched_at` = visible age. **No `node_id`** (dead-read, m1). **As built in W1** — three changes from this row's original form, each because the every-column-is-a-Q-projection rule bit: **`assignee` removed** (it served ready-work's claimed-item exclusion, and the claim mechanism is retired — `working-branch` replaces it, so nothing queries assignment); **`reviewed` removed** (it served TF2's date range for the stale-items consumer, which cache-spec §2.1 moved onto the provider's `updated_at` under *observable beats stored*); **`added` → `created_at`** (the creation-time filter is a provider timestamp that is always present and cannot be forgotten, rather than a block field with no write path). `kind` remains absent — no consumer query asks for it |
+| `item(id, title, body, status, stage, area, effort, impact, source, created_at, updated_at, **affected**, **tags**, **working_branch**, **etag**, fetched_at)` | Q1-structured, ready-work, Q5 | `etag`/validator = the **conditional-request** column G3's revalidation needs (M2) — **per-item, and written only by a read that actually issues `GET /issues/{n}`**, never by sync, which sees only the list endpoint's query-scoped validator (that one lives on `cursor`; Cache Spec §6 records the live verification that the two do not substitute for each other). It is therefore legitimately NULL until a decision-path read populates it, and a NULL means *no validator yet*, never *fresh*; `fetched_at` = visible age. **No `node_id`** (dead-read, m1). **As built in W1** — three changes from this row's original form, each because the every-column-is-a-Q-projection rule bit: **`assignee` removed** (it served ready-work's claimed-item exclusion, and the claim mechanism is retired — `working-branch` replaces it, so nothing queries assignment); **`reviewed` removed** (it served TF2's date range for the stale-items consumer, which cache-spec §2.1 moved onto the provider's `updated_at` under *observable beats stored*); **`added` → `created_at`** (the creation-time filter is a provider timestamp that is always present and cannot be forgotten, rather than a block field with no write path). `kind` remains absent — no consumer query asks for it. **Three columns added in W1** alongside the three new domain fields (§1.1), each storing the field's verbatim value (`affected`/`tags` in the block's `[a, b]` spelling, NULL when empty — never `[]`, so "no value" has one representation): **`affected`** serves the changed-file intersection via `item_affected` below, **`working_branch`** serves ready-work's in-progress exclusion, and **`tags`** is the one column here whose justification is *not* a consumer query — it is carried because the rebuild invariant doubles as the **provider-adequacy** test (Cache Spec §5), and a domain field the cache never stores is one that test never exercises, so a backend unable to represent tags would pass it. It is therefore the first candidate the no-dead-fields rule should take should no cache-served tag query ever appear |
+| `item_affected(item_id, path)` + index on `path` | consumers 1 and 4 (change overlap) | the **`affected` index** — a table, not an index on `item.affected`, and the same shape as `item_fts` beside `item.title`: derived from the column in the same transaction, never written independently, so it is not a second home for the fact. It is a table because the query runs *entry-contains-changed-file* (`plugin/lib` matches `plugin/lib/sync.py`), and phrasing that over the column — `WHERE ? LIKE affected \|\| '%'` — puts the variable on the side no index can help. Exploding the list into one row per path lets a caller expand each changed file into its ancestor directories and match by **equality**, which this index serves |
 | `item_fts(title, body)` (FTS5) | Q1-fulltext, Q3 lexical | the read-your-writes path GitHub search lacks |
 | `comment(item_id, body, author, created_at)` | Q1-fulltext, Q3 | text mirror |
 | `relationship(src, kind, dst)` | ready-work blockers (per-clone) | *within one repo*; cross-repo blockers checked online |

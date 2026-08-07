@@ -665,6 +665,215 @@ class TestUpdateItem:
         assert fake.get_issue(OWNER, REPO, n)["title"] == "core: the t item under test"  # nothing was written
 
 
+class TestUpdateNewDomainFields:
+    """`affected`, `tags` and `working-branch` on the write path.
+
+    All three widen the SEC-2 allowlist, which is a security control, so the
+    first thing these pin is that the widening is exactly three names wide.
+    """
+
+    def test_the_allowlist_grew_by_exactly_the_three_named_fields(self):
+        allowed = (
+            set(core._UPDATE_DIRECT)
+            | set(core._UPDATE_FACETS)
+            | set(core._UPDATE_MULTI_FACETS)
+            | set(core._UPDATE_BLOCK_FIELDS)
+        )
+        assert allowed == {
+            "title", "body", "stage", "kind", "area", "effort", "impact", "source",
+            "tags", "affected", "working-branch",
+        }
+
+    def test_affected_is_written_into_the_block_not_into_a_label(self, fake):
+        n = _seed_item(fake)
+
+        r = core.update_item(
+            fake,
+            id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"affected": "plugin/lib/backlog/sync.py, tests/"},
+        )
+
+        assert r["status"] == "ok"
+        assert r["data"]["affected"] == ["plugin/lib/backlog/sync.py", "tests"]
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "affected: [plugin/lib/backlog/sync.py, tests]" in body
+        assert not any(name.startswith("affected") for name in r["data"]["labels"])
+
+    def test_affected_prose_is_refused_and_nothing_is_written(self, fake):
+        n = _seed_item(fake)
+        before = fake.get_issue(OWNER, REPO, n)["body"]
+
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"affected": "the whole sync path"}
+        )
+
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+        assert fake.get_issue(OWNER, REPO, n)["body"] == before
+
+    def test_an_empty_value_clears_rather_than_being_ignored(self, fake):
+        n = _seed_item(fake)
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"affected": "docs"})
+
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"affected": ""})
+
+        assert r["data"]["affected"] == []
+        assert "affected:" not in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_a_body_edit_and_a_block_field_in_one_call_both_land(self, fake):
+        """Two writers of `patch["body"]` would mean the last one wins and the
+        other's edit vanished — silently, since both report ok."""
+        n = _seed_item(fake)
+
+        r = core.update_item(
+            fake,
+            id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "rewritten human text", "affected": "docs"},
+        )
+
+        assert r["status"] == "ok"
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "rewritten human text" in body
+        assert "affected: [docs]" in body
+
+    def test_tags_set_the_whole_set_so_a_tag_can_be_removed(self, fake):
+        n = _seed_item(fake)
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"tags": "perf,api"})
+
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"tags": "perf"})
+
+        assert r["data"]["tags"] == ["perf"]
+        assert "tag:api" not in r["data"]["labels"]
+
+    def test_tags_accumulate_rather_than_swapping_like_a_single_facet(self, fake):
+        """The whole reason `tags` cannot ride `_UPDATE_FACETS`: that loop strips
+        every other label sharing the prefix, so a second tag would remove the
+        first."""
+        n = _seed_item(fake)
+
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"tags": "perf,api"})
+
+        assert r["data"]["tags"] == ["api", "perf"]
+
+    def test_clearing_tags_strips_every_tag_label(self, fake):
+        n = _seed_item(fake)
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"tags": "perf,api"})
+
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"tags": ""})
+
+        assert r["data"]["tags"] == []
+        assert not [n for n in r["data"]["labels"] if n.startswith("tag:")]
+
+    def test_tags_leave_the_other_facet_labels_alone(self, fake):
+        n = _seed_item(fake, labels=["stage:ready", "area:cli"])
+
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"tags": "perf"})
+
+        assert r["data"]["stage"] == "ready" and r["data"]["area"] == "cli"
+
+    def test_an_unpushed_working_branch_is_refused(self, fake):
+        """An unpublished branch is an invisible claim, which fails at the only
+        job the field has."""
+        n = _seed_item(fake)
+
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"working-branch": "octo/repo@feat/ghost"}
+        )
+
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+        assert "PUSHED" in r["error"]["message"]
+        assert "working_branch" not in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_the_refusal_points_at_the_branch_not_at_the_field(self, fake):
+        """An agent is at this write, so a refusal is an auto-fix prompt — and the
+        wrong fix (rename the branch, point elsewhere) has to be named as wrong
+        rather than left as the path of least resistance."""
+        n = _seed_item(fake)
+
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"working-branch": "octo/repo@feat/ghost"}
+        )
+
+        assert "Push the branch" in r["error"]["message"]
+        assert "do not rename" in r["error"]["message"]
+
+    def test_a_pushed_working_branch_is_accepted_and_stored(self, fake):
+        n = _seed_item(fake)
+        fake.push_branch(OWNER, REPO, "feat/real")
+
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"working-branch": "octo/repo@feat/real"}
+        )
+
+        assert r["status"] == "ok"
+        assert r["data"]["working_branch"] == "octo/repo@feat/real"
+        assert "working_branch: octo/repo@feat/real" in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_an_unqualified_working_branch_is_refused_before_any_io(self, fake):
+        n = _seed_item(fake)
+        fake.push_branch(OWNER, REPO, "feat/real")
+        calls_before = len(fake.calls)
+
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"working-branch": "feat/real"}
+        )
+
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+        assert len(fake.calls) == calls_before, "a syntactic refusal must cost no round-trip"
+
+    def test_the_branch_is_checked_in_the_repo_the_field_names(self, fake):
+        """`backlog_service_repo` can differ from the code repo — checking the
+        branch in the backlog's own repo would be the wrong question."""
+        n = _seed_item(fake)
+        fake.push_branch("other", "code", "feat/elsewhere")
+
+        r = core.update_item(
+            fake,
+            id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"working-branch": "other/code@feat/elsewhere"},
+        )
+
+        assert r["status"] == "ok"
+
+    def test_an_unreachable_provider_never_reports_the_branch_missing(self, fake):
+        """"I could not ask" and "it is not there" are different answers, and only
+        one of them should refuse the write as invalid."""
+        n = _seed_item(fake)
+        fake.push_branch(OWNER, REPO, "feat/real")
+        fake.set_unreachable(True)
+
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"working-branch": "octo/repo@feat/real"}
+        )
+
+        assert r["status"] == "error"
+        assert r["error"]["code"] == "unavailable"
+
+    def test_clearing_the_working_branch_asks_the_provider_nothing(self, fake):
+        n = _seed_item(fake)
+        fake.push_branch(OWNER, REPO, "feat/real")
+        core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"working-branch": "octo/repo@feat/real"}
+        )
+
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"working-branch": ""})
+
+        assert r["status"] == "ok" and r["data"]["working_branch"] is None
+        assert "working_branch" not in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_the_new_fields_preserve_the_existing_block(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = "text\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"
+        n = fake.create_issue(
+            OWNER, REPO, title="core: the t item under test", body=body, labels=[]
+        )["number"]
+
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"affected": "docs"})
+
+        new_body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "id_aliases: [BKL-0007]" in new_body
+        assert new_body.count("```prawduct") == 1
+
+
 class TestCommentItem:
     def test_comment_is_attributed_to_the_api_identity(self, fake):
         n = _seed_item(fake)

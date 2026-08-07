@@ -540,6 +540,80 @@ def set_status(
 _UPDATE_DIRECT: tuple[str, ...] = ("title", "body")
 _UPDATE_FACETS: tuple[str, ...] = ("stage", "kind", "area", "effort", "impact", "source")
 
+# A DELIBERATE WIDENING of the SEC-2 allowlist, in two new categories rather than
+# three more facets — and the split is mechanical, not stylistic.
+#
+# `_UPDATE_FACETS` is a label *swap*: add the new value, strip every other label
+# with the same prefix. That is exactly right for `area` (exactly-one, wired to
+# the title) and exactly wrong for both new shapes. `tags` is the one facet that
+# accumulates, so a swap would silently make setting a second tag remove the
+# first; `affected` and `working-branch` are body-block fields, so routing them
+# through the facet loop would write `affected:…` labels for data that has no
+# label representation at all.
+#
+# Every field a caller may write still passes one allowlist check, which is the
+# property SEC-2 rests on: reject off-list keys rather than ignoring them, so a
+# mass-assignment attempt or a caller typo surfaces instead of being dropped.
+_UPDATE_MULTI_FACETS: tuple[str, ...] = ("tags",)
+_UPDATE_BLOCK_FIELDS: tuple[str, ...] = ("affected", "working-branch")
+
+#: Domain field name → the `prawduct:` block key that carries it. The block's
+#: keys are snake_case throughout and are additive-only-forever (Data Model §7),
+#: so `working-branch` keeps its kebab spelling on the CLI and gets its snake one
+#: in the body; this mapping is the single place the two meet on the write side
+#: (`encode.Block.working_branch` is its read-side twin).
+_BLOCK_KEY: dict[str, str] = {"affected": "affected", "working-branch": "working_branch"}
+
+
+def _prepare_new_fields(fields: dict):
+    """Validate ``affected`` / ``tags`` / ``working-branch`` offline.
+
+    Returns ``(block_values, desired_tags, working_ref)`` or an **error
+    envelope**. ``block_values`` maps each named block field to its formatted
+    value (``None`` = clear the key); ``desired_tags`` is the whole intended tag
+    set or ``None`` when the caller did not name ``tags``; ``working_ref`` is the
+    parsed ``(owner, repo, branch)`` whose pushed-ness still has to be asked of
+    the provider, or ``None``.
+
+    ``None`` means *not named* everywhere here and an empty value means *clear* —
+    the two are never conflated, because conflating them is how "unset this
+    field" becomes a silent no-op.
+    """
+    block_values: dict[str, str | None] = {}
+    working_ref: tuple[str, str, str] | None = None
+
+    if "affected" in fields:
+        entries, message = encode.validate_affected(encode.parse_list(fields["affected"] or ""))
+        if message:
+            return error("validation", message, details={"field": "affected"})
+        block_values["affected"] = encode.format_list(entries) if entries else None
+
+    if "working-branch" in fields:
+        raw = (fields["working-branch"] or "").strip()
+        if not raw:
+            block_values["working-branch"] = None
+        else:
+            parsed = encode.parse_working_branch(raw)
+            if parsed is None:
+                return error(
+                    "validation",
+                    f"`working-branch` must be repo-qualified as owner/repo@branch "
+                    f"(got {raw!r}) — the backlog repo and the code repo are not "
+                    "necessarily the same one, so a bare branch name names nothing.",
+                    details={"field": "working-branch"},
+                )
+            working_ref = parsed
+            block_values["working-branch"] = raw
+
+    desired_tags: list[str] | None = None
+    if "tags" in fields:
+        tags, message = encode.validate_tags(encode.parse_list(fields["tags"] or ""))
+        if message:
+            return error("validation", message, details={"field": "tags"})
+        desired_tags = tags
+
+    return block_values, desired_tags, working_ref
+
 
 def update_item(
     transport: Transport,
@@ -553,20 +627,31 @@ def update_item(
     """Field-wise edit with optimistic CAS (CC2) and a mass-assignment guard (SEC-2).
 
     Writes **only** the documented item fields the caller named — ``title``,
-    ``body``, and the soft-enum facets (``stage``/``kind``/``area``/``effort``/
-    ``impact``/``source``). ``status`` goes through set-status, ``assignee`` through
-    claim; any other key — a native/protected field (``node_id``, ``number``,
-    ``state``, ``history``), an ``automated:`` marker, foreign attribution — is
-    **rejected**, never written from request input (attribution comes only from the
-    API identity). When ``expected_updated_at`` is supplied, a live ``updated_at``
-    mismatch returns a **retryable ``conflict``** (the lost-update guard) so the
-    caller re-reads and retries.
+    ``body``, the soft-enum facets (``stage``/``kind``/``area``/``effort``/
+    ``impact``/``source``), the multi-valued ``tags``, and the block-authoritative
+    ``affected`` / ``working-branch``. ``status`` goes through set-status,
+    ``assignee`` through claim; any other key — a native/protected field
+    (``node_id``, ``number``, ``state``, ``history``), an ``automated:`` marker,
+    foreign attribution — is **rejected**, never written from request input
+    (attribution comes only from the API identity). When ``expected_updated_at``
+    is supplied, a live ``updated_at`` mismatch returns a **retryable
+    ``conflict``** (the lost-update guard) so the caller re-reads and retries.
+
+    ``tags`` sets the **whole** tag set (missing ones added, absent ones stripped)
+    rather than appending, because that is the only semantics under which a
+    caller can *remove* a tag; ``tags=`` clears them. ``affected=`` and
+    ``working-branch=`` likewise clear their block keys.
     """
     if not fields:
         return error("validation", "update requires at least one field to change")
     # SEC-2 — reject any field off the allowlist. Reject (not silently ignore) so a
     # mass-assignment attempt or a caller typo is surfaced, never quietly dropped.
-    allowed = set(_UPDATE_DIRECT) | set(_UPDATE_FACETS)
+    allowed = (
+        set(_UPDATE_DIRECT)
+        | set(_UPDATE_FACETS)
+        | set(_UPDATE_MULTI_FACETS)
+        | set(_UPDATE_BLOCK_FIELDS)
+    )
     rejected = sorted(key for key in fields if key not in allowed)
     if rejected:
         return error(
@@ -592,6 +677,15 @@ def update_item(
         if refusal is not None:
             return refusal
 
+    # Same discipline for the three new fields: everything decidable without the
+    # network is decided here, so a malformed value costs no round-trip. The one
+    # question that cannot be answered offline — is this branch actually pushed —
+    # waits until the transport try below.
+    prepared = _prepare_new_fields(fields)
+    if isinstance(prepared, dict):
+        return prepared
+    block_values, desired_tags, working_ref = prepared
+
     warnings: list[str] = []
     try:
         # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
@@ -612,12 +706,37 @@ def update_item(
                 },
             )
 
+        # The pushed-ref check (Cache Spec §3): `working-branch` names a branch
+        # another agent can go and look at, so an unpublished one is an invisible
+        # claim — the single failure the field exists to prevent. Asked before the
+        # PATCH so a refusal leaves the item untouched.
+        if working_ref is not None:
+            branch_owner, branch_repo, branch_name = working_ref
+            if not transport.branch_exists(branch_owner, branch_repo, branch_name):
+                return error(
+                    "validation",
+                    f"`working-branch` must name a PUSHED branch, and "
+                    f"{branch_owner}/{branch_repo}@{branch_name} is not on the remote. "
+                    "Push the branch, then set the field — do not rename the branch or "
+                    "point the field at a different one to get past this.",
+                    details={"repo": f"{branch_owner}/{branch_repo}", "branch": branch_name},
+                )
+
         # Direct fields — one PATCH; labels are untouched by this. A body edit
         # preserves the existing prawduct: block (block-authoritative fields live
         # only in the body — Data Model §2); other direct fields pass through.
         patch: dict = {k: fields[k] for k in _UPDATE_DIRECT if k in fields and k != "body"}
+        # The block-authoritative fields ride the SAME body, layered on top of any
+        # `--body` edit in this call rather than beside it: two `patch["body"]`
+        # writers would mean the last one wins and the other's edit is lost.
+        new_body = None
         if "body" in fields:
-            patch["body"] = _body_update_preserving_block(issue.get("body") or "", fields["body"])
+            new_body = _body_update_preserving_block(issue.get("body") or "", fields["body"])
+        for name, value in block_values.items():
+            base = new_body if new_body is not None else (issue.get("body") or "")
+            new_body = encode.upsert_block_field(base, _BLOCK_KEY[name], value)
+        if new_body is not None:
+            patch["body"] = new_body
         if patch:
             issue = transport.update_issue(nid.owner, nid.repo, nid.number, fields=patch)
 
@@ -641,6 +760,23 @@ def update_item(
                 transport.add_labels(nid.owner, nid.repo, nid.number, [new_label])
             for old in present:
                 if old != new_label:
+                    transport.remove_label(nid.owner, nid.repo, nid.number, old)
+
+        # Tags — a set reconciliation, not a swap. `desired_tags` is the whole
+        # intended set, so what is missing is added and what is absent is
+        # stripped; that is the only shape under which a caller can remove one.
+        # Add before remove, the same never-empty-window discipline as above.
+        if desired_tags is not None:
+            prefix = f"{encode.TAG_FACET}:"
+            present_tags = [n for n in encode.label_names(issue) if n.startswith(prefix)]
+            wanted = [f"{prefix}{value}" for value in desired_tags]
+            to_add = [name for name in wanted if name not in present_tags]
+            if to_add:
+                prov = provision.ensure_labels(transport, nid.owner, nid.repo, to_add)
+                warnings.extend(prov.warnings)
+                transport.add_labels(nid.owner, nid.repo, nid.number, to_add)
+            for old in present_tags:
+                if old not in wanted:
                     transport.remove_label(nid.owner, nid.repo, nid.number, old)
 
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)

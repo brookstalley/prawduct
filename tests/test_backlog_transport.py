@@ -390,3 +390,59 @@ class TestListIssuesSince:
         gh.list_issues("o", "r", state="all")
 
         assert "since=" not in gh.calls[0][1]
+
+
+class TestBranchExists:
+    """The pushed-ref probe behind `working-branch`, exercised through the real
+    `GhTransport` stack — `FakeGitHub` sits at the transport *interface*, so it
+    cannot reach `_api`/`_run`/`_map_failure`, which is where this lives.
+
+    Endpoint verified live against the backing repo rather than recalled:
+    `GET /repos/{owner}/{repo}/branches/{branch}` answers 200 for a pushed branch,
+    including a slash-bearing name un-escaped in the path, and 404 `Branch not
+    found` otherwise.
+    """
+
+    def test_a_pushed_branch_is_true(self):
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout='{"name": "main"}'))
+
+        assert gh.branch_exists("o", "r", "main") is True
+        assert gh.calls[0] == ["api", "repos/o/r/branches/main"]
+
+    def test_a_slash_bearing_branch_goes_into_the_path_unescaped(self):
+        """Verified live: the endpoint takes `feature/backlog-service` directly in
+        the path. Percent-encoding the slash would 404 every branch that has one,
+        which is most of them."""
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout='{"name": "feat/a/b"}'))
+
+        gh.branch_exists("o", "r", "feat/a/b")
+
+        assert gh.calls[0] == ["api", "repos/o/r/branches/feat/a/b"]
+
+    def test_a_missing_branch_is_false_not_an_error(self):
+        gh = _ProbeGh(
+            _FakeProc(returncode=1, stdout="", stderr="gh: Branch not found (HTTP 404)")
+        )
+
+        assert gh.branch_exists("o", "r", "ghost") is False
+
+    def test_an_auth_failure_still_raises_rather_than_answering_no(self):
+        """"I could not ask" is not "it is not there" — collapsing the two would
+        let an expired token silently refuse every `working-branch` write as if
+        the branch had never been pushed."""
+        gh = _ProbeGh(_FakeProc(returncode=4, stdout="", stderr="gh: auth required"))
+
+        with pytest.raises(tp.TransportError) as excinfo:
+            gh.branch_exists("o", "r", "main")
+
+        assert excinfo.value.code == "auth"
+
+    def test_an_unreachable_provider_still_raises(self):
+        gh = _ProbeGh(
+            _FakeProc(returncode=1, stdout="", stderr="dial tcp: could not resolve host")
+        )
+
+        with pytest.raises(tp.TransportError) as excinfo:
+            gh.branch_exists("o", "r", "main")
+
+        assert excinfo.value.code == "unavailable"

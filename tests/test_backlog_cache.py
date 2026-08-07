@@ -33,6 +33,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 import pytest  # noqa: E402
 
 from lib.backlog import cache, cachequery, core, sync  # noqa: E402
+from lib.backlog import encode  # noqa: E402
 from lib.backlog.encode import parse_iso  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
@@ -84,14 +85,41 @@ def _domain_rows(repo_dir):
 
     ``fetched_at`` is excluded deliberately: it records when the fetch happened,
     not what the provider said, so it is the one column that legitimately differs
-    across two rebuilds."""
+    across two rebuilds.
+
+    The derived ``item_affected`` rows ride along. They are not a second home for
+    the fact — they are re-derived from ``item.affected`` in the same transaction,
+    exactly as the text index is — but they *are* stored state, and a rebuild that
+    reproduced the columns while leaving the index behind would be a difference
+    this invariant exists to catch."""
     path = cache.cache_path(repo_dir)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     columns = [c for c in cache.ITEM_COLUMNS if c != "fetched_at"]
     rows = conn.execute(f"SELECT {', '.join(columns)} FROM item ORDER BY id").fetchall()
+    index = conn.execute(
+        "SELECT item_id, path FROM item_affected ORDER BY item_id, path"
+    ).fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    return [dict(row) for row in rows] + [dict(row) for row in index]
+
+
+def _affecting(repo_dir, changed_paths):
+    """The items whose `affected` list covers any of `changed_paths`.
+
+    The consumer-1/4 intersection, run the way the schema is shaped for it: each
+    changed file is expanded into its ancestor directories and matched by
+    **equality**, so `item_affected_path` serves it."""
+    keys = sorted({key for path in changed_paths for key in encode.path_ancestors(path)})
+    conn = sqlite3.connect(str(cache.cache_path(repo_dir)))
+    placeholders = ", ".join("?" for _ in keys)
+    rows = conn.execute(
+        f"SELECT DISTINCT item_id FROM item_affected WHERE path IN ({placeholders}) "
+        "ORDER BY item_id",
+        keys,
+    ).fetchall()
+    conn.close()
+    return [row[0] for row in rows]
 
 
 class TestCachePath:
@@ -265,6 +293,42 @@ class TestSchemaMismatch:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(cursor)")}
         conn.close()
         assert "fetched_at" in columns
+
+    def test_the_v3_shaped_store_is_discarded_when_the_item_columns_grew(
+        self, fake, repo_dir
+    ):
+        """The same defect one schema on, and the reason `3` is a literal here for
+        the same reason `2` is above: it is the number a store carrying the
+        pre-`affected` item shape was stamped with, not a reference to the current
+        constant. Written as `SCHEMA_VERSION - 1` it would slide forward on every
+        future bump and stop policing this shape at all.
+
+        Without the bump the failure is total: version matches, the store is kept,
+        and every `_write_rows` then fails on three missing columns — so a sync
+        that used to work reports `unavailable` forever, with the rebuild that
+        would fix it gated behind the check that just approved the store."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        path = cache.cache_path(repo_dir)
+        raw = sqlite3.connect(str(path))
+        raw.execute("DROP TABLE item")
+        raw.execute(
+            "CREATE TABLE item (id TEXT PRIMARY KEY, title TEXT, body TEXT, status TEXT, "
+            "stage TEXT, area TEXT, effort TEXT, impact TEXT, source TEXT, created_at TEXT, "
+            "updated_at TEXT, etag TEXT, fetched_at TEXT NOT NULL)"
+        )
+        raw.execute("PRAGMA user_version=3")  # the shape that shipped as v3
+        raw.commit()
+        raw.close()
+
+        result = _rebuild(fake, repo_dir)
+
+        assert result["status"] == "ok", result
+        assert result["data"]["written"] > 0
+        conn = cache.open_store(repo_dir, create=False)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(item)")}
+        conn.close()
+        assert {"affected", "tags", "working_branch"} <= columns
 
     def test_a_corrupt_store_reports_unavailable_rather_than_raising(self, repo_dir):
         path = cache.cache_path(repo_dir)
@@ -583,6 +647,121 @@ class TestRebuildEquivalence:
         _rebuild(fake, repo_dir)
 
         assert _domain_rows(repo_dir) != tampered
+
+
+class TestNewDomainFields:
+    """`affected`, `tags` and `working-branch` in the store.
+
+    Zero cache-only fields: each is written on the provider — two in the body
+    block, one in labels — so the rebuild-equivalence invariant above stops being
+    trivially satisfiable and starts carrying these three.
+    """
+
+    def _tagged_item(self, fake):
+        item_id = _file(fake, title="cache: an item carrying every new field", area="backlog")
+        fake.push_branch(OWNER, REPO, "feat/live")
+        assert core.update_item(
+            fake,
+            id_raw=item_id,
+            fields={
+                "affected": "plugin/lib/backlog, docs/x.md",
+                "tags": "perf,api",
+                "working-branch": f"{OWNER}/{REPO}@feat/live",
+            },
+        )["status"] == "ok"
+        return item_id
+
+    def test_all_three_reach_the_store(self, fake, repo_dir):
+        item_id = self._tagged_item(fake)
+
+        _rebuild(fake, repo_dir)
+
+        conn = cache.open_store(repo_dir, create=False)
+        row = conn.execute(
+            "SELECT affected, tags, working_branch FROM item WHERE id = ?", (item_id,)
+        ).fetchone()
+        conn.close()
+        assert row["affected"] == "[plugin/lib/backlog, docs/x.md]"
+        assert row["tags"] == "[api, perf]"
+        assert row["working_branch"] == f"{OWNER}/{REPO}@feat/live"
+
+    def test_an_item_with_none_of_them_stores_null_not_an_empty_list(self, fake, repo_dir):
+        """`[]` and "no value" would be two spellings of one state, and every
+        reader would have to know both."""
+        item_id = _file(fake, title="cache: an item carrying none of them")
+
+        _rebuild(fake, repo_dir)
+
+        conn = cache.open_store(repo_dir, create=False)
+        row = conn.execute(
+            "SELECT affected, tags, working_branch FROM item WHERE id = ?", (item_id,)
+        ).fetchone()
+        conn.close()
+        assert row["affected"] is None and row["tags"] is None
+        assert row["working_branch"] is None
+
+    def test_they_survive_a_write_drop_rebuild_cycle(self, fake, repo_dir):
+        """The Chunk-01 invariant becoming load-bearing rather than trivial."""
+        self._tagged_item(fake)
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        before = _domain_rows(repo_dir)
+        assert any(row.get("tags") for row in before), "the corpus must exercise the new fields"
+
+        cache.cache_path(repo_dir).unlink()
+        assert _rebuild(fake, repo_dir, now=NOW + timedelta(days=2))["status"] == "ok"
+
+        assert _domain_rows(repo_dir) == before
+
+    def test_an_item_intersects_a_changed_file_set(self, fake, repo_dir):
+        item_id = self._tagged_item(fake)
+        _file(fake, title="cache: an unrelated item nobody changed", area="critic")
+        _rebuild(fake, repo_dir)
+
+        assert _affecting(repo_dir, ["plugin/lib/backlog/sync.py"]) == [item_id]
+        assert _affecting(repo_dir, ["docs/x.md"]) == [item_id]
+        assert _affecting(repo_dir, ["plugin/bin/prawduct-hook"]) == []
+
+    def test_a_sibling_directory_is_not_an_overlap(self, fake, repo_dir):
+        """`plugin/lib` must not swallow `plugin/libexec` — a string-prefix match
+        would, and it would read as a confident hit rather than as a miss."""
+        self._tagged_item(fake)
+        _rebuild(fake, repo_dir)
+
+        assert _affecting(repo_dir, ["plugin/lib-other/x.py"]) == []
+
+    def test_removing_a_path_removes_its_index_row(self, fake, repo_dir):
+        """An upsert that only ever inserted would leave the old set matching
+        forever — a stale *positive*, which reads as an answer rather than as a
+        gap."""
+        item_id = self._tagged_item(fake)
+        _rebuild(fake, repo_dir)
+        assert _affecting(repo_dir, ["docs/x.md"]) == [item_id]
+
+        assert core.update_item(
+            fake, id_raw=item_id, fields={"affected": "plugin/lib/backlog"}
+        )["status"] == "ok"
+        _sync(fake, repo_dir, now=NOW + timedelta(hours=1))
+
+        assert _affecting(repo_dir, ["docs/x.md"]) == []
+        assert _affecting(repo_dir, ["plugin/lib/backlog/sync.py"]) == [item_id]
+
+    def test_the_index_and_the_column_cannot_disagree(self, fake, repo_dir):
+        """Both come from one input — the column — so there is no second field to
+        drift out of step with."""
+        item_id = self._tagged_item(fake)
+        _rebuild(fake, repo_dir)
+
+        conn = cache.open_store(repo_dir, create=False)
+        column = conn.execute("SELECT affected FROM item WHERE id = ?", (item_id,)).fetchone()[0]
+        indexed = [
+            row[0]
+            for row in conn.execute(
+                "SELECT path FROM item_affected WHERE item_id = ? ORDER BY path", (item_id,)
+            ).fetchall()
+        ]
+        conn.close()
+        assert sorted(encode.parse_list(column)) == indexed
 
 
 class TestFullTextIndex:

@@ -98,6 +98,9 @@ class _RepoState:
         # Replication window (QRY-1): number → remaining reads to hide it for,
         # modelling GitHub's observed brief 404-after-create window.
         self.hidden: dict[int, int] = {}
+        # Published branch names (`push_branch`). Empty by default, which is the
+        # honest default: a branch is invisible to everyone else until pushed.
+        self.branches: set[str] = set()
 
 
 class FakeGitHub(Transport):
@@ -413,6 +416,23 @@ class FakeGitHub(Transport):
         if etag is not None and etag == current:
             return Validator(changed=False, etag=etag)
         return Validator(changed=True, etag=current)
+
+    def push_branch(self, owner: str, repo: str, branch: str) -> None:
+        """Publish a branch on the fake remote — the setup half of
+        ``branch_exists``. A branch nobody pushed is simply absent, which is the
+        state ``working-branch`` has to refuse."""
+        self._repo(owner, repo).branches.add(branch)
+
+    def branch_exists(self, owner: str, repo: str, branch: str) -> bool:
+        """Whether ``branch`` is published on ``owner/repo``.
+
+        A read like any other, so ``set_unreachable`` / ``set_rate_limited``
+        reach it: the real check is a network call, and a fake that answered it
+        from local state with the network down would let a write claim it
+        verified something it could not have."""
+        self._maybe_unreachable()
+        self.calls.append(("branch_exists", owner, repo, branch))
+        return branch in self._repo(owner, repo).branches
 
     @staticmethod
     def _assignee_matches(issue: dict, assignee: str | None) -> bool:

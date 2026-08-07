@@ -400,6 +400,64 @@ class TestUpdateCli:
         assert code == 2
 
 
+class TestNewFieldFlagsCli:
+    """The CLI half of `affected` / `tags` / `working-branch`.
+
+    `--tags` (plural) sets the whole set on `update`; `--tag` (singular) filters
+    on `list`. Two spellings for two verbs, which is worth a test precisely
+    because they look like a typo for each other.
+    """
+
+    def test_update_tags_affected_and_working_branch_in_one_call(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        fake.push_branch("octo", "repo", "feat/live")
+
+        code, out, _err = _run(
+            [
+                "update", item_id,
+                "--tags", "perf,api",
+                "--affected", "plugin/lib",
+                "--working-branch", "octo/repo@feat/live",
+                "--json",
+            ],
+            fake, capsys,
+        )
+
+        assert code == 0
+        data = json.loads(out)["data"]
+        assert data["tags"] == ["api", "perf"]
+        assert data["affected"] == ["plugin/lib"]
+        assert data["working_branch"] == "octo/repo@feat/live"
+
+    def test_an_unpushed_working_branch_exits_validation(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+
+        code, out, _err = _run(
+            ["update", item_id, "--working-branch", "octo/repo@feat/ghost", "--json"],
+            fake, capsys,
+        )
+
+        assert code == 2
+        assert json.loads(out)["error"]["code"] == "validation"
+
+    def test_list_filters_on_one_tag(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        _run(["update", item_id, "--tags", "perf", "--json"], fake, capsys)
+        _file(fake, capsys)
+
+        code, out, _err = _run(["list", "--repo", REPO, "--tag", "perf", "--json"], fake, capsys)
+
+        assert code == 0
+        assert [i["id"] for i in json.loads(out)["data"]["items"]] == [item_id]
+
+    def test_the_help_names_all_three_new_flags(self):
+        for flag in ("--tags", "--affected", "--working-branch", "--tag T"):
+            assert flag in cli._HELP, flag
+
+
 class TestCommentCli:
     def test_comment_json(self, capsys):
         fake = FakeGitHub()

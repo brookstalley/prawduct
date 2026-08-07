@@ -79,10 +79,24 @@ def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> list[dict]:
                 "source": item.get("source"),
                 "created_at": issue.get("created_at"),
                 "updated_at": issue.get("updated_at"),
+                # The three fields decode from the block and the labels, so they
+                # rebuild from the provider like everything else here. Stored in
+                # the block's own `[a, b]` spelling (`None` when empty, so a
+                # reader never has to tell `[]` from "no value") — which is what
+                # lets `cache._write_affected` re-derive the path index from the
+                # column instead of from a parallel field that could drift.
+                "affected": _list_column(item.get("affected")),
+                "tags": _list_column(item.get("tags")),
+                "working_branch": item.get("working_branch"),
                 "etag": None,
             }
         )
     return rows
+
+
+def _list_column(values: list[str] | None) -> str | None:
+    """A decoded list as its stored column value, or ``None`` when empty."""
+    return encode.format_list(values) if values else None
 
 
 def full_rebuild(

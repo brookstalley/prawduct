@@ -44,7 +44,10 @@ from .core import (
 from .transport import Transport, TransportError, paginate
 
 # The structured facets ``list`` accepts as label filters (each an AND term).
-_LABEL_FACETS: tuple[str, ...] = ("stage", "kind", "area", "effort", "impact", "source")
+# ``tag`` rides the same mechanism because a tag *is* a namespaced label — the
+# difference is that an item may carry several, so this filters on one of them
+# rather than selecting the item's single value.
+_LABEL_FACETS: tuple[str, ...] = ("stage", "kind", "area", "effort", "impact", "source", "tag")
 
 
 # --- list --------------------------------------------------------------------
@@ -67,7 +70,9 @@ def list_items(
     ``filters`` may carry ``status`` (two-axis: mapped to state + label, then
     refined on the decoded status because closed ``shipped``/``dropped`` differ
     only in ``state_reason`` which is not a list parameter), the label facets
-    (``stage``/``kind``/``area``/``effort``/``impact``/``source``), ``assignee``
+    (``stage``/``kind``/``area``/``effort``/``impact``/``source``/``tag`` — the
+    last selects items carrying that ONE tag, since an item may hold many),
+    ``assignee``
     (a login, ``none`` for unassigned, ``*`` for any), and an explicit ``state``
     (``open``/``closed``/``all``; default ``open``). Non-prawduct issues are
     dropped (PROV-2).

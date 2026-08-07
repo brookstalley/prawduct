@@ -75,6 +75,22 @@ OPEN_STATUSES: tuple[str, ...] = tuple(
 # vocabulary (unknown → warning); `status` is closed (unknown → hard reject).
 OPEN_FACETS: tuple[str, ...] = ("kind", "area", "effort", "impact", "source")
 
+#: The one **multi-valued** facet. Every other facet is exactly-one and its
+#: writer is a label *swap*; `tag:` accumulates instead.
+#:
+#: `tags` is folksonomy where `area` is taxonomy: `area` is exactly-one and wired
+#: to the title by ``normalize_title(title, area)``, which is what makes a list
+#: scannable, so ad-hoc per-team metadata has nowhere to go without this. It is
+#: namespaced like every other prawduct label (GV6) — a bare `perf` label would
+#: collide with whatever a repo already calls its own.
+#:
+#: **Binding rule: nothing ever gates on tags.** No check, gate, verdict or
+#: refusal may read them. That rule is the entire reason synonym drift
+#: (`perf`/`performance`/`speed`) is harmless here rather than corrosive, and it
+#: is stated at the constant deliberately: it has to arrive before the first
+#: check someone would otherwise be tempted to build on them.
+TAG_FACET: str = "tag"
+
 # The prawduct-namespaced label prefixes (Data Model §3). An issue carrying *any*
 # of these — or a `prawduct:` body block — is an in-scope backlog item; one with
 # neither is a plain repo issue the adapter ignores as out-of-scope (PROV-2/GV6).
@@ -90,6 +106,11 @@ NAMESPACED_LABEL_PREFIXES: tuple[str, ...] = (
     "verified:",
     "superseded-by:",
     "import-key:",  # idempotency-only marker for an id-less imported item (Data Model §5)
+    # Multi-valued folksonomy (TAG_FACET). Listing it here widens
+    # `is_prawduct_issue` — an issue carrying nothing but a `tag:` label is ours
+    # — which is the intended reading: a tag is prawduct metadata, so an item
+    # someone tagged and never faceted is still an item, not a plain repo issue.
+    "tag:",
 )
 
 _BLOCK_RE = re.compile(
@@ -143,6 +164,32 @@ class Block:
         """
         value = self.fields.get("claimed_at")
         return value or None
+
+    def affected(self) -> list[str]:
+        """The structured path list — what code this item touches, no prose.
+
+        Block-authoritative and unmirrored. Read **tolerantly**, the same posture
+        as every other block field: entries are normalized (see
+        :func:`normalize_affected`) and nothing is ever rejected here. The hard
+        rejection lives on the write path (:func:`validate_affected`), because a
+        body someone hand-edited into prose must still decode to *something* a
+        reader can see rather than failing the whole item.
+        """
+        return normalize_affected(parse_list(self.fields.get("affected")))
+
+    def working_branch(self) -> str | None:
+        """The repo-qualified branch someone is working this item on, or ``None``.
+
+        **The block key is ``working_branch``; the domain and CLI spelling is
+        ``working-branch``** (``--working-branch``). The block's keys are
+        snake_case throughout (``id_aliases``, ``claimed_at``, ``superseded_by``,
+        ``original_title``) and block keys are additive-only-forever (Data Model
+        §7) — the spelling chosen here is the spelling always, so it matches its
+        neighbours rather than the flag. This accessor is the one place the two
+        spellings meet.
+        """
+        value = self.fields.get("working_branch")
+        return value.strip() if value and value.strip() else None
 
     def get(self, key: str) -> str | None:
         return self.fields.get(key)
@@ -333,6 +380,176 @@ def parse_iso(ts: str | None) -> "datetime | None":
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+# --- affected / tags / working-branch ----------------------------------------
+#
+# The three fields the cache specification adds to the domain model. Two live in
+# the `prawduct:` block (`affected`, `working_branch`) and one lives in labels
+# (`tag:`), so nothing here is a cache-only field — drop the cache, rebuild from
+# the provider, and all three come back.
+#
+# Read tolerantly, written strictly. The parse/normalize half never rejects, so a
+# hand-edited body still decodes; the `validate_*` half is the write path's guard
+# and returns a message rather than raising (project preference: envelopes, not
+# exceptions).
+
+#: What an `affected` entry may not contain once normalized. Whitespace is the
+#: prose tell — "the sync path and its tests" is a sentence, `plugin/lib/sync.py`
+#: is a path — and a comma is the block's own list separator, so an entry
+#: carrying one could never round-trip.
+_AFFECTED_FORBIDDEN = (" ", "\t", ",")
+
+#: Wrappers a writer naturally reaches for around a path. Stripped rather than
+#: rejected: a model emitting `` `plugin/lib/sync.py` `` means the same path, and
+#: incidental strictness at a model-output seam is a latent fail-close.
+_AFFECTED_WRAPPERS = "`'\"" + "“”‘’"
+
+
+def normalize_affected(entries: list[str]) -> list[str]:
+    """Canonicalize `affected` entries. Never rejects — see the section note.
+
+    Four normalizations, each collapsing a spelling that means the same path:
+    surrounding quotes/backticks are stripped, a leading ``./`` or ``/`` is
+    removed (entries are repo-relative), and a trailing ``/`` is dropped so
+    ``plugin/lib/`` and ``plugin/lib`` are one entry rather than two that match
+    identically. Empty entries disappear.
+    """
+    out: list[str] = []
+    for raw in entries:
+        value = (raw or "").strip().strip(_AFFECTED_WRAPPERS).strip()
+        while value.startswith("./"):
+            value = value[2:]
+        value = value.lstrip("/").rstrip("/")
+        if value and value not in out:
+            out.append(value)
+    return out
+
+
+def validate_affected(entries: list[str]) -> tuple[list[str], str | None]:
+    """Normalize and check `affected` for the write path.
+
+    Returns ``(normalized, error_message_or_None)``. The one rejection is prose:
+    an entry that still carries whitespace or a comma after normalization is not
+    a path, and the message says where prose belongs instead. That boundary is
+    the field's whole reason for existing — `refs` already mixes artifacts with
+    paths and annotations, which is exactly why it can never be matched against a
+    changed-file set (Cache Spec §3).
+    """
+    normalized = normalize_affected(entries)
+    bad = [e for e in normalized if any(ch in e for ch in _AFFECTED_FORBIDDEN)]
+    if bad:
+        return normalized, (
+            f"`affected` takes repo-relative paths only, no prose — rejected {bad!r}. "
+            "Put the annotation in the item body and leave a bare path here "
+            "(e.g. plugin/lib/backlog/sync.py, or plugin/lib/backlog for the directory)."
+        )
+    return normalized, None
+
+
+def path_ancestors(path: str) -> list[str]:
+    """Every `affected` entry a changed file answers to: itself, then each
+    ancestor directory.
+
+    This is what makes the intersection an **equality** match, which is what an
+    index can serve. The natural phrasing — does any entry prefix this path —
+    runs ``? LIKE path || '%'``, whose variable side is the wrong one for an
+    index on ``path``; expanding the changed file into its ancestors inverts it
+    into ``path IN (…)``. Changed sets are diffs and paths are shallow, so the
+    expansion is small.
+
+    Entries are exact paths or directory prefixes — **not globs.** A glob would
+    reintroduce the unindexable direction and buys nothing a directory prefix
+    does not already give.
+    """
+    value = normalize_affected([path])
+    if not value:
+        return []
+    parts = value[0].split("/")
+    return ["/".join(parts[: i + 1]) for i in range(len(parts))][::-1]
+
+
+def affected_matches(entries: list[str], changed_paths) -> list[str]:
+    """The `affected` entries touched by ``changed_paths`` (consumers 1 and 4).
+
+    The set intersection that replaces a reviewer reading item text and
+    inferring. Empty means this item claims no overlap with the change — which
+    is a different answer from *this item records no paths*, and the caller that
+    cares must check ``entries`` itself rather than reading emptiness as either.
+    """
+    keys: set[str] = set()
+    for path in changed_paths:
+        keys.update(path_ancestors(path))
+    return [entry for entry in normalize_affected(entries) if entry in keys]
+
+
+#: The longest a `tag:`-prefixed label may be. GitHub caps a label name at 50
+#: characters, and a tag that cannot become a label is a tag that cannot be
+#: written — better refused at the seam than discovered as a 422.
+_MAX_LABEL_NAME = 50
+
+
+def normalize_tags(values: list[str]) -> list[str]:
+    """Canonicalize a tag set: trimmed, de-duplicated, **sorted**.
+
+    Sorted because tags are a set — order carries no meaning — and because the
+    provider returns labels in its own order, which would otherwise make the
+    cache's stored spelling depend on label creation order and turn
+    rebuild-equivalence into a flaky comparison of the same fact.
+    """
+    seen: list[str] = []
+    for raw in values:
+        value = (raw or "").strip()
+        if value and value not in seen:
+            seen.append(value)
+    return sorted(seen)
+
+
+def validate_tags(values: list[str]) -> tuple[list[str], str | None]:
+    """Normalize and check a tag set for the write path.
+
+    Returns ``(normalized, error_message_or_None)``. There is deliberately **no
+    vocabulary check** — an open folksonomy has nothing to be unknown against,
+    and the binding rule that nothing gates on tags is what makes that safe
+    (:data:`TAG_FACET`). The only rejections are structural: a comma (the block
+    and CLI list separator) and a value too long to become a label.
+    """
+    normalized = normalize_tags(values)
+    for value in normalized:
+        if "," in value:
+            return normalized, f"a tag may not contain a comma (it separates tags): {value!r}"
+        if len(f"{TAG_FACET}:{value}") > _MAX_LABEL_NAME:
+            return normalized, (
+                f"tag {value!r} is too long — `{TAG_FACET}:<tag>` must fit "
+                f"{_MAX_LABEL_NAME} characters"
+            )
+    return normalized, None
+
+
+def parse_working_branch(value: str | None) -> tuple[str, str, str] | None:
+    """Split ``owner/repo@branch`` into ``(owner, repo, branch)``, or ``None``.
+
+    **Repo-qualified because ``backlog_service_repo`` can differ from the code
+    repo** (Cache Spec §3) — an unqualified branch name names nothing on the
+    machine that has to go and look at it. ``@`` is the separator because
+    ``owner/repo`` cannot contain one, so splitting on the *first* ``@`` is
+    unambiguous even for a branch called ``feat/a@b`` or ``feat/a/b``.
+    """
+    if not value:
+        return None
+    text = value.strip()
+    left, sep, branch = text.partition("@")
+    if not sep:
+        return None
+    owner, slash, repo = left.partition("/")
+    branch = branch.strip()
+    if not (owner and slash and repo and branch):
+        return None
+    if "/" in repo or any(ch.isspace() for ch in text):
+        return None
+    if branch.startswith("/") or branch.endswith("/"):
+        return None
+    return owner, repo, branch
 
 
 # --- Soft enums --------------------------------------------------------------
@@ -578,6 +795,12 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "impact": facet_value(labels, "impact"),
         "source": facet_value(labels, "source"),
         "assignee": assignee,
+        # The three fields Cache Spec §3 adds. `tags` is label-authoritative and
+        # multi-valued; `affected` and `working_branch` are block-authoritative.
+        # All three decode tolerantly — the write path is where they are refused.
+        "tags": normalize_tags(_facet_values(labels, TAG_FACET)),
+        "affected": block.affected(),
+        "working_branch": block.working_branch(),
         "claimed_at": block.claimed_at(),
         "automated": block.get("automated") == "true",
         "url": issue.get("html_url"),

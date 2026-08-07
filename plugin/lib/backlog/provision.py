@@ -39,6 +39,10 @@ _FACET_COLORS: dict[str, str] = {
     "verified": "0e8a16",
     "superseded-by": "b60205",
     "import-key": "ededed",  # idempotency-only marker for an id-less import (Data Model §5)
+    # The multi-valued folksonomy facet (encode.TAG_FACET). Open like
+    # kind/area/effort/impact/source, so it is created on demand as values appear
+    # and never seeded into `base_labels()` — there is no vocabulary to seed.
+    "tag": "d4c5f9",
 }
 _DEFAULT_COLOR = "ededed"
 
@@ -85,9 +89,9 @@ def label_spec(name: str) -> tuple[str, str]:
 def base_labels() -> list[str]:
     """The closed-vocabulary base taxonomy a repo is provisioned with.
 
-    Open facets (``kind``/``area``/``effort``/``impact``/``source``) have no fixed
-    vocabulary, so their labels are created on demand by ``file`` as values
-    appear — not seeded here.
+    Open facets (``kind``/``area``/``effort``/``impact``/``source``/``tag``) have
+    no fixed vocabulary, so their labels are created on demand by ``file`` /
+    ``update`` as values appear — not seeded here.
     """
     labels = [f"stage:{value}" for value in encode.STAGE_VALUES]
     labels += [f"status:{value}" for value in encode.STATUS_OPEN_LABELS]

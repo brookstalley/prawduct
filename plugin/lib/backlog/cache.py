@@ -65,7 +65,7 @@ from .core import error, log_diag, ok
 # machine during the chunk that introduced the column, and read as an empty
 # result rather than as an error. "Unreleased, so nobody has an old store" is a
 # claim about other people's machines, not about the format.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "backlog-cache.sqlite3"
@@ -91,9 +91,21 @@ ITEM_COLUMNS: tuple[str, ...] = (
     "source",
     "created_at",
     "updated_at",
+    "affected",
+    "tags",
+    "working_branch",
     "etag",
     "fetched_at",
 )
+
+# `affected` and `working_branch` are read by the change-overlap intersection
+# (`item_affected` below) and by ready-work's working-branch exclusion. `tags` is
+# the ONE column here whose justification is not a consumer query, and saying so
+# is better than letting a reader assume one exists: it is carried because
+# rebuild-equivalence doubles as the **provider-adequacy** test — a domain field
+# the cache never stores is a field that test never exercises, so a backend
+# unable to represent tags would pass it. It is therefore the first column the
+# no-dead-fields rule should take if no cache-served tag query ever appears.
 
 _SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
@@ -109,12 +121,37 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
         source     TEXT,
         created_at TEXT,
         updated_at TEXT,
+        affected   TEXT,
+        tags       TEXT,
+        working_branch TEXT,
         etag       TEXT,
         fetched_at TEXT NOT NULL
     )
     """,
     "CREATE INDEX item_status_area ON item(status, area)",
     "CREATE INDEX item_updated_at ON item(updated_at)",
+    # The `affected` index — a table, not an index on `item.affected`, and both
+    # exist for the same reason `item_fts` exists beside `item.title`/`item.body`.
+    #
+    # `item.affected` is the verbatim domain value: what the item says, what
+    # rebuild-equivalence compares, what a reader sees. It cannot serve the query,
+    # though, because the intersection runs entry-contains-changed-file
+    # (`plugin/lib` matches `plugin/lib/sync.py`) and phrasing that as
+    # `WHERE ? LIKE affected || '%'` puts the variable on the side no index can
+    # help. Exploding the list into one row per path lets the caller expand each
+    # changed file into its ancestor directories (`encode.path_ancestors`) and
+    # match by equality, which this index does serve.
+    #
+    # Derived from the column in the same transaction, never written
+    # independently, so the two can no more disagree than the text index can.
+    """
+    CREATE TABLE item_affected (
+        item_id TEXT NOT NULL,
+        path    TEXT NOT NULL,
+        PRIMARY KEY (item_id, path)
+    )
+    """,
+    "CREATE INDEX item_affected_path ON item_affected(path)",
     """
     CREATE TABLE comment (
         item_id    TEXT NOT NULL,
@@ -431,6 +468,28 @@ def _write_rows(conn: sqlite3.Connection, rows: list[dict], *, fetched_at: str, 
                 "INSERT INTO item_fts (item_id, title, body) VALUES (?, ?, ?)",
                 (row.get("id"), row.get("title"), row.get("body")),
             )
+        _write_affected(conn, row)
+
+
+def _write_affected(conn: sqlite3.Connection, row: dict) -> None:
+    """Re-derive one item's ``item_affected`` rows from its ``affected`` column.
+
+    **Parsed from the column, not from a second field on the row**, so the index
+    and the value it indexes have exactly one input and cannot drift apart. The
+    delete is unconditional: an item whose paths were removed must lose its
+    index rows, and an upsert that only ever inserted would leave the old set
+    matching forever — the failure mode is a stale *positive*, which is worse
+    than a miss because it reads as a confident answer.
+    """
+    from .encode import parse_list  # noqa: PLC0415 — lazy: cache.py is provider-neutral
+
+    item_id = row.get("id")
+    conn.execute("DELETE FROM item_affected WHERE item_id = ?", (item_id,))
+    for path in parse_list(row.get("affected")):
+        conn.execute(
+            "INSERT OR IGNORE INTO item_affected (item_id, path) VALUES (?, ?)",
+            (item_id, path),
+        )
 
 
 def apply_incremental(
@@ -510,6 +569,7 @@ def replace_items(
     try:
         with conn:
             conn.execute("DELETE FROM item")
+            conn.execute("DELETE FROM item_affected")
             if fts:
                 conn.execute("DELETE FROM item_fts")
             _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)

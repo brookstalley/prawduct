@@ -87,7 +87,7 @@ count, not an addend — never add the two.
 
 ### list [filters]
 `prawduct-hook backlog list --repo <r> --json [--status S] [--stage S] [--kind K] [--area A]
-[--effort E] [--impact I] [--source SRC] [--assignee A|none|*] [--state open|closed|all]
+[--effort E] [--impact I] [--source SRC] [--tag T] [--assignee A|none|*] [--state open|closed|all]
 [--sort created|updated] [--direction asc|desc] [--per-page N] [--page N] [--untriaged]` → render the
 tabular view
 (`ID · title · effort · impact · area · status`) from `data`'s items. Map the human/`--flag` filters
@@ -145,7 +145,20 @@ Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
   no-op); a close records `closed_by` natively.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
-  wins — correct for the interactive single-actor case). **`--title` is gated**: a new title failing
+  wins — correct for the interactive single-actor case).
+- **tags** (`--tags a,b`) → sets the **whole** set: absent tags are stripped, `--tags ''` clears
+  them. That is the only semantics under which a caller can remove one. Tags are an open
+  folksonomy — invent values freely, and never build a check that reads them (`--tag T` on `list`
+  filters by one of them).
+- **affected** (`--affected p1,p2`) → repo-relative paths only, **no prose**; a directory covers
+  everything under it. An entry carrying whitespace is refused (exit 2) — put the annotation in the
+  body. This is what lets a reviewer intersect items against a changed-file set instead of reading
+  item text and inferring.
+- **working-branch** (`--working-branch owner/repo@branch`) → who is working the item, replacing
+  the claim concept. It must name a **pushed** branch (exit 2 otherwise — push it, don't rename it
+  or point the field somewhere else) and must be **repo-qualified**, because the backlog repo and
+  the code repo are not necessarily the same one. `--working-branch ''` clears it; a merge clears
+  the claim by itself, since the branch is gone. **`--title` is gated**: a new title failing
   §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
   item's *stored* title does not conform — that is deliberate, so archiving an old item never forces
   a drive-by retitle; the result carries an advisory `lint[]` saying the title was left alone. The item envelope does **not** surface an

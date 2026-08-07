@@ -81,6 +81,28 @@ class TestList:
         assert result["data"]["count"] == 2
         assert {i["title"] for i in result["data"]["items"]} == {"query: the ready one item under test", "query: the ready two item under test"}
 
+    def test_tag_filter_returns_the_tagged_items(self, fake):
+        tagged = _file(fake, title="query: the tagged item under test")
+        other = _file(fake, title="query: the untagged item under test")
+        core.update_item(fake, id_raw=tagged, fields={"tags": "perf,api"})
+
+        result = query.list_items(fake, owner=OWNER, repo=REPO, filters={"tag": "perf"})
+
+        assert result["status"] == "ok"
+        assert [i["id"] for i in result["data"]["items"]] == [tagged]
+        assert other not in {i["id"] for i in result["data"]["items"]}
+
+    def test_the_tag_filter_selects_one_of_an_item_s_several_tags(self, fake):
+        """`tag` rides the label-facet mechanism but is the one multi-valued
+        facet, so filtering picks items carrying that tag among others — it does
+        not select an item's single value the way `area` does."""
+        tagged = _file(fake, title="query: the multiply tagged item under test")
+        core.update_item(fake, id_raw=tagged, fields={"tags": "perf,api,cli"})
+
+        for one in ("perf", "api", "cli"):
+            result = query.list_items(fake, owner=OWNER, repo=REPO, filters={"tag": one})
+            assert [i["id"] for i in result["data"]["items"]] == [tagged], one
+
     def test_read_your_writes_item_appears_immediately(self, fake):
         new_id = _file(fake, title="query: the fresh item under test")
         result = query.list_items(fake, owner=OWNER, repo=REPO, filters={"state": "all"})

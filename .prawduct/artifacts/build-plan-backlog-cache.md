@@ -121,43 +121,51 @@ W1 promises about double-picks.
 
 - [x] Chunk 01: Cache store — schema, rebuild, visible age, and the rebuild-equivalence invariant
 - [x] Chunk 02: Incremental sync — cursor watermark and conditional revalidation
-- [ ] Chunk 03: The three new domain fields and their write path
+- [x] Chunk 03: The three new domain fields and their write path
 - [ ] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
 - [ ] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
 - [ ] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
-Context: **Chunk 02 is built and green** — the suite passes clean (the count lives in the evidence
+Context: **Chunk 03 is built and green** — the suite passes clean (the count lives in the evidence
 store, which is tree-keyed; `prawduct-hook test-status` reads it). Verified live against the
-452-item backlog: rebuild 6.25s writing a provider-derived watermark; first incremental pass fetched
-only the 2-item overlap window in 0.83s; second pass took a **304 in 0.39s with zero pages fetched**,
-and all 452 `item.etag` values stayed NULL with the list validator on the cursor, as designed.
-(Chunk 01 shipped `05d09f3`, Critic `rev-20260807T145538Z` clean.) Tracking item **#621**; **#230**
-is discharged by Chunks 02 + 05.
+452-item backlog: `#621` now carries `affected`, `tags: [backlog-service, cache]` and — after a
+round trip through the refusal — no `working-branch`; `list --tag cache` returns exactly it; and the
+store, at **schema 4**, intersects `#621`'s three `affected` entries against this branch's real
+32-file changed set and matches, while an unrelated changed set matches nothing. The pushed-ref
+check was exercised against the **live** API in both directions: `@feat/backlog-cache` (unpushed)
+refused, `@develop` accepted. (Chunk 01 shipped `05d09f3`, Critic `rev-20260807T145538Z` clean;
+Chunk 02 `fbdf273`, cumulative `rev-20260807T155720Z-e9acddfa` then verify
+`rev-20260807T162342Z-98cc1462` at 0/0/0.) Tracking item **#621**; **#230** is discharged by Chunks
+02 + 05.
 
-**Chunk 02's verify-api step paid for itself and then some** — it falsified the chunk's own stated
-mechanism (see the DECISION in that entry), and the two defects it exposed downstream were both
-invisible to a green suite: the rebuild was writing a **local-clock** watermark that the next sync
-would hand back to the provider as `since`, and `cachequery._freshness` was reading that watermark
-as the cache's age, which only looked right while the watermark happened to be a local stamp. Both
-fixed here; both now pinned by tests that fail on the mutation.
+**Chunk 03's expensive decisions are all recorded in its entry, and two of them changed the plan.**
+The chunk's own Deliverables line said to name the three fields in `_UPDATE_FACETS`; that is the
+label-swap loop, so taken literally it would have written `affected:` labels for a body-block field
+and single-valued the one deliberately multi-valued one. The allowlist grew two new categories
+instead, and the Deliverables line was corrected in place rather than left to be found as a
+divergence. The second: the "`affected` index" is a **table** (`item_affected(item_id, path)`),
+because the intersection runs entry-contains-changed-file and an index on the joined column cannot
+serve that direction — the query expands each changed file into its ancestor directories and matches
+by equality. It is the `item_fts` shape exactly, so it is not a second home for the fact.
 
-All four of Chunk 01's demoted observations are discharged: (a) `since` has a reader and a correct
-value; (b) the age test goes through `cachequery`, the path that serves it, and no longer names a
-fallback that no longer exists; (c) the atomicity test is named in `Tests:` below and verified
-non-vacuous by mutation; (d) this chunk's review carries `--chunk 02`.
+**One tension is named rather than resolved:** `item.tags` is the only column here with no consumer
+query. `list --tag` is served **live** off the provider's label filter, not from the cache. The
+column is carried because rebuild-equivalence doubles as the provider-adequacy test and a field the
+cache never stores is a field that test never exercises — but under the every-column-is-a-Q-projection
+rule it is the first candidate for removal if Chunks 04–06 ship no cache-served tag query. Both
+`cache.py` and `data-model.md` §6 say so at the column.
 
-**Chunk 02 is closed.** Cumulative review `rev-20260807T155720Z-e9acddfa` (1 blocking, 5 warnings,
-6 notes — ten fixed, two accepted), verify `rev-20260807T162342Z-98cc1462` clean at 0/0/0. Both
-demoted observations were then acted on rather than carried: `SCHEMA_VERSION` is **3** (v2 gained
-`cursor.fetched_at` without a bump, which made every sync against a v2-shaped store fail forever
-with the self-heal gated behind the check that had just approved it — this bit this machine during
-the chunk and was misread as an empty result), and the `NotImplementedError` degradation path now
-has tests that fail under mutation.
+**Five mutations were run rather than assumed**, each caught by exactly the test written for it: a
+prefix-instead-of-equality matcher (`plugin/lib` swallowing `plugin/libexec`); an `item_affected`
+upsert that never deletes (a stale *positive*, which reads as an answer); a block-field writer that
+ignores a same-call `--body` edit; tag writes with swap semantics; and `SCHEMA_VERSION` left at 3,
+which reproduces the exact historical failure — *table item has no column named affected*, forever,
+with the rebuild gated behind the check that just approved the store.
 
-**Chunk 03 note:** the schema is at **v3**. Adding the three `item` columns needs a bump to **4** —
-and per `cache.py`'s comment block, bump on *any* column change even pre-release.
-
-**Next up: Chunk 03** — the three new domain fields and their write path.
+**Next up: Chunk 04** — the consumer query surface (grouping, FTS, alias resolution). It depends on
+this chunk and on 01. Note for it: `cachequery.py` is the module that reads the store, and the
+`item_affected` intersection above currently has no wrapper there — the SQL shape is proven by test
+and by the live run, but consumers 1 and 4 need it exposed.
 
 **#529 blocks one consumer, not this plan.** #621's `blocked-by #529` edge was **dropped by owner
 ruling (2026-08-07)**: a blocker that suppresses a whole item from ranked ready-work because one of
@@ -168,7 +176,6 @@ sliver of Chunk 06, and that carve-out is written down in that chunk where the w
 **The `claim` machinery is retired by this work** (owner ruling, 2026-08-07 — see Requirements
 Confidence). It lands in Chunk 05, code and prose together.
 
-Next: Chunk 01.
 
 ## Scaffolding
 
@@ -472,15 +479,83 @@ the same shape that makes `transport.py` the sole egress.
   `updated_at`; the revisit probe is retired), leaving `refs` and `closed-by` plus the new fields.
   Record that reshaping on the item here — an item whose scope silently moved is the same defect as
   a fact with two homes.
+
+  **[DECISION: the three fields' substrates, spellings and validation — 2026-08-07.]** The plan
+  named the fields; it did not pin how each is carried, and every one of these is a persisted-format
+  choice, which is lock-in measured by reversal cost. Five, in the order they bite:
+
+  1. **`tags` → `tag:<value>` labels, namespaced like every other prawduct label.** Cache Spec §3
+     says tags "map natively to labels"; Data Model §3 says *every* prawduct label is
+     `<facet>:`-namespaced so it can never collide with a repo's existing labels (GV6). Bare
+     folksonomy labels would break GV6 on the first repo that already has a `perf` label. `tag`
+     therefore joins `KNOWN_FACETS` (provisioned on demand, like the other open facets — never in
+     `base_labels()`, which is closed vocabularies only) and `NAMESPACED_LABEL_PREFIXES`, which
+     widens `is_prawduct_issue`: an issue carrying only a `tag:` label is now ours. That is the
+     intended reading, not a side effect.
+  2. **`tag` is the one MULTI-valued facet**, so it cannot ride `_UPDATE_FACETS`. That loop is a
+     label *swap* — add the new value, strip every other label with the same prefix — which is
+     exactly right for `area` (exactly-one, wired to the title) and exactly wrong for a folksonomy.
+     `update <id> tags=a,b` therefore sets the full tag set (add the missing, strip the absent),
+     which is the only semantics that lets a caller *remove* a tag; `tags=` (empty) clears them.
+  3. **`affected` and `working-branch` live in the body block** (Cache Spec §5), and the block's key
+     convention is snake_case (`id_aliases`, `claimed_at`, `superseded_by`). So the block keys are
+     `affected` and `working_branch`, while the domain/CLI spelling stays `working-branch`
+     (`--working-branch`). One mapping, stated once in `encode.py` beside the accessor, because the
+     alternative — kebab in the block — puts one odd key among six snake ones forever, and block
+     keys are additive-only-forever (Data Model §7): the spelling chosen here is the spelling
+     always.
+  4. **`working-branch` is `owner/repo@branch`, and "pushed" is verified against the provider, not
+     against the local clone.** Repo-qualified because `backlog_service_repo` can differ from the
+     code repo (Cache Spec §3); `@` because `owner/repo` cannot contain one, so a first-`@` split is
+     unambiguous even for `feat/a/b` branch names. The pushed-ref check is a new
+     `transport.branch_exists` — **verify-api done live 2026-08-07** against the backing repo:
+     `GET /repos/{owner}/{repo}/branches/{branch}` returns 200 with `.name` for a pushed branch
+     (including slash-bearing ones, un-escaped in the path) and 404 `Branch not found` otherwise,
+     which `_map_failure` already maps to `not_found`. **Rejected: checking the local clone's
+     remote-tracking refs.** It is free and offline, but it answers "did *this* clone last fetch a
+     ref by that name" — which is a stale proxy in both directions, and it cannot answer at all for
+     a repo this machine has not cloned. The field's one job is making a claim visible to *other*
+     agents, so the check has to run where they would look.
+  5. **The "`affected` index" is a table, not an index on a column, and both exist.** `item` gains
+     three columns (`affected`, `tags`, `working_branch`) carrying the verbatim domain values —
+     those are what rebuild-equivalence compares and what a reader sees. Beside them sits
+     `item_affected(item_id, path)` with an index on `path`: an index on the joined text column
+     could not serve the actual query, because the intersection runs *entry-contains-changed-file*
+     (`plugin/lib/` matches `plugin/lib/core.py`) and `WHERE ? LIKE path || '%'` uses no index. The
+     query instead expands each changed path into its ancestor prefixes and matches by equality,
+     which the index does serve. **This is the `item_fts` shape exactly** — a derived index table
+     beside the column it indexes, written in the same transaction, rebuilt from the same provider
+     rows — so it is not a second home for the fact, for the same reason FTS is not. Its consumer
+     (`cachequery`) lands in Chunk 04, which already declares `Depends on: Chunks 01, 03`; this
+     chunk ships the storage, the ancestor-expansion matcher, and the test that proves the shape
+     answers a real changed-file set.
+
+  **[DECISION: the SEC-2 allowlist grows a THIRD category, not three more facets — 2026-08-07.]**
+  This chunk's Deliverables say to name all three fields in `_UPDATE_FACETS`. Taken literally that
+  is wrong on mechanism: `_UPDATE_FACETS` is the label-swap loop, so it would write `affected:…` and
+  `working-branch:…` labels for two fields the spec puts in the body block, and would single-value
+  the one field that is deliberately multi-valued. The *intent* — all three pass through the SEC-2
+  mass-assignment allowlist, and the widening reads as a decision rather than as a diff nobody
+  mentioned — is honoured exactly: the allowlist becomes
+  `_UPDATE_DIRECT | _UPDATE_FACETS | _UPDATE_MULTI_FACETS | _UPDATE_BLOCK_FIELDS`, each name written
+  down, each with its own writer. The Deliverables line below is corrected in place rather than left
+  to be discovered as a divergence.
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `documentation/backlog-service-cache-spec.md` §3;
   `documentation/backlog-service-data-model.md` §§6, 7
 - **Deliverables:** `affected` / `tags` / `working-branch` in `plugin/lib/backlog/encode.py`
-  (`decode_item` and the `Block` accessors); the three cache columns and the `affected` index; the
+  (`decode_item`, the `Block` accessors, the normalize/validate pair for each, and the
+  ancestor-expansion matcher); the three `item` columns plus the `item_affected` index table in
+  `plugin/lib/backlog/cache.py` at schema **v4**, populated by `plugin/lib/backlog/sync.py`; the
   write path in `plugin/lib/backlog/core.py` — which means **naming all three in the SEC-2
-  mass-assignment allowlist** (`_UPDATE_FACETS`), a deliberate widening of a security control that
-  should read as a decision rather than as a diff nobody mentioned; the `--tag` filter on `list` in
-  `plugin/lib/backlog/query.py` and `plugin/lib/backlog/cli.py`
+  mass-assignment allowlist**, a deliberate widening of a security control that should read as a
+  decision rather than as a diff nobody mentioned, and which per the DECISION above is
+  `_UPDATE_MULTI_FACETS` + `_UPDATE_BLOCK_FIELDS` beside `_UPDATE_FACETS` rather than three more
+  facets; `transport.branch_exists` for the pushed-ref check; the `--tag` filter on `list` in
+  `plugin/lib/backlog/query.py` and `plugin/lib/backlog/cli.py` (with `--tags` / `--affected` /
+  `--working-branch` on `update`); and the registry rows all of that owes —
+  `documentation/backlog-service-data-model.md` §§1.1, 2, 3, 6, `cli._HELP`, and the backlog
+  skill's `adapter-mode.md`
 - **Tests:** new (the catalogue predates these fields) — round-trip through the block for each
   field; an unpublished or repo-unqualified `working-branch` rejected at the write; `affected`
   rejects prose; rebuild-equivalence still holds with all three populated, which is the Chunk 01

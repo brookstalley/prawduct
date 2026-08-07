@@ -299,6 +299,9 @@ class Transport:
     ) -> Validator:
         raise NotImplementedError
 
+    def branch_exists(self, owner: str, repo: str, branch: str) -> bool:
+        raise NotImplementedError
+
     def list_blocked_by(self, owner: str, repo: str, number: int) -> list[dict]:
         raise NotImplementedError
 
@@ -509,6 +512,31 @@ class GhTransport(Transport):
         if status == 304:
             return Validator(changed=False, etag=etag)
         return Validator(changed=True, etag=headers.get("etag"))
+
+    def branch_exists(self, owner: str, repo: str, branch: str) -> bool:
+        """Whether ``branch`` is **published** on ``owner/repo``.
+
+        The pushed-ref check behind ``working-branch``. An unpublished branch is
+        an invisible claim, which fails at the only job that field has, so the
+        question has to be asked where another agent would look — the provider —
+        rather than of this clone's remote-tracking refs, which answer a stale
+        proxy question and cannot answer at all for a repo this machine has never
+        cloned.
+
+        Verified live against the backing repo rather than recalled:
+        ``GET /repos/{owner}/{repo}/branches/{branch}`` answers 200 for a pushed
+        branch — **including a slash-bearing name, un-escaped in the path** — and
+        404 ``Branch not found`` otherwise. Only ``not_found`` becomes ``False``;
+        auth, rate-limit and network failures keep raising, because "I could not
+        ask" must never be reported as "it is not there".
+        """
+        try:
+            self._api(["api", f"repos/{owner}/{repo}/branches/{branch}"])
+        except TransportError as exc:
+            if exc.code == "not_found":
+                return False
+            raise
+        return True
 
     def _run_conditional(self, args: list[str]) -> tuple[int | None, dict[str, str]]:
         """Run a ``gh api -i`` read, tolerating the not-modified answer.
