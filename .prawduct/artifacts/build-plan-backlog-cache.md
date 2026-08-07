@@ -122,21 +122,45 @@ W1 promises about double-picks.
 - [x] Chunk 01: Cache store — schema, rebuild, visible age, and the rebuild-equivalence invariant
 - [x] Chunk 02: Incremental sync — cursor watermark and conditional revalidation
 - [x] Chunk 03: The three new domain fields and their write path
-- [ ] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
+- [x] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
 - [ ] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
 - [ ] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
-Context: **Chunk 03 is built and green** — the suite passes clean (the count lives in the evidence
-store, which is tree-keyed; `prawduct-hook test-status` reads it). Verified live against the
-452-item backlog: `#621` now carries `affected`, `tags: [backlog-service, cache]` and — after a
-round trip through the refusal — no `working-branch`; `list --tag cache` returns exactly it; and the
-store, at **schema 4**, intersects `#621`'s three `affected` entries against this branch's real
-32-file changed set and matches, while an unrelated changed set matches nothing. The pushed-ref
-check was exercised against the **live** API in both directions: `@feat/backlog-cache` (unpushed)
-refused, `@develop` accepted. (Chunk 01 shipped `05d09f3`, Critic `rev-20260807T145538Z` clean;
-Chunk 02 `fbdf273`, cumulative `rev-20260807T155720Z-e9acddfa` then verify
-`rev-20260807T162342Z-98cc1462` at 0/0/0.) Tracking item **#621**; **#230** is discharged by Chunks
-02 + 05.
+Context: **Chunk 04 is built and green** — the suite passes clean (the count lives in the evidence
+store, which is tree-keyed; `prawduct-hook test-status` reads it). Verified live against the real
+backlog at **schema 5**: the v4 store rebuilt to 453 items with the text index intact, and every
+query in spec §2's union was run and its answers read. 181 open items (203 shipped + 69 dropped =
+453, and the briefing's 184 *pending* reconciles exactly — `counts` includes the three untriaged
+issues the cache correctly holds out of scope, so the two numbers disagree by design rather than by
+defect); 51 area groups; a real `id:PFX` alias (`BND-1S4K` → `#157`, one of 371 indexed aliases)
+resolving through the alias table; a short spelling normalizing; a miss coming back as
+`resolved: false` rather than an error. The intersection ran against this branch's real **529**
+changed files and returned exactly `#621`, matched on its three `affected` entries, while an
+unrelated changed set returned nothing. **The coverage stamp was exercised against the live provider
+through all three sync outcomes** — rebuild, then an incremental sync that wrote one row and stored a
+validator, then a genuine **304** that wrote nothing and still advanced the stamp (19:10:15 →
+19:10:17) while preserving the validator. That last step is the one the finding was about: before
+this chunk the not-modified sync — the steady state — returned before touching the store, so the
+cheapest and most common success left no trace and the age went on growing. (Chunk 01 shipped `05d09f3`, Critic `rev-20260807T145538Z`
+clean; Chunk 02 `fbdf273`, cumulative `rev-20260807T155720Z-e9acddfa` then verify
+`rev-20260807T162342Z-98cc1462` at 0/0/0; Chunk 03 `a4276f3`, cumulative
+`rev-20260807T171120Z-485805c5` at 0 blocking then verify `rev-20260807T173116Z-bb6a879f` at
+0/0/0.) Tracking item **#621**; **#230** is discharged by Chunks 02 + 05.
+
+**Chunk 04 answered all four findings Chunk 03's review carried into it, and the answers are in its
+entry below.** The two that changed the shape of the store: the visible age now comes from a
+per-scope **coverage-confirmed-at** stamp that every successful sync advances — the 304 included,
+which previously returned before touching the store — and **`item.tags` was removed**, the
+every-column-is-a-Q-projection rule applied on the trigger the column's own comment named. Both are
+schema **v5**, along with the new `item_alias` index that alias resolution needed.
+
+**A latent defect surfaced that would have bitten every user at this very bump.** `sqlite_master`
+lists an FTS5 virtual table *after* its own shadow tables, so the rebuild's drop loop deleted
+`item_fts_config` first and `DROP TABLE item_fts` then failed with `vtable constructor failed` —
+swallowed by a bare `except … continue`, and mislabelled downstream as "SQLite built without FTS5".
+Every schema-version rebuild left an `item_fts` that `has_fts()` reported as present and every query
+raised on. Fixed at all three seams and regression-tested through `search` rather than through
+`has_fts`, which is the function that returned the wrong answer.
 
 **Chunk 03's expensive decisions are all recorded in its entry, and two of them changed the plan.**
 The chunk's own Deliverables line said to name the three fields in `_UPDATE_FACETS`; that is the
@@ -162,10 +186,14 @@ ignores a same-call `--body` edit; tag writes with swap semantics; and `SCHEMA_V
 which reproduces the exact historical failure — *table item has no column named affected*, forever,
 with the rebuild gated behind the check that just approved the store.
 
-**Next up: Chunk 04** — the consumer query surface (grouping, FTS, alias resolution). It depends on
-this chunk and on 01. Note for it: `cachequery.py` is the module that reads the store, and the
-`item_affected` intersection above currently has no wrapper there — the SQL shape is proven by test
-and by the live run, but consumers 1 and 4 need it exposed.
+**Next up: Chunk 05** — the code consumers: the two restored norm probes, `pick` off the cache, and
+the end of the `claim` machinery. It depends on Chunk 04, which now exposes everything it reads.
+Two notes for it. `cachequery.resolve` is what `probe_dead_why` (consumer 14) and
+`probe_stalled_transition` (consumer 15) both want — one call answers *resolves? / dead? /
+updated_at*, so neither probe needs a query of its own. And the `relationship` table is still empty:
+nothing writes it and nothing reads it, which makes it the one table in the schema with no
+Q-projection behind it. Chunk 05 is where its blocker fan-out arrives — or where the same rule that
+took `tags` takes it.
 
 **#529 blocks one consumer, not this plan.** #621's `blocked-by #529` edge was **dropped by owner
 ruling (2026-08-07)**: a blocker that suppresses a whole item from ranked ready-work because one of
@@ -575,7 +603,9 @@ the same shape that makes `transport.py` the sole egress.
 
 - **Carried in from Chunk 03's review** (`rev-20260807T171120Z-485805c5`, 0 blocking). Four findings
   land here because this is the chunk whose consumers bind to them, and riding a commit that is
-  being made anyway costs no extra review round:
+  being made anyway costs no extra review round. **All four are answered — see "As built" below for
+  what each became:** (1) the coverage stamp, (2) `tags` removed, (3) the intersection exposed as
+  `cachequery.items_affecting`, (4) `optimize` after a rebuild.
 
   1. **The visible age has been over-reporting since Chunk 02, and this chunk's consumers are the
      ones that will bind to it.** `_freshness` answers with `MIN(item.fetched_at)`, which was the
@@ -633,6 +663,94 @@ the same shape that makes `transport.py` the sole egress.
 - **Acceptance criteria:** every query in spec §2's union answerable from the cache alone; a
   historical `#249` citation still resolves after its record carries a new live id; each query run
   against this repo's real corpus returns an answer a reader would accept
+
+  **As built.** Eight functions carry the union, each naming the consumers it serves, and the two
+  invariants they inherit — unavailable is never empty, every payload carries a visible age — are
+  asserted *across the whole surface* rather than once per function, so a query added later without
+  going through `_serve` fails rather than quietly opting out. One function serves consumers 5, 7,
+  14 and 15 together: all four ask the same lookup a different question (*resolves? / status? /
+  dead? / how long since it moved?*), and splitting them would be four resolutions of one id.
+
+  `[DECISION: `item.tags` is REMOVED — the trigger the column's own comment named fired |
+  Chunk 03 shipped `tags` with its justification stated as explicitly *not* a consumer query: it was
+  carried because rebuild-equivalence doubles as the provider-adequacy test, so a domain field the
+  cache never stores is one that test never exercises. The named trigger was "the first release of
+  the query surface that ships no cache-served tag query takes the column", and this is that
+  release: `list --tag` is served **live** off the provider's label filter and none of spec §2's
+  fifteen consumers asks about a tag. The alternative — inventing a cache-served tag query to
+  justify the column — would be manufacturing a requirement to protect a field, which is the defect
+  one rung up from the one the rule prevents. Two things make removal the cheap side rather than the
+  brave one: a cache is **rebuildable**, so re-adding the column later costs a version bump and a
+  re-fetch rather than a migration, which is exactly why the usual persisted-format lock-in argument
+  for keeping it does not apply here; and `tags` → labels is the mapping every candidate provider
+  satisfies most trivially, which the live `--tag` filter exercises end to end anyway. What is lost
+  is precise and small: rebuild-equivalence no longer mechanically covers this one field. The test
+  asserts the removal from **both** ends — absent from the store, still filterable on the provider —
+  because half of it would be indistinguishable from the field having been lost | user can
+  veto/override]`
+
+  `[DECISION: the visible age is served from a per-scope coverage stamp, and the 304 path writes |
+  `cursor.fetched_at` becomes `cursor.coverage_confirmed_at`, renamed *and widened*, and the
+  widening is the substantive half. A rename alone would have left the not-modified sync where it
+  was — returning before touching the store — and that is the path where the over-reporting was
+  worst, because a quiet interval makes it the steady state rather than an edge. A 304 establishes
+  something specific: the provider has nothing newer than the watermark, so the store is **current**,
+  not merely un-refreshed. **Rejected: keeping both columns.** A separate write-stamp beside the
+  coverage stamp would have had no reader — `item.fetched_at` already ages the rows — so it would
+  have been the dead column this same chunk removed one table over. `_freshness` keeps row
+  provenance as its fallback, which no writer can produce today (every write path stamps the cursor
+  in the same transaction as its rows) and which exists so a *reader* never claims "never synced"
+  about a store whose rows are visibly there | user can veto/override]`
+
+  `[DECISION: the alias index is `item_alias(alias, ref, item_id)`, and labels stay PFX-only |
+  Spec §4 rule 3 says all resolution goes through the alias table, so it is a table — a lookup
+  rather than a scan that parses every body — derived from the stored `item.body` in the same
+  transaction, the `item_affected` / `item_fts` shape exactly. Two parts needed deciding. **`ref`
+  exists because the two ends of a resolution are spelled differently on purpose:** an alias is
+  stored *tagged* (`github:owner/repo#249`, since `owner/repo#number` is not GitHub-unique — GitLab
+  and Gitea share the shape), while a historical citation in a change-log is written *untagged*.
+  Matching untagged against the tagged column takes `LIKE '%:' || ?`, whose leading wildcard no index
+  can serve — the same unindexable direction `item_affected` exists to invert, inverted the same way:
+  derive the equality key at write time. **Labels are NOT extended to provider aliases.** A label is
+  the *live* path's index, and a hand-minted PFX has no other coordinates, so without one it is
+  unfindable; a provider alias is a real `owner/repo#number` that `item_alias` resolves without
+  asking the provider anything. Minting labels for it would add a write path, a self-heal obligation
+  and a 50-character label budget to buy a second index over an already-indexed set. **No UNIQUE on
+  `alias`:** uniqueness is an integrity constraint, not a storage one, and a store that refused to
+  hold a violation could not report it as `alias_collision` | user can veto/override]`
+
+  **A latent defect fixed here rather than filed, because this chunk's own version bump would have
+  shipped it.** `sqlite_master` lists an FTS5 virtual table *after* its own shadow tables, so
+  `_drop_objects` — walking that listing — deleted `item_fts_config` and then found `item_fts`
+  unconstructible (`vtable constructor failed`). The bare `except OperationalError: continue`
+  swallowed it, `create_schema` reported the consequence as "SQLite built without FTS5", and the
+  store was left holding an `item_fts` that `has_fts()` called present and every query raised on —
+  so consumer 9 would have reported `unavailable` forever after any schema bump, with a reason
+  telling the reader to go and rebuild their interpreter. Three seams, because one fix would have
+  left the others able to hide the next one: virtual tables drop first; survivors are returned and
+  refused rather than swallowed; and only a genuine `no such module` counts as missing FTS5, every
+  other DDL failure being re-raised. The regression test asserts through `search`, not through
+  `has_fts` — the function that returned the wrong answer cannot be the one that proves it right.
+
+  **QRY-3 is discharged in part, and the remainder is named rather than left to look covered.**
+  The catalogue row has two halves. The **cache-served / read-your-writes** half is this chunk's and
+  is done: a just-written item is found by `cachequery.search` at the moment GitHub's own index would
+  still miss it, which is the whole reason this query is cache-served rather than delegated. The
+  **`--semantic` capability probe** half is not — it is a `search` *CLI op* with a live provider
+  probe, and no chunk of this plan delivers one (`cachequery` is a library surface; Chunks 05–06
+  bind probes and skill prose, not a new op). Recording the split here because a catalogue row
+  ticked whole on half the evidence is the exact defect this plan keeps naming, and a later reader
+  asking "is QRY-3 covered?" should find the answer rather than infer it from a green suite.
+
+  **Two smaller shapes worth naming.** Date predicates compare **instants, not strings**
+  (`strftime('%s', …)` on both sides): the provider stamps `...Z` while Python's `isoformat()` writes
+  `...+00:00`, so one moment has two spellings and the lexicographic answer between them is not the
+  chronological one — the same rule `sync._watermark_from` records, and it costs the `item_updated_at`
+  index, which at hundreds of rows is orders of magnitude inside the NFR §4 budget where a wrong
+  boundary answer would not be. And FTS search **quotes every term into a phrase**, because search
+  text is a caller's arbitrary string on its way to a dedup check and unquoted FTS5 is a small
+  language — a title containing `AND`, `*` or `:` would otherwise either steer the query or fail it
+  with a syntax error the caller could not have anticipated.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved

@@ -1,4 +1,11 @@
-"""Tests for lib/backlog/cache.py, sync.py and cachequery.py — the W1 store.
+"""Tests for lib/backlog/cache.py and sync.py — the W1 store and its writers.
+
+The **consumer query surface** over this store lives in
+``test_backlog_cachequery.py``: the queries Cache Spec §2 enumerates, and the
+invariants they inherit asserted across all of them at once. What stays here is
+the store itself — schema, rebuild, sync, and the one query (consumer 1) that has
+to work for any of the rest to mean anything.
+
 
 The load-bearing test here is **rebuild-equivalence** (``TestRebuildEquivalence``):
 drop the store, rebuild it from the provider, compare. Any difference is a
@@ -23,6 +30,7 @@ import sys
 import textwrap
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 _TESTS_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _TESTS_DIR.parent
@@ -32,7 +40,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cache, cachequery, core, sync  # noqa: E402
+from lib.backlog import cache, cachequery, core, query, sync  # noqa: E402
 from lib.backlog import encode  # noqa: E402
 from lib.backlog.encode import parse_iso  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
@@ -62,12 +70,30 @@ def _file(fake, *, title="cache: the item under test", body="b", **facets):
 
 def _corpus(fake):
     """A fixture corpus with the variety the invariant has to survive: facets set
-    and unset, a closed item, a plain non-prawduct issue, and a pull request."""
+    and unset, a closed item, a migrated item carrying an alias, a plain
+    non-prawduct issue, and a pull request.
+
+    **The aliased item is here so the alias index is not compared vacuously.**
+    ``_rebuild_snapshot`` compares ``item_alias``, and a corpus in which no item
+    has an alias would compare an empty table to an empty table and report the
+    invariant satisfied forever — the shape where a fixture that never reaches the
+    subject passes no matter what the subject does."""
     ids = [
         _file(fake, title="cache: first item under test", area="backlog", effort="S", impact="L"),
         _file(fake, title="cache: second item under test", area="critic", stage="ready"),
         _file(fake, title="cache: third item under test", body="no facets at all"),
     ]
+    migrated = fake.create_issue(
+        OWNER,
+        REPO,
+        title="cache: a migrated item under test",
+        body=encode.compose_body("migrated", {"id_aliases": "[BKL-7M4Q]"}),
+        labels=[],
+    )
+    # An open prawduct item like any other — its block is what makes it in scope —
+    # so it belongs in `ids`, or every caller asserting over the open set sees one
+    # more item than the corpus admits to having.
+    ids.append(f"{OWNER}/{REPO}#{migrated['number']}")
     closed = _file(fake, title="cache: closed item under test", area="backlog")
     assert core.set_status(fake, id_raw=closed, target="shipped")["status"] == "ok"
     fake.create_issue(OWNER, REPO, title="a plain repo issue", body="not ours", labels=[])
@@ -87,21 +113,44 @@ def _domain_rows(repo_dir):
     not what the provider said, so it is the one column that legitimately differs
     across two rebuilds.
 
-    The derived ``item_affected`` rows ride along. They are not a second home for
-    the fact — they are re-derived from ``item.affected`` in the same transaction,
-    exactly as the text index is — but they *are* stored state, and a rebuild that
-    reproduced the columns while leaving the index behind would be a difference
-    this invariant exists to catch."""
+    Item rows only — every row carries an ``id``, which is what the callers that
+    key by it rely on. The derived index tables are compared by
+    :func:`_rebuild_snapshot` instead, because mixing differently-shaped rows into
+    one list makes every caller pay for the one comparison that wants them."""
     path = cache.cache_path(repo_dir)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     columns = [c for c in cache.ITEM_COLUMNS if c != "fetched_at"]
     rows = conn.execute(f"SELECT {', '.join(columns)} FROM item ORDER BY id").fetchall()
-    index = conn.execute(
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def _rebuild_snapshot(repo_dir):
+    """Everything a rebuild has to reproduce: the domain rows **and both derived
+    index tables**.
+
+    Neither index is a second home for the fact — each is re-derived from a stored
+    column in the same transaction, exactly as the text index is — but they *are*
+    stored state, and a rebuild that reproduced the columns while leaving an index
+    behind would be a difference this invariant exists to catch. `item_alias` is
+    included for precisely the reason `item_affected` is, and leaving it out would
+    have let the invariant weaken silently the moment a second index appeared."""
+    path = cache.cache_path(repo_dir)
+    conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
+    affected = conn.execute(
         "SELECT item_id, path FROM item_affected ORDER BY item_id, path"
     ).fetchall()
+    aliases = conn.execute(
+        "SELECT item_id, alias, ref FROM item_alias ORDER BY item_id, alias"
+    ).fetchall()
     conn.close()
-    return [dict(row) for row in rows] + [dict(row) for row in index]
+    return {
+        "items": _domain_rows(repo_dir),
+        "affected": [dict(row) for row in affected],
+        "aliases": [dict(row) for row in aliases],
+    }
 
 
 def _affecting(repo_dir, changed_paths):
@@ -258,7 +307,7 @@ class TestSchemaMismatch:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == cache.SCHEMA_VERSION
         columns = {row[1] for row in conn.execute("PRAGMA table_info(cursor)")}
         conn.close()
-        assert "fetched_at" in columns, (
+        assert "coverage_confirmed_at" in columns, (
             "the stale-shaped store survived, so every cursor write would fail forever"
         )
 
@@ -292,7 +341,7 @@ class TestSchemaMismatch:
         conn = cache.open_store(repo_dir, create=False)
         columns = {row[1] for row in conn.execute("PRAGMA table_info(cursor)")}
         conn.close()
-        assert "fetched_at" in columns
+        assert "coverage_confirmed_at" in columns
 
     def test_the_v3_shaped_store_is_discarded_when_the_item_columns_grew(
         self, fake, repo_dir
@@ -328,7 +377,11 @@ class TestSchemaMismatch:
         conn = cache.open_store(repo_dir, create=False)
         columns = {row[1] for row in conn.execute("PRAGMA table_info(item)")}
         conn.close()
-        assert {"affected", "tags", "working_branch"} <= columns
+        # `tags` was among the columns v4 grew and is deliberately not among v5's:
+        # no consumer query read it from the cache, so the no-dead-fields rule
+        # took it. The two that stay are the two with serving queries.
+        assert {"affected", "working_branch"} <= columns
+        assert "tags" not in columns
 
     def test_a_corrupt_store_reports_unavailable_rather_than_raising(self, repo_dir):
         path = cache.cache_path(repo_dir)
@@ -447,16 +500,24 @@ class TestVisibleAge:
         assert result["error"]["code"] == "unavailable"
         assert "never been synced" in result["error"]["message"]
 
-    def test_the_served_age_is_the_oldest_row_not_the_newest(self, repo_dir):
-        """An age is a promise about the whole payload, so the honest promise is
-        the worst row in it — the newest stamp would understate staleness.
+    def test_the_served_age_is_the_coverage_stamp_not_the_oldest_row(self, repo_dir):
+        """**This reverses what the store used to promise, deliberately.**
 
-        Asserted through ``cachequery``, the path that actually serves the age,
-        rather than by calling ``oldest_fetched_at`` directly: reading the
-        helper only proves the helper works, and the defect worth catching is a
-        server that stops calling it. A partial sync is exactly how the two
-        stamps come apart in the field — most rows old, the freshly-upserted
-        window new — so the store is set up that way here."""
+        The age was `MIN(item.fetched_at)` — the worst row in the payload — which
+        was the honest answer while every sync rewrote every row. Incremental sync
+        restamps only its window, so that number became the fetch time of the
+        least-recently-*edited* item and grew without bound while syncs kept
+        succeeding: the setup below is a store that is fully current and would
+        have reported itself five hours stale.
+
+        What replaced it is not the newest row either — that would understate
+        staleness the other way. It is the coverage stamp: when a sync last
+        established that the store is level with the provider, which is the
+        question a consumer reading an age is actually asking.
+
+        Asserted through ``cachequery``, the path that serves the age, rather than
+        by calling the helper: reading the helper only proves the helper works,
+        and the defect worth catching is a server that stops calling it."""
         conn = cache.open_store(repo_dir, create=True)
         cache.replace_items(
             conn,
@@ -474,9 +535,78 @@ class TestVisibleAge:
         result = cachequery.open_items(repo_dir, scope=SCOPE, now=NOW)
 
         assert result["status"] == "ok", result
-        assert result["data"]["age_seconds"] == pytest.approx(5 * 3600, abs=2), (
-            "the newest row's stamp would have reported a cache that is 0s old"
+        assert result["data"]["age_seconds"] == pytest.approx(0, abs=2), (
+            "the oldest row's stamp reported a five-hour-old cache that had just synced"
         )
+
+    def test_a_not_modified_sync_resets_the_age(self, fake, repo_dir):
+        """The 304 path is where the over-reporting was worst, and it is the
+        steady state rather than an edge: a quiet interval means every sync comes
+        back not-modified, writes nothing, and — before the coverage stamp — left
+        no trace at all, so a store confirmed current one second ago went on
+        ageing as if nobody had looked."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        # Twice: a rebuild leaves no validator, so the first incremental sync asks
+        # unconditionally and is the one that stores one. Only the second can come
+        # back not-modified, which is the path under test.
+        assert _sync(fake, repo_dir, now=NOW)["status"] == "ok"
+
+        later = NOW + timedelta(hours=6)
+        quiet = _sync(fake, repo_dir, now=later)
+
+        assert quiet["status"] == "ok", quiet
+        assert quiet["data"]["not_modified"] is True, "the window must be quiet for this test"
+        result = cachequery.open_items(repo_dir, scope=SCOPE, now=later)
+        assert result["data"]["age_seconds"] == pytest.approx(0, abs=2), (
+            "a store the provider just confirmed current reported itself six hours stale"
+        )
+
+    def test_a_304_that_cannot_stamp_reports_it_without_failing_the_sync(self, fake, repo_dir):
+        """The branch is small and the reason it matters is not: it is the one
+        place a *successful* sync says its bookkeeping did not land. The sync did
+        succeed — the provider confirmed the store is current — so failing it over
+        an unwritten stamp would trade a real success for a housekeeping step. But
+        the cost is an age that keeps over-reporting, which is the exact defect
+        this stamp exists to fix, so it cannot be silent either."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert _sync(fake, repo_dir, now=NOW)["status"] == "ok"  # stores the validator
+
+        with mock.patch.object(
+            cache,
+            "confirm_coverage",
+            return_value=core.error("unavailable", "the store is read-only"),
+        ):
+            quiet = _sync(fake, repo_dir, now=NOW + timedelta(hours=6))
+
+        assert quiet["status"] == "ok", "a good sync must not fail on its bookkeeping"
+        assert quiet["data"]["not_modified"] is True
+        assert any("coverage stamp" in w for w in quiet["warnings"]), (
+            "an age that will keep over-reporting must not be reported silently"
+        )
+
+    def test_rows_still_age_a_store_whose_cursor_is_gone(self, repo_dir):
+        """The fallback. No writer produces this state — every write path stamps
+        the cursor in the same transaction as the rows — so this pins a *reader*
+        that must not claim `never synced` about a store whose rows are visibly
+        there."""
+        conn = cache.open_store(repo_dir, create=True)
+        cache.replace_items(
+            conn,
+            [{"id": "a"}],
+            scope=SCOPE,
+            fetched_at=(NOW - timedelta(hours=4)).isoformat(),
+            cursor_since=(NOW - timedelta(hours=4)).isoformat(),
+        )
+        conn.execute("DELETE FROM cursor")
+        conn.commit()
+        conn.close()
+
+        result = cachequery.open_items(repo_dir, scope=SCOPE, now=NOW)
+
+        assert result["status"] == "ok", result
+        assert result["data"]["age_seconds"] == pytest.approx(4 * 3600, abs=2)
 
 
 class TestFullRebuild:
@@ -624,13 +754,16 @@ class TestRebuildEquivalence:
     def test_dropping_and_rebuilding_reproduces_every_domain_field(self, fake, repo_dir):
         _corpus(fake)
         assert _rebuild(fake, repo_dir)["status"] == "ok"
-        before = _domain_rows(repo_dir)
-        assert before, "an empty corpus would make this invariant vacuously true"
+        before = _rebuild_snapshot(repo_dir)
+        assert before["items"], "an empty corpus would make this invariant vacuously true"
+        assert before["aliases"], (
+            "the corpus must carry an alias, or the alias index compares empty to empty"
+        )
 
         cache.cache_path(repo_dir).unlink()
         assert _rebuild(fake, repo_dir, now=NOW + timedelta(days=2))["status"] == "ok"
 
-        assert _domain_rows(repo_dir) == before
+        assert _rebuild_snapshot(repo_dir) == before
 
     def test_a_field_written_only_into_the_cache_is_caught(self, fake, repo_dir):
         """Red-verify the invariant itself: a cache-only edit must make it fail,
@@ -650,11 +783,18 @@ class TestRebuildEquivalence:
 
 
 class TestNewDomainFields:
-    """`affected`, `tags` and `working-branch` in the store.
+    """`affected` and `working-branch` in the store — and `tags` deliberately not.
 
-    Zero cache-only fields: each is written on the provider — two in the body
-    block, one in labels — so the rebuild-equivalence invariant above stops being
-    trivially satisfiable and starts carrying these three.
+    Zero cache-only fields: both stored fields are written on the provider, in the
+    body block, so the rebuild-equivalence invariant above stops being trivially
+    satisfiable and starts carrying them.
+
+    `tags` is the third field of the same family and the cache does not hold it.
+    It has no consumer query — `list --tag` is served live off the provider's
+    label filter — so under the every-column-is-a-Q-projection rule it is a dead
+    field, and the rule took it. The test below asserts the removal from *both*
+    ends, because half of it would be indistinguishable from the field having been
+    lost: absent from the store, still present on the provider.
     """
 
     def _tagged_item(self, fake):
@@ -671,21 +811,40 @@ class TestNewDomainFields:
         )["status"] == "ok"
         return item_id
 
-    def test_all_three_reach_the_store(self, fake, repo_dir):
+    def test_the_two_with_serving_queries_reach_the_store(self, fake, repo_dir):
         item_id = self._tagged_item(fake)
 
         _rebuild(fake, repo_dir)
 
         conn = cache.open_store(repo_dir, create=False)
         row = conn.execute(
-            "SELECT affected, tags, working_branch FROM item WHERE id = ?", (item_id,)
+            "SELECT affected, working_branch FROM item WHERE id = ?", (item_id,)
         ).fetchone()
         conn.close()
         assert row["affected"] == "[plugin/lib/backlog, docs/x.md]"
-        assert row["tags"] == "[api, perf]"
         assert row["working_branch"] == f"{OWNER}/{REPO}@feat/live"
 
-    def test_an_item_with_none_of_them_stores_null_not_an_empty_list(self, fake, repo_dir):
+    def test_tags_stay_on_the_provider_and_out_of_the_cache(self, fake, repo_dir):
+        """Both halves, because either alone would mislead.
+
+        A missing column with the tag also gone would be a field silently lost;
+        a tag still filterable with a column still there would be the dead field
+        the removal exists to end. The claim is precisely: the cache stopped being
+        a reader of tags, and nothing else changed about them."""
+        item_id = self._tagged_item(fake)
+
+        _rebuild(fake, repo_dir)
+
+        conn = cache.open_store(repo_dir, create=False)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(item)")}
+        conn.close()
+        assert "tags" not in columns
+
+        live = query.list_items(fake, owner=OWNER, repo=REPO, filters={"tag": "perf"})
+        assert live["status"] == "ok", live
+        assert [item["id"] for item in live["data"]["items"]] == [item_id]
+
+    def test_an_item_with_neither_stores_null_not_an_empty_list(self, fake, repo_dir):
         """`[]` and "no value" would be two spellings of one state, and every
         reader would have to know both."""
         item_id = _file(fake, title="cache: an item carrying none of them")
@@ -694,10 +853,10 @@ class TestNewDomainFields:
 
         conn = cache.open_store(repo_dir, create=False)
         row = conn.execute(
-            "SELECT affected, tags, working_branch FROM item WHERE id = ?", (item_id,)
+            "SELECT affected, working_branch FROM item WHERE id = ?", (item_id,)
         ).fetchone()
         conn.close()
-        assert row["affected"] is None and row["tags"] is None
+        assert row["affected"] is None
         assert row["working_branch"] is None
 
     def test_they_survive_a_write_drop_rebuild_cycle(self, fake, repo_dir):
@@ -706,7 +865,9 @@ class TestNewDomainFields:
         _corpus(fake)
         assert _rebuild(fake, repo_dir)["status"] == "ok"
         before = _domain_rows(repo_dir)
-        assert any(row.get("tags") for row in before), "the corpus must exercise the new fields"
+        assert any(row.get("affected") for row in before), (
+            "the corpus must exercise the new fields"
+        )
 
         cache.cache_path(repo_dir).unlink()
         assert _rebuild(fake, repo_dir, now=NOW + timedelta(days=2))["status"] == "ok"

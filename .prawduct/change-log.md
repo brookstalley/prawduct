@@ -3,6 +3,60 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-07: the backlog cache answers its consumers' questions
+
+<!-- prawduct: chunks=04 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->
+
+**The query surface.** Eight functions covering the consumer union the cache spec enumerates —
+grouping and counting by area, creation-time filtering, text search scoped to an area, two date
+predicates, the changed-file intersection, and id resolution through aliases including dead items.
+Verified against the real 453-item backlog rather than only against fixtures: every query run and
+its answers read, and the intersection matched against this branch's own 529 changed files.
+
+**A latent defect this release would otherwise have shipped.** `sqlite_master` lists an FTS5 virtual
+table *after* its own shadow tables, so the rebuild's drop loop deleted `item_fts_config` and then
+could not construct `item_fts` to drop it. A bare `except … continue` swallowed the failure, the
+next step reported it as "SQLite built without FTS5", and what survived was an index that `has_fts()`
+called present and every query raised on — so text search would have broken permanently at any
+schema bump, including this one.
+
+**The visible age had been over-reporting since sync went incremental.** It answered
+`MIN(item.fetched_at)`, honest while every sync rewrote every row; once only the fetched window is
+restamped it becomes the fetch time of the least-recently-*edited* item and grows without bound while
+syncs succeed. Nothing failed — the number just started lying.
+
+**Changes:**
+- `plugin/lib/backlog/cachequery.py` grows the query union. The two invariants every payload
+  inherits — unavailable is never empty, every payload carries a visible age — are enforced in one
+  place and asserted across the whole surface, so a query added later without going through it fails
+  rather than quietly opting out.
+- Cache **schema v5**. `cursor.fetched_at` → `coverage_confirmed_at`, renamed *and widened*: every
+  successful sync advances it, **including the 304**, which previously returned before touching the
+  store and so left the cheapest and most common successful sync with no trace at all. Row stamps
+  stay as the reader's fallback.
+- **`item.tags` removed.** It shipped in v4 with its justification stated as explicitly *not* a
+  consumer query, and named its own removal trigger: the first release of the query surface that
+  ships no cache-served tag query. This is that release — `list --tag` is served live off the
+  provider's label filter. Re-adding a column to a rebuildable store costs a version bump and a
+  re-fetch, so the usual lock-in argument for keeping a persisted column runs the other way here.
+- **`item_alias(alias, ref, item_id)`** — the alias table the spec's "all resolution goes through
+  the alias table" rule requires, derived from the stored body in the same transaction. `ref` holds
+  a tagged alias's untagged canonical id, because a citation in a change-log is written untagged
+  while the record stores it tagged, and matching across that gap otherwise takes a leading-wildcard
+  `LIKE` no index can serve. No `UNIQUE`: uniqueness is an integrity constraint, and a store that
+  refused to hold a violation could not report it as `alias_collision`.
+- `plugin/lib/backlog/ids.py` gains the provider-alias grammar. The ref half is re-normalized rather
+  than trusted — an alias arrives from issue-body text and its canonical id reaches a REST path, so
+  the question is not *is this well-formed* but *what else could this successfully resolve*.
+- Three seams fixed around the FTS drop: virtual tables drop first, survivors are refused rather
+  than swallowed, and only a genuine `no such module` counts as missing FTS5.
+- One `optimize` + `VACUUM` after a rebuild, best-effort — a `DELETE`-based rebuild leaves its pages
+  and FTS segments behind, and a rebuild is the one moment nobody is waiting on a query.
+- Date predicates compare **instants, not strings**: the provider stamps `...Z` and Python writes
+  `...+00:00`, so one moment has two spellings whose lexicographic order is not chronological.
+
+**Classification:** structural
+
 ## 2026-08-07: the backlog cache learns three domain fields
 
 <!-- prawduct: chunks=03 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->

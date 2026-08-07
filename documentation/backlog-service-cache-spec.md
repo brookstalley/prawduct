@@ -183,6 +183,18 @@ The machinery already exists — `id_aliases`, the `id:PFX` alias label, and the
 self-heal in `lib/backlog/core.py` — built for the markdown→Issues cutover. It needs pointing at
 provider ids rather than legacy PFX ids.
 
+**As built (W1 Chunk 04): the alias *table* is the cache's `item_alias`, and labels stay PFX-only.**
+The asymmetry is deliberate rather than a partial job. A label is the *live* path's index — what
+lets `core.resolve_ref` find an item by alias with one search against the provider — and a
+hand-minted `PFX` has no other coordinates, so without a label it is unfindable. A **provider**
+alias does have coordinates: it is a real `owner/repo#number` that `item_alias` resolves without
+asking the provider anything. Minting labels for it would add a write path, a self-heal obligation
+and a 50-character label budget to buy a second index over a set that is already indexed. So the
+grammar for both spellings lives in `lib/backlog/ids.py` (`provider_alias`, `parse_provider_alias`,
+`is_alias_token`) and the resolution — live id, then alias, then redirect, in a documented order
+that is reported rather than guessed — lives in `lib/backlog/cachequery.py`. Rule 3 holds where it
+matters: a stored citation resolves through the table, never by being parsed as live coordinates.
+
 ## 5. Cache semantics
 
 - **A cache, never truth.** `data-model.md` § Direction: *derived views are disposable and never
@@ -206,6 +218,13 @@ provider ids rather than legacy PFX ids.
 - **That same test is the provider-adequacy test.** If the cache rebuilds completely from a given
   backend, that backend's mapping is complete. One invariant proves both properties; no separate
   portability suite is needed.
+  - **Its reach is exactly the columns the cache holds, and W1 gave up one on purpose.** `tags` has
+    no cache column (Chunk 04 — no consumer query reads it, so the no-dead-fields rule took it), so
+    a backend unable to represent tags would pass the invariant. That is the accepted cost of not
+    carrying a dead field, and it is small on this particular field: `tags` → labels is the mapping
+    every candidate provider satisfies most trivially, and the live `--tag` filter exercises it end
+    to end. The zero-cache-only-fields half above is untouched — a field the cache does not store
+    cannot become a cache-only one.
 
 ## 6. Sync
 

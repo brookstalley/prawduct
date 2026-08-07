@@ -186,6 +186,80 @@ class TestPfxAliases:
         assert ids.pfx_from_alias_label(name) is None
 
 
+class TestProviderAliases:
+    """The tagged alias spelling (Cache Spec §4) — the cross-migration half.
+
+    A migration mints no new id: the surviving record carries the old one as an
+    alias, so every historical citation keeps resolving. The two spellings are
+    asymmetric on purpose — a live ref is untagged because it inherits the
+    configured backend, an alias is tagged because ``owner/repo#number`` is not
+    GitHub-unique (GitLab and Gitea share the shape) and shape-parsing is what
+    §4's rule 3 forbids.
+    """
+
+    def test_a_canonical_id_becomes_a_tagged_alias(self):
+        assert ids.provider_alias("octo/repo#249") == "github:octo/repo#249"
+
+    def test_the_tag_is_open_because_a_reader_meets_other_backends(self):
+        """The spellings this has to *read* are written by whatever backend a
+        product migrated away from, so a closed tag set would make an alias minted
+        by a future adapter unreadable by the reader whose whole job is old
+        spellings."""
+        assert ids.parse_provider_alias("gitlab:group/project#123") == (
+            "gitlab",
+            "group/project#123",
+        )
+
+    def test_it_round_trips(self):
+        assert ids.parse_provider_alias(ids.provider_alias("octo/repo#7")) == (
+            "github",
+            "octo/repo#7",
+        )
+
+    @pytest.mark.parametrize(
+        "token",
+        [
+            # The question at this seam is not *is this well-formed* but *what else
+            # could this successfully resolve*: an alias comes from issue-body text
+            # and the canonical id it yields is interpolated into
+            # `repos/{owner}/{repo}/…` at the transport. Each of these parses fine
+            # as three tokens and points somewhere else entirely.
+            "github:../../x#1",
+            "github:octo/..#1",
+            "github:./repo#1",
+            # A short spelling has no owner, so accepting one would make the same
+            # stored string resolve to different items in different repos.
+            "github:repo#7",
+            "github:repo-7",
+            # Not tagged at all — that is a live ref, and reading it as an alias is
+            # exactly the shape-parsing the tag exists to prevent.
+            "octo/repo#7",
+            "BKL-7M4Q",
+            # A tag that is not a provider token.
+            "GitHub:octo/repo#1",
+            "2:octo/repo#1",
+            ":octo/repo#1",
+            "",
+            None,
+        ],
+    )
+    def test_a_token_that_could_resolve_elsewhere_is_not_an_alias(self, token):
+        assert ids.parse_provider_alias(token) is None
+
+    @pytest.mark.parametrize("bad", ["octo/repo", "../x#1", "", "octo/repo#x"])
+    def test_a_malformed_id_mints_no_alias(self, bad):
+        assert ids.provider_alias(bad) is None
+
+    def test_both_spellings_are_alias_tokens_and_nothing_else_is(self):
+        """The filter on what reaches the cache's alias index: an ``id_aliases``
+        entry that is neither is a hand-editing artifact, and indexing it would let
+        a typo claim a resolution."""
+        assert ids.is_alias_token("BKL-7M4Q")
+        assert ids.is_alias_token("github:octo/repo#249")
+        assert not ids.is_alias_token("octo/repo#249")
+        assert not ids.is_alias_token("not-an-alias!")
+
+
 class TestResolveRedirect:
     """The pure redirect-follow (merge/transfer): a ref to a merged-away source
     resolves to its survivor, with a cycle guard so it never loops (CRASH-2)."""

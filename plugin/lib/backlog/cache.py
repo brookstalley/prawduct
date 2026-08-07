@@ -71,7 +71,7 @@ from .core import error, log_diag, ok
 # machine during the chunk that introduced the column, and read as an empty
 # result rather than as an error. "Unreleased, so nobody has an old store" is a
 # claim about other people's machines, not about the format.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "backlog-cache.sqlite3"
@@ -98,20 +98,28 @@ ITEM_COLUMNS: tuple[str, ...] = (
     "created_at",
     "updated_at",
     "affected",
-    "tags",
     "working_branch",
     "etag",
     "fetched_at",
 )
 
 # `affected` and `working_branch` are read by the change-overlap intersection
-# (`item_affected` below) and by ready-work's working-branch exclusion. `tags` is
-# the ONE column here whose justification is not a consumer query, and saying so
-# is better than letting a reader assume one exists: it is carried because
-# rebuild-equivalence doubles as the **provider-adequacy** test — a domain field
-# the cache never stores is a field that test never exercises, so a backend
-# unable to represent tags would pass it. It is therefore the first column the
-# no-dead-fields rule should take if no cache-served tag query ever appears.
+# (`item_affected` below) and by ready-work's working-branch exclusion.
+#
+# **`tags` was here and is gone**, and the removal is the no-dead-fields rule
+# being applied rather than argued around. It shipped with its justification
+# stated as *not* a consumer query: it was carried because rebuild-equivalence
+# doubles as the provider-adequacy test, so a field the cache never stores is one
+# that test never exercises. Its own comment named the trigger — the first
+# release of the query surface that ships no cache-served tag query takes the
+# column — and that is this one: every tag read there is, `list --tag`, is served
+# **live** off the provider's label filter, and none of the enumerated consumers
+# asks about a tag. Two things make removal the cheap side of the trade rather
+# than the brave one: a cache is rebuildable, so re-adding a column later costs a
+# version bump and a re-fetch rather than a migration; and the adequacy claim it
+# backed is the weakest one available for this field, since `tags` → labels is
+# the mapping every candidate provider satisfies most trivially, and the live
+# `--tag` filter exercises it end to end anyway.
 
 _SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
@@ -128,7 +136,6 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
         created_at TEXT,
         updated_at TEXT,
         affected   TEXT,
-        tags       TEXT,
         working_branch TEXT,
         etag       TEXT,
         fetched_at TEXT NOT NULL
@@ -158,6 +165,46 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     "CREATE INDEX item_affected_path ON item_affected(path)",
+    # The alias index — Cache Spec §4 rule 3's "all resolution goes through the
+    # alias table", made a table so the resolution is a lookup rather than a scan
+    # that parses every body.
+    #
+    # Same derived-index shape as `item_affected` and `item_fts`: re-derived from
+    # the stored `item.body` in the same transaction, never written on its own, so
+    # it is not a second home for the fact. The input is the body rather than a
+    # column of its own because `id_aliases` is a block field and the block is
+    # what a rebuild reproduces verbatim — a parallel column would be a second
+    # spelling that could drift from it.
+    #
+    # **No UNIQUE on `alias`, deliberately.** Alias uniqueness is an integrity
+    # constraint (Data Model §5), not a storage one, and a store that refused to
+    # hold a violation could not report it: a second claimant has to be *visible*
+    # as `alias_collision` rather than silently dropped or crashing the sync that
+    # mirrors it. The composite key indexes `alias` on its own by prefix, so the
+    # lookup by the stored spelling needs no further index.
+    #
+    # **`ref` is the untagged canonical id a provider alias carries**, NULL for a
+    # hand-minted PFX (which has no provider coordinates). It exists because the
+    # two ends of a resolution are spelled differently on purpose: an alias is
+    # stored tagged (`github:owner/repo#249` — Cache Spec §4, since
+    # `owner/repo#number` is not GitHub-unique), while a historical citation in a
+    # change-log or a commit message is written untagged. Matching the untagged
+    # one against the tagged column would take `LIKE '%:' || ?`, whose leading
+    # wildcard no index can serve — the same unindexable direction
+    # `item_affected` exists to invert, and inverted the same way: derive the
+    # equality-matchable key at write time. Two providers' aliases sharing one
+    # untagged ref both come back, which is the honest answer — that citation
+    # genuinely is ambiguous, and the tag is what lets a caller say which it
+    # meant.
+    """
+    CREATE TABLE item_alias (
+        alias   TEXT NOT NULL,
+        ref     TEXT,
+        item_id TEXT NOT NULL,
+        PRIMARY KEY (alias, item_id)
+    )
+    """,
+    "CREATE INDEX item_alias_ref ON item_alias(ref)",
     """
     CREATE TABLE comment (
         item_id    TEXT NOT NULL,
@@ -175,12 +222,18 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
         PRIMARY KEY (src, kind, dst)
     )
     """,
+    # `coverage_confirmed_at` is the local stamp of the last sync that CONFIRMED
+    # this scope — which includes a not-modified sync, the one that reads nothing
+    # and writes no rows. It was `fetched_at` (the stamp of the sync that wrote
+    # the row) through schema v4, and that column was correct only while every
+    # sync rewrote every row. See `_write_cursor` and `confirm_coverage` for why
+    # the widening matters more than the rename.
     """
     CREATE TABLE cursor (
-        scope      TEXT PRIMARY KEY,
-        since      TEXT,
-        etag       TEXT,
-        fetched_at TEXT
+        scope                 TEXT PRIMARY KEY,
+        since                 TEXT,
+        etag                  TEXT,
+        coverage_confirmed_at TEXT
     )
     """,
 )
@@ -282,6 +335,15 @@ def create_schema(conn: sqlite3.Connection) -> bool:
     try:
         conn.execute(_FTS_STATEMENT)
     except sqlite3.OperationalError as exc:
+        # **Only a missing module is a degradation; anything else is a broken
+        # build.** FTS5 is a compile-time SQLite option, so "no such module" is a
+        # fact about this Python that the store legitimately works around. Every
+        # other DDL failure here means the schema did not come out as written, and
+        # treating those alike is how a half-dropped store once reported itself as
+        # a SQLite without full-text search — a false diagnosis that sends whoever
+        # reads it to rebuild their interpreter.
+        if "no such module" not in str(exc).lower():
+            raise
         fts = False
         log_diag(f"SQLite built without FTS5; text search will report unavailable ({exc})")
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
@@ -310,7 +372,15 @@ def _ensure_schema(conn: sqlite3.Connection, path: Path, version: int) -> dict |
                 f"backlog cache is schema v{settled}, expected v{SCHEMA_VERSION}; "
                 "discarding and rebuilding (a cache is derived, so this loses nothing)"
             )
-        _drop_objects(conn)
+        survivors = _drop_objects(conn)
+        if survivors:
+            # Building a fresh schema over a half-dropped one produces a store
+            # that is part old and part new, and reports success. Refusing leaves
+            # the previous store intact and says so, which a rebuild-on-next-open
+            # can still recover from.
+            raise sqlite3.OperationalError(
+                f"the backlog cache could not be cleared; {', '.join(survivors)} survived"
+            )
         create_schema(conn)
         conn.execute("COMMIT")
     except sqlite3.Error as exc:
@@ -324,24 +394,55 @@ def _ensure_schema(conn: sqlite3.Connection, path: Path, version: int) -> dict |
     return None
 
 
-def _drop_objects(conn: sqlite3.Connection) -> None:
-    """Drop every table and index, leaving an empty database in place.
+def _drop_objects(conn: sqlite3.Connection) -> list[str]:
+    """Drop every table and index, leaving an empty database in place. Returns
+    whatever survived — empty on success.
 
     Dropping in place rather than unlinking the file keeps other worktrees' open
     connections valid — unlinking would leave them reading a store with no
     directory entry, which is the shape that turns a rebuild here into a silent
-    empty result somewhere else."""
-    for name, kind in conn.execute(
+    empty result somewhere else.
+
+    **Virtual tables go first, and the order is load-bearing rather than tidy.**
+    ``sqlite_master`` lists an FTS5 table *after* its own shadow tables
+    (``item_fts_data``, ``…_config``, …), so a loop that simply walks that
+    listing drops the shadows first — and FTS5's constructor reads
+    ``item_fts_config`` to instantiate, so the virtual table it then reaches can
+    no longer be opened at all: ``vtable constructor failed``. What it leaves
+    behind is worse than a failure, because it still *looks* like success — a
+    surviving ``item_fts`` entry that :func:`has_fts` reports as present and every
+    query against it raises on. Dropped in this order the shadows disappear with
+    their table and never have to be named.
+
+    Failures are collected rather than swallowed. ``IF EXISTS`` already covers the
+    only benign case (an object something else disposed of on the way past), so an
+    error that still reaches here is real, and the caller must not build a fresh
+    schema on top of a half-dropped one."""
+    objects = conn.execute(
         "SELECT name, type FROM sqlite_master "
         "WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%'"
-    ).fetchall():
-        # An FTS5 shadow table disappears with its virtual table, and an index on
-        # an already-dropped table is already gone — tolerate both.
+    ).fetchall()
+    virtual = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%'"
+        ).fetchall()
+    }
+    ordered = sorted(objects, key=lambda row: row[0] not in virtual)
+    for name, kind in ordered:
         verb = "TABLE" if kind == "table" else "INDEX"
         try:
             conn.execute(f'DROP {verb} IF EXISTS "{name}"')
-        except sqlite3.OperationalError:
-            continue
+        except sqlite3.OperationalError as exc:
+            log_diag(f"could not drop {name} from the backlog cache: {exc}")
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    ]
 
 
 def open_store(project_dir: Path, *, create: bool = False) -> sqlite3.Connection | dict:
@@ -475,6 +576,42 @@ def _write_rows(conn: sqlite3.Connection, rows: list[dict], *, fetched_at: str, 
                 (row.get("id"), row.get("title"), row.get("body")),
             )
         _write_affected(conn, row)
+        _write_aliases(conn, row)
+
+
+def _write_aliases(conn: sqlite3.Connection, row: dict) -> None:
+    """Re-derive one item's ``item_alias`` rows from its stored body block.
+
+    **Parsed from the body, not from a decoded field handed in beside it**, for
+    the same single-input reason :func:`_write_affected` parses from its column:
+    the body is what a rebuild reproduces verbatim, so an index derived from it
+    can no more disagree with the item than the text index can. The delete is
+    unconditional, because an alias removed from a body must stop resolving — a
+    surviving row would answer a resolution with a confident wrong item, which is
+    worse than answering nothing.
+
+    Malformed entries are dropped rather than indexed. ``id_aliases`` is
+    hand-editable text, and an entry that is neither a hand-minted ``PFX`` nor a
+    tagged provider id (Cache Spec §4) is a typo; indexing it would let the typo
+    claim a resolution.
+
+    A tagged entry also lands its untagged canonical id in ``ref``, which is what
+    lets an untagged historical citation resolve by equality — see the table's own
+    comment for why that key is derived here rather than matched for at read time.
+    """
+    from .encode import parse_block  # noqa: PLC0415 — lazy, matches the import shape above
+    from . import ids  # noqa: PLC0415
+
+    item_id = row.get("id")
+    conn.execute("DELETE FROM item_alias WHERE item_id = ?", (item_id,))
+    for alias in parse_block(row.get("body")).id_aliases():
+        if not ids.is_alias_token(alias):
+            continue
+        tagged = ids.parse_provider_alias(alias)
+        conn.execute(
+            "INSERT OR IGNORE INTO item_alias (alias, ref, item_id) VALUES (?, ?, ?)",
+            (alias.strip(), tagged[1] if tagged else None, item_id),
+        )
 
 
 def _write_affected(conn: sqlite3.Connection, row: dict) -> None:
@@ -521,6 +658,7 @@ def _delete_items(conn: sqlite3.Connection, item_ids: list[str], *, fts: bool) -
     for item_id in item_ids:
         removed += conn.execute("DELETE FROM item WHERE id = ?", (item_id,)).rowcount
         conn.execute("DELETE FROM item_affected WHERE item_id = ?", (item_id,))
+        conn.execute("DELETE FROM item_alias WHERE item_id = ?", (item_id,))
         if fts:
             conn.execute("DELETE FROM item_fts WHERE item_id = ?", (item_id,))
     return removed
@@ -622,6 +760,7 @@ def replace_items(
         with conn:
             conn.execute("DELETE FROM item")
             conn.execute("DELETE FROM item_affected")
+            conn.execute("DELETE FROM item_alias")
             if fts:
                 conn.execute("DELETE FROM item_fts")
             _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
@@ -648,25 +787,84 @@ def _write_cursor(
     scope: str,
     since: str | None,
     etag: str | None,
-    fetched_at: str,
+    confirmed_at: str,
 ) -> None:
-    """Stamp the watermark and its list-query validator. **Caller-transactional
-    on purpose** — see :func:`replace_items`. Never call this outside a
-    transaction that also contains the rows the watermark claims to cover.
+    """Stamp the watermark, its list-query validator, and the coverage stamp.
+    **Caller-transactional on purpose** — see :func:`replace_items`. Never call
+    this outside a transaction that also contains the rows the watermark claims
+    to cover.
 
-    Both columns are written together because a validator that outlived its
-    ``since`` would be replayed against a *different* query, where it can only
+    ``since`` and ``etag`` are written together because a validator that outlived
+    its ``since`` would be replayed against a *different* query, where it can only
     mislead: it would never match, so every revalidation would pay a full request
     while looking like it was working.
 
-    ``fetched_at`` is the local stamp of the sync that wrote this row, and it is
-    the *only* place a successful sync of an **empty** scope leaves a trace: with
-    no rows there is no ``item.fetched_at`` to age, and reporting "never synced"
-    for a backlog that is simply empty is a different claim from the true one."""
+    ``confirmed_at`` is the local instant at which a sync last **confirmed
+    coverage** of this scope — "everything the provider had up to here has been
+    read". It is what a served payload's visible age is measured from, and it has
+    two readers no other stamp can serve. The obvious one: a successful sync of an
+    **empty** scope leaves no ``item.fetched_at`` to age, and reporting *never
+    synced* for a backlog that is simply empty is a different claim from the true
+    one. The load-bearing one: under incremental sync the rows' own stamps stop
+    answering the question at all, because only the window gets restamped — see
+    :func:`confirm_coverage`, which is the other half of keeping this honest."""
     conn.execute(
-        "INSERT OR REPLACE INTO cursor (scope, since, etag, fetched_at) VALUES (?, ?, ?, ?)",
-        (scope, since, etag, fetched_at),
+        "INSERT OR REPLACE INTO cursor (scope, since, etag, coverage_confirmed_at) "
+        "VALUES (?, ?, ?, ?)",
+        (scope, since, etag, confirmed_at),
     )
+
+
+def confirm_coverage(conn: sqlite3.Connection, scope: str, confirmed_at: str) -> dict | None:
+    """Record that a sync confirmed this scope's coverage without changing it.
+    ``None`` on success, an error envelope on failure.
+
+    **The not-modified sync is a real answer, and this is where it is recorded.**
+    A conditional request that comes back 304 has established something specific
+    and valuable: the provider has nothing newer than the watermark, so the store
+    is *current* — not merely un-refreshed. Returning from that path without
+    touching the store, which is what the incremental sync did before this
+    existed, meant the cheapest and most common successful sync left no trace, and
+    the visible age it should have reset instead kept growing.
+
+    Only the coverage stamp moves. ``since`` did not advance (nothing came back to
+    advance it) and its validator is still the one for that query, so rewriting
+    either would be a lie about a request that was never made."""
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE cursor SET coverage_confirmed_at = ? WHERE scope = ?",
+                (confirmed_at, scope),
+            )
+    except sqlite3.Error as exc:
+        log_diag(f"could not stamp backlog cache coverage: {type(exc).__name__}: {exc}")
+        return error("unavailable", f"the backlog cache coverage stamp failed ({type(exc).__name__})")
+    return None
+
+
+def optimize(conn: sqlite3.Connection) -> None:
+    """Compact the store after a rebuild. Best-effort, never fatal.
+
+    A rebuild empties the tables with ``DELETE`` rather than dropping the file —
+    which is what keeps another worktree's open connection valid — so the pages it
+    frees stay in the file and FTS5's incremental segments accumulate across every
+    rebuild a long-lived clone does. Neither costs correctness, and both are
+    self-healing enough that no consumer would ever notice; a rebuild is simply
+    the one moment when the store is already being rewritten and nobody is waiting
+    on a query, which makes it the cheap moment to do it.
+
+    Failure is logged and swallowed on purpose, and it is the one place in this
+    module where that is right: ``VACUUM`` takes an exclusive lock, so a
+    concurrent agent's open reader will lose it a race sometimes. A rebuild that
+    reported unavailable because it could not tidy up afterwards would fail a
+    successful sync for a housekeeping step."""
+    try:
+        if has_fts(conn):
+            conn.execute("INSERT INTO item_fts (item_fts) VALUES ('optimize')")
+            conn.commit()
+        conn.execute("VACUUM")
+    except sqlite3.Error as exc:
+        log_diag(f"backlog cache optimize skipped: {type(exc).__name__}: {exc}")
 
 
 def get_cursor_state(conn: sqlite3.Connection, scope: str) -> tuple[str | None, str | None]:
@@ -684,16 +882,18 @@ def get_cursor_state(conn: sqlite3.Connection, scope: str) -> tuple[str | None, 
     return (row[0], row[1]) if row else (None, None)
 
 
-def last_synced_at(conn: sqlite3.Connection, scope: str) -> str | None:
-    """When this scope last synced successfully, or ``None`` if it never has.
+def coverage_confirmed_at(conn: sqlite3.Connection, scope: str) -> str | None:
+    """When a sync last confirmed this scope's coverage, or ``None`` if none ever
+    has.
 
     Distinct from :func:`oldest_fetched_at`, which ages the *rows*. This ages the
-    *sync*, and it is the only answer available for a scope that synced cleanly
-    and legitimately holds nothing — where there are no rows to age and "never
-    synced" would be a false claim rather than a missing one."""
+    **coverage** — how recently anything established that the store is level with
+    the provider — and it is the number a served payload's visible age is
+    measured from (see ``cachequery._freshness``, which explains why the row
+    stamps cannot answer it under incremental sync)."""
     try:
         row = conn.execute(
-            "SELECT fetched_at FROM cursor WHERE scope = ?", (scope,)
+            "SELECT coverage_confirmed_at FROM cursor WHERE scope = ?", (scope,)
         ).fetchone()
     except sqlite3.Error as exc:
         log_diag(f"could not read the backlog cache sync stamp: {type(exc).__name__}")
@@ -704,8 +904,8 @@ def last_synced_at(conn: sqlite3.Connection, scope: str) -> str | None:
 def oldest_fetched_at(conn: sqlite3.Connection) -> str | None:
     """The oldest ``fetched_at`` in the store, or ``None`` when it is empty.
 
-    The *oldest* rather than the newest deliberately: an age is a promise about
-    the whole payload, and the honest promise is the worst row in it."""
+    The *oldest* rather than the newest deliberately: as a statement about the
+    rows, the honest promise is the worst one in the payload."""
     try:
         row = conn.execute("SELECT MIN(fetched_at) FROM item").fetchone()
     except sqlite3.Error as exc:

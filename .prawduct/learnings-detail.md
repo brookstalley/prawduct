@@ -2903,3 +2903,43 @@ same seam that refuses prose, with the directory-prefix form named in the messag
 **Ties to**: `plugin/lib/backlog/encode.py` (`_is_valid_branch_name`, `parse_working_branch`,
 `validate_affected`); `tests/test_backlog_encode.py::TestWorkingBranch` (17 refused spellings, 5
 accepted — including `docs.github.com`, since a dot is legal in a repo name).
+
+## Changing HOW data ARRIVES silently re-scopes every aggregate over it
+
+**Origin:** W1 backlog cache, Chunk 04 (2026-08-07), carried in as a finding from Chunk 03's review.
+
+`cachequery._freshness` answered the cache's visible age with `MIN(item.fetched_at)`, and its
+docstring argued the case well: *an age is a promise about the whole payload, and the honest promise
+is the worst row in it.* That was exactly right while the cache was rebuild-only — every sync
+rewrote every row, so the oldest row stamp *was* the age of the payload.
+
+Chunk 02 made sync incremental. It changed no line of `_freshness`, and it did not need to: from
+that commit on, only the fetched window gets restamped, so `MIN(item.fetched_at)` became the fetch
+time of the **least-recently-edited** item. It grows without bound precisely while syncs keep
+succeeding. A store synced ten seconds ago could honestly report an age of weeks, and a consumer
+reading that age would treat the cache as abandoned at the moment it was most current. The 304 path
+was worse still: it returned before touching the store at all, so the cheapest and most common
+successful sync left no trace whatsoever.
+
+**Why no test could have caught it.** Every test still passed. The value was still a well-formed
+timestamp, still monotonic, still derived from real data by correct code. Nothing was broken in any
+sense a suite can assert — the *inputs* changed meaning, and the aggregate over them inherited the
+new meaning silently. The rebuild-era fixtures in particular could never have shown it, because in a
+rebuild every row shares one stamp and the two readings coincide.
+
+**What caught it** was a reviewer asking what the number *means* now, rather than whether it is
+computed correctly. That is the transferable move: after a change to how data arrives — full scan to
+incremental, batch to streaming, snapshot to event log, single-writer to many — walk every aggregate,
+watermark, MIN/MAX, count and age over that data and ask what each one now denotes. The ones that
+broke will not announce themselves, because computing correctly is exactly what they still do.
+
+**The fix, and why it is two facts rather than one.** Row provenance (`item.fetched_at`: when this
+machine last read *this row*) and coverage (`cursor.coverage_confirmed_at`: when a sync last
+established that the store is level with the provider) are different questions, and the age wants the
+second. Every successful sync advances it, **including a 304** — which establishes something
+positive, that the provider has nothing newer, not merely that nothing was written. Row provenance
+stays as the reader's fallback for a store that holds rows but carries no cursor row.
+
+**Related:** the sibling failure is [[a-behaviour-change-falsifies-surfaces-a-chunk-never-edits]] —
+there the stale thing is a docstring that now lies; here it is a *value* that now lies, which is
+harder, because prose can be read and disagreed with while a plausible number cannot.

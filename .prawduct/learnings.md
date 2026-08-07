@@ -447,3 +447,5 @@ dropping them.
 ## A build plan can name a CODE IDENTIFIER it never opened, and that is where a plan is most confidently wrong — before implementing a deliverable phrased as "add X to `Y`", open `Y` and check it does what the sentence assumes. Tell: the plan names a symbol and you are about to edit it without having read it
 
 ## A VALIDATOR that only refuses the malformed can still let a control fail OPEN — when a validated value is interpolated into a URL path, a filesystem path, or any other resolver, ask what ELSE the value could successfully resolve, not just whether it parses. Tell: your validator's rejections are all shaped like "this is not well-formed" and none like "this is not the thing"
+
+## Changing HOW data ARRIVES silently re-scopes every aggregate over it — the code still computes, the value still looks plausible, and nothing fails. `MIN(item.fetched_at)` was an honest cache age while every sync rewrote every row; once sync went incremental it became the age of the least-recently-EDITED item, growing without bound while syncs succeeded. Ask what each aggregate MEANS now, not whether it still computes

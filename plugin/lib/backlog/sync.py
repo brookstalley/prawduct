@@ -94,14 +94,21 @@ def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> tuple[list[d
                 "source": item.get("source"),
                 "created_at": issue.get("created_at"),
                 "updated_at": issue.get("updated_at"),
-                # The three fields decode from the block and the labels, so they
-                # rebuild from the provider like everything else here. Stored in
-                # the block's own `[a, b]` spelling (`None` when empty, so a
-                # reader never has to tell `[]` from "no value") — which is what
-                # lets `cache._write_affected` re-derive the path index from the
-                # column instead of from a parallel field that could drift.
+                # Two of the three fields Cache Spec §3 adds. They decode from
+                # the block, so they rebuild from the provider like everything
+                # else here. `affected` is stored in the block's own `[a, b]`
+                # spelling (`None` when empty, so a reader never has to tell `[]`
+                # from "no value") — which is what lets `cache._write_affected`
+                # re-derive the path index from the column instead of from a
+                # parallel field that could drift.
+                #
+                # `tags` is the third and is deliberately NOT stored: no consumer
+                # query reads it from the cache and `list --tag` is served live
+                # off the provider's label filter, so a column for it would be
+                # the dead field `cache.ITEM_COLUMNS` forbids. It still decodes,
+                # and it still round-trips through the provider; the cache simply
+                # is not one of its readers.
                 "affected": _list_column(item.get("affected")),
-                "tags": _list_column(item.get("tags")),
                 "working_branch": item.get("working_branch"),
                 "etag": None,
             }
@@ -162,6 +169,10 @@ def full_rebuild(
         )
         if written.get("status") != "ok":
             return written
+        # After the rows land and before the connection goes: the store has just
+        # been rewritten wholesale and nothing is waiting on a query, which is the
+        # cheap moment to reclaim what a `DELETE`-based rebuild leaves behind.
+        cache.optimize(conn)
     finally:
         conn.close()
 
@@ -254,6 +265,25 @@ def incremental_sync(
         if isinstance(validator, dict):
             return validator  # a transport error envelope — bubble it up
         if not validator.changed:
+            # **A 304 is a positive result and it is recorded as one.** The
+            # provider has just said there is nothing newer than the watermark,
+            # which establishes that the store is level with it — a stronger
+            # claim than "no rows were written", and the one a reader's visible
+            # age is asking about. Returning here without stamping it, which is
+            # what this path did before, meant the cheapest and most common
+            # successful sync left no trace and the age it should have reset
+            # went on growing.
+            failed = cache.confirm_coverage(conn, scope, stamp)
+            warnings = []
+            if failed is not None:
+                # The sync itself succeeded; only the bookkeeping did not. The
+                # cost is an age that keeps over-reporting, which errs toward
+                # "staler than it is" — worth saying out loud, not worth failing
+                # a good sync over.
+                warnings.append(
+                    "the cache is current, but its coverage stamp could not be written: "
+                    f"{(failed.get('error') or {}).get('message')}"
+                )
             return ok(
                 {
                     "written": 0,
@@ -264,7 +294,8 @@ def incremental_sync(
                     "fetched_at": stamp,
                     "rebuilt": False,
                     "not_modified": True,
-                }
+                },
+                warnings,
             )
 
         issues = all_issues(
