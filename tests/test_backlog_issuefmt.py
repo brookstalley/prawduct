@@ -16,6 +16,8 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import pytest  # noqa: E402
+
 from lib.backlog import issuefmt  # noqa: E402
 
 
@@ -93,6 +95,34 @@ class TestLintTitle:
     def test_placeholder_phrase(self):
         findings = issuefmt.lint("cli: bug in the thing", "", ["kind:bug", "area:cli"])
         assert "title-placeholder" in _rules(findings)
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "backlog: single-use prefix item spread",  # "pre-FIX IT-em"
+            "cli: the suffix items are ordered",       # "suf-FIX IT-ems"
+            "docs: prefix iteration order is stable",  # "pre-FIX IT-eration"
+        ],
+    )
+    def test_placeholder_phrase_does_not_match_mid_word(self, title):
+        """A phrase must match whole words. `fix it` is a substring of `prefix
+        item`, so unanchored matching flagged a perfectly good title.
+
+        This was harmless noise while these findings were advisory. It is a false
+        REFUSAL now that the four §1 title checks block every write path — and a
+        blocking check's false-positive rate is the thing that decides whether
+        people route around it, so the classification is pinned here rather than
+        left to the next person to rediscover from a rejected import."""
+        assert "title-placeholder" not in _rules(
+            issuefmt.lint(title, "", ["kind:task", "area:backlog"])
+        )
+
+    def test_placeholder_phrase_still_matches_whole_words(self):
+        """The guard against over-correcting: whole-word matching must not blunt
+        the check it is fixing."""
+        assert "title-placeholder" in _rules(
+            issuefmt.lint("cli: just fix it already", "", ["kind:bug", "area:cli"])
+        )
 
     def test_non_atomic_em_dash(self):
         title = "cli: parser drops flags — and the linter double-counts words"

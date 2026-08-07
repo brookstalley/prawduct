@@ -177,7 +177,7 @@ class TestPrInterleaving:
         # (Alphanumeric suffix — an all-digit one reads as the repo#number
         # spelling, and no real prawduct ID has a numeric suffix.)
         fake.seed_pull_requests(OWNER, REPO, 1, labels=["id:DIS-0A1B"])
-        number = _issue_with_alias(fake, "DIS-0A1B", title="the real item")
+        number = _issue_with_alias(fake, "DIS-0A1B", title="page: the the real item item under test")
         resolved = core.resolve_ref(
             fake, id_raw="DIS-0A1B", default_owner=OWNER, default_repo=(OWNER, REPO)
         )
@@ -189,7 +189,7 @@ class TestPrInterleaving:
         fake.seed_pull_requests(OWNER, REPO, 1, labels=["id:DIS-0001"])
         source = (
             "# Backlog\n\n## Open\n\n"
-            "- **[DIS-0001]** A real item\n"
+            "- **[DIS-0001]** cli: a real item the importer must create\n"
             "  `area: cli · added: 2026-01-01 · status: open`\n\n  Body.\n"
         )
         result = migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=source)
@@ -199,7 +199,7 @@ class TestPrInterleaving:
 
     def test_iter_alias_issues_skips_prs_and_walks_all_pages(self, fake):
         fake.seed_pull_requests(OWNER, REPO, 105, labels=["id:DIS-9999"])
-        number = _issue_with_alias(fake, "DIS-0001", title="the item")
+        number = _issue_with_alias(fake, "DIS-0001", title="page: the the item item under test")
         seen = list(core.iter_alias_issues(fake, OWNER, REPO))
         assert [n for n, _pfxs, _labels, _status in seen] == [number]
 
@@ -209,13 +209,13 @@ class TestPrInterleaving:
         distinguish shipped from dropped (both are `closed`) nor open from
         in-progress, so a consumer given `state` would have to re-implement the
         decoder's rules at a second site where they can drift."""
-        shipped = _issue_with_alias(fake, "DIS-0001", title="shipped item")
+        shipped = _issue_with_alias(fake, "DIS-0001", title="page: the shipped item item under test")
         core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{shipped}", target="shipped")
-        dropped = _issue_with_alias(fake, "DIS-0002", title="dropped item")
+        dropped = _issue_with_alias(fake, "DIS-0002", title="page: the dropped item item under test")
         core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{dropped}", target="dropped")
         in_progress = _issue_with_alias(fake, "DIS-0003", title="in-progress item")
         core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{in_progress}", target="in-progress")
-        plain = _issue_with_alias(fake, "DIS-0004", title="open item")
+        plain = _issue_with_alias(fake, "DIS-0004", title="page: the open item item under test")
 
         by_number = {
             number: status
@@ -248,7 +248,7 @@ class TestPrInterleaving:
 
     def test_list_op_filters_prs_from_items(self, fake):
         fake.seed_pull_requests(OWNER, REPO, 4, state="open", labels=["area:cli"])
-        _issue_with_alias(fake, "DIS-0001", title="real item")
+        _issue_with_alias(fake, "DIS-0001", title="page: the real item item under test")
         result = query.list_items(fake, owner=OWNER, repo=REPO, filters={})
         assert result["data"]["count"] == 1
 
@@ -258,8 +258,8 @@ class TestPrInterleaving:
 
 class TestRedirectFollow:
     def _merged_pair(self, fake):
-        a = core.file_item(fake, owner=OWNER, repo=REPO, title="dup A", body="b")
-        b = core.file_item(fake, owner=OWNER, repo=REPO, title="keep B", body="b")
+        a = core.file_item(fake, owner=OWNER, repo=REPO, title="page: the dup A item under test", body="b")
+        b = core.file_item(fake, owner=OWNER, repo=REPO, title="page: the keep B item under test", body="b")
         a_id, b_id = a["data"]["id"], b["data"]["id"]
         merged = migrate.merge(fake, source_raw=a_id, target_raw=b_id)
         assert merged["status"] == "ok", merged
@@ -275,7 +275,7 @@ class TestRedirectFollow:
 
     def test_get_follows_a_redirect_chain(self, fake):
         a_id, b_id = self._merged_pair(fake)
-        c = core.file_item(fake, owner=OWNER, repo=REPO, title="keep C", body="b")
+        c = core.file_item(fake, owner=OWNER, repo=REPO, title="page: the keep C item under test", body="b")
         c_id = c["data"]["id"]
         assert migrate.merge(fake, source_raw=b_id, target_raw=c_id)["status"] == "ok"
         result = core.get_item(fake, id_raw=a_id)
@@ -283,7 +283,7 @@ class TestRedirectFollow:
         assert result["data"]["resolves_to"] == c_id    # the chain's survivor
 
     def test_get_on_a_live_item_carries_no_resolves_to(self, fake):
-        b = core.file_item(fake, owner=OWNER, repo=REPO, title="live", body="b")
+        b = core.file_item(fake, owner=OWNER, repo=REPO, title="page: the live item under test", body="b")
         result = core.get_item(fake, id_raw=b["data"]["id"])
         assert result["status"] == "ok"
         assert "resolves_to" not in result["data"]
@@ -293,10 +293,10 @@ class TestRedirectFollow:
         # source to model it; pick must not surface merged-away work.
         fake.seed_labels(OWNER, REPO, ["stage:ready"])
         a = core.file_item(
-            fake, owner=OWNER, repo=REPO, title="dup A", body="b",
+            fake, owner=OWNER, repo=REPO, title="page: the dup A item under test", body="b",
             facets={"stage": "ready"},
         )
-        b = core.file_item(fake, owner=OWNER, repo=REPO, title="keep B", body="b")
+        b = core.file_item(fake, owner=OWNER, repo=REPO, title="page: the keep B item under test", body="b")
         a_id, b_id = a["data"]["id"], b["data"]["id"]
         assert migrate.merge(fake, source_raw=a_id, target_raw=b_id)["status"] == "ok"
         number = int(a_id.rsplit("#", 1)[1])
@@ -334,7 +334,7 @@ class TestListHasMore:
         assert page2["data"]["has_more"] is False
 
     def test_short_raw_page_ends_the_walk(self, fake):
-        _issue_with_alias(fake, "DIS-0A1B", title="only item")
+        _issue_with_alias(fake, "DIS-0A1B", title="page: the only item item under test")
         result = query.list_items(fake, owner=OWNER, repo=REPO, filters={})
         assert result["data"]["has_more"] is False
 
@@ -357,8 +357,8 @@ class TestRedirectDegrade:
     def test_mid_chain_failure_fail_opens_at_the_last_resolvable_node(self, fake):
         # A TransportError on a downstream hop lands at the last node the chain
         # could resolve — a's own block already names b, so b is surfaced.
-        a = core.file_item(fake, owner=OWNER, repo=REPO, title="dup A", body="b")
-        b = core.file_item(fake, owner=OWNER, repo=REPO, title="keep B", body="b")
+        a = core.file_item(fake, owner=OWNER, repo=REPO, title="page: the dup A item under test", body="b")
+        b = core.file_item(fake, owner=OWNER, repo=REPO, title="page: the keep B item under test", body="b")
         a_id, b_id = a["data"]["id"], b["data"]["id"]
         assert migrate.merge(fake, source_raw=a_id, target_raw=b_id)["status"] == "ok"
         real_get = fake.get_issue
@@ -377,8 +377,8 @@ class TestRedirectDegrade:
     def test_get_degrades_when_the_follow_itself_fails(self, fake):
         # The ERR-6 net: an unexpected OSError inside the follow (after the main
         # read succeeded) degrades to no enrichment — never a failed get.
-        a = core.file_item(fake, owner=OWNER, repo=REPO, title="dup A", body="b")
-        b = core.file_item(fake, owner=OWNER, repo=REPO, title="keep B", body="b")
+        a = core.file_item(fake, owner=OWNER, repo=REPO, title="page: the dup A item under test", body="b")
+        b = core.file_item(fake, owner=OWNER, repo=REPO, title="page: the keep B item under test", body="b")
         a_id, b_id = a["data"]["id"], b["data"]["id"]
         assert migrate.merge(fake, source_raw=a_id, target_raw=b_id)["status"] == "ok"
         real_get = fake.get_issue
@@ -402,7 +402,7 @@ class TestPerPageClamp:
         # GitHub clamps per_page to 100 server-side; an unclamped local value
         # would make len(raw) == per_page never true and end walks early.
         fake.seed_pull_requests(OWNER, REPO, 100, state="open")
-        _issue_with_alias(fake, "DIS-0A1B", title="page-2 item")
+        _issue_with_alias(fake, "DIS-0A1B", title="page: the page-2 item item under test")
         result = query.list_items(
             fake, owner=OWNER, repo=REPO, filters={}, per_page=150, page=1
         )

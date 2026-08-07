@@ -63,7 +63,16 @@ class TestNoModelOnCrudPath:
     def test_crud_ops_touch_only_transport_methods(self):
         fake = FakeGitHub()
         core.provision_labels(fake, owner="octo", repo="repo")
-        core.file_item(fake, owner="octo", repo="repo", title="X", body="b", facets={"stage": "ready"})
+        # The title must CONFORM to issue-standard §1. With a non-conforming one
+        # (`"X"` shipped here until #614) `file_item` refuses before reaching
+        # `create_issue`, and this test goes vacuous: a `used <= allowed` subset
+        # assertion cannot fail by omission, so it stays green while observing
+        # none of the create path it exists to police.
+        filed = core.file_item(
+            fake, owner="octo", repo="repo",
+            title="core: an invariant probe item", body="b", facets={"stage": "ready"},
+        )
+        assert filed["status"] == "ok", filed
         core.get_item(fake, id_raw="octo/repo#1")
         allowed = {
             "get_authenticated_user",
@@ -74,6 +83,11 @@ class TestNoModelOnCrudPath:
         }
         used = {call[0] for call in fake.calls}
         assert used <= allowed, f"unexpected non-transport calls: {used - allowed}"
+        # Positive half — the subset assertion above is satisfied by an empty set,
+        # so name what must actually have happened.
+        assert {"create_issue", "get_issue"} <= used, (
+            f"the create/read path was never exercised: {used}"
+        )
 
 
 class TestEgressDiscipline:

@@ -107,10 +107,13 @@ _HELP = (
     "  merge    <source-id> --into <target-id> [--repo owner/repo]   (fold A→B, redirect-before-close)\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
     "\n"
-    "issue standard: `file` emits an `area:`-prefixed title and audits the issue\n"
-    "  (WARN-only `lint` findings, never blocks). Author a scannable `area: summary`\n"
-    "  title (<=72) + a sectioned body (bug: Problem/Repro/Actual/Expected/Evidence;\n"
-    "  task: Problem/Proposed change/Acceptance `- [ ]`/Scope-out) and set --kind.\n"
+    "issue standard: `file` emits an `area:`-prefixed title and audits the issue.\n"
+    "  The four §1 TITLE checks BLOCK on every write path — `file`, `update` (on a\n"
+    "  title it is asked to write) and `import` (whole corpus, before the first\n"
+    "  write); body/label `lint` findings stay advisory. Author a scannable\n"
+    "  `area: summary` title (15-72) + a sectioned body (bug:\n"
+    "  Problem/Repro/Actual/Expected/Evidence; task: Problem/Proposed\n"
+    "  change/Acceptance `- [ ]`/Scope-out) and set --kind.\n"
     "  Full contract: documentation/backlog-service-issue-standard.md\n"
 )
 
@@ -677,9 +680,20 @@ def _run_restructure_preview(rest: list[str]):
     applied = restructure.apply(records, plan)
     if not applied["ok"]:
         return core.error("validation", applied["error"])
+    # Ask the import's own gate about the records this preview is approving. The
+    # preview is the owner's AGGREGATE pre-approval artifact for an irreversible
+    # run, so a preview that reads clean and is then hard-refused by the import
+    # has failed at its one job. It reports rather than refuses — a read-only
+    # preview must still render, and the refusal is what the operator needs to
+    # SEE. Note the preview document already lists per-entry lint findings, but
+    # WARN-only body lints sit right beside these; what it could not say before is
+    # which of them BLOCK.
+    preflight_offenders = migrate.preflight_titles(applied["records"])
+
     source_label = flags["from"] + (f" + {flags['archive']}" if "archive" in flags else "")
     preview = restructure.render_preview(
-        applied, source_label=source_label, collisions=collisions
+        applied, source_label=source_label, collisions=collisions,
+        blocking=preflight_offenders,
     )
     out_path = Path(flags["out"])
     try:
@@ -699,11 +713,22 @@ def _run_restructure_preview(rest: list[str]):
         "kinds_assigned": sum(1 for e in entries if e["kind_assigned"]),
         "non_atomic_flagged": sum(1 for e in entries if e["non_atomic"]),
         "lint_findings": sum(len(e["lint"]) for e in entries),
+        "preflight_blocking": len(preflight_offenders),
+        "nonconforming_titles": preflight_offenders,
         "collisions": len(collisions),
         "archive_skipped": archive_skipped,
         "total_source": len(records),  # records entering the import (post archive-scope filter)
     }
     warnings = applied["warnings"]
+    if preflight_offenders:
+        # First in the list: approving a plan the import will refuse wastes the
+        # one review the owner gives an irreversible run.
+        warnings = [
+            f"{len(preflight_offenders)} of {len(records)} item(s) have titles that FAIL the "
+            "issue standard §1 — an import of this plan would refuse before writing anything. "
+            "Fix these titles in the restructure plan and re-preview; the per-item rules are in "
+            "`nonconforming_titles` (and --json carries the full list)"
+        ] + warnings
     if archive_skipped:
         # Surface the dropped count in human mode too (not JSON-only) so an owner
         # previewing "exactly what imports" sees what --archive-scope excluded — the
@@ -895,12 +920,42 @@ def _render_detail_list(value: list) -> str:
 
     Long lists are capped so one bad run still cannot bury the message.
     """
-    if not value or not all(isinstance(item, str) for item in value):
+    if not value:
+        return str(len(value))
+    if not all(isinstance(item, str) for item in value):
         return str(len(value))
     if len(value) <= _DETAIL_LIST_CAP:
         return ", ".join(value)
     head = ", ".join(value[:_DETAIL_LIST_CAP])
     return f"{head}, … (+{len(value) - _DETAIL_LIST_CAP} more)"
+
+
+#: Detail keys whose entries are the **payload**, not bookkeeping — the same test
+#: `_render_detail_list` applies to string lists, for lists of dicts. Each remedy
+#: names the items ("rewrite the named titles", "inspect `failed` for the shared
+#: cause"), so a bare count is unactionable, and the runbook drives these paths
+#: without ``--json`` so the named form has no other route to the operator.
+#: Anything absent here stays counted: `created`/`skipped`/`collisions` are
+#: bookkeeping and would bury the message.
+_NAMED_DETAIL_ENTRIES = {
+    "nonconforming_titles": lambda e: f"{e.get('title')!r} — {', '.join(e.get('rules') or [])}",
+    "failed": lambda e: f"{e.get('title')!r} — {e.get('error')}",
+}
+
+
+def _render_named_entries(value: list, project) -> str:
+    """Render a payload dict-list as named lines, capped like the string form.
+
+    An empty list renders as ``0``, not as a bare newline: a resumable cut
+    carrying ``failed: []`` otherwise printed the key followed by a blank
+    indented line, which reads as truncated output rather than as "none"."""
+    if not value:
+        return "0"
+    shown = [project(item) if isinstance(item, dict) else str(item) for item in value]
+    if len(shown) <= _DETAIL_LIST_CAP:
+        return "\n      " + "\n      ".join(shown)
+    head = "\n      " + "\n      ".join(shown[:_DETAIL_LIST_CAP])
+    return f"{head}\n      … (+{len(shown) - _DETAIL_LIST_CAP} more)"
 
 
 def _pacing_line(pacing: dict) -> str:
@@ -953,26 +1008,15 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         _print_human_ok(result.get("data"))
         for warning in result.get("warnings", []):
             print(f"warning: {warning}", file=sys.stderr)
-        # Standard lint findings (WARN-only, `file`): advisory, never affect the
-        # exit code, and kept distinct from operational warnings.
+        # Standard lint findings — emitted by `file` (body/label) and by `update`
+        # (a stored title left unconformed). Advisory by construction: a finding
+        # that BLOCKS never reaches here, because it returned a validation error
+        # instead. So these never affect the exit code, and stay distinct from
+        # operational warnings.
         for finding in result.get("lint", []):
             print(f"lint: {finding.get('message')}", file=sys.stderr)
     else:
-        err = result.get("error", {})
-        print(f"error [{err.get('code')}]: {err.get('message')}", file=sys.stderr)
-        # A cut mid-import already KNOWS how far it got — the envelope carries
-        # `created`/`skipped`/`collisions`/`resumable`/`pacing` — and human mode
-        # dropped all of it, so the operator of an irreversible ~900-issue
-        # migration learned only that it broke. The scrub runbook drives this
-        # path without `--json`, so this is the surface that matters.
-        for key, value in (err.get("details") or {}).items():
-            if key == "pacing" and isinstance(value, dict):
-                shown = _pacing_line(value)
-            elif isinstance(value, list):
-                shown = _render_detail_list(value)
-            else:
-                shown = value
-            print(f"  {key}: {shown}", file=sys.stderr)
+        _print_human_error(result.get("error", {}))
         # A resumable error envelope (e.g. import) carries the audit warnings accrued
         # before the cut; surface them like the ok path so they reach the operator.
         for warning in result.get("warnings", []):
@@ -980,6 +1024,33 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         if usage:
             print(_HELP, file=sys.stderr)
     return exit_code
+
+
+def _print_human_error(err: dict) -> None:
+    """Render an error envelope to stderr.
+
+    Extracted from :func:`_emit` so it can be tested directly. It could not be
+    before, and the consequence was exactly the defect this docstring now guards:
+    `nonconforming_titles` printed as a bare count for two review rounds because
+    every test of the refusal read the `--json` envelope instead.
+
+    A cut mid-import already KNOWS how far it got — the envelope carries
+    `created`/`skipped`/`failed`/`collisions`/`resumable`/`pacing` — and human
+    mode once dropped all of it, so the operator of an irreversible ~900-issue
+    migration learned only that it broke. The scrub runbook drives this path
+    without ``--json``, so this is the surface that matters.
+    """
+    print(f"error [{err.get('code')}]: {err.get('message')}", file=sys.stderr)
+    for key, value in (err.get("details") or {}).items():
+        if key == "pacing" and isinstance(value, dict):
+            shown = _pacing_line(value)
+        elif isinstance(value, list) and key in _NAMED_DETAIL_ENTRIES:
+            shown = _render_named_entries(value, _NAMED_DETAIL_ENTRIES[key])
+        elif isinstance(value, list):
+            shown = _render_detail_list(value)
+        else:
+            shown = value
+        print(f"  {key}: {shown}", file=sys.stderr)
 
 
 def _print_human_ok(data) -> None:
@@ -1008,15 +1079,28 @@ def _print_human_ok(data) -> None:
     elif "total_source" in data:
         # An import result (checked before `items`: an export result also carries an
         # `items` key, so the migration results are matched first on their own keys).
+        # `failed` rides in the count line, not only in a warning: without it the
+        # summary triple silently stops summing to `total_source`, so a run that
+        # dropped items reads as a clean import. Named in the same breath as the
+        # others because it is the only one of them that means "this item is not on
+        # the target at all".
+        failed = data.get("failed") or []
         line = (
             f"{data.get('repo')}: imported {len(data.get('created', []))} created, "
             f"{len(data.get('skipped', []))} skipped, "
+            f"{len(failed)} rejected, "
             f"{len(data.get('collisions', []))} collision(s) of "
             f"{data.get('total_source')} source item(s)"
         )
         if "restructured" in data:
             line += f" ({data['restructured']} restructured by plan)"
         print(line)
+        if failed:
+            print(
+                f"  WARNING: {len(failed)} item(s) were REJECTED and are NOT on the "
+                "target — re-run the import to retry them, then verify-migration:"
+                + _render_named_entries(failed, _NAMED_DETAIL_ENTRIES["failed"])
+            )
         # An item can be created and still not migrated: a failed status reconcile
         # defers so the run continues, leaving the issue on the target at the wrong
         # status. That is invisible in the counts above — a deferred item is in

@@ -12,10 +12,28 @@ the *content* of an issue is model-authored (or human-authored via Issue Forms);
 this module only normalizes the title, assembles authored sections into the
 canonical body layout, and *audits* the result. It never invents prose.
 
-The linter is **WARN-only by construction** — it returns findings, never a
-verdict, and no caller blocks on them (the ``file`` path was never a blocking
-gate; this is quality nudging, not enforcement — distinct from the "never demote
-a real blocking gate to a warning" rule).
+**The four §1 TITLE checks BLOCK; every body and label lint stays WARN-only.**
+This module still returns findings rather than a verdict — the posture lives in
+the callers — but the split is now load-bearing, so a change here changes what
+can be written:
+
+- :func:`lint_title` (``title-too-long`` / ``-too-short`` / ``-placeholder`` /
+  ``-non-atomic``) is consumed by every write path as a **refusal**: ``file`` and
+  ``update`` reject a non-conforming title before the write, and the migration
+  pre-flight refuses a whole corpus before its first write. Loosening a threshold
+  here silently widens what enters the backlog; tightening one can hard-refuse an
+  irreversible ~900-issue migration. Both directions want a test.
+- :func:`lint`'s body and label findings are advisory and gate nothing. That is
+  deliberate, not an oversight: a body budget blocking an edit to an unrelated
+  field is the confirmation-fatigue shape ``security-model.md``'s approval norm
+  rejects, and a title is both the handle every reader triages by and cheap to
+  rewrite.
+
+A **false positive here is a false refusal**, which is a different cost than the
+noise it used to be — the placeholder check matches whole words for exactly that
+reason (see ``_PLACEHOLDER_PHRASE_RE``). The rules themselves are owned by
+``documentation/backlog-service-issue-standard.md`` §1; the norm requiring their
+enforcement lives in ``.prawduct/artifacts/data-model.md``.
 """
 
 from __future__ import annotations
@@ -93,6 +111,17 @@ _PLACEHOLDER_TOKENS = frozenset(
      "misc", "temp", "tmp", "placeholder", "chore", "task", "issue"}
 )
 _PLACEHOLDER_PHRASES = ("the thing", "something", "some stuff", "a bug", "fix it")
+
+# Whole-word alternation over the phrases above. Unanchored `in` matching reads
+# straight through word boundaries: "fix it" is a substring of "pre-FIX IT-em",
+# so `single-use prefix item 6` linted as a placeholder. Harmless while these
+# findings were advisory; a false refusal once they BLOCK a write — so the
+# classification is fixed here rather than the budget loosened at the call site.
+# "something" keeps its own entry because \b would not fire mid-word anyway and
+# the phrase is already whole.
+_PLACEHOLDER_PHRASE_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(p) for p in _PLACEHOLDER_PHRASES) + r")\b"
+)
 
 
 def _template_for(kind: str | None) -> tuple[tuple[str, bool], ...] | None:
@@ -197,9 +226,14 @@ def _match_key(canonical: str, sections: dict[str, str]) -> str | None:
 
 @dataclass(frozen=True)
 class LintFinding:
-    """One WARN-only lint finding. ``rule`` is a stable kebab-case id (so callers
-    can filter/suppress); ``message`` is human-facing. Severity is always
-    ``warn`` — this linter has no other level."""
+    """One lint finding. ``rule`` is a stable kebab-case id (so callers can
+    filter/suppress); ``message`` is human-facing.
+
+    ``severity`` is always ``warn`` because this type carries no posture — the
+    CALLER decides. A `title-*` finding reaching a write path becomes a refusal
+    (`core._title_refusal`, `migrate.preflight_titles`); the same dataclass, with
+    the same ``"severity": "warn"``, therefore also rides inside a BLOCKING
+    validation error. Do not read this field as "this finding is advisory"."""
 
     rule: str
     message: str
@@ -210,22 +244,33 @@ class LintFinding:
 
 
 def lint(title: str, body: str, labels: list[str] | None = None) -> list[LintFinding]:
-    """Audit an issue against the standard §4. Returns findings (possibly empty);
-    **never** raises and never blocks. Reused verbatim by ``file`` (warn on
-    create) and by the migration as an audit-only pass over restructured items.
+    """Audit an issue against the standard §4. Returns findings (possibly empty)
+    and **never raises** — but "never blocks" is a statement about THIS function,
+    not about its findings: callers refuse on the `title-*` rules it returns (see
+    the module docstring). Reused by ``file`` and by the migration's audit pass
+    over restructured items.
 
     ``body`` is the *human* body (no ``prawduct:`` block) and ``labels`` are the
     ``<facet>:value`` labels the issue carries.
     """
     labels = labels or []
     findings: list[LintFinding] = []
-    findings += _lint_title(title or "", labels)
+    findings += lint_title(title or "", labels)
     findings += _lint_labels(labels)
     findings += _lint_body(body or "", labels)
     return findings
 
 
-def _lint_title(title: str, labels: list[str]) -> list[LintFinding]:
+def lint_title(title: str, labels: list[str] | None = None) -> list[LintFinding]:
+    """The standard's four §1 **title** checks, alone. Public because the title
+    rules are the only lints that BLOCK a write (`file`, `update`, `import`),
+    while every body/label lint stays WARN-only — so callers enforcing the
+    blocking half need the title findings without the advisory ones mixed in.
+
+    ``labels`` is accepted for symmetry with :func:`lint` and is unused: no §1
+    title rule depends on a label. It stays in the signature so a future rule
+    that does need one is not a caller-visible break."""
+    labels = labels or []
     out: list[LintFinding] = []
     n = len(title)
     if n > TITLE_MAX:
@@ -235,7 +280,7 @@ def _lint_title(title: str, labels: list[str]) -> list[LintFinding]:
 
     _area, summary = _split_area(title)
     lowered = summary.lower().strip().rstrip(".")
-    if lowered in _PLACEHOLDER_TOKENS or any(p in lowered for p in _PLACEHOLDER_PHRASES):
+    if lowered in _PLACEHOLDER_TOKENS or _PLACEHOLDER_PHRASE_RE.search(lowered):
         out.append(LintFinding("title-placeholder", "title is vague/placeholder — say what + where"))
 
     # Non-atomic: an em-dash or semicolon join in the summary usually means ≥2

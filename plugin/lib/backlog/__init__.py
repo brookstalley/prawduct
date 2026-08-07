@@ -13,7 +13,8 @@ seam — see ``documentation/backlog-service-api-contract.md`` §1):
 - ``encode``     — the ``prawduct:`` body block parse/serialize + soft-enum
   tolerance + item decode + prawduct-issue detection (PROV-2).
 - ``issuefmt``   — the deterministic issue-structure standard: title
-  normalization, the §2 body composer, and the WARN-only linter.
+  normalization, the §2 body composer, and the linter — whose four §1 TITLE
+  checks BLOCK every write path, while body/label findings stay WARN-only.
 - ``core``       — deterministic CRUD (the return-value envelope + op
   implementations); the CLI/MCP fronts are thin over this.
 - ``query``      — the read side (``list``/``pick``/``counts``): structured

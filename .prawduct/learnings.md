@@ -411,3 +411,11 @@ dropping them.
 ## When you add a member to an enumerated set in code (a fact kind, a waiver rule id, an exit code), the registry that DOCUMENTS that set is owed a row in the SAME commit — four went stale in one chunk, and three cost a full review round each because the gap is cheap to fix and expensive to notice
 
 ## A reviewer severity is a SCHEDULING decision, not just a risk rating — BLOCKING means "the tree must not move again without this", so a record gap that can ride a commit already owed is an observation; rating it BLOCKING spends a whole round on a one-row edit
+
+## Before choosing block-vs-warn for a gate, establish WHO is at the write — a refusal in front of a human is a stop, but in front of an AGENT it is an auto-fix, and an auto-fix performed to satisfy a gate is a silent mutation nobody reviewed. Tell: you are weighing "strict vs lenient" and have not named the caller
+
+## Enumerating the surfaces a chunk EDITS is a different question from enumerating the surfaces its behaviour change FALSIFIES — only the second finds the docstring that now lies. A plan that lists the first and calls it a surface sweep misses the file the chunk never opens, which is exactly where a maintainer reads the old rule before changing a threshold
+
+## Promoting an advisory check to blocking changes what its false positives COST, so audit them as part of the wiring — a placeholder lint matched "fix it" inside "pre-FIX IT-em" harmlessly for years, then became a false refusal on an irreversible migration. Fix the classification, never the budget
+
+## A gate on a value that nearly every fixture supplies will touch nearly every fixture — estimate that blast radius in the plan, because it changes the chunk's real size. Enforcing a title rule broke 126 tests across 8 modules, none of which asserted anything about titles; fixing fixture DATA (never assertions) is correct, but discovering the number at build time is a planning miss

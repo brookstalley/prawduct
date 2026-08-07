@@ -33,7 +33,7 @@ def fake():
     return FakeGitHub(user={"login": "agent-a", "id": 1})
 
 
-def _file(fake, *, title="t", **facets):
+def _file(fake, *, title="claim: the t item under test", **facets):
     result = core.file_item(fake, owner=OWNER, repo=REPO, title=title, body="b", facets=facets)
     assert result["status"] == "ok", result
     return result["data"]["id"]
@@ -47,14 +47,14 @@ def _as_actor(fake, login):
 
 class TestClaim:
     def test_claim_unassigned_takes_and_stamps(self, fake):
-        item = _file(fake, title="free")
+        item = _file(fake, title="claim: the free item under test")
         result = core.claim(fake, id_raw=item, now=NOW, sleeper=NOSLEEP)
         assert result["status"] == "ok"
         assert result["data"]["assignee"] == "agent-a"
         assert result["data"]["claimed_at"] == NOW.isoformat()
 
     def test_claim_idempotent_for_same_actor(self, fake):
-        item = _file(fake, title="free")
+        item = _file(fake, title="claim: the free item under test")
         core.claim(fake, id_raw=item, now=NOW, sleeper=NOSLEEP)
         later = NOW + timedelta(minutes=5)
         again = core.claim(fake, id_raw=item, now=later, sleeper=NOSLEEP)
@@ -64,7 +64,7 @@ class TestClaim:
         assert again["data"]["claimed_at"] == later.isoformat()
 
     def test_live_claim_by_other_actor_is_non_fatal_conflict(self, fake):
-        item = _file(fake, title="contended")
+        item = _file(fake, title="claim: the contended item under test")
         core.claim(fake, id_raw=item, now=NOW, sleeper=NOSLEEP)  # agent-a holds it
         _as_actor(fake, "agent-b")
         result = core.claim(fake, id_raw=item, now=NOW + timedelta(hours=1), sleeper=NOSLEEP)
@@ -74,7 +74,7 @@ class TestClaim:
         assert result["error"]["details"]["holder"] == "agent-a"
 
     def test_stale_claim_past_ttl_is_reaped(self, fake):
-        item = _file(fake, title="abandoned")
+        item = _file(fake, title="claim: the abandoned item under test")
         core.claim(fake, id_raw=item, now=NOW, sleeper=NOSLEEP)  # agent-a
         _as_actor(fake, "agent-b")
         future = NOW + timedelta(days=2)  # past the 24h default TTL
@@ -84,7 +84,7 @@ class TestClaim:
         assert result["data"]["claimed_at"] == future.isoformat()
 
     def test_ttl_boundary_respects_override(self, fake):
-        item = _file(fake, title="short-ttl")
+        item = _file(fake, title="claim: the short-ttl item under test")
         core.claim(fake, id_raw=item, now=NOW, sleeper=NOSLEEP)
         _as_actor(fake, "agent-b")
         # A 1-hour TTL: two hours later the claim is reap-eligible.
@@ -95,7 +95,7 @@ class TestClaim:
 
     def test_assignee_without_stamp_treated_as_live(self, fake):
         """A human/UI assignment (assignee set, no claimed_at) is never reaped."""
-        item = _file(fake, title="human-assigned")
+        item = _file(fake, title="claim: the human-assigned item under test")
         _owner, _repo, number = OWNER, REPO, int(item.split("#")[1])
         fake.update_issue(_owner, _repo, number, fields={"assignees": ["a-human"]})  # no stamp
         _as_actor(fake, "agent-b")
@@ -106,7 +106,7 @@ class TestClaim:
         """The take is one atomic PATCH — a crash mid-take leaves the item *free*
         (never a torn assignee-set/no-stamp state that TTL-reap could not free),
         and a re-run converges (CC3/M11 crash-safety, parallel to CRASH-1)."""
-        item = _file(fake, title="crash-take")
+        item = _file(fake, title="claim: the crash-take item under test")
         _owner, _repo, number = OWNER, REPO, int(item.split("#")[1])
         fake.fail_at_mutation(1)  # the claim's atomic PATCH fails
         crashed = core.claim(fake, id_raw=item, now=NOW, sleeper=NOSLEEP)
@@ -132,7 +132,7 @@ class TestClaim:
                 return result
 
         racing = RacingFake(user={"login": "agent-a", "id": 1})
-        item = core.file_item(racing, owner=OWNER, repo=REPO, title="raced", body="b")["data"]["id"]
+        item = core.file_item(racing, owner=OWNER, repo=REPO, title="claim: the raced item under test", body="b")["data"]["id"]
         result = core.claim(racing, id_raw=item, now=NOW, sleeper=NOSLEEP)
         assert result["status"] == "error"
         assert result["error"]["code"] == "claim_conflict"
@@ -141,7 +141,7 @@ class TestClaim:
     def test_claim_conflict_maps_to_exit_class_4(self, fake, capsys):
         import json
 
-        item = _file(fake, title="contended")
+        item = _file(fake, title="claim: the contended item under test")
         # Both claims go through the CLI so holder and challenger share one clock
         # domain — a fixed-NOW first claim expires against the CLI's real clock
         # once wall time passes NOW + TTL, turning the conflict into a legal reap.
@@ -157,7 +157,7 @@ class TestClaim:
 
 class TestUnclaim:
     def test_unclaim_clears_assignee_and_stamp(self, fake):
-        item = _file(fake, title="mine")
+        item = _file(fake, title="claim: the mine item under test")
         core.claim(fake, id_raw=item, now=NOW, sleeper=NOSLEEP)
         result = core.unclaim(fake, id_raw=item)
         assert result["status"] == "ok"
@@ -165,7 +165,7 @@ class TestUnclaim:
         assert result["data"]["claimed_at"] is None
 
     def test_unclaim_free_item_is_a_near_no_op(self, fake):
-        item = _file(fake, title="already free")
+        item = _file(fake, title="claim: the already free item under test")
         before = len(fake.calls)
         result = core.unclaim(fake, id_raw=item)
         assert result["status"] == "ok"
@@ -174,7 +174,7 @@ class TestUnclaim:
         assert mutations == []
 
     def test_reclaim_after_unclaim(self, fake):
-        item = _file(fake, title="cycle")
+        item = _file(fake, title="claim: the cycle item under test")
         core.claim(fake, id_raw=item, now=NOW, sleeper=NOSLEEP)
         core.unclaim(fake, id_raw=item)
         _as_actor(fake, "agent-b")

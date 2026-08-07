@@ -111,6 +111,15 @@ def file_item(
     # title the author already prefixed.
     title = issuefmt.normalize_title(title, facets.get("area"))
 
+    # The §1 title rules BLOCK (data model: every issue written to the backlog
+    # store conforms, on every write path). Lint the NORMALIZED string, because
+    # that is the one `create_issue` writes — linting the caller's argument would
+    # judge a title that never reaches GitHub. Body and label lints stay WARN-only
+    # below; only the title refuses.
+    refusal = _title_refusal(title)
+    if refusal is not None:
+        return refusal
+
     warnings: list[str] = []
     labels: list[str] = []
     for facet in _FILE_FACETS:
@@ -153,6 +162,34 @@ def file_item(
     result = ok(item, warnings)
     result["lint"] = [f.as_dict() for f in issuefmt.lint(title, body, labels)]
     return result
+
+
+def _title_refusal(title: str) -> dict | None:
+    """The blocking half of the issue standard: a ``validation`` error when
+    ``title`` fails any §1 rule, else ``None``.
+
+    Shared by ``file`` and ``update`` so the two paths cannot drift into
+    disagreeing about what a conforming title is — the norm binds *that* the
+    rules are enforced, and `issuefmt` stays the one home for the rules
+    themselves.
+
+    The message names the failing rule AND echoes the title, because the caller
+    on both these paths is an agent that has to decide what to write instead; a
+    refusal it cannot act on just gets retried verbatim."""
+    findings = issuefmt.lint_title(title)
+    if not findings:
+        return None
+    detail = "; ".join(f"{f.rule}: {f.message}" for f in findings)
+    return error(
+        "validation",
+        f"title does not conform to the issue standard §1 — {detail}. "
+        f"Rewrite it and retry (got: {title!r})",
+        details={
+            "title": title,
+            "rules": [f.rule for f in findings],
+            "lint": [f.as_dict() for f in findings],
+        },
+    )
 
 
 def _body_with_block(body: str, *, automated: bool = False, worker: str | None = None) -> str:
@@ -538,6 +575,23 @@ def update_item(
             details={"rejected": rejected},
         )
 
+    # The §1 title rules block on the title BEING WRITTEN — not on the issue's
+    # resulting title (owner ruling 2026-08-06). Checked before any I/O: a
+    # refusal should cost no round-trip.
+    #
+    # The narrow scope is load-bearing, not a softening. An AGENT is at this
+    # write — nothing automated calls `update` — so gating every field on the
+    # stored title would not block the ~11% of live issues that predate the rule;
+    # it would make an agent silently RETITLE them to get past the gate, one at a
+    # time, as a side effect of archiving them, with none of the aggregate owner
+    # approval the import scrub keeps. That breaches the norm's own
+    # `Retroactivity: contain` — the containment boundary is the write path —
+    # and it is the confirmation-fatigue shape `security-model.md` rejects.
+    if "title" in fields:
+        refusal = _title_refusal(fields["title"] or "")
+        if refusal is not None:
+            return refusal
+
     warnings: list[str] = []
     try:
         # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
@@ -598,7 +652,30 @@ def update_item(
 
     item, decode_warnings = encode.decode_item(issue, canonical_id=nid.canonical)
     warnings.extend(decode_warnings)
-    return ok(item, warnings)
+
+    # An update that did NOT write a title still REPORTS a stored title that fails
+    # §1 — advisory, never blocking (see the ruling above). Advice failing soft is
+    # not advice failing silent: the finding names the rule, and the line beside it
+    # names the consequence, so a reader is not left inferring whether this write
+    # quietly fixed the title. It did not, deliberately.
+    #
+    # Accrued BEFORE `ok()`, which snapshots the list — appending afterwards
+    # reaches nobody. (Found by the test below, which is the third time on this
+    # branch that enriching one exit path missed the constructor building it.)
+    stored_findings: list = []
+    if "title" not in fields:
+        stored_findings = issuefmt.lint_title((issue.get("title") or "").strip())
+        if stored_findings:
+            warnings.append(
+                f"this item's stored title does not conform to the issue standard §1 "
+                f"({', '.join(f.rule for f in stored_findings)}) — NOT changed by this update; "
+                "retitle it deliberately with `update <id> title=...` if it matters"
+            )
+
+    result = ok(item, warnings)
+    if stored_findings:
+        result["lint"] = [f.as_dict() for f in stored_findings]
+    return result
 
 
 # --- comment -----------------------------------------------------------------
