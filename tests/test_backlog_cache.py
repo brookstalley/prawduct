@@ -186,10 +186,8 @@ class TestSchemaMismatch:
     def test_an_unversioned_store_is_rebuilt_never_migrated(self, fake, repo_dir):
         """A store carrying tables but no version stamp is rebuilt from scratch.
 
-        This is the version-0 branch. The symmetric *schema-behind* branch
-        (0 < version < SCHEMA_VERSION) has no reachable value while
-        SCHEMA_VERSION is 1 and becomes testable at v2; the discard-and-rebuild
-        path it shares is covered by the schema-ahead test above."""
+        This is the version-0 branch; the schema-behind branch below covers
+        0 < version < SCHEMA_VERSION, which became reachable at v3."""
         _corpus(fake)
         assert _rebuild(fake, repo_dir)["status"] == "ok"
         path = cache.cache_path(repo_dir)
@@ -203,6 +201,70 @@ class TestSchemaMismatch:
         assert not isinstance(conn, dict), conn
         assert conn.execute("SELECT COUNT(*) FROM item").fetchone()[0] == 0
         conn.close()
+
+    def test_a_store_one_version_behind_is_discarded_and_rebuilt(self, fake, repo_dir):
+        """The branch that only became reachable once a second version existed —
+        and the one whose absence let a real defect through.
+
+        `cursor.fetched_at` was added to the v2 schema without bumping past v2.
+        A store written by the earlier v2 code therefore matched on version, was
+        never discarded, and then failed every `_write_cursor` on the missing
+        column — an `unavailable` envelope on every sync, forever, because the
+        mechanism that would have rebuilt it is the version check that had just
+        pronounced it healthy. The store is old-SHAPED here, not merely
+        old-numbered, so the assertion is that the column arrives — a test that
+        only re-stamped the version would pass against the bug."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        path = cache.cache_path(repo_dir)
+        raw = sqlite3.connect(str(path))
+        raw.execute("DROP TABLE cursor")
+        raw.execute("CREATE TABLE cursor (scope TEXT PRIMARY KEY, since TEXT, etag TEXT)")
+        raw.execute(f"PRAGMA user_version={cache.SCHEMA_VERSION - 1}")
+        raw.commit()
+        raw.close()
+
+        conn = cache.open_store(repo_dir, create=True)
+
+        assert not isinstance(conn, dict), conn
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == cache.SCHEMA_VERSION
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(cursor)")}
+        conn.close()
+        assert "fetched_at" in columns, (
+            "the stale-shaped store survived, so every cursor write would fail forever"
+        )
+
+    def test_the_v2_shaped_store_that_actually_shipped_is_discarded(self, fake, repo_dir):
+        """**The version literal below is deliberate and must not be replaced by
+        `cache.SCHEMA_VERSION - 1`.** `2` is a historical fact — the number a
+        real store carrying the pre-`fetched_at` cursor was stamped with — not a
+        reference to the current constant. Written relatively, this test moves
+        with the constant it exists to police and passes no matter how low
+        SCHEMA_VERSION sinks; the first version of it did exactly that and
+        survived a mutation back to the defect.
+
+        The failure this pins is total and silent: version matches, so the store
+        is never discarded, and every `_write_cursor` then fails on the missing
+        column — an `unavailable` on every sync, forever, with the self-heal
+        gated behind the check that just approved the store."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        path = cache.cache_path(repo_dir)
+        raw = sqlite3.connect(str(path))
+        raw.execute("DROP TABLE cursor")
+        raw.execute("CREATE TABLE cursor (scope TEXT PRIMARY KEY, since TEXT, etag TEXT)")
+        raw.execute("PRAGMA user_version=2")  # the shape that shipped as v2
+        raw.commit()
+        raw.close()
+
+        result = _rebuild(fake, repo_dir)
+
+        assert result["status"] == "ok", result
+        assert result["data"]["written"] > 0
+        conn = cache.open_store(repo_dir, create=False)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(cursor)")}
+        conn.close()
+        assert "fetched_at" in columns
 
     def test_a_corrupt_store_reports_unavailable_rather_than_raising(self, repo_dir):
         path = cache.cache_path(repo_dir)
@@ -868,3 +930,42 @@ class TestSyncEnvelopeShape:
         assert shapes[0] == shapes[1] == shapes[2], shapes
         assert {"written", "fts", "scope", "since", "fetched_at", "rebuilt",
                 "not_modified"} <= shapes[0]
+
+
+class TestTransportWithoutTheProbe:
+    """A provider with no conditional-request path must sync unconditionally —
+    it must not fail to sync.
+
+    Pinned by execution rather than by reading the base class, which is the
+    distinction the fix itself turned on: the guard used to test the ATTRIBUTE,
+    and `Transport` defines the method, so `getattr` always found it and the
+    `NotImplementedError` escaped. Nothing but a transport that actually lacks
+    the override can tell those two implementations apart."""
+
+    class _NoProbe(FakeGitHub):
+        def get_issues_validator(self, *args, **kwargs):
+            # Exactly what a subclass that never overrode it does.
+            return sync.Transport.get_issues_validator(self, *args, **kwargs)
+
+    def test_sync_degrades_to_an_unconditional_fetch_rather_than_failing(self, repo_dir):
+        fake = self._NoProbe(user={"login": "agent-a", "id": 1})
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert core.update_item(fake, id_raw=ids[0], fields={"stage": "ready"})["status"] == "ok"
+
+        result = _sync(fake, repo_dir)
+
+        assert result["status"] == "ok", result
+        assert result["data"]["not_modified"] is False
+        stored = {row["id"]: row for row in _domain_rows(repo_dir)}
+        assert stored[ids[0]]["stage"] == "ready", "the unconditional path still syncs"
+
+    def test_it_never_reports_a_free_sync_it_cannot_actually_verify(self, repo_dir):
+        """The dangerous degradation is the other one: reporting not-modified
+        because the probe is missing would serve a frozen cache forever."""
+        fake = self._NoProbe(user={"login": "agent-a", "id": 1})
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+
+        for _ in range(3):
+            assert _sync(fake, repo_dir)["data"]["not_modified"] is False

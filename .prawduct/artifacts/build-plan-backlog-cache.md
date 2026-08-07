@@ -146,6 +146,17 @@ value; (b) the age test goes through `cachequery`, the path that serves it, and 
 fallback that no longer exists; (c) the atomicity test is named in `Tests:` below and verified
 non-vacuous by mutation; (d) this chunk's review carries `--chunk 02`.
 
+**Chunk 02 is closed.** Cumulative review `rev-20260807T155720Z-e9acddfa` (1 blocking, 5 warnings,
+6 notes — ten fixed, two accepted), verify `rev-20260807T162342Z-98cc1462` clean at 0/0/0. Both
+demoted observations were then acted on rather than carried: `SCHEMA_VERSION` is **3** (v2 gained
+`cursor.fetched_at` without a bump, which made every sync against a v2-shaped store fail forever
+with the self-heal gated behind the check that had just approved it — this bit this machine during
+the chunk and was misread as an empty result), and the `NotImplementedError` degradation path now
+has tests that fail under mutation.
+
+**Chunk 03 note:** the schema is at **v3**. Adding the three `item` columns needs a bump to **4** —
+and per `cache.py`'s comment block, bump on *any* column change even pre-release.
+
 **Next up: Chunk 03** — the three new domain fields and their write path.
 
 **#529 blocks one consumer, not this plan.** #621's `blocked-by #529` edge was **dropped by owner

@@ -21,6 +21,8 @@ dropping them.
 
 ---
 
+## A test written RELATIVE to the constant it polices can never detect that constant being wrong — pin the absolute value when the value is a historical fact (a version a real store was stamped with, a format that shipped), because `CONST - 1` moves with CONST and passes at every setting of it. Tell: the mutation you expected to go red stayed green
+
 ## A measurement with no POSITIVE CONTROL cannot support a claim — before believing "X costs nothing", confirm the instrument MOVES when it should, because a dead instrument reads zero for the treatment and the control alike, and zero is the answer you were hoping for. Tell: the confirming result arrived first try and the null case was never run
 
 ## For every value you plan to PERSIST from a provider, verify the exact request that will later REPLAY it, not just the one that produced it — a verify-api step scoped to the plan's own mechanism confirms that mechanism and misses the one the plan got wrong

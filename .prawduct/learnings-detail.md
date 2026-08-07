@@ -2822,3 +2822,28 @@ provider into a store is later replayed into some request, and that request is t
 
 **Ties to**: the DECISION block in Chunk 02 of `build-plan-backlog-cache.md`, and the two-validator
 split now recorded in `backlog-service-data-model.md` §6.
+
+
+## A test written RELATIVE to the constant it polices can never detect that constant being wrong — pin the absolute value when the value is a historical fact (a version a real store was stamped with, a format that shipped), because `CONST - 1` moves with CONST and passes at every setting of it. Tell: the mutation you expected to go red stayed green
+
+`cursor.fetched_at` was added to the v2 cache schema without bumping past v2. A store written by the
+earlier v2 code matches on version, is never discarded, and then fails every `_write_cursor` on the
+missing column — `unavailable` on every sync, permanently, because the self-heal is gated behind the
+version check that just approved the store. It happened on this machine and read as an empty result,
+not as an error.
+
+The fix was a bump to 3. The first test written for it seeded the store with
+`PRAGMA user_version = cache.SCHEMA_VERSION - 1` — which looks careful, and is inert: mutate
+SCHEMA_VERSION back to 2 and the fixture obediently writes 1, still behind, still discarded, still
+green. The test could not fail for the reason it existed.
+
+The seed had to be the literal `2`, because 2 is a fact about a format that existed, not a
+expression over the current constant. Rewritten that way the mutation fails with the real
+production error (`table cursor has no column named fetched_at`).
+
+Generalises past versions: any fixture derived from the code under test inherits that code's bug.
+Thresholds, limits, schema numbers, retry counts — if the test computes its input from the constant,
+it is asserting internal consistency, which the defect also satisfies.
+
+**Ties to**: `tests/test_backlog_cache.py::TestSchemaMismatch::test_the_v2_shaped_store_that_actually_shipped_is_discarded`,
+whose docstring carries the do-not-relativise warning at the seed itself.

@@ -54,7 +54,18 @@ from .core import error, log_diag, ok
 
 # The persisted-format version. A mismatch discards and re-derives; bumped only
 # when a store written by another version cannot be read correctly by this one.
-SCHEMA_VERSION = 2
+#
+# **Bump on any column change, including one made before release.** v2 was minted
+# for `cursor(etag)` and then `cursor(fetched_at)` was added under the same
+# number. Nothing detected it: `_ensure_schema` sees a matching version and so
+# never discards, while every `_write_cursor` fails on the missing column — an
+# `unavailable` envelope on every sync, permanently, with no self-heal, because
+# the one mechanism that would rebuild the store is the version check that just
+# said the store was fine. That is not a hypothetical; it happened on this
+# machine during the chunk that introduced the column, and read as an empty
+# result rather than as an error. "Unreleased, so nobody has an old store" is a
+# claim about other people's machines, not about the format.
+SCHEMA_VERSION = 3
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "backlog-cache.sqlite3"
