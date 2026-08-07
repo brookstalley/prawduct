@@ -47,12 +47,12 @@ this inventory is exhaustive rather than sampled.
 | 7 | PR R-2 closes/status disagreement | **status by id**, alias-resolving |
 | 8 | Janitor: group by area | items grouped by `area` |
 | 9 | Janitor: dedup candidates | **text search within an area** (the FTS requirement) |
-| 10 | Janitor: stale items | open items where the newer of `reviewed`/`added` is >90d old |
+| 10 | Janitor: stale items | open items not updated in >90d — from provider `updated_at` (§2.1) |
 | 11 | Janitor: unstaged items | open items with no `stage` |
 | 12 | Janitor: neglected hygiene | items in the `promoted` state whose owning chunk shipped |
-| 13 | `revisit-due` probe | open items with a **date-valued `revisit:` in the past** |
+| 13 | `revisit-due` probe | *retired — see §2.1, not restored* |
 | 14 | `dead-why` probe | **id → is-dead**, alias-resolving |
-| 15 | `stalled-transition` probe | id → **live? + date floor** from metadata dates |
+| 15 | `stalled-transition` probe | id → **live? + date floor**, from provider `updated_at` |
 
 **The union is small.** Open-item listing with text; grouping and counting by `area`; id
 resolution through aliases including dead items; creation-time filtering; text search scoped to
@@ -64,21 +64,44 @@ be elaborate, and it should not become so.
 Three consumers are blocked on defects the cache does not touch, and two should not be restored
 at all. **This is the load-bearing output of the requirements pass.**
 
-- **#550 (`refs`/`reviewed`/`revisit`/`closed-by` have no write path) blocks consumers 10, 13
-  and 15.** Stale-item detection reads `reviewed`, the revisit clock reads `revisit`, and the
-  stall probe reads the metadata date floor. A cache over fields nothing can write restores
-  nothing. **#550 is a prerequisite for W1, not an adjacent cleanup.**
+**Design rule that resolves most of this: observable beats stored.** Where a signal can be
+derived from something the provider or git already maintains, do not store a field for it — a
+stored field can be forgotten, can lie, and needs a write path. This is the same reasoning that
+chose `working-branch` over a stored claim timestamp (§3).
+
+- **Consumer 10 (stale items) drops its stored dependency.** It reads `reviewed`/`added` today;
+  the provider's `updated_at` is always present, free, and cannot be forgotten. Use it. The
+  semantics differ slightly — `updated_at` moves on any edit, `reviewed` meant deliberate
+  re-confirmation — and for a staleness *nag* the derived signal is the better of the two.
+- **Consumer 15 (stalled-transition) likewise** takes its date floor from `updated_at` rather
+  than stored metadata dates.
+- **Consumer 13 (`revisit-due`) is retired, not restored.** A query cannot substitute for it —
+  `revisit:` encodes *"this exception was granted until date X"*, which is intent, not state, and
+  two exceptions granted the same day with different clocks are indistinguishable to any
+  age-based query. It is retired for a different reason: **exception clocks have already migrated
+  to prose in the governing artifact**, walked by the janitor's Norm Health sweep.
+  `nonfunctional-requirements.md`'s own live exception records the decision — *"That trigger is
+  prose here and on the item, not a `revisit:` field, because the Issues backend has no write
+  path for one"* — and notes `probe_revisit_due` "fires on dated values and is dark post-cutover
+  regardless." It is a markdown-era vestige.
 - **#529 (`promoted` has no Issues-backend equivalent) blocks consumer 12.** The status value
-  the check keys on does not exist on this backend.
-- **Janitor checks 6 and 7 should be retired, not restored.** Counting unstructured legacy items
-  and proposing an `## Archive` split are meaningless once Issues is system of record — the
+  the check keys on does not exist on this backend. This one is a real prerequisite.
+- **Janitor checks 6 and 7 are retired, not restored.** Counting unstructured legacy items and
+  proposing an `## Archive` split are meaningless once Issues is system of record — the
   janitor's own prose already says so. Restoring them would ship advice a reader could act on to
   no effect. Under the proportionality norm, removal is the default for a control with no
   remaining yield.
 
-So the W1 deliverable restores **ten** of the enumerated consumers; three wait on #550/#529, and
-two are retired. Any plan claiming "restores the dormant checks" without this split is
-overstating.
+**Net: W1 restores twelve of the enumerated consumers; one (12) waits on #529; three (13, and
+janitor 6/7) are retired.** Any plan claiming to "restore the dormant checks" without this split
+is overstating.
+
+**The write-path gap is no longer a W1 prerequisite.** An earlier revision of this document made
+#550 (`refs`/`reviewed`/`revisit`/`closed-by` unwritable; see also #564 for `revisit`
+specifically — the two may be duplicates and are worth a dedup pass) a hard blocker on the
+strength of consumers 10, 13 and 15. Applying *observable beats stored* removes all three. #550
+remains a genuine defect, and the **new `affected` field (§3) will need a write path** — the same
+underlying gap — but nothing that exists today waits on it.
 
 ### 2.2 One consumer gets better, not merely restored
 
@@ -247,10 +270,14 @@ vocabulary — which happens to be the part with ten consumers attached.
 
 ## 9. Dependencies and open questions
 
-**Prerequisites** (§2.1): **#550** blocks three consumers and is a hard dependency. **#529**
-blocks one. Neither is optional cleanup.
+**Prerequisites** (§2.1): **#529** blocks consumer 12 and is the only hard dependency. **#550**
+is *not* a prerequisite — *observable beats stored* removed all three consumers that appeared to
+need it — but the new `affected` field needs a write path from the same family, so it is a
+dependency of §3 rather than of the restoration work.
 
 **Open:**
+- Whether #550 and #564 are duplicates (both describe a missing `revisit` write path). Worth a
+  dedup pass before either is worked.
 - Whether `pick` writes the intended branch name or claiming happens at branch creation
   (recommendation: the latter; `pick` stays advisory, which leaves the pick-window race
   unsolved but visible as two branches on one item).
