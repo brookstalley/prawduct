@@ -238,9 +238,10 @@ issues, and name the tradeoff:
      absent from a default `list` and from add-time dedup under **either** scope (see
      `all` below), so a duplicate of a previously-dropped item can be re-filed with no
      signal either way. The lever decides whether the record is *recoverable through
-     the tracker*, not whether dedup sees it. (State it as `list`, not `find`:
-     full-text `find` is unavailable for *every* item post-cutover, so it is not what
-     this lever costs.)
+     the tracker*, not whether dedup sees it. (State it as `list`, not `find`: an item
+     never imported is outside the tracker entirely, so no cache-served op reaches it
+     either — `find` runs post-cutover, but only over what the cache holds, and what
+     this lever skips was never synced.)
    - **`all`** — import the full archive as closed issues (every disposed/shipped
      item becomes a closed issue). Complete history *in the tracker* — but
      **reachable, not visible by default**: `list` defaults to `state=open`

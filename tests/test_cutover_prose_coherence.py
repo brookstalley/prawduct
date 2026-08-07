@@ -522,25 +522,35 @@ class TestBackendScopedProseInTheBacklogSkill:
         # file. A tripwire nobody has run against the failure is a tripwire whose
         # green means nothing.
         unavailable_claim = re.compile(
-            r"(find|dedup|Dedup-on-create|full-text search)[^.]{0,80}?"
-            r"(not available|no full-text search|is degraded|unavailable|not ready)",
+            r"\b(find|dedup|Dedup-on-create|full-text search)\b[^.]{0,80}?"
+            r"\b(not available|no full-text search|is degraded|unavailable|not ready)\b",
             re.IGNORECASE,
         )
-        # Swept across BOTH backlog-skill surfaces, not just the one the finding
-        # named. `SKILL.md`'s `find` section carried the same false claim
-        # ("post-cutover, full-text search is unavailable") and was missed by a
-        # check scoped to one file — which is this test's own subject happening
-        # one file over.
-        stale = {
-            rel: [m.group(0) for m in unavailable_claim.finditer(
-                " ".join(_read(rel).split()))]
-            for rel in ("skills/backlog/adapter-mode.md", "skills/backlog/SKILL.md")
-        }
-        stale = {rel: hits for rel, hits in stale.items() if hits}
+        # **Globbed, never enumerated.** This assertion named two files and then a
+        # third carried the claim — `migration-scrub.md`, edited by the very chunk
+        # that restored `find`. Before that it named one file and `SKILL.md`
+        # carried it. Enumeration is what missed both, so the scope is now every
+        # `.md` under `skills/`: a surface added later is covered the day it
+        # lands, and no one has to remember to add it here.
+        #
+        # `skills/` and not the whole tree, because this is about **agent-executed
+        # prose** — a skill file is behavioural logic, while a build plan or a
+        # change-log is a record of what was once true and may say so. Word
+        # boundaries matter too: an unanchored `find` matches "finding", which hit
+        # an unrelated sentence in `docs/runbook-authoring.md`.
+        stale = {}
+        for path in sorted((REPO_ROOT / "skills").rglob("*.md")):
+            hits = [
+                m.group(0)
+                for m in unavailable_claim.finditer(" ".join(path.read_text().split()))
+            ]
+            if hits:
+                stale[path.relative_to(REPO_ROOT).as_posix()] = hits
         assert not stale, (
-            f"the backlog skill still tells a post-cutover reader that `find`/`dedup` "
-            f"are unavailable, when they run on the cache: {stale}. Skills are prose a "
-            f"model executes, so this withholds two working ops on every cut-over product."
+            f"skill prose still tells a post-cutover reader that `find`/`dedup` are "
+            f"unavailable, when they run on the cache: {stale}. Skills are prose a "
+            f"model executes, so this withholds two working ops on every cut-over "
+            f"product."
         )
         assert "cache-query search" in flat, "`find` is not routed to the cache-served search"
         assert "cache-reads.md" in flat, (

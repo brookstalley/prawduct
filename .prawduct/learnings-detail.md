@@ -3010,12 +3010,21 @@ by the sweep that was supposed to catch it:
 **Why grep does not catch this.** The falsifying prose contains none of the identifiers. "Not
 available on this backend yet", "is degraded", "meaningless once X", "remains dormant" — no `find`,
 no `dedup`, no `cache-query`. Searching for the dormancy-notice text I had written came back clean,
-because I was searching the string I authored rather than the claim I had made false.
+because **I was searching a string I wrote, not a claim I had falsified** — which is the tell, and
+the clause the rule heading had to shed to fit its budget.
 
 **The check that would have worked** is a question, not a pattern: *what did this change make true or
 false, and who asserts the opposite in words?* For a restoration the query is "what still says this
 is unavailable"; for a retirement, "what still says this works". Both are read-and-judge over the
 files that describe the capability, and neither is a `grep` for a symbol.
+
+A fifth instance closed the loop on the *fix* rather than the defect. The tripwire written for #3
+**enumerated two files**; `migration-scrub.md` carried the same claim ("full-text `find` is
+unavailable for *every* item post-cutover") and was edited by Chunk 06's own commit. Enumeration was
+what missed #4 as well. The tripwire now **globs every `.md` under `skills/`**, so a surface added
+later is covered the day it lands — scoped to `skills/` because that is agent-executed prose, where a
+build plan or change-log is a record of what was once true and may say so. It was validated against
+all three historical blobs (3 hits, 1 hit, 1 hit) and the fixed tree (0).
 
 Related: *a retirement is one act per substrate the thing lives on* (the scoping half of the same
 family) and *a rule about second homes does not stop at the homes someone remembered to enumerate*.

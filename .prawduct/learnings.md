@@ -454,4 +454,4 @@ dropping them.
 
 ## A rule enforced only as a SIDE EFFECT of some other failure is unenforced for every change whose failure mode differs — when a rule has a real incident behind it, ask what actually caught that incident; if the answer is "something else broke loudly," the rule has no guard of its own. Tell: a mutation you expected to be caught is not, and the rule it violates has a documented past incident
 
-## Sweeping for the IDENTIFIER is not sweeping for the CLAIM — after a change makes a capability appear or disappear, grep finds every site naming the symbol and misses the prose asserting the opposite, which is the half that reaches a user. Ask "what did this make true or false, and who says the opposite in words?" Tell: your post-change grep came back clean and you searched a string you wrote, not a claim you falsified
+## Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
