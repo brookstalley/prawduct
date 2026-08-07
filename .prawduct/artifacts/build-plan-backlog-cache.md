@@ -121,9 +121,18 @@ the only one that changes a chunk's size.
 
 Context: Plan authored 2026-08-07 on `feat/backlog-cache` against
 `documentation/backlog-service-cache-spec.md` (committed `cc36cc6`/`4552d09`) and the W1 corpus it
-deltas. Nothing built. Tracking item **#621**; **#529** blocks consumer 12 only and does not block
-this plan; **#230** is discharged by Chunks 02 + 05. Next: confirm the `claim`-retirement
-assumption, then Chunk 01.
+deltas. Nothing built. Tracking item **#621**; **#230** is discharged by Chunks 02 + 05.
+
+**#529 blocks one consumer, not this plan — but the recorded link edge says otherwise.** #621
+carries a `blocked-by #529` edge, and `pick` is blocker-aware, so #621 will not surface in ranked
+ready-work while #529 is open even though Chunks 01–05 need nothing from it. What #529 actually
+blocks is consumer 12, a sliver of Chunk 06 (see that chunk). Owner's call, and the reason it is
+not a side effect of a stage bump: either drop the edge and let Chunk 06 carry the carve-out it
+already states, or leave it and accept that #621 is picked by name rather than by rank.
+Recommendation: drop the edge — a blocker suppressing the whole item because one of fifteen
+consumers waits is a false blocker, and the carve-out is already written down where the work is.
+
+Next: confirm the `claim`-retirement assumption, then Chunk 01.
 
 ## Scaffolding
 
@@ -429,7 +438,15 @@ the same shape that makes `transport.py` the sole egress.
   in `plugin/skills/critic/review-cycle.md`; the PR reviewer's R-1 and R-2 in
   `plugin/skills/pr/review-protocol.md`; the janitor's Backlog Health checks 1–5 in
   `plugin/skills/janitor/SKILL.md`. Each loses its "check the backend first / emit the dormancy
-  line" branch and gains a cache-backed query.
+  line" branch and gains a cache-backed query — except the one #529 still blocks, below.
+
+  **One of those five does not come back yet.** Consumer 12 — the neglected-hygiene check, items
+  in the `promoted` state whose owning chunk shipped — is blocked by **#529**: the `promoted`
+  status value it keys on has no Issues-backend equivalent, so the query has nothing to ask for.
+  It keeps its dormancy line while the other four lose theirs, and the line names #529 rather than
+  the cache, since the cache is no longer what it waits for. Restoring it alongside the others
+  would ship a check that silently matches nothing, which is the failure this whole plan exists to
+  end.
 
   **Retired, not restored: janitor checks 6 and 7.** Counting unstructured legacy items and
   proposing an `## Archive` split are meaningless once Issues is system of record — the janitor's
