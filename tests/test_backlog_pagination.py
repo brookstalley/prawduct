@@ -189,7 +189,7 @@ class TestPrInterleaving:
         fake.seed_pull_requests(OWNER, REPO, 1, labels=["id:DIS-0001"])
         source = (
             "# Backlog\n\n## Open\n\n"
-            "- **[DIS-0001]** A real item\n"
+            "- **[DIS-0001]** cli: a real item the importer must create\n"
             "  `area: cli · added: 2026-01-01 · status: open`\n\n  Body.\n"
         )
         result = migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=source)

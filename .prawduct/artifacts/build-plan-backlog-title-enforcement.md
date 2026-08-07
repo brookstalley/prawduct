@@ -30,7 +30,7 @@ governed_by:
       - "The approval norm rejects confirmation fatigue — an approval prompt that fires on unrelated work trains the operator to dismiss it → conforms, and it is the stated reason body lints stay WARN-only and the update path blocks only on a title actually being written. Blocking `status=shipped` on an unrelated legacy title is exactly the shape this norm rejects"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "Proportionality ratchets both ways; adding a control names its expected yield and emits it observably → conforms. Yield: measured, not inferred — 20 of 180 open prawduct issues (11%) breach the ≤72 budget and 5 more trip `title-non-atomic`, and the discodon corpus reached GitHub with parsed titles up to 2319 chars. Observability: the pre-flight refusal prints the full offending list, and the non-blocking update path emits a named lint line, so both firing modes are visible without instrumentation"
+      - "Proportionality ratchets both ways; adding a control names its expected yield and emits it observably → conforms. Yield: measured, not inferred — replayed through the shipped pre-flight, 20 of 180 open prawduct issues (11%) fail §1 — all 20 over the ≤72 budget, 5 of those also non-atomic (a subset, not 5 more) — and the discodon corpus reached GitHub with parsed titles up to 2319 chars. Observability: the pre-flight refusal prints the full offending list, and the non-blocking update path emits a named lint line, so both firing modes are visible without instrumentation"
       - "Review wall-clock is P0: cost = unit-cost × run-count → conforms — three chunks on one branch, reviewed per chunk with a single cumulative at the end, not one review per issue"
   - artifact: api-contract
     dispositions:
@@ -59,11 +59,11 @@ non-conformance | owner ruled 2026-08-06, after the agent surfaced that an LLM �
 at the write on `file`/`update` | user can veto]`
 
 **Why this shape, engaging the norm's why.** The question was first framed as "~25 issues become
-un-updatable." The owner asked whether an LLM was in the loop, and verification changed the
+un-updatable" (the real figure is 20 — the non-atomic set is a subset of the over-budget set, not additional). The owner asked whether an LLM was in the loop, and verification changed the
 answer: nothing automated calls `file`/`update` (swept across `plugin/hooks/`, `plugin/lib/`, the
 release path — every `status=shipped` hit in `views.py` / `release_readiness.py` /
 `buildplan_refs.py` is a change-log tag, a different namespace). Only an agent running
-`/prawduct:backlog` reaches them. So broad enforcement would not *block* those 25 issues — it would
+`/prawduct:backlog` reaches them. So broad enforcement would not *block* those 20 issues — it would
 make an agent **auto-retitle** them to get past the gate, one at a time, as a side effect of
 archiving them, with no human review and none of the aggregate owner approval that §4b
 deliberately preserves for the import scrub. That is §4c's over-split entrenchment arriving through
@@ -158,7 +158,7 @@ Tests carry most of this. Three things they cannot say:
     class in this exact function** — BKL-3K9N (rate-limit path) and BKL-9V2W (TransportError path)
     were the first two. The learning's own instruction: grep the error/exception returns whenever
     you enrich a success envelope.
-  - new `tests/backlog/test_import_preflight.py`
+  - new `tests/test_backlog_import_preflight.py`
 - **Tests:** each red-verified against the code that ships:
   - a corpus with one over-cap title → refuses, names it, and the transport records **zero** writes
   - a corpus with several non-conforming titles → the refusal names **all** of them, not the first.
@@ -221,7 +221,7 @@ Tests carry most of this. Three things they cannot say:
     dominant finding class of the last branch — four instances, three costing a review round each.**
     This row and the `data-model.md` lifecycle above it are this chunk's registry debt; they land in
     the same commit as the code, not after it.
-  - new `tests/backlog/test_title_enforcement.py`
+  - new `tests/test_backlog_title_enforcement.py`
 - **Tests:** each red-verified:
   - `file` with a conforming title → succeeds
   - `file` with each of the four failing shapes (`too-long`, `too-short`, `placeholder`,
@@ -234,7 +234,7 @@ Tests carry most of this. Three things they cannot say:
     the named lint line. This is the owner ruling's pin and the one a future "tighten it up" change
     would break silently
   - `update status=shipped` with no title anywhere → succeeds, no title lint attempted
-- **Acceptance criteria:** full suite green; the ~25 non-conforming open prawduct issues remain
+- **Acceptance criteria:** full suite green; the 20 non-conforming open prawduct issues remain
   updatable on every field except `title`, verified by exercise not inspection; no body or label
   lint blocks anything.
 - **Done when:**

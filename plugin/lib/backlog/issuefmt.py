@@ -94,6 +94,17 @@ _PLACEHOLDER_TOKENS = frozenset(
 )
 _PLACEHOLDER_PHRASES = ("the thing", "something", "some stuff", "a bug", "fix it")
 
+# Whole-word alternation over the phrases above. Unanchored `in` matching reads
+# straight through word boundaries: "fix it" is a substring of "pre-FIX IT-em",
+# so `single-use prefix item 6` linted as a placeholder. Harmless while these
+# findings were advisory; a false refusal once they BLOCK a write — so the
+# classification is fixed here rather than the budget loosened at the call site.
+# "something" keeps its own entry because \b would not fire mid-word anyway and
+# the phrase is already whole.
+_PLACEHOLDER_PHRASE_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(p) for p in _PLACEHOLDER_PHRASES) + r")\b"
+)
+
 
 def _template_for(kind: str | None) -> tuple[tuple[str, bool], ...] | None:
     """The section template for ``kind`` (bug → bug template, every other known
@@ -219,13 +230,22 @@ def lint(title: str, body: str, labels: list[str] | None = None) -> list[LintFin
     """
     labels = labels or []
     findings: list[LintFinding] = []
-    findings += _lint_title(title or "", labels)
+    findings += lint_title(title or "", labels)
     findings += _lint_labels(labels)
     findings += _lint_body(body or "", labels)
     return findings
 
 
-def _lint_title(title: str, labels: list[str]) -> list[LintFinding]:
+def lint_title(title: str, labels: list[str] | None = None) -> list[LintFinding]:
+    """The standard's four §1 **title** checks, alone. Public because the title
+    rules are the only lints that BLOCK a write (`file`, `update`, `import`),
+    while every body/label lint stays WARN-only — so callers enforcing the
+    blocking half need the title findings without the advisory ones mixed in.
+
+    ``labels`` is accepted for symmetry with :func:`lint` and is unused: no §1
+    title rule depends on a label. It stays in the signature so a future rule
+    that does need one is not a caller-visible break."""
+    labels = labels or []
     out: list[LintFinding] = []
     n = len(title)
     if n > TITLE_MAX:
@@ -235,7 +255,7 @@ def _lint_title(title: str, labels: list[str]) -> list[LintFinding]:
 
     _area, summary = _split_area(title)
     lowered = summary.lower().strip().rstrip(".")
-    if lowered in _PLACEHOLDER_TOKENS or any(p in lowered for p in _PLACEHOLDER_PHRASES):
+    if lowered in _PLACEHOLDER_TOKENS or _PLACEHOLDER_PHRASE_RE.search(lowered):
         out.append(LintFinding("title-placeholder", "title is vague/placeholder — say what + where"))
 
     # Non-atomic: an em-dash or semicolon join in the summary usually means ≥2

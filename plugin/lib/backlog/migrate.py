@@ -44,7 +44,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import core, encode, ids, legacy, provision, restructure
+from . import core, encode, ids, issuefmt, legacy, provision, restructure
 from .transport import Transport, TransportError, paginate
 
 # The facet metadata keys the importer consumes as `<facet>:value` labels (§3).
@@ -63,6 +63,17 @@ CHECKPOINT_SCHEMA_VERSION = 1
 
 _STORE_SUBDIR = "prawduct"
 _CHECKPOINT_BASENAME = "backlog-import.json"
+
+# How many CONSECUTIVE per-item `validation` rejections end the run. Per-item
+# isolation exists so one malformed row cannot end a 396-row migration, but the
+# isolation itself must be bounded: a systematically bad corpus would otherwise
+# spend one API round-trip per item to learn the same thing 396 times, and hand
+# back a failure list as long as the source. The pre-flight makes the known cause
+# (a non-conforming title) unreachable, so a run that still trips this is telling
+# you something the pre-flight cannot see — which is worth stopping for.
+# Consecutive, not cumulative: scattered one-off rejections across a large corpus
+# are exactly what isolation is for, and must not accumulate into a false stop.
+_CONSECUTIVE_VALIDATION_LIMIT = 5
 
 # The leading ``[PFX]`` marker, stripped from the title (the id lives in the alias).
 # Must accept exactly what ``legacy.ID_RE`` accepts, multi-segment ids included: if
@@ -797,6 +808,38 @@ def import_backlog(
     return result
 
 
+def preflight_titles(records: list[ImportRecord]) -> list[dict]:
+    """Every record whose title fails the issue standard's §1 rules, in source
+    order. Pure — no transport, no model, no I/O.
+
+    This is the import path's half of the title norm (data model: *every issue
+    written to the backlog store conforms to §1, on every write path*). It runs
+    over the WHOLE record set before the first write, so a non-conforming corpus
+    fails in the first second with the full list instead of part-migrating and
+    stopping at the first row GitHub happens to reject. The importer validates
+    and refuses; it never rewrites a title, which is what keeps the model out of
+    the data plane — the scrub pre-pass rewrites, upstream, under owner approval.
+
+    Checking §1 rather than only GitHub's 256-character hard cap is deliberate
+    and is what makes this one gate instead of two: §1's budget is 72, so a
+    §1-conforming title is under GitHub's cap by construction, and a corpus that
+    passes here cannot 422 for length at all."""
+    offenders: list[dict] = []
+    for index, record in enumerate(records):
+        findings = issuefmt.lint_title(record.title or "", record.labels)
+        if findings:
+            offenders.append(
+                {
+                    "index": index,
+                    "key": record.key_label(),
+                    "title": record.title,
+                    "rules": [f.rule for f in findings],
+                    "messages": [f.message for f in findings],
+                }
+            )
+    return offenders
+
+
 def import_items(
     transport: Transport,
     *,
@@ -809,7 +852,22 @@ def import_items(
     backoff: RateLimitBackoff | None = None,
 ) -> dict:
     """Deterministically import a concrete set of records (MIG-5: no model in the
-    data plane). For each record: **find-or-create** by its key label (skip-if-
+    data plane).
+
+    **Pre-flight first.** :func:`preflight_titles` validates the whole record set
+    against the issue standard's §1 title rules *before* the first write; a
+    non-conforming corpus returns a ``validation`` error naming every offender
+    and costs zero writes. This is the ``import`` path's half of the title norm.
+
+    **A per-item rejection no longer ends the run.** A ``validation`` failure on
+    one record lands in ``failed`` and the loop continues — one malformed row must
+    never end a 396-row migration. Every OTHER transport code still takes the
+    resumable cut below, because those describe the run and not the item, and
+    isolating them would spend a futile round-trip per remaining record. Bounded
+    by ``_CONSECUTIVE_VALIDATION_LIMIT``: consecutive rejections mean the corpus,
+    not the item, so the run stops and says so.
+
+    For each record: **find-or-create** by its key label (skip-if-
     exists — idempotent/resumable), then **reconcile status** (idempotent
     ``set-status``, so a resumed item created-but-not-closed converges). The key
     label is written **in the create**, so a crash after the create still skips on
@@ -827,6 +885,30 @@ def import_items(
     accrued before a cut is no more recoverable than the audit warnings beside it.
     Every entry there is an item that exists on the target at the **wrong status**,
     which is a thing only ``verify-migration`` can turn into a hard stop."""
+    # Pre-flight BEFORE anything is wrapped, paced or written: a corpus that
+    # cannot conform must cost zero writes, so this is the first statement in the
+    # function and returns without touching the transport. It sits here rather
+    # than in `import_backlog` because this is the boundary EVERY caller crosses —
+    # the migration scrub hands a cleaned record set straight to `import_items`,
+    # and `restructure.apply` rewrites titles upstream, so a gate any further out
+    # would validate titles that are not the ones written.
+    offenders = preflight_titles(records)
+    if offenders:
+        return core.error(
+            "validation",
+            f"{len(offenders)} of {len(records)} item(s) have titles that do not conform to "
+            "the issue standard §1 — nothing was written. Run the scrub pre-pass to rewrite "
+            "them (originals are preserved in `original_title:`), then re-run the import.",
+            details={
+                "nonconforming_titles": offenders,
+                "total_source": len(records),
+                "created": [],
+                "skipped": [],
+                # Not resumable in the usual sense — there is nothing to resume past.
+                # Re-running without fixing the titles reproduces this refusal exactly.
+                "resumable": False,
+            },
+        )
     pacer = pacer or Pacer()
     backoff = backoff or RateLimitBackoff()
     # Meter every downstream transport METHOD call against the 900-pts/min budget
@@ -837,6 +919,7 @@ def import_items(
     collisions = list(collisions or [])
     created: list[dict] = []
     skipped: list[dict] = []
+    failed: list[dict] = []
     warnings: list[str] = []
     unreconciled: list[dict] = []
     if checkpoint is not None:
@@ -844,15 +927,46 @@ def import_items(
 
     alias_index = _AliasIndex(transport, owner, repo)
     total = len(records)
+    consecutive_validation = 0
+    breaker_tripped = False
     try:
         for index, record in enumerate(records):
             # The whole (idempotent) record is retried on a rate-limit pause, so a
             # partial attempt never double-counts: outcomes are applied here, once,
             # only after the record fully lands.
-            outcome = _import_one_with_retry(
-                transport, owner, repo, record, pacer, alias_index, backoff, warnings,
-                unreconciled,
-            )
+            try:
+                outcome = _import_one_with_retry(
+                    transport, owner, repo, record, pacer, alias_index, backoff, warnings,
+                    unreconciled,
+                )
+            except TransportError as exc:
+                # ONLY `validation` isolates. A 422 is the item's own fault and says
+                # nothing about the next 395; every other code is a fact about the
+                # RUN — a revoked token, a deleted repo, an outage — and isolating
+                # those would spend one futile round-trip per remaining item and
+                # hand back a 396-line failure list instead of "your token expired".
+                # `transport.py` already draws exactly this line, so this reads the
+                # existing taxonomy rather than inventing a parallel one.
+                if exc.code != "validation":
+                    raise
+                consecutive_validation += 1
+                failed.append(
+                    {
+                        "key": record.key_label(),
+                        "title": record.title,
+                        "error": exc.message,
+                        "details": dict(exc.details),
+                    }
+                )
+                _emit_progress(index + 1, total, len(created), len(skipped), len(collisions))
+                if consecutive_validation >= _CONSECUTIVE_VALIDATION_LIMIT:
+                    breaker_tripped = True
+                    break
+                continue
+            # Reset on any record that lands: the breaker counts a CONSECUTIVE run,
+            # so scattered rejections across a large corpus never accumulate into a
+            # stop — which is the whole point of isolating them.
+            consecutive_validation = 0
             if outcome["outcome"] == "collision":
                 collisions.append(outcome["collision"])
             else:
@@ -870,6 +984,7 @@ def import_items(
             {
                 "created": created,
                 "skipped": skipped,
+                "failed": failed,
                 "collisions": collisions,
                 "status_unreconciled": unreconciled,
                 "resumable": True,
@@ -896,6 +1011,32 @@ def import_items(
             details={
                 "created": created,
                 "skipped": skipped,
+                "failed": failed,
+                "collisions": collisions,
+                "status_unreconciled": unreconciled,
+                "resumable": True,
+                "pacing": pacing_summary(pacer, backoff),
+            },
+        )
+        result["warnings"] = warnings
+        return result
+
+    if breaker_tripped:
+        # A purpose-built envelope rather than re-raising the last TransportError:
+        # re-raising would report "GitHub rejected the request as invalid", which
+        # describes one item and not the reason the RUN stopped. A stop the
+        # operator cannot explain is one they cannot act on.
+        result = core.error(
+            "validation",
+            f"stopped after {_CONSECUTIVE_VALIDATION_LIMIT} consecutive item rejections — "
+            f"{len(created)} created, {len(failed)} rejected before the stop. Consecutive "
+            "rejections mean the corpus, not the item: inspect `failed` for the shared "
+            "cause, fix it at the source, then re-run (the import is alias-keyed, so "
+            "already-created items are skipped, not duplicated).",
+            details={
+                "created": created,
+                "skipped": skipped,
+                "failed": failed,
                 "collisions": collisions,
                 "status_unreconciled": unreconciled,
                 "resumable": True,
@@ -907,6 +1048,16 @@ def import_items(
 
     for collision in collisions:
         warnings.append(f"alias collision skipped: {collision}")
+    if failed:
+        # Named at the end as a count, for the same reason `status_unreconciled` is:
+        # the per-item lines scroll past in a 900-item run, and a run that reports
+        # "ok" while having silently dropped items is the failure this whole guard
+        # exists to prevent. `verify-migration` is what turns this into a hard stop.
+        warnings.append(
+            f"{len(failed)} item(s) were REJECTED and not imported — the run continued "
+            "past them (see `failed`); they are absent from the target and re-running "
+            "will retry them"
+        )
     if unreconciled:
         # A count, not just the per-item audit lines above it: those scroll past in a
         # 900-item run, and the difference between "imported" and "imported AND at its
@@ -920,6 +1071,7 @@ def import_items(
         "repo": f"{owner}/{repo}",
         "created": created,
         "skipped": skipped,
+        "failed": failed,
         "collisions": collisions,
         "status_unreconciled": unreconciled,
         "total_source": len(records),
