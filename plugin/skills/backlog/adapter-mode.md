@@ -145,30 +145,39 @@ Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
   no-op); a close records `closed_by` natively.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
-  wins — correct for the interactive single-actor case).
+  wins — correct for the interactive single-actor case). **`--title` is gated**: a new title failing
+  §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
+  item's *stored* title does not conform — that is deliberate, so archiving an old item never forces
+  a drive-by retitle; the result carries an advisory `lint[]` saying the title was left alone.
 - **tags** (`--tags a,b`) → sets the **whole** set: absent tags are stripped, `--tags ''` clears
   them. That is the only semantics under which a caller can remove one. Tags are an open
   folksonomy — invent values freely, and never build a check that reads them (`--tag T` on `list`
   filters by one of them).
-- **affected** (`--affected p1,p2`) → repo-relative paths only, **no prose**; a directory covers
-  everything under it. An entry carrying whitespace is refused (exit 2) — put the annotation in the
+- **affected** (`--affected p1,p2`) → repo-relative paths only, **no prose and no globs**; a
+  directory covers everything under it, so write `plugin/lib/backlog`, never `plugin/lib/backlog/**`.
+  An entry carrying whitespace or a glob character is refused (exit 2) — put the annotation in the
   body. This is what lets a reviewer intersect items against a changed-file set instead of reading
   item text and inferring.
-- **working-branch** (`--working-branch owner/repo@branch`) → who is working the item, replacing
-  the claim concept. It must name a **pushed** branch (exit 2 otherwise — push it, don't rename it
-  or point the field somewhere else) and must be **repo-qualified**, because the backlog repo and
-  the code repo are not necessarily the same one. `--working-branch ''` clears it; a merge clears
-  the claim by itself, since the branch is gone. **`--title` is gated**: a new title failing
-  §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
-  item's *stored* title does not conform — that is deliberate, so archiving an old item never forces
-  a drive-by retitle; the result carries an advisory `lint[]` saying the title was left alone. The item envelope does **not** surface an
-  `updated_at`, so the optional `--if-updated-at <ts>` optimistic-concurrency guard (exit **4
-  conflict** on a stale timestamp) is only usable when a caller already holds that timestamp from
-  elsewhere; the skill's normal path omits it.
-- **claim** (`accepted-by=@x` / clear) → `claim <id> [--claim-ttl S]` / `unclaim <id>`.
+- **working-branch** (`--working-branch owner/repo@branch`) → the branch someone is working the item
+  on. It must name a **pushed** branch (exit 2 otherwise — push it, don't rename it or point the
+  field somewhere else) and must be **repo-qualified**, because the backlog repo and the code repo
+  are not necessarily the same one. `--working-branch ''` clears it; a merge clears it by itself,
+  since the branch is gone.
+  **It does not yet replace `claim` — record BOTH.** `working-branch` is the successor to the claim
+  concept, but the claim mechanism is still live and still what `pick` reads: `pick` excludes on
+  assignee, so an item with a working branch and no claim stays in ready-work and a second actor
+  will take it. Until the claim retirement lands, setting a working branch is additional to
+  `claim <id>`, not instead of it.
+- **claim** (`accepted-by=@x` / clear) → `claim <id> [--claim-ttl S]` / `unclaim <id>`. Still the
+  mechanism `pick` reads (see `working-branch` above).
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
   `unlink …`.
 - **a free note** → `comment <id> --body B`.
+
+The item envelope does **not** surface an `updated_at`, so the optional `--if-updated-at <ts>`
+optimistic-concurrency guard (exit **4 conflict** on a stale timestamp) is only usable when a caller
+already holds that timestamp from elsewhere; the skill's normal path omits it. It applies to the
+whole `update` op, not to any one field above.
 
 ### pick
 `prawduct-hook backlog pick --repo <r> [--limit N] [--claim] [--claim-ttl S]` → the adapter returns

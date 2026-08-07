@@ -405,6 +405,13 @@ _AFFECTED_FORBIDDEN = (" ", "\t", ",")
 #: incidental strictness at a model-output seam is a latent fail-close.
 _AFFECTED_WRAPPERS = "`'\"" + "“”‘’"
 
+#: Glob metacharacters. Entries are exact paths or directory prefixes — never
+#: patterns — so `plugin/lib/**` is not a broader match, it is a literal that
+#: matches nothing forever: a silent NEGATIVE in the one query this field exists
+#: to serve, and the mirror of the stale positive the index's delete prevents.
+#: Refused at the same seam that refuses prose, with the working form named.
+_AFFECTED_GLOB_CHARS = "*?[]"
+
 
 def normalize_affected(entries: list[str]) -> list[str]:
     """Canonicalize `affected` entries. Never rejects — see the section note.
@@ -443,6 +450,13 @@ def validate_affected(entries: list[str]) -> tuple[list[str], str | None]:
             f"`affected` takes repo-relative paths only, no prose — rejected {bad!r}. "
             "Put the annotation in the item body and leave a bare path here "
             "(e.g. plugin/lib/backlog/sync.py, or plugin/lib/backlog for the directory)."
+        )
+    globbed = [e for e in normalized if any(ch in e for ch in _AFFECTED_GLOB_CHARS)]
+    if globbed:
+        return normalized, (
+            f"`affected` takes paths, not patterns — rejected {globbed!r}. A directory "
+            "entry already covers everything under it, so write `plugin/lib/backlog` "
+            "rather than `plugin/lib/backlog/**`."
         )
     return normalized, None
 
@@ -526,6 +540,43 @@ def validate_tags(values: list[str]) -> tuple[list[str], str | None]:
     return normalized, None
 
 
+#: Characters git's own `check-ref-format` forbids in a branch name, plus a
+#: leading `-` (which a CLI would read as a flag). Enforced here rather than left
+#: to the provider because this value is interpolated into a REST path: without
+#: it `owner/repo@../../../user` parses clean, resolves a *different* endpoint,
+#: and gets stored as a verified working branch — the pushed-ref control failing
+#: **open**, which is precisely the invisible claim it exists to prevent.
+_REF_FORBIDDEN_CHARS = "~^:?*[\\"
+
+
+def _is_valid_branch_name(branch: str) -> bool:
+    """Whether ``branch`` is a name git would accept (``check-ref-format``).
+
+    Not a security boundary on its own — the call is list-form with no shell, the
+    token is the caller's own, and the request is a GET returning one bit. It is
+    a *correctness* boundary: a name git could never create cannot be a pushed
+    ref, so accepting one can only ever mean the check passed on something else.
+    """
+    if not branch or branch != branch.strip():
+        return False
+    if any(ch in branch for ch in _REF_FORBIDDEN_CHARS):
+        return False
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in branch):
+        return False
+    if ".." in branch or "@{" in branch or "//" in branch:
+        return False
+    if branch.startswith(("/", "-", ".")) or branch.endswith(("/", ".", ".lock")):
+        return False
+    if branch == "@":
+        return False
+    # No path component may start with `.` or end with `.lock` — the rule applies
+    # per segment, not only to the whole name.
+    return all(
+        segment and not segment.startswith(".") and not segment.endswith(".lock")
+        for segment in branch.split("/")
+    )
+
+
 def parse_working_branch(value: str | None) -> tuple[str, str, str] | None:
     """Split ``owner/repo@branch`` into ``(owner, repo, branch)``, or ``None``.
 
@@ -534,6 +585,10 @@ def parse_working_branch(value: str | None) -> tuple[str, str, str] | None:
     machine that has to go and look at it. ``@`` is the separator because
     ``owner/repo`` cannot contain one, so splitting on the *first* ``@`` is
     unambiguous even for a branch called ``feat/a@b`` or ``feat/a/b``.
+
+    The branch is held to git's ref rules (:func:`_is_valid_branch_name`) and the
+    repo to a single ``owner/repo`` pair, because both segments are interpolated
+    into a provider URL path downstream.
     """
     if not value:
         return None
@@ -547,7 +602,14 @@ def parse_working_branch(value: str | None) -> tuple[str, str, str] | None:
         return None
     if "/" in repo or any(ch.isspace() for ch in text):
         return None
-    if branch.startswith("/") or branch.endswith("/"):
+    # A dot is legal in a repo name (`docs.github.com`, `foo.js`), so only the
+    # traversal sequence and the path-metacharacters are refused — the same
+    # failing-open concern as the branch, one path segment up.
+    if any(ch in owner or ch in repo for ch in _REF_FORBIDDEN_CHARS):
+        return None
+    if ".." in owner or ".." in repo:
+        return None
+    if not _is_valid_branch_name(branch):
         return None
     return owner, repo, branch
 

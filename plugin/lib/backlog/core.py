@@ -735,7 +735,12 @@ def update_item(
         for name, value in block_values.items():
             base = new_body if new_body is not None else (issue.get("body") or "")
             new_body = encode.upsert_block_field(base, _BLOCK_KEY[name], value)
-        if new_body is not None:
+        # Only PATCH a body that actually changed — clearing a field that was
+        # never set would otherwise spend a write and bump `updated_at`, and that
+        # stamp is not inert: it is the sync watermark and the CAS comparand, so a
+        # no-op write makes the item look edited to every later reader. Same guard
+        # `unclaim` already applies for the same reason.
+        if new_body is not None and new_body != (issue.get("body") or ""):
             patch["body"] = new_body
         if patch:
             issue = transport.update_issue(nid.owner, nid.repo, nid.number, fields=patch)

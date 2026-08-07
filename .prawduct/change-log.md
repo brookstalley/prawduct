@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-07: the backlog cache learns three domain fields
+
+<!-- prawduct: chunks=03 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->
+
+**`affected`, `tags` and `working-branch`** — the one place this work extends the domain model
+rather than consuming it. With `affected` indexed, a reviewer asking "does this change touch any
+open item?" runs a set intersection instead of reading item text and inferring.
+
+**Two of the chunk's own stated deliverables were wrong on mechanism.** "Name all three in
+`_UPDATE_FACETS`" would have written `affected:` labels for a body-block field and made setting a
+second tag remove the first, because that loop is a label *swap*. And the "`affected` index" cannot
+be an index on a column: the intersection runs entry-contains-changed-file, and `WHERE ? LIKE
+affected || '%'` puts the variable on the side no index helps.
+
+**Changes:**
+- `tags` → `tag:` labels, the one multi-valued facet, namespaced like every other prawduct label so
+  it cannot collide with a repo's own. Binding rule stated at the constant: **nothing ever gates on
+  tags** — that is what makes synonym drift harmless rather than corrosive.
+- `affected` and `working_branch` → the `prawduct:` block. `affected` takes repo-relative paths
+  only: prose and globs are refused at the write, because a glob is not a broader match here, it is
+  a literal that matches nothing forever.
+- `working-branch` is `owner/repo@branch` and must be a **pushed** ref, checked through the new
+  `transport.branch_exists`. Endpoint verified live, not recalled. The branch is held to git's
+  `check-ref-format` rules first, because it is interpolated into a REST path and
+  `owner/repo@../../../user` would otherwise resolve some other endpoint and be stored as verified —
+  the check failing open, which is the invisible claim it exists to prevent.
+- The SEC-2 mass-assignment allowlist gains `_UPDATE_MULTI_FACETS` and `_UPDATE_BLOCK_FIELDS`
+  beside `_UPDATE_FACETS` — a deliberate widening, three names, each with its own writer.
+- Cache **schema v4**: `item` gains `affected`/`tags`/`working_branch`, and `item_affected(item_id,
+  path)` + its index is the changed-file intersection, derived from the column in the same
+  transaction exactly as `item_fts` is.
+- Incremental sync now **evicts** an item that leaves prawduct scope. Upsert-only had no way to
+  learn that a stripped item stopped being one, so the row sat in the store as open forever —
+  a stale positive reaching the consumers that walk the open set.
+- `--tags` / `--affected` / `--working-branch` on `update`; `--tag` on `list`. A populated
+  working-branch shows in the default human view, since visibility is that field's only job.
+
+**Classification:** feature
+
 ## 2026-08-07: the backlog cache learns to sync incrementally
 
 <!-- prawduct: chunks=02 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->

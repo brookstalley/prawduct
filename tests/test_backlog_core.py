@@ -860,6 +860,18 @@ class TestUpdateNewDomainFields:
         assert r["status"] == "ok" and r["data"]["working_branch"] is None
         assert "working_branch" not in fake.get_issue(OWNER, REPO, n)["body"]
 
+    def test_clearing_a_field_that_was_never_set_writes_nothing(self, fake):
+        """`updated_at` is not inert — it is the sync watermark and the CAS
+        comparand — so a no-op body write makes the item look edited to every
+        later reader."""
+        n = _seed_item(fake)
+        before = fake.get_issue(OWNER, REPO, n)["updated_at"]
+
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"affected": ""})
+
+        assert r["status"] == "ok"
+        assert fake.get_issue(OWNER, REPO, n)["updated_at"] == before
+
     def test_the_new_fields_preserve_the_existing_block(self, fake):
         fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
         body = "text\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"

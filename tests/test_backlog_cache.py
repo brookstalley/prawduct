@@ -1044,6 +1044,71 @@ class TestIncrementalSync:
         assert after_cursor == before_cursor
 
 
+class TestLeavingScope:
+    """An item stripped of its block and labels stops being an item.
+
+    An upsert-only sync has no other way to learn that, so the row would sit in
+    the store as an open item forever and reach the consumers that walk the open
+    set — a stale *positive*, an answer rather than a gap. Unlike hard deletion
+    and transfer-out (the two invisible cases Cache Spec §6 accepts), the sync
+    window already carries the evidence, so there is nothing to accept.
+    """
+
+    def _strip_from_scope(self, fake, item_id):
+        number = int(item_id.rsplit("#", 1)[1])
+        issue = fake.get_issue(OWNER, REPO, number)
+        for name in list(encode.label_names(issue)):
+            fake.remove_label(OWNER, REPO, number, name)
+        fake.update_issue(OWNER, REPO, number, fields={"body": "no block any more"})
+
+    def test_a_de_scoped_item_is_evicted_by_the_next_incremental_sync(self, fake, repo_dir):
+        item_id = _file(fake, title="cache: an item that will leave scope", area="backlog")
+        _file(fake, title="cache: an item that stays", area="backlog")
+        _rebuild(fake, repo_dir)
+        assert item_id in {row["id"] for row in _domain_rows(repo_dir) if "id" in row}
+
+        self._strip_from_scope(fake, item_id)
+        result = _sync(fake, repo_dir, now=NOW + timedelta(hours=1))
+
+        assert result["status"] == "ok"
+        assert result["data"]["evicted"] == 1
+        assert item_id not in {row["id"] for row in _domain_rows(repo_dir) if "id" in row}
+
+    def test_eviction_sweeps_the_derived_indexes_too(self, fake, repo_dir):
+        """An item gone from `item` but still answering a text search or a
+        changed-file intersection is the same stale positive wearing a hit's
+        shape."""
+        item_id = _file(fake, title="cache: an indexed item that leaves scope", area="backlog")
+        assert core.update_item(
+            fake, id_raw=item_id, fields={"affected": "plugin/lib/backlog"}
+        )["status"] == "ok"
+        _rebuild(fake, repo_dir)
+        assert _affecting(repo_dir, ["plugin/lib/backlog/sync.py"]) == [item_id]
+
+        self._strip_from_scope(fake, item_id)
+        _sync(fake, repo_dir, now=NOW + timedelta(hours=1))
+
+        assert _affecting(repo_dir, ["plugin/lib/backlog/sync.py"]) == []
+        conn = cache.open_store(repo_dir, create=False)
+        indexed = conn.execute(
+            "SELECT COUNT(*) FROM item_fts WHERE item_id = ?", (item_id,)
+        ).fetchone()[0]
+        conn.close()
+        assert indexed == 0
+
+    def test_issues_that_were_never_items_evict_nothing(self, fake, repo_dir):
+        """The corpus carries a pull request and a plain repo issue, and neither
+        was ever cached. Counting candidate ids instead of rows actually removed
+        would report an eviction on every sync of any repo with ordinary
+        issues — a number that looks like the cache shedding items."""
+        _corpus(fake)
+        _rebuild(fake, repo_dir)
+
+        result = _sync(fake, repo_dir, now=NOW + timedelta(hours=1))
+
+        assert result["data"]["evicted"] == 0
+
+
 class TestListQueryValidator:
     """The list validator is not the item validator, and the whole conditional
     path rests on that distinction (verified live — Cache Spec §6)."""

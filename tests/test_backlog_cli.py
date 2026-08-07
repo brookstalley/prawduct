@@ -453,6 +453,26 @@ class TestNewFieldFlagsCli:
         assert code == 0
         assert [i["id"] for i in json.loads(out)["data"]["items"]] == [item_id]
 
+    def test_the_human_view_shows_a_populated_working_branch(self, capsys):
+        """Visibility is the field's only job — a claim the default view omits is
+        the invisible claim it exists to prevent."""
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        fake.push_branch("octo", "repo", "feat/live")
+        _run(["update", item_id, "--working-branch", "octo/repo@feat/live", "--json"], fake, capsys)
+
+        _code, out, _err = _run(["get", item_id], fake, capsys)
+
+        assert "working-branch=octo/repo@feat/live" in out
+
+    def test_an_unset_working_branch_adds_no_noise(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+
+        _code, out, _err = _run(["get", item_id], fake, capsys)
+
+        assert "working-branch" not in out
+
     def test_the_help_names_all_three_new_flags(self):
         for flag in ("--tags", "--affected", "--working-branch", "--tag T"):
             assert flag in cli._HELP, flag

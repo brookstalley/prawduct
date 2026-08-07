@@ -7,9 +7,9 @@
 
 ## unreleased
 
-**Entry:** 2026-08-07: the backlog cache learns to sync incrementally
+**Entry:** 2026-08-07: the backlog cache learns three domain fields
 
-**Chunks shipped:** 01, 02
+**Chunks shipped:** 01, 02, 03
 
 **Scope:** backlog-cache
 

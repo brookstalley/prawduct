@@ -1223,6 +1223,13 @@ def _print_human_ok(data) -> None:
             bits.append(f"stage={data['stage']}")
         if data.get("assignee"):
             bits.append(f"assignee={data['assignee']}")
+        if data.get("working_branch"):
+            # The claim signal, and visibility is its ONLY job — a populated
+            # `working-branch` that the default human view omits fails at exactly
+            # the thing the field exists for. `tags` and `affected` are not here
+            # for the same reason `area`/`effort`/`impact` are not: they are read
+            # by filters and by the changed-file intersection, not off this line.
+            bits.append(f"working-branch={data['working_branch']}")
         print("  " + "  ".join(bits))
         if data.get("superseded_by"):
             # A merged-away item: the human reader needs the breadcrumb to the

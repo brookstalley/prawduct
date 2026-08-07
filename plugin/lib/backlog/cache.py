@@ -38,10 +38,16 @@ one costs a re-fetch rather than data, which is exactly why rebuild is the safe
 answer here and would not be for the evidence store.
 
 **Layering.** This module owns the connection, the schema and the writes, and
-knows nothing about any provider — it is handed already-decoded, provider-neutral
-rows. ``sync.py`` is the only module holding both a transport and a store;
-``cachequery.py`` reads and never writes. Errors are return values per
-project-preferences: nothing here raises across the boundary.
+knows nothing about any **transport** — it is handed already-decoded rows and
+never reaches a network. That is the honest form of the claim: it does read two
+provider-neutral helpers out of ``encode`` (the block's list format, and the
+status vocabulary by way of ``cachequery``), because those are the single home of
+a *format*, not of a provider. Should that dependency grow as the query surface
+does, the provider-neutral half of ``encode`` wants its own module rather than
+this docstring wanting a further softening. ``sync.py`` is the only module
+holding both a transport and a store; ``cachequery.py`` reads and never writes.
+Errors are return values per project-preferences: nothing here raises across the
+boundary.
 """
 
 from __future__ import annotations
@@ -481,7 +487,13 @@ def _write_affected(conn: sqlite3.Connection, row: dict) -> None:
     matching forever — the failure mode is a stale *positive*, which is worse
     than a miss because it reads as a confident answer.
     """
-    from .encode import parse_list  # noqa: PLC0415 — lazy: cache.py is provider-neutral
+    # `parse_list` is a pure block-list *format* helper, not provider knowledge,
+    # so reading the column through it does not breach this module's
+    # provider-neutrality — and `cachequery.py` already reaches into `encode` for
+    # the same class of helper. Parsing it inline instead would put a second
+    # spelling of the `[a, b]` format here, which is the drift the single-input
+    # rule above exists to prevent.
+    from .encode import parse_list  # noqa: PLC0415 — lazy, matches cachequery's import shape
 
     item_id = row.get("id")
     conn.execute("DELETE FROM item_affected WHERE item_id = ?", (item_id,))
@@ -492,6 +504,28 @@ def _write_affected(conn: sqlite3.Connection, row: dict) -> None:
         )
 
 
+def _delete_items(conn: sqlite3.Connection, item_ids: list[str], *, fts: bool) -> int:
+    """Remove items and every derived row that hangs off them; return how many
+    rows were **actually** removed.
+
+    Every index the store keeps has to be swept here, or the item disappears from
+    the table a reader lists while still answering a text search or a
+    changed-file intersection — a stale positive wearing the shape of a hit.
+
+    The count is `rowcount`, not `len(item_ids)`, and the difference is not
+    cosmetic: most out-of-scope ids in a sync window are ordinary repo issues
+    that were never cached at all, so counting candidates would report an
+    eviction on every sync of any repo that has non-prawduct issues — a number
+    that looks like the cache shedding items when nothing happened."""
+    removed = 0
+    for item_id in item_ids:
+        removed += conn.execute("DELETE FROM item WHERE id = ?", (item_id,)).rowcount
+        conn.execute("DELETE FROM item_affected WHERE item_id = ?", (item_id,))
+        if fts:
+            conn.execute("DELETE FROM item_fts WHERE item_id = ?", (item_id,))
+    return removed
+
+
 def apply_incremental(
     conn: sqlite3.Connection,
     rows: list[dict],
@@ -500,6 +534,7 @@ def apply_incremental(
     since: str,
     etag: str | None,
     fetched_at: str,
+    evict: list[str] | None = None,
 ) -> dict:
     """Upsert one sync window's rows **and advance its watermark**, atomically.
 
@@ -518,16 +553,33 @@ def apply_incremental(
     ``etag`` is the **list-query** validator for the query this window came from
     — not an item validator. It is stored beside ``since`` because ``since`` is
     what fixes that query's identity: advance one and the other is void by
-    construction rather than by expiry."""
+    construction rather than by expiry.
+
+    ``evict`` names ids seen in this window that are **no longer items** — an
+    issue whose block and labels were stripped. It rides the same transaction as
+    the upserts for the same reason the watermark does: a window is applied whole
+    or not at all, and a half-applied one leaves the store asserting something
+    the provider does not. This is not the deletion sweep Cache Spec §6 declines
+    to schedule; nothing is searched for here, and the evidence was already in
+    the page that was fetched anyway."""
     fts = has_fts(conn)
     try:
         with conn:
             _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
+            evicted = _delete_items(conn, evict or [], fts=fts)
             _write_cursor(conn, scope, since, etag, fetched_at)
     except sqlite3.Error as exc:
         log_diag(f"backlog cache incremental write failed: {type(exc).__name__}: {exc}")
         return error("unavailable", f"the backlog cache write failed ({type(exc).__name__})")
-    return ok({"written": len(rows), "fts": fts, "scope": scope, "since": since})
+    return ok(
+        {
+            "written": len(rows),
+            "evicted": evicted,
+            "fts": fts,
+            "scope": scope,
+            "since": since,
+        }
+    )
 
 
 def replace_items(
@@ -577,7 +629,18 @@ def replace_items(
     except sqlite3.Error as exc:
         log_diag(f"backlog cache rebuild failed: {type(exc).__name__}: {exc}")
         return error("unavailable", f"the backlog cache rebuild failed ({type(exc).__name__})")
-    return ok({"written": len(rows), "fts": fts, "scope": scope, "since": cursor_since})
+    # `evicted` is 0 rather than absent: every sync exit emits the same key set,
+    # or a consumer reading it works on one path and raises on another. A
+    # rebuild evicts nothing because it discarded everything first.
+    return ok(
+        {
+            "written": len(rows),
+            "evicted": 0,
+            "fts": fts,
+            "scope": scope,
+            "since": cursor_since,
+        }
+    )
 
 
 def _write_cursor(

@@ -14,6 +14,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import pytest  # noqa: E402
+
 from lib.backlog import encode  # noqa: E402
 
 
@@ -279,6 +281,16 @@ class TestAffected:
 
         assert encode.parse_block(body).affected() == ["the sync path"]
 
+    def test_a_glob_is_refused_and_the_working_form_is_named(self):
+        """A glob is not a broader match — it is a literal that matches nothing
+        forever: a silent NEGATIVE in the one query this field serves, and the
+        mirror of the stale positive the index's delete prevents."""
+        _entries, message = encode.validate_affected(["plugin/lib/backlog/**"])
+
+        assert message is not None
+        assert "not patterns" in message
+        assert "plugin/lib/backlog`" in message, "name the directory form that works"
+
     def test_a_bare_path_list_validates_clean(self):
         entries, message = encode.validate_affected(["plugin/lib/backlog/", "docs/x.md"])
 
@@ -366,6 +378,36 @@ class TestWorkingBranch:
 
     def test_a_three_segment_repo_is_refused(self):
         assert encode.parse_working_branch("a/b/c@main") is None
+
+    def test_a_traversal_sequence_is_refused_before_it_reaches_a_url_path(self):
+        """`owner/repo@../../../user` would otherwise resolve a DIFFERENT endpoint
+        and be stored as a verified working branch — the pushed-ref control
+        failing open, which is the invisible claim it exists to prevent."""
+        assert encode.parse_working_branch("o/r@../../../user") is None
+        assert encode.parse_working_branch("o/..@main") is None
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "o/r@feat~1", "o/r@feat^", "o/r@feat:x", "o/r@feat?x", "o/r@feat*",
+            "o/r@feat[x]", "o/r@feat\\x", "o/r@feat@{0}", "o/r@a//b", "o/r@-feat",
+            "o/r@feat.", "o/r@feat.lock", "o/r@.hidden", "o/r@a/.b", "o/r@a/b.lock",
+            "o/r@@", "o/r@feat\x01x",
+        ],
+    )
+    def test_names_git_itself_would_refuse_are_refused_here(self, bad):
+        """A name git could never create cannot be a pushed ref, so accepting one
+        can only ever mean the check passed against something else."""
+        assert encode.parse_working_branch(bad) is None
+
+    @pytest.mark.parametrize(
+        "good",
+        ["o/r@main", "o/r@feat/a/b", "o/r@feat@2", "o/r@release-1.2", "o/docs.github.com@main"],
+    )
+    def test_ordinary_names_still_parse(self, good):
+        """The refusal must not be incidental strictness — a dot is legal in a
+        repo name (`docs.github.com`) and mid-name in a branch."""
+        assert encode.parse_working_branch(good) is not None
 
     def test_it_round_trips_through_the_block_under_its_snake_key(self):
         body = "```prawduct\nv: 1\nworking_branch: octo/repo@feat/x\n```\n"

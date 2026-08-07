@@ -21,12 +21,6 @@ dropping them.
 
 ---
 
-## A test written RELATIVE to the constant it polices can never detect that constant being wrong — pin the absolute value when the value is a historical fact (a version a real store was stamped with, a format that shipped), because `CONST - 1` moves with CONST and passes at every setting of it. Tell: the mutation you expected to go red stayed green
-
-## A measurement with no POSITIVE CONTROL cannot support a claim — before believing "X costs nothing", confirm the instrument MOVES when it should, because a dead instrument reads zero for the treatment and the control alike, and zero is the answer you were hoping for. Tell: the confirming result arrived first try and the null case was never run
-
-## For every value you plan to PERSIST from a provider, verify the exact request that will later REPLAY it, not just the one that produced it — a verify-api step scoped to the plan's own mechanism confirms that mechanism and misses the one the plan got wrong
-
 ## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
@@ -443,3 +437,13 @@ dropping them.
 ## A retirement ruling also retires whatever existed only to serve the retired thing, and those consequences never announce themselves — after deciding to remove a mechanism, sweep for what it was the ONLY reader of. Retiring the claim machinery silently killed the `assignee` column's only consumer, so a schema specified by a reviewed artifact would have shipped a dead field; found only by walking all fifteen consumer queries against the column list before writing the DDL. Tell: you have just accepted a removal and are moving straight to the thing that replaces it
 
 ## A number that disagrees with another number is a bug report, and "that source is stale" is the explanation that stops you reading it — chase two-digit discrepancies before explaining them away. The cache said 178 open and the session briefing said 182 pending; the snapshot genuinely WAS 27 minutes old, which made the wrong explanation available and correct-sounding. The real cause was a consumer query filtering `status = 'open'` literally and dropping `submitted`/`in-progress` — invisible to every fixture (which had no such items) and to live verification (ditto). Tell: you can name a plausible reason two counts differ without having checked that it is the actual reason
+
+## A test written RELATIVE to the constant it polices can never detect that constant being wrong — pin the absolute value when the value is a historical fact (a version a real store was stamped with, a format that shipped), because `CONST - 1` moves with CONST and passes at every setting of it. Tell: the mutation you expected to go red stayed green
+
+## A measurement with no POSITIVE CONTROL cannot support a claim — before believing "X costs nothing", confirm the instrument MOVES when it should, because a dead instrument reads zero for the treatment and the control alike, and zero is the answer you were hoping for. Tell: the confirming result arrived first try and the null case was never run
+
+## For every value you plan to PERSIST from a provider, verify the exact request that will later REPLAY it, not just the one that produced it — a verify-api step scoped to the plan's own mechanism confirms that mechanism and misses the one the plan got wrong
+
+## A build plan can name a CODE IDENTIFIER it never opened, and that is where a plan is most confidently wrong — before implementing a deliverable phrased as "add X to `Y`", open `Y` and check it does what the sentence assumes. "Name all three fields in `_UPDATE_FACETS`" read as bookkeeping; `_UPDATE_FACETS` is a label *swap*, so following it would have written labels for a body-block field and made setting a second tag silently remove the first. Same chunk, same shape: "the `affected` index" is unimplementable as an index on a column, because the query direction is entry-contains-changed-file. Tell: the plan names a symbol and you are about to edit it without having read it
+
+## A VALIDATOR that only refuses the malformed can still let a control fail OPEN — when a validated value is interpolated into a URL path, a filesystem path, or any other resolver, ask what ELSE the value could successfully resolve, not just whether it parses. `owner/repo@../../../user` passed a working-branch parser that checked whitespace and separators, then resolved a different API endpoint and would have been stored as a *verified* pushed branch. The bite is not injection (list-form call, own token, GET) — it is that the check reports success about something other than the thing it was asked about. Tell: your validator's rejections are all shaped like "this is not well-formed" and none like "this is not the thing"

@@ -573,6 +573,36 @@ the same shape that makes `transport.py` the sole egress.
 
 ### Chunk 04: The consumer query surface — grouping, FTS, alias resolution
 
+- **Carried in from Chunk 03's review** (`rev-20260807T171120Z-485805c5`, 0 blocking). Four findings
+  land here because this is the chunk whose consumers bind to them, and riding a commit that is
+  being made anyway costs no extra review round:
+
+  1. **The visible age has been over-reporting since Chunk 02, and this chunk's consumers are the
+     ones that will bind to it.** `_freshness` answers with `MIN(item.fetched_at)`, which was the
+     whole story while every sync rewrote every row. Incremental sync stamps only the window, so that
+     number is the fetch time of the least-recently-*edited* item and grows without bound while syncs
+     succeed — a store synced ten seconds ago can honestly report an age of weeks. The 304 path is
+     worse: it returns before touching the store, so `cursor.fetched_at` does not advance either and
+     nothing records that coverage was confirmed. **Model the two facts separately**: leave row
+     provenance where it is, add a per-scope *coverage-confirmed-at* stamp that every successful sync
+     including the not-modified one advances, and serve age from that with row provenance as the
+     fallback. Whatever is chosen, restate it at `cachequery._freshness`, whose current docstring
+     ("the honest promise is the worst row in it") is the rebuild-era argument and no longer
+     describes the number. A column change means **schema v5** — bump it (`cache.py`'s comment says
+     why, pre-release included).
+  2. **`item.tags`' removal trigger fires in this chunk.** The column has no consumer query; the
+     `--tag` filter is served live off the provider's label query. Its stated justification is the
+     provider-adequacy half of rebuild-equivalence, which is genuine but is not a Q-projection.
+     Answer it deliberately here — either a cache-served tag query appears, or the column comes out —
+     rather than letting it survive unremarked.
+  3. **The `item_affected` intersection has no `cachequery` wrapper.** The storage, the ancestor
+     expansion (`encode.path_ancestors`) and the SQL shape all shipped and are proven by test and by
+     a live run, but consumers 1 and 4 cannot reach them. Expose it here.
+  4. **One `optimize` after a rebuild is the cheap moment.** Nothing runs `VACUUM` or FTS5's
+     `optimize`, and `--rebuild` deletes rather than drops, so a long-lived clone's file only grows
+     and FTS segments accumulate. Small and self-healing, but this chunk is already in the FTS code.
+
+
 - **Description:** The rest of spec §2's query union: grouping and counting by `area`, text search
   scoped to an area (the FTS requirement), creation-time filtering, the two `updated_at` date
   predicates, and id resolution through the alias table including dead items.
@@ -706,6 +736,21 @@ the same shape that makes `transport.py` the sole egress.
   5. Committed and chunk marked `[x]` in Status
 
 ### Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
+
+- **[DECISION: the cache gets a trigger, and it lands here — 2026-08-07, from Chunk 03's review.]**
+  Chunk 03's review found that the store's only writer reachable from outside a test is a human
+  typing `prawduct-hook backlog sync`: nothing schedules it and no hook spawns it, while NFR §8's
+  "the detached refresh is a subprocess, not a supervised daemon" describes a component no chunk
+  delivered. This chunk binds prose consumers to the store, several of them **restricted-tool forks**
+  (the Critic's reconciliation walk, the PR reviewer's checks) that cannot execute a sync at all — so
+  `cachequery`'s "run `prawduct-hook backlog sync`" would reach a reader who cannot act on it. As
+  planned, W1 would ship consumers whose freshness has no owner: age visible, nothing making it
+  small. **Resolution: give sync the same detached-spawn trigger `refresh-counts` already uses**
+  (`transport.spawn_detached`, warmed from the session-start path), and document the op in
+  `adapter-mode.md` where an agent will meet it. Accepting manual refresh instead is the alternative,
+  and it is *not* free — it has to be written down in the same places, because an undocumented
+  manual-refresh assumption is what produced this finding.
+
 
 - **Description:** The last consumers are prose contracts in the skills, and this is the chunk that
   deletes the dormancy machinery. Restored: the Critic's Backlog Reconciliation walk and C-B1–C-B4

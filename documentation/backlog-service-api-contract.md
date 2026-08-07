@@ -334,7 +334,10 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
 - **Mass assignment.** `file`/`update` bind **only documented item fields**; a request can never set
   `history`, `node_id`, or another actor's **native** attribution. *But `prawduct:`-block fields are body
   text — self-set and forgeable by any write-capable actor* (Security §5/F3): the API treats them as
-  **untrusted self-assertion**, trustworthy only insofar as the acting API identity is.
+  **untrusted self-assertion**, trustworthy only insofar as the acting API identity is. The one
+  partial exception is **`working_branch`**, whose *referent* is checked at the write (the branch
+  must exist on the named repo) — so it cannot point at nothing, though who claims it and why
+  remains self-asserted like every other block field.
 - **Excessive data exposure.** JSON returns **item fields only** — never tokens, auth state, or the
   cache path (§4).
 - **Resource / rate bounds.** Caller-drivable cost is bounded: `batch`/`import` **pace under the 80/min

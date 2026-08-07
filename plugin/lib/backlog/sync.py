@@ -47,8 +47,8 @@ from .transport import Transport, TransportError, Validator
 CURSOR_OVERLAP = timedelta(minutes=2)
 
 
-def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> list[dict]:
-    """Decode provider issues into cache rows.
+def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> tuple[list[dict], list[str]]:
+    """Decode provider issues into cache rows, and name the ones that are not ours.
 
     In-scope means what ``list``/``pick`` already mean by it: an issue carrying a
     prawduct label or body block. Plain repo issues and pull requests are not
@@ -56,13 +56,28 @@ def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> list[dict]:
     cache that disagreed with the live path about what counts as an item would
     fail rebuild-equivalence for a reason that has nothing to do with caching.
 
+    **The out-of-scope ids are returned rather than discarded**, and that second
+    list is the whole reason for the tuple. An issue whose block and labels are
+    stripped stops being an item, and an upsert-only sync has no other way to
+    learn it: the row would sit in the store as an open item forever, reaching
+    the consumers that walk the open set. That is a stale *positive* — an answer
+    rather than a gap — and unlike hard deletion and transfer-out (Cache Spec §6's
+    two accepted invisible cases) the window already carries the evidence, so
+    there is nothing to accept.
+
     This pairs each decoded item with the raw issue it came from, which is why
     it does not reuse ``query``'s decode helper: the provider's ``created_at``
     and ``updated_at`` are on the issue, not on the decoded item, and consumers
     2, 10 and 15 are all date predicates over exactly those two."""
     rows: list[dict] = []
+    out_of_scope: list[str] = []
     for issue in issues:
         if not encode.is_prawduct_issue(issue):
+            # A pull request was never an item, so it cannot have stopped being
+            # one — only a real issue can leave scope, and only that is worth a
+            # delete.
+            if not encode.is_pull_request(issue):
+                out_of_scope.append(f"{owner}/{repo}#{issue.get('number')}")
             continue
         canonical = f"{owner}/{repo}#{issue.get('number')}"
         item, _warnings = encode.decode_item(issue, canonical_id=canonical)
@@ -91,7 +106,7 @@ def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> list[dict]:
                 "etag": None,
             }
         )
-    return rows
+    return rows, out_of_scope
 
 
 def _list_column(values: list[str] | None) -> str | None:
@@ -125,7 +140,11 @@ def full_rebuild(
         return issues  # an error envelope from the transport — bubble it up
 
     try:
-        rows = _rows_from_issues(issues, owner, repo)
+        # The rebuild discards the whole store first, so an issue that left
+        # scope simply does not come back — no eviction list is needed here, and
+        # that asymmetry with the incremental path is the point rather than an
+        # oversight.
+        rows, _out_of_scope = _rows_from_issues(issues, owner, repo)
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         log_diag(f"could not decode issues for the backlog cache: {type(exc).__name__}: {exc}")
         return error("unavailable", "the backlog cache could not decode the fetched issues")
@@ -238,6 +257,7 @@ def incremental_sync(
             return ok(
                 {
                     "written": 0,
+                    "evicted": 0,
                     "fts": cache.has_fts(conn),
                     "scope": scope,
                     "since": since,
@@ -261,7 +281,7 @@ def incremental_sync(
             return issues
 
         try:
-            rows = _rows_from_issues(issues, owner, repo)
+            rows, out_of_scope = _rows_from_issues(issues, owner, repo)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             log_diag(f"could not decode issues for the backlog cache: {type(exc).__name__}: {exc}")
             return error("unavailable", "the backlog cache could not decode the fetched issues")
@@ -270,6 +290,10 @@ def incremental_sync(
         written = cache.apply_incremental(
             conn,
             rows,
+            # Issues in this window that are no longer backlog items. Evicted in
+            # the same transaction as the upserts, for the same reason the
+            # watermark rides with them: a window is applied whole or not at all.
+            evict=out_of_scope,
             scope=scope,
             since=advanced,
             # The validator belongs to the query at the OLD watermark. If the
