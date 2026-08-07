@@ -2847,3 +2847,59 @@ it is asserting internal consistency, which the defect also satisfies.
 
 **Ties to**: `tests/test_backlog_cache.py::TestSchemaMismatch::test_the_v2_shaped_store_that_actually_shipped_is_discarded`,
 whose docstring carries the do-not-relativise warning at the seed itself.
+
+## A build plan can name a CODE IDENTIFIER it never opened
+
+Two of one chunk's stated deliverables were wrong on mechanism, and both read as bookkeeping until
+the named symbol was opened.
+
+"Name all three fields in `_UPDATE_FACETS`" — `_UPDATE_FACETS` is the label *swap* loop: add the new
+value, strip every other label sharing the prefix. Correct for `area` (exactly-one, wired to the
+title); wrong twice over here. It would have written `affected:` labels for a field the spec puts in
+the body block, and made setting a second tag silently remove the first, since `tags` is the one
+deliberately multi-valued facet.
+
+"The three cache columns and the `affected` index" — unimplementable as written. The intersection
+runs *entry-contains-changed-file* (`plugin/lib` matches `plugin/lib/sync.py`), so the natural SQL is
+`WHERE ? LIKE affected || '%'`, whose variable is on the side no index can help. It had to become a
+normalised table (`item_affected(item_id, path)`) matched by equality after expanding each changed
+file into its ancestor directories.
+
+Why this is narrower than "plans go stale": a plan written at design altitude is usually right about
+*intent* and is checked against reality when its prose is read. A named code identifier skips that
+check — the sentence looks like an instruction rather than a claim, so it is followed instead of
+verified. Both errors here were caught by the same move (open the symbol before editing it), and
+neither would have been caught by re-reading the plan.
+
+**Ties to**: `plugin/lib/backlog/core.py` (`_UPDATE_MULTI_FACETS` / `_UPDATE_BLOCK_FIELDS`, the
+SEC-2 allowlist's third and fourth categories); `plugin/lib/backlog/cache.py` (`item_affected` and
+the comment stating the query direction).
+
+## A VALIDATOR that only refuses the malformed can still let a control fail OPEN
+
+`working-branch`'s one job is to make a claim visible to other agents, so the write path verifies the
+branch is actually pushed — `GET /repos/{owner}/{repo}/branches/{branch}`. The parser guarding that
+value checked whitespace, the `owner/repo@branch` shape, and leading/trailing slashes. All
+well-formedness questions.
+
+`owner/repo@../../../user` passes every one of them, and is then interpolated into the REST path. The
+request resolves a *different* endpoint, succeeds, and the value is stored as a **verified** working
+branch pointing at a branch nobody can find — the exact invisible claim the check exists to prevent.
+
+What it is not: injection (the call is list-form with no shell), or a privilege crossing (same
+token, GET, one bit returned). Which is why it reads as low-severity on a first pass and is not. The
+harm is that a control **reports success about something other than the thing it was asked about**,
+and a control that can do that is worse than no control, because its output is trusted.
+
+The same seam produced the mirror image on the other new field. `validate_affected` refused prose and
+accepted globs, which the docs say are unsupported: `plugin/lib/**` is written happily and then
+matches nothing forever — a silent *negative* where the branch case was a silent *positive*.
+
+The fix in both cases was to add rejections of a second kind. Branch names are now held to git's own
+`check-ref-format` rules (a name git could never create cannot be a pushed ref, so accepting one can
+only mean the check passed against something else); `affected` refuses glob metacharacters at the
+same seam that refuses prose, with the directory-prefix form named in the message.
+
+**Ties to**: `plugin/lib/backlog/encode.py` (`_is_valid_branch_name`, `parse_working_branch`,
+`validate_affected`); `tests/test_backlog_encode.py::TestWorkingBranch` (17 refused spellings, 5
+accepted — including `docs.github.com`, since a dot is legal in a repo name).
