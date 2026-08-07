@@ -126,7 +126,8 @@ W1 promises about double-picks.
 - [ ] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
 - [ ] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
-Context: **Chunk 02 is built and green** — suite 3940 passed / 7 skipped. Verified live against the
+Context: **Chunk 02 is built and green** — the suite passes clean (the count lives in the evidence
+store, which is tree-keyed; `prawduct-hook test-status` reads it). Verified live against the
 452-item backlog: rebuild 6.25s writing a provider-derived watermark; first incremental pass fetched
 only the 2-item overlap window in 0.83s; second pass took a **304 in 0.39s with zero pages fetched**,
 and all 452 `item.etag` values stayed NULL with the list validator on the cursor, as designed.

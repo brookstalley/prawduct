@@ -35,7 +35,12 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from lib.backlog.encode import parse_iso  # noqa: E402
-from lib.backlog.transport import Transport, TransportError, Validator  # noqa: E402
+from lib.backlog.transport import (  # noqa: E402
+    PROBE_PAGE_SIZE,
+    Transport,
+    TransportError,
+    Validator,
+)
 
 _DEFAULT_USER = {"login": "octocat", "id": 1, "node_id": "U_octocat"}
 
@@ -399,7 +404,7 @@ class FakeGitHub(Transport):
             owner, repo, state=state, labels=None, assignee=None, since=since
         )
         matched.sort(key=lambda i: _order(i, "updated_at"), reverse=True)
-        top = matched[:1]
+        top = matched[:PROBE_PAGE_SIZE]
         self.calls.append(("get_issues_validator", owner, repo, state, since, etag))
         current = "W/" + json.dumps(
             [(i["number"], i.get("updated_at"), i.get("state")) for i in top],

@@ -11,11 +11,16 @@ silent reader and a clean bill of health are indistinguishable to whoever reads
 the output — which is the exact failure the dormant checks were made to announce
 rather than commit.
 
-**Every served payload carries a visible age.** Freshness comes from the scope's
-sync cursor, so a store that legitimately holds zero open items still reports
-when it was last synced. Falling back to the oldest row's stamp covers a store
-written before a cursor existed; a store with neither has never been synced, and
-says so rather than serving.
+**Every served payload carries a visible age**, and it is the age of the *rows*:
+the oldest ``fetched_at`` in the store, because an age is a promise about the
+whole payload and the honest promise is the worst row in it. The scope's sync
+cursor is deliberately **not** the source — that is a provider timestamp
+recording how far the reads have covered, so a repo whose newest item was edited
+a year ago would report a year-old cache one second after a clean sync. The one
+case with no rows to age is a scope that synced and legitimately holds nothing;
+there the cursor's own ``fetched_at`` answers, since "empty" and "never synced"
+are different claims and only the second should send an operator to go and sync.
+A store with neither has never been synced, and says so rather than serving.
 """
 
 from __future__ import annotations
@@ -41,10 +46,14 @@ def _freshness(conn: sqlite3.Connection, scope: str, *, now: datetime) -> tuple[
     provider's clock domain — a repo whose newest item was edited a year ago
     would report a year-old cache one second after a successful sync.
 
-    ``None`` when the store holds no rows is the honest answer rather than a gap:
-    an age is a property of what is being served, and nothing is being served.
+    **The empty store still has an age.** With no rows there is nothing to take a
+    row stamp from, but a scope that synced cleanly and genuinely holds zero
+    items is not the same as one that has never synced — and only the second
+    should tell an operator to go and sync. So the fallback is the cursor's own
+    ``fetched_at``, which records the sync rather than the rows. ``None`` now
+    means what it says: no sync has ever completed for this scope.
     """
-    stamp = cache.oldest_fetched_at(conn)
+    stamp = cache.oldest_fetched_at(conn) or cache.last_synced_at(conn, scope)
     if stamp is None:
         return None
     parsed = parse_iso(stamp)

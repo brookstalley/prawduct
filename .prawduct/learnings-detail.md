@@ -2782,3 +2782,43 @@ named test is passing for the wrong reason. Instance 2 was found exactly that wa
 
 **Ties to**: the free-edge/judgeable work in `gate-as-dispatcher-requirements.md` (instances 2-3) and
 `.prawduct/change-log.md`'s 2026-08-06 entry (instance 1).
+
+
+## A measurement with no POSITIVE CONTROL cannot support a claim — before believing "X costs nothing", confirm the instrument MOVES when it should, because a dead instrument reads zero for the treatment and the control alike, and zero is the answer you were hoping for. Tell: the confirming result arrived first try and the null case was never run
+
+Chunk 02 needed to know whether a conditional request against GitHub's issues list is free. Polling
+the `rate_limit` endpoint before and after three 304s showed `used` unchanged, which is exactly the
+hoped-for answer, and it went into `cache-spec.md` §6 and two docstrings as "measured".
+
+The positive control was run only because the number looked too clean: five *unconditional* 200s
+also moved it by zero, and so did a 452-item rebuild. That is impossible, so the instrument was
+dead — `rate_limit` was not reflecting these calls at all. Each response's own `X-RateLimit-Used`
+header gave 134 → 135 → 136 across three 200s and a flat 136 across three 304s. Same conclusion,
+but the first version of the evidence supported nothing.
+
+The general shape: a null result is only informative if the measurement can produce a non-null one.
+When the claim is "X costs nothing" / "Y never fires" / "Z is not called", the control is not
+optional politeness, it is the whole experiment.
+
+**Ties to**: `documentation/backlog-service-cache-spec.md` §6, which now records the *method* and
+the dead instrument alongside the result.
+
+
+## For every value you plan to PERSIST from a provider, verify the exact request that will later REPLAY it, not just the one that produced it — a verify-api step scoped to the plan's own mechanism confirms that mechanism and misses the one the plan got wrong
+
+Chunk 02's build plan scheduled a `verify-api` step as step 0, specifically so the fakes could not
+be built from recall. It asked four questions — what `since` filters on, whether it interacts with
+`state`, whether closed items return, and the etag/304 behaviour — and all four came back clean.
+
+The finding that mattered was not among them. The plan said sync would write `item.etag`; sync reads
+the *list* endpoint. Asking "which endpoint will replay this stored value?" showed a list etag
+returns 200 against `GET /issues/{n}` where that item's own returns 304, and the list body carries
+no per-item validator at all. Chunk 05's revalidation would have missed on every read, spent a full
+request each time, and looked like it was working.
+
+The step was scoped to the plan's stated mechanism, so it could only ever confirm that mechanism.
+The question that broke it came from the *persistence* direction: every value crossing from a
+provider into a store is later replayed into some request, and that request is the one to verify.
+
+**Ties to**: the DECISION block in Chunk 02 of `build-plan-backlog-cache.md`, and the two-validator
+split now recorded in `backlog-service-data-model.md` §6.

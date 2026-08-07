@@ -5401,6 +5401,7 @@ _EPHEMERAL_READ_ONLY_OPS = {
 # "a read + a local snapshot write".
 _BACKLOG_LOCAL_WRITE_OPS = frozenset({
     "refresh-counts",       # derives from the service, persists the briefing snapshot locally
+    "sync",                 # same shape as refresh-counts: reads the service, writes the local cache
     "export",               # writes its `--to` directory
     "restructure-preview",  # writes its `--out` artifact
     "import",               # migration; stamps local backlog-format state

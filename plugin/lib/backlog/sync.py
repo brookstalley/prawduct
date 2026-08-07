@@ -133,7 +133,10 @@ def full_rebuild(
         conn.close()
 
     data = dict(written.get("data") or {})
-    data.update({"fetched_at": stamp, "rebuilt": True})
+    # Same key set as every other sync exit — the values differ, the shape must
+    # not, or a consumer reading `data["not_modified"]` works on one path and
+    # raises on another.
+    data.update({"fetched_at": stamp, "rebuilt": True, "not_modified": False})
     warnings = [] if data.get("fts") else ["text search is unavailable: SQLite has no FTS5"]
     return ok(data, warnings)
 
@@ -221,11 +224,12 @@ def incremental_sync(
             return ok(
                 {
                     "written": 0,
-                    "pages_fetched": 0,
-                    "not_modified": True,
+                    "fts": cache.has_fts(conn),
                     "scope": scope,
                     "since": since,
                     "fetched_at": stamp,
+                    "rebuilt": False,
+                    "not_modified": True,
                 }
             )
 
@@ -248,12 +252,20 @@ def incremental_sync(
             log_diag(f"could not decode issues for the backlog cache: {type(exc).__name__}: {exc}")
             return error("unavailable", "the backlog cache could not decode the fetched issues")
 
+        advanced = _watermark_from(issues, floor=since)
         written = cache.apply_incremental(
             conn,
             rows,
             scope=scope,
-            since=_watermark_from(issues, floor=since),
-            etag=validator.etag,
+            since=advanced,
+            # The validator belongs to the query at the OLD watermark. If the
+            # watermark moved, that query no longer exists and its validator can
+            # only ever miss — storing it would look like a live optimisation
+            # while buying nothing. Dropping it says "ask unconditionally next
+            # time", which is what actually happens either way; the difference is
+            # that the stored pair stays honest, and `_write_cursor`'s invariant
+            # stays true instead of aspirational.
+            etag=validator.etag if advanced == since else None,
             fetched_at=stamp,
         )
     finally:
@@ -275,10 +287,13 @@ def _revalidate(
     A transport that does not implement the probe at all is treated as "changed"
     rather than as a failure: revalidation is an optimisation, and a provider or
     a fake without it should sync normally instead of refusing to sync."""
-    probe = getattr(transport, "get_issues_validator", None)
-    if probe is None:
-        return Validator(changed=True, etag=None)
     try:
-        return probe(owner, repo, state="all", since=since, etag=etag)
+        return transport.get_issues_validator(owner, repo, state="all", since=since, etag=etag)
+    except NotImplementedError:
+        # The base `Transport` defines this method, so a `getattr` guard would
+        # find it and then raise from inside — the check has to be on the CALL,
+        # not on the attribute. A provider without a conditional-request path
+        # syncs unconditionally; it does not fail to sync.
+        return Validator(changed=True, etag=None)
     except TransportError as exc:
         return from_transport_error(exc)

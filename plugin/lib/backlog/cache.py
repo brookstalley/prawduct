@@ -123,9 +123,10 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     """,
     """
     CREATE TABLE cursor (
-        scope TEXT PRIMARY KEY,
-        since TEXT,
-        etag  TEXT
+        scope      TEXT PRIMARY KEY,
+        since      TEXT,
+        etag       TEXT,
+        fetched_at TEXT
     )
     """,
 )
@@ -421,25 +422,6 @@ def _write_rows(conn: sqlite3.Connection, rows: list[dict], *, fetched_at: str, 
             )
 
 
-def upsert_items(conn: sqlite3.Connection, rows: list[dict], *, fetched_at: str) -> dict:
-    """Insert or replace items and their text index, in one transaction.
-
-    Idempotent by construction: the same rows applied twice leave the same store,
-    which is what lets an interrupted sync be re-run rather than reconciled.
-
-    **Advances no watermark**, so a caller using this alone is asserting that
-    nothing downstream will read a cursor as covering these rows. The sync path
-    wants :func:`apply_incremental` instead."""
-    fts = has_fts(conn)
-    try:
-        with conn:
-            _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
-    except sqlite3.Error as exc:
-        log_diag(f"backlog cache upsert failed: {type(exc).__name__}: {exc}")
-        return error("unavailable", f"the backlog cache write failed ({type(exc).__name__})")
-    return ok({"written": len(rows), "fts": fts})
-
-
 def apply_incremental(
     conn: sqlite3.Connection,
     rows: list[dict],
@@ -471,7 +453,7 @@ def apply_incremental(
     try:
         with conn:
             _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
-            _write_cursor(conn, scope, since, etag)
+            _write_cursor(conn, scope, since, etag, fetched_at)
     except sqlite3.Error as exc:
         log_diag(f"backlog cache incremental write failed: {type(exc).__name__}: {exc}")
         return error("unavailable", f"the backlog cache write failed ({type(exc).__name__})")
@@ -520,7 +502,7 @@ def replace_items(
             if fts:
                 conn.execute("DELETE FROM item_fts")
             _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
-            _write_cursor(conn, scope, cursor_since, None)
+            _write_cursor(conn, scope, cursor_since, None, fetched_at)
     except sqlite3.Error as exc:
         log_diag(f"backlog cache rebuild failed: {type(exc).__name__}: {exc}")
         return error("unavailable", f"the backlog cache rebuild failed ({type(exc).__name__})")
@@ -528,7 +510,11 @@ def replace_items(
 
 
 def _write_cursor(
-    conn: sqlite3.Connection, scope: str, since: str | None, etag: str | None
+    conn: sqlite3.Connection,
+    scope: str,
+    since: str | None,
+    etag: str | None,
+    fetched_at: str,
 ) -> None:
     """Stamp the watermark and its list-query validator. **Caller-transactional
     on purpose** — see :func:`replace_items`. Never call this outside a
@@ -537,16 +523,16 @@ def _write_cursor(
     Both columns are written together because a validator that outlived its
     ``since`` would be replayed against a *different* query, where it can only
     mislead: it would never match, so every revalidation would pay a full request
-    while looking like it was working."""
+    while looking like it was working.
+
+    ``fetched_at`` is the local stamp of the sync that wrote this row, and it is
+    the *only* place a successful sync of an **empty** scope leaves a trace: with
+    no rows there is no ``item.fetched_at`` to age, and reporting "never synced"
+    for a backlog that is simply empty is a different claim from the true one."""
     conn.execute(
-        "INSERT OR REPLACE INTO cursor (scope, since, etag) VALUES (?, ?, ?)",
-        (scope, since, etag),
+        "INSERT OR REPLACE INTO cursor (scope, since, etag, fetched_at) VALUES (?, ?, ?, ?)",
+        (scope, since, etag, fetched_at),
     )
-
-
-def get_cursor(conn: sqlite3.Connection, scope: str) -> str | None:
-    """How far this scope has been synced, or ``None`` if it never has."""
-    return get_cursor_state(conn, scope)[0]
 
 
 def get_cursor_state(conn: sqlite3.Connection, scope: str) -> tuple[str | None, str | None]:
@@ -562,6 +548,23 @@ def get_cursor_state(conn: sqlite3.Connection, scope: str) -> tuple[str | None, 
         log_diag(f"could not read the backlog cache cursor: {type(exc).__name__}")
         return None, None
     return (row[0], row[1]) if row else (None, None)
+
+
+def last_synced_at(conn: sqlite3.Connection, scope: str) -> str | None:
+    """When this scope last synced successfully, or ``None`` if it never has.
+
+    Distinct from :func:`oldest_fetched_at`, which ages the *rows*. This ages the
+    *sync*, and it is the only answer available for a scope that synced cleanly
+    and legitimately holds nothing — where there are no rows to age and "never
+    synced" would be a false claim rather than a missing one."""
+    try:
+        row = conn.execute(
+            "SELECT fetched_at FROM cursor WHERE scope = ?", (scope,)
+        ).fetchone()
+    except sqlite3.Error as exc:
+        log_diag(f"could not read the backlog cache sync stamp: {type(exc).__name__}")
+        return None
+    return row[0] if row else None
 
 
 def oldest_fetched_at(conn: sqlite3.Connection) -> str | None:

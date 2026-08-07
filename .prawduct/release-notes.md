@@ -5,6 +5,16 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## unreleased
+
+**Entry:** 2026-08-07: the backlog cache learns to sync incrementally
+
+**Chunks shipped:** 01, 02
+
+**Scope:** backlog-cache
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.2.7
 
 ### backlog-title-enforcement

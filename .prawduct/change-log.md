@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-07: the backlog cache learns to sync incrementally
+
+<!-- prawduct: chunks=02 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->
+
+**The chunk's own verify-api step falsified the chunk's stated mechanism.** The plan said sync
+writes `item.etag`. Sync reads the *list* endpoint, and a list ETag replayed against
+`GET /issues/{n}` returns 200 where that item's own returns 304 — the list body carries no per-item
+validator at all. Storing it would have made the Chunk 05 revalidation miss on every read, spend a
+full request, and look like it was working. The two validators are now separate: `cursor` carries
+the list-query validator, `item.etag` stays NULL until a decision-path read populates it.
+
+**Changes:**
+- `cursor(scope, since, etag, fetched_at)`; `apply_incremental` writes rows and watermark in one
+  transaction, verified by a test that cuts exactly at the row write (and by mutation).
+- The watermark is a **provider** timestamp, rewound by a 2-minute overlap. It was the local clock,
+  which the next sync hands back to the provider as `since` — a fast machine would have skipped
+  everything stamped in the gap, silently and permanently.
+- `cachequery._freshness` ages the **rows**, not the cursor. Reading the watermark as an age was a
+  provider timestamp answering a local-clock question; an empty-but-synced scope now ages off the
+  cursor's own stamp, so "empty" and "never synced" stop being the same report.
+- `state="all"` on the sync query: `since` and `state` are independent filters, so the `open`
+  default would drop exactly the closes that the no-deletion-sweep decision depends on `since`
+  catching.
+- A validator is stored only for the window it validates — when the watermark moves, the old one is
+  dropped rather than kept to miss.
+- `prawduct-hook backlog sync [--rebuild]` — the writer's entry point, which three `unavailable`
+  messages already told operators to run.
+- `gh` exits 1 on a 304; `_run_conditional` reads the status line from stdout rather than matching
+  stderr text.
+
+**Classification:** feature
+
+## 2026-08-07: the backlog cache store, and the invariant it rests on
+
+<!-- prawduct: chunks=01 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->
+
+**Changes:** the per-clone SQLite read-through store — schema, `PRAGMA user_version` with
+discard-and-rebuild on any mismatch, WAL plus busy timeout for the concurrent-worktree case, visible
+age on every served payload, and unavailable-is-never-empty on every read path. The load-bearing
+test is rebuild-equivalence: drop the store, rebuild from the provider, compare — a difference means
+a field lives only in the cache, which is both data loss on rebuild and a second home for a fact.
+`assignee` and `reviewed` were dropped from the schema when the claim retirement removed their only
+consumers.
+
+**Classification:** feature
+
 ## 2026-08-07: an excellent issue title stopped being a suggestion
 
 <!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement | release=v3.2.7 | status=shipped -->

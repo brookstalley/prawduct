@@ -260,7 +260,10 @@ class TestUnavailableIsNotEmpty:
         conn.execute("DROP TABLE item")
         conn.commit()
 
-        result = cache.upsert_items(conn, [{"id": "x"}], fetched_at=NOW.isoformat())
+        result = cache.apply_incremental(
+            conn, [{"id": "x"}], scope=SCOPE, since=NOW.isoformat(), etag=None,
+            fetched_at=NOW.isoformat(),
+        )
         conn.close()
 
         assert result["status"] == "error"
@@ -290,6 +293,34 @@ class TestVisibleAge:
         assert result["data"]["items"] == []
         assert result["data"]["age_seconds"] == pytest.approx(3600, abs=2)
 
+    def test_a_synced_but_empty_scope_reports_its_age_not_never_synced(self, fake, repo_dir):
+        """"Empty" and "never synced" are different claims, and only the second
+        should send an operator off to run a sync. With no rows there is no
+        `item.fetched_at` to age, so the cursor's own stamp answers — which is
+        the one place a successful sync of an empty scope leaves a trace."""
+        assert _rebuild(fake, repo_dir)["status"] == "ok"  # a repo with no items at all
+
+        result = cachequery.open_items(repo_dir, scope=SCOPE, now=NOW + timedelta(hours=2))
+
+        assert result["status"] == "ok", result
+        assert result["data"]["items"] == []
+        assert result["data"]["age_seconds"] == pytest.approx(2 * 3600, abs=2), (
+            "a synced-but-empty store reported as never synced"
+        )
+
+    def test_a_never_synced_store_reports_rather_than_serving(self, repo_dir):
+        """The other side of the same coin — the empty-store fallback must not
+        manufacture an age for a store that has genuinely never been filled. That
+        one still refuses to serve, and says which command fixes it."""
+        conn = cache.open_store(repo_dir, create=True)
+        conn.close()
+
+        result = cachequery.open_items(repo_dir, scope=SCOPE, now=NOW)
+
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "unavailable"
+        assert "never been synced" in result["error"]["message"]
+
     def test_the_served_age_is_the_oldest_row_not_the_newest(self, repo_dir):
         """An age is a promise about the whole payload, so the honest promise is
         the worst row in it — the newest stamp would understate staleness.
@@ -308,7 +339,10 @@ class TestVisibleAge:
             fetched_at=(NOW - timedelta(hours=5)).isoformat(),
             cursor_since=(NOW - timedelta(hours=5)).isoformat(),
         )
-        cache.upsert_items(conn, [{"id": "b"}], fetched_at=NOW.isoformat())
+        cache.apply_incremental(
+            conn, [{"id": "b"}], scope=SCOPE, since=NOW.isoformat(), etag=None,
+            fetched_at=NOW.isoformat(),
+        )
         conn.close()
 
         result = cachequery.open_items(repo_dir, scope=SCOPE, now=NOW)
@@ -434,7 +468,7 @@ class TestFullRebuild:
         _rebuild(fake, repo_dir)
 
         conn = cache.open_store(repo_dir, create=False)
-        since = cache.get_cursor(conn, SCOPE)
+        since, _etag = cache.get_cursor_state(conn, SCOPE)
         conn.close()
 
         # Compared as instants: `...00Z` sorts ABOVE `...00.000001Z` as a string
@@ -530,8 +564,9 @@ class TestConcurrentWriters:
             if isinstance(conn, dict):
                 raise SystemExit("could not open: " + repr(conn))
             for i in range(150):
-                result = cache.upsert_items(
-                    conn, [{{"id": tag + str(i), "title": tag, "body": "b"}}], fetched_at=stamp
+                result = cache.apply_incremental(
+                    conn, [{{"id": tag + str(i), "title": tag, "body": "b"}}],
+                    scope=tag, since=stamp, etag=None, fetched_at=stamp,
                 )
                 if result["status"] != "ok":
                     raise SystemExit("write failed: " + repr(result))
@@ -605,7 +640,7 @@ class TestIncrementalSync:
 
         assert result["status"] == "ok", result
         assert result["data"]["not_modified"] is True
-        assert result["data"]["pages_fetched"] == 0
+        assert result["data"]["written"] == 0
         assert _list_calls(fake) == [], "a not-modified answer must not fetch a page"
 
     def test_an_edit_since_the_watermark_arrives_with_its_new_state(self, fake, repo_dir):
@@ -662,7 +697,40 @@ class TestIncrementalSync:
         cursor_twice = cache.get_cursor_state(conn, SCOPE)
         conn.close()
         assert _domain_rows(repo_dir) == once
-        assert cursor_twice == cursor_once, "a quiet re-run must not move the watermark"
+        assert cursor_twice[0] == cursor_once[0], "a quiet re-run must not move the watermark"
+
+    def test_a_validator_is_stored_only_for_the_window_it_actually_validates(
+        self, fake, repo_dir
+    ):
+        """A validator belongs to the query it was issued against, and `since` is
+        what fixes that query's identity. So a sync that MOVES the watermark must
+        not keep the old validator: it would be replayed against a query that no
+        longer exists, miss every time, and cost a full request while looking
+        like a live optimisation. A sync that leaves the watermark alone may keep
+        it — that is the case the 304 exists for."""
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert core.update_item(fake, id_raw=ids[0], fields={"stage": "ready"})["status"] == "ok"
+
+        assert _sync(fake, repo_dir)["status"] == "ok"
+        conn = cache.open_store(repo_dir, create=False)
+        moved_since, moved_etag = cache.get_cursor_state(conn, SCOPE)
+        conn.close()
+
+        assert _sync(fake, repo_dir)["status"] == "ok"
+        conn = cache.open_store(repo_dir, create=False)
+        settled_since, settled_etag = cache.get_cursor_state(conn, SCOPE)
+        conn.close()
+
+        assert moved_etag is None, "the watermark moved, so the old validator was void"
+        assert settled_since == moved_since, "nothing new arrived; the watermark held"
+        assert settled_etag is not None, "a held watermark keeps its validator"
+
+        # ...and that stored validator is what buys the free sync.
+        fake.calls.clear()
+        result = _sync(fake, repo_dir)
+        assert result["data"]["not_modified"] is True
+        assert _list_calls(fake) == []
 
     def test_the_window_reaches_back_past_the_newest_stamp_seen(self, fake, repo_dir):
         """Boundary-overlap re-read. `since` being inclusive re-reads the exact
@@ -764,12 +832,13 @@ class TestListQueryValidator:
         so storing one in `item.etag` would make every per-item revalidation miss
         while looking like it worked. `item.etag` stays NULL until a read that
         actually issues a single-item request populates it."""
-        _corpus(fake)
+        ids, _closed = _corpus(fake)
         assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert core.update_item(fake, id_raw=ids[0], fields={"stage": "ready"})["status"] == "ok"
+        # Twice: the first sync moves the watermark, the second settles it, and
+        # only a settled watermark carries a validator (see the validator-scope
+        # test above). Either way no item row may acquire one.
         assert _sync(fake, repo_dir)["status"] == "ok"
-        assert core.update_item(
-            fake, id_raw=_corpus(fake)[0][0], fields={"stage": "ready"}
-        )["status"] == "ok"
         assert _sync(fake, repo_dir)["status"] == "ok"
 
         path = cache.cache_path(repo_dir)
@@ -781,3 +850,21 @@ class TestListQueryValidator:
         assert etags, "an empty store would make this vacuous"
         assert all(value is None for value in etags)
         assert cursor_etag[0] is not None, "the list validator belongs on the cursor"
+
+
+class TestSyncEnvelopeShape:
+    def test_every_sync_exit_emits_the_same_keys(self, fake, repo_dir):
+        """The values differ by path; the shape must not. A consumer reading
+        `data["not_modified"]` should not work on a quiet sync and raise on a
+        rebuild."""
+        _corpus(fake)
+        rebuilt = _rebuild(fake, repo_dir)
+        fetched = _sync(fake, repo_dir)
+        quiet = _sync(fake, repo_dir)
+        while not quiet["data"]["not_modified"]:  # settle the watermark
+            quiet = _sync(fake, repo_dir)
+
+        shapes = [set(r["data"]) for r in (rebuilt, fetched, quiet)]
+        assert shapes[0] == shapes[1] == shapes[2], shapes
+        assert {"written", "fts", "scope", "since", "fetched_at", "rebuilt",
+                "not_modified"} <= shapes[0]

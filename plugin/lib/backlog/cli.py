@@ -47,7 +47,7 @@ _ALL_OPS: tuple[str, ...] = (
     "file", "get", "show", "status", "update", "comment", "list", "pick",
     "counts", "verify-migration", "refresh-counts", "reconcile-labels",
     "claim", "unclaim", "link", "unlink", "provision", "import",
-    "restructure-preview", "export", "merge",
+    "restructure-preview", "export", "merge", "sync",
 )
 
 # code → exit class. A code absent here (should not happen) falls back to 1.
@@ -82,6 +82,8 @@ _HELP = (
     "  pick     --repo owner/repo [--limit N] [--claim] [--claim-ttl SECONDS]\n"
     "  counts   --repo owner/repo\n"
     "  refresh-counts   --repo owner/repo   (derive + persist the briefing snapshot)\n"
+    "  sync     --repo owner/repo [--rebuild]   (populate the local cache; "
+    "incremental unless --rebuild)\n"
     "  claim    <id> [--repo owner/repo] [--claim-ttl SECONDS]\n"
     "  unclaim  <id> [--repo owner/repo]\n"
     "  link     <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
@@ -163,6 +165,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_verify_migration(rest, transport)
         elif op == "refresh-counts":
             result = _run_refresh_counts(rest, transport, project_dir)
+        elif op == "sync":
+            result = _run_sync(rest, transport, project_dir)
         elif op == "reconcile-labels":
             result = _run_reconcile_labels(rest, transport)
         elif op == "claim":
@@ -488,6 +492,34 @@ def _run_refresh_counts(rest: list[str], transport, project_dir):
     return query.refresh_counts(
         transport, project_dir=Path(project_dir), owner=owner, repo=repo
     )
+
+
+def _run_sync(rest: list[str], transport, project_dir):
+    """Populate the backlog cache — the writer's entry point.
+
+    Incremental by default: it fetches only what the provider reports changed
+    since the stored watermark, and takes a rate-free 304 when nothing has.
+    ``--rebuild`` forces the full scan, which is the answer to a corrupt store or
+    a schema bump; the incremental path already falls back to it on its own when
+    no watermark exists.
+
+    This op is what three ``unavailable`` messages in ``cache.py`` and
+    ``cachequery.py`` already tell the operator to run — a cache with no writer
+    reachable from the CLI is a cache that only ever reports being empty."""
+    flags, _positionals, err = _parse_flags(rest, valued={"repo"}, boolean={"rebuild"})
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "sync requires --repo owner/repo")
+    owner, repo = parsed
+    transport = _resolve_transport(transport)
+    from pathlib import Path  # noqa: PLC0415 — only this op needs a path
+
+    from . import sync as sync_mod  # noqa: PLC0415 — only this op drives the store
+
+    run = sync_mod.full_rebuild if flags.get("rebuild") else sync_mod.incremental_sync
+    return run(transport, project_dir=Path(project_dir), owner=owner, repo=repo)
 
 
 def _run_reconcile_labels(rest: list[str], transport):

@@ -11,6 +11,7 @@ import ast
 import io
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -24,7 +25,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cli  # noqa: E402
+from lib.backlog import cli, core  # noqa: E402
 from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
@@ -494,3 +495,53 @@ class TestHelpAdvertisesHonoredFlags:
                 f"`{op}` accepts --archive-scope but does not advertise it; an "
                 "owner cannot make an explicit choice they cannot discover (MG4b)"
             )
+
+
+class TestSyncCli:
+    """The cache's writer has to be reachable from the CLI, because three
+    ``unavailable`` messages in ``cache.py``/``cachequery.py`` already tell the
+    operator to run exactly this op. A cache with no reachable writer is a cache
+    that can only ever report being empty."""
+
+    def test_sync_is_a_known_op_and_fills_the_store(self, tmp_path, capsys):
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the sync item under test", body="b", facets={},
+        )
+
+        code = cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)
+        out = capsys.readouterr().out
+
+        assert code == 0, out
+        payload = json.loads(out)
+        assert payload["status"] == "ok"
+        assert payload["data"]["written"] == 1
+
+    def test_the_error_strings_that_name_this_op_now_name_a_real_one(self):
+        """`cache.py` and `cachequery.py` tell the operator to run
+        `prawduct-hook backlog sync`. That string is only useful if the op
+        exists — this pins the two together so neither drifts alone."""
+        assert "sync" in cli._ALL_OPS
+
+    def test_rebuild_forces_the_full_scan(self, tmp_path, capsys):
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the rebuild item under test", body="b", facets={},
+        )
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)
+        capsys.readouterr()
+
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--rebuild", "--json"], transport=fake)
+        payload = json.loads(capsys.readouterr().out)
+
+        assert payload["data"]["rebuilt"] is True
+
+    def test_sync_without_a_repo_is_a_validation_error(self, capsys):
+        fake = FakeGitHub()
+        code, _out, _err = _run(["sync"], fake, capsys)
+
+        assert code == 2
