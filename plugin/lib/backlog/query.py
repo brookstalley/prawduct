@@ -461,6 +461,7 @@ def all_issues(
     assignee: str | None = None,
     sort: str | None = None,
     direction: str | None = None,
+    since: str | None = None,
 ) -> list[dict] | dict:
     """Fetch **every** matching issue across pages (for whole-set ops — ``pick``,
     ``counts``). Returns the issue list, or an error **envelope** to bubble up.
@@ -473,7 +474,12 @@ def all_issues(
     # them, and a transport fake's `list_issues` need not accept sort/direction.
     extra = {
         key: value
-        for key, value in (("assignee", assignee), ("sort", sort), ("direction", direction))
+        for key, value in (
+            ("assignee", assignee),
+            ("sort", sort),
+            ("direction", direction),
+            ("since", since),
+        )
         if value is not None
     }
     try:

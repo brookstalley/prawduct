@@ -54,7 +54,7 @@ from .core import error, log_diag, ok
 
 # The persisted-format version. A mismatch discards and re-derives; bumped only
 # when a store written by another version cannot be read correctly by this one.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "backlog-cache.sqlite3"
@@ -124,7 +124,8 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE cursor (
         scope TEXT PRIMARY KEY,
-        since TEXT
+        since TEXT,
+        etag  TEXT
     )
     """,
 )
@@ -400,35 +401,90 @@ def _row_values(row: dict, fetched_at: str) -> tuple:
     return tuple(values)
 
 
+def _write_rows(conn: sqlite3.Connection, rows: list[dict], *, fetched_at: str, fts: bool) -> None:
+    """Upsert rows and their text index. **Caller-transactional on purpose** —
+    every caller has to decide what else commits alongside these rows, and for
+    the incremental path the answer is "the watermark that claims to cover
+    them" (see :func:`apply_incremental`)."""
+    placeholders = ", ".join("?" for _ in ITEM_COLUMNS)
+    columns = ", ".join(ITEM_COLUMNS)
+    for row in rows:
+        conn.execute(
+            f"INSERT OR REPLACE INTO item ({columns}) VALUES ({placeholders})",
+            _row_values(row, fetched_at),
+        )
+        if fts:
+            conn.execute("DELETE FROM item_fts WHERE item_id = ?", (row.get("id"),))
+            conn.execute(
+                "INSERT INTO item_fts (item_id, title, body) VALUES (?, ?, ?)",
+                (row.get("id"), row.get("title"), row.get("body")),
+            )
+
+
 def upsert_items(conn: sqlite3.Connection, rows: list[dict], *, fetched_at: str) -> dict:
     """Insert or replace items and their text index, in one transaction.
 
     Idempotent by construction: the same rows applied twice leave the same store,
-    which is what lets an interrupted sync be re-run rather than reconciled."""
-    placeholders = ", ".join("?" for _ in ITEM_COLUMNS)
-    columns = ", ".join(ITEM_COLUMNS)
+    which is what lets an interrupted sync be re-run rather than reconciled.
+
+    **Advances no watermark**, so a caller using this alone is asserting that
+    nothing downstream will read a cursor as covering these rows. The sync path
+    wants :func:`apply_incremental` instead."""
     fts = has_fts(conn)
     try:
         with conn:
-            for row in rows:
-                conn.execute(
-                    f"INSERT OR REPLACE INTO item ({columns}) VALUES ({placeholders})",
-                    _row_values(row, fetched_at),
-                )
-                if fts:
-                    conn.execute("DELETE FROM item_fts WHERE item_id = ?", (row.get("id"),))
-                    conn.execute(
-                        "INSERT INTO item_fts (item_id, title, body) VALUES (?, ?, ?)",
-                        (row.get("id"), row.get("title"), row.get("body")),
-                    )
+            _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
     except sqlite3.Error as exc:
         log_diag(f"backlog cache upsert failed: {type(exc).__name__}: {exc}")
         return error("unavailable", f"the backlog cache write failed ({type(exc).__name__})")
     return ok({"written": len(rows), "fts": fts})
 
 
+def apply_incremental(
+    conn: sqlite3.Connection,
+    rows: list[dict],
+    *,
+    scope: str,
+    since: str,
+    etag: str | None,
+    fetched_at: str,
+) -> dict:
+    """Upsert one sync window's rows **and advance its watermark**, atomically.
+
+    This is the incremental sibling of :func:`replace_items`, and it exists for
+    the same reason: the watermark asserts "everything up to ``since`` is in this
+    store", and committing it apart from the rows it covers opens a window where
+    that claim is false. A crash inside that window leaves a store permanently
+    missing items, because the next sync starts *after* them and no actor is
+    guaranteed to re-run this particular transition — the case where being
+    idempotent on re-run is not enough and the write has to be atomic instead.
+
+    ``since`` must come from provider timestamps, never the local clock: a
+    machine clock running ahead of the provider's would advance the watermark
+    past items it never saw, and the loss would be silent and permanent.
+
+    ``etag`` is the **list-query** validator for the query this window came from
+    — not an item validator. It is stored beside ``since`` because ``since`` is
+    what fixes that query's identity: advance one and the other is void by
+    construction rather than by expiry."""
+    fts = has_fts(conn)
+    try:
+        with conn:
+            _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
+            _write_cursor(conn, scope, since, etag)
+    except sqlite3.Error as exc:
+        log_diag(f"backlog cache incremental write failed: {type(exc).__name__}: {exc}")
+        return error("unavailable", f"the backlog cache write failed ({type(exc).__name__})")
+    return ok({"written": len(rows), "fts": fts, "scope": scope, "since": since})
+
+
 def replace_items(
-    conn: sqlite3.Connection, rows: list[dict], *, scope: str, fetched_at: str
+    conn: sqlite3.Connection,
+    rows: list[dict],
+    *,
+    scope: str,
+    fetched_at: str,
+    cursor_since: str | None,
 ) -> dict:
     """Replace the whole item set **and its watermark** — the rebuild path.
 
@@ -445,47 +501,67 @@ def replace_items(
     is missing — no later actor is guaranteed to re-run *that* transition, so
     idempotent-re-run convergence does not save it. The two writes are one write
     or the guarantee is not a guarantee. Incremental sync inherits the same rule:
-    advance the cursor with the upserts it covers, never before them."""
+    advance the cursor with the upserts it covers, never before them.
+
+    ``cursor_since`` is the watermark the rebuild leaves behind, and it is an
+    explicit argument rather than ``fetched_at`` because the two are different
+    kinds of timestamp. ``fetched_at`` is a local-clock stamp answering "how old
+    is this row?"; the watermark is a **provider** timestamp answering "what have
+    I already seen?", and the next incremental sync hands it straight back to the
+    provider as ``since``. Deriving it from the local clock would mean a machine
+    running fast skips every item the provider stamped in the gap — silently, and
+    forever. ``None`` means "no usable watermark" (an empty corpus has no
+    provider timestamp to take one from), which correctly routes the next sync
+    back through this rebuild path."""
     fts = has_fts(conn)
-    placeholders = ", ".join("?" for _ in ITEM_COLUMNS)
-    columns = ", ".join(ITEM_COLUMNS)
     try:
         with conn:
             conn.execute("DELETE FROM item")
             if fts:
                 conn.execute("DELETE FROM item_fts")
-            for row in rows:
-                conn.execute(
-                    f"INSERT OR REPLACE INTO item ({columns}) VALUES ({placeholders})",
-                    _row_values(row, fetched_at),
-                )
-                if fts:
-                    conn.execute(
-                        "INSERT INTO item_fts (item_id, title, body) VALUES (?, ?, ?)",
-                        (row.get("id"), row.get("title"), row.get("body")),
-                    )
-            _write_cursor(conn, scope, fetched_at)
+            _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
+            _write_cursor(conn, scope, cursor_since, None)
     except sqlite3.Error as exc:
         log_diag(f"backlog cache rebuild failed: {type(exc).__name__}: {exc}")
         return error("unavailable", f"the backlog cache rebuild failed ({type(exc).__name__})")
-    return ok({"written": len(rows), "fts": fts, "scope": scope, "since": fetched_at})
+    return ok({"written": len(rows), "fts": fts, "scope": scope, "since": cursor_since})
 
 
-def _write_cursor(conn: sqlite3.Connection, scope: str, since: str) -> None:
-    """Stamp the watermark. **Caller-transactional on purpose** — see
-    :func:`replace_items`. Never call this outside a transaction that also
-    contains the rows the watermark claims to cover."""
-    conn.execute("INSERT OR REPLACE INTO cursor (scope, since) VALUES (?, ?)", (scope, since))
+def _write_cursor(
+    conn: sqlite3.Connection, scope: str, since: str | None, etag: str | None
+) -> None:
+    """Stamp the watermark and its list-query validator. **Caller-transactional
+    on purpose** — see :func:`replace_items`. Never call this outside a
+    transaction that also contains the rows the watermark claims to cover.
+
+    Both columns are written together because a validator that outlived its
+    ``since`` would be replayed against a *different* query, where it can only
+    mislead: it would never match, so every revalidation would pay a full request
+    while looking like it was working."""
+    conn.execute(
+        "INSERT OR REPLACE INTO cursor (scope, since, etag) VALUES (?, ?, ?)",
+        (scope, since, etag),
+    )
 
 
 def get_cursor(conn: sqlite3.Connection, scope: str) -> str | None:
     """How far this scope has been synced, or ``None`` if it never has."""
+    return get_cursor_state(conn, scope)[0]
+
+
+def get_cursor_state(conn: sqlite3.Connection, scope: str) -> tuple[str | None, str | None]:
+    """``(since, etag)`` for the scope — the watermark and the validator of the
+    query that produced it. Either may be ``None``: no sync yet, or a sync whose
+    response carried no validator. A ``None`` etag means *ask unconditionally*,
+    never *nothing changed*."""
     try:
-        row = conn.execute("SELECT since FROM cursor WHERE scope = ?", (scope,)).fetchone()
+        row = conn.execute(
+            "SELECT since, etag FROM cursor WHERE scope = ?", (scope,)
+        ).fetchone()
     except sqlite3.Error as exc:
         log_diag(f"could not read the backlog cache cursor: {type(exc).__name__}")
-        return None
-    return row[0] if row else None
+        return None, None
+    return (row[0], row[1]) if row else (None, None)
 
 
 def oldest_fetched_at(conn: sqlite3.Connection) -> str | None:

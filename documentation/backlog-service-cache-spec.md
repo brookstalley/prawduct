@@ -223,8 +223,12 @@ provider ids rather than legacy PFX ids.
      must not use the `state=open` default, or the bullet below is false and closed items keep
      a stale open row forever. This is the single most load-bearing fact in this section.
   4. **The list endpoint supports `ETag`/`If-None-Match`, and a 304 costs zero rate-limit
-     points** (measured: three conditional requests, `used` delta 0). The validator is
-     **query-specific** — `(state, since, per_page, page)` each change it.
+     points.** Measured from each response's own `X-RateLimit-Used` header, **with a positive
+     control**: three unconditional 200s stepped it 134 → 135 → 136, and three conditional
+     requests then held it at 136. Read the header, not the `rate_limit` endpoint — polling
+     that reported `used: 0` for *both* arms of this experiment, which looks like a confirming
+     result and is actually a dead instrument. The validator is **query-specific** —
+     `(state, since, per_page, page)` each change it.
 - **Timestamps come from server values, never the local clock.** Overlap the watermark window by
   a margin and make upserts idempotent, so an item updated at the boundary is re-read rather than
   missed.

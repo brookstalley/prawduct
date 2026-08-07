@@ -30,8 +30,21 @@ from .encode import OPEN_STATUSES, parse_iso
 
 
 def _freshness(conn: sqlite3.Connection, scope: str, *, now: datetime) -> tuple[str, float] | None:
-    """``(synced_at, age_seconds)`` for the scope, or ``None`` if never synced."""
-    stamp = cache.get_cursor(conn, scope) or cache.oldest_fetched_at(conn)
+    """``(fetched_at, age_seconds)`` for the scope, or ``None`` if there is
+    nothing to age.
+
+    **Age comes from ``fetched_at``, never from the cursor**, and the two are not
+    interchangeable even though both are timestamps. ``fetched_at`` records when
+    *this machine last read a row*; the cursor records *how far into the
+    provider's history the reads have covered*, and it is a provider timestamp.
+    Asking the cursor how old the cache is answers a different question in the
+    provider's clock domain — a repo whose newest item was edited a year ago
+    would report a year-old cache one second after a successful sync.
+
+    ``None`` when the store holds no rows is the honest answer rather than a gap:
+    an age is a property of what is being served, and nothing is being served.
+    """
+    stamp = cache.oldest_fetched_at(conn)
     if stamp is None:
         return None
     parsed = parse_iso(stamp)

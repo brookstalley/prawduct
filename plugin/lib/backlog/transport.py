@@ -31,6 +31,7 @@ import os
 import re
 import subprocess
 from collections.abc import Callable, Iterator
+from typing import NamedTuple
 
 # --- Secret scrub (the SEC-1 backstop) ---------------------------------------
 
@@ -119,6 +120,56 @@ PAGE_SIZE = 100
 #: that work today into hard failures, while raising one costs nothing: a real
 #: repo terminates on a short page thousands of pages earlier.
 MAX_PAGES = 1000
+
+#: Page size for the sync revalidation probe. One is enough, and the argument is
+#: exact rather than approximate: the probe orders the window by ``updated_at``
+#: descending, so *any* change to *any* item in the window makes that item the
+#: single row the probe returns, with a strictly newer ``updated_at`` than
+#: whatever was there before. For the response to be byte-identical — the only
+#: way a 304 can be wrong — nothing in the window can have been touched. GitHub
+#: bumps ``updated_at`` on edits, label changes, state changes and comments
+#: alike, which is what makes "touched" and "newer timestamp" the same set.
+PROBE_PAGE_SIZE = 1
+
+
+def _parse_head(stdout: str) -> tuple[int | None, dict[str, str]]:
+    """Read the status code and headers from a ``gh api -i`` response.
+
+    Only the **first** header block is read, and header names are lowercased so
+    callers never guess at ``ETag`` versus ``Etag``. A response this cannot make
+    sense of yields ``(None, {})``, which every caller must read as *changed* —
+    the direction where a misparse costs one wasted fetch instead of a cache that
+    never refreshes again."""
+    status: int | None = None
+    headers: dict[str, str] = {}
+    for line in stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            break  # end of the header block; the body (if any) follows
+        if stripped.upper().startswith("HTTP/"):
+            parts = stripped.split()
+            if len(parts) >= 2 and parts[1].isdigit():
+                status = int(parts[1])
+            headers = {}  # a new block supersedes anything already collected
+            continue
+        name, sep, value = stripped.partition(":")
+        if sep:
+            headers[name.strip().lower()] = value.strip()
+    return status, headers
+
+
+class Validator(NamedTuple):
+    """The answer to "has this query's result changed since I last asked?".
+
+    ``changed`` is the decision; ``etag`` is the validator to store for next
+    time. **``changed=True`` is the safe answer** and every ambiguous path
+    returns it: an absent stored validator, a response with no ``ETag``, a status
+    line that could not be read. Being wrong that way costs one redundant fetch;
+    being wrong the other way serves a stale cache forever, which NFR §5 forbids.
+    """
+
+    changed: bool
+    etag: str | None
 
 
 def paginate(
@@ -233,7 +284,19 @@ class Transport:
         direction: str = "asc",
         per_page: int = 100,
         page: int = 1,
+        since: str | None = None,
     ) -> list[dict]:
+        raise NotImplementedError
+
+    def get_issues_validator(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str,
+        since: str,
+        etag: str | None,
+    ) -> Validator:
         raise NotImplementedError
 
     def list_blocked_by(self, owner: str, repo: str, number: int) -> list[dict]:
@@ -365,6 +428,7 @@ class GhTransport(Transport):
         direction: str = "asc",
         per_page: int = 100,
         page: int = 1,
+        since: str | None = None,
     ) -> list[dict]:
         """List issues off the REST list endpoint — the ready-work query's engine
         (Q1-structured, strongly consistent in practice). ``labels`` is an AND
@@ -375,7 +439,14 @@ class GhTransport(Transport):
         made every ``len(batch) < per_page`` check see a filtered count and stop
         scans early in PR-bearing repos). Filtering is the decode layer's job —
         ``encode.is_prawduct_issue`` rejects PRs (PROV-2), and label-keyed
-        lookups guard ``pull_request`` explicitly."""
+        lookups guard ``pull_request`` explicitly.
+
+        ``since`` filters on **``updated_at``**, inclusively, and is a *separate*
+        AND with ``state`` — both verified live rather than recalled (Cache Spec
+        §6). The `state` interaction is the one with teeth: a closed item matches
+        ``since`` but is still filtered out by the ``state="open"`` default, so an
+        incremental caller that wants to observe closes must pass
+        ``state="all"``."""
         from urllib.parse import urlencode  # noqa: PLC0415 — only list builds a query string
 
         params: list[tuple[str, str]] = [("state", state)]
@@ -383,6 +454,8 @@ class GhTransport(Transport):
             params.append(("labels", ",".join(labels)))
         if assignee:
             params.append(("assignee", assignee))
+        if since:
+            params.append(("since", since))
         params += [
             ("sort", sort),
             ("direction", direction),
@@ -394,6 +467,65 @@ class GhTransport(Transport):
         if not isinstance(result, list):
             return []
         return [issue for issue in result if isinstance(issue, dict)]
+
+    def get_issues_validator(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str,
+        since: str,
+        etag: str | None,
+    ) -> Validator:
+        """Ask whether anything in ``since``'s window has changed, as cheaply as
+        the protocol allows.
+
+        A 304 here **costs zero rate-limit points** (measured against the live
+        API, not assumed), which is what makes the steady state of a warm cache
+        free rather than merely fast. The saving is only available while the
+        query is stable, and it is: a sync that finds nothing does not advance
+        the watermark, so the next probe is byte-identical and the stored
+        validator still applies. Once real items come back the watermark moves,
+        the query changes, and the old validator is void by construction.
+
+        Ordered ``updated_at`` descending over one row — see
+        :data:`PROBE_PAGE_SIZE` for why one row is sufficient rather than merely
+        cheap."""
+        from urllib.parse import urlencode  # noqa: PLC0415 — matches list_issues
+
+        params = [
+            ("state", state),
+            ("since", since),
+            ("sort", "updated"),
+            ("direction", "desc"),
+            ("per_page", str(PROBE_PAGE_SIZE)),
+            ("page", "1"),
+        ]
+        path = f"repos/{owner}/{repo}/issues?{urlencode(params)}"
+        args = ["api", "-i", path]
+        if etag:
+            args += ["-H", f"If-None-Match: {etag}"]
+        status, headers = self._run_conditional(args)
+        if status == 304:
+            return Validator(changed=False, etag=etag)
+        return Validator(changed=True, etag=headers.get("etag"))
+
+    def _run_conditional(self, args: list[str]) -> tuple[int | None, dict[str, str]]:
+        """Run a ``gh api -i`` read, tolerating the not-modified answer.
+
+        **``gh`` exits 1 on a 304** — verified, not assumed — so the ordinary
+        non-zero-is-failure rule would turn the cheapest successful outcome in
+        the whole sync path into an error. It still writes the status line and
+        headers to *stdout* under ``-i``, so the status code is read from there
+        rather than by matching ``gh``'s stderr text, which is a human-facing
+        string and not a contract."""
+        proc = self._spawn(args)
+        status, headers = _parse_head(proc.stdout)
+        if status == 304:
+            return status, headers
+        if proc.returncode != 0:
+            raise self._map_failure(args, proc.returncode, proc.stderr)
+        return status, headers
 
     # -- relationships (native dependencies + sub-issues) ------------------
     #
@@ -691,11 +823,15 @@ class GhTransport(Transport):
                 details={"operation": " ".join(args[:2])},
             )
 
-    def _run(self, args: list[str], *, input_json: str | None = None) -> str:
+    def _spawn(self, args: list[str], *, input_json: str | None = None):
+        """Run ``gh`` and hand back the finished process, mapping only the
+        failures that are about *reaching* ``gh`` at all. Exit-code policy is the
+        caller's, because it is not uniform: an exit 1 is a failure for every
+        read except the conditional one, where it is how a 304 arrives."""
         cmd = ["gh", *args]
         env = build_env()
         try:
-            proc = subprocess.run(  # noqa: S603 — list-form, no shell (project preference)
+            return subprocess.run(  # noqa: S603 — list-form, no shell (project preference)
                 cmd,
                 input=input_json,
                 stdin=None if input_json is not None else subprocess.DEVNULL,
@@ -717,6 +853,9 @@ class GhTransport(Transport):
                 f"'gh' timed out after {self._timeout:g}s",
                 details={"operation": " ".join(args[:2])},
             )
+
+    def _run(self, args: list[str], *, input_json: str | None = None) -> str:
+        proc = self._spawn(args, input_json=input_json)
         if proc.returncode != 0:
             raise self._map_failure(args, proc.returncode, proc.stderr)
         return proc.stdout

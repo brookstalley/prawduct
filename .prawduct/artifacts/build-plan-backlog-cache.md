@@ -120,19 +120,32 @@ W1 promises about double-picks.
 ## Status
 
 - [x] Chunk 01: Cache store — schema, rebuild, visible age, and the rebuild-equivalence invariant
-- [ ] Chunk 02: Incremental sync — cursor watermark and conditional revalidation
+- [x] Chunk 02: Incremental sync — cursor watermark and conditional revalidation
 - [ ] Chunk 03: The three new domain fields and their write path
 - [ ] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
 - [ ] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
 - [ ] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
-Context: **Chunk 01 shipped `05d09f3`** (Critic `rev-20260807T145538Z`: 1 blocking + 5 others, all
-fixed; verify-resolutions clean). Suite 3929 passed / 7 skipped. Rebuild-equivalence verified against
-the live 450-item backlog — build → drop → rebuild → compare identical on every domain field; warm
-read 46ms against NFR §4's <500ms. Tracking item **#621**; **#230** is discharged by Chunks 02 + 05.
+Context: **Chunk 02 is built and green** — suite 3940 passed / 7 skipped. Verified live against the
+452-item backlog: rebuild 6.25s writing a provider-derived watermark; first incremental pass fetched
+only the 2-item overlap window in 0.83s; second pass took a **304 in 0.39s with zero pages fetched**,
+and all 452 `item.etag` values stayed NULL with the list validator on the cursor, as designed.
+(Chunk 01 shipped `05d09f3`, Critic `rev-20260807T145538Z` clean.) Tracking item **#621**; **#230**
+is discharged by Chunks 02 + 05.
 
-**Next up: Chunk 02**, which starts with its `verify-api` step (`since` semantics) *before* any fake
-is built.
+**Chunk 02's verify-api step paid for itself and then some** — it falsified the chunk's own stated
+mechanism (see the DECISION in that entry), and the two defects it exposed downstream were both
+invisible to a green suite: the rebuild was writing a **local-clock** watermark that the next sync
+would hand back to the provider as `since`, and `cachequery._freshness` was reading that watermark
+as the cache's age, which only looked right while the watermark happened to be a local stamp. Both
+fixed here; both now pinned by tests that fail on the mutation.
+
+All four of Chunk 01's demoted observations are discharged: (a) `since` has a reader and a correct
+value; (b) the age test goes through `cachequery`, the path that serves it, and no longer names a
+fallback that no longer exists; (c) the atomicity test is named in `Tests:` below and verified
+non-vacuous by mutation; (d) this chunk's review carries `--chunk 02`.
+
+**Next up: Chunk 03** — the three new domain fields and their write path.
 
 **#529 blocks one consumer, not this plan.** #621's `blocked-by #529` edge was **dropped by owner
 ruling (2026-08-07)**: a blocker that suppresses a whole item from ranked ready-work because one of
@@ -393,8 +406,16 @@ the same shape that makes `transport.py` the sole egress.
   `transport.GhTransport.list_issues` (including the `gh`-exits-1-on-304 handling below); the
   `cursor(scope, since, etag)` schema, stored with the cache, uncommitted, its absence meaning
   full rebuild
-- **Tests:** catalogue — **QRY-5** (sync/cursor); new — cursor advance-after-commit under a
-  simulated crash between fetch and upsert, boundary-overlap re-read, idempotent double-upsert. All
+- **Tests:** catalogue — **QRY-5** (sync/cursor); new — `test_a_crash_between_fetch_and_commit_
+  loses_nothing_on_re_run` (the advance-after-commit atomicity argument, cut exactly at the row
+  write), `test_the_window_reaches_back_past_the_newest_stamp_seen` (boundary overlap),
+  `test_syncing_twice_over_the_same_window_changes_nothing` (idempotent double-upsert),
+  `test_a_close_is_observed_because_the_window_is_not_state_scoped` and
+  `test_a_quiet_interval_fetches_no_pages_at_all` (the two verify-api findings with teeth), and
+  `test_the_watermark_is_a_provider_stamp_never_the_local_clock`. The first, fourth and fifth were
+  each confirmed to fail under a targeted mutation — split transaction, `state="open"`, and a
+  discarded validator respectively — rather than assumed to be load-bearing because they are green.
+  All
   clock-dependent tests inject one clock shared by every actor in the scenario; a single real-clock
   participant turns a fixed-timestamp test into a scheduled failure at stamp-plus-TTL wall time
 - **Acceptance criteria:** a sync following a no-op interval fetches zero pages; an item edited

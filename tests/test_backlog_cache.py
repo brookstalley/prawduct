@@ -33,6 +33,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 import pytest  # noqa: E402
 
 from lib.backlog import cache, cachequery, core, sync  # noqa: E402
+from lib.backlog.encode import parse_iso  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
@@ -289,19 +290,33 @@ class TestVisibleAge:
         assert result["data"]["items"] == []
         assert result["data"]["age_seconds"] == pytest.approx(3600, abs=2)
 
-    def test_age_falls_back_to_the_oldest_stamp_not_the_newest(self, repo_dir):
+    def test_the_served_age_is_the_oldest_row_not_the_newest(self, repo_dir):
         """An age is a promise about the whole payload, so the honest promise is
-        the worst row in it — the newest stamp would understate staleness."""
+        the worst row in it — the newest stamp would understate staleness.
+
+        Asserted through ``cachequery``, the path that actually serves the age,
+        rather than by calling ``oldest_fetched_at`` directly: reading the
+        helper only proves the helper works, and the defect worth catching is a
+        server that stops calling it. A partial sync is exactly how the two
+        stamps come apart in the field — most rows old, the freshly-upserted
+        window new — so the store is set up that way here."""
         conn = cache.open_store(repo_dir, create=True)
         cache.replace_items(
-            conn, [{"id": "a"}], scope=SCOPE, fetched_at=(NOW - timedelta(hours=5)).isoformat()
+            conn,
+            [{"id": "a"}],
+            scope=SCOPE,
+            fetched_at=(NOW - timedelta(hours=5)).isoformat(),
+            cursor_since=(NOW - timedelta(hours=5)).isoformat(),
         )
         cache.upsert_items(conn, [{"id": "b"}], fetched_at=NOW.isoformat())
-
-        oldest = cache.oldest_fetched_at(conn)
         conn.close()
 
-        assert oldest == (NOW - timedelta(hours=5)).isoformat()
+        result = cachequery.open_items(repo_dir, scope=SCOPE, now=NOW)
+
+        assert result["status"] == "ok", result
+        assert result["data"]["age_seconds"] == pytest.approx(5 * 3600, abs=2), (
+            "the newest row's stamp would have reported a cache that is 0s old"
+        )
 
 
 class TestFullRebuild:
@@ -394,14 +409,27 @@ class TestFullRebuild:
         conn.commit()
 
         result = cache.replace_items(
-            conn, [{"id": "only-row"}], scope=SCOPE, fetched_at=NOW.isoformat()
+            conn,
+            [{"id": "only-row"}],
+            scope=SCOPE,
+            fetched_at=NOW.isoformat(),
+            cursor_since=NOW.isoformat(),
         )
         conn.close()
 
         assert result["status"] == "error"
         assert _domain_rows(repo_dir) == before, "the rows rolled back with the failed watermark"
 
-    def test_the_cursor_records_how_far_the_scope_is_synced(self, fake, repo_dir):
+    def test_the_watermark_is_a_provider_stamp_never_the_local_clock(self, fake, repo_dir):
+        """The watermark is handed straight back to the provider as ``since`` on
+        the next sync, so it has to live in the provider's clock domain. Deriving
+        it from the local clock means a machine running fast asks for changes
+        after a moment the provider has not reached, and every item stamped in
+        the gap is skipped — silently, and permanently, because the watermark
+        only moves forward.
+
+        The corpus is stamped well before ``NOW`` precisely so the two clocks
+        cannot be confused for one another."""
         _corpus(fake)
         _rebuild(fake, repo_dir)
 
@@ -409,7 +437,20 @@ class TestFullRebuild:
         since = cache.get_cursor(conn, SCOPE)
         conn.close()
 
-        assert since == NOW.isoformat()
+        # Compared as instants: `...00Z` sorts ABOVE `...00.000001Z` as a string
+        # while being the earlier moment, so a string max here would quietly pick
+        # the wrong issue and assert against it.
+        newest = max(
+            parse_iso(i["updated_at"]) for i in fake.list_issues(OWNER, REPO, state="all")
+        )
+        assert since is not None
+        assert since != NOW.isoformat(), "the local clock leaked into the watermark"
+        assert parse_iso(since) <= newest, (
+            "the watermark ran ahead of the newest thing the provider actually showed us"
+        )
+        assert parse_iso(since) == newest - sync.CURSOR_OVERLAP, (
+            "the watermark should sit one overlap margin behind the newest stamp seen"
+        )
 
 
 class TestRebuildEquivalence:
@@ -519,3 +560,224 @@ class TestConcurrentWriters:
         conn.close()
         assert integrity == "ok"
         assert count == 300, "both writers' rows survived"
+
+
+def _sync(fake, repo_dir, *, now=NOW):
+    return sync.incremental_sync(fake, project_dir=repo_dir, owner=OWNER, repo=REPO, now=now)
+
+
+def _list_calls(fake):
+    return [c for c in fake.calls if c[0] == "list_issues"]
+
+
+class TestIncrementalSync:
+    """QRY-5 — the cursor watermark and the conditional revalidation over it.
+
+    The provider semantics these lean on were verified against the live API
+    before the fake modelled them (Cache Spec §6): `since` filters `updated_at`
+    inclusively, `state` is an independent AND, and the list endpoint answers
+    `If-None-Match` with a rate-free 304."""
+
+    def test_with_no_watermark_it_rebuilds_rather_than_asking_for_a_window(self, fake, repo_dir):
+        """An absent cursor means "nothing is known", and a `since`-scoped fetch
+        against that would quietly build a store containing only recent items
+        while reporting success."""
+        _corpus(fake)
+
+        result = _sync(fake, repo_dir)
+
+        assert result["status"] == "ok", result
+        assert result["data"]["rebuilt"] is True
+        assert all(call[6] is None for call in _list_calls(fake)), (
+            "a rebuild must not be scoped by `since`"
+        )
+
+    def test_a_quiet_interval_fetches_no_pages_at_all(self, fake, repo_dir):
+        """The acceptance criterion, and the reason the validator is stored with
+        the cursor: an unadvanced watermark re-issues a byte-identical query, so
+        the provider can answer 304 — which costs zero rate-limit points."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert _sync(fake, repo_dir)["status"] == "ok"  # first pass stores the validator
+        fake.calls.clear()
+
+        result = _sync(fake, repo_dir)
+
+        assert result["status"] == "ok", result
+        assert result["data"]["not_modified"] is True
+        assert result["data"]["pages_fetched"] == 0
+        assert _list_calls(fake) == [], "a not-modified answer must not fetch a page"
+
+    def test_an_edit_since_the_watermark_arrives_with_its_new_state(self, fake, repo_dir):
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert _sync(fake, repo_dir)["status"] == "ok"
+
+        assert core.update_item(
+            fake, id_raw=ids[0], fields={"stage": "ready"}
+        )["status"] == "ok"
+        result = _sync(fake, repo_dir)
+
+        assert result["status"] == "ok", result
+        assert result["data"]["not_modified"] is False
+        stored = {row["id"]: row for row in _domain_rows(repo_dir)}
+        assert stored[ids[0]]["stage"] == "ready"
+
+    def test_a_close_is_observed_because_the_window_is_not_state_scoped(self, fake, repo_dir):
+        """The single most load-bearing fact from verify-api. `since` and `state`
+        are independent filters, so `state="open"` would match the closed item's
+        timestamp and then drop the row — leaving the cache asserting `open`
+        forever. Cache Spec §6 accepts having no deletion sweep *because* `since`
+        catches closes, and it only does under `state="all"`."""
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert _sync(fake, repo_dir)["status"] == "ok"
+
+        assert core.set_status(fake, id_raw=ids[1], target="shipped")["status"] == "ok"
+        assert _sync(fake, repo_dir)["status"] == "ok"
+
+        stored = {row["id"]: row for row in _domain_rows(repo_dir)}
+        assert stored[ids[1]]["status"] == "shipped", (
+            "a state-scoped window would have filtered the close out of its own notification"
+        )
+        assert all(call[3] == "all" for call in _list_calls(fake))
+
+    def test_syncing_twice_over_the_same_window_changes_nothing(self, fake, repo_dir):
+        """Idempotent double-upsert. The overlap margin guarantees rows are
+        re-read on the very next pass, so re-application has to be a no-op or
+        every sync would corrupt what the last one wrote."""
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert core.update_item(fake, id_raw=ids[0], fields={"stage": "ready"})["status"] == "ok"
+
+        assert _sync(fake, repo_dir)["status"] == "ok"
+        once = _domain_rows(repo_dir)
+        conn = cache.open_store(repo_dir, create=False)
+        cursor_once = cache.get_cursor_state(conn, SCOPE)
+        conn.close()
+
+        assert _sync(fake, repo_dir, now=NOW + timedelta(hours=1))["status"] == "ok"
+
+        conn = cache.open_store(repo_dir, create=False)
+        cursor_twice = cache.get_cursor_state(conn, SCOPE)
+        conn.close()
+        assert _domain_rows(repo_dir) == once
+        assert cursor_twice == cursor_once, "a quiet re-run must not move the watermark"
+
+    def test_the_window_reaches_back_past_the_newest_stamp_seen(self, fake, repo_dir):
+        """Boundary-overlap re-read. `since` being inclusive re-reads the exact
+        boundary item; the margin covers what inclusivity cannot — a write
+        committed server-side at the instant the scan read past it."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        newest = max(
+            parse_iso(i["updated_at"]) for i in fake.list_issues(OWNER, REPO, state="all")
+        )
+
+        conn = cache.open_store(repo_dir, create=False)
+        since, _etag = cache.get_cursor_state(conn, SCOPE)
+        conn.close()
+
+        assert parse_iso(since) == newest - sync.CURSOR_OVERLAP
+        assert parse_iso(since) < newest, "the watermark must not sit on the newest stamp"
+
+    def test_a_crash_between_fetch_and_commit_loses_nothing_on_re_run(self, fake, repo_dir):
+        """The chunk's correctness argument, asserted rather than documented.
+
+        The watermark claims "everything up to here is stored". If it advances
+        and the rows do not, the next sync starts *after* items that were never
+        written, and nothing will ever go back for them — no actor is guaranteed
+        to re-run this particular transition, so being idempotent on re-run is
+        not enough. The write has to be atomic, and this cuts it exactly there:
+        the row write fails, and the watermark must not have moved."""
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert _sync(fake, repo_dir)["status"] == "ok"
+        conn = cache.open_store(repo_dir, create=False)
+        before = cache.get_cursor_state(conn, SCOPE)
+        conn.close()
+
+        assert core.update_item(fake, id_raw=ids[0], fields={"stage": "ready"})["status"] == "ok"
+        path = cache.cache_path(repo_dir)
+        broken = sqlite3.connect(str(path))
+        broken.execute("DROP TABLE item")
+        broken.commit()
+        broken.close()
+
+        result = _sync(fake, repo_dir)
+
+        assert result["status"] == "error"
+        conn = cache.open_store(repo_dir, create=False)
+        after = cache.get_cursor_state(conn, SCOPE)
+        conn.close()
+        assert after == before, (
+            "the watermark advanced past rows that were never written — those items "
+            "would never be fetched again"
+        )
+
+    def test_a_transport_failure_leaves_the_store_and_the_watermark_alone(self, fake, repo_dir):
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert _sync(fake, repo_dir)["status"] == "ok"
+        before_rows = _domain_rows(repo_dir)
+        conn = cache.open_store(repo_dir, create=False)
+        before_cursor = cache.get_cursor_state(conn, SCOPE)
+        conn.close()
+
+        fake.set_unreachable(True)
+        result = _sync(fake, repo_dir)
+
+        assert result["status"] == "error"
+        conn = cache.open_store(repo_dir, create=False)
+        after_cursor = cache.get_cursor_state(conn, SCOPE)
+        conn.close()
+        assert _domain_rows(repo_dir) == before_rows
+        assert after_cursor == before_cursor
+
+
+class TestListQueryValidator:
+    """The list validator is not the item validator, and the whole conditional
+    path rests on that distinction (verified live — Cache Spec §6)."""
+
+    def test_an_unchanged_window_reports_unchanged(self, fake):
+        _corpus(fake)
+        first = fake.get_issues_validator(OWNER, REPO, state="all", since=None, etag=None)
+
+        again = fake.get_issues_validator(OWNER, REPO, state="all", since=None, etag=first.etag)
+
+        assert first.changed is True, "no stored validator means ask unconditionally"
+        assert again.changed is False
+        assert again.etag == first.etag
+
+    def test_a_touched_item_invalidates_the_window(self, fake):
+        ids, _closed = _corpus(fake)
+        first = fake.get_issues_validator(OWNER, REPO, state="all", since=None, etag=None)
+
+        assert core.update_item(fake, id_raw=ids[0], fields={"stage": "ready"})["status"] == "ok"
+        after = fake.get_issues_validator(OWNER, REPO, state="all", since=None, etag=first.etag)
+
+        assert after.changed is True
+        assert after.etag != first.etag
+
+    def test_sync_never_writes_a_list_validator_into_an_item_row(self, fake, repo_dir):
+        """A list ETag replayed against `GET /issues/{n}` returns 200, not 304 —
+        so storing one in `item.etag` would make every per-item revalidation miss
+        while looking like it worked. `item.etag` stays NULL until a read that
+        actually issues a single-item request populates it."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        assert _sync(fake, repo_dir)["status"] == "ok"
+        assert core.update_item(
+            fake, id_raw=_corpus(fake)[0][0], fields={"stage": "ready"}
+        )["status"] == "ok"
+        assert _sync(fake, repo_dir)["status"] == "ok"
+
+        path = cache.cache_path(repo_dir)
+        conn = sqlite3.connect(str(path))
+        etags = [row[0] for row in conn.execute("SELECT etag FROM item").fetchall()]
+        cursor_etag = conn.execute("SELECT etag FROM cursor").fetchone()
+        conn.close()
+
+        assert etags, "an empty store would make this vacuous"
+        assert all(value is None for value in etags)
+        assert cursor_etag[0] is not None, "the list validator belongs on the cursor"
