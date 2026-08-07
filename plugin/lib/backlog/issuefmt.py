@@ -12,10 +12,28 @@ the *content* of an issue is model-authored (or human-authored via Issue Forms);
 this module only normalizes the title, assembles authored sections into the
 canonical body layout, and *audits* the result. It never invents prose.
 
-The linter is **WARN-only by construction** — it returns findings, never a
-verdict, and no caller blocks on them (the ``file`` path was never a blocking
-gate; this is quality nudging, not enforcement — distinct from the "never demote
-a real blocking gate to a warning" rule).
+**The four §1 TITLE checks BLOCK; every body and label lint stays WARN-only.**
+This module still returns findings rather than a verdict — the posture lives in
+the callers — but the split is now load-bearing, so a change here changes what
+can be written:
+
+- :func:`lint_title` (``title-too-long`` / ``-too-short`` / ``-placeholder`` /
+  ``-non-atomic``) is consumed by every write path as a **refusal**: ``file`` and
+  ``update`` reject a non-conforming title before the write, and the migration
+  pre-flight refuses a whole corpus before its first write. Loosening a threshold
+  here silently widens what enters the backlog; tightening one can hard-refuse an
+  irreversible ~900-issue migration. Both directions want a test.
+- :func:`lint`'s body and label findings are advisory and gate nothing. That is
+  deliberate, not an oversight: a body budget blocking an edit to an unrelated
+  field is the confirmation-fatigue shape ``security-model.md``'s approval norm
+  rejects, and a title is both the handle every reader triages by and cheap to
+  rewrite.
+
+A **false positive here is a false refusal**, which is a different cost than the
+noise it used to be — the placeholder check matches whole words for exactly that
+reason (see ``_PLACEHOLDER_PHRASE_RE``). The rules themselves are owned by
+``documentation/backlog-service-issue-standard.md`` §1; the norm requiring their
+enforcement lives in ``.prawduct/artifacts/data-model.md``.
 """
 
 from __future__ import annotations

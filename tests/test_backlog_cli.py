@@ -41,7 +41,7 @@ class TestFileCli:
     def test_file_json_ok(self, capsys):
         fake = FakeGitHub()
         code, out, err = _run(
-            ["file", "--repo", REPO, "--title", "Do X", "--body", "why", "--json"], fake, capsys
+            ["file", "--repo", REPO, "--title", "cli: the Do X item under test", "--body", "why", "--json"], fake, capsys
         )
         assert code == 0
         payload = json.loads(out)  # ERR-2: stdout parses as JSON, nothing else
@@ -51,7 +51,7 @@ class TestFileCli:
     def test_file_human_mode_prints_id(self, capsys):
         fake = FakeGitHub()
         code, out, err = _run(
-            ["file", "--repo", REPO, "--title", "Do X", "--body", "why"], fake, capsys
+            ["file", "--repo", REPO, "--title", "cli: the Do X item under test", "--body", "why"], fake, capsys
         )
         assert code == 0
         assert "octo/repo#1" in out
@@ -59,16 +59,16 @@ class TestFileCli:
     def test_key_equals_value_flag_form(self, capsys):
         fake = FakeGitHub()
         code, out, err = _run(
-            ["file", "--repo=" + REPO, "--title=T", "--body=B", "--json"], fake, capsys
+            ["file", "--repo=" + REPO, "--title=cli: the T item under test", "--body=B", "--json"], fake, capsys
         )
         assert code == 0
-        assert json.loads(out)["data"]["title"] == "T"
+        assert json.loads(out)["data"]["title"] == "cli: the T item under test"
 
     def test_lint_findings_go_to_stderr_never_block(self, capsys):
         # A terse, kind-less item lints — findings print to stderr as `lint: …`,
         # stdout stays clean, and the exit code is still 0 (WARN-only, never blocks).
         fake = FakeGitHub()
-        code, out, err = _run(["file", "--repo", REPO, "--title", "fix", "--body", "b"], fake, capsys)
+        code, out, err = _run(["file", "--repo", REPO, "--title", "cli: the fix item under test", "--body", "b"], fake, capsys)
         assert code == 0
         assert "lint:" in err
         assert "no kind:" in err  # a specific §4 finding surfaced
@@ -77,7 +77,7 @@ class TestFileCli:
     def test_lint_findings_ride_inside_json_envelope(self, capsys):
         fake = FakeGitHub()
         code, out, err = _run(
-            ["file", "--repo", REPO, "--title", "fix", "--body", "b", "--json"], fake, capsys
+            ["file", "--repo", REPO, "--title", "cli: the fix item under test", "--body", "b", "--json"], fake, capsys
         )
         payload = json.loads(out)  # stdout is a single JSON document
         assert payload["status"] == "ok"
@@ -90,7 +90,7 @@ class TestOutputDiscipline:
     def test_json_warning_is_inside_envelope_not_loose_on_stdout(self, capsys):
         fake = FakeGitHub()
         code, out, err = _run(
-            ["file", "--repo", REPO, "--title", "T", "--body", "B", "--stage", "weird", "--json"],
+            ["file", "--repo", REPO, "--title", "cli: the T item under test", "--body", "B", "--stage", "weird", "--json"],
             fake,
             capsys,
         )
@@ -102,7 +102,7 @@ class TestOutputDiscipline:
     def test_human_warning_goes_to_stderr_not_stdout(self, capsys):
         fake = FakeGitHub()
         code, out, err = _run(
-            ["file", "--repo", REPO, "--title", "T", "--body", "B", "--stage", "weird"],
+            ["file", "--repo", REPO, "--title", "cli: the T item under test", "--body", "B", "--stage", "weird"],
             fake,
             capsys,
         )
@@ -239,17 +239,17 @@ class TestExitClasses:
     """ERR-1 — each error code maps to a stable non-zero exit class."""
 
     def test_missing_repo_is_validation_exit_2(self, capsys):
-        code, out, err = _run(["file", "--title", "T", "--body", "B"], FakeGitHub(), capsys)
+        code, out, err = _run(["file", "--title", "cli: the T item under test", "--body", "B"], FakeGitHub(), capsys)
         assert code == 2
 
     def test_missing_body_flag_is_validation_exit_2(self, capsys):
         # Only title+body are required to file (API §3); an omitted --body is invalid.
-        code, out, err = _run(["file", "--repo", REPO, "--title", "T"], FakeGitHub(), capsys)
+        code, out, err = _run(["file", "--repo", REPO, "--title", "cli: the T item under test"], FakeGitHub(), capsys)
         assert code == 2
 
     def test_empty_body_value_is_allowed(self, capsys):
         code, out, err = _run(
-            ["file", "--repo", REPO, "--title", "T", "--body", "", "--json"], FakeGitHub(), capsys
+            ["file", "--repo", REPO, "--title", "cli: the T item under test", "--body", "", "--json"], FakeGitHub(), capsys
         )
         assert code == 0
 
@@ -285,10 +285,10 @@ class TestExitClasses:
 class TestGetAndProvisionCli:
     def test_file_then_get_round_trip(self, capsys):
         fake = FakeGitHub()
-        _run(["file", "--repo", REPO, "--title", "RT", "--body", "b", "--json"], fake, capsys)
+        _run(["file", "--repo", REPO, "--title", "cli: the RT item under test", "--body", "b", "--json"], fake, capsys)
         code, out, err = _run(["get", "octo/repo#1", "--json"], fake, capsys)
         assert code == 0
-        assert json.loads(out)["data"]["title"] == "RT"
+        assert json.loads(out)["data"]["title"] == "cli: the RT item under test"
 
     def test_provision_cli(self, capsys):
         fake = FakeGitHub()
@@ -310,7 +310,7 @@ class TestNonInteractive:
 
         monkeypatch.setattr(sys, "stdin", Exploding())
         code, out, err = _run(
-            ["file", "--repo", REPO, "--title", "T", "--body", "B", "--json"],
+            ["file", "--repo", REPO, "--title", "cli: the T item under test", "--body", "B", "--json"],
             FakeGitHub(),
             capsys,
         )
@@ -337,7 +337,7 @@ class TestBoundaryGuard:
 
 def _file(fake, capsys, **flags):
     """File one item through the CLI and return its id (JSON path)."""
-    argv = ["file", "--repo", REPO, "--title", "t", "--body", "b", "--json"]
+    argv = ["file", "--repo", REPO, "--title", "cli: the t item under test", "--body", "b", "--json"]
     for key, value in flags.items():
         argv += [f"--{key}", value]
     code, out, _ = _run(argv, fake, capsys)
@@ -377,16 +377,16 @@ class TestUpdateCli:
     def test_update_title_json(self, capsys):
         fake = FakeGitHub()
         item_id = _file(fake, capsys)
-        code, out, err = _run(["update", item_id, "--title", "renamed", "--json"], fake, capsys)
+        code, out, err = _run(["update", item_id, "--title", "cli: the renamed item under test", "--json"], fake, capsys)
         assert code == 0
-        assert json.loads(out)["data"]["title"] == "renamed"
+        assert json.loads(out)["data"]["title"] == "cli: the renamed item under test"
 
     def test_update_hyphenated_if_updated_at_flag_parses(self, capsys):
         # The --if-updated-at flag (hyphen in the name) parses and drives the CAS.
         fake = FakeGitHub()
         item_id = _file(fake, capsys)
         code, out, err = _run(
-            ["update", item_id, "--title", "x", "--if-updated-at", "1999-01-01T00:00:00Z", "--json"],
+            ["update", item_id, "--title", "cli: the x item under test", "--if-updated-at", "1999-01-01T00:00:00Z", "--json"],
             fake, capsys,
         )
         assert code == 4  # conflict exit class (stale)

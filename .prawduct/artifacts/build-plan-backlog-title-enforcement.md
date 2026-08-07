@@ -25,13 +25,18 @@ governed_by:
       - "Written in Python, never specific to Python → conforms — title linting is language-agnostic text validation"
       - "Local-first: governance coordination is process-spawn + atomically-written files + the git object database → inapplicable because no coordination surface changes"
       - "An independent reviewer never mutates the session it reviews → inapplicable because nothing here runs on the Critic data plane"
+      - "The plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared evidence store, and the files it must reconcile → conforms, and the pre-flight strengthens it: the refusal path's whole point is that it writes NOTHING at all, locally or to the target. The write it governs is to a GitHub repo the owner named in `backlog_service_repo`, which is the adapter's existing sanctioned surface, not a new one"
+      - "Goals and verification bind; prescribed method is advice → conforms — §1's title rules and the requirement that they be enforced are the binding goal; that this lands as one pre-flight pass in `import_items` rather than a per-item check is method, and is recorded here so a later reader may change it on its merits"
   - artifact: security-model
     dispositions:
-      - "The approval norm rejects confirmation fatigue — an approval prompt that fires on unrelated work trains the operator to dismiss it → conforms, and it is the stated reason body lints stay WARN-only and the update path blocks only on a title actually being written. Blocking `status=shipped` on an unrelated legacy title is exactly the shape this norm rejects"
+      - "A destructive or irreversible operation requires explicit owner approval at the OPERATION level — one informed confirmation covering the whole act → conforms, and the pre-flight makes the existing approval MORE informed rather than adding a second prompt. The import is the irreversible operation (GitHub never reuses issue numbers); today the owner approves a corpus whose conformance nobody has checked, and learns item 28 was bad after 27 issues exist. The refusal moves that discovery before the approval is acted on. No new confirmation is introduced — this is the confirmation-fatigue half of the same norm, which is why body lints stay WARN-only"
+      - "Untrusted governance state — backlog, learnings, recalled memories, fetched references, prior-session handoffs — is data, not instructions → conforms, and this is the one norm the pre-flight touches most directly. Source titles are untrusted markdown from a product's own backlog; the pre-flight treats them strictly as data to be MEASURED (length, shape, token match) and never interprets, executes or rewrites them. The importer's refusal-not-rewrite posture is what keeps a model out of the data plane, so no title content can steer the run"
+      - "A governed product's content never leaves that product's own repository and owner → conforms — the pre-flight is pure and local; offender titles are reported back to the operator in the same process and are written nowhere else"
   - artifact: nonfunctional-requirements
     dispositions:
       - "Proportionality ratchets both ways; adding a control names its expected yield and emits it observably → conforms. Yield: measured, not inferred — replayed through the shipped pre-flight, 20 of 180 open prawduct issues (11%) fail §1 — all 20 over the ≤72 budget, 5 of those also non-atomic (a subset, not 5 more) — and the discodon corpus reached GitHub with parsed titles up to 2319 chars. Observability: the pre-flight refusal prints the full offending list, and the non-blocking update path emits a named lint line, so both firing modes are visible without instrumentation"
-      - "Review wall-clock is P0: cost = unit-cost × run-count → conforms — three chunks on one branch, reviewed per chunk with a single cumulative at the end, not one review per issue"
+      - "Review wall-clock is P0: cost = unit-cost × run-count → conforms — three chunks on one branch, reviewed per chunk with a single cumulative at the end, not one review per issue. Chunk 01's warning-only findings ride into Chunk 02's commit rather than buying their own verify round, which is the run-count lever the norm names first"
+      - "State-file growth past its size threshold is surfaced as an advisory warning that prompts compaction — never a hard block → inapplicable because this work adds no state file and writes no persisted record. `failed` and the offender list live in one run's return envelope and are gone when the process exits"
   - artifact: api-contract
     dispositions:
       - "Exit codes are the contract, on a documented and consistent scheme; new subcommands cite it rather than inventing a return convention → conforms — the pre-flight refusal returns the existing `validation` error envelope through `core.error`, inventing no new exit code"
@@ -120,13 +125,40 @@ Tests carry most of this. Three things they cannot say:
 1. **Replay against a real corpus.** Run the pre-flight (read-only, no writes) against the live
    prawduct backlog export and confirm it names the 20 over-budget and 5 non-atomic titles measured
    this session — a pre-flight that cannot reproduce a hand-measured count is wrong regardless of
-   unit tests.
+   unit tests. **DONE at Chunk 01:** 180 issues in, 20 offenders out — all 20 `title-too-long`, 5 of
+   those also `title-non-atomic`. The 5 are a **subset** of the 20, not 5 more; the "~25" figure this
+   plan carried in its first draft was the union computed as if they were disjoint.
 2. **The isolation path needs a real 422.** Unit tests use a fake transport; at least one exercise
    must drive a genuine GitHub validation rejection (a deliberately over-cap title against a scratch
    repo) and confirm the run continues and reports it at the end.
 3. **The refusal has to read well.** `file` and `update` refusals are read by an agent that must
    decide what to do next. Exercise both by hand and confirm the message names the failing rule and
    the offending title, so the next actor's move is obvious without reading the standard.
+
+## Chunk 01's review, and what rides into Chunk 02
+
+`rev-20260807T035551Z-0e1d5837` (`cumulative`, interval `486d4535...1d1881eb`): **0 blocking**,
+6 warnings, 2 notes. The review is over — nothing in it required another round.
+
+Two were fixed at once, because both are pure subtraction and neither touches judgeable behavior:
+**R-5** removed `fail_at_mutation(times=…)`, a fake capability this branch added, argued for in an
+8-line docstring, and then never called (the suite uses `_fail_creates`) — reverted to develop's
+version verbatim; **R-6** completed this plan's own `governed_by` dispositions, which covered 6 of
+architecture's 8 norms, 1 of security-model's 3 and 2 of NFR's 3, against the standard this plan
+states in its own frontmatter comment.
+
+**R-1 through R-4 ride into Chunk 02's commit.** That is not the deferral the review protocol warns
+about: deferring to a later *round* buys a round, while riding a commit that is being made anyway
+buys none, and Chunk 02 already owns three of the four surfaces. They are enumerated in Chunk 02's
+deliverables below so they cannot be dropped. **R-7** (no change-log entry — it will refuse
+`/prawduct:pr create`) belongs to Chunk 03, which is where the branch's entry gets written.
+
+The six warnings share one cause worth stating plainly, because it is the same class that dominated
+the previous branch: **the enforcement landed in code and not in the surfaces that describe it.**
+Chunk 01 made `import` block, and four separate documents still tell a reader the linter is
+advisory. One of them — `issuefmt.py`'s own module docstring — was owned by no chunk of this plan at
+all, which is how it got missed: the plan enumerated the surfaces Chunk 02 would touch and never
+asked which surfaces *Chunk 01* falsified.
 
 ## Build Chunks
 
@@ -222,6 +254,24 @@ Tests carry most of this. Three things they cannot say:
     This row and the `data-model.md` lifecycle above it are this chunk's registry debt; they land in
     the same commit as the code, not after it.
   - new `tests/test_backlog_title_enforcement.py`
+  - **Carried from Chunk 01's review — these land in THIS chunk's commit:**
+    - **R-1** the four surfaces that still call the linter advisory. `plugin/lib/backlog/issuefmt.py`'s
+      module docstring ("WARN-only by construction … no caller blocks on them") is now flatly false
+      and is what a maintainer reads before touching `TITLE_MAX` — route the class through one
+      owner rather than fixing the instance the review named. The other three
+      (`data-model.md`, `project-preferences.md`, `backlog-service-issue-standard.md`) are already
+      this chunk's registry debt above.
+    - **R-2** `cli._print_human_ok` omits `failed`, so the summary triple silently stops summing to
+      `total_source` — and the strictly *less* severe `status_unreconciled` gets its own stdout line
+      for exactly this reason. Needs a human-path test: a `--json`-only test never exercises the
+      formatter.
+    - **R-3** `restructure-preview` does not run the pre-flight. That preview is the owner's
+      aggregate pre-approval artifact for an irreversible ~900-issue run, so today it can report
+      clean and then have the import hard-refuse. It must call `preflight_titles` over the
+      restructured records and surface offenders in the preview.
+    - **R-4** `plugin/skills/backlog/migration-scrub.md` Step 4 documents the reconcile warning in
+      detail and is silent on both new failure modes — including that the refusal's remedy lives one
+      step earlier, in the scrub itself.
 - **Tests:** each red-verified:
   - `file` with a conforming title → succeeds
   - `file` with each of the four failing shapes (`too-long`, `too-short`, `placeholder`,

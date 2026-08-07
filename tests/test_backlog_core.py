@@ -35,7 +35,7 @@ def fake():
 def _seed_item(fake, *, labels=(), body="b"):
     """Create one open issue carrying `labels` (all pre-seeded so create succeeds)."""
     fake.seed_labels(OWNER, REPO, sorted(set(list(labels) + _STATUS_LABELS)))
-    issue = fake.create_issue(OWNER, REPO, title="t", body=body, labels=list(labels))
+    issue = fake.create_issue(OWNER, REPO, title="core: the t item under test", body=body, labels=list(labels))
     return issue["number"]
 
 
@@ -51,7 +51,7 @@ def _status_labels(item_or_data):
 
 class TestFileItem:
     def test_returns_ok_envelope_with_immediate_id(self, fake):
-        result = core.file_item(fake, owner=OWNER, repo=REPO, title="Do X", body="why")
+        result = core.file_item(fake, owner=OWNER, repo=REPO, title="core: the Do X item under test", body="why")
         assert result["status"] == "ok"
         assert result["data"]["id"] == "octo/repo#1"
         assert result["data"]["number"] == 1
@@ -59,12 +59,12 @@ class TestFileItem:
         assert result["warnings"] == []
 
     def test_new_item_defaults_to_open(self, fake):
-        result = core.file_item(fake, owner=OWNER, repo=REPO, title="X", body="b")
+        result = core.file_item(fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b")
         assert result["data"]["status"] == "open"  # no status: label
 
     def test_stage_facet_provisioned_and_applied(self, fake):
         result = core.file_item(
-            fake, owner=OWNER, repo=REPO, title="X", body="b", facets={"stage": "ready"}
+            fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b", facets={"stage": "ready"}
         )
         assert result["status"] == "ok"
         assert result["data"]["stage"] == "ready"
@@ -73,7 +73,7 @@ class TestFileItem:
     def test_unknown_stage_warns_but_succeeds(self, fake):
         # ENC-1 at the op level — flagged, not rejected.
         result = core.file_item(
-            fake, owner=OWNER, repo=REPO, title="X", body="b", facets={"stage": "brainstorm"}
+            fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b", facets={"stage": "brainstorm"}
         )
         assert result["status"] == "ok"
         assert result["data"]["stage"] == "brainstorm"
@@ -85,7 +85,7 @@ class TestFileItem:
         assert result["error"]["code"] == "validation"
 
     def test_body_carries_prawduct_block(self, fake):
-        core.file_item(fake, owner=OWNER, repo=REPO, title="X", body="the body")
+        core.file_item(fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="the body")
         issue = fake.repos[(OWNER, REPO)].issues[1]
         assert "```prawduct" in issue["body"]
         assert "v: 1" in issue["body"]
@@ -110,14 +110,26 @@ class TestFileStandard:
         )
         assert result["data"]["title"] == "cli: parser drops flags"
 
-    def test_lint_field_present_and_flags_terse_item(self, fake):
-        # A terse, kind-less item lints (short title, no kind:) — WARN-only, so it
-        # still succeeds, and the findings ride in `lint`, not `warnings`.
-        result = core.file_item(fake, owner=OWNER, repo=REPO, title="X", body="b")
+    def test_lint_field_carries_the_non_blocking_findings_only(self, fake):
+        # A kind-less item still lints — label/body findings are WARN-only, so the
+        # create succeeds and the findings ride in `lint`, not `warnings`.
+        #
+        # The title half of this test moved out when the §1 title checks became
+        # BLOCKING (#614): a terse title no longer rides in `lint`, it refuses the
+        # write, so no `title-*` rule can ever appear in a SUCCESSFUL result. Both
+        # halves are still covered — the refusal in
+        # `test_backlog_title_enforcement.py`, the advisory channel here — and the
+        # assertion below now pins the boundary between them, which is the thing
+        # most at risk of being over-enforced later.
+        result = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="core: a conforming title for the lint channel", body="b"
+        )
         assert result["status"] == "ok"
         rules = {f["rule"] for f in result["lint"]}
         assert "no-kind" in rules
-        assert "title-too-short" in rules
+        assert not any(r.startswith("title-") for r in rules), (
+            "a title finding can never ride a successful result — it refuses instead"
+        )
         assert result["warnings"] == []  # lint is a distinct channel
 
     def test_compliant_item_lints_clean(self, fake):
@@ -147,12 +159,12 @@ class TestAttribution:
     """SEC-3 — actor is the API identity, resolved once across a sweep."""
 
     def test_actor_is_api_identity(self, fake):
-        result = core.file_item(fake, owner=OWNER, repo=REPO, title="X", body="b")
+        result = core.file_item(fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b")
         assert result["data"]["actor"] == fake.user["login"]
 
     def test_identity_resolved_once_across_a_sweep(self, fake):
         for n in range(3):
-            core.file_item(fake, owner=OWNER, repo=REPO, title=f"X{n}", body="b")
+            core.file_item(fake, owner=OWNER, repo=REPO, title=f"core: the X{n} item under test", body="b")
         # One resolution for the whole sweep — not one per mutation.
         assert fake.user_resolutions == 1
 
@@ -160,16 +172,16 @@ class TestAttribution:
 class TestGetItem:
     def test_file_then_get_round_trip(self, fake):
         filed = core.file_item(
-            fake, owner=OWNER, repo=REPO, title="Round trip", body="b", facets={"stage": "ready"}
+            fake, owner=OWNER, repo=REPO, title="core: the Round trip item under test", body="b", facets={"stage": "ready"}
         )
         got = core.get_item(fake, id_raw=filed["data"]["id"])
         assert got["status"] == "ok"
         assert got["data"]["id"] == "octo/repo#1"
-        assert got["data"]["title"] == "Round trip"
+        assert got["data"]["title"] == "core: the Round trip item under test"
         assert got["data"]["stage"] == "ready"
 
     def test_get_short_form_with_default_owner(self, fake):
-        core.file_item(fake, owner=OWNER, repo=REPO, title="X", body="b")
+        core.file_item(fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b")
         got = core.get_item(fake, id_raw="repo#1", default_owner=OWNER)
         assert got["status"] == "ok"
         assert got["data"]["id"] == "octo/repo#1"
@@ -220,7 +232,7 @@ class TestGetByPfxAlias:
         assert got["error"]["code"] == "alias_collision"
 
     def test_canonical_id_bypasses_the_alias_search(self, fake):
-        core.file_item(fake, owner=OWNER, repo=REPO, title="X", body="b")
+        core.file_item(fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b")
         fake.calls.clear()
         got = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#1", default_repo=(OWNER, REPO))
         assert got["status"] == "ok"
@@ -338,7 +350,7 @@ class TestMutatorsByPfxAlias:
     def test_update_resolves_a_bare_pfx(self, fake):
         number = self._seed_alias(fake)
         got = core.update_item(
-            fake, id_raw=self.PFX, fields={"title": "renamed"}, default_repo=(OWNER, REPO)
+            fake, id_raw=self.PFX, fields={"title": "core: the renamed item under test"}, default_repo=(OWNER, REPO)
         )
         assert got["status"] == "ok", got
         assert got["data"]["id"] == f"{OWNER}/{REPO}#{number}"
@@ -364,7 +376,7 @@ class TestMutatorsByPfxAlias:
         "call",
         [
             lambda f, pfx: core.set_status(f, id_raw=pfx, target="in-progress"),
-            lambda f, pfx: core.update_item(f, id_raw=pfx, fields={"title": "x"}),
+            lambda f, pfx: core.update_item(f, id_raw=pfx, fields={"title": "core: the x item under test"}),
             lambda f, pfx: core.comment_item(f, id_raw=pfx, body="x"),
             lambda f, pfx: core.claim(f, id_raw=pfx),
             lambda f, pfx: core.unclaim(f, id_raw=pfx),
@@ -393,7 +405,7 @@ class TestBoundaryExceptions:
             def create_issue(self, *a, **k):
                 raise OSError("socket exploded")
 
-        result = core.file_item(Broken(), owner=OWNER, repo=REPO, title="X", body="b")
+        result = core.file_item(Broken(), owner=OWNER, repo=REPO, title="core: the X item under test", body="b")
         assert result["status"] == "error"
         assert result["error"]["code"] == "unavailable"
 
@@ -549,8 +561,8 @@ class TestUpdateItem:
 
     def test_updates_title_and_body(self, fake):
         n = _seed_item(fake)
-        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "new", "body": "changed"})
-        assert r["status"] == "ok" and r["data"]["title"] == "new"
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "core: a renamed item after update", "body": "changed"})
+        assert r["status"] == "ok" and r["data"]["title"] == "core: a renamed item after update"
 
     def test_body_update_preserves_the_prawduct_block(self, fake):
         # A --body edit must NOT drop body-authoritative block fields (id_aliases,
@@ -558,7 +570,7 @@ class TestUpdateItem:
         # alias-loss footgun the update path would otherwise open.
         fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
         body = "original text\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"
-        n = fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+        n = fake.create_issue(OWNER, REPO, title="core: the t item under test", body=body, labels=[])["number"]
         r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": "rewritten body"})
         assert r["status"] == "ok"
         new_body = fake.get_issue(OWNER, REPO, n)["body"]
@@ -577,7 +589,7 @@ class TestUpdateItem:
         # the caller pastes in is stripped so there is never a duplicated block.
         fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
         body = "x\n\n```prawduct\nv: 1\nid_aliases: [BKL-0001]\n```\n"
-        n = fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+        n = fake.create_issue(OWNER, REPO, title="core: the t item under test", body=body, labels=[])["number"]
         pasted = "new\n\n```prawduct\nv: 1\nid_aliases: [ATTACKER]\n```\n"
         core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": pasted})
         new_body = fake.get_issue(OWNER, REPO, n)["body"]
@@ -605,9 +617,9 @@ class TestUpdateItem:
     def test_cc2_stale_updated_at_is_conflict_retryable(self, fake):
         n = _seed_item(fake)
         stale = fake.get_issue(OWNER, REPO, n)["updated_at"]
-        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "moved"})  # someone else edits
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "core: an item moved by someone else"})  # someone else edits
         r = core.update_item(
-            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "mine"}, expected_updated_at=stale
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "core: an item renamed by me"}, expected_updated_at=stale
         )
         assert r["status"] == "error" and r["error"]["code"] == "conflict"
         assert r["error"]["retryable"] is True
@@ -616,7 +628,7 @@ class TestUpdateItem:
         n = _seed_item(fake)
         fresh = fake.get_issue(OWNER, REPO, n)["updated_at"]
         r = core.update_item(
-            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "ok"}, expected_updated_at=fresh
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "core: an item renamed on a fresh read"}, expected_updated_at=fresh
         )
         assert r["status"] == "ok"
 
@@ -640,7 +652,7 @@ class TestUpdateItem:
             fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "ok", "node_id": "x"}
         )
         assert r["status"] == "error" and r["error"]["code"] == "validation"
-        assert fake.get_issue(OWNER, REPO, n)["title"] == "t"  # nothing was written
+        assert fake.get_issue(OWNER, REPO, n)["title"] == "core: the t item under test"  # nothing was written
 
 
 class TestCommentItem:

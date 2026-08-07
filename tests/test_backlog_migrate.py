@@ -95,7 +95,7 @@ def _by_id(records: list[dict], canonical: str) -> dict | None:
     return None
 
 
-def _file(fake, *, title="t", body="b"):
+def _file(fake, *, title="merge: the t item under test", body="b"):
     result = core.file_item(fake, owner=OWNER, repo=REPO, title=title, body=body)
     assert result["status"] == "ok", result
     return result["data"]["id"]
@@ -494,9 +494,9 @@ class TestArchiveScope:
 
 class TestExportNativeGraph:
     def test_deps_subissues_assignees_timeline_serialized(self, fake, tmp_path):
-        a = _file(fake, title="parent A")
-        b = _file(fake, title="child B")
-        blk = _file(fake, title="blocker")
+        a = _file(fake, title="merge: the parent A item under test")
+        b = _file(fake, title="merge: the child B item under test")
+        blk = _file(fake, title="merge: the blocker item under test")
         assert core.link(fake, id_raw=a, edge="child", target_raw=b)["status"] == "ok"
         assert core.link(fake, id_raw=a, edge="blocked-by", target_raw=blk)["status"] == "ok"
         assert core.claim(fake, id_raw=a)["status"] == "ok"
@@ -516,7 +516,7 @@ class TestExportNativeGraph:
     def test_export_ignores_non_prawduct_issues(self, fake, tmp_path):
         # A plain repo issue (no prawduct marker) is out of scope (PROV-2).
         fake.seed_labels(OWNER, REPO, ["bug"])
-        fake.create_issue(OWNER, REPO, title="a plain issue", body="no block", labels=["bug"])
+        fake.create_issue(OWNER, REPO, title="merge: the a plain issue item under test", body="no block", labels=["bug"])
         _file(fake, title="a real backlog item")
         assert _export(fake, tmp_path / "x")["status"] == "ok"
         assert _export(fake, tmp_path / "x")["data"]["count"] == 1
@@ -826,8 +826,8 @@ class TestAliasSelfHeal:
 
 class TestMerge:
     def test_merge_redirects_then_closes(self, fake):
-        a = _file(fake, title="dup A")
-        b = _file(fake, title="keep B")
+        a = _file(fake, title="merge: the dup A item under test")
+        b = _file(fake, title="merge: the keep B item under test")
         result = migrate.merge(fake, source_raw=a, target_raw=b)
         assert result["status"] == "ok", result
 
@@ -838,8 +838,8 @@ class TestMerge:
         assert migrate.resolve(fake, a, owner=OWNER, repo=REPO) == b  # a resolves to b
 
     def test_crash_before_close_leaves_source_open_but_redirected(self, fake):
-        a = _file(fake, title="dup A")
-        b = _file(fake, title="keep B")
+        a = _file(fake, title="merge: the dup A item under test")
+        b = _file(fake, title="merge: the keep B item under test")
         fake.fail_at_mutation(2)  # step1 (redirect) lands; fail step2 (the close)
         broken = migrate.merge(fake, source_raw=a, target_raw=b)
         assert broken["status"] == "error"
@@ -855,7 +855,7 @@ class TestMerge:
         assert migrate.merge(fake, source_raw=a, target_raw=b)["status"] == "ok"  # 3rd = no-op
 
     def test_merge_into_self_rejected(self, fake):
-        a = _file(fake, title="x")
+        a = _file(fake, title="merge: the x item under test")
         assert migrate.merge(fake, source_raw=a, target_raw=a)["error"]["code"] == "validation"
 
     def test_merge_bad_ids_rejected(self, fake):
@@ -863,7 +863,7 @@ class TestMerge:
             "status"
         ] == "error"
 
-    def _file_with_alias(self, fake, pfx, *, title="t"):
+    def _file_with_alias(self, fake, pfx, *, title="merge: the t item under test"):
         cid = _file(fake, title=title)
         number = int(cid.split("#")[1])
         fake.seed_labels(OWNER, REPO, [ids.alias_label(pfx)])
@@ -873,8 +873,8 @@ class TestMerge:
     def test_merge_resolves_bare_pfx_endpoints(self, fake):
         # BKL-7Q2N — both merge endpoints may be hand-minted PFX aliases (the scrub
         # disposes duplicates by their original ids). Resolve each via id:PFX + --repo.
-        na = self._file_with_alias(fake, "SRC-0001", title="dup A")
-        nb = self._file_with_alias(fake, "DST-0001", title="keep B")
+        na = self._file_with_alias(fake, "SRC-0001", title="merge: the dup A item under test")
+        nb = self._file_with_alias(fake, "DST-0001", title="merge: the keep B item under test")
         result = migrate.merge(
             fake, source_raw="SRC-0001", target_raw="DST-0001", default_repo=(OWNER, REPO)
         )
@@ -1131,7 +1131,7 @@ class TestPacingTransport:
     def test_delegates_args_and_return_value_unchanged(self, fake):
         pacer = migrate.Pacer()
         wrapped = migrate._PacingTransport(fake, pacer)
-        issue = wrapped.create_issue(OWNER, REPO, title="t", body="b", labels=[])
+        issue = wrapped.create_issue(OWNER, REPO, title="merge: the t item under test", body="b", labels=[])
         # The wrapper is transparent: it returns the transport's own result verbatim.
         assert wrapped.get_issue(OWNER, REPO, issue["number"])["number"] == issue["number"]
 
@@ -1365,8 +1365,8 @@ class TestMigrateCli:
         assert code == 2
 
     def test_merge_cli(self, fake):
-        a = _file(fake, title="dup")
-        b = _file(fake, title="keep")
+        a = _file(fake, title="merge: the dup item under test")
+        b = _file(fake, title="merge: the keep item under test")
         code = cli.run("/x", ["merge", a, "--into", b, "--json"], transport=fake)
         assert code == 0
 
@@ -1410,8 +1410,8 @@ class TestMigrateCli:
         assert "status reconcile deferred" in captured.err
 
     def test_merge_human_mode_output(self, fake, capsys):
-        a = _file(fake, title="dup")
-        b = _file(fake, title="keep")
+        a = _file(fake, title="merge: the dup item under test")
+        b = _file(fake, title="merge: the keep item under test")
         assert cli.run("/x", ["merge", a, "--into", b], transport=fake) == 0
         assert "superseded-by" in capsys.readouterr().out
 

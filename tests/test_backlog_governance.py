@@ -46,7 +46,7 @@ def fake():
     return FakeGitHub(user={"login": "agent-a", "id": 1})
 
 
-def _file(fake, *, title="t", body="b", **facets):
+def _file(fake, *, title="gov: the t item under test", body="b", **facets):
     result = core.file_item(fake, owner=OWNER, repo=REPO, title=title, body=body, facets=facets)
     assert result["status"] == "ok", result
     return result["data"]["id"]
@@ -183,7 +183,7 @@ class TestRefreshCounts:
 class TestNeverBlock:
     def test_write_op_fails_fast_retryable_when_backend_down(self, fake):
         fake.set_unreachable(True)
-        res = core.file_item(fake, owner=OWNER, repo=REPO, title="t", body="b")
+        res = core.file_item(fake, owner=OWNER, repo=REPO, title="gov: the t item under test", body="b")
         assert res["status"] == "error"
         assert res["error"]["code"] == "unavailable"
         assert res["error"]["retryable"] is True
@@ -244,7 +244,7 @@ class TestReconcileLabels:
         label = ids.alias_label(pfx)
         fake.seed_labels(OWNER, REPO, [label])
         body = encode.compose_body("why", {"v": "1", "id_aliases": encode.format_list([pfx])})
-        return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[label])["number"]
+        return fake.create_issue(OWNER, REPO, title="gov: the t item under test", body=body, labels=[label])["number"]
 
     def test_restores_a_deleted_id_pfx_alias_from_the_block(self, fake):
         # BKL-4W7H: reconcile re-derives a human-deleted alias label from the durable
@@ -327,7 +327,7 @@ class TestSec5Withhold:
         monkeypatch.delenv("PRAWDUCT_ACTOR_AUTHORIZED", raising=False)
 
     def test_write_path_refuses(self, fake):
-        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "x", "--body", "y", "--json"], transport=fake)
+        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
         assert rc == 5  # auth exit class
         # Nothing was created — the refusal is before dispatch (no half-write).
         assert fake.calls == []
@@ -347,7 +347,7 @@ class TestSec5Withhold:
 
     def test_authorized_actor_write_proceeds(self, fake, monkeypatch):
         monkeypatch.setenv("PRAWDUCT_ACTOR_AUTHORIZED", "1")
-        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "x", "--body", "y", "--json"], transport=fake)
+        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
         assert rc == 0  # the explicit authz check cleared the withhold
 
 
@@ -358,7 +358,7 @@ class TestSec6Unattended:
     def test_unattended_create_stamps_automated_and_worker(self, fake, monkeypatch):
         monkeypatch.setenv("PRAWDUCT_UNATTENDED", "1")
         monkeypatch.setenv("PRAWDUCT_WORKER", "nightly-sweep")
-        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "x", "--body", "y", "--json"], transport=fake)
+        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
         assert rc == 0
         # The created issue's block carries the marker (self-asserted audit).
         issue = fake.get_issue(OWNER, REPO, 1)
@@ -371,7 +371,7 @@ class TestSec6Unattended:
     def test_attended_create_has_no_marker(self, fake, monkeypatch):
         monkeypatch.delenv("PRAWDUCT_UNATTENDED", raising=False)
         monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "x", "--body", "y", "--json"], transport=fake)
+        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
         assert rc == 0
         item, _ = encode.decode_item(fake.get_issue(OWNER, REPO, 1))
         assert item["automated"] is False
@@ -387,7 +387,7 @@ class TestSec6Unattended:
         # An unattended create against a down backend fails fast, writes nothing.
         monkeypatch.setenv("PRAWDUCT_UNATTENDED", "1")
         fake.set_unreachable(True)
-        res = core.file_item(fake, owner=OWNER, repo=REPO, title="t", body="b", automated=True, worker="w")
+        res = core.file_item(fake, owner=OWNER, repo=REPO, title="gov: the t item under test", body="b", automated=True, worker="w")
         assert res["status"] == "error"
         assert res["error"]["code"] == "unavailable"
         # No issue materialized.

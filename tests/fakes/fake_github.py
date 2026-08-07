@@ -72,7 +72,6 @@ class FakeGitHub(Transport):
         self._user_cache: dict | None = None
         # Fault injection (armed via fail_at_mutation).
         self._fail_at: int | None = None
-        self._fail_remaining = 1
         self._mutation_count = 0
         self._fail_code = "unavailable"
         self._fail_details: dict = {"injected": True}
@@ -120,22 +119,14 @@ class FakeGitHub(Transport):
         self._rate_limited_details = details or {}
 
     def fail_at_mutation(
-        self, n: int, *, code: str = "unavailable", details: dict | None = None,
-        times: int = 1,
+        self, n: int, *, code: str = "unavailable", details: dict | None = None
     ) -> None:
         """Arm: the n-th (1-based) mutating call after this returns raises ``code``
-        (default ``unavailable``), then disarms. ``details`` rides the error
-        (e.g. ``{"retry_after": 5}`` for a one-shot 429). ``n <= 0`` disarms.
-
-        ``times`` raises on that many CONSECUTIVE mutations starting at ``n``
-        (default 1 — the one-shot the resume tests need, where the re-run must be
-        allowed to complete). A run of failures is what a caller isolating
-        per-item failures has to be tested against: one-shot injection can only
-        ever prove the run survived a single bad row."""
+        (default ``unavailable``) once, then disarms. ``details`` rides the error
+        (e.g. ``{"retry_after": 5}`` for a one-shot 429). ``n <= 0`` disarms."""
         self._fail_at = n if n and n > 0 else None
         self._mutation_count = 0
         self._fail_code = code
-        self._fail_remaining = max(1, times)
         self._fail_details = details if details is not None else {"injected": True}
 
     def _check_fault(self) -> None:
@@ -144,10 +135,8 @@ class FakeGitHub(Transport):
         if self._fail_at is None:
             return
         self._mutation_count += 1
-        if self._mutation_count >= self._fail_at:
-            self._fail_remaining -= 1
-            if self._fail_remaining <= 0:
-                self._fail_at = None  # disarm once the armed run is spent
+        if self._mutation_count == self._fail_at:
+            self._fail_at = None  # one-shot: the re-run must be allowed to complete
             raise TransportError(
                 self._fail_code,
                 "injected transport failure (fault injection)",
