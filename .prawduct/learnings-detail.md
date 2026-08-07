@@ -2943,3 +2943,48 @@ stays as the reader's fallback for a store that holds rows but carries no cursor
 **Related:** the sibling failure is [[a-behaviour-change-falsifies-surfaces-a-chunk-never-edits]] —
 there the stale thing is a docstring that now lies; here it is a *value* that now lies, which is
 harder, because prose can be read and disagreed with while a plausible number cannot.
+
+
+## A retirement is one act PER SUBSTRATE the thing lives on
+
+The `claim` retirement's case was entirely about the Issues adapter: a release-current op, its
+replacement (`working-branch`) shipping in the same release, and three coupled mechanisms — an
+assignee take, a `claimed_at` stamp, a staleness TTL — collapsing into one field. Executed, it also
+stripped the **markdown** backend's `accepted-by:`, which has none of those three mechanisms and
+cannot supply what replaces them: `working-branch` must name a *pushed* ref and a repo, which a
+local-only repo or a shared-trunk team has not got. `accepted-by:` cost those products nothing.
+
+The same session made the identical mistake a second time, one file over. `probe_revisit_due` was
+retired on the argument that exception clocks *"had already migrated to prose on the norm"* — true of
+this repo's single live exception and of no other product. For every markdown-backend product the
+probe was live and working; `docs/norms.md` § Exceptions expire states the two-path split
+normatively, and the janitor's Norm Health sweep declines dated clocks **because** this probe fires
+them. Removing it took a working control from a whole class of products and left four active surfaces
+promising a mechanism that no longer existed.
+
+Two instances in one changeset is what makes it a rule rather than a slip. The tell is cheap and was
+available both times: **the argument names a substrate and the diff does not.** Where a rationale is
+stated in terms of one op, one release, one provider or one backend, the edit has to be bounded by
+that substrate — otherwise the next question is which other substrate it just governed by accident.
+Found by the Critic (`rev-20260807T202943Z-a483337f`, R-4/R-10/R-16/R-23), from two independent
+goals; the fix was to scope the retirement to the adapter, and the requirements' CC3 now records the
+supersession rather than quietly changing meaning.
+
+## A rule enforced only as a SIDE EFFECT of some other failure is unenforced for changes whose failure mode differs
+
+`cache.py`'s `SCHEMA_VERSION` comment is emphatic and has a real incident behind it: a `cursor` column
+was once added under an unchanged version, and because the version check is the same mechanism that
+would have rebuilt the store, it approved the store and every sync failed permanently with no
+self-heal. So the rule reads *bump on any column change, including one made before release*.
+
+Chunk 05 dropped the `relationship` table and bumped to v6 — then mutation testing left
+`SCHEMA_VERSION` at 5 and the whole suite stayed green. An old v5 store simply carries an extra table
+nobody reads, so nothing breaks. Looking at why the earlier incident *was* caught: a query broke
+loudly against the stale store. That is not the rule being enforced; that is a different failure
+happening to be noisy. A **removal** is quiet by construction, so the rule had no guard for half the
+changes it governs, and the bump was silently optional whenever the failure mode was silence.
+
+Fixed by pinning `SCHEMA_VERSION` to a fingerprint of `_SCHEMA_STATEMENTS` in a test, mutated both
+ways (bump missed → red; schema edited under an unchanged version → red). The generalizable move:
+when a rule cites a past incident, ask what *actually* caught that incident before assuming the rule
+is enforced.

@@ -82,8 +82,9 @@ MUST unless marked SHOULD.
 - **TM2** `probe_migration_required` (`plugin/lib/backlog_probes.py`) gains a second resolution
   condition alongside `post_cutover(state)`: return no candidates when
   `state.get("backlog_backend") == "markdown"`. This is a new, narrow predicate — it must not be
-  folded into `post_cutover()`, which the three other markdown probes and the norm-probe trio also
-  read (see Scope of the silence).
+  folded into `post_cutover()`, which the three other markdown probes and `revisit-due` also read
+  (see Scope of the silence). `dead-why` and `stalled-transition` read it too but use it to select a
+  backend rather than to retire (W1).
 - **TM3** The other three `post_cutover()`-gated markdown probes (`legacy-backlog-format`,
   `legacy-section-schema`, `backlog-overdue-grooming`) are unchanged by this item — they continue
   to fire for a terminal-markdown product exactly as they do for an undecided one.
@@ -132,8 +133,9 @@ MUST unless marked SHOULD.
 ## Evidence / references
 
 - `plugin/lib/backlog_probes.py:106-122` — `post_cutover()`, the single shared resolution predicate
-  for four markdown probes plus the norm-probe trio; this item adds a second, narrower predicate
-  rather than widening this one.
+  for four markdown probes plus `revisit-due`, and a backend selector for `dead-why` /
+  `stalled-transition` (W1); this item adds a second, narrower predicate rather than widening this
+  one.
 - `plugin/lib/backlog_probes.py:240-290` — `probe_migration_required` (GV7), the probe this item
   gives a second resolution condition.
 - `plugin/lib/backlog_probes.py:318-364` — `probe_checks_dormant` (GV8), confirmed orthogonal (TM4).

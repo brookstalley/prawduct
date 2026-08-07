@@ -93,8 +93,9 @@ this for the whole period the probe returned `[]`.
   invisible to the default suite (one env-gated, one an uncollected `__main__` script), so both were
   broken by the new signature with everything green. A new guard binds every spike `pick` call
   against the live signature.
-- `plugin/skills/backlog/SKILL.md`, `adapter-mode.md` — `accepted-by:` becomes `working-branch:`,
-  `--include-claimed` becomes `--include-working`, and the claim grants leave `allowed-tools`. A
+- `plugin/skills/backlog/adapter-mode.md` — `accepted-by:` becomes `working-branch:`,
+  `--include-claimed` becomes `--include-working`. `plugin/skills/backlog/SKILL.md` keeps **both**,
+  one per backend, and loses only the claim grants from `allowed-tools`. A
   grep test now fails if a retired op or flag reappears in the prose: the code and the prose retiring
   in one commit is what stops a CLI that exits "unknown op" while the skill still says to run it.
 - `documentation/backlog-service-data-model.md`, `backlog-service-api-contract.md` — the Claim entity,

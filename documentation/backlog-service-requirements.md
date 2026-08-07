@@ -271,8 +271,8 @@ state; it remains the interim supported path until the GitHub-issue path is buil
 - **GV1** `/prawduct:backlog` keeps its UX contract (pick/add/find/list/update/dedup) as a thin
   wrapper over the service. `pick`'s stage-aware routing and build-plan awareness survive unchanged,
   including its **default exclusion of in-flight (in-progress) items and items someone is already on**
-  — post-cutover that is a populated `working-branch` (`--include-working` asks otherwise); on the
-  markdown backend it is `accepted-by:` (`--include-claimed`).
+  — post-cutover that is a populated `working-branch` (`pick --include-working` asks otherwise); on
+  the markdown backend it is `accepted-by:`, which `list --include-claimed` shows.
 - **GV2** Session briefing reads counts from the local cache (AG4), refreshed asynchronously —
   session start never waits on the network.
 - **GV3** Ship **traceability** replaces ship **atomicity**: closing an item still records

@@ -110,10 +110,12 @@ service is recorded as a flat `backlog_service_repo: owner/repo` scalar in
 briefing reads `snapshot.read` (file-only — the never-block "few s" bound is structural: no network
 call exists on the briefing path, and any timeout tuning belongs to the *detached*
 `snapshot.spawn_refresh` child it fires after reading) and surfaces the snapshot's **visible age**;
-the seven markdown-premise advisory probes retire on the same switch — the backlog quartet
+the five markdown-premise advisory probes retire on the same switch — the backlog quartet
 (`legacy-backlog-format`, `backlog-service-migration-required`, `legacy-section-schema`,
-`backlog-overdue-grooming`) and the norm trio that judges item liveness from the same file
-(`revisit-due`, `dead-why`, `stalled-transition`);
+`backlog-overdue-grooming`) and the norm probe `revisit-due`, which reads exception clocks from the
+same file. (It was seven until W1: `dead-why` and `stalled-transition` now use the switch to *choose*
+a backend rather than to retire, resolving their citations against the backlog cache on the far side.
+`post-sync-advisory-spec.md` §8.2 owns the enumeration and carries the amendment.)
 a frozen file must not generate nudges, and `external-backlog-detected` keeps its independent
 premise. Retirement is not silence — `backlog-checks-dormant` starts firing at the same switch,
 naming every backlog check left without an Issues-backend path (full retirement table:
