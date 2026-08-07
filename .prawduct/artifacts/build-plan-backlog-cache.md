@@ -119,16 +119,20 @@ W1 promises about double-picks.
 
 ## Status
 
-- [ ] Chunk 01: Cache store — schema, rebuild, visible age, and the rebuild-equivalence invariant
+- [x] Chunk 01: Cache store — schema, rebuild, visible age, and the rebuild-equivalence invariant
 - [ ] Chunk 02: Incremental sync — cursor watermark and conditional revalidation
 - [ ] Chunk 03: The three new domain fields and their write path
 - [ ] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
 - [ ] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
 - [ ] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
-Context: Plan authored 2026-08-07 on `feat/backlog-cache` against
-`documentation/backlog-service-cache-spec.md` (committed `cc36cc6`/`4552d09`) and the W1 corpus it
-deltas. Nothing built. Tracking item **#621**; **#230** is discharged by Chunks 02 + 05.
+Context: **Chunk 01 shipped `05d09f3`** (Critic `rev-20260807T145538Z`: 1 blocking + 5 others, all
+fixed; verify-resolutions clean). Suite 3929 passed / 7 skipped. Rebuild-equivalence verified against
+the live 450-item backlog — build → drop → rebuild → compare identical on every domain field; warm
+read 46ms against NFR §4's <500ms. Tracking item **#621**; **#230** is discharged by Chunks 02 + 05.
+
+**Next up: Chunk 02**, which starts with its `verify-api` step (`since` semantics) *before* any fake
+is built.
 
 **#529 blocks one consumer, not this plan.** #621's `blocked-by #529` edge was **dropped by owner
 ruling (2026-08-07)**: a blocker that suppresses a whole item from ranked ready-work because one of
@@ -349,6 +353,17 @@ the same shape that makes `transport.py` the sole egress.
   cache read be served past its validator without a revalidation option, and `data-model.md` §6
   carries `etag` as the conditional-request column that makes it possible. Sync is where it is
   written; Chunk 05 is where a decision-driving read consumes it.
+  **Four demoted observations carried from Chunk 01's verify pass** — none is owed work, all ride
+  this chunk's commit if you touch the code anyway. (a) `full_rebuild`'s envelope carries both
+  `since` and `fetched_at` with the same value and nothing reads `since`; this chunk either gives it
+  a reader or drops it, since a channel produced and never consumed is a defect. (b)
+  `test_age_falls_back_to_the_oldest_stamp_not_the_newest` calls `cache.oldest_fetched_at` directly
+  rather than going through `cachequery._freshness`, so it no longer exercises the fallback its name
+  describes — and that fallback has no production path at all until this chunk's upsert-only sync
+  exists, which is exactly when it becomes testable end to end. (c) Chunk 01's `Tests:` enumeration
+  does not name the rows-and-watermark atomicity test, though the DECISION block records it. (d) The
+  verify dispatch inferred chunk 02 from Status because it carried no `--chunk`; pass `--chunk 02`
+  on this chunk's review.
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `documentation/backlog-service-cache-spec.md` §6;
   `documentation/backlog-service-data-model.md` §6;
