@@ -38,6 +38,22 @@ The framework currently gestures at #1 and answers none of the others. A change 
 breaks an output format fifty callers depend on is questions 2 and 4 — the two with the
 *cheapest* instruments and no implementation at all.
 
+**What the sockets are actually worth, from the one measurement we have.** The owner's
+observation (2026-08-07) is that **a typical build cycle runs 2–3× as many reviews as
+strictly required** — re-reviews that exist because a finding surfaced late, or because a
+reviewer could not tell from the change alone whether something was covered. That number
+is what sets the sockets' expected value, and it sets it higher than a
+review-quality argument would. The saving is not "reviews get better"; it is *review
+rounds that never happen*, and a round is the expensive unit under the review-wall-clock
+P0 norm — reviewers run on opus. A socket that answers question 2 statically, for free, at
+dispatch time, displaces a round in which a reviewer reads call sites to answer the same
+question by hand. Two of the four questions cost near-zero at test time, so the ratio to
+beat is not close. Recorded here because it is an owner observation with no other source
+and no instrument in the repo reproduces it: nothing today counts reviews-per-cycle
+against reviews-required, which is itself the *yield* measurement the NFR Direction
+demands of any control added after 2026-07-29 — so a socket rollout that wants to prove
+this claim has to start counting before it lands, not after.
+
 ## The socket contract
 
 For each question prawduct declares a **socket**: a producer the product names, an
