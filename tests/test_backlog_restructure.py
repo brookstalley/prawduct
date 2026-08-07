@@ -269,18 +269,18 @@ class TestRenderPreview:
     def test_preview_document_omits_the_banner_when_nothing_blocks(self):
         """The boundary. A conforming plan must not carry a refusal warning, or
         the banner becomes noise the owner learns to scroll past."""
-        text = restructure.render_preview(self._applied(), source_label="s.md")
+        text = restructure.render_preview(self._applied(), source_label="s.md", blocking=[])
 
         assert "cannot be imported as-is" not in text
         assert "titles that FAIL issue-standard §1 (the import will refuse): 0" in text
 
     def test_preview_is_deterministic(self):
-        one = restructure.render_preview(self._applied(), source_label="s.md")
-        two = restructure.render_preview(self._applied(), source_label="s.md")
+        one = restructure.render_preview(self._applied(), source_label="s.md", blocking=[])
+        two = restructure.render_preview(self._applied(), source_label="s.md", blocking=[])
         assert one == two
 
     def test_preview_carries_before_after_flags_and_lint(self):
-        text = restructure.render_preview(self._applied(), source_label="s.md")
+        text = restructure.render_preview(self._applied(), source_label="s.md", blocking=[])
         assert "### DIS-0001" in text
         assert "`Add the harbor map overlay`" in text  # title before
         assert "body before" in text and "**body after:**" in text
@@ -291,6 +291,7 @@ class TestRenderPreview:
         text = restructure.render_preview(
             applied,
             source_label="s.md",
+            blocking=[],
             collisions=[{"pfx": "DIS-0009", "title": "dup", "first": "orig"}],
         )
         assert "collisions" in text and "DIS-0009" in text
@@ -436,10 +437,11 @@ class TestCliFront:
                 "DIS-0001": {"title": "ui: tiny", "kind": "feature", "sections": _SECTIONS},
             }}),
         )
+        out_path = tmp_path / "preview.md"
         code = cli.run(
             str(tmp_path),
             ["restructure-preview", "--from", src, "--plan", plan,
-             "--out", str(tmp_path / "preview.md"), "--json"],
+             "--out", str(out_path), "--json"],
             transport=None,
         )
 
@@ -453,6 +455,17 @@ class TestCliFront:
         assert offenders[0]["title"] == "ui: tiny"
         assert "title-too-short" in offenders[0]["rules"]
         assert any("FAIL the issue standard §1" in w for w in payload["warnings"])
+
+        # **Read the file this wrote.** The envelope and the DOCUMENT are two
+        # surfaces and the owner approves from the document; asserting the
+        # envelope is what let the renderer ship untested twice. This is the
+        # wiring test — `preflight_titles` → `cli` → `render_preview(blocking=)`.
+        # Drop the kwarg at the call site and only this assertion fails.
+        text = out_path.read_text(encoding="utf-8")
+        assert "titles that FAIL issue-standard §1 (the import will refuse): 1" in text
+        assert "cannot be imported as-is" in text
+        assert "`ui: tiny`" in text
+        assert "title-too-short" in text
 
     def test_preview_of_a_conforming_plan_reports_no_blockers(self, tmp_path, capsys):
         """The boundary: a preview that reads clean is the owner's assurance the

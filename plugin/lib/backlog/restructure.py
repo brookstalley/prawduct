@@ -225,8 +225,8 @@ def render_preview(
     result: dict,
     *,
     source_label: str,
+    blocking: list[dict],
     collisions: list[dict] | None = None,
-    blocking: list[dict] | None = None,
 ) -> str:
     """Render the **full before/after diff artifact** the owner approves in
     aggregate (issue-standard §5.4 — batch review, not per-item HITL).
@@ -241,9 +241,15 @@ def render_preview(
     # recomputing the predicate here would make two implementations of one gate,
     # free to drift apart, which is the exact hazard the pre-flight's own design
     # note disclaims. `migrate.preflight_titles` is the single evaluator; this
-    # renders what it returned. Defaulting to `[]` keeps a caller that has not
-    # been updated honest-but-silent rather than wrong.
-    blocking = list(blocking or [])
+    # renders what it returned.
+    #
+    # REQUIRED, with no default: a caller that omits it must fail loudly at the
+    # call, because the alternative is a document that prints "(the import will
+    # refuse): 0" for a corpus the import will refuse — a false statement in the
+    # owner's aggregate pre-approval artifact for an irreversible run, which is
+    # worse than any crash. An earlier default-to-`[]` here was defended in a
+    # comment as "honest-but-silent"; it was neither.
+    blocking = list(blocking)
     titles = sum(1 for e in entries if e["title_changed"])
     bodies = sum(1 for e in entries if e["body_changed"])
     kinds = sum(1 for e in entries if e["kind_assigned"])

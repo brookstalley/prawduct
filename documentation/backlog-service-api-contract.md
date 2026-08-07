@@ -179,8 +179,9 @@ field home.)*
   and the same structured shape the migration reuses as an audit-only pass. **Body and label `lint`
   findings are WARN-only and never affect `status` or the exit code. The four §1 TITLE checks
   BLOCK** — `file` and `update` refuse a non-conforming title with `validation` (exit 2) before
-  writing, so a title finding never appears in `lint[]` on a successful result; it arrived as an
-  error instead. The body
+  writing, so a title finding never appears in `lint[]` for a title **this call wrote** — that arrived as
+  an error instead. A successful non-title `update` DOES carry one, reporting that the item's
+  stored title was left unconformed on purpose. The body
   is model/human-authored (the composer `render_body` assembles §2 sections for callers that want it,
   and the migration pre-pass); the linter guards whatever is authored.
 - **Collections** (`list`,`search`,`batch`) paginate by **cursor** (the Q2 changed-since primitive,

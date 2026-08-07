@@ -313,3 +313,16 @@ def test_bookkeeping_lists_still_render_as_counts(capsys):
     )
 
     assert "created: 2" in capsys.readouterr().err
+
+
+def test_empty_payload_list_renders_as_a_count_not_a_blank_line(capsys):
+    """A resumable cut carrying `failed: []` printed the key above a blank
+    indented line, which reads as truncated output rather than as "none"."""
+    cli._print_human_error(
+        {"code": "auth", "message": "GitHub authentication is required",
+         "details": {"failed": [], "resumable": True}}
+    )
+
+    err = capsys.readouterr().err
+    assert "failed: 0" in err
+    assert "failed: \n" not in err
