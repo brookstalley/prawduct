@@ -692,7 +692,8 @@ def _run_restructure_preview(rest: list[str]):
 
     source_label = flags["from"] + (f" + {flags['archive']}" if "archive" in flags else "")
     preview = restructure.render_preview(
-        applied, source_label=source_label, collisions=collisions
+        applied, source_label=source_label, collisions=collisions,
+        blocking=preflight_offenders,
     )
     out_path = Path(flags["out"])
     try:
@@ -943,7 +944,13 @@ _NAMED_DETAIL_ENTRIES = {
 
 
 def _render_named_entries(value: list, project) -> str:
-    """Render a payload dict-list as named lines, capped like the string form."""
+    """Render a payload dict-list as named lines, capped like the string form.
+
+    An empty list renders as ``0``, not as a bare newline: a resumable cut
+    carrying ``failed: []`` otherwise printed the key followed by a blank
+    indented line, which reads as truncated output rather than as "none"."""
+    if not value:
+        return "0"
     shown = [project(item) if isinstance(item, dict) else str(item) for item in value]
     if len(shown) <= _DETAIL_LIST_CAP:
         return "\n      " + "\n      ".join(shown)

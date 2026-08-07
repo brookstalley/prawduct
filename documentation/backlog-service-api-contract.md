@@ -176,8 +176,11 @@ field home.)*
   §1 title shape (prepends the `area:` prefix, idempotently) and **audits** the created issue against
   the §4 thresholds. Findings ride in a **separate** top-level `lint` field —
   `"lint":[{"rule","message","severity":"warn"}]` — a distinct category from operational `warnings[]`,
-  and the same structured shape the migration reuses as an audit-only pass. **WARN-only: `lint`
-  findings never affect `status` or the exit code** (the create was never a blocking gate). The body
+  and the same structured shape the migration reuses as an audit-only pass. **Body and label `lint`
+  findings are WARN-only and never affect `status` or the exit code. The four §1 TITLE checks
+  BLOCK** — `file` and `update` refuse a non-conforming title with `validation` (exit 2) before
+  writing, so a title finding never appears in `lint[]` on a successful result; it arrived as an
+  error instead. The body
   is model/human-authored (the composer `render_body` assembles §2 sections for callers that want it,
   and the migration pre-pass); the linter guards whatever is authored.
 - **Collections** (`list`,`search`,`batch`) paginate by **cursor** (the Q2 changed-since primitive,

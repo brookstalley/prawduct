@@ -108,8 +108,9 @@ def apply(records: list, plan: dict) -> dict:
     Returns ``{"ok": True, "records": [...], "entries": [...], "warnings": [...],
     "unaddressable": N}`` — ``records`` is the full list with plan-matched ones
     rebuilt (never mutated in place), ``entries`` the per-item application report
-    the preview renders (before/after, kind assignment, ``non_atomic`` flag,
-    WARN-only lint audit). A plan PFX matching no record →
+    the preview renders (before/after, kind assignment, ``non_atomic`` flag, and the
+    lint audit — body/label findings advisory, the four §1 TITLE findings the ones
+    ``import``'s pre-flight refuses on). A plan PFX matching no record →
     ``{"ok": False, "error": ...}`` before anything is applied: the confirmed
     plan and the source disagree, so the world changed since confirmation.
     """
@@ -225,6 +226,7 @@ def render_preview(
     *,
     source_label: str,
     collisions: list[dict] | None = None,
+    blocking: list[dict] | None = None,
 ) -> str:
     """Render the **full before/after diff artifact** the owner approves in
     aggregate (issue-standard §5.4 — batch review, not per-item HITL).
@@ -233,15 +235,15 @@ def render_preview(
     consume, so what the owner reviews is byte-for-byte what gets written.
     """
     entries = result["entries"]
-    # The BLOCKING subset, computed from the records the import will actually
-    # consume. The CLI envelope already reports this, but the owner approves from
-    # THIS document — a preview that shows only a WARN-only total lets a plan the
-    # import will hard-refuse read as clean at the one moment it is reviewed.
-    blocking = [
-        (r.title, [f.rule for f in issuefmt.lint_title(r.title or "")])
-        for r in result["records"]
-        if issuefmt.lint_title(r.title or "")
-    ]
+    # The BLOCKING subset is PASSED IN, not recomputed. The owner approves from
+    # THIS document, so a preview showing only a WARN-only total lets a plan the
+    # import will hard-refuse read as clean at the one moment it is reviewed — but
+    # recomputing the predicate here would make two implementations of one gate,
+    # free to drift apart, which is the exact hazard the pre-flight's own design
+    # note disclaims. `migrate.preflight_titles` is the single evaluator; this
+    # renders what it returned. Defaulting to `[]` keeps a caller that has not
+    # been updated honest-but-silent rather than wrong.
+    blocking = list(blocking or [])
     titles = sum(1 for e in entries if e["title_changed"])
     bodies = sum(1 for e in entries if e["body_changed"])
     kinds = sum(1 for e in entries if e["kind_assigned"])
@@ -271,8 +273,8 @@ def render_preview(
             "title against §1 before its first write and refuses the whole corpus, "
             "writing nothing. Fix these in the plan and re-preview:"
         )
-        for title, rules in blocking[:20]:
-            lines.append(f">   - `{title}` — {', '.join(rules)}")
+        for item in blocking[:20]:
+            lines.append(f">   - `{item.get('title')}` — {', '.join(item.get('rules') or [])}")
         if len(blocking) > 20:
             lines.append(f">   - … (+{len(blocking) - 20} more)")
     if result["unaddressable"]:

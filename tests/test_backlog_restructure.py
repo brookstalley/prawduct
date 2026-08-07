@@ -243,6 +243,37 @@ class TestRenderPreview:
         )
         return restructure.apply(records, plan)
 
+    def test_preview_document_names_the_titles_the_import_will_refuse(self):
+        """The DOCUMENT, not the JSON envelope.
+
+        The owner approves from the rendered file, and the previous round's fix
+        was tested only through `--json` — so the same gap reopened one round
+        later on this same function. `_applied()` above is all-conforming, which
+        is why the `if blocking:` branch was never entered by any existing test.
+        """
+        applied = self._applied()
+        blocking = [{"title": "ui: tiny", "rules": ["title-too-short"]}]
+
+        text = restructure.render_preview(
+            applied, source_label="s.md", blocking=blocking
+        )
+
+        assert "titles that FAIL issue-standard §1" in text
+        assert "cannot be imported as-is" in text
+        assert "`ui: tiny`" in text
+        assert "title-too-short" in text
+        # The WARN-only total must stay distinguishable from the blocking count,
+        # or the owner cannot tell an advisory from a refusal.
+        assert "lint findings (body/label, WARN-only)" in text
+
+    def test_preview_document_omits_the_banner_when_nothing_blocks(self):
+        """The boundary. A conforming plan must not carry a refusal warning, or
+        the banner becomes noise the owner learns to scroll past."""
+        text = restructure.render_preview(self._applied(), source_label="s.md")
+
+        assert "cannot be imported as-is" not in text
+        assert "titles that FAIL issue-standard §1 (the import will refuse): 0" in text
+
     def test_preview_is_deterministic(self):
         one = restructure.render_preview(self._applied(), source_label="s.md")
         two = restructure.render_preview(self._applied(), source_label="s.md")

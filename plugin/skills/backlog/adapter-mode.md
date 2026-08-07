@@ -145,7 +145,10 @@ Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
   no-op); a close records `closed_by` natively.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
-  wins — correct for the interactive single-actor case). The item envelope does **not** surface an
+  wins — correct for the interactive single-actor case). **`--title` is gated**: a new title failing
+  §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
+  item's *stored* title does not conform — that is deliberate, so archiving an old item never forces
+  a drive-by retitle; the result carries an advisory `lint[]` saying the title was left alone. The item envelope does **not** surface an
   `updated_at`, so the optional `--if-updated-at <ts>` optimistic-concurrency guard (exit **4
   conflict** on a stale timestamp) is only usable when a caller already holds that timestamp from
   elsewhere; the skill's normal path omits it.
