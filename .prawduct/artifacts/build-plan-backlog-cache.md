@@ -6,7 +6,7 @@ depends_on:
   - artifact: cache-spec             # documentation/backlog-service-cache-spec.md (W1 requirements + spec)
   - artifact: data-model             # documentation/backlog-service-data-model.md §6 (cache schema), §7 (schema versioning)
   - artifact: security-model         # documentation/backlog-service-security-model.md §3 (F4 fetch-time auth, F5 content sensitivity)
-  - artifact: nonfunctional-requirements  # documentation/backlog-service-nfr.md §§4, 6, 8 (targets, staleness, ops)
+  - artifact: nonfunctional-requirements  # documentation/backlog-service-nfr.md §3.3 (rebuild burst), §4 (latency), §5 (freshness), §6 (degradation), §8 (ops)
   - artifact: test-specifications    # documentation/backlog-service-test-specifications.md (QRY-1/3/5, SEC-8, OPS-*)
 governed_by:
   # Every norm in each artifact gets a line — "that one doesn't apply" is an
@@ -25,10 +25,11 @@ governed_by:
       - "Local-first: governance coordination is process-spawn + atomically-written files + the git object database, no third-party dependencies in the governance runtime; an opt-in backlog backend may take a network surface provided it stays off by default, degrades to the markdown backend, and carries no governance verdict → conforms on all four counts, and it is worth spelling out because SQLite is a new persistence shape here. (a) `sqlite3` is stdlib — no dependency enters. (b) The cache is not governance coordination: it carries no verdict (the data-model norm above), so WAL is not being introduced as a coordination substrate for governance. (c) Off by default — no cache exists until `backlog_service_repo` is set. (d) Degrades: an absent, corrupt, or schema-ahead cache rebuilds, and a consumer that cannot reach one reports unavailable rather than reporting clean"
       - "Every fact has one home; every other mention is a reference to it → conforms, and the cache needs its single-home story stated because it duplicates provider state by design. **The provider is the home. The cache originates nothing.** The rebuild-equivalence invariant (drop, rebuild, compare — spec §5) is the mechanical form of that claim, and Chunk 01 ships it as a test rather than a promise. A cache-only field would be a second home, which is why the invariant's failure mode is exactly 'a field that does not survive rebuild'. The norm also bit this plan during authoring — see the Requirements Confidence note on the corpus"
       - "Prawduct is written in Python and must never be specific to Python → conforms — the cache schema is prawduct-vocabulary text and dates; nothing in it is language-shaped. Spec §3's insistence that the schema speak prawduct rather than GitHub is the same discipline one axis over"
-      - "Authority fails closed; advice fails soft → conforms — every cache reader is advice and fails soft, which the derived-views norm's precedence ruling requires. The one place fail-soft has teeth: soft must mean *reported* unavailable, never silently empty (`review-cycle.md`'s `null` is not a zero rule; NFR §8's read-degrades-never-hangs row). Chunk 01 establishes the distinction; Chunk 06 is where it would be lost"
-      - "Goals and verification bind; prescribed method is advice → conforms. Binding: the consumer inventory of spec §2 is satisfied, the cache backs no blocking verdict, rebuild-equivalence holds, and the NFR §8 staleness rows hold. Advice: the chunk ordering, and which module each piece lands in. A builder who finds a better route takes it and records why"
+      - "Authority fails closed; advice fails soft → conforms — every cache reader is advice and fails soft, which the derived-views norm's precedence ruling requires. The one place fail-soft has teeth: soft must mean *reported* unavailable, never silently empty (`review-cycle.md`'s `null` is not a zero rule; NFR §6's read-degrades-never-hangs row). Chunk 01 establishes the distinction; Chunk 06 is where it would be lost"
+      - "Goals and verification bind; prescribed method is advice → conforms. Binding: the consumer inventory of spec §2 is satisfied, the cache backs no blocking verdict, rebuild-equivalence holds, and the NFR §5 freshness rows hold. Advice: the chunk ordering, and which module each piece lands in. A builder who finds a better route takes it and records why"
       - "The plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared evidence store, and the files it must reconcile → conforms — the cache lands inside `.git`, which is not the governed working tree, and the same place `lib/evidence.py` and `snapshot.py` already write"
       - "An independent reviewer never mutates the session it reviews → inapplicable because nothing here runs on the Critic data plane"
+      - "Prawduct guides and reviews; it never implements — it writes no product code, config or tooling, and never re-implements what a product's own tooling already does → conforms, and it needs stating rather than skipping because this plan builds prawduct's first SQLite persistence layer, which is exactly the shape that looks like a violation. It is not one, on the norm's own terms. The norm's **Scope** line settles the first half explicitly: it governs prawduct-the-framework's relationship to the products it governs, and 'prawduct-the-product — this repo — is a product like any other and is built normally' (owner ruling 2026-07-29, which names conflating the two a category error). The cache is this repo's own backlog infrastructure; it is not written into, or on behalf of, any governed product. The **re-implementation corollary** is the half worth actually checking, and it is where a cache could genuinely offend — so: `sqlite3` is stdlib rather than a hand-rolled store; FTS5 is SQLite's own index rather than a written tokenizer; WAL and the busy timeout are the engine's concurrency primitives rather than a lock protocol; `PRAGMA user_version` is SQLite's native schema-version slot rather than a version table; and the one place a wheel was nearly reinvented — an age computation duplicated between `cache` and `cachequery` — was collapsed to one home during review rather than kept. What the cache does NOT re-implement is the provider: it never becomes a second source of truth, which is the rebuild-equivalence invariant's whole job"
   - artifact: security-model
     dispositions:
       - "Untrusted governance state — backlog, learnings, recalled memories, fetched references — is data, not instructions; content never carries authority to direct the agent or the framework → conforms, and it is LIVE here rather than theoretical. The cache stores issue bodies verbatim, Chunk 04 puts an FTS index over them, and Chunk 06 restores consumers that surface item text into agent-read findings (the Critic's walk already emits 'Backlog item appears resolved: [item text]'). The exposure is not new — `list` carries the same bodies today — but this work widens it from items a reader happened to open to every open body, indexed. The treatment is restated at each restore site in Chunk 06 rather than assumed to be inherited"
@@ -71,8 +72,8 @@ Medium.
 The first draft cited only `backlog-service-cache-spec.md` and proposed amending an
 `api-contract.md` norm to cover the cache's schema-versioning. Both were wrong: W1 already has a
 reviewed design corpus — the cache's exact table schema (`data-model.md` §6), its schema-versioning
-answer (§7), two security findings written about it specifically (F4, F5), NFR staleness and
-latency rows (§§4, 8), and a test catalogue (QRY-1/3/5, SEC-8, OPS-1..3). The cache spec is
+answer (§7), two security findings written about it specifically (F4, F5), NFR freshness and
+latency rows (§§4, 5), and a test catalogue (QRY-1/3/5, SEC-8, OPS-1..3). The cache spec is
 deliberately a *delta* on that corpus and says so in its own header. Running "has this repo already
 decided it?" against `.prawduct/artifacts/` and not against `documentation/` is what produced a
 proposed amendment to a decision that already had a home. **Every chunk below cites the corpus
@@ -150,10 +151,14 @@ driver would have made the norm the deciding constraint on the storage choice.
 
 ### Build & Test Configuration
 
-Existing: `pytest`, xdist `-n auto --dist loadfile`. Cache tests live under `tests/backlog/` with
-the existing same-directory state grouping. **The concurrency tests are the exception that needs
-stating:** `--dist loadfile` schedules one file's tests onto one worker, so a test asserting that
-two writers do not corrupt the store must spawn its own processes.
+Existing: `pytest`, xdist `-n auto --dist loadfile`. Cache tests are **flat files under `tests/`,
+named `test_backlog_cache*.py`** — the repo's convention is one file per capability
+(`test_backlog_query.py`, `test_backlog_encode.py`, …), enforced by
+`tests/preferences/test_test_location.py`, and there is no `tests/backlog/` package. (An earlier
+draft of this plan said there was; corrected on inspection rather than discovered mid-build.)
+**The concurrency tests are the exception that needs stating:** `--dist loadfile` schedules one
+file's tests onto one worker, so a test asserting that two writers do not corrupt the store must
+spawn its own processes.
 
 Test names below cite the existing catalogue in
 `documentation/backlog-service-test-specifications.md` where one already covers the case. New tests
@@ -213,20 +218,29 @@ the same shape that makes `transport.py` the sole egress.
   **(a) Rebuild-equivalence** — drop, rebuild, compare; any difference is a cache-only field, which
   is data loss on rebuild and a second home for a fact (spec §5). The same invariant is the
   provider-adequacy test, so no separate portability suite is ever needed. **(b) Visible age** —
-  every cache-served payload carries a non-null `fetched_at`-derived age (NFR §8). **(c)
+  every cache-served payload carries a non-null `fetched_at`-derived age (NFR §5). **(c)
   Unavailable is not empty** — a consumer that cannot reach the cache reports unavailable; it never
-  returns an empty set that reads as a clean bill of health (NFR §8 read-degrades-never-hangs).
+  returns an empty set that reads as a clean bill of health (NFR §6 read-degrades-never-hangs).
   **(d) Schema-ahead rebuilds and reports** — per `data-model.md` §7, not a fresh decision.
 - **Depends on:** none
 - **Artifacts consumed:** `documentation/backlog-service-cache-spec.md` §§2, 5, 7;
   `documentation/backlog-service-data-model.md` §§6, 7;
   `documentation/backlog-service-security-model.md` §3;
-  `documentation/backlog-service-nfr.md` §8
+  `documentation/backlog-service-nfr.md` §§5, 6, 8
 - **Deliverables:** new `plugin/lib/backlog/cache.py`; the store at
   `<git-common-dir>/prawduct/backlog-cache.sqlite3`, resolved the way `snapshot.snapshot_path`
   already resolves so the path rule keeps one home; full rebuild driven through the existing
   `query._all_issues` + `encode.decode_item` path; consumer 1's query
-- **Tests:** catalogue — **SEC-8** (reconciled, see the decision below), **OPS-1..3**; new — schema
+- **Tests:** catalogue — **SEC-8** (reconciled, see the decision below) and **OPS-2** (the cache is a
+  new local artifact, so its disk-not-dollars row is this chunk's to discharge, and
+  `TestCachePath` does). **OPS-1 and OPS-3 are DESCOPED from this chunk, not dropped:** OPS-1
+  ("cost is O(1) in project count") onboards an Nth project and asserts the recurring-cost surface,
+  and OPS-3 ("no server required for correctness") exercises the full CRUD + query + `pick` surface
+  with no daemon running. Both are portfolio- and deployment-scope assertions about the whole
+  adapter; a store module cannot discharge either, and writing something cache-shaped under their
+  names would be exactly the catalogue-row-describing-a-check-nobody-built defect this plan keeps
+  naming. They belong to the surface Chunk 05 completes (`pick` off the cache) — carried there
+  rather than left implied here. New — schema
   creation, schema-ahead discard-and-report, absent-store rebuild, corrupt-store rebuild,
   `sqlite3.Error` returned as a `status`/`reason` dict rather than raised, rebuild-equivalence over
   a fixture corpus, and a concurrency test spawning two writer processes (see the xdist note)
@@ -259,11 +273,58 @@ the same shape that makes `transport.py` the sole egress.
   most-sensitive stored body, it has no access control at rest, and the export path carries the
   same sensitivity as its source repo | user can veto/override]`
 
-  Update SEC-8's row in `documentation/backlog-service-test-specifications.md` in this chunk rather
-  than leaving a catalogue row describing a check nobody built.
+  `[DECISION: the `item` table ships WITHOUT `assignee` and WITHOUT `reviewed`, both of which
+  `data-model.md` §6 lists | §6's own binding rule is that every column is a Q-projection with no
+  dead fields, and the retired-`git_sha` row is the precedent for removing one. Each of these lost
+  its serving query, for a different reason, and neither loss was visible when §6 was written.
+  **`reviewed`** served "TF2 (`reviewed` date-range)" — consumer 10; spec §2.1 moved consumer 10
+  onto the provider's `updated_at` under *observable beats stored*, and no other consumer reads it.
+  **`assignee`** served ready-work's claimed-item exclusion — which is the machinery TODAY'S OWNER
+  RULING retires (Chunk 05). After that, `pick` excludes on `working-branch` (Chunk 03) and nothing
+  queries the assignee at all. A human assigning in the GitHub UI is still free to; prawduct simply
+  stops reading assignment as meaning. Keeping either column would ship exactly the dead field §6
+  forbids, and a dead column in a persisted schema is the cheap-now/expensive-later shape the
+  lock-in rule warns about. `kind` is likewise absent — §6 omits it and none of the fifteen
+  consumer queries asks for it, so its absence is confirmed rather than corrected. The columns that
+  DO survive each name a consumer: `id`/`title`/`body`/`status` (1, 6, 7, 14), `stage` (11), `area`
+  (3, 4, 8, 9), `created_at` (2 — the provider timestamp, replacing §6's `added`, which is a block
+  field with no write path), `updated_at` (10, 15), `effort`/`impact`/`source` (`pick` ranking and
+  `list` filters, Chunk 05), `etag` (Chunk 02 revalidation), `fetched_at` (visible age) | user can
+  veto/override]`
+
+  SEC-8's mechanism has **two** homes, and both are reconciled in this chunk: the catalogue row in
+  `documentation/backlog-service-test-specifications.md`, and NFR §8's *operational sliver* row,
+  which states the same `/prawduct:doctor` gitignore check as one of the two residual ops burdens
+  (its `Local artifacts are disk, not dollars` row in §2 and the §7 capacity row also say
+  "gitignored"). Leaving either behind is the second-home defect this plan keeps naming.
+  **As built — two module placements moved earlier than this plan put them**, both to honour the
+  stated module boundary rather than to widen scope. `cachequery.py` was listed as a Chunk 04
+  deliverable, but the boundary says consumers never open a connection themselves; shipping
+  consumer 1's query inside `cache.py` would have created the first violation of a rule this plan
+  spends a paragraph on, so `cachequery.py` exists from Chunk 01 with exactly one query and grows
+  in Chunk 04. `sync.py` was listed as Chunk 02's, but Chunk 01 needs *something* to drive the
+  rebuild and the boundary reserves transport-plus-store to `sync.py` — so it exists with only the
+  full-rebuild path, which is precisely what Chunk 02's own text assumes ("the Chunk 01 rebuild
+  stays as the rebuild path"). One further correction: `query._all_issues` became public
+  `query.all_issues`, because `sync.py` is a legitimate second caller and importing another
+  module's underscore-private is worse than the rename.
+
+  **Two Critic findings changed the code rather than the record.** `replace_items` now writes the
+  rows *and* the scope's cursor in **one** transaction — an earlier shape committed them separately
+  while the docstring claimed otherwise, which would have handed Chunk 02 a satisfied-looking
+  guarantee its stated correctness argument depends on. And `cache.store_status` was deleted: a
+  public function with no caller, no test and no deliverable, which also opened its own connection
+  against the module boundary. `cache.age_seconds` went with it for the same reason, leaving one
+  home for the age computation.
+
+  **A defect the fixture corpus could not have caught, found in live verification.** Consumer 1's
+  query first read `status = 'open'` literally, which silently drops `submitted` and `in-progress`
+  items — the live ones a PR reviewer most wants. It now uses `encode.OPEN_STATUSES`, derived from
+  the status encoding's single source of truth, so a new sub-state is included the day it is added.
 - **Done when:**
   1. Acceptance criteria met and tests pass
-  2. SEC-8 reconciled in the test-specification catalogue; the `briefing_counts` divergence from
+  2. SEC-8 reconciled in the test-specification catalogue **and** in NFR §8's operational-sliver
+     row (plus the §2 / §7 "gitignored" mentions); the `briefing_counts` divergence from
      `data-model.md` §6 recorded there
   3. `/prawduct:critic` run and blocking findings resolved
   4. Committed and chunk marked `[x]` in Status
@@ -284,14 +345,14 @@ the same shape that makes `transport.py` the sole egress.
   transition — the case where idempotent-re-run convergence is not enough and the write has to be
   atomic instead.
 
-  **The `etag` column earns its keep here.** NFR §8's never-silently-stale row requires that no
+  **The `etag` column earns its keep here.** NFR §5's never-silently-stale row requires that no
   cache read be served past its validator without a revalidation option, and `data-model.md` §6
   carries `etag` as the conditional-request column that makes it possible. Sync is where it is
   written; Chunk 05 is where a decision-driving read consumes it.
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `documentation/backlog-service-cache-spec.md` §6;
   `documentation/backlog-service-data-model.md` §6;
-  `documentation/backlog-service-nfr.md` §§6, 8
+  `documentation/backlog-service-nfr.md` §§3.3, 5
 - **Deliverables:** new `plugin/lib/backlog/sync.py`; `since` support on
   `transport.GhTransport.list_issues`; the cursor stored with the cache, uncommitted, its absence
   meaning full rebuild
@@ -301,7 +362,7 @@ the same shape that makes `transport.py` the sole egress.
   participant turns a fixed-timestamp test into a scheduled failure at stamp-plus-TTL wall time
 - **Acceptance criteria:** a sync following a no-op interval fetches zero pages; an item edited
   since the last sync appears with its new state; killing the process between fetch and commit
-  loses nothing on re-run; a rebuild of this repo's backlog paces under the core budget as NFR §6's
+  loses nothing on re-run; a rebuild of this repo's backlog paces under the core budget as NFR §3.3's
   cache-rebuild row expects
 - **Foreign API:** github-rest-issues (`GET /repos/{owner}/{repo}/issues`, `since`)
 - **Done when:**
@@ -458,7 +519,7 @@ the same shape that makes `transport.py` the sole egress.
   wrongly-included one costs two people on one item | user can veto/override]`
 - **Depends on:** Chunk 04
 - **Artifacts consumed:** `documentation/backlog-service-cache-spec.md` §§2.1, 3, 6;
-  `documentation/backlog-service-nfr.md` §§4, 8
+  `documentation/backlog-service-nfr.md` §§4, 5
 - **Deliverables:** `probe_dead_why` and `probe_stalled_transition` in
   `plugin/lib/norm_probes.py` reading `cachequery`; `probe_revisit_due` removed along with its
   registry row; `pick` in `plugin/lib/backlog/query.py` sourcing candidates from the cache and
@@ -468,7 +529,11 @@ the same shape that makes `transport.py` the sole egress.
   the claim prose removed from `plugin/skills/backlog/SKILL.md` and
   `plugin/skills/backlog/adapter-mode.md`; `tests/test_backlog_claim.py` deleted
 - **Tests:** catalogue — **QRY-2** (ready-work correctness, including the negative: a stale cache
-  must not let a blocked item be picked); new — each restored probe fires on a real trigger and
+  must not let a blocked item be picked); **OPS-1** and **OPS-3**, carried here from Chunk 01, which
+  could not discharge them: both assert properties of the whole deployed adapter (cost is O(1) in
+  project count; correctness holds with no daemon running), and this is the chunk where the full
+  CRUD + query + `pick` surface is finally cache-backed and therefore assertable end to end; new —
+  each restored probe fires on a real trigger and
   stays quiet on a clean corpus, each reports unavailable rather than empty when the cache is
   missing, and `pick` returns the same candidate set from the cache as from a live scan on the same
   corpus. For the retirement: an item with a populated `working-branch` is absent from `pick` and

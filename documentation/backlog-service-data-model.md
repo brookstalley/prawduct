@@ -232,12 +232,12 @@ authorizes at **fetch** time — cross-repo entries must **revalidate on read** 
 
 | Table / index | Serves | Notes |
 |---|---|---|
-| `item(id, title, body, status, stage, area, effort, impact, source, assignee, added, reviewed, updated_at, **etag**, fetched_at)` | Q1-structured, ready-work, Q5, TF2 (`reviewed` date-range) | `etag`/validator = the **conditional-request** column G3's revalidation needs (M2); `fetched_at` = visible age. **No `node_id`** (dead-read, m1) |
+| `item(id, title, body, status, stage, area, effort, impact, source, created_at, updated_at, **etag**, fetched_at)` | Q1-structured, ready-work, Q5 | `etag`/validator = the **conditional-request** column G3's revalidation needs (M2); `fetched_at` = visible age. **No `node_id`** (dead-read, m1). **As built in W1** — three changes from this row's original form, each because the every-column-is-a-Q-projection rule bit: **`assignee` removed** (it served ready-work's claimed-item exclusion, and the claim mechanism is retired — `working-branch` replaces it, so nothing queries assignment); **`reviewed` removed** (it served TF2's date range for the stale-items consumer, which cache-spec §2.1 moved onto the provider's `updated_at` under *observable beats stored*); **`added` → `created_at`** (the creation-time filter is a provider timestamp that is always present and cannot be forgotten, rather than a block field with no write path). `kind` remains absent — no consumer query asks for it |
 | `item_fts(title, body)` (FTS5) | Q1-fulltext, Q3 lexical | the read-your-writes path GitHub search lacks |
 | `comment(item_id, body, author, created_at)` | Q1-fulltext, Q3 | text mirror |
 | `relationship(src, kind, dst)` | ready-work blockers (per-clone) | *within one repo*; cross-repo blockers checked online |
 | `cursor(scope, since)` | Q2 incremental refresh | primitive for sweeps/prefetch |
-| `briefing_counts(scope, counts_json, fetched_at)` | **GV2** — session-start counts | the **P0 persisted-counts floor** the PRD admits (M3): a degenerate cache w/ visible age so "start never waits"; distinct from the always-derived Q5 read path |
+| `briefing_counts(scope, counts_json, fetched_at)` | **GV2** — session-start counts | the **P0 persisted-counts floor** the PRD admits (M3): a degenerate cache w/ visible age so "start never waits"; distinct from the always-derived Q5 read path. **W1 did NOT absorb it into SQLite** — it stays the standalone JSON file `snapshot.py` owns, beside the SQLite store rather than inside it, so the session-start read stays in-process and network-independent (BLOCK-5); folding it in would put that read behind a connection open |
 
 *On-disk (build decision, slice):* the SQLite `item`/`item_fts`/… tables arrive with the read-through
 cache (**W1**). The **slice ships only the `briefing_counts` floor**, and as a *degenerate* cache it is a

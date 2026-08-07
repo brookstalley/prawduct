@@ -200,7 +200,7 @@ def check_pick_latency(transport, owner, repo, facts) -> None:
     the candidate count here IS ``limit``, and ``pick`` applied ``limit`` only
     *after* fanning out over every eligible issue — so varying 1/3/5 varied
     nothing about the number of blocker reads. The measured flatness came from
-    the constant ``_all_issues`` full-scan and was recorded across four documents
+    the constant ``all_issues`` full-scan and was recorded across four documents
     as evidence of a batched fan-out that was never built.
 
     ``pick`` now bounds the fan-out by ``limit``, so the parameterization is

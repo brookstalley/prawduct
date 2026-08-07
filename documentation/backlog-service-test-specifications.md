@@ -523,15 +523,23 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
   self-promote out of `submitted` or forge a `source:`/`id:` label), and **no mutation runs under the
   filer's identity**.
 
-**SEC-8 — Cache stays gitignored; `doctor` catches an un-ignored cache (content-borne-secret defense)** (→ F5, Security §3, NFR §8)
-- Level: integration
-- Setup: a repo where the cache path is **not** effectively ignored — variant (a) the pattern is missing
-  from `.gitignore`; variant (b) a differing global ignore or an `add -f` has staged it.
-- Action: run `/prawduct:doctor`'s cache-ignore check.
-- Expected: `doctor` **flags** the un-ignored/committed cache in both variants (gitignore is **not**
-  enforcement — this is the check that makes it one); the defense targets the content-borne-secret threat
-  (a pasted `.env`/log in an issue body would otherwise reach a committed cache). Negative variant: a
-  correctly-ignored cache passes clean.
+**SEC-8 — The cache cannot be committed (content-borne-secret defense)** (→ F5, Security §3, NFR §8)
+- Level: unit
+- **The mechanism changed in W1; the threat did not.** This row originally specified a
+  `/prawduct:doctor` check that the cache path is gitignored, on the premise that the cache is a
+  working-tree file where gitignore is the only defense and "gitignore is not enforcement." W1 puts
+  the store **inside `.git`** (`<git-common-dir>/prawduct/backlog-cache.sqlite3`, beside the evidence
+  store and the counts snapshot), where it cannot be committed at all — `add -f` and a differing
+  global ignore both stop being reachable. The defense became **structural**, so the doctor check has
+  nothing left to catch and would be a control with no expected yield, which the proportionality norm
+  removes by default.
+- Setup: a repo with a built cache.
+- Action: resolve the cache path.
+- Expected: the path lies inside the git common dir, so no `.gitignore` contract exists to get wrong.
+  Asserted by `tests/test_backlog_cache.py::TestCachePath`.
+- **F5's other half is untouched and still binds:** the cache is as sensitive as its most-sensitive
+  stored body, it has no access control at rest, and an export carries the same sensitivity as its
+  source repo.
 
 ### 3.10 Migration guard-sweep (MG1–MG6)
 
@@ -660,6 +668,15 @@ Data Model §2)
 These discharge the NFR §2/§8 rows explicitly folded into the "Test Specs (§16(5))" bundle by NFR §9
 ("every design-guaranteed row in §2/§8"). They are cheap proof-of-delegation assertions, not load tests.
 
+**Scope note (W1).** **OPS-2 is discharged** — the cache is the local artifact that row is about, and
+`tests/test_backlog_cache.py::TestCachePath` asserts it is a file inside `<git-common-dir>`, never a
+paid or recurring resource. **OPS-1 and OPS-3 are not a store module's to discharge**: OPS-1 onboards
+an Nth project and asserts a portfolio-wide cost surface, and OPS-3 exercises the *full* CRUD + query
++ `pick` surface with no daemon running. Both are assertions about the deployed adapter as a whole,
+so they land with the surface rather than with any one module — writing a cache-shaped stand-in
+under their names would be a catalogue row describing a check nobody built, which is the exact defect
+SEC-8's own history above records.
+
 **OPS-1 — Cost is O(1) in project count** (→ NF1/G4, NFR §2)
 - Level: integration
 - Setup: an onboarded portfolio; onboard an **Nth** project.
@@ -671,7 +688,8 @@ These discharge the NFR §2/§8 rows explicitly folded into the "Test Specs (§1
 - Level: integration
 - Setup: a warmed cache + a `briefing_counts` file.
 - Action: enumerate the local artifacts.
-- Expected: the only local artifacts are **files** (cache, counts) — **gitignored** (SEC-8) and
+- Expected: the only local artifacts are **files** (cache, counts) — **uncommittable**, inside
+  `<git-common-dir>` rather than the working tree (SEC-8), and
   **rebuildable** (MIG-4); no artifact is a recurring paid resource.
 
 **OPS-3 — No server required for correctness** (→ NF2, NFR §8)

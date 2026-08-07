@@ -69,13 +69,14 @@ get a proof-of-delegation test rather than a budget.
 |---|---|---|---|
 | No billable service — Issues, labels, org Fields, one GitHub App are all **free** | inventory the deployment: assert no paid API, no hosted compute, no managed store | GitHub pricing (2026) | **verified** (platform fact) |
 | Cost is **O(1) in project count** — adding a repo adds no recurring cost | onboard an Nth project; assert the recurring-cost delta is $0 | design (no per-project resource) | **target** (design-guaranteed; test → §16(5)) |
-| The only local artifacts (cache, counts file) are **disk, not dollars** | assert they are local files, gitignored, rebuildable | Data Model §6 | **target** (design-guaranteed; test → §16(5)) |
+| The only local artifacts (cache, counts file) are **disk, not dollars** | assert they are local files, uncommittable (inside `<git-common-dir>`, W1) and rebuildable | Data Model §6 | **target** (design-guaranteed; test → §16(5)) |
 
 **Visible non-dollar costs (Principle 9 — name them at design, not after deploy).** "$0/month" is true
 in dollars and would be a lie if it hid the real scarce resources. They are: **(1) the rate budget**
 (§3 — the actual ceiling on how fast the fleet can work), **(2) latency** of live reads (§4 — the price
 of freshness-beats-latency), **(3) local disk** for the optional cache (bounded by portfolio size, §7),
-and **(4) a sliver of ops** (§8 — the cache path must stay gitignored; a schema bump rebuilds it). None
+and **(4) a sliver of ops** (§8 — a schema bump rebuilds the cache; W1 removed the keep-it-gitignored
+half by putting the store inside `<git-common-dir>`). None
 is a bill; all are budgets a heavy workload can exhaust, so they are sized, not waved away.
 
 *The GitHub App is free too* — it changes the *rate bucket* (§3), not the dollar cost; adopting it never
@@ -258,7 +259,7 @@ find the point where the cacheless floor stops sufficing and a layer earns its k
 | **Dedup corpus** | **500+ items** (Q3) | lexical dedup is cache-served (read-your-writes); semantic is P2 (GA, on by default; ~10/min, no per-repo gate) | build |
 | **Concurrent actors** | 2 agents (parallel worktrees) + 1 human, up to a **48-agent** grooming sweep (TF3) | **correctness** (no lost updates) is CC2 optimistic-concurrency, *not* an NFR here; the **NFR ceiling is the shared read budget** — 48 cacheless readers exhaust one user bucket (§3.3), so high fan-out is **cache- or App-gated** | S3 |
 | **Steady write rate** | ~**200 writes/day** | ≈ 8/hr avg — wide margin under 500/hr content + 900 pts/min | **assumed** / owner estimate (PRD §9) — not yet telemetry-observed |
-| **Local cache disk** | O(portfolio size) — bodies + comments + FTS | bounded, rebuildable-from-GitHub, gitignored; not a dollar cost (§2) | build |
+| **Local cache disk** | O(portfolio size) — bodies + comments + FTS | bounded, rebuildable-from-GitHub, inside `<git-common-dir>` so never committed (W1); not a dollar cost (§2) | build |
 
 **The one scale cliff, stated plainly:** read-amplification (many agents × many items). Below it the
 cacheless floor is correct and rate-safe; above it (the 48-agent sweep, mass grooming) the **cache is
@@ -272,11 +273,13 @@ terms.
 | **No server to run/patch/monitor** | GitHub hosts the store | assert no daemon/cron is required for **correctness** | target (design-guaranteed; test → §16(5)) |
 | **No backup burden** | the store is GitHub; the local cache is **derived + rebuildable** | assert cache loss → rebuild-from-GitHub, no data loss (Data Model §7) | target (design-guaranteed; test → §16(5)) |
 | **Backup/exit is free** | the G5/MG2 **export** doubles as backup, any time | run `export`; assert full-fidelity dump (incl. native graph) | target (design-guaranteed; test → §16(5)) |
-| **The operational sliver** | the cache path must **stay gitignored** (content-sensitive, Security §3/F5); a schema bump **rebuilds** it (a bounded read burst, §3.3); the detached refresh is a subprocess, not a supervised daemon | `/prawduct:doctor` verifies the cache path is actually ignored; assert a `schema_version` mismatch triggers rebuild | target (design-guaranteed; test → §16(5)) |
+| **The operational sliver** | ~~the cache path must **stay gitignored**~~ — **W1 removed this burden**: the store lives inside `<git-common-dir>`, so it cannot be committed and there is no ignore contract to maintain (SEC-8). What remains: a schema bump **rebuilds** it (a bounded read burst, §3.3); the detached refresh is a subprocess, not a supervised daemon | assert the store path resolves inside the git common dir; assert a `schema_version` mismatch triggers rebuild | **met** (W1: `tests/test_backlog_cache.py`) |
 | **Observability leaks nothing** | telemetry records **identities (login) + counts, never credentials** | assert no token in logs/telemetry/errors (structured errors, Security §4) | target (design-guaranteed; test → §16(5)) |
 
 Ops is genuinely near-zero, but **not** zero — the honest residue is (1) keeping the sensitive cache out
-of git and (2) a rebuild on schema change. Both are `doctor`-verifiable, neither is a running service.
+of git and (2) a rebuild on schema change. **W1 discharged the first structurally** — the store sits
+inside `.git`, so keeping it out of commits is no longer something anyone has to do. The honest
+residue is now just the rebuild, and it is not a running service.
 
 ## 9. Measurement & verification plan (the testable throughline)
 

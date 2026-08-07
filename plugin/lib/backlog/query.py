@@ -126,7 +126,7 @@ def list_items(
         # tell a passed value from this function's default. Every other filter
         # — assignee, sort, direction, state, the label facets — is honoured
         # normally, so none is silently dropped.
-        issues = _all_issues(
+        issues = all_issues(
             transport,
             owner,
             repo,
@@ -211,7 +211,7 @@ def pick(
     (non-fatal) so the caller re-picks.
     """
     now = now or datetime.now(timezone.utc)
-    issues = _all_issues(transport, owner, repo, state="open", labels=["stage:ready"])
+    issues = all_issues(transport, owner, repo, state="open", labels=["stage:ready"])
     if isinstance(issues, dict):  # an error envelope bubbled up from the fan-out
         return issues
 
@@ -330,7 +330,7 @@ def counts(transport: Transport, *, owner: str, repo: str) -> dict:
     and is printed one line beneath it; a count and its own drill-down command
     disagreeing is worse than either being absent.
     """
-    issues = _all_issues(transport, owner, repo, state="all", labels=None)
+    issues = all_issues(transport, owner, repo, state="all", labels=None)
     if isinstance(issues, dict):
         return issues
 
@@ -451,7 +451,7 @@ def _decode_unscoped(issues: list[dict], owner: str, repo: str) -> tuple[list[di
     return items, []
 
 
-def _all_issues(
+def all_issues(
     transport: Transport,
     owner: str,
     repo: str,
