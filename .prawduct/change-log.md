@@ -140,13 +140,16 @@ after a fix commit; dispatch answers in under a second.
 
 <!-- prawduct: type=fix | scope=backlog-import-title-boundary | release=v3.2.7 | status=shipped -->
 
-<!-- Deliberately NO `scope=` tag. A scope-tagged entry is release-pending and
-     `regen-views` looks for a matching build-plan file to regenerate a `## Status`
-     from; this work went requirements → fix with no build plan, so a scope here
-     names a view that cannot be written and fails the real-artifacts scope check.
-     The discovery artifact declares `artifact: discovery`, so it is correctly
-     excluded from that search rather than mistaken for a plan. When the enforcement
-     work is planned, that plan carries the scope. -->
+<!-- PLANLESS SCOPE — read before "correcting" the tag above. This entry carries
+     `scope=` even though the work went requirements → fix with NO build plan: it
+     had to, or the release record could not answer "what did v3.2.7 carry?" (the
+     REL-2N8K shape that shipped 8 of 10 entries unrecorded at v2.0.14). The
+     trade-off is that `regen-views` looks for a matching build-plan file to
+     regenerate a `## Status` from and finds none here — the only artifact declares
+     `artifact: discovery`, so it is correctly excluded from that search rather than
+     mistaken for a plan. Tracked as #310 (support legitimately planless scopes in
+     regen-views). Do NOT strip the scope to quiet regen-views; that trades a
+     complete release record for a clean exit code. -->
 
 **A 396-item migration was permanently pinned at 7%, and the loud failure was not the defect.**
 One GitHub 422 killed the whole run at item 28, and resuming made zero further progress because
