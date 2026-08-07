@@ -76,7 +76,6 @@ RETRYABLE_DEFAULTS: dict[str, bool] = {
     "ambiguous_id": False,
     "alias_collision": False,
     "conflict": True,
-    "claim_conflict": True,
     "auth": False,
     "unavailable": True,
     "rate_limited": True,
@@ -746,9 +745,10 @@ class GhTransport(Transport):
         """PATCH the issue with **only the named fields** (``state``,
         ``state_reason``, ``title``, ``body``, ``assignees``). Core decides which
         fields reach here — the ``update`` op's mass-assignment guard (SEC-2)
-        restricts user-driven edits to ``title``/``body``/facets; ``claim`` sets
-        ``assignees`` + the ``body`` stamp in one atomic PATCH. The transport does
-        not second-guess a field it was handed."""
+        restricts user-driven edits to ``title``/``body``/facets, and ``assignees``
+        is reachable from no prawduct write path at all now that the ``claim`` op
+        is retired. The parameter stays because the transport does not second-guess
+        a field it was handed, and a `set-status` still PATCHes `state` beside it."""
         return self._api(
             [
                 "api",

@@ -499,7 +499,13 @@ class TestExportNativeGraph:
         blk = _file(fake, title="merge: the blocker item under test")
         assert core.link(fake, id_raw=a, edge="child", target_raw=b)["status"] == "ok"
         assert core.link(fake, id_raw=a, edge="blocked-by", target_raw=blk)["status"] == "ok"
-        assert core.claim(fake, id_raw=a)["status"] == "ok"
+        # Assigned directly rather than through prawduct: assignment is a native
+        # GitHub field prawduct no longer writes (the claim op that once wrote it
+        # is retired), and `export` must still carry it — a full-fidelity dump is
+        # about what the provider holds, not about which of it prawduct authored.
+        _repo_part, _, _number = a.rpartition("#")
+        _owner, _, _name = _repo_part.partition("/")
+        fake.update_issue(_owner, _name, int(_number), fields={"assignees": ["agent-a"]})
         assert core.set_status(fake, id_raw=blk, target="shipped")["status"] == "ok"
 
         assert _export(fake, tmp_path / "g")["status"] == "ok"
@@ -508,7 +514,7 @@ class TestExportNativeGraph:
         a_rec = _by_id(records, a)
         assert b in a_rec["relationships"]["sub_issues"]
         assert blk in a_rec["relationships"]["blocked_by"]
-        assert a_rec["assignees"] == ["agent-a"]  # the claim's API-identity assignee
+        assert a_rec["assignees"] == ["agent-a"]  # the provider's own assignment, carried verbatim
 
         blk_rec = _by_id(records, blk)
         assert any(event["event"] == "closed" for event in blk_rec["timeline"])

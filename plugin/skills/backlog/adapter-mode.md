@@ -32,7 +32,7 @@ class:
 | 0 | ok | operation succeeded |
 | 2 | validation | bad input (unknown id spelling, bad flag value) |
 | 3 | not-found | the id / resource does not exist |
-| 4 | conflict | a claim / optimistic-concurrency conflict |
+| 4 | conflict | an optimistic-concurrency (CAS) conflict on `update` |
 | 5 | auth | not authenticated, or a write withheld |
 | 6 | unavailable | the backend (`gh` / network) is unreachable |
 
@@ -91,8 +91,13 @@ count, not an addend — never add the two.
 [--sort created|updated] [--direction asc|desc] [--per-page N] [--page N] [--untriaged]` → render the
 tabular view
 (`ID · title · effort · impact · area · status`) from `data`'s items. Map the human/`--flag` filters
-onto the adapter flags; **claimed-item exclusion is `--assignee none`** (the issue assignee *is* the
-claim). Keep the render lean — a handful of rows, most-relevant first.
+onto the adapter flags. **Items someone is already on are excluded by rendering, not by a filter:**
+each item carries `working_branch`, so drop the ones that have it unless the user asked for
+`--include-working`, and show the branch in the row when you do. There is no server-side filter for
+it — it is a body-block field, so the provider cannot select on it, and post-filtering a page would
+make the returned `count` disagree with the page it came from. `--assignee` is still a filter, but
+assignment no longer means anything to prawduct: `claim` is retired and nothing writes assignees.
+Keep the render lean — a handful of rows, most-relevant first.
 
 `--untriaged` **inverts** the scope filter: it returns only the issues `list` normally drops (the
 ones `counts.untriaged` counts), so it is how you show an operator what needs triage without
@@ -161,15 +166,14 @@ Route by what changed:
 - **working-branch** (`--working-branch owner/repo@branch`) → the branch someone is working the item
   on. It must name a **pushed** branch (exit 2 otherwise — push it, don't rename it or point the
   field somewhere else) and must be **repo-qualified**, because the backlog repo and the code repo
-  are not necessarily the same one. `--working-branch ''` clears it; a merge clears it by itself,
-  since the branch is gone.
-  **It does not yet replace `claim` — record BOTH.** `working-branch` is the successor to the claim
-  concept, but the claim mechanism is still live and still what `pick` reads: `pick` excludes on
-  assignee, so an item with a working branch and no claim stays in ready-work and a second actor
-  will take it. Until the claim retirement lands, setting a working branch is additional to
-  `claim <id>`, not instead of it.
-- **claim** (`accepted-by=@x` / clear) → `claim <id> [--claim-ttl S]` / `unclaim <id>`. Still the
-  mechanism `pick` reads (see `working-branch` above).
+  are not necessarily the same one. `--working-branch ''` clears it, and **nothing else ever does**:
+  no code path rewrites the field when a branch is merged or deleted, and none should — a merged
+  item's branch is the record of what shipped it. A merge makes the marker *inert* (the item leaves
+  ready-work on its status), it does not remove it. Do not "tidy" one away after a merge.
+  **This is how an item is taken. There is no `claim` op** — it is retired, along with `unclaim`,
+  the TTL and the assignee stamp. Setting the branch is the whole of taking an item, and `pick`
+  excludes on it, so nothing else has to be recorded. Nothing expires it: the branch's last commit
+  is the activity signal, which is why there is no TTL to configure and no reap to wait for.
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
   `unlink …`.
 - **a free note** → `comment <id> --body B`.
@@ -180,11 +184,24 @@ already holds that timestamp from elsewhere; the skill's normal path omits it. I
 whole `update` op, not to any one field above.
 
 ### pick
-`prawduct-hook backlog pick --repo <r> [--limit N] [--claim] [--claim-ttl S]` → the adapter returns
-ranked ready-work (impact/effort fan-out, blocker-aware, excludes claimed). Render 1–3 candidates + a
-one-line *why*. Keep the skill's framing on top: **build-plan overlap** (read `active_build_plan`,
-surface overlapping candidates first) and **stage-aware routing** (don't present an early-stage item
-as buildable). `--claim` soft-claims the top pick.
+`prawduct-hook backlog pick --repo <r> [--limit N] [--include-working]` → the adapter returns
+ranked ready-work (blocker-aware; items carrying a `working-branch` are excluded). Render 1–3
+candidates + a one-line *why*. Keep the skill's framing on top: **build-plan overlap** (read
+`active_build_plan`, surface overlapping candidates first) and **stage-aware routing** (don't
+present an early-stage item as buildable). `--include-working` adds back the items someone is on,
+each naming its branch, for when you deliberately want to see contested work.
+
+`pick` takes nothing. Recording that you are on an item is
+`update <id> --working-branch owner/repo@branch`, after the branch is pushed — a separate,
+deliberate act, so a `pick` that only wanted to *look* never marks anything.
+
+**The candidates come from the local cache, and the answer says how old it is.** `pick`
+revalidates first (a conditional request, free in the steady state) and then reads the store, so
+its `warnings` carry the store's confirmed-at stamp and age; if the revalidation failed, a warning
+says so too and the answer is the last good one rather than a fresh one. Blockers are the
+exception — they are read live on every call, because a blocker can live in a repo the cache does
+not hold. Surface the age when you render: a stale answer presented as a current one is the failure
+the visible age exists to prevent.
 
 ## Deferred operations — search-dependent (land when backend search does)
 

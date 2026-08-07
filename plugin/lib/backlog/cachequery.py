@@ -21,6 +21,13 @@ is deliberately small: open-item listing with text, grouping and counting by
 filtering, text search scoped to an area, and two date predicates. Each names
 the consumers it serves, so a column no function reads is a dead field and a
 function no consumer names is an invention.
+
+One function here serves a consumer Cache Spec §2 does not enumerate:
+:func:`ready_items`, whose consumer is ``query.pick``. §2 inventories the readers
+that went *dormant* at the cutover, and `pick` never did — it has always run live.
+It is named here rather than left implicit because the same rule applies to it as
+to the other fifteen: it exists because a consumer asks for it, and if that
+consumer stops asking, it goes.
 """
 
 from __future__ import annotations
@@ -500,6 +507,98 @@ def unstaged_items(project_dir: Path, *, scope: str, now: datetime) -> dict:
                 "AND (stage IS NULL OR stage = '') ORDER BY id",
                 OPEN_STATUSES,
             )
+        }
+
+    return _serve(project_dir, scope=scope, now=now, query=query)
+
+
+# --- ready work: the candidate set behind `pick` ------------------------------
+
+
+def _like_prefix(value: str) -> str:
+    """``value`` escaped for use as a literal LIKE prefix.
+
+    A repo name cannot contain ``%`` or ``_`` today, so this guards a case that
+    cannot arise — which is the point: the alternative is a scope filter whose
+    correctness depends on a fact about GitHub's naming rules that nothing here
+    checks and no provider is bound by.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def ready_items(
+    project_dir: Path, *, scope: str, now: datetime, include_working: bool = False
+) -> dict:
+    """Open ``stage: ready`` items, oldest first — the candidate set ``pick`` ranks.
+
+    This is the query that discharges `pick`'s cost problem. The predicate it
+    replaces was a paginated full scan of every open issue on every invocation,
+    measured at ~12.4s against ~209 issues; here it is one indexed read of local
+    rows, and `pick`'s remaining network cost is the blocker fan-out alone, taken
+    lazily and bounded by the caller's limit.
+
+    **What is NOT here is the point of it.** There is no blocker predicate: a
+    blocker may live in another repo, this store holds exactly one, and a cached
+    edge could record only that a dependency existed — never whether it is still
+    open. `pick` reads dependencies live and this query deliberately cannot help
+    it, which is why no table here holds them.
+
+    **``working_branch`` populated means someone is on it**, so such items are out
+    of the candidate set by default. There is no expiry: the branch's own commit
+    history is the activity signal, and `pick` surfaces the branch name so a human
+    judges whether a three-week-old branch is abandoned. Ageing the branch inside
+    this query would put a git call — against a ref in a possibly-different,
+    possibly-unfetched repo — inside the hot path this query exists to empty, and
+    would rebuild the stored-expiry policy the branch field replaced. The
+    asymmetry backs the default: a wrongly-excluded item costs one
+    ``include_working=True`` re-run, a wrongly-included one costs two people one
+    item.
+
+    ``include_working=True`` widens the set rather than inverting it — the excluded
+    items are added back, each still carrying its ``working_branch``, because a
+    caller asking to see contested work needs to see who it is contested with.
+
+    **Open-but-redirected items are dropped**, which is why this is the one
+    listing query that reads bodies. An item merged away carries ``superseded_by``
+    in its block and stays briefly open — the window between a merge's redirect
+    write and its close — and offering it as ready work sends someone to build
+    against a record that has already moved. The block is the only place that
+    fact lives, so the body has to come back with the row; the set is small
+    (``stage: ready`` alone), so this is cheap where it would not be on the
+    corpus-wide listings.
+    """
+
+    def query(conn: sqlite3.Connection) -> dict:
+        # **Scoped to `scope`, unlike every other query here, and the asymmetry is
+        # deliberate.** The `item` table has no scope column — the store holds one
+        # repo by design (Cache Spec F4) — so the other consumers read it whole and
+        # `_serve` uses `scope` only to age the answer. `pick` cannot afford that
+        # assumption, because it hands each candidate's issue *number* to a live
+        # blocker read against the caller's owner/repo: a row from another scope
+        # would be judged against whatever issue this repo happens to have at that
+        # number, and a blocked item could come back clear. That is the QRY-2
+        # negative failing by a second route, so the predicate is applied rather
+        # than assumed. Ids are canonical (`owner/repo#number`) by construction, so
+        # the prefix match is exact.
+        sql = (
+            f"SELECT {_select(_FULL_COLUMNS)} FROM item "
+            f"WHERE id LIKE ? ESCAPE '\\' "
+            f"AND status IN ({_open_placeholders()}) AND stage = ?"
+        )
+        if not include_working:
+            sql += " AND (working_branch IS NULL OR working_branch = '')"
+        # Oldest first, which is the tie-break `pick` ranks on. Ordered as an
+        # instant rather than as a string for the reason `_instant` records: one
+        # moment has two spellings and the lexicographic answer between them is
+        # not the chronological one.
+        rows = _rows(
+            conn,
+            sql + f" ORDER BY {_instant('created_at')}, id",
+            (_like_prefix(scope) + "#%", *OPEN_STATUSES, encode.READY_STAGE),
+        )
+        return {
+            "items": [r for r in rows if not encode.parse_block(r.get("body")).superseded_by()],
+            "include_working": include_working,
         }
 
     return _serve(project_dir, scope=scope, now=now, query=query)

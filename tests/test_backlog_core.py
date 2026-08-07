@@ -363,23 +363,13 @@ class TestMutatorsByPfxAlias:
         assert got["status"] == "ok", got
         assert got["data"]["item"] == f"{OWNER}/{REPO}#{number}"
 
-    def test_claim_and_unclaim_resolve_a_bare_pfx(self, fake):
-        number = self._seed_alias(fake)
-        claimed = core.claim(fake, id_raw=self.PFX, default_repo=(OWNER, REPO))
-        assert claimed["status"] == "ok", claimed
-        assert claimed["data"]["id"] == f"{OWNER}/{REPO}#{number}"
-        released = core.unclaim(fake, id_raw=self.PFX, default_repo=(OWNER, REPO))
-        assert released["status"] == "ok", released
-        assert released["data"]["assignee"] is None
-
     @pytest.mark.parametrize(
         "call",
         [
             lambda f, pfx: core.set_status(f, id_raw=pfx, target="in-progress"),
             lambda f, pfx: core.update_item(f, id_raw=pfx, fields={"title": "core: the x item under test"}),
             lambda f, pfx: core.comment_item(f, id_raw=pfx, body="x"),
-            lambda f, pfx: core.claim(f, id_raw=pfx),
-            lambda f, pfx: core.unclaim(f, id_raw=pfx),
+            lambda f, pfx: core.link(f, id_raw=pfx, edge="related", target_raw="BKL-0000"),
         ],
     )
     def test_bare_pfx_without_a_repo_is_a_clear_validation_error(self, fake, call):

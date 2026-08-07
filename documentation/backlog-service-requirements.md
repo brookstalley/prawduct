@@ -108,9 +108,18 @@ MUST unless marked SHOULD.
   item. (Kills BKL-7M4Q by construction.)
 - **CC2** No lost updates: concurrent edits either merge field-wise or fail cleanly for retry;
   state transitions are check-and-set.
-- **CC3** Claims are strongly consistent: claiming an item is an atomic take, visible immediately —
+- **CC3** *Claims are strongly consistent: claiming an item is an atomic take, visible immediately —
   upgrading today's advisory `accepted-by:`. Claims carry actor + timestamp; staleness is visible;
-  reaping stays a policy/human call.
+  reaping stays a policy/human call.*
+  **SUPERSEDED (W1, 2026-08-07) — the requirement was met and then found to be the wrong one.** The
+  atomic take shipped (assignee + `claimed_at` + a staleness TTL + a reap tier) and is retired whole.
+  What replaces it is `working-branch: owner/repo@branch`: a pushed branch says someone is on the
+  item, and its own last commit answers the question the TTL was guessing at — *is that work still
+  alive?* — so no timestamp is stored, no expiry policy is configured and nothing is reaped. Strong
+  consistency is **not** claimed and was never delivered: the take-and-verify carried a documented
+  residual race, and this makes a double-take **visible** rather than impossible. The markdown
+  backend keeps `accepted-by:` — it has no pushed ref to name, and none of the three mechanisms this
+  supersession removes were ever in it.
 - **CC4** Every mutation records actor identity — which human, or which agent acting for whom, from
   which project/session — kept as per-item history. Git's free audit log gets replaced, not lost.
 - **CC5** The adapter tolerates and reconciles **out-of-band human edits** made directly in the
@@ -261,8 +270,9 @@ state; it remains the interim supported path until the GitHub-issue path is buil
 
 - **GV1** `/prawduct:backlog` keeps its UX contract (pick/add/find/list/update/dedup) as a thin
   wrapper over the service. `pick`'s stage-aware routing and build-plan awareness survive unchanged,
-  including its **default exclusion of in-flight (in-progress) and claimed items** — `pick` surfaces
-  ready, unclaimed work unless explicitly asked otherwise.
+  including its **default exclusion of in-flight (in-progress) items and items someone is already on**
+  — post-cutover that is a populated `working-branch` (`--include-working` asks otherwise); on the
+  markdown backend it is `accepted-by:` (`--include-claimed`).
 - **GV2** Session briefing reads counts from the local cache (AG4), refreshed asynchronously —
   session start never waits on the network.
 - **GV3** Ship **traceability** replaces ship **atomicity**: closing an item still records

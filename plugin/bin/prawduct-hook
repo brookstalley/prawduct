@@ -5391,6 +5391,10 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # necessary for a local write — `export` and `restructure-preview` take
     # none and write to caller-supplied `--to`/`--out` paths, which is why they
     # sit in `_BACKLOG_LOCAL_WRITE_OPS` below alongside the two that do.
+    # `pick` stays read-only although it revalidates the backlog cache on its way
+    # in. The cache lives under `--git-common-dir`, which every worktree of a
+    # clone shares by construction, so that write lands in the clone and not in
+    # this tree — it cannot strand, which is the only question this guard asks.
     "backlog": frozenset({"get", "show", "list", "counts", "pick", "verify-migration"}),
 }
 
@@ -5450,8 +5454,7 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
     if read_only_ops is not None:
         op = _first_positional(argv)
         if op in read_only_ops:
-            # `backlog pick --claim` writes a claim; the bare form only reads.
-            return op == "pick" and "--claim" in argv
+            return False
         return True
     return True
 

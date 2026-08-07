@@ -110,13 +110,20 @@ def post_cutover(state: ProjectState) -> bool:
     frozen history and any nudge derived from it would be stale by construction.
     Shared across probe families (this module's **four** markdown probes —
     ``legacy-backlog-format``, ``backlog-service-migration-required``,
-    ``legacy-section-schema``, ``backlog-overdue-grooming`` — AND the
-    ``norm_probes`` trio that reads item liveness from the same file: one
-    predicate, not per-module copies). ``external-backlog-detected`` keeps
-    firing: stray TODO.md files are a problem regardless of where the real
+    ``legacy-section-schema``, ``backlog-overdue-grooming`` — AND
+    ``norm_probes.probe_revisit_due``, which reads exception clocks from the same
+    file: one predicate, not per-module copies). ``external-backlog-detected``
+    keeps firing: stray TODO.md files are a problem regardless of where the real
     backlog lives.
 
-    Note the partition: those seven consumers *retire* on this switch, while
+    **Two former callers now use it to CHOOSE a backend rather than to retire.**
+    ``norm_probes``' ``dead-why`` and ``stalled-transition`` resolve their
+    citations against the markdown file before the cutover and against the backlog
+    cache after it, so for them this predicate selects a reader instead of
+    silencing one. Anyone adding a guard here should decide which of the two
+    shapes they are writing.
+
+    Note the partition: those five consumers *retire* on this switch, while
     :func:`probe_checks_dormant` is the one consumer that **fires** on it — it
     exists to say out loud what the others' silence would otherwise hide."""
     return bool(state.get("backlog_service_repo"))
@@ -309,9 +316,18 @@ DORMANT_CHECKS = (
     (("skills/critic/review-cycle.md",), "its four backlog hygiene checks"),
     (("skills/pr/review-protocol.md",), "the PR reviewer's two backlog consistency checks"),
     (("skills/janitor/SKILL.md",), "the janitor's Backlog Health block"),
-    (("lib/norm_probes.py",), "norm-exception revisit-date expiry"),
-    (("lib/norm_probes.py",), "dead-why detection"),
-    (("lib/norm_probes.py",), "stalled-transition detection"),
+    # Two `lib/norm_probes.py` rows stood here — dead-why and stalled-transition —
+    # and both are gone because neither is dormant any more: they resolve their
+    # citations through the backlog cache on both backends now.
+    #
+    # **The third norm-probe row, `revisit-due`, was never on this list**, and its
+    # absence is the distinction this list turns on. It is dark post-cutover too,
+    # but nothing here can end that: `revisit:` records intent (*granted until
+    # date X*), which no age-based query can reconstruct, so what it waits on is a
+    # WRITE path for the field on the Issues backend, not a read path. This
+    # advisory promises that its members "return when the backlog read-through
+    # cache lands"; listing a check the cache cannot restore would make that
+    # promise false for one of them.
 )
 
 
@@ -322,15 +338,18 @@ def probe_checks_dormant(state: ProjectState, codebase: Codebase):
     but the *other* backlog readers do not: the Critic's Backlog Reconciliation and
     C-B1--C-B4, the PR reviewer's R-1/R-2, and the janitor's Backlog Health block all
     read ``.prawduct/backlog.md`` — which is frozen history once a project cuts over.
-    Alongside them, three norm-lifecycle probes (``revisit-due``, ``dead-why``,
-    ``stalled-transition``) guard on cutover and return nothing at all.
 
-    Both failure shapes are *silent*: a reader that reports confident findings from
-    frozen markdown, and a probe that returns ``[]``, are indistinguishable from a
-    clean bill of health. That silence is what GV8 exists to prevent — a norm
-    exception that stops expiring visibly is a silent norm departure. Until the
-    read-through cache lands (W1) and these readers are restored against it, the
-    dormancy itself is the thing to say out loud.
+    A reader that reports confident findings from frozen markdown is *silent* in
+    the way that matters: its output is indistinguishable from a clean bill of
+    health. That silence is what GV8 exists to prevent. Until each reader is
+    restored against the backlog cache, the dormancy itself is the thing to say
+    out loud — and as each one lands, its row leaves :data:`DORMANT_CHECKS` and
+    this advisory shrinks rather than being reworded.
+
+    **What this list is NOT is every dark check.** Its ``recommended_action``
+    promises the cache restores its members, so a check the cache cannot restore
+    does not belong here even when it is equally silent post-cutover — see the
+    note at :data:`DORMANT_CHECKS` about the ``revisit-due`` probe.
 
     One consolidated advisory rather than one per dormant check: one nag per dormant
     reader, for a single known and time-boxed cause, trains dismissal — and dismissal

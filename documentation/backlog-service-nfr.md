@@ -121,7 +121,7 @@ Charged against the API contract §2 surface. A **write also costs 5 REST points
 | `comment` | **content** | 1 creation | why verification is **not** a comment (M6) |
 | `get` / `list` / `pick` / `counts` / `rollup` | core (1 pt each) | 1+ reads | 304-revalidatable; warm cache = **0** |
 | `search` | **cache-served = 0**, or the **search endpoint** for `--semantic` | 0 (lexical/fulltext) / 1 semantic call | lexical/fulltext are cache-served (read-your-writes; Data Model §6); only `--semantic` spends the separate search pool (§3.1) — **not** core, **not** 304-revalidatable |
-| `update` (body/labels) · `status` · `claim`/`unclaim` · `link`/`unlink` · `verify` · `merge` | core + 5 pts | 1–3 calls | **not** creations — label/state/body edits (incl. `merge`'s `superseded-by:` redirect) |
+| `update` (body/labels — incl. `working-branch`) · `status` · `link`/`unlink` · `verify` · `merge` | core + 5 pts | 1–3 calls | **not** creations — label/state/body edits (incl. `merge`'s `superseded-by:` redirect) |
 | `attach` | core (+ **?**) | release/git-data calls | whether **release creation** counts against the content cap is **unverified** — confirm at build (S5-adjacent) |
 
 **Inference caveat (honest confidence).** GitHub documents the secondary cap only as "content-generating
@@ -192,7 +192,7 @@ mirror for speed (the §13-2 adversarial correction; AG5 explicitly "does not ma
 
 | Path | Target (p95) | Floor / Accel | Measured by | Status |
 |---|---|---|---|---|
-| **CRUD write** (`file`/`update`/`status`/`claim`) | **< 2 s** | **floor** | build probe: N ops, record p95 latency | target |
+| **CRUD write** (`file`/`update`/`status`) | **< 2 s** | **floor** | build probe: N ops, record p95 latency | target — `claim` was a fourth op on this row and is retired (W1); taking an item is an ordinary `update`, already priced here |
 | **Online read** (`get`/`list`, cacheless slice) | **< 1.5 s** (one live round-trip) | **floor** | same probe, read path | target — **derived** (a single live read should beat the 2 s write bound; 1.5 s is the observe-target, ratified/renegotiated by the build probe). **Not** the <500 ms figure — no cache in the slice |
 | **Warm cache read** (`get`/`list` hit) | **< 500 ms** | **accel** (needs P1 cache) | cache-hit microbench | target (AG5) — an *accelerated* number, honestly not a slice guarantee |
 | **`pick`** (list-then-fan-out) | **O(limit) × read-latency** on top of the `_all_issues` full-scan, which dominates | **floor** (N+1 REST) | **SETTLED** by S2 — no longer open | **settled 2026-07-28.** The batched-GraphQL path this row assumed was **never built** (no GraphQL exists in `plugin/lib/backlog/`); the fan-out is N+1 REST over `gh`. S2 measured ~12.4 s at ~209 issues, ~6× this floor, dominated by the paginated full-scan rather than the per-candidate reads. The < 2 s floor is therefore **W1-gated** (raw-HTTP fast-path or a scoped candidate query), not slice-native. Chunk 05b bounded the fan-out by `limit`, which removes its contribution from the tail but not the full-scan floor |

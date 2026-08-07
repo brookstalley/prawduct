@@ -508,8 +508,11 @@ This single key (API §2.4) repoints the session briefing to the GV2 snapshot
 (`snapshot.read`, file-only, visible age + detached refresh warm — never a
 synchronous network call) and retires every markdown-premise advisory probe
 (the backlog trio `legacy-backlog-format` / `legacy-section-schema` /
-`backlog-overdue-grooming` AND the norm trio `revisit-due` / `dead-why` /
-`stalled-transition` — the frozen file must not generate nudges). Retirement is
+`backlog-overdue-grooming` AND the norm probe `revisit-due` — the frozen file
+must not generate nudges). **Two former members of that list now switch backends
+rather than retiring**: `dead-why` and `stalled-transition` resolve their
+citations against the backlog cache on the far side, so cutover changes where
+they read, not whether. Retirement is
 not silence: one probe starts firing at the same switch —
 `backlog-checks-dormant`, an `info` advisory naming every backlog check that has
 no Issues-backend path yet, so the operator running this scrub learns what goes

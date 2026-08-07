@@ -26,12 +26,32 @@ PLUGIN = Path(__file__).resolve().parents[1] / "plugin"
 BACKLOG_SKILL = PLUGIN / "skills" / "backlog" / "SKILL.md"
 
 # The everyday ops the skill actually drives (SKILL.md + adapter-mode.md): reads,
-# item edits, claims, and edge links. `update` routes to comment/link/unlink, so
-# those ride the everyday grant too.
+# item edits, and edge links. `update` routes to comment/link/unlink, so those
+# ride the everyday grant too — and it is also where taking an item now happens
+# (`--working-branch`), which is why `claim`/`unclaim` are not on this list.
 EVERYDAY_OPS = (
     "file", "get", "status", "update", "comment",
-    "list", "pick", "counts", "claim", "unclaim", "link", "unlink",
+    "list", "pick", "counts", "link", "unlink",
 )
+
+# Every op name the CLI no longer dispatches. A grant, a documented flag, or a
+# usage line naming one of these is a HALF retirement: the CLI would exit
+# "unknown op" while the skill went on telling a reader to run it, and the unit
+# suite would stay green throughout because nothing imports prose. That gap is
+# exactly what the code-and-prose pairing exists to close, so it is asserted
+# here rather than trusted.
+RETIRED_OPS = ("claim", "unclaim")
+
+# Adapter flags only. `--include-claimed` is deliberately NOT here: the retirement
+# is scoped to the **Issues adapter**, whose `claim` op collapsed an assignee take,
+# a `claimed_at` stamp and a staleness TTL into one `working-branch` field. The
+# markdown backend has none of those three — `accepted-by:` is a line in a file —
+# and `working-branch` would require a pushed ref and a named repo, which a
+# local-only repo or a shared-trunk team cannot supply. So the markdown prose keeps
+# `accepted-by:`/`--include-claimed` and the adapter prose uses
+# `working-branch`/`--include-working`: one field per backend, each native to its
+# substrate.
+RETIRED_FLAGS = ("--claim", "--claim-ttl")
 
 # The one-shot, owner-confirmed migration ops. Left OUT of the grant on purpose so
 # they prompt (BKL-5N9W). `merge` is dual-use (dedup also folds), but its blast
@@ -179,3 +199,32 @@ def test_no_model_invocable_skill_grants_an_irreversible_op():
         "a model-invocable skill permits a high-consequence scrub op no-prompt — these "
         "must prompt at the migration write (BKL-5N9W):\n  - " + "\n  - ".join(leaked)
     )
+
+
+def test_no_retired_op_survives_in_the_skill_prose():
+    """The half-retirement guard. A reader follows the skill, not the source."""
+    from lib.backlog import cli
+
+    surfaces = sorted((PLUGIN / "skills" / "backlog").glob("*.md"))
+    assert surfaces, "no backlog skill surfaces found"
+
+    dispatched = set(cli._ALL_OPS)
+    offences: list[str] = []
+    for op in RETIRED_OPS:
+        assert op not in dispatched, f"{op!r} is still dispatched — this test is out of date"
+        for surface in surfaces:
+            for lineno, line in enumerate(surface.read_text(encoding="utf-8").splitlines(), 1):
+                # An op is only *invoked* when it follows the adapter's own name
+                # or sits in a grant. Prose that merely says the word — "there is
+                # no `claim` op", which is the sentence the retirement had to
+                # write — is not an instruction to run one.
+                for form in (f"backlog {op} ", f"backlog {op}<", f"`{op} <id>`"):
+                    if form in line:
+                        offences.append(f"{surface.name}:{lineno} invokes retired op {op!r}")
+    for flag in RETIRED_FLAGS:
+        for surface in surfaces:
+            for lineno, line in enumerate(surface.read_text(encoding="utf-8").splitlines(), 1):
+                if flag in line:
+                    offences.append(f"{surface.name}:{lineno} documents retired flag {flag!r}")
+
+    assert not offences, "retired claim surface still in the skill prose:\n  - " + "\n  - ".join(offences)

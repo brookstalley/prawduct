@@ -24,12 +24,13 @@ import sys
 from . import context, core, ids, query
 
 # GitHub-mutating ops — refused under an untrusted-triggered Actions run absent an
-# explicit triggering-actor authorization check (SEC-5). Reads, ``counts``, and
-# ``refresh-counts`` (a read + a local snapshot write) are never withheld —
+# explicit triggering-actor authorization check (SEC-5). Reads, ``counts``,
+# ``refresh-counts`` and ``sync`` (reads plus a local write) are never withheld —
 # read-only reporting under such triggers is fine (Security §1b). ``pick`` is a
-# write only with ``--claim`` (handled in ``_is_write``).
+# read on every path now that it takes nothing: it revalidates the local store and
+# ranks, and mutates nothing on the provider.
 _WRITE_OPS: frozenset[str] = frozenset(
-    {"file", "status", "update", "comment", "claim", "unclaim",
+    {"file", "status", "update", "comment",
      "link", "unlink", "provision", "reconcile-labels", "import", "merge"}
 )
 
@@ -46,7 +47,7 @@ _WRITE_OPS: frozenset[str] = frozenset(
 _ALL_OPS: tuple[str, ...] = (
     "file", "get", "show", "status", "update", "comment", "list", "pick",
     "counts", "verify-migration", "refresh-counts", "reconcile-labels",
-    "claim", "unclaim", "link", "unlink", "provision", "import",
+    "link", "unlink", "provision", "import",
     "restructure-preview", "export", "merge", "sync",
 )
 
@@ -57,8 +58,11 @@ _EXIT_CLASS: dict[str, int] = {
     "alias_collision": 2,
     "unsupported": 2,
     "not_found": 3,
+    # 4 is `conflict`, and `update`'s optimistic-CAS path is what produces it. A
+    # `claim_conflict` value produced it too until the claim op was retired; the
+    # CODE keeps its meaning, which is what the additive-first contract protects —
+    # retiring one producer of a code is not repurposing the code.
     "conflict": 4,
-    "claim_conflict": 4,
     "auth": 5,
     "unavailable": 6,
     "rate_limited": 6,
@@ -84,13 +88,14 @@ _HELP = (
     "[--per-page N] [--page N] [--untriaged]\n"
     "           --untriaged inverts the scope filter: shows only issues with no "
     "prawduct labels or block\n"
-    "  pick     --repo owner/repo [--limit N] [--claim] [--claim-ttl SECONDS]\n"
+    "  pick     --repo owner/repo [--limit N] [--include-working]\n"
+    "           ready work, ranked; items naming a `working-branch` are excluded "
+    "unless --include-working\n"
     "  counts   --repo owner/repo\n"
     "  refresh-counts   --repo owner/repo   (derive + persist the briefing snapshot)\n"
     "  sync     --repo owner/repo [--rebuild]   (populate the local cache; "
     "incremental unless --rebuild)\n"
-    "  claim    <id> [--repo owner/repo] [--claim-ttl SECONDS]\n"
-    "  unclaim  <id> [--repo owner/repo]\n"
+
     "  link     <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  unlink   <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  provision --repo owner/repo\n"
@@ -163,7 +168,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         elif op == "list":
             result = _run_list(rest, transport)
         elif op == "pick":
-            result = _run_pick(rest, transport)
+            result = _run_pick(rest, transport, project_dir)
         elif op == "counts":
             result = _run_counts(rest, transport)
         elif op == "verify-migration":
@@ -174,10 +179,6 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
             result = _run_sync(rest, transport, project_dir)
         elif op == "reconcile-labels":
             result = _run_reconcile_labels(rest, transport)
-        elif op == "claim":
-            result = _run_claim(rest, transport)
-        elif op == "unclaim":
-            result = _run_unclaim(rest, transport)
         elif op in ("link", "unlink"):
             result = _run_link(op, rest, transport)
         elif op == "provision":
@@ -415,9 +416,9 @@ def _run_list(rest: list[str], transport):
     )
 
 
-def _run_pick(rest: list[str], transport):
+def _run_pick(rest: list[str], transport, project_dir):
     flags, _positionals, err = _parse_flags(
-        rest, valued={"repo", "limit", "claim-ttl"}, boolean={"claim"}
+        rest, valued={"repo", "limit"}, boolean={"include-working"}
     )
     if err:
         return core.error("validation", err)
@@ -428,18 +429,16 @@ def _run_pick(rest: list[str], transport):
     limit, err = _int_flag(flags, "limit", 1)
     if err:
         return core.error("validation", err)
-    ttl, err = _int_flag(flags, "claim-ttl", core.DEFAULT_CLAIM_TTL_SECONDS)
-    if err:
-        return core.error("validation", err)
     transport = _resolve_transport(transport)
+    from pathlib import Path  # noqa: PLC0415 — only the store-backed ops need a path
+
     return query.pick(
         transport,
+        project_dir=Path(project_dir),
         owner=owner,
         repo=repo,
         limit=limit,
-        claim="claim" in flags,
-        claim_ttl_seconds=ttl,
-        default_owner=owner,
+        include_working="include-working" in flags,
     )
 
 
@@ -545,46 +544,6 @@ def _run_reconcile_labels(rest: list[str], transport):
     owner, repo = parsed
     transport = _resolve_transport(transport)
     return core.reconcile_labels(transport, owner=owner, repo=repo)
-
-
-def _run_claim(rest: list[str], transport):
-    flags, positionals, err = _parse_flags(rest, valued={"repo", "claim-ttl"})
-    if err:
-        return core.error("validation", err)
-    if not positionals:
-        return core.error("validation", "claim requires an <id>")
-    default_owner, default_repo, err = _repo_defaults(flags)
-    if err:
-        return core.error("validation", err)
-    ttl, err = _int_flag(flags, "claim-ttl", core.DEFAULT_CLAIM_TTL_SECONDS)
-    if err:
-        return core.error("validation", err)
-    transport = _resolve_transport(transport)
-    return core.claim(
-        transport,
-        id_raw=positionals[0],
-        default_owner=default_owner,
-        default_repo=default_repo,
-        claim_ttl_seconds=ttl,
-    )
-
-
-def _run_unclaim(rest: list[str], transport):
-    flags, positionals, err = _parse_flags(rest, valued={"repo"})
-    if err:
-        return core.error("validation", err)
-    if not positionals:
-        return core.error("validation", "unclaim requires an <id>")
-    default_owner, default_repo, err = _repo_defaults(flags)
-    if err:
-        return core.error("validation", err)
-    transport = _resolve_transport(transport)
-    return core.unclaim(
-        transport,
-        id_raw=positionals[0],
-        default_owner=default_owner,
-        default_repo=default_repo,
-    )
 
 
 def _run_link(op: str, rest: list[str], transport):
@@ -846,10 +805,13 @@ def _read_source(path_str: str, flag: str) -> tuple[str | None, str | None]:
 
 def _is_write(op: str, rest: list[str]) -> bool:
     """Whether ``op`` performs a GitHub mutation (subject to the SEC-5 withhold).
-    ``pick`` mutates only with ``--claim``; everything else is fixed by op name."""
-    if op in _WRITE_OPS:
-        return True
-    return op == "pick" and "--claim" in rest
+
+    Fixed by op name. It once had a flag-sensitive arm — ``pick --claim`` was the
+    one read that could mutate — and it went with the claim op; the signature
+    keeps ``rest`` because the withhold decision is the kind that grows an arm
+    again the moment an op takes a mutating flag, and re-threading the argument at
+    that point is how the check gets skipped instead."""
+    return op in _WRITE_OPS
 
 
 def _resolve_transport(transport):
@@ -1224,7 +1186,7 @@ def _print_human_ok(data) -> None:
         if data.get("assignee"):
             bits.append(f"assignee={data['assignee']}")
         if data.get("working_branch"):
-            # The claim signal, and visibility is its ONLY job — a populated
+            # The someone-is-on-it signal, and visibility is its ONLY job — a populated
             # `working-branch` that the default human view omits fails at exactly
             # the thing the field exists for. `tags` and `affected` are not here
             # for the same reason `area`/`effort`/`impact` are not: they are read

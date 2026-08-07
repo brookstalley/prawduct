@@ -1,30 +1,30 @@
 """Query — structured ``list``, ready-work ``pick``, and derived ``counts``.
 
-The read side of the adapter (API §2.2). All three run **online off the REST
-list endpoint** with **no cache** (Q1-structured, strongly consistent in
+The read side of the adapter (API §2.2). ``list`` and ``counts`` run **online off
+the REST list endpoint** with **no cache** (Q1-structured, strongly consistent in
 practice — a just-written item appears immediately; the rare brief post-create
 window is handled by the caller's bounded settle-retry, ``core.get_item``).
+``pick`` is the one read that is cache-backed, and the paragraph below is the
+whole of what that costs and buys.
 
 - ``list_items`` — structured field/label filters + sort + paginate, one page as
   the caller requests. Applies the **PROV-2** filter: a plain repo issue carrying
   no prawduct marker is out-of-scope (ignored, not malformed).
-- ``pick`` — stage-aware ready-work (Data Model §4): candidates are
-  ``open ∧ stage:ready``, then two predicates that are *not* list filters are
-  applied — "no **live** claim" (an assignee whose ``claimed_at`` is past the
-  staleness TTL is reap-eligible, not a live claim), which is free once the item
-  is decoded, and the blocker predicate (native dependencies, read live so a
-  cross-repo blocker is judged correctly), which costs one REST read per issue.
-  The claim predicate and the ranking are therefore resolved first, and the
-  dependency **fan-out is taken lazily down the ranking**, stopping at ``limit``.
-  Returns ranked candidates each with a *why* that distinguishes *no
-  dependencies recorded* from *all recorded dependencies closed*.
+- ``pick`` — stage-aware ready-work (Data Model §4). Candidates come from the
+  local store (``cachequery.ready_items``: ``open ∧ stage:ready ∧ no working
+  branch``) after a **revalidating sync**, and the blocker predicate is then
+  applied from a **live** read so a cross-repo blocker is judged correctly. The
+  ranking is resolved first and the dependency **fan-out taken lazily down it**,
+  stopping at ``limit``. Returns ranked candidates each with a *why* that
+  distinguishes *no dependencies recorded* from *all recorded dependencies
+  closed*.
 - ``counts`` — per-project rollups derived **on read** (never persisted; the GV2
   briefing snapshot in :mod:`snapshot` is a separate op).
 
 Layering: this module sits **above** ``core`` — it reuses core's envelope
-(``ok``/``error``) and the ``pick --claim`` path delegates to ``core.claim`` so
-the atomic take-and-verify lives in exactly one place. It never touches a model
-(INV-1) and never shells out except through ``transport`` (the sole egress).
+(``ok``/``error``). It never touches a model (INV-1) and never shells out except
+through ``transport`` (the sole egress); the store it reads is reached only
+through ``cachequery``, which is the same discipline one layer over.
 """
 
 from __future__ import annotations
@@ -35,7 +35,6 @@ from pathlib import Path
 
 from . import encode, snapshot
 from .core import (
-    DEFAULT_CLAIM_TTL_SECONDS,
     error,
     from_transport_error,
     log_diag,
@@ -184,90 +183,106 @@ def list_items(
 def pick(
     transport: Transport,
     *,
+    project_dir: Path,
     owner: str,
     repo: str,
     limit: int = 1,
-    claim: bool = False,
-    claim_ttl_seconds: int = DEFAULT_CLAIM_TTL_SECONDS,
+    include_working: bool = False,
     now: datetime | None = None,
-    default_owner: str | None = None,
 ) -> dict:
-    """Ready-work ``pick`` (GV1/DM3/CC3): the correct set, ranked, with a *why*.
+    """Ready-work ``pick`` (GV1/DM3): the correct set, ranked, with a *why*.
 
-    Ready-work = ``open ∧ stage:ready ∧ (unassigned ∨ claim past TTL) ∧ all
-    blockers closed``. The first two predicates are REST list filters; the
-    assignee/TTL predicate is applied per decoded item (cheap, no I/O); the
-    blocker predicate is a per-issue REST fan-out whose states are read **live**,
-    so a cross-repo blocker is judged correctly and never picked while open.
+    Ready-work = ``open ∧ stage:ready ∧ no working branch ∧ all blockers
+    closed``. The first three come from the local store in one indexed read; the
+    fourth is a per-issue REST fan-out whose states are read **live**, so a
+    cross-repo blocker is judged correctly and never picked while open.
 
-    Candidates rank fresh-unassigned before reap-eligible, then oldest issue
-    first — **and the ranking is computed before the fan-out runs**, so the
-    dependency reads are taken lazily down the ranking and stop once ``limit``
-    is filled. Ranking is independent of blocker state, so the result set is the
-    same either way; the ordering matters only for cost, which is otherwise one
-    REST call per eligible issue on every call regardless of ``limit``.
+    **The split is deliberate and is the design, not an optimisation.** The
+    candidate predicate is a property of the items themselves, which the store
+    mirrors faithfully and a sync brings level; the blocker predicate is a
+    property of *other* items, possibly in another repo this store does not hold.
+    A cached edge could record only that a dependency existed, never whether it is
+    still open — so a stale store must not be able to let a blocked item through,
+    and here it structurally cannot, because it is never asked.
+
+    **Freshness: a revalidating sync runs first.** `pick` is the closest thing in
+    this adapter to a decision-driving read, and the freshness contract for one is
+    that it is never more than a conditional request behind. In the steady state
+    that request is a 304 costing zero rate-limit points. When it fails — offline,
+    rate-limited, an unreachable provider — the store is still served, with the
+    failure and the store's visible age both reported as warnings: degraded and
+    *said*, never silently stale, and never silently empty (an unreachable store
+    is an ``unavailable`` envelope, not an empty candidate list).
+
+    Candidates rank oldest first, **and the ranking is computed before the fan-out
+    runs**, so the dependency reads are taken lazily down the ranking and stop
+    once ``limit`` is filled. Ranking is independent of blocker state, so the
+    result set is the same either way; the ordering matters only for cost, which
+    is otherwise one REST call per eligible issue regardless of ``limit``.
 
     A candidate's ``why`` distinguishes *no dependencies recorded* from *all
     recorded dependencies closed* — see :func:`_blocker_clause` for why that
     distinction is not cosmetic.
 
-    With ``claim=True`` the top candidate is taken atomically via
-    :func:`core.claim` (take-and-verify); a lost race returns ``claim_conflict``
-    (non-fatal) so the caller re-picks.
+    ``include_working=True`` adds back the items someone is already working, each
+    carrying its branch in the ``why``, for a caller deliberately looking at
+    contested work.
     """
+    from . import cachequery, sync  # noqa: PLC0415 — lazy: only `pick` drives the store
+
     now = now or datetime.now(timezone.utc)
-    issues = all_issues(transport, owner, repo, state="open", labels=["stage:ready"])
-    if isinstance(issues, dict):  # an error envelope bubbled up from the fan-out
-        return issues
-
-    eligible: list[tuple[str, int, dict]] = []
+    scope = f"{owner}/{repo}"
     warnings: list[str] = []
-    for issue in issues:
-        if not encode.is_prawduct_issue(issue):
-            continue  # PROV-2
-        number = issue.get("number")
-        canonical = f"{owner}/{repo}#{number}"
-        item, decode_warnings = encode.decode_item(issue, canonical_id=canonical)
-        warnings.extend(decode_warnings)
 
-        if item.get("superseded_by"):
-            # Open-but-redirected: the CRASH-2 window between a merge's redirect
-            # write and its close. The item is merged-away — never ready work
-            # (BKL-5R2K); the merge re-run converges it to closed.
-            continue
+    revalidated = sync.incremental_sync(
+        transport, project_dir=project_dir, owner=owner, repo=repo, now=now
+    )
+    if revalidated.get("status") != "ok":
+        # Degrade to the store, and say so. The alternative — failing the call —
+        # would make an offline `pick` useless where a warm store can still answer
+        # it well; the alternative to *saying* so would be a silently stale answer,
+        # which is the failure this whole layer exists to end.
+        reason = (revalidated.get("error") or {}).get("message") or "unknown reason"
+        warnings.append(f"backlog not revalidated ({reason}); answering from the local cache")
 
-        eligibility = _claim_eligibility(item, now, claim_ttl_seconds)
-        if eligibility is None:
-            continue  # a live claim — not ready work
+    ready = cachequery.ready_items(
+        project_dir, scope=scope, now=now, include_working=include_working
+    )
+    if ready.get("status") != "ok":
+        return ready  # unavailable — never an empty candidate set
+    warnings.extend(ready.get("warnings") or [])
+    data = ready["data"]
+    warnings.append(
+        f"candidates read from the backlog cache, confirmed {data['synced_at']} "
+        f"(~{int(data['age_seconds'])}s old)"
+    )
 
-        candidate = dict(item)
-        candidate["reap_eligible"] = eligibility == "reap"
-        eligible.append((eligibility, number, candidate))
-
-    # Rank: prefer genuinely free work over reaping a stale claim, then oldest.
-    eligible.sort(key=lambda e: (e[2]["reap_eligible"], e[1] or 0))
-
-    # Then read dependencies lazily, in rank order, stopping once `limit` is
-    # filled. The ranking key does not depend on blocker state, so filtering
-    # before ranking (the previous shape) and ranking before filtering yield the
-    # identical result set — but this pays one dependency read per *selected*
-    # candidate instead of one per *eligible* one. That difference is the whole
-    # cost of `pick` on a large backlog: the reads are a per-issue REST fan-out,
-    # so the old shape charged the full backlog size on every call no matter how
-    # small the requested limit.
+    # Read dependencies lazily, in rank order, stopping once `limit` is filled.
+    # The ranking key does not depend on blocker state, so filtering before
+    # ranking and ranking before filtering yield the identical result set — but
+    # this pays one dependency read per *selected* candidate instead of one per
+    # *eligible* one.
     #
-    # One deliberate semantic change rides along: a dependency read that fails
-    # now surfaces only if `pick` actually needed that candidate. Previously any
-    # eligible issue's unreachable dependency failed the whole call, including
-    # issues ranked far below anything that would be returned. Failing the call
-    # over an item the caller was never going to see is worse than not looking —
-    # the predicate is still never *assumed* for a candidate that is returned,
-    # which is the property that matters.
+    # A dependency read that fails surfaces only if `pick` actually needed that
+    # candidate. Failing the call over an item the caller was never going to see
+    # is worse than not looking — the predicate is still never *assumed* for a
+    # candidate that is returned, which is the property that matters.
     candidates: list[dict] = []
     want = max(0, limit)
-    for eligibility, number, candidate in eligible:
+    for row in data["items"]:
         if len(candidates) >= want:
             break
+        number = _number_of(row["id"], scope=scope)
+        if number is None:
+            # A stored id this call cannot address — malformed, or belonging to a
+            # different repo. Reported rather than skipped silently: the blocker
+            # predicate is unanswerable for it, and returning it unchecked would
+            # be exactly the assumed-clear the fan-out exists to prevent. The
+            # query already filters by scope; this is the second half of the same
+            # guard, at the point where the number is about to be handed to a read
+            # against *this* call's owner/repo.
+            warnings.append(f"skipped {row['id']!r}: not an addressable issue id in {scope}")
+            continue
         try:
             blockers = transport.list_blocked_by(owner, repo, number)
         except TransportError as exc:
@@ -278,30 +293,35 @@ def pick(
         if any(b.get("state") != "closed" for b in blockers):
             continue  # an open blocker — not ready work
 
-        candidate["why"] = _why(eligibility, candidate, now, claim_ttl_seconds, blockers)
+        candidate = dict(row)
+        candidate["why"] = _why(candidate, blockers)
         candidates.append(candidate)
 
-    selected = candidates
+    return ok({"candidates": candidates, "count": len(candidates)}, warnings)
 
-    if claim and selected:
-        from . import core  # local import — query sits above core
 
-        top = selected[0]
-        claim_result = core.claim(
-            transport,
-            id_raw=top["id"],
-            now=now,
-            claim_ttl_seconds=claim_ttl_seconds,
-            default_owner=default_owner,
-        )
-        if claim_result.get("status") != "ok":
-            return claim_result  # claim_conflict / error surfaces for a re-pick
-        # Refresh the candidate with the post-claim item (fresh assignee +
-        # claimed_at), keeping the ranking annotations (why/reap_eligible).
-        top.update(claim_result.get("data") or {})
-        top["claimed"] = True
+def _number_of(canonical: str, *, scope: str) -> int | None:
+    """The issue number in ``canonical``, or ``None`` unless it belongs to ``scope``.
 
-    return ok({"candidates": selected, "count": len(selected)}, warnings)
+    Parsed rather than stored because the store holds prawduct's vocabulary and an
+    issue number is the provider's — the id is the one place the two already meet
+    (Cache Spec §4 rule 1: the id is whatever the provider assigned at creation).
+
+    **The scope check is the load-bearing half.** A bare number handed to
+    ``list_blocked_by(owner, repo, number)`` is judged against *this* call's repo,
+    so a row from another scope would have its blockers read from whatever issue
+    this repo happens to have at that number — and could come back clear while
+    genuinely blocked. The query is already scoped; this refuses to convert an id
+    into a number the moment the two could disagree, so neither guard has to be
+    the only one.
+    """
+    owner_repo, sep, tail = canonical.rpartition("#")
+    if not sep or owner_repo != scope:
+        return None
+    try:
+        return int(tail)
+    except ValueError:
+        return None
 
 
 # --- counts ------------------------------------------------------------------
@@ -509,23 +529,6 @@ def all_issues(
         return error("unavailable", "the backend request failed unexpectedly")
 
 
-def _claim_eligibility(item: dict, now: datetime, ttl_seconds: int) -> str | None:
-    """Is a ready candidate takeable? ``"free"`` (unassigned), ``"reap"`` (a claim
-    aged past the TTL), or ``None`` (a live claim — not ready work).
-
-    An assignee with **no** ``claimed_at`` stamp is treated as a live claim (a
-    human/UI assignment we cannot age) — never reaped out from under it.
-    """
-    if not item.get("assignee"):
-        return "free"
-    claimed_at = encode.parse_iso(item.get("claimed_at"))
-    if claimed_at is None:
-        return None
-    if (now - claimed_at).total_seconds() > ttl_seconds:
-        return "reap"
-    return None
-
-
 def _blocker_clause(blockers: list[dict]) -> str:
     """How the blocker predicate was satisfied — *verified clear* vs *nothing on
     file*, which are different facts and must not read alike.
@@ -543,19 +546,16 @@ def _blocker_clause(blockers: list[dict]) -> str:
     return f"all {n} blocker{'s' if n != 1 else ''} closed"
 
 
-def _why(
-    eligibility: str,
-    item: dict,
-    now: datetime,
-    ttl_seconds: int,
-    blockers: list[dict],
-) -> str:
-    """A short, human/agent-readable reason this candidate is ready work."""
+def _why(item: dict, blockers: list[dict]) -> str:
+    """A short, human/agent-readable reason this candidate is ready work.
+
+    A candidate that reached here **with** a working branch was asked for
+    explicitly, and its branch is named rather than the fact of it: naming the
+    branch is what lets the reader decide whether the work is live or abandoned,
+    which is the whole of the expiry policy this field replaced.
+    """
     blocker_clause = _blocker_clause(blockers)
-    if eligibility == "reap":
-        claimed_at = encode.parse_iso(item.get("claimed_at"))
-        age_h = int((now - claimed_at).total_seconds() // 3600) if claimed_at else None
-        who = item.get("assignee")
-        aged = f"~{age_h}h" if age_h is not None else "past TTL"
-        return f"ready: stage:ready, stale claim by {who} ({aged}), {blocker_clause}"
-    return f"ready: stage:ready, unassigned, {blocker_clause}"
+    branch = item.get("working_branch")
+    if branch:
+        return f"ready: stage:ready, being worked on {branch}, {blocker_clause}"
+    return f"ready: stage:ready, no working branch, {blocker_clause}"

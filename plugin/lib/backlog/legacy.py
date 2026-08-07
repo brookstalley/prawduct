@@ -145,7 +145,14 @@ class BacklogItem:
 
     @property
     def accepted_by(self) -> str | None:
-        """The claim holder (``accepted-by``), or ``None`` if unclaimed.
+        """The ``accepted-by`` holder, or ``None``.
+
+        **The markdown backend's live way of taking an item**, and not the same
+        thing as the Issues backend's `working-branch` — which needs a *pushed*
+        ref and a named repo, so a local-only repo or a shared-trunk team could
+        not supply one. The retirement of the adapter's `claim` op is scoped to
+        the adapter for exactly that reason; the skill's markdown rules still read
+        and write this.
 
         An optional trailing ``(timestamp)`` is informational only — claims do
         NOT auto-expire (requirements §3 D10), so the timestamp never drives

@@ -22,6 +22,13 @@ from lib.backlog import encode  # noqa: E402
 class TestSoftEnumTolerance:
     """ENC-1 — unknown soft value flagged, never rejected; unknown status rejected."""
 
+    def test_the_buildable_stage_is_one_of_the_stages(self):
+        """`READY_STAGE` is written out rather than derived from the ladder, so a
+        rung added past `ready` cannot silently become the buildable one. That
+        deliberate non-derivation is what needs a test: nothing else would notice
+        the constant drifting off the vocabulary it names a member of."""
+        assert encode.READY_STAGE in encode.STAGE_VALUES
+
     def test_unknown_stage_is_warned_not_rejected(self):
         result = encode.check_enum("stage", "brainstorming")
         assert result.ok

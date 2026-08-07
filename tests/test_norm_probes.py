@@ -1,7 +1,7 @@
 """Tests for the norm-lifecycle post-sync advisory probes (docs/norms.md).
 
 Each probe is a pure, deterministic ``ProbeFn(state, codebase)`` reading only
-machine-readable hooks (dated ``revisit:`` values, backlog-id literals on norm
+machine-readable hooks (backlog-item citations on norm
 Why/Status lines, the ``Status: in-transition`` token, structural presence of
 ``## Direction`` sections and strategy-class artifacts). Per probe we drive the
 positive fire, the named negative-silence conditions, and advisory-id stability
@@ -9,14 +9,25 @@ positive fire, the named negative-silence conditions, and advisory-id stability
 repo-coupled tripwire test asserts ZERO norm-lifecycle advisories fire against
 THIS repo's committed state (the rare-and-high-signal bar) — deliberately not
 hermetic, so drift trips it (the ratification ageing past the sweep window with
-no janitor run, a dated ``revisit:`` expiring). Registry isolation mirrors the
-sibling probe tests (autouse ``clear_registry``).
+no janitor run, a norm's rationale citing work that shipped). Registry isolation
+mirrors the sibling probe tests (autouse ``clear_registry``).
+
+**The two backlog-reading probes are driven on both backends.** Pre-cutover the
+citation is resolved against ``.prawduct/backlog.md``; post-cutover against a real
+SQLite cache built from the transport fake, because a probe restored against a
+mocked-out store would prove only that the mock returns what the test told it to.
 """
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+_TESTS_DIR = Path(__file__).resolve().parent
+if str(_TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TESTS_DIR))
 
 import pytest
 
@@ -30,6 +41,8 @@ from lib.advisory_store import (
     run_all_probes,
 )
 from lib import core, norm_probes as np
+from lib.backlog import core as backlog_core, encode, sync as backlog_sync
+from fakes.fake_github import FakeGitHub
 
 
 @pytest.fixture(autouse=True)
@@ -136,53 +149,6 @@ def _roadmap_direction_artifact() -> str:
 
 
 # =============================================================================
-# revisit-due
-# =============================================================================
-
-
-class TestRevisitDueProbe:
-    def test_fires_on_past_dated_revisit_open_item(self, tmp_path):
-        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
-        out = np.probe_revisit_due(ProjectState({}), _cb(tmp_path))
-        assert len(out) == 1
-        assert out[0].type == "revisit-due"
-        assert "EXC-1A2B" in out[0].trigger_summary
-
-    def test_silent_when_no_revisit(self, tmp_path):
-        _write_backlog(tmp_path, _item("EXC-1A2B"))
-        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
-
-    def test_silent_on_future_date(self, tmp_path):
-        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ahead(10)}"))
-        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
-
-    def test_silent_on_non_date_trigger_value(self, tmp_path):
-        # Event-bound trigger — janitor's job, never probe-fired.
-        _write_backlog(tmp_path, _item("EXC-1A2B", extra="revisit: when the collector export ships"))
-        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
-
-    def test_silent_when_item_closed(self, tmp_path):
-        # A shipped item's clock is moot even if past-due.
-        _write_backlog(
-            tmp_path,
-            _item("EXC-1A2B", section="Archive", status="shipped", extra=f"revisit: {_days_ago(30)}"),
-        )
-        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
-
-    def test_no_backlog_file(self, tmp_path):
-        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
-
-    def test_advisory_id_stable_across_different_due_items(self, tmp_path):
-        # Run 1: EXC-1A2B due. Run 2: a different item ABC-9Z8Y due. Same id.
-        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
-        a = np.probe_revisit_due(ProjectState({}), _cb(tmp_path))[0]
-        _write_backlog(tmp_path, _item("ABC-9Z8Y", extra=f"revisit: {_days_ago(9)}"))
-        b = np.probe_revisit_due(ProjectState({}), _cb(tmp_path))[0]
-        assert _id(a) == _id(b)
-        assert a.trigger_summary != b.trigger_summary  # the message lists the (different) items
-
-
-# =============================================================================
 # dead-why
 # =============================================================================
 
@@ -217,6 +183,27 @@ class TestDeadWhyProbe:
         )
         out = np.probe_dead_why(ProjectState({}), _cb(tmp_path))
         assert len(out) == 1 and "architecture.md→OBS-4C1K" in out[0].trigger_summary
+
+    def test_silent_when_a_settled_status_names_the_item_that_completed_it(self, tmp_path):
+        """The false positive the restoration surfaced, on this repo's own norms.
+
+        A `Status: steady-state … transitioned when OBS-4C1K closed` line cites a
+        dead item *because the transition finished* — the healthiest state a norm
+        reaches, and the previous rule reported three of them at once as rotting
+        rationale. Only an in-flight `Status:` is decay; the `Why:` arm below is
+        untouched, because rationale resting on finished work is decay whatever
+        the status says."""
+        _write_backlog(tmp_path, _item("OBS-4C1K", section="Archive", status="shipped"))
+        _write_artifact(
+            tmp_path,
+            "architecture.md",
+            _direction_artifact(
+                "- **Spans everywhere.**\n"
+                "  Why: causality across turns.\n"
+                "  Status: steady-state as of 2026-08-02 — transitioned when OBS-4C1K closed.\n"
+            ),
+        )
+        assert np.probe_dead_why(ProjectState({}), _cb(tmp_path)) == []
 
     def test_silent_when_cited_id_is_open(self, tmp_path):
         _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
@@ -734,11 +721,19 @@ class TestRegistration:
         }
 
     def test_run_all_probes_stamps_feature_and_version(self, tmp_path):
-        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
+        _write_backlog(tmp_path, _item("MIG-4C1K", section="Archive", status="shipped"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **All telemetry rides OpenTelemetry.**\n"
+                "  Why: the MIG-4C1K migration made a second system redundant.\n"
+            ),
+        )
         np.register()
         np.register()  # idempotent — register_probe overwrites
         cands = run_all_probes(ProjectState({}), make_codebase(tmp_path))
-        fired = [c for c in cands if c.type == "revisit-due"]
+        fired = [c for c in cands if c.type == "dead-why"]
         assert fired and fired[0].feature == "norm-lifecycle"
         assert fired[0].probe_version == np.PROBE_VERSION
 
@@ -763,16 +758,27 @@ class TestSilentAgainstThisRepo:
         # artifacts carry `## Direction` sections, so `norm-registry-unratified`
         # is cleared and — because the ratification date seeds the Norm Health
         # sweep baseline — `norm-health-sweep-overdue` is suppressed inside the
-        # window. No dated `revisit:` is live, no dead-why, no in-transition
-        # stall, so every norm-lifecycle probe is silent. This tripwire re-fires
-        # when the state drifts (the sweep window lapses without a janitor run, a
-        # `revisit:` expires, …); that required re-baseline is the forcing function.
+        # window. No dead-why, no in-transition stall, so every norm-lifecycle
+        # probe is silent. This tripwire re-fires when the state drifts (the sweep
+        # window lapses without a janitor run, a norm's rationale citing work that
+        # shipped); that required re-baseline is the forcing function.
+        #
+        # `backlog-cache-unreadable` is excluded, and the exclusion is the point
+        # of the test rather than a hole in it: this asserts a property of the
+        # repo's COMMITTED norm state, and the backlog cache is per-clone,
+        # uncommitted and absent on a fresh checkout. Its absence says something
+        # true about this machine and nothing about the norms — asserting on it
+        # here would make a clean clone's first test run red for a correct
+        # reason. That the probes report it at all is asserted directly, against
+        # a store the test controls, in TestPostCutoverResolvesThroughTheCache.
         repo_root = Path(__file__).resolve().parents[1]
         state = load_project_state(repo_root)
         codebase = make_codebase(repo_root)
         np.register()
         fired = sorted(
-            c.type for c in run_all_probes(state, codebase) if c.feature == "norm-lifecycle"
+            c.type
+            for c in run_all_probes(state, codebase)
+            if c.feature == "norm-lifecycle" and c.type != "backlog-cache-unreadable"
         )
         assert fired == [], (
             f"expected no norm-lifecycle advisory to fire here; got: {fired}"
@@ -783,37 +789,285 @@ def _id(candidate) -> str:
     return compute_id(np.FEATURE, candidate.type, np.PROBE_VERSION, candidate.evidence)
 
 
-class TestPostCutoverRetirement:
-    """The norm trio judges item liveness from `.prawduct/backlog.md`; once
-    `backlog_service_repo` is set (migration cutover) that file is frozen
-    history and all three retire (shared predicate: backlog_probes.post_cutover)."""
+class TestRevisitDueProbe:
+    """Markdown-backend only, and that scoping is the point of this class.
 
-    _CUTOVER = {"backlog_service_repo": "octo/backlog"}
+    The cutover retires it — no `revisit:` write path exists on the Issues
+    backend — but for every pre-cutover product it is live, and `docs/norms.md`
+    § Exceptions expire states the two-path split normatively: dated clocks fire
+    here, event-bound ones in the janitor's Norm Health sweep, which declines
+    dated ones *because* this fires them. Retiring it outright would have taken a
+    working control from a whole class of products on a rationale that held for
+    exactly one repo.
+    """
 
-    def test_revisit_due_retires(self, tmp_path):
+    def test_fires_on_past_dated_revisit_open_item(self, tmp_path):
         _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
-        assert np.probe_revisit_due(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+        out = np.probe_revisit_due(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert out[0].type == "revisit-due"
+        assert "EXC-1A2B" in out[0].trigger_summary
 
-    def test_dead_why_retires(self, tmp_path):
-        _write_backlog(tmp_path, _item("MIG-4C1K", section="Archive", status="shipped"))
+    def test_silent_when_no_revisit(self, tmp_path):
+        _write_backlog(tmp_path, _item("EXC-1A2B"))
+        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_on_future_date(self, tmp_path):
+        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ahead(10)}"))
+        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_on_non_date_trigger_value(self, tmp_path):
+        # Event-bound trigger — janitor's job, never probe-fired.
+        _write_backlog(tmp_path, _item("EXC-1A2B", extra="revisit: when the collector export ships"))
+        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_silent_when_item_closed(self, tmp_path):
+        # A shipped item's clock is moot even if past-due.
+        _write_backlog(
+            tmp_path,
+            _item("EXC-1A2B", section="Archive", status="shipped", extra=f"revisit: {_days_ago(30)}"),
+        )
+        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_no_backlog_file(self, tmp_path):
+        assert np.probe_revisit_due(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_advisory_id_stable_across_different_due_items(self, tmp_path):
+        # Run 1: EXC-1A2B due. Run 2: a different item ABC-9Z8Y due. Same id.
+        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
+        a = np.probe_revisit_due(ProjectState({}), _cb(tmp_path))[0]
+        _write_backlog(tmp_path, _item("ABC-9Z8Y", extra=f"revisit: {_days_ago(9)}"))
+        b = np.probe_revisit_due(ProjectState({}), _cb(tmp_path))[0]
+        assert _id(a) == _id(b)
+        assert a.trigger_summary != b.trigger_summary  # the message lists the (different) items
+
+    def test_it_retires_on_the_cutover_and_the_cache_cannot_change_that(self, tmp_path):
+        """The one of the three whose dormancy the cache does not end. `revisit:`
+        records intent — *granted until date X* — which no age-based query can
+        reconstruct, so what it waits on post-cutover is a WRITE path for the
+        field, not a read path. That is why it is absent from `DORMANT_CHECKS`,
+        whose advisory promises its members return when the cache lands."""
+        from lib import backlog_probes
+
+        _write_backlog(tmp_path, _item("EXC-1A2B", extra=f"revisit: {_days_ago(3)}"))
+        cutover = ProjectState({"backlog_service_repo": "octo/backlog"})
+
+        assert np.probe_revisit_due(cutover, _cb(tmp_path)) == []
+        assert not any(
+            "revisit" in name for _paths, name in backlog_probes.DORMANT_CHECKS
+        ), "the cache cannot restore this check, so it must not be promised as restored"
+
+
+class TestPostCutoverResolvesThroughTheCache:
+    """Once `backlog_service_repo` is set, `.prawduct/backlog.md` is frozen
+    history — so the two backlog-reading probes resolve their citations against
+    the backlog cache instead. They went **dormant** at that cutover, returning
+    `[]` in a shape indistinguishable from a clean bill of health; these tests are
+    the restoration, driven against a real store built from the transport fake.
+    """
+
+    OWNER, REPO = "octo", "backlog"
+    SCOPE = f"{OWNER}/{REPO}"
+    _CUTOVER = {"backlog_service_repo": SCOPE}
+
+    def _state(self):
+        return ProjectState(dict(self._CUTOVER))
+
+    def _cached(self, tmp_path, **items):
+        """Build a real cache holding ``items`` (title → facets), returning the
+        canonical id of each by keyword. Every id is a live provider id, which is
+        also the spelling a post-cutover norm cites."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub(user={"login": "agent-a", "id": 1})
+        ids = {}
+        for name, spec in items.items():
+            result = backlog_core.file_item(
+                fake,
+                owner=self.OWNER,
+                repo=self.REPO,
+                title=spec["title"],
+                body="b",
+                facets=spec.get("facets", {}),
+            )
+            assert result["status"] == "ok", result
+            ids[name] = result["data"]["id"]
+            if spec.get("status"):
+                assert backlog_core.set_status(
+                    fake, id_raw=ids[name], target=spec["status"]
+                )["status"] == "ok"
+            if spec.get("updated"):
+                number = int(ids[name].rsplit("#", 1)[1])
+                fake._repo(self.OWNER, self.REPO).issues[number]["updated_at"] = (
+                    spec["updated"].isoformat().replace("+00:00", "Z")
+                )
+        assert backlog_sync.full_rebuild(
+            fake, project_dir=tmp_path, owner=self.OWNER, repo=self.REPO
+        )["status"] == "ok"
+        return ids
+
+    def test_dead_why_fires_on_a_cited_item_that_shipped(self, tmp_path):
+        ids = self._cached(
+            tmp_path,
+            done={"title": "norms: the finished migration item", "status": "shipped"},
+        )
         _write_artifact(
             tmp_path,
             "observability-strategy.md",
             _direction_artifact(
                 "- **All telemetry rides OpenTelemetry.**\n"
-                "  Why: the MIG-4C1K migration made a second system redundant.\n"
+                f"  Why: the {ids['done']} migration made a second system redundant.\n"
             ),
         )
-        assert np.probe_dead_why(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
 
-    def test_stalled_transition_retires(self, tmp_path):
-        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        out = np.probe_dead_why(self._state(), _cb(tmp_path))
+
+        assert len(out) == 1 and out[0].type == "dead-why"
+        assert ids["done"] in out[0].trigger_summary
+
+    def test_dead_why_stays_quiet_while_the_cited_item_is_live(self, tmp_path):
+        ids = self._cached(tmp_path, live={"title": "norms: the ongoing migration item"})
         _write_artifact(
             tmp_path,
             "observability-strategy.md",
-            _direction_artifact("- **X.**\n  Status: in-transition — export tracked in OBS-4C1K\n"),
+            _direction_artifact(
+                f"- **X.**\n  Why: tracked by {ids['live']}.\n"
+            ),
         )
-        assert np.probe_stalled_transition(ProjectState(dict(self._CUTOVER)), _cb(tmp_path)) == []
+
+        assert np.probe_dead_why(self._state(), _cb(tmp_path)) == []
+
+    def test_dead_why_resolves_a_pre_migration_pfx_through_the_alias_table(self, tmp_path):
+        """A norm written before the migration cites the id the markdown backlog
+        used. The issue carries it as an alias, so the citation keeps working
+        untouched — which is the whole argument for resolving through the table
+        rather than parsing an id as live coordinates."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub(user={"login": "agent-a", "id": 1})
+        issue = fake.create_issue(
+            self.OWNER,
+            self.REPO,
+            title="norms: the migrated item",
+            body=encode.compose_body("b", {"v": "1", "id_aliases": "[MIG-4C1K]"}),
+            labels=[],
+        )
+        canonical = f"{self.SCOPE}#{issue['number']}"
+        assert backlog_core.set_status(fake, id_raw=canonical, target="shipped")["status"] == "ok"
+        assert backlog_sync.full_rebuild(
+            fake, project_dir=tmp_path, owner=self.OWNER, repo=self.REPO
+        )["status"] == "ok"
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact("- **X.**\n  Why: the MIG-4C1K migration settled it.\n"),
+        )
+
+        out = np.probe_dead_why(self._state(), _cb(tmp_path))
+
+        assert len(out) == 1 and "MIG-4C1K" in out[0].trigger_summary
+
+    def test_stalled_transition_fires_off_the_providers_updated_at(self, tmp_path):
+        ids = self._cached(
+            tmp_path,
+            tracked={
+                "title": "norms: the stalled export item",
+                "updated": datetime.now(timezone.utc) - timedelta(days=np.STALL_WINDOW_DAYS + 10),
+            },
+        )
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                f"- **X.**\n  Status: in-transition — export tracked in {ids['tracked']}\n"
+            ),
+        )
+
+        out = np.probe_stalled_transition(self._state(), _cb(tmp_path))
+
+        assert len(out) == 1 and out[0].type == "stalled-transition"
+        assert ids["tracked"] in out[0].trigger_summary
+
+    def test_stalled_transition_stays_quiet_on_a_recently_touched_item(self, tmp_path):
+        ids = self._cached(
+            tmp_path,
+            tracked={
+                "title": "norms: the moving export item",
+                "updated": datetime.now(timezone.utc) - timedelta(days=2),
+            },
+        )
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                f"- **X.**\n  Status: in-transition — export tracked in {ids['tracked']}\n"
+            ),
+        )
+
+        assert np.probe_stalled_transition(self._state(), _cb(tmp_path)) == []
+
+    def test_a_dead_tracking_item_is_dead_whys_finding_not_this_ones(self, tmp_path):
+        ids = self._cached(
+            tmp_path,
+            tracked={
+                "title": "norms: the abandoned export item",
+                "status": "dropped",
+                "updated": datetime.now(timezone.utc) - timedelta(days=np.STALL_WINDOW_DAYS + 10),
+            },
+        )
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                f"- **X.**\n  Status: in-transition — export tracked in {ids['tracked']}\n"
+            ),
+        )
+
+        assert np.probe_stalled_transition(self._state(), _cb(tmp_path)) == []
+
+    @pytest.mark.parametrize(
+        "probe", ["probe_dead_why", "probe_stalled_transition"], ids=["dead-why", "stalled"]
+    )
+    def test_an_unreachable_store_is_reported_never_answered_as_silence(self, tmp_path, probe):
+        """The failure these two were made to announce. A probe that returned
+        `[]` because it could not look reads exactly like a probe that looked and
+        found nothing — which is how a norm exception stops expiring visibly."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)  # no cache in it
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                f"- **X.**\n  Why: settled by {self.SCOPE}#7.\n"
+                f"  Status: in-transition — tracked in {self.SCOPE}#7\n"
+            ),
+        )
+
+        out = getattr(np, probe)(self._state(), _cb(tmp_path))
+
+        assert len(out) == 1
+        assert out[0].type == "backlog-cache-unreadable"
+        assert "sync" in out[0].recommended_action
+
+    def test_both_probes_report_one_outage_not_two(self, tmp_path):
+        """One cause, one nag. `compute_id` hashes (feature, type, version,
+        evidence), so the shared type and evidence collapse the two reports into
+        a single advisory — the alternative trains the reader to dismiss."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                f"- **X.**\n  Why: settled by {self.SCOPE}#7.\n"
+                f"  Status: in-transition — tracked in {self.SCOPE}#7\n"
+            ),
+        )
+        np.register()
+
+        fired = [
+            c for c in run_all_probes(self._state(), make_codebase(tmp_path))
+            if c.type == "backlog-cache-unreadable"
+        ]
+
+        assert len(fired) == 2  # both probes report…
+        assert len({_id(c) for c in fired}) == 1  # …and the store keeps one advisory
 
 
 class TestNormIndexLocatorIsShared:
@@ -996,7 +1250,19 @@ class TestEmphasisAcrossEveryNormField:
         constant I was thinking about instead of the one the behaviour routes
         through. This drives the probe.
         """
-        for m in self.MARKERS + self.STATUS:
+        # The two arms take different sentences, because only an in-flight
+        # `Status:` is decay: a settled one naming the item that completed the
+        # transition is that transition's own record. What is under test is the
+        # emphasis tolerance of each marker, so each arm gets a line it would
+        # legitimately fire on.
+        lines = [
+            (m, f"{m} the MIG-4C1K migration made a second system redundant.")
+            for m in self.MARKERS
+        ] + [
+            (m, f"{m} in-transition — tracked in MIG-4C1K")
+            for m in self.STATUS
+        ]
+        for m, line in lines:
             _write_backlog(
                 tmp_path, _item("MIG-4C1K", section="Archive", status="shipped")
             )
@@ -1005,7 +1271,7 @@ class TestEmphasisAcrossEveryNormField:
                 "observability-strategy.md",
                 _direction_artifact(
                     "- **All telemetry rides OpenTelemetry.**\n"
-                    f"  {m} the MIG-4C1K migration made a second system redundant.\n"
+                    f"  {line}\n"
                 ),
             )
             out = np.probe_dead_why(ProjectState({}), _cb(tmp_path))

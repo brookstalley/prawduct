@@ -436,6 +436,95 @@ class TestUnstagedItems:
         assert _ids(result) == []
 
 
+# --- ready work: the candidate set behind `pick` ------------------------------
+
+
+class TestReadyItems:
+    def test_it_returns_only_the_open_ready_items(self, fake, repo_dir):
+        ready = _file(fake, title="cache: a buildable item", area="backlog", stage="ready")
+        _file(fake, title="cache: an item still an idea", area="backlog", stage="idea")
+        _file(fake, title="cache: an item nobody staged", area="backlog")
+        shipped = _file(fake, title="cache: a finished item", area="backlog", stage="ready")
+        assert core.set_status(fake, id_raw=shipped, target="shipped")["status"] == "ok"
+        _rebuild(fake, repo_dir)
+
+        assert _ids(cachequery.ready_items(repo_dir, scope=SCOPE, now=NOW)) == [ready]
+
+    def test_a_working_branch_takes_an_item_out_of_the_candidate_set(self, fake, repo_dir):
+        free = _file(fake, title="cache: an item nobody is on", area="backlog", stage="ready")
+        taken = _file(fake, title="cache: an item someone is on", area="backlog", stage="ready")
+        fake.push_branch(OWNER, REPO, "feat/in-flight")
+        assert core.update_item(
+            fake, id_raw=taken, fields={"working-branch": f"{SCOPE}@feat/in-flight"}
+        )["status"] == "ok"
+        _rebuild(fake, repo_dir)
+
+        assert _ids(cachequery.ready_items(repo_dir, scope=SCOPE, now=NOW)) == [free]
+
+    def test_include_working_adds_them_back_carrying_their_branch(self, fake, repo_dir):
+        """Widens the set rather than inverting it: a caller looking at contested
+        work needs the uncontested items in the same answer, and needs to see
+        which branch it is contesting with."""
+        free = _file(fake, title="cache: an item nobody is on", area="backlog", stage="ready")
+        taken = _file(fake, title="cache: an item someone is on", area="backlog", stage="ready")
+        fake.push_branch(OWNER, REPO, "feat/in-flight")
+        assert core.update_item(
+            fake, id_raw=taken, fields={"working-branch": f"{SCOPE}@feat/in-flight"}
+        )["status"] == "ok"
+        _rebuild(fake, repo_dir)
+
+        result = cachequery.ready_items(repo_dir, scope=SCOPE, now=NOW, include_working=True)
+
+        assert set(_ids(result)) == {free, taken}
+        by_id = {item["id"]: item for item in result["data"]["items"]}
+        assert by_id[taken]["working_branch"] == f"{SCOPE}@feat/in-flight"
+
+    def test_an_open_but_redirected_item_is_never_ready_work(self, fake, repo_dir):
+        """The window between a merge's redirect write and its close. The item is
+        merged away; offering it as buildable sends someone at a record that has
+        already moved."""
+        survivor = _file(fake, title="cache: the surviving item", area="backlog", stage="ready")
+        merged = _blocked_issue(
+            fake,
+            title="cache: the merged-away item",
+            block={"v": "1", "superseded_by": survivor},
+        )
+        fake.add_labels(OWNER, REPO, int(merged.rsplit("#", 1)[1]), ["stage:ready"])
+        _rebuild(fake, repo_dir)
+
+        assert _ids(cachequery.ready_items(repo_dir, scope=SCOPE, now=NOW)) == [survivor]
+
+    def test_it_returns_only_this_scopes_rows(self, fake, repo_dir):
+        """The one query here that filters on scope, so it needs its own pin
+        rather than riding `pick`'s.
+
+        Every other consumer reads the store whole — it holds one repo by design.
+        `pick` cannot: it hands a candidate's issue *number* to a live blocker
+        read against the caller's repo, so a foreign row would be judged against
+        whatever issue this repo has at that number."""
+        mine = _file(fake, title="cache: an item in this repo", area="backlog", stage="ready")
+        _rebuild(fake, repo_dir)
+        conn = cache.open_store(repo_dir, create=False)
+        conn.execute(
+            "INSERT INTO item (id, title, status, stage, created_at, updated_at, fetched_at) "
+            "VALUES ('other/repo#1', 'a foreign item', 'open', 'ready', ?, ?, ?)",
+            (NOW.isoformat(), NOW.isoformat(), NOW.isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+        assert _ids(cachequery.ready_items(repo_dir, scope=SCOPE, now=NOW)) == [mine]
+
+    def test_it_orders_oldest_first(self, fake, repo_dir):
+        second = _file(fake, title="cache: the newer buildable item", area="backlog", stage="ready")
+        first = _file(fake, title="cache: the older buildable item", area="backlog", stage="ready")
+        _stamp(fake, first, created=NOW - timedelta(days=30))
+        _stamp(fake, second, created=NOW - timedelta(days=2))
+        _rebuild(fake, repo_dir)
+
+        assert _ids(cachequery.ready_items(repo_dir, scope=SCOPE, now=NOW)) == [first, second]
+
+
 # --- consumers 5, 7, 14 and 15: resolution ------------------------------------
 
 
@@ -684,6 +773,7 @@ def _every_query(repo_dir):
         "resolve": lambda: cachequery.resolve(
             repo_dir, scope=SCOPE, id_raw=f"{SCOPE}#1", now=NOW
         ),
+        "ready_items": lambda: cachequery.ready_items(repo_dir, scope=SCOPE, now=NOW),
     }
 
 

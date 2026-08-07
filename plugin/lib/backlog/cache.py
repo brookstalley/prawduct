@@ -71,7 +71,7 @@ from .core import error, log_diag, ok
 # machine during the chunk that introduced the column, and read as an empty
 # result rather than as an error. "Unreleased, so nobody has an old store" is a
 # claim about other people's machines, not about the format.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "backlog-cache.sqlite3"
@@ -205,6 +205,12 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     "CREATE INDEX item_alias_ref ON item_alias(ref)",
+    # No query reads this table yet and no sync writes it. It is kept, unlike the
+    # blocker table that stood beside it, because nothing forbids a consumer from
+    # arriving: the reconciliation walk reads item text today and could want the
+    # discussion under it tomorrow. **The trigger is the same one that took
+    # `tags`** — if the consumer surface settles with no comment-reading query,
+    # this table is dead weight and goes.
     """
     CREATE TABLE comment (
         item_id    TEXT NOT NULL,
@@ -214,14 +220,22 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     "CREATE INDEX comment_item ON comment(item_id)",
-    """
-    CREATE TABLE relationship (
-        src  TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        dst  TEXT NOT NULL,
-        PRIMARY KEY (src, kind, dst)
-    )
-    """,
+    # **A `relationship` table stood here and is gone**, and it is worth saying why
+    # rather than leaving the absence to be noticed and re-added.
+    #
+    # It was the natural home for blocker edges, and blocker edges are the one
+    # thing ready-work reads that this store must never answer. A blocker may live
+    # in a *different* repo; this cache holds exactly one repo by design, so a
+    # cached edge could only ever record that a cross-repo blocker existed, never
+    # whether it is still open. `pick` therefore reads dependencies live, and a
+    # stale store must not be able to let a blocked item through — the negative
+    # this project asserts directly rather than assumes.
+    #
+    # So the table could not gain the consumer it was shaped for, and an empty
+    # table shaped like the answer is worse than no table: the next builder wires
+    # the fan-out to it and the cross-repo case fails silently, which is the one
+    # failure mode that costs two people one item. The no-dead-fields rule and the
+    # correctness argument point the same way here.
     # `coverage_confirmed_at` is the local stamp of the last sync that CONFIRMED
     # this scope — which includes a not-modified sync, the one that reads nothing
     # and writes no rows. It was `fetched_at` (the stamp of the sync that wrote

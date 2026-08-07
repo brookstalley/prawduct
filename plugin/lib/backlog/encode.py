@@ -43,6 +43,14 @@ STAGE_VALUES: tuple[str, ...] = (
     "design",
     "ready",
 )
+
+#: The one stage that means *buildable*. `stage` is a maturity ladder and only
+#: this rung is implementable — the requirements-precede-code guard — so
+#: ready-work queries key on this rather than on a bare literal of their own.
+#: Written out rather than derived from ``STAGE_VALUES[-1]``: a ladder that later
+#: gains a rung beyond `ready` must not silently promote it to buildable. A test
+#: asserts the membership this deliberately does not enforce in code.
+READY_STAGE: str = "ready"
 # The status axis has ONE canonical GitHub encoding per value (Data Model §4) — the
 # single source of truth: open sub-states live only in the `status:` label; closed
 # states live in `state_reason`; `open`/`shipped`/`dropped` carry no status label. An
@@ -156,15 +164,6 @@ class Block:
         value = self.fields.get("superseded_by")
         return value or None
 
-    def claimed_at(self) -> str | None:
-        """The ``claimed_at`` visible-staleness stamp (CC3), or ``None``.
-
-        Block-authoritative and unmirrored (Data Model §1.2): the claim's
-        timestamp lives only here, so ``pick``'s TTL reap reads it from the body.
-        """
-        value = self.fields.get("claimed_at")
-        return value or None
-
     def affected(self) -> list[str]:
         """The structured path list — what code this item touches, no prose.
 
@@ -182,7 +181,7 @@ class Block:
 
         **The block key is ``working_branch``; the domain and CLI spelling is
         ``working-branch``** (``--working-branch``). The block's keys are
-        snake_case throughout (``id_aliases``, ``claimed_at``, ``superseded_by``,
+        snake_case throughout (``id_aliases``, ``superseded_by``,
         ``original_title``) and block keys are additive-only-forever (Data Model
         §7) — the spelling chosen here is the spelling always, so it matches its
         neighbours rather than the flag. This accessor is the one place the two
@@ -258,7 +257,8 @@ def upsert_block_field(body: str | None, key: str, value: str | None) -> str:
     ``value`` is ``None``), preserving the human text and every other block field.
 
     The single primitive for editing one block-authoritative field in place
-    (Data Model §2): claim stamps ``claimed_at``, unclaim clears it. Creates a
+    (Data Model §2) — ``update`` sets ``working_branch``/``affected`` through it,
+    ``merge`` sets ``superseded_by``. Creates a
     fresh ``v: 1`` block if the body had none and a value is being set; clearing a
     field on a blockless body is a no-op (never manufactures an empty block).
     """
@@ -368,9 +368,9 @@ def parse_text(raw: str | None) -> str | None:
 
 def parse_iso(ts: str | None) -> "datetime | None":
     """Parse an ISO-8601 timestamp (tolerant of a trailing ``Z``); assume UTC when
-    naive. Returns ``None`` for a missing/unparseable value — a fail-open the
-    callers rely on (a claim whose stamp cannot be aged is treated as live, never
-    wrongly reaped)."""
+    naive. Returns ``None`` for a missing/unparseable value — a fail-open its
+    callers rely on: a date predicate a stamp cannot honestly satisfy declines
+    rather than guessing at one side of it."""
     if not ts:
         return None
     try:
@@ -863,7 +863,6 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "tags": normalize_tags(_facet_values(labels, TAG_FACET)),
         "affected": block.affected(),
         "working_branch": block.working_branch(),
-        "claimed_at": block.claimed_at(),
         "automated": block.get("automated") == "true",
         "url": issue.get("html_url"),
         "labels": labels,

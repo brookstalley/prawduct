@@ -61,7 +61,7 @@ tier (§7).
 | `get` / `show` | one Item | ✓ | – | fetch one item (live; or cache w/ visible age) | Q1, TF1 |
 | `update` | one Item | – | field-wise | field-wise edit; **optimistic CAS** on state/`updated_at` → `conflict` for retry | CC2 |
 | `status` (set) | one Item | – | **yes** | the crash-safe two-axis transition — maps to the Data Model's idempotent **`set-status`** primitive (re-run = no-op); a close also records **`closed_by`** (§2.6) | DM2, CC1, GV3 |
-| `claim` / `unclaim` | Item assignee | – | **yes** | atomic take-and-verify; TTL-reap surfaces `claim_conflict` (non-fatal) | CC3 |
+| ~~`claim` / `unclaim`~~ | — | — | — | **Retired in W1, whole**: the ops, the `claim_conflict` code, the staleness TTL and the `claimed_at` stamp. Taking an item is now `update <id> --working-branch owner/repo@branch` — a field like any other. It is a REMOVAL from a released CLI surface, and the additive-first norm does not cover one, so the argument is recorded rather than assumed: no removed name is reused for anything, `claimed_at` keys already written in issue bodies stay readable as unknown block keys forever (§7), `working-branch` ships in the SAME release, and every in-tree consumer was retired in the same change. An out-of-tree caller scripting `prawduct-hook backlog claim` breaks with no deprecation window — accepted, because the op was release-current rather than long-established | CC3 (superseded) |
 | `verify` | Item block+cache | – | **yes** (keyed on actor+date) | record "premise re-checked against code by <actor> on <date>" in one call — re-stamp same (actor,date) = no-op (the `verified` list is append-with-dedup, Data Model §1.1/§2) | TF2 |
 | `comment` | Item comment | – | **no** | add a threaded, attributed comment | DM5 |
 | `attach` | Item attachment | – | **cond.** | store a file (release-asset **or** attachments-branch, both no-PR); returns the stored URL. **Idempotent by content-hash on the attachments-branch path; name-keyed (so overwrite-or-skip) on the release-asset path** — the key depends on which S5 resolves | DM6 |
@@ -70,7 +70,7 @@ tier (§7).
 | Op | Safe | Purpose | Parent |
 |---|---|---|---|
 | `list` | ✓ | **structured** field/label filters + sort + paginate — runs **online off the REST list endpoint**, **strongly consistent in practice** (a just-written item appears immediately; a rare brief replication window exists — the documented 404-retry-after-create case — so it is not an absolute platform guarantee), no cache needed. `--untriaged` **inverts** the scope filter, returning only what `list` normally drops (the open members of the `counts` `untriaged` set); it **scans every page and REFUSES `--per-page`/`--page`** with a `validation` error, because untriaged issues are typically the newest and a first ascending page would answer "nothing to triage" while items waited on page 2 — and silently returning the whole set to a caller who asked for page 2 would be a confident wrong answer. Every other filter (`--assignee`, `--sort`, `--direction`, `--state`, the label facets) applies as usual | Q1-structured |
-| `pick` | ✓ | stage-aware ready-work: `open ∧ stage:ready ∧ unassigned` (list filters), then "claim past TTL" per decoded item and a **dependency fan-out taken lazily in rank order, stopping at `limit`** (Data Model §4). Returns ranked candidate(s) + *why*; the *why* says **"no blockers recorded"** for an empty dependency read and "all N blockers closed" for a verified clear — these are different facts and the contract distinguishes them. An optional `--claim` does atomic take-and-verify (may return `claim_conflict` → caller re-picks) | GV1, DM3, CC3 |
+| `pick` | ✓ | stage-aware ready-work: `open ∧ stage:ready ∧ no working branch`, served from the local cache after a **revalidating conditional request**, then a **dependency fan-out taken lazily in rank order, stopping at `limit`** and read **live** (Data Model §4). Returns ranked candidate(s) + *why*; the *why* says **"no blockers recorded"** for an empty dependency read and "all N blockers closed" for a verified clear — these are different facts and the contract distinguishes them. `--include-working` adds back the items someone is on, each naming its branch. **`pick` takes nothing** — it is a pure read; recording that you are on an item is a separate `update`. Its `warnings[]` always carry the store's confirmed-at stamp and age, and say so explicitly when the revalidation failed and the answer is the last good one | GV1, DM3 |
 | `search` | ✓ | **full-text** (`--text`) and **similar** (`--like`, lexical dedup) — served from the cache (GitHub search is **not** read-your-writes; §Sec/NF3); semantic (`--semantic`) is P2 — GitHub's improved/semantic issue search is **GA, on by default** (no per-repo gate; §4 `unsupported` only where the capability is genuinely absent) | Q1-fulltext, Q3 |
 | `counts` | ✓ | per-project rollups derived **on read** (never persisted, except the GV2 briefing snapshot). Carries an **`untriaged`** count: issues on the backlog repo bearing neither a namespaced label nor a `prawduct:` block. They are counted in `total`/`by_status` (so the open figure reconciles against `gh issue list --state open`) and `untriaged` names them as a **subset, not an addend** — double-counting would err in the other direction. `untriaged` counts **open** issues only, while `total`/`by_status` span every state: a closed issue is already dispositioned, so it needs no triage, and this keeps the figure equal to what `list --untriaged` returns. Excluding them silently under-reported the backlog and hid exactly the items nobody had triaged | Q5 |
 | `rollup` | ✓ | **cross-project** — query-side **fan-out + merge across owners** (NOT cache-served, NOT GitHub-native; Data Model §6) | Q4 |
@@ -217,7 +217,7 @@ to **degrade gracefully on _any_ error** — a gate/hook reading backlog state t
 loop is the *opposite* of never-hang). (b) **`retryable`** is a separate, orthogonal
 **transient-vs-permanent hint** telling a *retry-driver* (`batch`, `sync`, an unattended worker)
 whether re-attempting *this class* can succeed: `unavailable`/`rate_limited` → **yes** (backoff hint in
-`details`); `conflict`/`claim_conflict` → retry only **after a re-read**;
+`details`); `conflict` → retry only **after a re-read**;
 `validation`/`not_found`/`ambiguous_id`/`alias_collision`/`auth`/`unsupported` → **no**. Never-block
 governs the caller's *degradation*; `retryable` governs a driver's *re-attempt* — they are not the same
 axis.
@@ -231,7 +231,7 @@ axis.
 | `ambiguous_id` | short `repo#number` resolves to >1 under federation | no | D4, DM §5 |
 | `alias_collision` | a second item claims an existing `id:` alias — rejected so refs can't be hijacked | no | DM §5, Sec §5/F3 |
 | `conflict` | optimistic CAS failed (state/`updated_at` moved) → re-read & retry | caller-retry | CC2 |
-| `claim_conflict` | assignee take lost the race — non-fatal, caller re-picks | caller-retry | CC3 |
+| ~~`claim_conflict`~~ | retired with the claim op (W1) — it was a second value in the exit-4 class. **The exit code is unchanged**: 4 means `conflict`, and `update`'s CAS path still returns it; retiring one producer of a contract code is not repurposing the code | – | – |
 | `auth` | identity/scope problem (missing scope, `proxy-injected` w/o `gh`); the adapter maps `gh`'s own **exit 4 = auth-required** onto this (C10) | no | Sec §1 |
 | `unavailable` | backend unreachable — the G2 floor, degrade to cache-or-"unavailable" | **yes** | G2, AG4 |
 | `rate_limited` | hit 80/min or the ~500/hr content cap | **yes** (backoff) | NF3 |
@@ -313,7 +313,7 @@ Small choices expensive to reverse once consumers depend on them:
 
 - **IDs (D4):** canonical `owner/repo#number`; short `repo#number` **same-owner only** (else
   `ambiguous_id`). Accept the four spellings (§3), normalize on the way in.
-- **Timestamps:** **ISO-8601, UTC** — matches the Data Model's `claimed_at` / `verified.on`.
+- **Timestamps:** **ISO-8601, UTC** — matches the Data Model's `verified.on`.
 - **Enums:** named string values, never magic ints; **soft** (unknown → `warning`, not reject; DM1).
 - **null vs. absent:** absence = "unset / use default"; explicit `null` = "clear this field." A
   fail-closed reader here would re-create the tolerated-variant bug — `[]`/absent both mean "none."
@@ -358,8 +358,10 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
   held-open blocking call.
 - **Concurrency / consistency.** `update` is **optimistic compare-and-set** on state/`updated_at` →
   `conflict` for clean retry (CC2); the optional cache revalidates a decision-driving read via
-  **conditional request (ETag)** (G3, Data Model §6/M2); `claim` is **take-and-verify** with a
-  documented residual race (CC3), not a mutex.
+  **conditional request (ETag)** (G3, Data Model §6/M2), and `pick` is the read that does — it
+  revalidates before ranking, and reports the store's age either way. Taking an item is
+  `working-branch`, which is **not a mutex and does not pretend to be**: two actors can set one on
+  the same item, and the field's job is to make that visible, not impossible (Data Model §1.4).
 - **Events / callbacks.** Baseline is **cheap polling** via the `sync` changed-since cursor (Q2);
   webhooks are an *optional* enhancement (AU1), not required for the slice.
 - **Consumer correlation (CC4).** Every mutating response carries the resolved **API identity** as the
@@ -373,8 +375,12 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
 2. Exact non-zero **exit-code integers** — align with the existing `prawduct-hook` scheme at build.
 3. **MCP** protocol error mapping specifics (how `retryable`/`code` ride MCP content) — settle when the
    P2 MCP front is built.
-4. Whether `pick --claim` (atomic pick+take convenience) is worth the extra surface vs. `pick` then
-   `claim` — a small design call, decide at build with the CC3 race data.
+4. ~~Whether `pick --claim` is worth the extra surface~~ — **moot**: the claim mechanism is retired
+   and `pick` mutates nothing. What replaced the question is a live assumption, recorded because it
+   is now load-bearing: nothing auto-populates `working-branch`, so an actor who picks and forgets to
+   record their branch is invisible to the next picker. That is the intended trade — the claim it
+   replaced was itself soft, and a stamp nobody refreshes was never a lock — but it is the only thing
+   standing between two actors and one item.
 5. Envelope **`schema` marker** — add only if a **non-plugin** consumer appears (§5.2); until then the
    plugin version is the handle.
 
@@ -386,7 +392,7 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
 | A2 | correctness | `batch` implying transactional all-or-nothing would be a lie (GitHub has no multi-issue transaction) | **Stated** — §2.4/§3: `batch` is **per-item**, partial success is real, idempotent-so-safe-to-re-run |
 | A3 | correctness | `file` idempotency — a retried unattended create duplicates (Security §1a/N2) | **Surfaced** — §2.1 marks `file` non-idempotent *unless keyed*; §2.4 `file-upstream` keyed; the idempotency key is the N2 requirement made API-visible |
 | A4 | seam | `set-status` is a Data-Model internal primitive — is it a CLI op? | **Resolved** — the CLI op is **`status`**, which *maps to* the idempotent `set-status`; generic `update` handles other fields (§2.1). The crash-safe primitive stays internal; the contract exposes the intent |
-| A5 | coherence | pick as read vs. claim as write — does `pick` mutate? | **Resolved** — `pick` is **safe** (ranked read); `claim` mutates; optional `pick --claim` is the only atomic combo, and it can return `claim_conflict` (§2.2) |
+| A5 | coherence | pick as read vs. claim as write — does `pick` mutate? | **Resolved, then simplified** — `pick` is **safe** (a ranked read) and now has no mutating arm at all: `--claim` and the claim ops are retired, so the only combo that made `pick` a write is gone. It does write the local cache on its way in, which is not a provider mutation (§2.2) |
 | A6 | versioning | the scriob trap — an unversioned surface on a "deferred" note | **Refused** — §5 records a *real* decision (data-format `v:` active + CLI lockstep/tolerant-reader), not a deferral; §12-none-of-this-is "later" |
 | A7 | colonization | letting "CLI" stand in for the whole contract (the named-but-narrowed learning) | **Guarded** — §1 enumerates three fronts; §4 error model spans all three; MCP tiered experimental, not forgotten |
 | A8 | never-block | is G2 actually expressible at the API boundary, or just asserted? | **Expressible, then refined (C3, §12a)** — never-block = the caller degrading on the `unavailable` code (and every other error); `retryable` is the *orthogonal* retry-driver hint, **not** the never-block primitive (v1 conflated the two) |
@@ -434,7 +440,7 @@ was first flagged in NFR §10a. The Test-Specs CRASH-3/XP-1 tests are un-deferre
 Every §2 op cites its parent requirement; the reverse holds for the agent-ergonomics / query / flow
 requirements this surface owns: **AG1**→§8 (non-interactive) · **AG2**→`file` · **AG3**→`file`
 advisory-async · **AG4**→`unavailable`/`sync` · **AG5**→(NFR doc, not here) · **AG6**→§3 JSON+human ·
-**CC1/DM2**→`status`(set-status) · **CC2**→`update` CAS/`conflict` · **CC3**→`claim`/`claim_conflict` ·
+**CC1/DM2**→`status`(set-status) · **CC2**→`update` CAS/`conflict` · **CC3**→`update --working-branch` ·
 **CC4**→§10 actor identity · **CC5**→§3 `warnings[]` self-heal · **TF2**→`verify` · **TF3**→`batch` ·
 **DM1**→§3/§8 soft-enums · **DM3**→`link`/`pick` · **DM4/D4**→§8 IDs/`ambiguous_id` · **DM5**→`comment` ·
 **DM6**→`attach` · **DM7**→`merge` · **Q1-structured**→`list` · **Q1-fulltext/Q3**→`search` ·

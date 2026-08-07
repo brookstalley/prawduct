@@ -47,7 +47,7 @@ cache (§6) projects the same fields for the queries GitHub can't serve read-you
 | `affected` | structured path list, **no prose** | **`prawduct:` block `affected`** | Cache Spec §3 — the half of `refs` that can be matched against a changed-file set. Entries are repo-relative paths or directory prefixes (a directory covers everything under it); **not globs**. Annotations belong in the body, and the write path refuses an entry carrying whitespace (prose) or a glob metacharacter — a pattern is not a broader match here, it is a literal that matches nothing forever |
 | `working-branch` | `owner/repo@branch` | **`prawduct:` block `working_branch`** | Cache Spec §3 — replaces the claim concept: if populated, someone is working the item, and the branch's last commit is the staleness signal, so no stored expiry policy is needed. **Must be a pushed ref** (an unpublished branch is an invisible claim) and **must name the repo** (`backlog_service_repo` can differ from the code repo); both are enforced at the write, the first by `GET /repos/{owner}/{repo}/branches/{branch}`. The branch is additionally held to git's own `check-ref-format` rules and the repo to a single `owner/repo` pair, because both segments are interpolated into that path: a value like `owner/repo@../../../user` would otherwise resolve some *other* endpoint and be stored as a verified branch — the pushed-ref check failing **open**, which is the invisible claim it exists to prevent |
 | `reviewed` / verification | `{by, on}` | **`prawduct:` block `verified`** (round-trip) + **cache `reviewed`** (the TF2 date-range query) — *no label, no marker-comment* (M6) | TF2 |
-| `assignee` / claim | user/agent + `claimed_at` | issue **assignee** (claim) + block `claimed_at` (visible staleness) | CC3, ready-work |
+| `assignee` | user/agent | issue **assignee** — **native/protected, not writable by prawduct** | none. It was ready-work's claimed-item signal until the claim mechanism retired; `working-branch` replaces it, and nothing prawduct runs reads assignment as meaning any more. GitHub's own UI still assigns, and `list --assignee` still filters on it, but no prawduct write path sets it and no predicate keys on it |
 | `relationships` | §1.3 | native dependencies / sub-issues / refs | DM3, ready-work |
 | `provenance` | §1.5 | block (detail) + `source:<product>` label (the coarse XP2/Q4 filter) | XP2 |
 | `history` | append-only | issue **timeline/events** (native) | CC4 |
@@ -64,9 +64,10 @@ ref, no new stored field), with the block `closed_by` only as the **manual-close
 §2.6.
 
 ### 1.2 Field authority & justified mirrors
-- **Native/label-authoritative, block-unmirrored:** `status`, `stage`, `area/effort/impact/kind`,
-  `assignee`. Changing them is a label/state call (core budget), never a content-creation.
-- **Block-authoritative, unmirrored:** `affected`, `working_branch`, `verified`, `claimed_at`, `attachments`, `superseded_by`,
+- **Native/label-authoritative, block-unmirrored:** `status`, `stage`, `area/effort/impact/kind`.
+  Changing them is a label/state call (core budget), never a content-creation. `assignee` is native
+  too but is **not writable at all** — see §1.1.
+- **Block-authoritative, unmirrored:** `affected`, `working_branch`, `verified`, `attachments`, `superseded_by`,
   `automated`/`worker` (the unattended-actor marker — Security §1a/CC4; self-asserted like all block
   fields, trustworthy for audit only insofar as the acting API identity is).
 - **Two justified mirrors** (each side serves a *distinct* consumer, not the same value twice):
@@ -74,11 +75,18 @@ ref, no new stored field), with the block `closed_by` only as the **manual-close
     export round-trip record.
   - `source:` — the **label** is the coarse Q4/XP2 *filter*; the **block provenance** is the detail.
 
-### 1.3 Comment · 1.4 Claim · 1.5 Provenance · 1.6 Attachment
+### 1.3 Comment · 1.4 Taking an item · 1.5 Provenance · 1.6 Attachment
 - **Comment** → native issue comments (DM5); cache mirrors text only for Q1-fulltext/Q3.
-- **Claim** (Item facet) → `assignee` atomic take; block `claimed_at` = visible staleness; **default
-  claim-staleness TTL** drives auto-unclaim/flag so `pick` can't starve (CC3, M11). Residual double-take
-  race accepted (take-and-verify).
+- **Taking an item** (Item facet) → set `working-branch` (§1.1). **There is no Claim entity**, and its
+  removal is the substantive change here rather than a rename: the claim was an `assignee` take plus a
+  `claimed_at` stamp plus a staleness TTL that drove an auto-unclaim so `pick` could not starve —
+  three mechanisms serving one question, *is someone on this?* A pushed branch answers it and answers
+  the follow-up the TTL was guessing at, *is that work still alive?*, from the branch's own commits.
+  So no expiry policy is stored and nothing is reaped. A merge makes the marker **inert** rather
+  than removing it — the item leaves ready-work on its status, and the branch that shipped it is the
+  record of what did; nothing rewrites the field but an explicit clear.
+  Residual double-take race accepted, as before and for the same reason: nothing here is a lock, and
+  the field makes a double-take **visible** rather than impossible.
 - **Provenance** (Item facet) → `{source_product, source_version, session_ref, submitted_at}` in the
   block + `source:<product>` label. **Untrusted until triaged** — the block is attacker-controllable
   self-assertion wherever the actor has write (Security Model §5/F3); lands in `status: submitted`.
@@ -101,7 +109,6 @@ CC5 human edits make a doubled/misplaced block plausible; last-block-wins is det
 v: 1                         # block schema version (§7 — additive-only-forever)
 id_aliases: [BKL-7M4Q]       # migrated PFX; old refs resolve forever (label + here)
 verified: [{by: …, on: …}]   # TF2 round-trip authority (query runs off cache `reviewed`)
-claimed_at: 2026-07-16T…Z    # CC3 visible staleness
 affected: [plugin/lib/backlog, docs/x.md]   # structured path list, no prose (§1.1)
 working_branch: owner/repo@feat/x           # a PUSHED, repo-qualified ref (§1.1)
 provenance: {source: scriob, version: …, session: …}   # XP2 detail (label = coarse filter)
@@ -191,12 +198,18 @@ the remaining two predicates are **not** list filters and force a **per-candidat
   *not* "no open blockers". An empty read is absence of data, and for any backlog migrated out of
   markdown it is empty **by construction**: `related:` is carried in the issue body and mapped to no
   native edge, so an all-clear phrasing would assert a verified result about a permanently empty field.
-- **"claim past TTL"** — `claimed_at` (block / assignment event) isn't list-range-filterable → per-item
-  check on the reaping path.
+- **"someone is on it"** — `working_branch` is a block field, so the provider cannot filter on it →
+  applied where the candidate set is built.
 
-So `pick` is **list-then-fan-out**: online and consistent (no cache needed), but O(candidates) reads,
-not one call — cheap at portfolio scale, but the latency/read cost is real and paced under the core
-limit. (A cross-repo blocker's state is only reliably seen online — a per-clone cache can misjudge it.)
+So `pick` is **cache-then-fan-out** as built in W1: the candidate predicate
+(`open ∧ stage:ready ∧ no working branch`) is one indexed read of the local store after a
+revalidating conditional request, and the blocker predicate is a live per-candidate read taken
+lazily down the ranking and bounded by `limit`. The split is not an optimisation of one thing: the
+candidate predicate is a property of the items themselves, which the store mirrors, while a blocker
+may live in a repo this single-repo store does not hold — **a cross-repo blocker's state is only
+reliably seen online, so a stale store must not be able to let a blocked item through, and it
+structurally cannot, because it is never asked**. The earlier shape scanned every open issue on
+every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x the NFR §4 floor.
 
 ---
 
@@ -249,8 +262,8 @@ authorizes at **fetch** time — cross-repo entries must **revalidate on read** 
 | `item_affected(item_id, path)` + index on `path` | consumers 1 and 4 (change overlap) | the **`affected` index** — a table, not an index on `item.affected`, and the same shape as `item_fts` beside `item.title`: derived from the column in the same transaction, never written independently, so it is not a second home for the fact. It is a table because the query runs *entry-contains-changed-file* (`plugin/lib` matches `plugin/lib/sync.py`), and phrasing that over the column — `WHERE ? LIKE affected \|\| '%'` — puts the variable on the side no index can help. Exploding the list into one row per path lets a caller expand each changed file into its ancestor directories and match by **equality**, which this index serves |
 | `item_alias(alias, ref, item_id)` + index on `ref` | consumers 5, 7, 14 (resolution through aliases, including dead items) | **§4 rule 3's "all resolution goes through the alias table", made a table** so resolution is a lookup rather than a scan that parses every body. Added in W1 Chunk 04; same derived-index shape as `item_affected` and `item_fts` — re-derived from the stored `item.body` in the same transaction, never written on its own, so it is not a second home. `alias` is the entry verbatim, in whichever of the two accepted spellings the record carries (a hand-minted `PFX`, or a tagged `github:owner/repo#249` — §4). **`ref` is the untagged canonical id a tagged alias carries**, NULL for a `PFX`: the two ends of a resolution are spelled differently on purpose (an alias is stored tagged because `owner/repo#number` is not GitHub-unique; a historical citation in a change-log is written untagged), and matching the untagged one against the tagged column would take `LIKE '%:' \|\| ?`, whose leading wildcard no index can serve — the same unindexable direction `item_affected` exists to invert, inverted the same way. **No UNIQUE on `alias`**: uniqueness is an integrity constraint (§5), not a storage one, and a store that refused to hold a violation could not report it as `alias_collision` |
 | `item_fts(title, body)` (FTS5) | Q1-fulltext, Q3 lexical | the read-your-writes path GitHub search lacks |
-| `comment(item_id, body, author, created_at)` | Q1-fulltext, Q3 | text mirror |
-| `relationship(src, kind, dst)` | ready-work blockers (per-clone) | *within one repo*; cross-repo blockers checked online |
+| `comment(item_id, body, author, created_at)` | Q1-fulltext, Q3 | text mirror. **As built in W1: created, and nothing writes or reads it yet** — the enumerated consumers ask about item text, not discussion. It is kept rather than dropped because nothing forbids a consumer arriving (the reconciliation walk could want the thread under an item), unlike the blocker table below. Same trigger as `tags`: if the consumer surface settles with no comment-reading query, the no-dead-fields rule takes it. **The test is deliberately weaker than the one that removed `relationship` beside it, and the difference is the whole reason both calls are right**: that table *could never* gain its consumer (a blocker must be judged live), while this one simply *has not yet*. Could-never is a design fact and removes; has-not-yet is a schedule and waits — once |
+| ~~`relationship(src, kind, dst)`~~ | — | **Removed in W1 Chunk 05, not deferred.** It was the home for blocker edges, and blocker edges are the one predicate ready-work must never answer from here: a blocker can live in another repo, this store holds exactly one, so a cached edge could record only that a dependency *existed* — never whether it is still open. `pick` therefore reads dependencies live, permanently, and the negative is asserted directly (a stale store must not let a blocked item through). A table that could never gain the consumer it was shaped for is a dead field by the every-column-is-a-Q-projection rule; worse than dead, because the next builder wires the fan-out to it and the cross-repo case fails silently |
 | `cursor(scope, since, etag, coverage_confirmed_at)` | Q2 incremental refresh | primitive for sweeps/prefetch. **`etag` added in W1 Chunk 02** — the *list-query* validator, which is a different thing from `item.etag` beside it and is why it needs its own column rather than reusing one: verified live (Cache Spec §6), a list ETag replayed against `GET /issues/{n}` returns 200 while the item's own returns 304, and the list body carries no per-item validator. It is a Q-projection under the no-dead-fields rule because the no-op sync reads it: an unadvanced cursor re-issues a byte-identical query, matches, and takes a 304 at **zero rate-limit cost**. Stored against the cursor because the cursor is what fixes the query's identity — change `since` and the validator is void by construction. **`coverage_confirmed_at` — added in W1 as `fetched_at`, renamed and widened in Chunk 04, and the widening is the substantive half.** As `fetched_at` it was the local stamp of the sync that *wrote* the row, which was the ONLY trace a successful sync of an **empty** scope left: with no rows there is no `item.fetched_at` to age, and reporting *never synced* for a backlog that is simply empty is a different claim from the true one. Chunk 04 found the larger problem — **it is what a served payload's visible age is measured from, and only a stamp every successful sync advances can answer that**. The age had been `MIN(item.fetched_at)`, honest while every sync rewrote every row; once sync went incremental only the window is restamped, so that number becomes the fetch time of the least-recently-*edited* item and grows without bound while syncs keep succeeding — a store synced ten seconds ago reporting an age of weeks. The 304 path was worse still: it returned before touching the store, so the cheapest and most common successful sync left no trace at all. The column therefore records **coverage confirmed**, which a not-modified sync advances too (a 304 establishes that the provider has nothing newer, not merely that nothing was written); row stamps remain the reader's fallback. Recorded here deliberately: this is the very column whose unversioned addition caused the `SCHEMA_VERSION` incident `cache.py` documents, so a §6 that omitted it would leave the schema's one home disagreeing with the store on exactly the column that already bit once |
 | `briefing_counts(scope, counts_json, fetched_at)` | **GV2** — session-start counts | the **P0 persisted-counts floor** the PRD admits (M3): a degenerate cache w/ visible age so "start never waits"; distinct from the always-derived Q5 read path. **W1 did NOT absorb it into SQLite** — it stays the standalone JSON file `snapshot.py` owns, beside the SQLite store rather than inside it, so the session-start read stays in-process and network-independent (BLOCK-5); folding it in would put that read behind a connection open |
 

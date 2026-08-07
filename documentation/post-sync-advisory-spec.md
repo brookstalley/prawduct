@@ -368,16 +368,24 @@ See `documentation/backlog-system-requirements.md` §8.2 for resolution conditio
 backlog-service API §2.4), every probe whose premise is "the markdown file IS the live backlog"
 returns no candidates: the four markdown probes above (`legacy-backlog-format`,
 `backlog-service-migration-required`, `legacy-section-schema`, `backlog-overdue-grooming`) and the
-norm-probe trio that judges item liveness from the same file (`revisit-due`, `dead-why`,
-`stalled-transition`). `external-backlog-detected` keeps firing — its premise (stray TODO.md files)
-is independent of where the real backlog lives. The shared predicate is
-`backlog_probes.post_cutover`.
+norm probe `revisit-due`, which reads exception clocks from the same file. `external-backlog-detected`
+keeps firing — its premise (stray TODO.md files) is independent of where the real backlog lives. The
+shared predicate is `backlog_probes.post_cutover`.
+
+**Amended (W1, 2026-08-07): two probes now use that predicate to CHOOSE a backend, not to retire.**
+`dead-why` and `stalled-transition` were on the retirement list above until the backlog read-through
+cache gave them a live store to resolve citations against; they read the markdown file before the
+cutover and the cache after it. Anyone adding a guard on `post_cutover` should decide which of the
+two shapes they are writing. **`revisit-due` stays retired on the far side and the cache does not
+change that** — `revisit:` records intent (*granted until date X*), which no age-based query can
+reconstruct, so what it waits on is a *write* path for the field, not a read path.
 
 **Retirement is not silence (GV8).** Cutover retires those probes' *premises*, not the checks they
-stood for — the norm-probe trio in particular carries norm-exception expiry, and a norm exception
-that stops expiring visibly is a silent norm departure. So exactly one probe runs on the far side of
+stood for — `revisit-due` in particular carries norm-exception expiry, and a norm exception that
+stops expiring visibly is a silent norm departure. So exactly one probe runs on the far side of
 the line: `backlog-checks-dormant` fires **when `post_cutover` is true**, naming what is dormant and
-why. Read the two together — the retirement list above says which probes stop, and that probe says
+why. **It names only what the cache will restore**, which `revisit-due` is not — see the amendment
+above and the note at `backlog_probes.DORMANT_CHECKS`. Read the two together — the retirement list above says which probes stop, and that probe says
 so out loud rather than leaving the reader a clean bill of health that no longer means anything.
 
 ---

@@ -123,87 +123,60 @@ W1 promises about double-picks.
 - [x] Chunk 02: Incremental sync — cursor watermark and conditional revalidation
 - [x] Chunk 03: The three new domain fields and their write path
 - [x] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
-- [ ] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
+- [x] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
 - [ ] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
-Context: **Chunk 04 is built and green** — the suite passes clean (the count lives in the evidence
-store, which is tree-keyed; `prawduct-hook test-status` reads it). Verified live against the real
-backlog at **schema 5**: the v4 store rebuilt to 453 items with the text index intact, and every
-query in spec §2's union was run and its answers read. 181 open items (203 shipped + 69 dropped =
-453, and the briefing's 184 *pending* reconciles exactly — `counts` includes the three untriaged
-issues the cache correctly holds out of scope, so the two numbers disagree by design rather than by
-defect); 51 area groups; a real `id:PFX` alias (`BND-1S4K` → `#157`, one of 371 indexed aliases)
-resolving through the alias table; a short spelling normalizing; a miss coming back as
-`resolved: false` rather than an error. The intersection ran against this branch's real **529**
-changed files and returned exactly `#621`, matched on its three `affected` entries, while an
-unrelated changed set returned nothing. **The coverage stamp was exercised against the live provider
-through all three sync outcomes** — rebuild, then an incremental sync that wrote one row and stored a
-validator, then a genuine **304** that wrote nothing and still advanced the stamp (19:10:15 →
-19:10:17) while preserving the validator. That last step is the one the finding was about: before
-this chunk the not-modified sync — the steady state — returned before touching the store, so the
-cheapest and most common success left no trace and the age went on growing. (Chunk 01 shipped `05d09f3`, Critic `rev-20260807T145538Z`
+Context: **Chunk 05 is built and green** — the suite passes clean and every acceptance criterion was
+verified against the live backlog at **schema 6**. `pick` returns ranked ready work in **~0.9s at
+`--limit 1`** and **~2.0s at `--limit 3`** against the real 453-item store, against the ~12.4s the
+same call took before (#230, ~6x the NFR §4 floor); the whole difference is that the candidate walk
+stopped being a paginated scan of every open issue. `prawduct-hook backlog claim` exits 2 as an
+unknown op, `pick --claim` exits 2 as an unknown flag, and no skill surface tells a reader to run
+either. Both restored probes were driven end-to-end against the real store: `dead-why` fired on a
+norm citing a genuinely shipped issue, `stalled-transition` fired at 98 days on an aged in-transition
+tracker, and with the store deleted **both reported `backlog-cache-unreadable` rather than nothing** —
+one advisory between them, not two. (Chunk 01 shipped `05d09f3`, Critic `rev-20260807T145538Z`
 clean; Chunk 02 `fbdf273`, cumulative `rev-20260807T155720Z-e9acddfa` then verify
 `rev-20260807T162342Z-98cc1462` at 0/0/0; Chunk 03 `a4276f3`, cumulative
 `rev-20260807T171120Z-485805c5` at 0 blocking then verify `rev-20260807T173116Z-bb6a879f` at
-0/0/0.) Tracking item **#621**; **#230** is discharged by Chunks 02 + 05.
+0/0/0; Chunk 04 `c373768`, review `rev-20260807T190710Z-0b730657` at 0 blocking / 2 warnings /
+3 notes, all five dispositioned and fixed in the chunk's own commit.) Tracking item **#621**; **#230**
+is discharged by Chunks 02 + 05.
 
-**Chunk 04 answered all four findings Chunk 03's review carried into it, and the answers are in its
-entry below.** The two that changed the shape of the store: the visible age now comes from a
-per-scope **coverage-confirmed-at** stamp that every successful sync advances — the 304 included,
-which previously returned before touching the store — and **`item.tags` was removed**, the
-every-column-is-a-Q-projection rule applied on the trigger the column's own comment named. Both are
-schema **v5**, along with the new `item_alias` index that alias resolution needed.
+**The `relationship` table is gone, which is the decision Chunk 04 left standing and this chunk had to
+make rather than inherit.** It was the natural home for blocker edges, and blocker edges are the one
+predicate ready-work must never answer from the store: a blocker can live in another repo, this cache
+holds exactly one, so a cached edge could record only that a dependency *existed*. The table could
+therefore never gain the consumer it was shaped for — and an empty table shaped like the answer is
+worse than no table, because the next builder wires the fan-out to it and the cross-repo case fails
+silently. The no-dead-fields rule and the correctness argument pointed the same way. Schema **v6**.
+`comment` stays, on the opposite reasoning: nothing forbids a consumer arriving, so it keeps the
+trigger comment `tags` had before its removal. `item_updated_at` was named a dead-weight candidate in
+the previous handoff and is **not** — a function-over-column filter cannot use it, but `stale_items`
+orders by `updated_at` and an index serves an ORDER BY.
 
-**A latent defect surfaced that would have bitten every user at this very bump.** `sqlite_master`
-lists an FTS5 virtual table *after* its own shadow tables, so the rebuild's drop loop deleted
-`item_fts_config` first and `DROP TABLE item_fts` then failed with `vtable constructor failed` —
-swallowed by a bare `except … continue`, and mislabelled downstream as "SQLite built without FTS5".
-Every schema-version rebuild left an `item_fts` that `has_fts()` reported as present and every query
-raised on. Fixed at all three seams and regression-tested through `search` rather than through
-`has_fts`, which is the function that returned the wrong answer.
+**`pick` revalidates before it reads, and that is where never-silently-stale finally has teeth.** One
+conditional request, free in the steady state; when it fails the store is still served and both the
+failure and the store's visible age ride out as warnings. The blocker fan-out stays live, so the
+QRY-2 negative holds *structurally* rather than by discipline: a stale store cannot let a blocked
+item through because it is never asked. That negative is asserted directly, with revalidation forced
+to fail so the cache is provably stale.
 
-**Chunk 03's expensive decisions are all recorded in its entry, and two of them changed the plan.**
-The chunk's own Deliverables line said to name the three fields in `_UPDATE_FACETS`; that is the
-label-swap loop, so taken literally it would have written `affected:` labels for a body-block field
-and single-valued the one deliberately multi-valued one. The allowlist grew two new categories
-instead, and the Deliverables line was corrected in place rather than left to be found as a
-divergence. The second: the "`affected` index" is a **table** (`item_affected(item_id, path)`),
-because the intersection runs entry-contains-changed-file and an index on the joined column cannot
-serve that direction — the query expands each changed file into its ancestor directories and matches
-by equality. It is the `item_fts` shape exactly, so it is not a second home for the fact.
+**The restoration surfaced a real defect in `dead-why` that dormancy had hidden.** Pointed at this
+repo's own norms it fired three times on `observability-strategy.md`, every hit a `Status:
+steady-state … transitioned when <item> closed` line — the transition's own record, the healthiest
+state a norm reaches, reported as rotting rationale. The `Status:` arm now counts only while the
+status still reads `in-transition`, which is also exactly the case `stalled-transition` hands to it.
+The `Why:` arm is untouched. **The tripwire caught it, not a unit test**, and it caught it only
+because the probe was pointed at real data for the first time since the cutover.
 
-**One tension is named rather than resolved:** `item.tags` is the only column here with no consumer
-query. `list --tag` is served **live** off the provider's label filter, not from the cache. The
-column is carried because rebuild-equivalence doubles as the provider-adequacy test and a field the
-cache never stores is a field that test never exercises — but under the every-column-is-a-Q-projection
-rule it is the first candidate for removal if Chunks 04–06 ship no cache-served tag query. Both
-`cache.py` and `data-model.md` §6 say so at the column.
-
-**Five mutations were run rather than assumed**, each caught by exactly the test written for it: a
-prefix-instead-of-equality matcher (`plugin/lib` swallowing `plugin/libexec`); an `item_affected`
-upsert that never deletes (a stale *positive*, which reads as an answer); a block-field writer that
-ignores a same-call `--body` edit; tag writes with swap semantics; and `SCHEMA_VERSION` left at 3,
-which reproduces the exact historical failure — *table item has no column named affected*, forever,
-with the rebuild gated behind the check that just approved the store.
-
-**Next up: Chunk 05** — the code consumers: the two restored norm probes, `pick` off the cache, and
-the end of the `claim` machinery. It depends on Chunk 04, which now exposes everything it reads.
-Two notes for it. `cachequery.resolve` is what `probe_dead_why` (consumer 14) and
-`probe_stalled_transition` (consumer 15) both want — one call answers *resolves? / dead? /
-updated_at*, so neither probe needs a query of its own. And the `relationship` table is still empty:
-nothing writes it and nothing reads it, which makes it the one table in the schema with no
-Q-projection behind it. Chunk 05 is where its blocker fan-out arrives — or where the same rule that
-took `tags` takes it.
-
-**#529 blocks one consumer, not this plan.** #621's `blocked-by #529` edge was **dropped by owner
-ruling (2026-08-07)**: a blocker that suppresses a whole item from ranked ready-work because one of
-fifteen consumers waits on it is a false blocker. What #529 actually blocks is consumer 12, a
-sliver of Chunk 06, and that carve-out is written down in that chunk where the work is. #621 is
-`stage: ready` and now surfaces by rank rather than only by name.
-
-**The `claim` machinery is retired by this work** (owner ruling, 2026-08-07 — see Requirements
-Confidence). It lands in Chunk 05, code and prose together.
-
+`--include-working` landed on `pick` (a real CLI flag: the exclusion is served by the query) and on
+`list` **as a rendering rule in the skill**, which is where its predecessor `--include-claimed` always
+lived. `[DECISION: no `--include-working` on the CLI `list` op | `working_branch` is a body-block
+field the provider cannot filter on, so a CLI-side default exclusion would have to post-filter a page
+— and `list`'s `count`/`has_more` contract is explicitly built on the raw page length, so the flag
+would make the pagination signal lie. The skill already holds the row-rendering rules and each item
+carries `working_branch` in its envelope | user can veto/override]`
 
 ## Scaffolding
 
@@ -814,6 +787,28 @@ the same shape that makes `transport.py` the sole egress.
   surfaces the branch name in `why` and the human judges whether a three-week-old branch is
   abandoned. The asymmetry backs it — a wrongly-excluded item costs one `--include-working` flag, a
   wrongly-included one costs two people on one item | user can veto/override]`
+  **OPS-1 is discharged here; OPS-3 is carried to Chunk 06, and the split is not a blanket
+  deferral.** Chunk 01 named this chunk as their home. OPS-1 — *cost is O(1) in project count* — has
+  a complete subject now: the per-project footprint is two local files inside the clone, and
+  `TestTheCostSurface` builds two independent projects and asserts the Nth adds the same rebuildable
+  pair inside its own clone and nothing shared, global or in the working tree. **OPS-3 does not have
+  a complete subject yet**, and that is why it moves rather than being written thin: its text is
+  *"the detached refresh is a subprocess, not a daemon"*, and no detached refresh exists until Chunk
+  06's DECISION block builds one. Writing it now would assert a property of a component that is not
+  there, which is the catalogue-row-describing-a-check-nobody-built defect this plan names twice.
+  Chunk 06's Tests line carries it.
+
+  **Three things this chunk did that its Deliverables line did not name, each recorded here rather
+  than left to be found as a divergence.** (1) **The three `lib/norm_probes.py` rows left
+  `DORMANT_CHECKS`.** Chunk 06 empties that list; but two of those checks are restored *here* and the
+  third is retired *here*, so leaving their rows would have shipped a commit whose session briefing
+  announced seven dormant checks when four were dormant. A row belongs there only while its check is
+  waiting. (2) **`_extract_ids` learned the issue-ref spelling** (`#621`, `owner/repo#621`). The PFX
+  pattern was the only one it knew, and post-cutover Direction sections cite provider ids — a probe
+  reading only PFX would have scanned every artifact, found nothing to resolve, and looked exactly
+  like a clean bill of health. (3) **`dead-why`'s `Status:` arm narrowed to in-flight transitions**,
+  which is a defect the restoration surfaced against this repo's real norms and is written up in the
+  plan Context.
 - **Depends on:** Chunk 04
 - **Artifacts consumed:** `documentation/backlog-service-cache-spec.md` §§2.1, 3, 6;
   `documentation/backlog-service-nfr.md` §§4, 5
@@ -823,8 +818,12 @@ the same shape that makes `transport.py` the sole egress.
   excluding on `working-branch`; `--include-working` on `pick` and `list` replacing
   `--include-claimed`; the claim machinery removed from `plugin/lib/backlog/core.py`,
   `plugin/lib/backlog/cli.py`, `plugin/lib/backlog/query.py` and `plugin/lib/backlog/encode.py`;
-  the claim prose removed from `plugin/skills/backlog/SKILL.md` and
-  `plugin/skills/backlog/adapter-mode.md`; `tests/test_backlog_claim.py` deleted
+  the claim prose removed from `plugin/skills/backlog/adapter-mode.md` and from
+  `plugin/skills/backlog/SKILL.md`'s **adapter-facing** parts only — the markdown backend keeps
+  `accepted-by:`/`--include-claimed`, for the reason recorded in the Context block;
+  `tests/test_backlog_claim.py` deleted; `cachequery.ready_items`
+  (the candidate query, whose named consumer is `pick` — spec §2 inventories the *dormant* readers and
+  `pick` never was one); the `relationship` table dropped and `SCHEMA_VERSION` bumped to 6
 - **Tests:** catalogue — **QRY-2** (ready-work correctness, including the negative: a stale cache
   must not let a blocked item be picked); **OPS-1** and **OPS-3**, carried here from Chunk 01, which
   could not discharge them: both assert properties of the whole deployed adapter (cost is O(1) in
@@ -842,14 +841,23 @@ the same shape that makes `transport.py` the sole egress.
 - **Acceptance criteria:** `pick` completes under the NFR floor on this repo's live backlog; both
   restored probes produce a finding on a seeded trigger; no probe returns `[]` for a reason other
   than "nothing matched"; `prawduct-hook backlog claim` exits as an unknown op and nothing in the
-  skills tells a reader to run it
+  skills tells a reader to run it — **"the skills" means the adapter surface**; the markdown
+  backend's own way of taking an item is out of this retirement's scope
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. #230 updated `status=shipped` with the measured before/after, via `/prawduct:backlog update`
+     — **done 2026-08-07**: shipped, with a comment carrying the measurements (~12.4s → ~0.9s at
+     `--limit 1`, ~2.0s at `--limit 3` on a 453-item corpus) and the correction that neither route the
+     item anticipated is what removed the cost. Recorded here because a remote write leaves no trace
+     in the changeset, so the only evidence a later reader has is this line
   3. `documentation/backlog-service-data-model.md` and
      `documentation/backlog-service-api-contract.md` reconciled where they specify `claim` /
      `unclaim` / `claimed_at` — a retired operation still specified is a second home for a decision
-     that no longer holds
+     that no longer holds. **The sweep did not stop at the two this line names, and the line was the
+     reason it nearly did**: `-test-specifications.md` (CRASH-6, the error-code coverage row, QRY-2's
+     setup), `-nfr.md` (the rate and latency budgets) and `-requirements.md` (CC3, GV1) specify the
+     same retired op, and a rule about second homes does not stop at the homes someone remembered to
+     enumerate
   4. `/prawduct:critic` run and blocking findings resolved
   5. Committed and chunk marked `[x]` in Status
 
@@ -909,7 +917,11 @@ the same shape that makes `transport.py` the sole egress.
 - **Deliverables:** `plugin/skills/critic/review-cycle.md`, `plugin/skills/pr/review-protocol.md`,
   `plugin/skills/janitor/SKILL.md`; `DORMANT_CHECKS` and `probe_checks_dormant` removed from
   `plugin/lib/backlog_probes.py`; the advisory's registry row removed
-- **Tests:** new — the advisory no longer fires post-cutover; the probe registry has no dangling
+- **Tests:** catalogue — **OPS-3** (no server required for correctness), carried from Chunk 05
+  because its subject is the detached sync trigger this chunk's DECISION block builds: exercise the
+  full CRUD + query + `pick` surface in one process with nothing detached ever having run, and assert
+  correctness does not depend on it. (OPS-1 was discharged in Chunk 05.) new — the advisory no longer
+  fires post-cutover; the probe registry has no dangling
   row. Note the token-budget guardrails on the skill files: three prose surfaces are being edited
   and each carries a size test, so anticipate the trim rather than discovering it at chunk close
 - **Acceptance criteria:** a Critic review and a `/prawduct:janitor` run on a branch with real

@@ -10,11 +10,20 @@ failures) and unexpected ``OSError``/``JSONDecodeError`` from the transport,
 which are mapped and logged, never swallowed (ERR-6).
 
 Implemented ops: ``file``, ``get``, the two-axis ``set-status`` transition,
-``update`` (optimistic CAS + mass-assignment guard), ``comment``, ``claim`` /
-``unclaim`` (atomic take-and-verify + visible staleness), ``link`` / ``unlink``
-(typed relationship edges), and the minimal ``provision``. The read side
-(``list`` / ``pick`` / ``counts``) lives in the sibling ``query`` module, which
-reuses this module's envelope helpers.
+``update`` (optimistic CAS + mass-assignment guard), ``comment``, ``link`` /
+``unlink`` (typed relationship edges), and the minimal ``provision``. The read
+side (``list`` / ``pick`` / ``counts``) lives in the sibling ``query`` module,
+which reuses this module's envelope helpers.
+
+**There is no ``claim`` op**, and its absence is a decision rather than a gap.
+Taking an item used to mean assigning it and stamping an expiry, which needed a
+TTL nobody could set well, a reap tier in the ranking, and a policy for a stamp
+nobody refreshes. It is replaced by ``working-branch`` (a body-block field
+``update`` writes like any other): if an item names a pushed branch, someone is
+on it, and how alive that work is can be read from the branch itself instead of
+inferred from a timestamp. ``assignee`` therefore returns to native/protected —
+GitHub's own UI still assigns, and prawduct simply stops reading assignment as
+meaning.
 """
 
 from __future__ import annotations
@@ -26,14 +35,6 @@ from datetime import datetime, timezone
 
 from . import encode, ids, issuefmt, provision
 from .transport import RETRYABLE_DEFAULTS, Transport, TransportError, paginate
-
-# The default claim-staleness TTL (CC3/M11). No upstream artifact pins a number,
-# so this is a build-time default: longer than any single agent work-cycle (a
-# claim is never reaped out from under live work) yet short enough that a claim
-# orphaned by a died fleet agent frees within a day so ``pick`` cannot starve.
-# Overridable per call (``claim_ttl_seconds``) — human policy stays the authority.
-# `query.pick` imports this so the reap threshold is defined once.
-DEFAULT_CLAIM_TTL_SECONDS: int = 24 * 60 * 60
 
 # --- The envelope (API §3/§4) ------------------------------------------------
 #
@@ -247,7 +248,7 @@ def get_item(
     collision / no-repo verdicts. ``settle_retries`` handles the **observed** brief
     post-create replication window (QRY-1): reading *your own just-written item* can
     404 momentarily. It is opt-in and **only** for a read-your-own-write
-    (create/claim verify) — a plain ``get`` keeps ``settle_retries=0`` so a genuine
+    (a create's own verify read) — a plain ``get`` keeps ``settle_retries=0`` so a genuine
     not-found stays fast and the never-block floor is never diluted with retries on
     real absences.
     """
@@ -535,8 +536,14 @@ def set_status(
 # --- update (field-wise edit; optimistic CAS + mass-assignment guard) ---------
 
 # The ONLY fields `update` may write (SEC-2 allowlist). `status` goes through
-# set-status, `assignee` through claim; native/protected fields are never writable
+# set-status; native/protected fields — `assignee` among them — are never writable
 # from request input.
+#
+# `assignee` was reachable once, through the retired `claim` op, and its return to
+# this side of the line is deliberate: prawduct no longer reads assignment as
+# meaning, so writing it would be prawduct asserting something it does not itself
+# consult. GitHub's UI still assigns; `working-branch` is where prawduct records
+# that someone is on an item.
 _UPDATE_DIRECT: tuple[str, ...] = ("title", "body")
 _UPDATE_FACETS: tuple[str, ...] = ("stage", "kind", "area", "effort", "impact", "source")
 
@@ -630,7 +637,7 @@ def update_item(
     ``body``, the soft-enum facets (``stage``/``kind``/``area``/``effort``/
     ``impact``/``source``), the multi-valued ``tags``, and the block-authoritative
     ``affected`` / ``working-branch``. ``status`` goes through set-status,
-    ``assignee`` through claim; any other key — a native/protected field
+    and ``assignee`` is not writable at all; any other key — a native/protected field
     (``node_id``, ``number``, ``state``, ``history``), an ``automated:`` marker,
     foreign attribution — is **rejected**, never written from request input
     (attribution comes only from the API identity). When ``expected_updated_at``
@@ -708,7 +715,7 @@ def update_item(
 
         # The pushed-ref check (Cache Spec §3): `working-branch` names a branch
         # another agent can go and look at, so an unpublished one is an invisible
-        # claim — the single failure the field exists to prevent. Asked before the
+        # claim of the item — the single failure the field exists to prevent. Asked before the
         # PATCH so a refusal leaves the item untouched.
         if working_ref is not None:
             branch_owner, branch_repo, branch_name = working_ref
@@ -738,8 +745,7 @@ def update_item(
         # Only PATCH a body that actually changed — clearing a field that was
         # never set would otherwise spend a write and bump `updated_at`, and that
         # stamp is not inert: it is the sync watermark and the CAS comparand, so a
-        # no-op write makes the item look edited to every later reader. Same guard
-        # `unclaim` already applies for the same reason.
+        # no-op write makes the item look edited to every later reader.
         if new_body is not None and new_body != (issue.get("body") or ""):
             patch["body"] = new_body
         if patch:
@@ -855,127 +861,6 @@ def comment_item(
         "actor": (comment.get("user") or {}).get("login"),
     }
     return ok(data)
-
-
-# --- claim / unclaim (atomic take-and-verify + visible staleness) ------------
-
-
-def claim(
-    transport: Transport,
-    *,
-    id_raw: str,
-    default_owner: str | None = None,
-    default_repo: tuple[str, str] | None = None,
-    claim_ttl_seconds: int = DEFAULT_CLAIM_TTL_SECONDS,
-    now: datetime | None = None,
-    sleeper=None,
-) -> dict:
-    """Atomically take an item (CC3/M11): set the assignee to the **API identity**
-    and stamp ``claimed_at`` (block-authoritative visible staleness), then
-    **verify** by re-reading. A different actor's **live** claim (within the TTL)
-    yields a non-fatal ``claim_conflict``; a claim aged past the TTL is reaped
-    (taken). A lost take-and-verify race also returns ``claim_conflict`` so the
-    caller re-picks. Idempotent for the same actor (re-stamps the heartbeat).
-    """
-    now = now or datetime.now(timezone.utc)
-
-    warnings: list[str] = []
-    try:
-        # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
-        # try (a label search — I/O); a '#' or '/' spelling does no I/O (MG1).
-        nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
-        if not nid.ok:
-            return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
-        actor = transport.get_authenticated_user().get("login")
-        issue = transport.get_issue(nid.owner, nid.repo, nid.number)
-        current, _ = encode.decode_item(issue, canonical_id=nid.canonical)
-
-        holder = current.get("assignee")
-        if holder and holder != actor:
-            claimed_at = encode.parse_iso(current.get("claimed_at"))
-            # No stamp → cannot age it → treat as a live (human/UI) claim, never
-            # reaped out from under someone. Only a stamp past the TTL is reaped.
-            live = claimed_at is None or (now - claimed_at).total_seconds() <= claim_ttl_seconds
-            if live:
-                return error(
-                    "claim_conflict",
-                    f"{nid.canonical} is claimed by {holder}",
-                    details={"holder": holder, "claimed_at": current.get("claimed_at")},
-                )
-
-        # Take it in ONE atomic PATCH — the assignee *and* the claimed_at stamp
-        # together. Two separate writes could crash between them and strand an
-        # assignee-set/no-stamp item, which decodes as a *live* claim no TTL reap
-        # can free (the exact M11 never-starve gap, since a died agent never
-        # re-runs to converge). GitHub's issue PATCH sets `assignees` and `body`
-        # in a single request, so no torn intermediate state exists.
-        new_body = encode.upsert_block_field(
-            issue.get("body") or "", "claimed_at", now.isoformat()
-        )
-        transport.update_issue(
-            nid.owner,
-            nid.repo,
-            nid.number,
-            fields={"assignees": [actor], "body": new_body},
-        )
-
-        # Take-and-verify: re-read (settling the post-write window) and confirm we
-        # hold it — a concurrent claimant that won surfaces here as a conflict.
-        verify = _get_issue_settling(transport, nid.owner, nid.repo, nid.number, 3, sleeper)
-    except TransportError as exc:
-        return from_transport_error(exc)
-    except (OSError, json.JSONDecodeError) as exc:  # ERR-6
-        log_diag(f"unexpected transport failure on claim: {type(exc).__name__}")
-        return error("unavailable", "the backend request failed unexpectedly")
-
-    item, decode_warnings = encode.decode_item(verify, canonical_id=nid.canonical)
-    warnings.extend(decode_warnings)
-    if item.get("assignee") != actor:
-        return error(
-            "claim_conflict",
-            f"lost the claim race for {nid.canonical}; re-pick",
-            details={"holder": item.get("assignee")},
-        )
-    return ok(item, warnings)
-
-
-def unclaim(
-    transport: Transport,
-    *,
-    id_raw: str,
-    default_owner: str | None = None,
-    default_repo: tuple[str, str] | None = None,
-) -> dict:
-    """Release a claim (idempotent): clear the assignee and the ``claimed_at``
-    stamp. Unclaiming an already-free item is a near-no-op (no redundant writes)."""
-    try:
-        # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
-        # try (a label search — I/O); a '#' or '/' spelling does no I/O (MG1).
-        nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
-        if not nid.ok:
-            return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
-        issue = transport.get_issue(nid.owner, nid.repo, nid.number)
-        current, _ = encode.decode_item(issue, canonical_id=nid.canonical)
-        # One atomic PATCH clears assignee + stamp together (same crash-safety as
-        # claim). Empty when already free — an unclaimed item takes no writes.
-        old_body = issue.get("body") or ""
-        new_body = encode.upsert_block_field(old_body, "claimed_at", None)
-        patch: dict = {}
-        if current.get("assignee"):
-            patch["assignees"] = []
-        if new_body != old_body:
-            patch["body"] = new_body
-        if patch:
-            transport.update_issue(nid.owner, nid.repo, nid.number, fields=patch)
-        result = transport.get_issue(nid.owner, nid.repo, nid.number)
-    except TransportError as exc:
-        return from_transport_error(exc)
-    except (OSError, json.JSONDecodeError) as exc:  # ERR-6
-        log_diag(f"unexpected transport failure on unclaim: {type(exc).__name__}")
-        return error("unavailable", "the backend request failed unexpectedly")
-
-    item, warnings = encode.decode_item(result, canonical_id=nid.canonical)
-    return ok(item, warnings)
 
 
 # --- link / unlink (typed relationship edges) --------------------------------

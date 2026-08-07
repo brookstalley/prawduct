@@ -3,8 +3,10 @@
 Covers the ready-work read side against the transport-seam fake:
 - QRY-1 structured, online, strongly-consistent-in-practice ``list`` + the
   observed 404-after-create replication window (bounded settle-retry).
-- QRY-2 ``pick`` list-then-fan-out: blocker (incl. **cross-repo**) + claim-TTL
-  predicates, ranking, and the ``--claim`` take.
+- QRY-2 ``pick`` cache-then-fan-out: the candidate set off the local store
+  (open ∧ stage:ready ∧ no working branch, scoped), the **live** blocker
+  predicate including the cross-repo case, ranking, and the negative — a stale
+  store must not let a blocked item through.
 - QRY-4 ``counts`` derived on read.
 - PROV-2 non-prawduct issues are out-of-scope (ignored, not malformed).
 
@@ -26,7 +28,8 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cli, core, encode, query  # noqa: E402
+from lib.backlog import cache, cli, core, encode, query, sync  # noqa: E402
+from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
@@ -37,6 +40,16 @@ NOSLEEP = lambda _attempt: None  # noqa: E731 — deterministic no-wait settle i
 @pytest.fixture
 def fake():
     return FakeGitHub(user={"login": "agent-a", "id": 1})
+
+
+@pytest.fixture
+def repo_dir(tmp_path):
+    """A real git work tree — `cache_path` resolves through `--git-common-dir`,
+    which is also what makes the store shared by every worktree of a clone."""
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    return tmp_path
 
 
 def _file(fake, *, title="query: the t item under test", body="b", owner=OWNER, repo=REPO, **facets):
@@ -52,19 +65,39 @@ def _plain(fake, *, title="query: the plain item under test", body="just a norma
     return f"{owner}/{repo}#{issue['number']}"
 
 
-def _stamp_claim(fake, id_raw, *, login, when):
-    """Directly stamp an assignee + claimed_at on an item (bypass the claim op) so
-    pick/claim TTL behaviour can be exercised at a controlled age."""
+def _assign(fake, id_raw, *, login):
+    """Assign an item on the provider directly. Prawduct no longer writes
+    `assignee` — the claim op that did is retired — so a test that wants an
+    assigned item reaches past the adapter, which is also the only way the field
+    is set in the field now (GitHub's own UI)."""
     _owner, _repo, number = _split(id_raw)
-    issue = fake.get_issue(_owner, _repo, number)
-    body = encode.upsert_block_field(issue.get("body") or "", "claimed_at", when.isoformat())
-    fake.update_issue(_owner, _repo, number, fields={"assignees": [login], "body": body})
+    fake.update_issue(_owner, _repo, number, fields={"assignees": [login]})
+
+
+def _stamp_created(fake, id_raw, when):
+    """Set an item's provider `created_at`. The fake stamps every issue at one
+    instant, and ready-work's ranking is precisely about telling them apart."""
+    _owner, _repo, number = _split(id_raw)
+    fake._repo(_owner, _repo).issues[number]["created_at"] = (
+        when.isoformat().replace("+00:00", "Z")
+    )
 
 
 def _split(id_raw):
     owner_repo, _, number = id_raw.partition("#")
     owner, _, repo = owner_repo.partition("/")
     return owner, repo, int(number)
+
+
+def _sync(fake, repo_dir):
+    """Warm the store without going through `pick` — for a test that needs the
+    cache populated *before* it changes something on the provider."""
+    result = sync.full_rebuild(fake, project_dir=repo_dir, owner=OWNER, repo=REPO, now=NOW)
+    assert result["status"] == "ok", result
+
+
+def _pick(fake, repo_dir, **kwargs):
+    return query.pick(fake, project_dir=repo_dir, owner=OWNER, repo=REPO, now=NOW, **kwargs)
 
 
 # --- QRY-1: list -------------------------------------------------------------
@@ -127,7 +160,7 @@ class TestList:
     def test_assignee_none_and_star(self, fake):
         free = _file(fake, title="query: the free item under test")
         taken = _file(fake, title="query: the taken item under test")
-        _stamp_claim(fake, taken, login="agent-a", when=NOW)
+        _assign(fake, taken, login="agent-a")
 
         unassigned = query.list_items(fake, owner=OWNER, repo=REPO, filters={"assignee": "none"})
         assert [i["id"] for i in unassigned["data"]["items"]] == [free]
@@ -175,23 +208,24 @@ class TestSettleAfterCreate:
         assert result["status"] == "error" and result["error"]["code"] == "not_found"
 
 
-# --- QRY-2: pick (list-then-fan-out) -----------------------------------------
+# --- QRY-2: pick (cache-then-fan-out) ----------------------------------------
 
 
 class TestPick:
-    def test_returns_ready_unassigned_with_a_why(self, fake):
+    def test_returns_ready_work_with_a_why(self, fake, repo_dir):
         _file(fake, title="query: the ready item under test", stage="ready")
-        result = query.pick(fake, owner=OWNER, repo=REPO, now=NOW)
+        _file(fake, title="query: the idea item under test", stage="idea")
+
+        result = _pick(fake, repo_dir)
         assert result["status"] == "ok"
         cand = result["data"]["candidates"][0]
         assert cand["stage"] == "ready"
-        assert cand["reap_eligible"] is False
         # "no open blockers" → "no blockers recorded": the old wording reported an
         # empty dependency read as a verified all-clear. Not a relaxed assertion —
-        # the distinction it used to blur is now pinned by the two tests below.
-        assert "unassigned" in cand["why"] and "no blockers recorded" in cand["why"]
+        # the distinction it used to blur is pinned by the two tests below.
+        assert "no working branch" in cand["why"] and "no blockers recorded" in cand["why"]
 
-    def test_why_says_recorded_not_clear_when_no_dependencies_exist(self, fake):
+    def test_why_says_recorded_not_clear_when_no_dependencies_exist(self, fake, repo_dir):
         """An empty native-dependency read is *absence of data*, never a clean
         bill of health.
 
@@ -201,11 +235,11 @@ class TestPick:
         that guaranteed silence into a confident all-clear across an entire
         migrated backlog."""
         _file(fake, title="query: the ready item under test", stage="ready")
-        cand = query.pick(fake, owner=OWNER, repo=REPO, now=NOW)["data"]["candidates"][0]
+        cand = _pick(fake, repo_dir)["data"]["candidates"][0]
         assert "no blockers recorded" in cand["why"]
         assert "no open blockers" not in cand["why"]
 
-    def test_why_distinguishes_a_genuinely_cleared_blocker(self, fake):
+    def test_why_distinguishes_a_genuinely_cleared_blocker(self, fake, repo_dir):
         """The other side of the same contract: when dependencies *were*
         recorded and are now closed, that IS a verified all-clear and must read
         differently from the no-data case above."""
@@ -214,30 +248,51 @@ class TestPick:
         core.link(fake, id_raw=candidate, edge="blocked-by", target_raw=blocker)
         core.set_status(fake, id_raw=blocker, target="shipped")
 
-        picked = query.pick(fake, owner=OWNER, repo=REPO, limit=5, now=NOW)["data"]["candidates"]
+        picked = _pick(fake, repo_dir, limit=5)["data"]["candidates"]
         cleared = next(c for c in picked if c["id"] == candidate)
         assert "1 blocker closed" in cleared["why"]
         assert "no blockers recorded" not in cleared["why"]
 
-    def test_dependency_fanout_is_bounded_by_limit_not_by_backlog_size(self, fake):
-        """PROBE-LAT / the N+1: `pick` must not pay one dependency read per
-        *eligible* item when it was asked for one candidate.
+    @pytest.mark.parametrize("backlog_size", [3, 12])
+    def test_the_candidate_walk_does_not_grow_with_the_backlog(self, fake, repo_dir, backlog_size):
+        """#230, which is what moved `pick` onto the store: the candidate set used
+        to be a paginated scan of every open issue on *every* call, decoded in
+        full to rank — measured at ~12.4s against ~209 issues, ~6x the latency
+        floor.
 
-        The fan-out used to run over every eligible issue before `limit` was
-        applied, so a 170-item migrated backlog cost 170 REST calls on every
-        pick regardless of `--limit`. Ranking does not depend on blocker state,
-        so the reads can be taken lazily in rank order."""
+        Two sizes, one number: the provider list traffic is the revalidation
+        window and nothing else, so it is independent of how big the backlog is.
+        Wall-clock is a build probe's business; what a unit test can pin is that
+        the walk stopped scaling."""
+        for i in range(backlog_size):
+            _file(fake, title=f"query: the ready-{i} item under test", stage="ready")
+        _sync(fake, repo_dir)  # the store is warm before the call under test
+
+        fake.calls.clear()
+        result = _pick(fake, repo_dir, limit=1)
+        assert result["data"]["count"] == 1
+
+        pages = [c for c in fake.calls if c[0] == "list_issues"]
+        assert len(pages) == 1, f"expected only the revalidation window, got {pages}"
+        # And it is the revalidation, not a ready-work query: `pick` never asks
+        # the provider which items are ready.
+        assert all("stage:ready" not in (page[4] or ()) for page in pages), pages
+
+    def test_dependency_fanout_is_bounded_by_limit_not_by_backlog_size(self, fake, repo_dir):
+        """PROBE-LAT / the N+1: `pick` must not pay one dependency read per
+        *eligible* item when it was asked for one candidate. Ranking does not
+        depend on blocker state, so the reads are taken lazily in rank order."""
         for i in range(12):
             _file(fake, title=f"query: the ready-{i} item under test", stage="ready")
 
         fake.calls.clear()
-        result = query.pick(fake, owner=OWNER, repo=REPO, limit=1, now=NOW)
+        result = _pick(fake, repo_dir, limit=1)
         assert result["data"]["count"] == 1
 
         fanout = [c for c in fake.calls if c[0] == "list_blocked_by"]
         assert len(fanout) == 1, f"expected one dependency read for limit=1, got {len(fanout)}"
 
-    def test_fanout_still_walks_past_blocked_candidates_to_fill_the_limit(self, fake):
+    def test_fanout_still_walks_past_blocked_candidates_to_fill_the_limit(self, fake, repo_dir):
         """The laziness must not under-fill: if the top-ranked candidate is
         blocked, `pick` keeps reading down the ranking until `limit` is met."""
         blocked = _file(fake, title="blocked-and-first", stage="ready")
@@ -245,32 +300,28 @@ class TestPick:
         core.link(fake, id_raw=blocked, edge="blocked-by", target_raw=blocker)
         free = _file(fake, title="query: the free item under test", stage="ready")
 
-        result = query.pick(fake, owner=OWNER, repo=REPO, limit=2, now=NOW)
+        result = _pick(fake, repo_dir, limit=2)
         picked = [c["id"] for c in result["data"]["candidates"]]
         assert blocked not in picked
         assert len(picked) == 2 and free in picked and blocker in picked
 
-    def test_failed_dependency_read_on_a_selected_candidate_still_errors(self, fake):
-        """The property that must NOT have changed with the lazy fan-out: if the
-        blocker predicate cannot be evaluated for a candidate `pick` is about to
-        return, the call fails rather than returning it as ready. The predicate
-        is never *assumed* for a returned candidate."""
+    def test_failed_dependency_read_on_a_selected_candidate_still_errors(self, fake, repo_dir):
+        """If the blocker predicate cannot be evaluated for a candidate `pick` is
+        about to return, the call fails rather than returning it as ready. The
+        predicate is never *assumed* for a returned candidate."""
         _file(fake, title="query: the ready item under test", stage="ready")
 
         def _boom(*_a, **_kw):
             raise OSError("dependency endpoint unreachable")
 
         fake.list_blocked_by = _boom
-        result = query.pick(fake, owner=OWNER, repo=REPO, limit=1, now=NOW)
+        result = _pick(fake, repo_dir, limit=1)
         assert result["status"] == "error"
         assert result["error"]["code"] == "unavailable"
 
-    def test_failed_dependency_read_below_the_limit_does_not_fail_the_call(self, fake):
-        """The deliberate semantics change riding with the lazy fan-out: a
-        dependency read that fails on an issue ranked below what `limit` needed
-        is never taken, so it cannot fail the call. Previously any eligible
-        issue's unreachable dependency failed the whole pick — including issues
-        the caller was never going to see."""
+    def test_failed_dependency_read_below_the_limit_does_not_fail_the_call(self, fake, repo_dir):
+        """A dependency read that fails on an issue ranked below what `limit`
+        needed is never taken, so it cannot fail the call."""
         first = _file(fake, title="query: the first item under test", stage="ready")
         for i in range(5):
             _file(fake, title=f"query: the later-{i} item under test", stage="ready")
@@ -284,96 +335,177 @@ class TestPick:
             return _real(owner, repo, number)
 
         fake.list_blocked_by = _boom_except_first
-        result = query.pick(fake, owner=OWNER, repo=REPO, limit=1, now=NOW)
+        result = _pick(fake, repo_dir, limit=1)
         assert result["status"] == "ok"
         assert [c["id"] for c in result["data"]["candidates"]] == [first]
 
-    def test_ignores_non_ready_stage(self, fake):
+    def test_ignores_non_ready_stage(self, fake, repo_dir):
         _file(fake, title="query: the idea item under test", stage="idea")
         _file(fake, title="query: the design item under test", stage="design")
-        result = query.pick(fake, owner=OWNER, repo=REPO, now=NOW)
-        assert result["data"]["count"] == 0
+        assert _pick(fake, repo_dir)["data"]["count"] == 0
 
-    def test_open_blocker_excludes_candidate(self, fake):
+    def test_open_blocker_excludes_candidate(self, fake, repo_dir):
         candidate = _file(fake, title="query: the blocked item under test", stage="ready")
         blocker = _file(fake, title="query: the blocker item under test", stage="ready")
         core.link(fake, id_raw=candidate, edge="blocked-by", target_raw=blocker)
-        picked = {c["id"] for c in query.pick(fake, owner=OWNER, repo=REPO, limit=5, now=NOW)["data"]["candidates"]}
+        picked = {c["id"] for c in _pick(fake, repo_dir, limit=5)["data"]["candidates"]}
         assert candidate not in picked  # its blocker is open
         assert blocker in picked
 
-    def test_closed_blocker_restores_candidate(self, fake):
+    def test_closed_blocker_restores_candidate(self, fake, repo_dir):
         candidate = _file(fake, title="query: the was blocked item under test", stage="ready")
         blocker = _file(fake, title="query: the blocker item under test", stage="ready")
         core.link(fake, id_raw=candidate, edge="blocked-by", target_raw=blocker)
         core.set_status(fake, id_raw=blocker, target="shipped")
-        picked = {c["id"] for c in query.pick(fake, owner=OWNER, repo=REPO, limit=5, now=NOW)["data"]["candidates"]}
+        picked = {c["id"] for c in _pick(fake, repo_dir, limit=5)["data"]["candidates"]}
         assert candidate in picked  # blocker now closed
 
-    def test_cross_repo_open_blocker_is_judged_live_and_excludes(self, fake):
+    def test_cross_repo_open_blocker_is_judged_live_and_excludes(self, fake, repo_dir):
         candidate = _file(fake, title="query: the cross-blocked item under test", stage="ready")
         blocker = _file(fake, title="other-repo blocker", owner=OWNER, repo="other", stage="ready")
         core.link(fake, id_raw=candidate, edge="blocked-by", target_raw=blocker)
 
-        picked = {c["id"] for c in query.pick(fake, owner=OWNER, repo=REPO, limit=5, now=NOW)["data"]["candidates"]}
+        picked = {c["id"] for c in _pick(fake, repo_dir, limit=5)["data"]["candidates"]}
         assert candidate not in picked  # cross-repo blocker open → not ready
 
         core.set_status(fake, id_raw=blocker, target="shipped")  # close it in the other repo
-        picked_after = {c["id"] for c in query.pick(fake, owner=OWNER, repo=REPO, limit=5, now=NOW)["data"]["candidates"]}
+        picked_after = {c["id"] for c in _pick(fake, repo_dir, limit=5)["data"]["candidates"]}
         assert candidate in picked_after  # judged from a live read
 
-    def test_live_claim_excludes_stale_claim_reap_eligible(self, fake):
-        live = _file(fake, title="query: the live claim item under test", stage="ready")
-        stale = _file(fake, title="query: the stale claim item under test", stage="ready")
-        _stamp_claim(fake, live, login="agent-b", when=NOW - timedelta(hours=1))
-        _stamp_claim(fake, stale, login="agent-b", when=NOW - timedelta(days=2))
+    def test_a_stale_cache_cannot_let_a_blocked_item_through(self, fake, repo_dir):
+        """QRY-2's negative, asserted directly. This is the whole reason the
+        blocker predicate stayed live when the candidate predicate moved local.
 
-        result = query.pick(fake, owner=OWNER, repo=REPO, limit=5, now=NOW)
-        by_id = {c["id"]: c for c in result["data"]["candidates"]}
-        assert live not in by_id  # a live claim is not ready work
-        assert stale in by_id and by_id[stale]["reap_eligible"] is True
-        assert "stale claim by agent-b" in by_id[stale]["why"]
+        The cache is deliberately frozen after the blocker edge is added — no
+        revalidation runs at all — so the store still holds the candidate exactly
+        as it was when it was pickable. It is excluded anyway, because the edge is
+        read from the provider and never from the store."""
+        candidate = _file(fake, title="query: the blocked item under test", stage="ready")
+        blocker = _file(fake, title="query: the blocker item under test", stage="ready")
+        _sync(fake, repo_dir)  # the store learns both items while both are free
+        core.link(fake, id_raw=candidate, edge="blocked-by", target_raw=blocker)
 
-    def test_ranking_prefers_free_then_oldest(self, fake):
-        free_new = _file(fake, title="query: the free new item under test", stage="ready")
-        free_old = _file(fake, title="query: the free old item under test", stage="ready")
-        stale = _file(fake, title="query: the stale item under test", stage="ready")
-        _stamp_claim(fake, stale, login="agent-b", when=NOW - timedelta(days=2))
-        # File order is #1 free_new, #2 free_old, #3 stale; ranking = free before
-        # reap, then issue-number asc.
-        order = [c["id"] for c in query.pick(fake, owner=OWNER, repo=REPO, limit=5, now=NOW)["data"]["candidates"]]
-        assert order == [free_new, free_old, stale]
+        def _no_revalidation(*_a, **_kw):
+            raise TransportError("unavailable", "the provider is unreachable")
 
-    def test_limit_caps_candidates(self, fake):
+        fake.list_issues = _no_revalidation
+        fake.list_issues_conditional = _no_revalidation
+        result = _pick(fake, repo_dir, limit=5)
+
+        assert result["status"] == "ok"
+        assert candidate not in {c["id"] for c in result["data"]["candidates"]}
+        assert any("not revalidated" in w for w in result["warnings"]), result["warnings"]
+
+    def test_a_second_scopes_rows_are_never_offered_as_this_repos_ready_work(self, fake, repo_dir):
+        """The QRY-2 negative failing by a second route, and the reason `pick` is
+        the one query here that filters on scope.
+
+        A candidate's issue *number* is handed to a live blocker read against the
+        caller's owner/repo. A row from another repo would therefore be judged
+        against whatever issue THIS repo happens to have at that number — and a
+        genuinely blocked item can come back clear. The store holds one repo by
+        design, but `replace_items` deletes all rows while leaving other scopes'
+        cursor rows intact, so a two-scope store is three commands away."""
+        mine = _file(fake, title="query: the item in this repo under test", stage="ready")
+        other = _file(
+            fake, title="query: the item in another repo", owner=OWNER, repo="other", stage="ready"
+        )
+        blocker = _file(fake, title="query: the blocker item under test", stage="ready")
+        core.link(fake, id_raw=other, edge="blocked-by", target_raw=blocker)
+        _sync(fake, repo_dir)
+        # Force the two-scope store the eviction path allows.
+        conn = cache.open_store(repo_dir, create=False)
+        conn.execute(
+            "INSERT OR REPLACE INTO item (id, title, status, stage, created_at, updated_at, fetched_at) "
+            "VALUES (?, 'the other repo item', 'open', 'ready', ?, ?, ?)",
+            (other, NOW.isoformat(), NOW.isoformat(), NOW.isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+        picked = [c["id"] for c in _pick(fake, repo_dir, limit=5)["data"]["candidates"]]
+
+        assert other not in picked
+        assert mine in picked and blocker in picked
+
+    def test_an_unreachable_store_reports_unavailable_never_an_empty_pick(self, fake, repo_dir):
+        """"Nothing to work on" and "I could not look" are the same output to a
+        reader unless the envelope separates them."""
+        _file(fake, title="query: the ready item under test", stage="ready")
+
+        def _no_revalidation(*_a, **_kw):
+            raise TransportError("unavailable", "the provider is unreachable")
+
+        fake.list_issues = _no_revalidation
+        result = _pick(fake, repo_dir)  # nothing ever synced AND nothing reachable
+
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "unavailable"
+
+    def test_every_answer_carries_the_stores_visible_age(self, fake, repo_dir):
+        _file(fake, title="query: the ready item under test", stage="ready")
+        result = _pick(fake, repo_dir)
+        assert any("read from the backlog cache, confirmed" in w for w in result["warnings"])
+
+    def test_a_working_branch_excludes_an_item_and_include_working_shows_it(self, fake, repo_dir):
+        free = _file(fake, title="query: the free item under test", stage="ready")
+        taken = _file(fake, title="query: the taken item under test", stage="ready")
+        fake.push_branch(OWNER, REPO, "feat/in-flight")
+        assert core.update_item(
+            fake, id_raw=taken, fields={"working-branch": f"{OWNER}/{REPO}@feat/in-flight"}
+        )["status"] == "ok"
+
+        assert [c["id"] for c in _pick(fake, repo_dir, limit=5)["data"]["candidates"]] == [free]
+
+        widened = _pick(fake, repo_dir, limit=5, include_working=True)["data"]["candidates"]
+        by_id = {c["id"]: c for c in widened}
+        assert set(by_id) == {free, taken}
+        # The branch is NAMED, not merely flagged: naming it is what lets a reader
+        # judge whether the work is live, which is the whole of the expiry policy
+        # this field replaced.
+        assert f"{OWNER}/{REPO}@feat/in-flight" in by_id[taken]["why"]
+
+    def test_a_legacy_claimed_at_stamp_is_inert_and_never_excludes(self, fake, repo_dir):
+        """ENC-4, asserted rather than assumed. Bodies written before the claim
+        retirement still carry a `claimed_at` key; it is preserved as an unknown
+        block field forever, and nothing keys on it — so an item whose only mark
+        is a stale claim is ordinary ready work."""
+        item = _file(fake, title="query: the legacy claimed item under test", stage="ready")
+        _owner, _repo, number = _split(item)
+        body = encode.upsert_block_field(
+            fake.get_issue(_owner, _repo, number).get("body") or "",
+            "claimed_at",
+            (NOW - timedelta(hours=1)).isoformat(),
+        )
+        fake.update_issue(_owner, _repo, number, fields={"assignees": ["agent-b"], "body": body})
+
+        assert [c["id"] for c in _pick(fake, repo_dir, limit=5)["data"]["candidates"]] == [item]
+
+        # And the key survives a later write untouched (source order preserved).
+        assert core.update_item(fake, id_raw=item, fields={"title": "query: the renamed item under test"})["status"] == "ok"
+        after = encode.parse_block(fake.get_issue(_owner, _repo, number).get("body"))
+        assert after.fields.get("claimed_at")
+
+    def test_ranking_is_oldest_first(self, fake, repo_dir):
+        newer = _file(fake, title="query: the newer item under test", stage="ready")
+        older = _file(fake, title="query: the older item under test", stage="ready")
+        _stamp_created(fake, newer, NOW - timedelta(days=2))
+        _stamp_created(fake, older, NOW - timedelta(days=30))
+
+        order = [c["id"] for c in _pick(fake, repo_dir, limit=5)["data"]["candidates"]]
+        assert order == [older, newer]
+
+    def test_limit_caps_candidates(self, fake, repo_dir):
         for n in range(3):
             _file(fake, title=f"query: the r{n} item under test", stage="ready")
-        result = query.pick(fake, owner=OWNER, repo=REPO, limit=2, now=NOW)
-        assert result["data"]["count"] == 2
+        assert _pick(fake, repo_dir, limit=2)["data"]["count"] == 2
 
-    def test_ignores_non_prawduct_ready_looking_issue(self, fake):
+    def test_ignores_non_prawduct_ready_looking_issue(self, fake, repo_dir):
         _file(fake, title="query: the real ready item under test", stage="ready")
-        # A plain issue that happens to carry a stage:ready label but no prawduct
-        # marker block is still ours (label is a marker) — so instead assert a
-        # truly-unmarked issue is ignored even if listed.
         fake.seed_labels(OWNER, REPO, ["stage:ready"])
         fake.create_issue(OWNER, REPO, title="query: the not ours item under test", body="plain", labels=[])
-        result = query.pick(fake, owner=OWNER, repo=REPO, limit=5, now=NOW)
+        result = _pick(fake, repo_dir, limit=5)
         assert {c["title"] for c in result["data"]["candidates"]} == {"query: the real ready item under test"}
-
-    def test_claim_option_takes_top_candidate(self, fake):
-        _file(fake, title="query: the take me item under test", stage="ready")
-        result = query.pick(fake, owner=OWNER, repo=REPO, claim=True, now=NOW, default_owner=OWNER)
-        top = result["data"]["candidates"][0]
-        assert top["claimed"] is True
-        assert top["assignee"] == "agent-a"
-        assert top["claimed_at"]  # fresh stamp reflected in the returned candidate
-
-    def test_claim_option_conflict_surfaces_for_repick(self, fake):
-        target = _file(fake, title="query: the contended item under test", stage="ready")
-        _stamp_claim(fake, target, login="agent-b", when=NOW)  # a live claim by another
-        result = query.pick(fake, owner=OWNER, repo=REPO, claim=True, now=NOW, default_owner=OWNER)
-        # The only ready item is live-claimed → not a candidate → nothing to claim.
-        assert result["data"]["count"] == 0
 
 
 # --- QRY-4: counts -----------------------------------------------------------
@@ -431,10 +563,16 @@ class TestProv2:
 
 
 class TestQueryCli:
+    @pytest.fixture(autouse=True)
+    def _project_dir(self, repo_dir):
+        """Every CLI call runs against a real work tree: `pick` reaches the
+        clone-shared store, so `project_dir` is no longer ignorable here."""
+        self._dir = repo_dir
+
     def _run(self, fake, argv, capsys):
         import json
 
-        code = cli.run(None, [*argv, "--json"], transport=fake)
+        code = cli.run(self._dir, [*argv, "--json"], transport=fake)
         out = capsys.readouterr().out
         return code, json.loads(out)
 
@@ -586,3 +724,42 @@ class TestUntriagedIssuesAreCounted:
         assert [i["id"] for i in untriaged["data"]["items"]] == [plain_id]
         assert plain_id not in [i["id"] for i in normal["data"]["items"]]
         assert untriaged["data"]["count"] == 1  # no PRs
+
+
+class TestTheUncollectedCallersStayBound:
+    """`tests/spikes/` is hand-run `__main__` code pytest never collects, so a
+    signature change there fails at the moment an operator runs the measurement —
+    not in CI, and not in the commit that caused it.
+
+    That matters for `pick` specifically because `backlog-service-nfr.md` §§3.5
+    and 9 name S2 as the owner of the fan-out measurement and explicitly schedule
+    a re-run. A green suite is not evidence about it, so the binding is asserted
+    here instead: parse the call, bind its keywords against the live signature.
+    Binding, not grepping — a grep for `project_dir` would pass on a call that
+    passed it positionally or misspelled another argument.
+    """
+
+    def _pick_calls(self):
+        import ast
+
+        spikes = sorted((Path(__file__).resolve().parent / "spikes").glob("*.py"))
+        assert spikes, "no spike scripts found — this guard would pass vacuously"
+        for path in spikes:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                if isinstance(func, ast.Attribute) and func.attr == "pick":
+                    yield path.name, node
+
+    def test_every_spike_call_to_pick_binds_the_current_signature(self):
+        import inspect
+
+        signature = inspect.signature(query.pick)
+        calls = list(self._pick_calls())
+        assert calls, "no `pick` call found in tests/spikes — the guard is vacuous"
+        for name, node in calls:
+            kwargs = {kw.arg: object() for kw in node.keywords if kw.arg}
+            positional = [object()] * len(node.args)
+            signature.bind(*positional, **kwargs)  # raises TypeError on a stale call

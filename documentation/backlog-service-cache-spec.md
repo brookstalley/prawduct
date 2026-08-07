@@ -141,8 +141,9 @@ the ten restored consumers bind to prawduct semantics and never learn what GitHu
 - **`working-branch`** *(new)* — replaces the "claimed-by" concept. If populated, someone is
   working the item.
   - Chosen because **staleness becomes observable rather than stored**: the branch's last commit
-    is the activity signal, so no claim timestamp and no expiry policy are needed. Merge
-    self-resolves the claim, and it gives record-keeping at merge and close for free.
+    is the activity signal, so no claim timestamp and no expiry policy are needed. A merge makes
+    the marker inert rather than clearing it — the item leaves ready-work on its status — which is
+    what gives record-keeping at merge and close for free.
   - Provider-neutral by substrate — branches are git, which every backend shares, and
     `architecture.md`'s local-first norm already names the git object database as coordination
     substrate.

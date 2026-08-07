@@ -24,6 +24,8 @@ All offline: no ``gh``, no network.
 
 from __future__ import annotations
 
+import hashlib
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -189,6 +191,11 @@ class TestCachePath:
         assert result["error"]["code"] == "unavailable"
 
 
+#: The schema's fingerprint at the version below. Paired with `SCHEMA_VERSION` by
+#: the test that follows, so a schema edit cannot land under an unchanged version.
+_SCHEMA_DIGEST = "52ec164ecf3f"
+
+
 class TestSchema:
     def test_create_makes_every_table_the_data_model_specifies(self, repo_dir):
         conn = cache.open_store(repo_dir, create=True)
@@ -199,7 +206,40 @@ class TestSchema:
         }
         conn.close()
 
-        assert {"item", "item_fts", "comment", "relationship", "cursor"} <= names
+        assert {"item", "item_fts", "comment", "cursor"} <= names
+        # And NOT a blocker table. `pick` reads dependencies live because a
+        # blocker can live in a repo this single-repo store does not hold, so a
+        # cached edge could record only that one existed — never whether it is
+        # still open. An empty table shaped like that answer is what a later
+        # builder would wire the fan-out to.
+        assert "relationship" not in names
+
+    def test_the_schema_and_its_version_move_together(self, repo_dir):
+        """A missed `SCHEMA_VERSION` bump disables its own repair — the version
+        check is the same mechanism that would have rebuilt the store, so it sees
+        a matching version and never discards. That has happened here once, when
+        a `cursor` column was added under an unchanged version and every sync
+        failed permanently with no self-heal.
+
+        Nothing else catches it. The Chunk-03 case was caught only because a
+        query broke against the stale store; a change that *removes* something no
+        query reads — the blocker table did exactly that — leaves the old store
+        working and the bump silently optional, which is how the rule erodes into
+        a judgement call made freshly each time.
+
+        So the pair is pinned. This test fails on ANY schema edit, deliberately:
+        it is asking one question, *did you bump the version*, and the answer is
+        to update both numbers below in the same edit that changes the schema.
+        """
+        digest = hashlib.sha256(
+            "\n".join(cache._SCHEMA_STATEMENTS).encode("utf-8")
+        ).hexdigest()[:12]
+
+        assert (cache.SCHEMA_VERSION, digest) == (6, _SCHEMA_DIGEST), (
+            "the store's schema changed. Bump `SCHEMA_VERSION` and update the "
+            "expected pair here — a schema edit under an unchanged version leaves "
+            "every existing store unrepairable by the check that approves it"
+        )
 
     def test_wal_and_busy_timeout_are_configured(self, repo_dir):
         conn = cache.open_store(repo_dir, create=True)
@@ -1374,3 +1414,81 @@ class TestTransportWithoutTheProbe:
 
         for _ in range(3):
             assert _sync(fake, repo_dir)["data"]["not_modified"] is False
+
+
+class TestTheCostSurface:
+    """**OPS-1 — cost is O(1) in project count** (→ NF1/G4, NFR §2).
+
+    Carried from Chunk 01 to the chunk where the adapter's surface is finally
+    cache-backed, because the claim is about what an *Nth* onboarded project adds
+    and only now is there a full answer.
+
+    The assertion is structural rather than financial, because a test cannot read
+    an invoice: onboarding the Nth project must add **no recurring resource** — no
+    per-project server, queue or paid service — so the whole per-project footprint
+    has to be local files that a `rm -rf` reclaims. Two independent projects are
+    built and their footprints compared: the same two files each, each inside its
+    own clone, and nothing shared, global or outside them.
+    """
+
+    def _project(self, tmp_path, name):
+        from fakes.fake_github import FakeGitHub
+        from lib.backlog import core as backlog_core, snapshot, sync
+
+        root = tmp_path / name
+        root.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        fake = FakeGitHub(user={"login": "agent-a", "id": 1})
+        assert backlog_core.file_item(
+            fake, owner=OWNER, repo=name, title=f"cost: an item in {name}", body="b"
+        )["status"] == "ok"
+        assert sync.full_rebuild(
+            fake, project_dir=root, owner=OWNER, repo=name
+        )["status"] == "ok"
+        snapshot.write(snapshot.snapshot_path(root), f"{OWNER}/{name}", {"total": 1})
+        return root
+
+    def test_the_nth_project_adds_only_local_files_inside_its_own_clone(self, tmp_path):
+        first = self._project(tmp_path, "alpha")
+        second = self._project(tmp_path, "beta")  # the Nth
+
+        footprints = []
+        for root in (first, second):
+            store_dir = root / ".git" / cache.STORE_SUBDIR
+            entries = sorted(p.name for p in store_dir.iterdir())
+            footprints.append(entries)
+            # Inside the clone, never in the working tree — so it cannot be
+            # committed, and deleting the clone reclaims all of it.
+            assert store_dir.is_dir()
+            assert not any(
+                p.name.startswith("backlog-") for p in root.iterdir() if p.name != ".git"
+            ), "a backlog artifact escaped into the working tree"
+
+        # The Nth project's footprint is the same KIND and SIZE as the first's:
+        # nothing accumulates in a shared place as projects are added.
+        assert footprints[0] == footprints[1], footprints
+        assert set(footprints[0]) == {cache.STORE_BASENAME, "backlog-counts.json"}, footprints[0]
+
+    def test_every_local_artifact_is_rebuildable_from_the_provider(self, tmp_path):
+        """The other half of "disk, not dollars": deleting the whole footprint
+        costs a re-fetch, not data. A per-project artifact that could NOT be
+        rebuilt would be state, and state is what turns into a hosted resource."""
+        from fakes.fake_github import FakeGitHub
+        from lib.backlog import core as backlog_core, cachequery, sync
+
+        root = tmp_path / "gamma"
+        root.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        fake = FakeGitHub(user={"login": "agent-a", "id": 1})
+        assert backlog_core.file_item(
+            fake, owner=OWNER, repo="gamma", title="cost: a rebuildable item", body="b"
+        )["status"] == "ok"
+        assert sync.full_rebuild(fake, project_dir=root, owner=OWNER, repo="gamma")["status"] == "ok"
+
+        shutil.rmtree(root / ".git" / cache.STORE_SUBDIR)
+
+        gone = cachequery.open_items(root, scope=f"{OWNER}/gamma", now=NOW)
+        assert gone["status"] == "error"  # reported, never silently empty
+        assert sync.full_rebuild(fake, project_dir=root, owner=OWNER, repo="gamma")["status"] == "ok"
+        back = cachequery.open_items(root, scope=f"{OWNER}/gamma", now=NOW)
+        assert back["status"] == "ok" and len(back["data"]["items"]) == 1

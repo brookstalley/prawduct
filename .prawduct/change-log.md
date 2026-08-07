@@ -3,6 +3,104 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-07: ready-work comes off the cache, and the claim mechanism retires
+
+<!-- prawduct: chunks=05 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->
+
+**`pick` stopped scanning the backlog.** Its candidate set was a paginated walk of every open issue
+on every call, decoded in full to rank — ~12.4s against ~209 issues, about six times the latency
+floor. It is now one indexed read of the local store behind a revalidating conditional request, and
+the blocker fan-out is the only provider traffic left. Measured against the real 453-item backlog:
+~0.9s at `--limit 1`, ~2.0s at `--limit 3`.
+
+**The blocker predicate deliberately did NOT move, and the store lost the table that tempted it to.**
+A blocker can live in a repo this single-repo cache does not hold, so a cached edge could record only
+that a dependency existed, never whether it is still open. `pick` reads dependencies live,
+permanently — which means a stale store cannot let a blocked item through, because it is never asked.
+The empty `relationship` table that had stood since the first chunk is gone: it could never gain the
+consumer it was shaped for, and an empty table shaped like the answer is what a later builder wires
+the fan-out to.
+
+**Taking an item on the Issues backend is now a pushed branch, not a claim.** `claim`, `unclaim`, the
+staleness TTL, the reap tier in the ranking, the `claimed_at` stamp and `pick --claim` are all retired
+together — three mechanisms answering *is someone on this?* replaced by one that also answers the
+follow-up the TTL was guessing at, *is that work still alive?*, from the branch's own commits. Nothing
+expires and nothing is reaped; a merge makes the marker inert rather than clearing it, since the
+branch that shipped an item is the record of what did. `assignee` returns to native/protected:
+GitHub's UI still assigns, and prawduct stops reading assignment as meaning. Exit code 4 is
+unchanged — it means `conflict`, and `update`'s CAS path still produces it.
+
+**The retirement is scoped to the adapter, and the review is why.** A first pass took `accepted-by:`
+out of the markdown backend too. But the argument for retiring was entirely about the Issues op — a
+release-current surface, `working-branch` shipping in the same release, three coupled mechanisms
+collapsing into one — and none of it holds for a line in a markdown file: `accepted-by:` has no TTL,
+no reap and no assignee coupling, and `working-branch` demands a *pushed* ref and a named repo that a
+local-only repo or a shared-trunk team cannot supply. Removing it would have taken a working control
+from a whole class of products on borrowed reasoning. One field per backend now, each native to its
+substrate, and CC3 in the requirements records the supersession rather than the requirement quietly
+changing meaning.
+
+**`revisit-due` came back for the same reason.** It was retired outright on the argument that
+exception clocks had already migrated to prose on the norm — true of this repo and of no other. For
+every markdown-backend product the probe was live and working, and `docs/norms.md` states the
+two-path split normatively, with the janitor's Norm Health sweep declining dated clocks *because*
+this probe fires them. It keeps its cutover early return: post-cutover it is dark, and unlike its two
+siblings the cache cannot change that — `revisit:` records intent, which no age-based query
+reconstructs, so what it waits on is a *write* path for the field, not a read path. That is also why
+it is not in `DORMANT_CHECKS`, whose advisory promises its members return when the cache lands.
+
+**Two dormant norm probes came back.** `dead-why` and `stalled-transition` resolve their citations
+through the cache now, on both backends and through aliases, so a norm citing a pre-migration `PFX`
+id still finds the issue carrying it. A store that cannot answer raises one shared advisory rather
+than silence — the two probes report the same outage under one id, and it names both repairs rather
+than picking one from the error code, because the deduplication that gives them one id would
+otherwise let registration order decide which repair the operator saw.
+
+**Pointing `dead-why` at real data for the first time since the cutover found a defect in it.** It
+fired three times on this repo's own observability strategy, every hit a `Status: steady-state …
+transitioned when <item> closed` line — the transition's own record, reported as rotting rationale.
+The `Status:` arm now counts only while the status still reads `in-transition`. Dormancy had hidden
+this for the whole period the probe returned `[]`.
+
+**Changes:**
+- `plugin/lib/backlog/query.py` — `pick` sources candidates from `cachequery.ready_items` after a
+  revalidating sync, ranks oldest-first, and surfaces the store's confirmed-at stamp and age in
+  `warnings` on every answer (and the revalidation's failure when it failed). `_claim_eligibility`,
+  the reap tier and the claim clauses in `_why` are gone.
+- `plugin/lib/backlog/cachequery.py` — `ready_items`, the one function here whose consumer the cache
+  spec does not enumerate, because `pick` never went dormant. It reads bodies, unlike the other
+  listings, so an open-but-redirected item is dropped rather than offered as buildable.
+- `plugin/lib/backlog/cache.py` — schema **v6**: `relationship` dropped. `comment` stays, with the
+  trigger written at the table. A new test pins `SCHEMA_VERSION` to a fingerprint of the schema
+  statements, because mutation testing found the bump had no guard at all: the one earlier case was
+  caught only because a query broke against the stale store, and a change that *removes* something no
+  query reads leaves the old store working and the bump silently optional — which is how a rule with
+  a real incident behind it erodes into a judgement call made freshly each time.
+- `plugin/lib/backlog/core.py`, `cli.py`, `encode.py` — `claim`/`unclaim`, `DEFAULT_CLAIM_TTL_SECONDS`,
+  the CLI ops and flags, and `Block.claimed_at` removed. `claimed_at` keys already written into issue
+  bodies stay readable as unknown block fields forever, and are asserted inert rather than assumed so.
+- `plugin/lib/norm_probes.py` — the two restorations, the issue-ref citation spelling, the narrowed
+  `Status:` arm, and one shared scan skeleton so the backend selection has a single home.
+- `plugin/lib/backlog_probes.py` — the two restored rows leave `DORMANT_CHECKS`; the advisory shrinks
+  rather than being reworded, and `post_cutover`'s docstring now distinguishes the callers that
+  retire on the switch from the two that use it to choose a backend.
+- `documentation/backlog-service-test-specifications.md`, `-nfr.md`, `-requirements.md` — CRASH-6,
+  the `claim_conflict` coverage row, QRY-2's setup, the rate and latency budgets, and CC3/GV1
+  reconciled. The first sweep stopped at the two documents the plan's Done-when named; a retired
+  operation still specified is a second home for a decision that no longer holds, and that rule does
+  not stop at the two documents someone remembered to list.
+- `tests/test_backlog_smoke_live.py`, `tests/spikes/s2_migration.py` — both call `pick` and both are
+  invisible to the default suite (one env-gated, one an uncollected `__main__` script), so both were
+  broken by the new signature with everything green. A new guard binds every spike `pick` call
+  against the live signature.
+- `plugin/skills/backlog/SKILL.md`, `adapter-mode.md` — `accepted-by:` becomes `working-branch:`,
+  `--include-claimed` becomes `--include-working`, and the claim grants leave `allowed-tools`. A
+  grep test now fails if a retired op or flag reappears in the prose: the code and the prose retiring
+  in one commit is what stops a CLI that exits "unknown op" while the skill still says to run it.
+- `documentation/backlog-service-data-model.md`, `backlog-service-api-contract.md` — the Claim entity,
+  the `claim`/`unclaim` row, `claim_conflict`, and the `relationship` table row reconciled to what
+  now exists.
+
 ## 2026-08-07: the backlog cache answers its consumers' questions
 
 <!-- prawduct: chunks=04 | type=feat | scope=backlog-cache | release=unreleased | status=shipped -->

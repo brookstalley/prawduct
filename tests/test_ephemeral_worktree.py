@@ -421,7 +421,7 @@ class TestBacklogOpClassificationIsBound:
     #: Ops that only ever talk to the service — no local write, so they cannot
     #: strand and the service-backed allowance covers them correctly.
     SERVICE_ONLY = frozenset({
-        "file", "status", "update", "comment", "claim", "unclaim",
+        "file", "status", "update", "comment",
         "link", "unlink", "provision", "reconcile-labels", "merge",
     })
 

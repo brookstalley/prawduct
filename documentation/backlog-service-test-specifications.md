@@ -174,14 +174,14 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
 - Expected: the first adds an entry; the same-(actor,date) re-stamp is a **no-op** (append-with-dedup);
   the different-date stamp adds a second entry. Idempotency is keyed, not blind.
 
-**CRASH-6 — `claim` atomic take-and-verify → `claim_conflict`** (→ CC3/M11, API §2.1)
-- Level: unit
-- Setup: an unassigned item; simulate two claimants via the fake's ordering.
-- Action: claimant A takes; claimant B takes; then A's take-and-verify read.
-- Expected: exactly one holds the claim; the loser gets a **non-fatal** `claim_conflict`; the claim
-  carries actor + timestamp; a claim past its TTL is surfaced as reap-eligible (auto-unclaim/flag) so
-  `pick` cannot starve. (The residual double-take race is accepted by design — this test asserts the
-  take-and-verify surfaces it, not that it is eliminated.)
+**~~CRASH-6 — `claim` atomic take-and-verify → `claim_conflict`~~** — **RETIRED with the mechanism
+(W1, 2026-08-07), not owed.** The `claim`/`unclaim` ops, the staleness TTL, the reap tier and the
+`claim_conflict` code are all gone; taking an item is `update <id> --working-branch owner/repo@branch`,
+a body-block write with no take-and-verify to be atomic about and no expiry to reap. The row is struck
+rather than deleted so a reader who remembers CC3 finds out what happened to it instead of concluding
+the coverage was dropped. **The residual race it accepted is unchanged and now visible rather than
+raced for**: two actors can set a working branch on the same item, which the field makes *visible*
+rather than impossible (Data Model §1.4).
 
 ### 3.3 Freshness & never-silently-stale (G3)
 
@@ -317,7 +317,7 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
 - Level: unit (core builder) + integration (CLI exit code)
 - Setup: conditions that trigger each code.
 - Action: provoke each of: `validation`, `not_found`, `ambiguous_id`, `alias_collision`, `conflict`,
-  `claim_conflict`, `auth` (incl. `gh` exit-4 → `auth`, C10), `unavailable`, `rate_limited` (80/min or
+  `auth` (incl. `gh` exit-4 → `auth`, C10), `unavailable`, `rate_limited` (80/min or
   ~500/hr content, or the 900-pts/min burst), `unsupported` (fulltext without a cache; `--semantic`
   where the capability is genuinely absent — see QRY-3).
 - Expected: each yields its code in the envelope and a **stable non-zero exit class** at the CLI aligned
@@ -411,14 +411,16 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
 
 **QRY-2 — `pick` list-then-fan-out correctness** (→ GV1/DM3/CC3, Data Model §4, API §2.2)
 - Level: unit
-- Setup: candidates `open ∧ stage:ready ∧ unassigned`; some with open blockers (via the native
-  dependencies API — REST `blocked_by` / `blocking`, GA 2025-08-21), some with a claim past TTL,
-  including a **cross-repo** blocker.
+- Setup: candidates `open ∧ stage:ready`; some with open blockers (via the native
+  dependencies API — REST `blocked_by` / `blocking`, GA 2025-08-21), some carrying a
+  `working-branch`, including a **cross-repo** blocker.
 - Action: `pick`.
-- Expected: only candidates with **all blockers closed** and **no live claim** are returned, ranked, with
-  a *why*; a candidate whose blocker is cross-repo is judged from a **live** read (a per-clone cache can
-  misjudge it — negative-asserted: a stale cache must not let a blocked item be picked). `--claim` may
-  return `claim_conflict` → re-pick. (Fan-out **latency** is L3/S2, not here — this proves correctness.)
+- Expected: only candidates with **all blockers closed** and **no working branch** are returned, ranked,
+  with a *why*; `--include-working` adds the excluded ones back, each naming its branch. A candidate
+  whose blocker is cross-repo is judged from a **live** read (a per-clone cache can
+  misjudge it — negative-asserted: a stale cache must not let a blocked item be picked; as built in W1
+  the cache is never *asked* about a blocker, so the negative holds structurally). `pick` mutates
+  nothing. (Fan-out **latency** is L3/S2, not here — this proves correctness.)
 
 **QRY-3 — `search` cache-served; `--semantic` capability-probed** (→ Q1-fulltext/Q3, API §2.2)
 - Level: unit
@@ -797,7 +799,7 @@ duplicates (the same behavior stated in 4–5 docs) collapse to one row.
 | AU3 split recover-by-cleanup, keyed | **CRASH-3** (full no-duplicate — `split-op:` key pinned in API §2.3) |
 | MG1/M6 import resumable/idempotent | **CRASH-4**, MIG-1 |
 | TF2 verify keyed idempotent | **CRASH-5** |
-| CC3/M11 claim take-and-verify / TTL reap | **CRASH-6** |
+| ~~CC3/M11 claim take-and-verify / TTL reap~~ | ~~CRASH-6~~ — retired with the mechanism (W1); taking an item is a `working-branch` write, covered by QRY-2 |
 | G3/D5 cacheless staleness=0 | **FRESH-1** |
 | G3 cached read visible age | **FRESH-2** |
 | G3/M2 decision read revalidates (304, REST) | **FRESH-3** |
