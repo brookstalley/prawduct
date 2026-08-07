@@ -759,11 +759,18 @@ the same shape that makes `transport.py` the sole egress.
   reap-vs-free ranking tier, and the `_why` claim clauses; the `claim` / `unclaim` CLI ops and
   `pick`'s `--claim` / `--claim-ttl` flags; `encode.Block.claimed_at` and its `decode_item` row;
   `tests/test_backlog_claim.py`. **The prose goes in this chunk with the code, not in Chunk 06** —
-  `plugin/skills/backlog/SKILL.md`'s `accepted-by:` section, its `allowed-tools` grant, the
-  `list --include-claimed` flag and the pick-exclusion rule, plus `adapter-mode.md`'s claim/unclaim
-  op mapping and its `--assignee none` exclusion. Chunk 06 owns prose that *restores dormant
-  consumers*; splitting this one across that boundary would leave a commit where the CLI has no
-  `claim` op and the skill still grants and documents one.
+  `plugin/skills/backlog/SKILL.md`'s `allowed-tools` grant, plus `adapter-mode.md`'s claim/unclaim op
+  mapping and its `--assignee none` exclusion. Chunk 06 owns prose that *restores dormant consumers*;
+  splitting this one across that boundary would leave a commit where the CLI has no `claim` op and the
+  skill still grants and documents one.
+
+  **This paragraph named two more SKILL.md surfaces — its `accepted-by:` section and the
+  `list --include-claimed` flag — and was corrected as built.** Those are the *markdown* backend's,
+  and the retirement's whole argument is about the Issues adapter (a release-current op, three coupled
+  mechanisms collapsing into one). `accepted-by:` has none of those mechanisms, and `working-branch`
+  needs a pushed ref a local-only repo has not got. See the Context block and the corrected
+  Deliverables below; the plan is edited rather than followed here, and the reasoning is the Critic's
+  (R-16).
 
   Three things the retirement deliberately does **not** do, each because a norm says otherwise.
   **Exit code 4 stays** — `claim_conflict` retires as a *value*, but code 4 is `conflict` and
