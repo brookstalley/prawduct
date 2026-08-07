@@ -349,10 +349,31 @@ the same shape that makes `transport.py` the sole egress.
   transition — the case where idempotent-re-run convergence is not enough and the write has to be
   atomic instead.
 
-  **The `etag` column earns its keep here.** NFR §5's never-silently-stale row requires that no
-  cache read be served past its validator without a revalidation option, and `data-model.md` §6
-  carries `etag` as the conditional-request column that makes it possible. Sync is where it is
-  written; Chunk 05 is where a decision-driving read consumes it.
+  **[DECISION: the `etag` this chunk writes is the cursor's, not the item's — verify-api,
+  2026-08-07.]** This chunk's original text said "the `etag` column earns its keep here; sync is
+  where it is written," meaning `item.etag`. The verify-api step falsified the mechanism: sync
+  reads the *list* endpoint, whose ETag is query-scoped, and a list ETag replayed against
+  `GET /issues/{n}` returns **200** where that item's own ETag returns **304** — the list body
+  carries no per-item validator at all (only `node_id`, already excluded as a dead read). Writing
+  the list validator into `item.etag` would have made Chunk 05's revalidation silently useless:
+  every conditional read would miss, spend a full request, and look like it was working. So the
+  two validators are separated — `cursor` gains an `etag` column for the list query, and
+  `item.etag` stays NULL until a decision-path read issues a single-item request in Chunk 05.
+  NFR §5's never-silently-stale row is still what both serve. Recorded in `cache-spec.md` §6 and
+  `data-model.md` §6; this is the design change, not a note about one.
+
+  **The cursor-scoped ETag is also what makes this chunk's own acceptance criterion cheap.** "A
+  sync following a no-op interval fetches zero pages" is satisfiable without it, but with it the
+  no-op sync additionally costs **zero rate-limit points** (measured, not assumed). The mechanism
+  is that a no-op does not advance the cursor, so the next query is byte-identical and the stored
+  validator still applies; once real items come back the cursor moves, the query changes, and the
+  validator is void by construction rather than by expiry.
+
+  **Sync must query `state=all`.** Verified: `since` and `state` are independent AND filters, so
+  the `list_issues` default of `state="open"` would filter out exactly the closes that spec §6's
+  "no scheduled deletion sweep" decision depends on `since` catching. A close would leave a stale
+  open row in the cache forever. This is a one-word argument at the call site and a silent,
+  permanent wrong answer if missed.
   **Four demoted observations carried from Chunk 01's verify pass** — none is owed work, all ride
   this chunk's commit if you touch the code anyway. (a) `full_rebuild`'s envelope carries both
   `since` and `fetched_at` with the same value and nothing reads `since`; this chunk either gives it
@@ -368,9 +389,10 @@ the same shape that makes `transport.py` the sole egress.
 - **Artifacts consumed:** `documentation/backlog-service-cache-spec.md` §6;
   `documentation/backlog-service-data-model.md` §6;
   `documentation/backlog-service-nfr.md` §§3.3, 5
-- **Deliverables:** new `plugin/lib/backlog/sync.py`; `since` support on
-  `transport.GhTransport.list_issues`; the cursor stored with the cache, uncommitted, its absence
-  meaning full rebuild
+- **Deliverables:** new `plugin/lib/backlog/sync.py`; `since` + conditional-request support on
+  `transport.GhTransport.list_issues` (including the `gh`-exits-1-on-304 handling below); the
+  `cursor(scope, since, etag)` schema, stored with the cache, uncommitted, its absence meaning
+  full rebuild
 - **Tests:** catalogue — **QRY-5** (sync/cursor); new — cursor advance-after-commit under a
   simulated crash between fetch and upsert, boundary-overlap re-read, idempotent double-upsert. All
   clock-dependent tests inject one clock shared by every actor in the scenario; a single real-clock
@@ -381,10 +403,14 @@ the same shape that makes `transport.py` the sole egress.
   cache-rebuild row expects
 - **Foreign API:** github-rest-issues (`GET /repos/{owner}/{repo}/issues`, `since`)
 - **Done when:**
-  0. verify-api — confirm what `since` actually filters on (updated-at vs created-at), whether it
-     interacts with `state`, whether closed items are returned, and the `etag`/304 behaviour on the
-     list endpoint. Read the endpoint's behaviour against the live repo; do not draft against
-     recall. The fakes are built after this step, never before
+  0. ~~verify-api~~ **DONE 2026-08-07** — answers written into `cache-spec.md` §6 (the durable
+     home) and summarised in the DECISION above. Four results, all live-verified: `since` filters
+     `updated_at` inclusively; `since` × `state` are independent ANDs so **closes need
+     `state=all`**; the list endpoint honours `If-None-Match` and a 304 is rate-free; the list and
+     per-item validators are **not** interchangeable. One further mechanical fact the fakes must
+     reproduce: **`gh` exits 1 on a 304**, printing `gh: HTTP 304` to stderr with empty stdout, so
+     `_api` has to read that as a successful not-modified rather than a failure. Fakes are built
+     against these, and were not built before this step
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
