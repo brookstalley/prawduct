@@ -146,9 +146,26 @@ Tests carry most of this. Three things they cannot say:
 2. **The isolation path needs a real 422.** Unit tests use a fake transport; at least one exercise
    must drive a genuine GitHub validation rejection (a deliberately over-cap title against a scratch
    repo) and confirm the run continues and reports it at the end.
+   **DEFERRED at merge — accepted risk, recorded here rather than in a gitignored note.** The
+   error-class split (`validation` isolates; `auth`/`not_found`/`unavailable`/exhausted
+   `rate_limited` cut) is promised to operators in
+   `documentation/backlog-service-api-contract.md` and proven only against
+   `tests/fakes/fake_github.py`. Why merging anyway is defensible: the split is a pure read of
+   `transport.py`'s own classifier rather than a new taxonomy, so the fake and the real transport
+   disagree only if that classifier is wrong — a pre-existing condition this branch does not
+   change. Why it still matters: nothing here has watched a *real* GitHub 422 land mid-run.
+   **Owed before the next migration is run against a live repo**, which is the first moment the
+   promise is load-bearing; `operator_verification_required` is `false` in this product, so no gate
+   enforces that — this paragraph is the record.
 3. **The refusal has to read well.** `file` and `update` refusals are read by an agent that must
    decide what to do next. Exercise both by hand and confirm the message names the failing rule and
    the offending title, so the next actor's move is obvious without reading the standard.
+   **PARTIALLY DONE, remainder DEFERRED.** The message *content* is pinned by
+   `test_file_refusal_names_the_rule_and_echoes_the_title` (names the rule, echoes the title, cites
+   §1) and the human-mode rendering by three `_print_human_error` tests. What no test can say is
+   whether an agent reading it picks the right next action — that is a judgement, and it is
+   unexercised. Low risk: the refusal names a remedy that reaches the state, and a
+   misread costs one retry, not data.
 
 ## Chunk 01's review, and what rides into Chunk 02
 
