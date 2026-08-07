@@ -1290,10 +1290,12 @@ def _print_human_ok(data) -> None:
             f"{data.get('collisions')} collision(s)"
         )
     elif "synced_at" in data and "age_seconds" in data:
-        # A `cache-query` result. Matched FIRST, and on the pair of freshness keys
+        # A `cache-query` result. Matched on the pair of freshness keys
         # every `cachequery` payload carries and no other op produces — the shapes
         # underneath overlap several branches below (`items`, `id`), so keying on
         # those would route a cache read into a formatter built for a live one.
+        # (Two branches sit above this one; neither can collide — an `edge`+`target`
+        # link result and a `preview` result share no key with a cache payload.)
         #
         # This branch exists because `boundary-patterns.md` records "Result
         # Envelopes" as a contract surface with TWO consumers — the `--json`

@@ -23,8 +23,10 @@ needed. It shrank as each reader landed, which was always the intended shape. Tw
 and each now says so where a reader meets it rather than in a session-start nag: the neglected-hygiene
 sweep, because the `promoted` status value has no Issues equivalent for a query to ask for, and
 norm-exception expiry, which waits on a write path rather than a read path. Two others — counting
-unstructured legacy items, and proposing an archive split — are retired outright, being advice a
-reader could act on to no effect once Issues is system of record.
+unstructured legacy items, and proposing an archive split — are **scoped to the markdown backend**
+rather than retired: post-cutover there is nothing to migrate and closed issues are the archive, but
+on markdown the split proposal is the only surface that makes one, so deleting them would have taken
+a live control from every markdown-backend product to suit a cut-over one.
 
 **Reading the cache needed a door, and the door needed a grant.** Every consumer bound before this
 one was in-process Python; these are agents, so `prawduct-hook backlog cache-query` is new — eight

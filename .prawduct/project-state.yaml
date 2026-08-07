@@ -17,9 +17,11 @@ backlog_format_version: 2
 # THE CUTOVER (API §2.4). Set 2026-08-01 by v3.2.0 Chunk 06, after
 # `backlog verify-migration` returned exit 0 with all five conflict lists empty
 # (source_items 371 = aliased 371). This single key repoints the session briefing
-# to the GV2 snapshot and retires every markdown-premise advisory probe — and
-# `backlog-checks-dormant` starts firing at the same switch, so the operator
-# learns what went dark rather than discovering it as an unexplained absence.
+# to the GV2 snapshot and retires every markdown-premise advisory probe. An
+# advisory (`backlog-checks-dormant`) used to start firing at the same switch so
+# the operator learned what went dark; it was retired 2026-08-07 once the readers
+# it named came back on the backlog cache, and each now reports an unreadable
+# store at the point of use instead.
 #
 # From here `.prawduct/backlog.md` is FROZEN HISTORY for this repo. It records
 # the corpus as it stood at the moment of migration; the tracker is authoritative

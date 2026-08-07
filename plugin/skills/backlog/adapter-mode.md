@@ -72,9 +72,9 @@ note; it never silently substitutes stale data.)
 ### summary (no args)
 `prawduct-hook backlog counts --repo <r> --json` → render the section rollup from `data` (open /
 in-progress / … per the two-axis status) plus the action menu. Post-cutover the **live** actions are
-`pick`, `add`, `list`, `update` (and `merge` when both ids are known); present `find`/`dedup` as
-**not available on this backend yet** rather than ready, and omit `migrate`/`scrub` (the one-time markdown→Issues cutover is
-already done). Counts are **derived by the adapter** — never persist one yourself. Richer breakdowns
+`pick`, `add`, `list`, `update`, `find` and `dedup` (and `merge` when both ids are known) — `find`
+and `dedup` run on the local cache's full-text index, below — and omit `migrate`/`scrub` (the
+one-time markdown→Issues cutover is already done). Counts are **derived by the adapter** — never persist one yourself. Richer breakdowns
 (top `area:` tags, a stale-item count) come from `list`; run it if asked rather than approximating
 from `counts`.
 
@@ -141,9 +141,12 @@ sections** post-cutover: open/closed state + `status:` labels carry lifecycle pl
 [--effort E] [--impact I] [--source SRC]`. Author an issue-standard title (`area: summary`, ≤72,
 atomic, 15-72 chars) + a sectioned body; set `--kind`. **A title failing §1 is REFUSED** with a
 `validation` error, not filed — rewrite and retry. The result may carry `lint[]` (body/label
-issue-standard hints — surface, never blocks). **Dedup-on-create is degraded** while the backend has no full-text search: do a
-coarse check with `list --area=<area> --json` and eyeball recent titles for overlap before filing,
-and say full dedup is not available on this backend yet.
+issue-standard hints — surface, never blocks). **Dedup-on-create runs on the cache**: check with
+`cache-query search "<the title's distinctive words>" --area <area> --json` before filing. That
+search is deliberately cache-served rather than delegated — the provider's index is not
+read-your-writes, so an item filed seconds ago is invisible to it, which is exactly the moment this
+check is asked. If the cache exits 6, say the dedup check could not run; do **not** report "no
+duplicates found".
 
 ### update `<id>`
 Route by what changed:

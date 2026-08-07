@@ -967,10 +967,14 @@ the same shape that makes `transport.py` the sole egress.
   would ship a check that silently matches nothing, which is the failure this whole plan exists to
   end.
 
-  **Retired, not restored: janitor checks 6 and 7.** Counting unstructured legacy items and
-  proposing an `## Archive` split are meaningless once Issues is system of record — the janitor's
-  own prose already says so — and restoring them would ship advice a reader could act on to no
-  effect. Removal is the default for a control with no remaining yield.
+  **Janitor checks 6 and 7: scoped to the markdown backend, not retired.** ~~Retired, not
+  restored.~~ Counting unstructured legacy items and proposing an `## Archive` split are meaningless
+  *once Issues is system of record*, so as written they would be advice a reader could act on to no
+  effect. **That argument names one backend, and the first pass let it reach the other** — the
+  cumulative review caught it (R-12) as a repeat of the Chunk 05 `accepted-by:` correction. On the
+  markdown backend check 7 is the only surface that proposes a split and check 6 is the janitor half
+  of the `migrate` nudge, so they run there and stand down post-cutover. A retirement is one act per
+  substrate the thing lives on.
 
   Three obligations that are easy to lose here, all norm-driven. **Every restored check names the
   yield it expects, in the same edit that restores it** — a re-added control is an added control,
