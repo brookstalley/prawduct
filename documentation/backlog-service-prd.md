@@ -29,6 +29,21 @@ grooming (TF2/TF3) plus a one-time pre-migration scrub, not by centralization al
 
 ## 2. Users & personas
 
+> **SUPERSEDED THROUGHOUT — the claim primitive (W1, 2026-08-07).** This PRD specifies *claim* as a
+> first-class capability in the places listed below, and it is retired on the Issues backend:
+> `claim` / `unclaim`, `pick --claim`, the stored `claimed_at`, the staleness TTL and the reap tier
+> are all gone, replaced by `working-branch: owner/repo@branch` — a pushed branch says someone is on
+> the item, and its own last commit answers what the TTL was guessing at. No timestamp is stored, no
+> expiry is configured, nothing is reaped. Strong consistency is **not** claimed and never was: this
+> makes a double-take *visible* rather than impossible. The retirement is scoped to the **Issues
+> adapter**; the markdown backend keeps `accepted-by:`, which has none of the three mechanisms.
+> `backlog-service-requirements.md` CC3 carries the reasoning in full. Affected here: the actor table
+> (§actors), capabilities 2–3, the field-mapping table (**claim / assignee**), the ready-work
+> definition, the P0/P1 scope lines, the M11 risk fold, and the §13 scope-out note. They are left
+> in place rather than rewritten — this is the parent document and its record of what was specified
+> is what makes the supersession legible — but nothing below marked *claim* is the shipped design.
+
+
 | Persona | Who | Needs from the system |
 |---|---|---|
 | **Project agent** | a Claude session working a repo | file / query / pick / update / claim / comment in one non-interactive call, zero model tokens, never blocked by the network |

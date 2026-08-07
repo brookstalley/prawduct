@@ -542,10 +542,17 @@ def _run_sync(rest: list[str], transport, project_dir):
     return run(transport, project_dir=Path(project_dir), owner=owner, repo=repo)
 
 
-#: The default staleness horizon for `cache-query stale`, in days. The janitor's
-#: Backlog Health check has said ">90d" since it was written against the markdown
-#: backend; the number moves here rather than being retyped in the skill, so the
-#: prose and the query cannot disagree about what "stale" means.
+#: The default staleness horizon for `cache-query stale`, in days — carried over
+#: from the janitor's Backlog Health check, which has said ">90d" since it was
+#: written against the markdown backend.
+#:
+#: An earlier version of this comment claimed the number "moves here rather than
+#: being retyped in the skill, so the prose and the query cannot disagree" — which
+#: was false as written: `skills/janitor/SKILL.md` and `skills/backlog/cache-reads.md`
+#: both name a default, and this constant cannot stop them. The two now say "the
+#: query's default" instead of a figure, so there is one number; the claim is
+#: dropped rather than restated, because a comment asserting a property its own
+#: tree contradicts is worse than no comment.
 _STALE_DEFAULT_DAYS = 90
 
 #: Each ``cache-query`` sub-query, mapped to the ``cachequery`` function that
@@ -560,6 +567,32 @@ _CACHE_QUERIES: tuple[str, ...] = (
     "open", "created-since", "by-area", "affecting", "search",
     "stale", "unstaged", "resolve",
 )
+
+
+#: Per-query argument contracts, so the dispatcher can refuse what a query does
+#: not take instead of dropping it. Kept as data beside `_CACHE_QUERIES` rather
+#: than as per-branch guards: a query added to the tuple without an entry here
+#: raises a `KeyError` at dispatch and fails its test, where a missing guard would
+#: simply have gone quiet — which is the failure mode being fixed.
+#:
+#: Arity is the count of positionals, or `None` for "one or more".
+_CACHE_QUERY_ARITY: dict[str, int | None] = {
+    "open": 0, "unstaged": 0, "by-area": 0, "stale": 0,
+    "created-since": 1, "resolve": 1,
+    "search": None, "affecting": None,
+}
+
+#: Valued/boolean flags each query accepts, beyond the universal `--repo`.
+_CACHE_QUERY_FLAGS: dict[str, frozenset[str]] = {
+    "open": frozenset(),
+    "unstaged": frozenset(),
+    "by-area": frozenset({"all"}),
+    "affecting": frozenset({"all"}),
+    "stale": frozenset({"older-than"}),
+    "search": frozenset({"area"}),
+    "created-since": frozenset(),
+    "resolve": frozenset(),
+}
 
 
 def _run_cache_query(rest: list[str], project_dir):
@@ -610,14 +643,27 @@ def _run_cache_query(rest: list[str], project_dir):
 
     from . import cachequery  # noqa: PLC0415 — lazy; no other op reads the store
 
+    # **Everything a query does not take is refused, never ignored.** The rule was
+    # applied to `--all` alone at first and left the rest silent, which put two
+    # opposite policies in one dispatcher: `cache-query stale 60` returned the
+    # 90-day set as `status: ok` — the caller meant `--older-than 60` — and extra
+    # positionals were dropped without a word. A wrong answer that looks right is
+    # the failure this whole surface exists to prevent, so the strict half wins.
+    accepted = _CACHE_QUERY_FLAGS[name]
+    for flag in sorted(set(flags) - accepted - {"repo"}):
+        return core.error("validation", f"--{flag} does not apply to {name!r}")
+    expected = _CACHE_QUERY_ARITY[name]
+    if expected is not None and len(args) != expected:
+        return core.error(
+            "validation",
+            f"{name} takes exactly {expected} argument(s), got {len(args)}",
+        )
+    if expected is None and not args:
+        return core.error("validation", f"{name} requires at least one argument")
+
     common = {"project_dir": Path(project_dir), "scope": scope,
               "now": datetime.now(timezone.utc)}
-    # `--all` widens the two groupings that default to open-only. It is refused
-    # rather than ignored on the queries whose predicate already IS a status, so a
-    # caller never gets a silently-unwidened answer back.
     open_only = not flags.get("all")
-    if flags.get("all") and name not in ("by-area", "affecting"):
-        return core.error("validation", f"--all does not apply to {name!r}")
 
     if name == "open":
         return cachequery.open_items(**common)
@@ -631,21 +677,13 @@ def _run_cache_query(rest: list[str], project_dir):
             return core.error("validation", int_err)
         return cachequery.stale_items(**common, older_than_days=days)
     if name == "affecting":
-        if not args:
-            return core.error("validation", "affecting requires at least one path")
         return cachequery.items_affecting(**common, changed_paths=args, open_only=open_only)
     if name == "created-since":
-        if len(args) != 1:
-            return core.error("validation", "created-since requires exactly one ISO timestamp")
         return cachequery.items_created_since(**common, since=args[0])
     if name == "search":
-        if not args:
-            return core.error("validation", "search requires text")
         return cachequery.search(**common, text=" ".join(args), area=flags.get("area"))
     # `resolve` — the only remaining member, and the exhaustiveness is guaranteed
     # by the membership check above rather than by a fallback that could go stale.
-    if len(args) != 1:
-        return core.error("validation", "resolve requires exactly one id")
     return cachequery.resolve(**common, id_raw=args[0], default_owner=parsed[0])
 
 
@@ -957,6 +995,59 @@ def _repo_defaults(
     return parsed[0], parsed, None
 
 
+
+def _print_cache_query(data: dict) -> None:
+    """Human-mode rendering for `cache-query`, freshness line included.
+
+    **The age is printed on every shape, not only the ones with rows.** It is the
+    invariant the whole store is built to carry, and `cache-reads.md` tells readers
+    to name a conspicuously old store beside their finding — which they cannot do
+    if the default output drops it. An empty result with a visible age is a
+    different fact from an empty result of unknown vintage.
+    """
+    if "groups" in data:  # by-area
+        for group in data.get("groups", []):
+            print(f"{group.get('area')}  ({group.get('count')} item(s))")
+            for item in group.get("items", []):
+                _print_item_line(item)
+        print(f"  {len(data.get('groups', []))} area(s)")
+    elif "resolved" in data:  # resolve — a miss is an ANSWER, so it prints as one
+        if not data.get("resolved"):
+            # `reason` distinguishes "no such item" (None) from "that is not an id"
+            # (a message). Dropping it sends a reader to the wrong repair.
+            why = data.get("reason") or "no item in the cache claims that id"
+            print(f"{data.get('requested')}: unresolved — {why}")
+        else:
+            _print_item_line(data)
+            bits = [f"status={data.get('status')}", f"dead={data.get('dead')}"]
+            if data.get("via"):
+                bits.append(f"via={data['via']}")
+            if data.get("redirected_from"):
+                bits.append(f"redirected-from={data['redirected_from']}")
+            print("  " + "  ".join(bits))
+    else:  # every row-returning query
+        items = data.get("items", [])
+        for item in items:
+            _print_item_line(item)
+        print(f"  {len(items)} item(s)")
+    print(f"  cache: {data.get('scope')}, confirmed {data.get('synced_at')} "
+          f"({_humanize_seconds(data.get('age_seconds'))})")
+
+
+def _humanize_seconds(age) -> str:
+    """A compact age for the freshness line. Mirrors `briefing._humanize_age`'s
+    vocabulary so one store does not read as two different ages depending on which
+    surface reported it."""
+    if not isinstance(age, (int, float)) or age < 0:
+        return "age unknown"
+    if age < 60:
+        return "just now"
+    if age < 3600:
+        return f"{int(age // 60)}m old"
+    if age < 86400:
+        return f"{int(age // 3600)}h old"
+    return f"{int(age // 86400)}d old"
+
 def _parse_flags(tokens: list[str], *, valued: set[str], boolean: set[str] | None = None):
     """Parse ``--key value`` / ``--key=value`` / ``--flag`` tokens and positionals.
 
@@ -1198,6 +1289,21 @@ def _print_human_ok(data) -> None:
             f"{data.get('lint_findings')} lint finding(s), "
             f"{data.get('collisions')} collision(s)"
         )
+    elif "synced_at" in data and "age_seconds" in data:
+        # A `cache-query` result. Matched FIRST, and on the pair of freshness keys
+        # every `cachequery` payload carries and no other op produces — the shapes
+        # underneath overlap several branches below (`items`, `id`), so keying on
+        # those would route a cache read into a formatter built for a live one.
+        #
+        # This branch exists because `boundary-patterns.md` records "Result
+        # Envelopes" as a contract surface with TWO consumers — the `--json`
+        # passthrough and these formatters — and its recurring defect is that a
+        # `--json`-only test never runs the second. It did so again here: before
+        # this branch, `unstaged` printed every item and then `0 item(s)` (the
+        # `items` branch reads a `count` key no cache payload carries), a `resolve`
+        # miss printed a blank line and `status=None`, and `by-area` fell through
+        # to a raw JSON dump.
+        _print_cache_query(data)
     elif "total_source" in data:
         # An import result (checked before `items`: an export result also carries an
         # `items` key, so the migration results are matched first on their own keys).

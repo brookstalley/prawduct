@@ -690,7 +690,9 @@ to files is trivial; the format is the industry's most portable).
 "Claude agents assignable to issues" (Mainstream tier, above) is **two capabilities**, and prawduct
 wants them on opposite terms:
 
-- **Assignee-as-claim (adopt).** Native issue assignment — to a human *or* a named agent identity —
+- **Assignee-as-claim (adopt).** *[SUPERSEDED W1, 2026-08-07 — see CC3: prawduct no longer reads
+assignment as meaning; `working-branch` carries "who holds this" on the Issues backend and
+`accepted-by:` on markdown. Kept as the prior-art record, not as a live recommendation.]* Native issue assignment — to a human *or* a named agent identity —
   is exactly the **CC3** claim primitive and **CC4** attribution, for free. The adapter should model
   "who holds this item" on top of native assignment rather than inventing a parallel `accepted-by:`
   convention. Linear offers the same (agents as non-seat teammates); it is a point for mainstream

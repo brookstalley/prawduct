@@ -193,7 +193,7 @@ class TestCachePath:
 
 #: The schema's fingerprint at the version below. Paired with `SCHEMA_VERSION` by
 #: the test that follows, so a schema edit cannot land under an unchanged version.
-_SCHEMA_DIGEST = "52ec164ecf3f"
+_SCHEMA_DIGEST = "174c4ed14946"
 
 
 class TestSchema:
@@ -206,7 +206,7 @@ class TestSchema:
         }
         conn.close()
 
-        assert {"item", "item_fts", "comment", "cursor"} <= names
+        assert {"item", "item_fts", "cursor"} <= names
         # And NOT a blocker table. `pick` reads dependencies live because a
         # blocker can live in a repo this single-repo store does not hold, so a
         # cached edge could record only that one existed — never whether it is
@@ -235,7 +235,7 @@ class TestSchema:
             "\n".join(cache._SCHEMA_STATEMENTS).encode("utf-8")
         ).hexdigest()[:12]
 
-        assert (cache.SCHEMA_VERSION, digest) == (6, _SCHEMA_DIGEST), (
+        assert (cache.SCHEMA_VERSION, digest) == (7, _SCHEMA_DIGEST), (
             "the store's schema changed. Bump `SCHEMA_VERSION` and update the "
             "expected pair here — a schema edit under an unchanged version leaves "
             "every existing store unrepairable by the check that approves it"
@@ -1334,28 +1334,40 @@ class TestListQueryValidator:
         assert after.changed is True
         assert after.etag != first.etag
 
-    def test_sync_never_writes_a_list_validator_into_an_item_row(self, fake, repo_dir):
-        """A list ETag replayed against `GET /issues/{n}` returns 200, not 304 —
-        so storing one in `item.etag` would make every per-item revalidation miss
-        while looking like it worked. `item.etag` stays NULL until a read that
-        actually issues a single-item request populates it."""
+    def test_the_validator_lives_on_the_cursor_and_nowhere_else(self, fake, repo_dir):
+        """A list ETag replayed against `GET /issues/{n}` returns 200, not 304, so
+        a list validator stored per item would make every per-item revalidation
+        miss *while looking like it worked*.
+
+        This used to assert `item.etag` stayed NULL on every row. **The column is
+        now gone**, so the property is structural rather than maintained: the
+        wrong place to put a validator does not exist. The assertion follows it —
+        the column's absence is what makes the mistake unavailable, and a
+        re-added `item.etag` (whose only intended producer, a decision-path
+        single-item read, was never built) fails here.
+        """
         ids, _closed = _corpus(fake)
         assert _rebuild(fake, repo_dir)["status"] == "ok"
         assert core.update_item(fake, id_raw=ids[0], fields={"stage": "ready"})["status"] == "ok"
         # Twice: the first sync moves the watermark, the second settles it, and
         # only a settled watermark carries a validator (see the validator-scope
-        # test above). Either way no item row may acquire one.
+        # test above).
         assert _sync(fake, repo_dir)["status"] == "ok"
         assert _sync(fake, repo_dir)["status"] == "ok"
 
         path = cache.cache_path(repo_dir)
         conn = sqlite3.connect(str(path))
-        etags = [row[0] for row in conn.execute("SELECT etag FROM item").fetchall()]
+        item_columns = {row[1] for row in conn.execute("PRAGMA table_info(item)")}
         cursor_etag = conn.execute("SELECT etag FROM cursor").fetchone()
+        rows = conn.execute("SELECT COUNT(*) FROM item").fetchone()[0]
         conn.close()
 
-        assert etags, "an empty store would make this vacuous"
-        assert all(value is None for value in etags)
+        assert rows, "an empty store would make this vacuous"
+        assert "etag" not in item_columns, (
+            "`item.etag` is back. It has no producer — `pick` revalidates through "
+            "the LIST validator on `cursor.etag` — so a conditional single-item "
+            "read against it would miss every time and look correct."
+        )
         assert cursor_etag[0] is not None, "the list validator belongs on the cursor"
 
 

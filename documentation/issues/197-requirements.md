@@ -4,7 +4,7 @@
 scheduled backlog session · issue: https://github.com/brookstalley/prawduct/issues/197`
 
 Related: GV7/GV8 (`documentation/backlog-service-requirements.md`), `probe_migration_required` /
-`post_cutover` / `DORMANT_CHECKS` (`plugin/lib/backlog_probes.py`), BKL-6J2X (the fleet-wide hold
+`post_cutover` (`plugin/lib/backlog_probes.py`), BKL-6J2X (the fleet-wide hold
 on this same advisory), BKL-7D3V (the decision to ship the hold **lifted** — implementation is
 that item's Chunk 07 done-when #5).
 
@@ -58,14 +58,17 @@ would make the terminal-markdown path a second-class, worse-nudged backlog exper
 opposite of "first-class." Folding the new predicate into `post_cutover()` would incorrectly
 silence all four; it must gate `probe_migration_required` alone.
 
-`backlog-checks-dormant` (GV8) needs no change and no special-case: it fires only when
-`post_cutover(state)` is true, and `backlog_backend: markdown` is meaningful only while
-`post_cutover(state)` is false (TM4 makes the two mutually exclusive). The two states never
-overlap, so there is nothing for the declaration to say to GV8.
+**GV8's advisory no longer exists** (`backlog-checks-dormant`, retired 2026-08-07 when the readers
+it enumerated came back on the backlog cache), so this item has nothing to say to it either way. The
+reasoning it displaced is kept because it still describes the shape: that advisory could only fire
+when `post_cutover(state)` was true, and `backlog_backend: markdown` is meaningful only while it is
+false (TM4 makes the two mutually exclusive), so the two states never overlapped.
 
-The three `norm_probes` guarded by the same `post_cutover()` switch (`revisit-due`, `dead-why`,
-`stalled-transition`) already do the right thing with no change: they retire only on cutover, and a
-terminal-markdown product never cuts over, so they keep reading the file that remains its live
+The three `norm_probes` guarded by the same `post_cutover()` switch already do the right thing with
+no change, though **two of them now use it to choose a backend rather than to retire** (W1, 2026-08-07):
+`dead-why` and `stalled-transition` resolve citations against the markdown file before the cutover and
+against the backlog cache after it, and `revisit-due` still retires outright. Either way a
+terminal-markdown product never cuts over, so all three keep reading the file that remains its live
 backlog.
 
 ## Requirements
@@ -114,8 +117,7 @@ MUST unless marked SHOULD.
       `backlog-service-migration-required`, without adopting the thing it declined.
 - [ ] That resolution does not also silence `legacy-backlog-format`, `legacy-section-schema`, or
       `backlog-overdue-grooming` for the same product.
-- [ ] `backlog-checks-dormant` is unaffected (already true by construction — TM4's mutual
-      exclusivity means the two states never co-occur).
+- [x] ~~`backlog-checks-dormant` is unaffected~~ — moot: that advisory was retired 2026-08-07.
 - [ ] The declaration is shared across checkouts and survives a fresh clone (i.e. lives in
       `project-state.yaml`, not `.advisories.json`).
 
@@ -127,8 +129,8 @@ MUST unless marked SHOULD.
   both set (TM4 already defines the correct runtime behavior; a `doctor` note is optional polish).
 - Re-deriving whether BKL-6J2X's hold should lift — that is BKL-7D3V's decision, already made; this
   item exists to make that decision's consequences survivable, not to revisit it.
-- Any change to `probe_checks_dormant` or the `norm_probes` trio — both are already correct for
-  this case with no change (see Scope of the silence).
+- Any change to the `norm_probes` trio — already correct for this case with no change (see Scope of
+  the silence). `probe_checks_dormant` was also named here and no longer exists.
 
 ## Evidence / references
 
@@ -138,7 +140,6 @@ MUST unless marked SHOULD.
   one.
 - `plugin/lib/backlog_probes.py:240-290` — `probe_migration_required` (GV7), the probe this item
   gives a second resolution condition.
-- `plugin/lib/backlog_probes.py:318-364` — `probe_checks_dormant` (GV8), confirmed orthogonal (TM4).
 - `plugin/lib/backlog_probes.py:367-411` — the BKL-6J2X hold (`_probe_migration_required_held`)
   this item's fix must outlive once BKL-7D3V lifts it.
 - `documentation/backlog-service-requirements.md` GV4 (adopter-reproducible — the reason

@@ -71,7 +71,7 @@ from .core import error, log_diag, ok
 # machine during the chunk that introduced the column, and read as an empty
 # result rather than as an error. "Unreleased, so nobody has an old store" is a
 # claim about other people's machines, not about the format.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "backlog-cache.sqlite3"
@@ -83,8 +83,14 @@ STORE_BASENAME = "backlog-cache.sqlite3"
 BUSY_TIMEOUT_MS = 5_000
 
 # The `item` columns, in schema order. Every one is a projection of a query some
-# consumer actually asks — there are no dead fields here, and adding one without
-# a serving query is the defect this tuple exists to make visible.
+# consumer actually asks, and adding one without a serving query is the defect
+# this tuple exists to make visible.
+#
+# The claim used to read "there are no dead fields here" as a flat assertion, and
+# it was false at the time it was written: `etag` sat in this tuple with no
+# producer and no consumer. A comment asserting a property of its own design is
+# worth exactly what the tree makes true, so it is now stated as the rule the
+# tuple enforces rather than as a fact about the moment.
 ITEM_COLUMNS: tuple[str, ...] = (
     "id",
     "title",
@@ -99,7 +105,6 @@ ITEM_COLUMNS: tuple[str, ...] = (
     "updated_at",
     "affected",
     "working_branch",
-    "etag",
     "fetched_at",
 )
 
@@ -137,7 +142,6 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
         updated_at TEXT,
         affected   TEXT,
         working_branch TEXT,
-        etag       TEXT,
         fetched_at TEXT NOT NULL
     )
     """,
@@ -205,21 +209,23 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     "CREATE INDEX item_alias_ref ON item_alias(ref)",
-    # No query reads this table yet and no sync writes it. It is kept, unlike the
-    # blocker table that stood beside it, because nothing forbids a consumer from
-    # arriving: the reconciliation walk reads item text today and could want the
-    # discussion under it tomorrow. **The trigger is the same one that took
-    # `tags`** — if the consumer surface settles with no comment-reading query,
-    # this table is dead weight and goes.
-    """
-    CREATE TABLE comment (
-        item_id    TEXT NOT NULL,
-        body       TEXT,
-        author     TEXT,
-        created_at TEXT
-    )
-    """,
-    "CREATE INDEX comment_item ON comment(item_id)",
+    # **A `comment` table stood here, and its own trigger fired.** It was kept when
+    # `tags` went on the reasoning that nothing forbade a comment-reading consumer
+    # from arriving — with the trigger written down: *if the consumer surface
+    # settles with no comment-reading query, this table is dead weight and goes*.
+    # The surface has now settled, at plan completion, with none. It had no writer
+    # either, so it could only ever have answered a consumer with an empty set,
+    # which is the silent-empty failure this store exists to prevent.
+    #
+    # **`item.etag` went with it, for a sharper reason.** Its intended producer was
+    # retired by this same work: the per-item validator was deferred to "a
+    # decision-path read that issues a single-item request", and `pick` instead
+    # revalidates through the *list* validator on `cursor.etag` — so the read that
+    # would have populated it was never built. `sync` wrote `None` into it on every
+    # row. A later builder wiring a conditional single-item request against it would
+    # miss on every request and see something that looked like it was working.
+    # (`cursor.etag` is a different column and is live — it is the list validator
+    # the incremental sync's 304 rides on.)
     # **A `relationship` table stood here and is gone**, and it is worth saying why
     # rather than leaving the absence to be noticed and re-added.
     #

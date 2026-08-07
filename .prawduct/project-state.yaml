@@ -613,7 +613,7 @@ scope_rollups:
     chunks: ["01", "02", "03", "04"]
     releases: ["v3.2.3"]
   backlog-cache:
-    chunks: ["01", "02", "03"]
+    chunks: ["01", "02", "03", "04", "05", "06"]
     releases: ["unreleased"]
   backlog-closed-by-handle:
     chunks: ["01"]

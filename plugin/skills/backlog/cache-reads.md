@@ -29,13 +29,18 @@ prawduct-hook backlog cache-query <query> [args] --repo <scope> --json
 `<scope>` is the `backlog_service_repo` value. Reads the local store only — no network, no writes,
 nothing in the session mutated.
 
+**Developing prawduct itself** (the plugin is in the tree, uncommitted): `python3
+plugin/bin/prawduct-hook backlog cache-query …`. Identical contract. Both spellings are named because
+the readers below are granted both, and a reader that silently falls back to a prompt gets neither an
+answer nor an exit 6.
+
 | query | answers |
 |---|---|
 | `open` | every open item with id, title and body |
 | `by-area [--all]` | items grouped by `area`, with a count per group |
 | `affecting <path>...` | items whose `affected:` paths cover any of those files |
 | `search <text> [--area A]` | full-text over titles and bodies |
-| `stale [--older-than N]` | open items untouched for longer than N days (default 90) |
+| `stale [--older-than N]` | open items untouched for longer than N days (the query's default when omitted) |
 | `unstaged` | open items carrying no `stage` |
 | `created-since <ISO>` | items created at or after that instant |
 | `resolve <id>` | what an id names — status, `dead`, and whether it resolves at all |

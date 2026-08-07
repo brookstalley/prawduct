@@ -270,8 +270,19 @@ def _instant(expression: str) -> str:
     boundary would not be. A stamp too malformed to parse yields NULL and drops
     out of the comparison, which is the right answer for a row that cannot
     honestly satisfy a date predicate either way.
+
+    **The CAST is load-bearing, not decoration.** ``strftime`` returns **TEXT**,
+    and neither side of these comparisons is a column with numeric affinity, so
+    without it SQLite compares two epoch strings *lexicographically* — which is
+    the very failure this helper was written to remove, reintroduced one level
+    down as a digit-count problem instead of a spelling one. It is wrong whenever
+    the two epochs differ in length, i.e. as soon as either side falls before
+    2001-09-09 (10 digits becomes 9): ``'946684800' < '1577836800'`` is false.
+    The symptom is a confident wrong answer in either direction — an empty set for
+    a distant ``created-since`` bound, or every open item reported stale for a
+    distant ``--older-than``.
     """
-    return f"strftime('%s', {expression})"
+    return f"CAST(strftime('%s', {expression}) AS INTEGER)"
 
 
 # --- consumers 3 and 8: grouping and counting by area -------------------------

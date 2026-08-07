@@ -397,8 +397,18 @@ Drains when Phase 1 runs.
 
 ## VRF-008 — Chunk 01 (skills-cutover-awareness) — dormancy is stated, not silently wrong
 
-**Status:** pending
+**Status:** superseded
 **Added:** 2026-07-19 (skills-cutover-awareness Chunk 01 — GV8 interim contract)
+**Superseded:** 2026-08-07 by the backlog read-through cache (Chunk 06), which **restored every
+reader this entry verified as dormant.** Do not drain it — its eleven steps now assert the inverse of
+what ships: step 1 wants the `backlog-checks-dormant` advisory at session start (the probe is
+deleted), steps 2 and 6 want the Critic's walk and the PR reviewer's R-1/R-2 to emit an "unavailable"
+NOTE *instead of* running (both now run and emit per-item findings by design), step 8 wants the
+janitor's Backlog Health block to be a single unavailable line with none of its checks having run
+(four now run), and steps 10–11 pin the wording of NOTEs that no longer exist. An operator working
+through it would report a failure against correct behaviour, or 'fix' the restored readers back to
+dormancy. Superseded by **VRF-015**, which verifies the restored contract. Kept rather than deleted —
+this file is append-only, and the record of what was once verified is the point.
 
 **Why a human check:** the deliverable is a *stated absence*. Tests pin that the probe fires and that
 its operator-facing strings don't contradict each other, but no test can confirm that a reviewer
@@ -905,3 +915,33 @@ assumed to still hold; nothing in the code will re-raise it.
 
 **Not re-litigated:** the lift itself is settled by owner ruling 2026-07-24, and `BKL-7D3V` scopes
 re-litigating it out. Only the amplified *delivery* was open, and only that is accepted here.
+
+
+## VRF-015 — Chunk 06 (backlog-cache) — the restored readers produce findings, and say so when they cannot
+
+**Status:** pending
+**Added:** 2026-08-07 (backlog-cache Chunk 06 — supersedes VRF-008)
+
+**Why a human check:** the deliverable is a *judgement* made by three prose readers. Tests pin that
+the queries answer, that an unreadable store exits 6, and that the prose routes correctly — but no
+test can confirm that a reviewer reading `review-cycle.md` actually runs the walk and emits findings
+a person would act on. Skills are prose a model executes, and the failure this work exists to kill
+(a reader that matches nothing while reporting confidently) is only visible end to end.
+
+**Steps:**
+
+1. On a cut-over repo, run `/prawduct:critic final` on a branch with real changes. The Backlog
+   Reconciliation section must contain **per-item findings**, not an "unavailable" NOTE.
+2. Confirm at least one finding names a real open item and that its id resolves.
+3. Run `/prawduct:janitor`. The **Backlog Health** block must list area groupings and any stale or
+   unstaged items — not a single unavailable line.
+4. Confirm the janitor's Backlog Health ran without a permission prompt for
+   `prawduct-hook backlog cache-query`.
+5. Move the store aside (`<git-common-dir>/prawduct/backlog-cache.sqlite3`) and re-run both. Each
+   must **say the cache is unreadable and name `prawduct-hook backlog sync`** — never report clean,
+   and never report an empty result set.
+6. Restore the store. Confirm the session briefing carries **no** dormancy advisory.
+7. Confirm the freshness line appears in human-mode output: `prawduct-hook backlog cache-query
+   unstaged --repo <scope>` (no `--json`) ends with a `cache:` line naming the age.
+
+**Verified by:** _(operator, date)_

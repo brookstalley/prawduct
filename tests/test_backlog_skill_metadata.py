@@ -32,6 +32,11 @@ BACKLOG_SKILL = PLUGIN / "skills" / "backlog" / "SKILL.md"
 EVERYDAY_OPS = (
     "file", "get", "status", "update", "comment",
     "list", "pick", "counts", "link", "unlink",
+    # `sync` and `cache-query` joined the everyday set when `adapter-mode.md`
+    # started routing `find` and `dedup` through the cache — the runbook naming an
+    # op the grant omits is the gap this tuple exists to catch, and it opened in
+    # the same changeset that wrote the runbook.
+    "sync", "cache-query",
 )
 
 # Every op name the CLI no longer dispatches. A grant, a documented flag, or a

@@ -7,8 +7,17 @@ user-invocable: true
 # necessarily subsumes the backlog scrub ops an allow-list is supposed to hold
 # behind a prompt. An allow-list cannot fence an op when the skill legitimately
 # needs the interpreter, so the model-initiated path is closed here instead.
+#
+# `cache-query` is granted explicitly despite that interpreter grant, because the
+# interpreter grant does NOT cover it where it matters: `Bash(python3 *)` only
+# reaches `python3 plugin/bin/prawduct-hook` in THIS repo, where the plugin is in
+# the tree. In a governed product the plugin is installed elsewhere and the bare
+# `prawduct-hook` spelling is the only one that works. Without this, Step 2.5's
+# Backlog Health queries prompt — and a prompt a janitor declines looks to it
+# exactly like the unreadable store it is scripted to report, so the block would
+# render "unavailable" and never run. Read-only: no network, no writes.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query *), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.
@@ -208,11 +217,16 @@ Emit a **Backlog Health** block in the findings report (all counts derived on re
 
 1. **Group by area** (`by-area`) — for each `area:` with several items, list them so clusters are visible. *Yield: work piling up unnoticed in one area.*
 2. **Dedup candidates** (`search <title text> --area A`, on each cluster) — title/body overlap within an area → suggest a `/prawduct:backlog dedup` merge (operator confirms; never auto-merge). *Yield: duplicate items competing for the same fix.*
-3. **Stale items** (`stale`, default >90d) — propose re-confirm, update, or `status=dropped`. The date is the provider's `updated_at`, which moves on any edit; an item somebody touched last week is not neglected whatever its review history says. *Yield: items nobody has looked at in a quarter.*
+3. **Stale items** (`stale`, the query's own default horizon unless you pass `--older-than`) — propose re-confirm, update, or `status=dropped`. The date is the provider's `updated_at`, which moves on any edit; an item somebody touched last week is not neglected whatever its review history says. *Yield: items nobody has looked at in a quarter.*
 4. **Unstaged items** (`unstaged`) — `status: open` with no `stage:` → flag for a `stage:` backfill (an unstaged item won't be picked for implementation). *Yield: items invisible to `pick`.*
 5. **Neglected hygiene** — **still dormant, and not on the cache's account.** Items in the `promoted` state whose owning chunk shipped: the `promoted` status value has no GitHub-Issues equivalent, so the query has nothing to ask for (blocked on #529). Say so in the block; restoring it would ship a check that silently matches nothing. On the markdown backend, survey `## Promoted` items whose owning chunk appears shipped and surface "should this be `status=shipped`?" (never inferred — D4).
 
-Two former checks are **retired, not dormant.** Counting unstructured legacy items and proposing an `## Archive` split are meaningless once Issues is system of record, so they would be advice a reader could act on to no effect — and removal is the default for a control with no remaining yield.
+Two more checks are **scoped to the markdown backend**, and only there. Run them when `backlog_service_repo` is unset; skip them silently when it is set — not as a dormancy, but because their subject does not exist on that backend:
+
+6. **Unstructured items** — count legacy items (no metadata bar); propose `/prawduct:backlog migrate` if many. *Yield: items predating the structured format, which no filter can see.*
+7. **Archive growth (Q2 split)** — when `## Archive` exceeds ~200 entries, propose splitting it to `backlog-archive.md` (`find` spans both files). *Yield: a working file heavy enough to slow every read of it.*
+
+*Why scoped rather than retired.* Both are meaningless **once Issues is system of record** — there is nothing to migrate and closed issues *are* the archive, so post-cutover they would be advice a reader could act on to no effect. That argument names one backend, and an earlier pass in this work let it reach the other: on the markdown backend check 7 is the *only* surface that proposes a split and check 6 is the janitor half of the `migrate` nudge, so retiring them outright would have taken a live control from every markdown-backend product to suit a cut-over one. A retirement is one act per substrate the thing lives on.
 
 Triage *findings* feed Step 4; the backlog edits themselves run via `/prawduct:backlog` (the framework never infers status — D4).
 

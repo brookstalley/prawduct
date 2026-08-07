@@ -1008,6 +1008,11 @@ the same shape that makes `transport.py` the sole egress.
   2. #621 updated `status=shipped`; #564 dispositioned (spec §2.1 makes it a duplicate of a retired
      concern — retire it or fold it into #550, and record which), via `/prawduct:backlog`
 
+     **Both done 2026-08-07.** Annotated the way Chunk 05 annotated its own #230, and for the same
+     reason: a remote write leaves no trace in the changeset, so without a line here a later reader
+     cannot tell an omission from an unrecorded completion. (The cumulative review flagged exactly
+     that — it read a store synced ~70 seconds before the writes landed, and said so.)
+
      `[DECISION: #564 is dispositioned as NEITHER — it stays open with its rationale corrected |
      This step offered two answers and the evidence supports a third. §2.1 retired the
      `revisit-due` **probe**, which is a fact about a *read* path; #564 is about a *write* path,

@@ -111,7 +111,6 @@ def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> tuple[list[d
                 # is not one of its readers.
                 "affected": _list_column(item.get("affected")),
                 "working_branch": item.get("working_branch"),
-                "etag": None,
             }
         )
     return rows, out_of_scope

@@ -194,9 +194,26 @@ class TestTheThreeReadersShareOneContract:
             "where the backend gate for Backlog Reconciliation lives."
         )
         protocol = " ".join(_read("skills/critic/review-protocol.md").split())
-        assert "read `backlog_service_repo` first" in protocol, (
-            "review-protocol.md dropped its summary of the gate, so a reviewer "
-            "reading only this file gets no signal that the walk is conditional."
+        # Pinned on the post-cutover BEHAVIOUR, not on a prefix of the sentence
+        # that states it. The assertion here used to be the substring "read
+        # `backlog_service_repo` first", which stayed true after the walk was
+        # restored while the clause around it went on saying "when set, skip the
+        # walk" — the stale gate survived a green suite in the very bundle that
+        # restored the walk, and was caught by a reviewer instead. A prefix match
+        # cannot tell which way a conditional points; these assert the direction.
+        assert "cache-reads.md" in protocol, (
+            "review-protocol.md no longer routes the reconciliation to the cache "
+            "contract, so a reviewer reading only this file does not know where "
+            "the items come from."
+        )
+        assert "skip the walk only on exit 6" in protocol, (
+            "review-protocol.md does not say that skipping is the unavailable case "
+            "ALONE. This is the assertion that fails if the dormancy-era gate — "
+            "skip whenever the backend is set — is ever restated here."
+        )
+        assert "when set, skip the walk" not in protocol, (
+            "review-protocol.md has reinstated the dormancy-era gate, which would "
+            "make every cut-over product skip the walk this cache restored."
         )
 
 class TestDirectReadRuleIsOneRule:

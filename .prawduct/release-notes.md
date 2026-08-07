@@ -7,9 +7,9 @@
 
 ## unreleased
 
-**Entry:** 2026-08-07: the backlog cache learns three domain fields
+**Entry:** 2026-08-07: the last dormant readers come back, and the advisory that announced them retires
 
-**Chunks shipped:** 01, 02, 03
+**Chunks shipped:** 01, 02, 03, 04, 05, 06
 
 **Scope:** backlog-cache
 

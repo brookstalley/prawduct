@@ -85,7 +85,7 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4807,
-    "skills/critic/review-protocol.md": 3611,
+    "skills/critic/review-protocol.md": 3612,
     "skills/critic/goals-1-3.md": 1998,
     "skills/critic/review-cycle.md": 9578,
     "skills/critic/framework-checks.md": 1116,
@@ -789,6 +789,18 @@ class TestCriticSkill:
         # tokens by thinning a safety instruction is the wrong trade at any
         # exchange rate. 9 tokens of headroom remain, which is the intended
         # state, not an oversight: the next addition trims or relocates.
+        #
+        # 3611 -> 3612 (2026-08-07) -- the dormancy-era backlog gate here said
+        # "when set, skip the walk", which the read-through cache made false: it
+        # is the file every coordinator reviewer reads, so a sustainability
+        # reviewer stopping here would skip the restored walk on every cut-over
+        # product. Caught by the cumulative review, NOT by the suite -- the
+        # tripwire asserted a substring of the old sentence that stayed true
+        # while the clause around it inverted, so that assertion now pins the
+        # direction of the gate instead of a prefix of it. The replacement was
+        # drafted 10 tokens heavier and trimmed to +1 rather than bumped: the
+        # backend condition and the query list live in cache-reads.md, and this
+        # file needs only the route and the exit-6 rule. 8 tokens of headroom.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 

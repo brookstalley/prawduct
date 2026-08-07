@@ -168,6 +168,77 @@ class TestItemsCreatedSince:
 # --- consumers 3 and 8: grouping and counting by area -------------------------
 
 
+class TestDatePredicatesCompareInstantsNotDigits:
+    """The two date predicates must be right across the **epoch digit boundary**,
+    not just across the two ISO spellings.
+
+    `_instant` was written to fix a spelling problem — the provider stamps `...Z`
+    while `isoformat()` writes `...+00:00` — and it reintroduced the same class one
+    level down: `strftime` returns TEXT, so without a CAST two epoch strings
+    compare lexicographically and `'946684800' < '1577836800'` is **false**. Any
+    bound before 2001-09-09 has nine digits where a current one has ten, so the
+    answer inverts: an empty set for a distant `created-since`, and every open item
+    reported stale for a distant `--older-than`.
+
+    These fixtures sit deliberately on either side of that boundary rather than at
+    a realistic bound, because the in-tree callers all pass recent dates — which is
+    exactly why the defect was latent and why a test with realistic inputs stayed
+    green over it.
+    """
+
+    PRE_2001 = datetime(1999, 6, 1, tzinfo=timezone.utc)   # 9-digit epoch
+    POST_2001 = datetime(2020, 6, 1, tzinfo=timezone.utc)  # 10-digit epoch
+
+    def test_created_since_a_pre_2001_bound_returns_everything(self, fake, repo_dir):
+        item = _file(fake, title="cache: an item created in the modern era", area="backlog")
+        _stamp(fake, item, created=self.POST_2001)
+        _rebuild(fake, repo_dir)
+
+        result = cachequery.items_created_since(
+            repo_dir, scope=SCOPE, since=self.PRE_2001.isoformat(), now=NOW
+        )
+
+        assert _ids(result) == [item], (
+            "a bound 21 years before the item excluded it — the epoch comparison "
+            "is lexicographic, not chronological"
+        )
+
+    def test_created_since_a_post_2001_bound_still_excludes_what_predates_it(
+        self, fake, repo_dir
+    ):
+        """The other direction, so a CAST that accidentally inverted the whole
+        comparison could not pass the test above on its own."""
+        old = _file(fake, title="cache: an item created before the boundary", area="backlog")
+        _stamp(fake, old, created=self.PRE_2001)
+        _rebuild(fake, repo_dir)
+
+        result = cachequery.items_created_since(
+            repo_dir, scope=SCOPE, since=self.POST_2001.isoformat(), now=NOW
+        )
+
+        assert _ids(result) == []
+
+    def test_a_horizon_reaching_past_2001_does_not_report_everything_stale(
+        self, fake, repo_dir
+    ):
+        """`--older-than` is operator-settable through the janitor's Backlog Health
+        block, so a large value is reachable input rather than a hypothetical."""
+        item = _file(fake, title="cache: an item touched this week", area="backlog")
+        _stamp(fake, item, updated=NOW - timedelta(days=3))
+        _rebuild(fake, repo_dir)
+
+        # A cutoff before 2001 — 9 epoch digits against the item's 10.
+        horizon = (NOW - self.PRE_2001).days
+
+        result = cachequery.stale_items(
+            repo_dir, scope=SCOPE, older_than_days=horizon, now=NOW
+        )
+
+        assert _ids(result) == [], (
+            "an item edited three days ago was reported untouched for 27 years"
+        )
+
+
 class TestByArea:
     def test_it_groups_and_counts_the_open_items(self, fake, repo_dir):
         first = _file(fake, title="cache: a backlog item", area="backlog")
@@ -1184,6 +1255,82 @@ class TestTheCacheQueryOp:
 
         assert _all_ids(default) == {live}
         assert _all_ids(widened) == {live, done}
+
+    @pytest.mark.parametrize(
+        ("argv", "why"),
+        [
+            (["stale", "60"], "a bare 60 reads as --older-than 60 and would silently answer 90"),
+            (["open", "extra"], "an unexpected positional"),
+            (["by-area", "stray"], "an unexpected positional on a zero-arg query"),
+            (["open", "--area", "governance"], "a valued flag this query does not read"),
+            (["search", "foo", "--older-than", "3"], "a valued flag belonging to another query"),
+            (["resolve", "a", "b"], "two ids where the query takes one"),
+        ],
+    )
+    def test_it_refuses_what_a_query_does_not_take(self, argv, why, repo_dir):
+        """**Refused, never ignored** — the same policy `--all` already had, applied
+        to the rest of the surface. One dispatcher holding two opposite policies is
+        how `cache-query stale 60` came to return the 90-day set as `status: ok`:
+        a wrong answer that looks right, which is the failure this whole surface
+        exists to prevent."""
+        code, envelope = _cq(repo_dir, *argv)
+        assert code == 2, (argv, why, envelope)
+        assert envelope["error"]["code"] == "validation"
+
+    def test_every_query_has_an_arity_and_a_flag_set(self):
+        """The two tables are data beside `_CACHE_QUERIES`, so a query added
+        without an entry raises at dispatch rather than silently accepting
+        anything — which is the failure mode the tables were added to fix."""
+        from lib.backlog import cli
+
+        assert set(cli._CACHE_QUERY_ARITY) == set(cli._CACHE_QUERIES)
+        assert set(cli._CACHE_QUERY_FLAGS) == set(cli._CACHE_QUERIES)
+
+    @pytest.mark.parametrize("name", sorted(CASES))
+    def test_human_mode_renders_every_shape_with_its_age(self, name, fake, repo_dir):
+        """`boundary-patterns.md` records "Result Envelopes" as a contract surface
+        with TWO consumers — the `--json` passthrough and the human formatters —
+        and its recurring defect is that a `--json`-only test never runs the
+        second. It did so again: `unstaged` printed its items and then `0 item(s)`,
+        a `resolve` miss printed `status=None`, and `by-area` dumped raw JSON. So
+        human mode is exercised here for every shape.
+        """
+        _file(fake, title="cache: an item every shape can render", area="backlog",
+              affected="plugin/lib/backlog/sync.py")
+        _rebuild(fake, repo_dir)
+
+        code, text = _cq(repo_dir, name, *TestTheCacheQueryOp.CASES[name], json_mode=False)
+
+        assert code == 0
+        assert not text.lstrip().startswith("{"), (
+            f"{name} fell through to a raw JSON dump in human mode"
+        )
+        assert "cache:" in text, (
+            f"{name}'s human output drops the visible age — the invariant every "
+            f"payload carries, and the one `cache-reads.md` tells readers to name"
+        )
+
+    def test_human_mode_counts_the_rows_it_printed(self, fake, repo_dir):
+        item = _file(fake, title="cache: an item with no stage at all", area="backlog")
+        _rebuild(fake, repo_dir)
+
+        _code, text = _cq(repo_dir, "unstaged", json_mode=False)
+
+        assert item in text
+        assert "1 item(s)" in text, "the printed rows and the count disagreed"
+        assert "0 item(s)" not in text
+
+    def test_human_mode_reports_a_resolve_miss_as_a_miss(self, fake, repo_dir):
+        """A miss is consumer 5's whole finding. Printing `status=None` for it
+        loses both that it was a miss and why — and a reader cannot tell "no such
+        item" from "that is not an id", which send them to different repairs."""
+        _file(fake, title="cache: some unrelated item", area="backlog")
+        _rebuild(fake, repo_dir)
+
+        _code, text = _cq(repo_dir, "resolve", f"{SCOPE}#999999", json_mode=False)
+
+        assert "unresolved" in text
+        assert "status=None" not in text
 
     def test_the_ephemeral_guard_classifies_it_read_only(self):
         """An op missing from the guard's classification is ALLOWED on a

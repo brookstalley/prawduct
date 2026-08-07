@@ -121,7 +121,7 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
-**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then reconcile the backlog (read `backlog_service_repo` first; when set, skip the walk for its "unavailable" NOTE), emitting **NOTE** findings for items resolved.
+**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then reconcile the backlog (cache-backed — `skills/backlog/cache-reads.md`; skip the walk only on exit 6, its "unavailable" NOTE), emitting **NOTE** findings for items resolved.
 
 ## Severity Levels
 
