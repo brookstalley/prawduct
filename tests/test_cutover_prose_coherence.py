@@ -507,8 +507,40 @@ class TestBackendScopedProseInTheBacklogSkill:
         because it is now instruction rather than commentary.
         """
         flat = " ".join(_read("skills/backlog/adapter-mode.md").split())
-        assert "full-text search is not available" not in flat, (
-            "the adapter path still tells an operator search is unavailable"
+
+        # **Matched on SHAPE, because the literal this test first shipped with
+        # never appeared in the file.** It asserted `"full-text search is not
+        # available" not in flat`; the file actually said "present `find`/`dedup`
+        # as **not available on this backend yet**" and "the backend has no
+        # full-text search". So all of this test's assertions held for the whole
+        # life of the defect it is named for, and a reviewer found it by
+        # materializing the pre-fix blob and evaluating them against it.
+        #
+        # Verified the same way before landing: this pattern hits three sites in
+        # `ec2c5e9:plugin/skills/backlog/adapter-mode.md` (the action menu, the
+        # degraded-dedup paragraph, and its closing clause) and none in the fixed
+        # file. A tripwire nobody has run against the failure is a tripwire whose
+        # green means nothing.
+        unavailable_claim = re.compile(
+            r"(find|dedup|Dedup-on-create|full-text search)[^.]{0,80}?"
+            r"(not available|no full-text search|is degraded|unavailable|not ready)",
+            re.IGNORECASE,
+        )
+        # Swept across BOTH backlog-skill surfaces, not just the one the finding
+        # named. `SKILL.md`'s `find` section carried the same false claim
+        # ("post-cutover, full-text search is unavailable") and was missed by a
+        # check scoped to one file — which is this test's own subject happening
+        # one file over.
+        stale = {
+            rel: [m.group(0) for m in unavailable_claim.finditer(
+                " ".join(_read(rel).split()))]
+            for rel in ("skills/backlog/adapter-mode.md", "skills/backlog/SKILL.md")
+        }
+        stale = {rel: hits for rel, hits in stale.items() if hits}
+        assert not stale, (
+            f"the backlog skill still tells a post-cutover reader that `find`/`dedup` "
+            f"are unavailable, when they run on the cache: {stale}. Skills are prose a "
+            f"model executes, so this withholds two working ops on every cut-over product."
         )
         assert "cache-query search" in flat, "`find` is not routed to the cache-served search"
         assert "cache-reads.md" in flat, (

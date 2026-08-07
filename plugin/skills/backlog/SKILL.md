@@ -80,7 +80,7 @@ File a new item. Accepts flags (`--title=`, `--body=`/`--body-file=`, `--area=`,
 3. Return the new ID and a one-line confirmation.
 
 ### find <query>
-*(Markdown backend. Post-cutover, full-text search is unavailable — `adapter-mode.md` returns a NOTE and points at `list` filters.)* Plaintext + tag search across title, metadata, and body of **all** sections (and `backlog-archive.md` if it exists). Return matching `[ID] title — one-line summary`, most-relevant first. Keep it tight (a handful of results).
+*(Markdown backend. Post-cutover, `adapter-mode.md` routes this to the local cache's full-text index — `cache-query search`.)* Plaintext + tag search across title, metadata, and body of **all** sections (and `backlog-archive.md` if it exists). Return matching `[ID] title — one-line summary`, most-relevant first. Keep it tight (a handful of results).
 
 ### list [--filter=...]
 Tabular view: `ID · title · effort · impact · area · status`. **Default filter: `status=open` AND `added` within 90 days** (so a 200-item backlog doesn't dump). `--all` overrides; filter on any metadata field (`--area=`, `--status=`, `--effort=`, etc.). Sort by status then recency. **Claimed items** (non-empty `accepted-by:`) are excluded by default; show them with `--include-claimed`, and when shown, display the claim holder in the row.
@@ -152,6 +152,9 @@ Convert an external backlog file (`TODO.md`, `BACKLOG.md`, `ROADMAP.md`, `IDEAS.
 4. Do not delete the source file (the user decides whether to remove it); recording it as imported is what stops the nag.
 
 ### dedup
+*(Markdown backend — the grouping below walks `## Open`/`## Promoted` sections. Post-cutover,
+`adapter-mode.md` routes the candidate scan to `cache-query search` per area cluster; steps 1b–3 are
+backend-independent and still apply.)*
 Surface likely-duplicate / overlapping items and propose merges. Idempotent and **never destructive** (bodies preserved; nothing deleted — a merge archives the superseded item via `closes:`).
 1. Group `## Open` (and `## Promoted`) items by `area:`; within each group, find candidate pairs by title-keyword + body overlap. (The `add` subcommand already does dedup-on-create; this is the after-the-fact sweep.)
 1b. **Then ask the altitude question of every group: "would a SINGLE change close all of these?"** This is a *shared-root-cause* test, not the duplicate test step 1 just ran, and the two come apart exactly where it matters: `crash on emoji` and `crash on UTF-16` share one cause and almost no keywords, so keyword overlap will never pair them. Over-splitting is a first-class failure alongside under-splitting (issue-standard §1) and this sweep is **the only place it can be caught** — no per-title lint can see it, because it is a fact *between* issues. It is also the more expensive direction: a split backlog looks more thorough, so nothing prompts a re-read. When the answer is yes, propose the **upleveled** item (`personas crash on character encoding`) as the survivor and fold the symptoms into it, rather than cross-linking them as relatives.

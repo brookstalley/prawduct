@@ -2988,3 +2988,34 @@ Fixed by pinning `SCHEMA_VERSION` to a fingerprint of `_SCHEMA_STATEMENTS` in a 
 ways (bump missed → red; schema edited under an unchanged version → red). The generalizable move:
 when a rule cites a past incident, ask what *actually* caught that incident before assuming the rule
 is enforced.
+
+## Sweeping for the IDENTIFIER is not sweeping for the CLAIM
+
+Three instances on one branch (`feat/backlog-cache`, 2026-08-07), each caught by review rather than
+by the sweep that was supposed to catch it:
+
+1. **Chunk 05 — the `claim` retirement.** Done-when named `data-model.md` and `api-contract.md`; both
+   were reconciled carefully, and `-test-specifications.md`, `-nfr.md` and `-requirements.md` were
+   left specifying a mechanism that no longer existed. A Done-when list is a floor, not a scope.
+2. **Chunk 06 — janitor checks 6 and 7.** Retired on "meaningless once Issues is system of record",
+   an argument true of one backend, applied to both. (This one also has its own rule — *a retirement
+   is one act per substrate* — and recurring anyway is the point: recognizing a pattern in a review
+   finding is not the same as recognizing it in a task list.)
+3. **Chunk 06 verify — `adapter-mode.md`.** One section routed `find`/`dedup` through the new cache
+   while two others in the *same file* said they were unavailable: the action menu printed on every
+   invocation ("present `find`/`dedup` as **not available on this backend yet**") and the `add` flow
+   ("**Dedup-on-create is degraded** … say full dedup is not available"). The preceding fix commit
+   had addressed the tool-grant half of the very finding that named this file, and never re-read it.
+
+**Why grep does not catch this.** The falsifying prose contains none of the identifiers. "Not
+available on this backend yet", "is degraded", "meaningless once X", "remains dormant" — no `find`,
+no `dedup`, no `cache-query`. Searching for the dormancy-notice text I had written came back clean,
+because I was searching the string I authored rather than the claim I had made false.
+
+**The check that would have worked** is a question, not a pattern: *what did this change make true or
+false, and who asserts the opposite in words?* For a restoration the query is "what still says this
+is unavailable"; for a retirement, "what still says this works". Both are read-and-judge over the
+files that describe the capability, and neither is a `grep` for a symbol.
+
+Related: *a retirement is one act per substrate the thing lives on* (the scoping half of the same
+family) and *a rule about second homes does not stop at the homes someone remembered to enumerate*.
