@@ -19,8 +19,8 @@ issues*: brevity, clarity, specificity.
 
 ## 1. Title
 
-- **Budget ≤ 72 chars** (aim 50–70). Over budget is **blocking** per the §4 amendment once #614
-  lands, advisory until then — the number is the same either way; only the posture changed. **Shape: `area: specific summary`** — lowercase area
+- **Budget ≤ 72 chars** (aim 50–70). Over budget is **blocking** per the §4 amendment (wired in
+  #614) — the number was always the same; only the posture changed. **Shape: `area: specific summary`** — lowercase area
   prefix, then a noun-phrase stating *what failed + where* (bug) or *what to do* (task).
 - **One atomic problem — and atomicity is a property of the FIX, not of the sentence.** The test is
   one question: **would a single change close all of these?** If yes they are one issue written at
@@ -36,14 +36,15 @@ issues*: brevity, clarity, specificity.
     thorough, so nothing prompts a re-read, while an under-split one is loud the moment someone
     tries to close it.
 - **Only the under-split direction is visible from a single title.** Over-splitting is a fact
-  *between* issues, so no per-title lint can catch it. **Nothing screens for it today** — say this
-  plainly rather than delegating to a mechanism that does not exist: the dedup/merge sweep
-  (`skills/backlog/SKILL.md`) pairs on *title-keyword + body overlap*, which is a **duplicate**
-  test, and the two come apart exactly here — `crash on emoji` and `crash on UTF-16` share a root
-  cause and almost no keywords. Adding the shared-root-cause question to that sweep is the
-  intended home and is **unbuilt**. Until it exists, over-splitting is caught by a human reading
-  the backlog or not at all, and the migration scrub must therefore look across the corpus rather
-  than rewriting items one at a time in isolation.
+  *between* issues, so no per-title lint can catch it — which is why the screen lives in the
+  sweeps and nowhere else. The dedup/merge sweep (`skills/backlog/SKILL.md`) pairs on
+  *title-keyword + body overlap*, which is a **duplicate** test, and the two come apart exactly
+  here — `crash on emoji` and `crash on UTF-16` share a root cause and almost no keywords. The shared-root-cause question is therefore asked by that
+  sweep and by the migration scrub (`skills/backlog/migration-scrub.md`), **built in #614** as the
+  co-ship condition on this budget: *would a single change close all of these?* Both surfaces ask
+  it, because it is the only place it can live — no per-title lint can see a fact that exists
+  *between* issues. The scrub must still work across the corpus rather than rewriting items one at
+  a time, since an item-by-item pass cannot see that three titles are one defect.
 - ✅ `importer: PFX alias read-resolution unwired, breaks import idempotency` (69)
 - ❌ vague (`Bug in the thing`), non-specific (`Fix backlog`), em-dash chains of ≥2 claims, or a
   family of near-identical titles that one fix would close.

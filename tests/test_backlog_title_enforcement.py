@@ -248,3 +248,68 @@ def test_human_import_summary_omits_the_line_when_nothing_failed(capsys):
     out = capsys.readouterr().out
     assert "0 rejected" in out
     assert "REJECTED" not in out
+
+
+def test_human_mode_refusal_names_every_offending_title(capsys):
+    """The pre-flight's whole value is the LIST. `_render_detail_list` collapses
+    any non-string list to a bare count, so `nonconforming_titles` — a list of
+    dicts — printed as `nonconforming_titles: 20`.
+
+    That defeats the instruction this bundle shipped: `migration-scrub.md` Step 4
+    tells the operator to rewrite the *named* titles and its command line carries
+    no `--json`, so human mode is the only route those names have. Same
+    `--json`-only gap as the `failed` summary line, one review round earlier."""
+    cli._print_human_error(
+        {
+            "code": "validation",
+            "message": "2 of 3 item(s) have titles that do not conform",
+            "details": {
+                "nonconforming_titles": [
+                    {"title": "way too long a title", "rules": ["title-too-long"]},
+                    {"title": "brief", "rules": ["title-too-short"]},
+                ],
+                "created": [],
+                "resumable": False,
+            },
+        }
+    )
+
+    err = capsys.readouterr().err
+    assert "way too long a title" in err
+    assert "brief" in err
+    assert "title-too-long" in err
+    assert "nonconforming_titles: 2" not in err, "the list collapsed to a count"
+
+
+def test_human_mode_breaker_names_the_rejected_items(capsys):
+    """The breaker's own message says to inspect `failed` for the shared cause —
+    unactionable if `failed` renders as a number."""
+    cli._print_human_error(
+        {
+            "code": "validation",
+            "message": "stopped after 5 consecutive item rejections",
+            "details": {
+                "failed": [{"title": "rejected item one", "error": "GitHub rejected the request"}],
+                "created": [],
+                "resumable": True,
+            },
+        }
+    )
+
+    err = capsys.readouterr().err
+    assert "rejected item one" in err
+    assert "failed: 1" not in err
+
+
+def test_bookkeeping_lists_still_render_as_counts(capsys):
+    """The boundary: `created`/`skipped` are bookkeeping and would bury the
+    message. Naming the payload lists must not turn into naming everything."""
+    cli._print_human_error(
+        {
+            "code": "auth",
+            "message": "GitHub authentication is required",
+            "details": {"created": [{"key": "a"}, {"key": "b"}], "resumable": True},
+        }
+    )
+
+    assert "created: 2" in capsys.readouterr().err

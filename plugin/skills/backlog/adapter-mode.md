@@ -52,8 +52,11 @@ The stdout envelope is one of three shapes:
   below.
 
 A `file` result may also carry **`"lint":[{"rule","message","severity":"warn"}]`** — surface these
-as `WARNING:` issue-standard hints. Lint **never** changes `status` or the exit code (it is not a
-gate).
+as `WARNING:` issue-standard hints. These body/label findings never change `status` or the exit
+code. **The four §1 TITLE checks are different — they BLOCK**: `file` and `update` refuse a
+non-conforming title with a `validation` error (exit 2) before writing, and `import` refuses the
+whole corpus pre-flight. So a `lint[]` you can surface is by construction the advisory kind; a
+blocking one arrived as an error instead.
 
 ## Error discipline — fail loud, never fall back
 
@@ -131,8 +134,9 @@ sections** post-cutover: open/closed state + `status:` labels carry lifecycle pl
 ### add
 `prawduct-hook backlog file --repo <r> --title T --body B [--stage S] [--kind K] [--area A]
 [--effort E] [--impact I] [--source SRC]`. Author an issue-standard title (`area: summary`, ≤72,
-atomic) + a sectioned body; set `--kind`. The result may carry `lint[]` (WARN-only issue-standard
-hints — surface, never blocks). **Dedup-on-create is degraded** while the backend has no full-text search: do a
+atomic, 15-72 chars) + a sectioned body; set `--kind`. **A title failing §1 is REFUSED** with a
+`validation` error, not filed — rewrite and retry. The result may carry `lint[]` (body/label
+issue-standard hints — surface, never blocks). **Dedup-on-create is degraded** while the backend has no full-text search: do a
 coarse check with `list --area=<area> --json` and eyeball recent titles for overlap before filing,
 and say full dedup is not available on this backend yet.
 

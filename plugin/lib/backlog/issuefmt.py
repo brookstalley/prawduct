@@ -226,9 +226,14 @@ def _match_key(canonical: str, sections: dict[str, str]) -> str | None:
 
 @dataclass(frozen=True)
 class LintFinding:
-    """One WARN-only lint finding. ``rule`` is a stable kebab-case id (so callers
-    can filter/suppress); ``message`` is human-facing. Severity is always
-    ``warn`` — this linter has no other level."""
+    """One lint finding. ``rule`` is a stable kebab-case id (so callers can
+    filter/suppress); ``message`` is human-facing.
+
+    ``severity`` is always ``warn`` because this type carries no posture — the
+    CALLER decides. A `title-*` finding reaching a write path becomes a refusal
+    (`core._title_refusal`, `migrate.preflight_titles`); the same dataclass, with
+    the same ``"severity": "warn"``, therefore also rides inside a BLOCKING
+    validation error. Do not read this field as "this finding is advisory"."""
 
     rule: str
     message: str
@@ -239,9 +244,11 @@ class LintFinding:
 
 
 def lint(title: str, body: str, labels: list[str] | None = None) -> list[LintFinding]:
-    """Audit an issue against the standard §4. Returns findings (possibly empty);
-    **never** raises and never blocks. Reused verbatim by ``file`` (warn on
-    create) and by the migration as an audit-only pass over restructured items.
+    """Audit an issue against the standard §4. Returns findings (possibly empty)
+    and **never raises** — but "never blocks" is a statement about THIS function,
+    not about its findings: callers refuse on the `title-*` rules it returns (see
+    the module docstring). Reused by ``file`` and by the migration's audit pass
+    over restructured items.
 
     ``body`` is the *human* body (no ``prawduct:`` block) and ``labels`` are the
     ``<facet>:value`` labels the issue carries.

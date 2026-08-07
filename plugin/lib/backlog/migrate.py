@@ -808,6 +808,38 @@ def import_backlog(
     return result
 
 
+def _run_payload(
+    *,
+    created: list,
+    skipped: list,
+    failed: list,
+    collisions: list,
+    unreconciled: list,
+    pacer: "Pacer",
+    backoff: "RateLimitBackoff",
+    resumable: bool,
+) -> dict:
+    """The progress payload every ``import_items`` exit carries.
+
+    One builder because there are FOUR exits — success, the ``TransportError``
+    cut, the ``(OSError, json.JSONDecodeError)`` cut, and the breaker — split
+    across two constructors (``core.ok`` and ``core.from_transport_error``), and
+    the error constructors have no slot for a field the success path adds. A
+    field added to one and missed in the others has now happened three times in
+    this function (BKL-3K9N, BKL-9V2W, and `failed` on this branch), each time
+    caught by review rather than by the code. A grep is not a countermeasure;
+    a single construction site is."""
+    return {
+        "created": created,
+        "skipped": skipped,
+        "failed": failed,
+        "collisions": collisions,
+        "status_unreconciled": unreconciled,
+        "resumable": resumable,
+        "pacing": pacing_summary(pacer, backoff),
+    }
+
+
 def preflight_titles(records: list[ImportRecord]) -> list[dict]:
     """Every record whose title fails the issue standard's §1 rules, in source
     order. Pure — no transport, no model, no I/O.
@@ -981,15 +1013,10 @@ def import_items(
     except TransportError as exc:
         result = core.from_transport_error(exc)
         result["error"]["details"].update(
-            {
-                "created": created,
-                "skipped": skipped,
-                "failed": failed,
-                "collisions": collisions,
-                "status_unreconciled": unreconciled,
-                "resumable": True,
-                "pacing": pacing_summary(pacer, backoff),
-            }
+            _run_payload(
+                created=created, skipped=skipped, failed=failed, collisions=collisions,
+                unreconciled=unreconciled, pacer=pacer, backoff=backoff, resumable=True,
+            )
         )
         # Carry the audit warnings accrued before the cut (checkpoint notes + per-record
         # self-heal lines). A self-heal line from an already-completed record can't be
@@ -1008,15 +1035,10 @@ def import_items(
         result = core.error(
             "unavailable",
             "the import backend request failed unexpectedly",
-            details={
-                "created": created,
-                "skipped": skipped,
-                "failed": failed,
-                "collisions": collisions,
-                "status_unreconciled": unreconciled,
-                "resumable": True,
-                "pacing": pacing_summary(pacer, backoff),
-            },
+            details=_run_payload(
+                created=created, skipped=skipped, failed=failed, collisions=collisions,
+                unreconciled=unreconciled, pacer=pacer, backoff=backoff, resumable=True,
+            ),
         )
         result["warnings"] = warnings
         return result
@@ -1033,15 +1055,10 @@ def import_items(
             "rejections mean the corpus, not the item: inspect `failed` for the shared "
             "cause, fix it at the source, then re-run (the import is alias-keyed, so "
             "already-created items are skipped, not duplicated).",
-            details={
-                "created": created,
-                "skipped": skipped,
-                "failed": failed,
-                "collisions": collisions,
-                "status_unreconciled": unreconciled,
-                "resumable": True,
-                "pacing": pacing_summary(pacer, backoff),
-            },
+            details=_run_payload(
+                created=created, skipped=skipped, failed=failed, collisions=collisions,
+                unreconciled=unreconciled, pacer=pacer, backoff=backoff, resumable=True,
+            ),
         )
         result["warnings"] = warnings
         return result
@@ -1069,14 +1086,14 @@ def import_items(
         )
     data = {
         "repo": f"{owner}/{repo}",
-        "created": created,
-        "skipped": skipped,
-        "failed": failed,
-        "collisions": collisions,
-        "status_unreconciled": unreconciled,
+        **_run_payload(
+            created=created, skipped=skipped, failed=failed, collisions=collisions,
+            unreconciled=unreconciled, pacer=pacer, backoff=backoff, resumable=False,
+        ),
         "total_source": len(records),
-        "pacing": pacing_summary(pacer, backoff),
     }
+    # A completed run is not resumable — the key exists on every exit so a reader
+    # never has to distinguish "False" from "this exit forgot to say".
     return core.ok(data, warnings)
 
 

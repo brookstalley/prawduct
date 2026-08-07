@@ -919,12 +919,36 @@ def _render_detail_list(value: list) -> str:
 
     Long lists are capped so one bad run still cannot bury the message.
     """
-    if not value or not all(isinstance(item, str) for item in value):
+    if not value:
+        return str(len(value))
+    if not all(isinstance(item, str) for item in value):
         return str(len(value))
     if len(value) <= _DETAIL_LIST_CAP:
         return ", ".join(value)
     head = ", ".join(value[:_DETAIL_LIST_CAP])
     return f"{head}, … (+{len(value) - _DETAIL_LIST_CAP} more)"
+
+
+#: Detail keys whose entries are the **payload**, not bookkeeping — the same test
+#: `_render_detail_list` applies to string lists, for lists of dicts. Each remedy
+#: names the items ("rewrite the named titles", "inspect `failed` for the shared
+#: cause"), so a bare count is unactionable, and the runbook drives these paths
+#: without ``--json`` so the named form has no other route to the operator.
+#: Anything absent here stays counted: `created`/`skipped`/`collisions` are
+#: bookkeeping and would bury the message.
+_NAMED_DETAIL_ENTRIES = {
+    "nonconforming_titles": lambda e: f"{e.get('title')!r} — {', '.join(e.get('rules') or [])}",
+    "failed": lambda e: f"{e.get('title')!r} — {e.get('error')}",
+}
+
+
+def _render_named_entries(value: list, project) -> str:
+    """Render a payload dict-list as named lines, capped like the string form."""
+    shown = [project(item) if isinstance(item, dict) else str(item) for item in value]
+    if len(shown) <= _DETAIL_LIST_CAP:
+        return "\n      " + "\n      ".join(shown)
+    head = "\n      " + "\n      ".join(shown[:_DETAIL_LIST_CAP])
+    return f"{head}\n      … (+{len(shown) - _DETAIL_LIST_CAP} more)"
 
 
 def _pacing_line(pacing: dict) -> str:
@@ -985,21 +1009,7 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         for finding in result.get("lint", []):
             print(f"lint: {finding.get('message')}", file=sys.stderr)
     else:
-        err = result.get("error", {})
-        print(f"error [{err.get('code')}]: {err.get('message')}", file=sys.stderr)
-        # A cut mid-import already KNOWS how far it got — the envelope carries
-        # `created`/`skipped`/`collisions`/`resumable`/`pacing` — and human mode
-        # dropped all of it, so the operator of an irreversible ~900-issue
-        # migration learned only that it broke. The scrub runbook drives this
-        # path without `--json`, so this is the surface that matters.
-        for key, value in (err.get("details") or {}).items():
-            if key == "pacing" and isinstance(value, dict):
-                shown = _pacing_line(value)
-            elif isinstance(value, list):
-                shown = _render_detail_list(value)
-            else:
-                shown = value
-            print(f"  {key}: {shown}", file=sys.stderr)
+        _print_human_error(result.get("error", {}))
         # A resumable error envelope (e.g. import) carries the audit warnings accrued
         # before the cut; surface them like the ok path so they reach the operator.
         for warning in result.get("warnings", []):
@@ -1007,6 +1017,33 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         if usage:
             print(_HELP, file=sys.stderr)
     return exit_code
+
+
+def _print_human_error(err: dict) -> None:
+    """Render an error envelope to stderr.
+
+    Extracted from :func:`_emit` so it can be tested directly. It could not be
+    before, and the consequence was exactly the defect this docstring now guards:
+    `nonconforming_titles` printed as a bare count for two review rounds because
+    every test of the refusal read the `--json` envelope instead.
+
+    A cut mid-import already KNOWS how far it got — the envelope carries
+    `created`/`skipped`/`failed`/`collisions`/`resumable`/`pacing` — and human
+    mode once dropped all of it, so the operator of an irreversible ~900-issue
+    migration learned only that it broke. The scrub runbook drives this path
+    without ``--json``, so this is the surface that matters.
+    """
+    print(f"error [{err.get('code')}]: {err.get('message')}", file=sys.stderr)
+    for key, value in (err.get("details") or {}).items():
+        if key == "pacing" and isinstance(value, dict):
+            shown = _pacing_line(value)
+        elif isinstance(value, list) and key in _NAMED_DETAIL_ENTRIES:
+            shown = _render_named_entries(value, _NAMED_DETAIL_ENTRIES[key])
+        elif isinstance(value, list):
+            shown = _render_detail_list(value)
+        else:
+            shown = value
+        print(f"  {key}: {shown}", file=sys.stderr)
 
 
 def _print_human_ok(data) -> None:
@@ -1054,7 +1091,8 @@ def _print_human_ok(data) -> None:
         if failed:
             print(
                 f"  WARNING: {len(failed)} item(s) were REJECTED and are NOT on the "
-                "target — re-run the import to retry them, then verify-migration"
+                "target — re-run the import to retry them, then verify-migration:"
+                + _render_named_entries(failed, _NAMED_DETAIL_ENTRIES["failed"])
             )
         # An item can be created and still not migrated: a failed status reconcile
         # defers so the run continues, leaving the issue on the target at the wrong
