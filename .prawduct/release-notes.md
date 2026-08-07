@@ -5,6 +5,32 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
+## v3.2.7
+
+### backlog-title-enforcement
+
+**Entry:** 2026-08-07: an excellent issue title stopped being a suggestion
+
+**Chunks shipped:** 01, 02, 03
+
+### gate-as-dispatcher
+
+**Entry:** 2026-08-06: the refusal became countable, and the prose stopped teaching the round
+
+**Chunks shipped:** 01, 02
+
+### backlog-import-title-boundary
+
+**Entry:** 2026-08-06: a title boundary for the backlog importer, and what "atomic" actually means
+
+### critic-review-identity
+
+**Entry:** 2026-08-05: an archived review can be brought back as itself
+
+**Chunks shipped:** 1, 2
+
+See `.prawduct/change-log.md` for full details.
+
 ## v3.2.6
 
 **Entry:** 2026-08-05: a dispatch no longer displaces a review that is still live

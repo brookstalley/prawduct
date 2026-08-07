@@ -23,10 +23,24 @@ EXPLICIT_EXCEPTIONS = {
     "tests/conftest.py",
 }
 
+# Every Python root this preference is enforced over. `lib` and `hooks` are
+# plugin-root; `tests` and `tools` are REPO-root. `tools/` holds derivation scripts
+# kept runnable so an artifact's figures stay falsifiable — implementation code, held
+# to the same preference. A root on the wrong base yields no files rather than an
+# error, so it enforces nothing and stays green forever; see
+# `test_scan_roots_all_exist`, and the `plugin/tests` regression that motivated it in
+# the sibling subprocess-safety scan.
+SCAN_ROOTS = (
+    ("lib", REPO_ROOT),
+    ("hooks", REPO_ROOT),
+    ("tests", REPO_ROOT.parent),
+    ("tools", REPO_ROOT.parent),
+)
+
 
 def _python_files() -> list[Path]:
     files: list[Path] = []
-    for root, base in (("lib", REPO_ROOT), ("hooks", REPO_ROOT), ("tests", REPO_ROOT.parent)):
+    for root, base in SCAN_ROOTS:
         for path in (base / root).rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
@@ -85,6 +99,17 @@ class TestFutureAnnotations:
             + "\n  - ".join(violations)
             + "\n\nIf the file is a backward-compat shim, include "
             f'"{SHIM_MARKER}" in its module docstring.'
+        )
+
+    def test_scan_roots_all_exist(self):
+        # A misaddressed root scans nothing and passes forever — the only check that can
+        # tell "no violations" from "no files".
+        missing = [str(base / root) for root, base in SCAN_ROOTS if not (base / root).is_dir()]
+        assert not missing, (
+            "Scan root does not exist — this preference silently enforces nothing over it:\n  - "
+            + "\n  - ".join(missing)
+            + "\n\nFix the path (check whether the root is repo-level or plugin-level), "
+            "or drop it from SCAN_ROOTS."
         )
 
     def test_explicit_exceptions_still_exist(self):

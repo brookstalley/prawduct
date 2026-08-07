@@ -159,6 +159,18 @@ Propose two candidate sets:
      duplicates. (Lexical `search --like` is a post-cache accelerator, not
      available in the cacheless service — surface duplicates by reading the
      `list` output directly.)
+   - **One fix, many items (the altitude question)** — ask of the whole corpus:
+     **"would a SINGLE change close all of these?"** That is a *shared-root-cause*
+     test, not the duplicate test above, and it must run **corpus-wide, before
+     3b rewrites any title.** A restructure pre-pass that rewrites 400 titles
+     item-by-item cannot see that three of them are one defect — and rewriting
+     each to a tighter ≤72 symptom title actively *entrenches* the split, because
+     a sharper title reads more like a well-formed issue. Propose the upleveled
+     item as the survivor (`personas crash on character encoding`, not three
+     encoding-specific crashes). Over-splitting is a first-class failure beside
+     under-splitting (issue-standard §1); this and the `dedup` sweep are the only
+     places it can be caught, since no per-title lint can see a fact that lives
+     *between* issues.
 
    Present both sets as a **disposition table**: `id | action (keep | drop |
    merge→survivor) | reason`. This table is the model's decision, expressed as
@@ -292,7 +304,31 @@ issues, and name the tradeoff:
      the closed/archived items it skips stay in the git-tracked source markdown — never lost, but
      outside the migrated tracker and so outside post-cutover `list` and dedup; see Step 3c)
 
-     **Read the line after the summary before moving on.** A status reconcile that
+     **A non-conforming corpus refuses here, before the first write.** The import
+     validates every title against issue-standard §1 up front and returns
+     `validation` with the full offender list, having created nothing. That is not
+     a failure of this step — it means the scrub in Step 3 has not finished its
+     job, and the remedy lives there, not here: rewrite the named titles in the
+     restructure plan (originals are preserved verbatim in `original_title:`) and
+     re-run. `restructure-preview` reports the same set under
+     `preflight_blocking`, so a preview that reads clean is the signal that this
+     step will not refuse. Do **not** work around it by loosening the plan — an
+     over-long title is the defect this whole runbook exists to prevent.
+
+     **Read the line after the summary before moving on.** Two things can leave a
+     run incomplete while the counts look healthy.
+
+     A per-item rejection **no longer ends the run**: an item GitHub refuses is
+     recorded and the import continues past it, so one malformed row can never
+     again end a 396-row migration. Those items are **not on the target at all**,
+     which is worse than the reconcile case below — the summary counts them as
+     `N rejected` and prints
+     `WARNING: N item(s) were REJECTED and are NOT on the target`. Re-running the
+     import retries them (it is alias-keyed, so nothing duplicates). Five
+     *consecutive* rejections stop the run outright: that pattern means the corpus,
+     not the item, and the envelope says so.
+
+     A status reconcile that
      fails for a non-rate-limit reason does not stop the run — the item is created
      and left at the wrong status — so the counts can read as a clean import while
      work remains. When that happens the import prints

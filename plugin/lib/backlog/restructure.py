@@ -14,7 +14,9 @@ rewrite on an irreversible run), applies it (title via
 migrated body and a net-new one are byte-identical in layout), stashes the
 original verbatim (``original_title`` / ``original_body`` block fields —
 recoverable via :func:`encode.parse_text` — plus the MG2 export backup), and
-audits the result with :func:`issuefmt.lint` (WARN-only).
+audits the result with :func:`issuefmt.lint`. Body/label findings are advisory;
+the four §1 TITLE findings are what `import`'s pre-flight REFUSES on, so a plan
+carrying one cannot be imported (`migrate.preflight_titles`).
 
 **Non-atomic items are flagged, never split** — splitting mints new IDs and is
 an owner scrub decision (1 PFX = 1 issue, MG1/MIG-2). The flag rides the plan
@@ -106,8 +108,9 @@ def apply(records: list, plan: dict) -> dict:
     Returns ``{"ok": True, "records": [...], "entries": [...], "warnings": [...],
     "unaddressable": N}`` — ``records`` is the full list with plan-matched ones
     rebuilt (never mutated in place), ``entries`` the per-item application report
-    the preview renders (before/after, kind assignment, ``non_atomic`` flag,
-    WARN-only lint audit). A plan PFX matching no record →
+    the preview renders (before/after, kind assignment, ``non_atomic`` flag, and the
+    lint audit — body/label findings advisory, the four §1 TITLE findings the ones
+    ``import``'s pre-flight refuses on). A plan PFX matching no record →
     ``{"ok": False, "error": ...}`` before anything is applied: the confirmed
     plan and the source disagree, so the world changed since confirmation.
     """
@@ -222,6 +225,7 @@ def render_preview(
     result: dict,
     *,
     source_label: str,
+    blocking: list[dict],
     collisions: list[dict] | None = None,
 ) -> str:
     """Render the **full before/after diff artifact** the owner approves in
@@ -231,6 +235,21 @@ def render_preview(
     consume, so what the owner reviews is byte-for-byte what gets written.
     """
     entries = result["entries"]
+    # The BLOCKING subset is PASSED IN, not recomputed. The owner approves from
+    # THIS document, so a preview showing only a WARN-only total lets a plan the
+    # import will hard-refuse read as clean at the one moment it is reviewed — but
+    # recomputing the predicate here would make two implementations of one gate,
+    # free to drift apart, which is the exact hazard the pre-flight's own design
+    # note disclaims. `migrate.preflight_titles` is the single evaluator; this
+    # renders what it returned.
+    #
+    # REQUIRED, with no default: a caller that omits it must fail loudly at the
+    # call, because the alternative is a document that prints "(the import will
+    # refuse): 0" for a corpus the import will refuse — a false statement in the
+    # owner's aggregate pre-approval artifact for an irreversible run, which is
+    # worse than any crash. An earlier default-to-`[]` here was defended in a
+    # comment as "honest-but-silent"; it was neither.
+    blocking = list(blocking)
     titles = sum(1 for e in entries if e["title_changed"])
     bodies = sum(1 for e in entries if e["body_changed"])
     kinds = sum(1 for e in entries if e["kind_assigned"])
@@ -249,8 +268,21 @@ def render_preview(
         f" · kind: assigned/changed: **{kinds}**",
         f"- flagged non-atomic (owner manual split — NOT auto-split): "
         f"**{len(flagged)}**",
-        f"- lint findings (WARN-only) on the restructured set: **{lint_total}**",
+        f"- lint findings (body/label, WARN-only) on the restructured set: **{lint_total}**",
+        f"- **titles that FAIL issue-standard §1 (the import will refuse): "
+        f"{len(blocking)}**",
     ]
+    if blocking:
+        lines.append("")
+        lines.append(
+            "> ⚠️ **This plan cannot be imported as-is.** The import validates every "
+            "title against §1 before its first write and refuses the whole corpus, "
+            "writing nothing. Fix these in the plan and re-preview:"
+        )
+        for item in blocking[:20]:
+            lines.append(f">   - `{item.get('title')}` — {', '.join(item.get('rules') or [])}")
+        if len(blocking) > 20:
+            lines.append(f">   - … (+{len(blocking) - 20} more)")
     if result["unaddressable"]:
         lines.append(
             f"- items without a PFX (not addressable by a plan, imported "

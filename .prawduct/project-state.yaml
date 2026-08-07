@@ -463,7 +463,13 @@ views_enabled: true
 # now, let `/prawduct:pr` apply its documented rule at merge, and if the
 # conflict still stands afterwards it is a real one to settle once — not
 # per-branch, and not by whoever is holding the merge.
-active_build_plan: null
+#
+# SET 2026-08-05 on branch fix/critic-review-identity to the plan this branch
+# builds. The slot was null when the branch was cut — v3.2.6 shipped and nothing
+# was in flight — so this is a fresh set inheriting none of the staleness the
+# incidents above record, and no plan is orphaned by the move. The work is part 2
+# of the concurrent-dispatch defect (#602/#171), sequenced by the owner.
+active_build_plan: artifacts/build-plan-critic-review-identity.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
@@ -604,6 +610,9 @@ scope_rollups:
   backlog-closed-by-handle:
     chunks: ["01"]
     releases: ["v2.1.7"]
+  backlog-import-title-boundary:
+    chunks: []
+    releases: ["v3.2.7"]
   backlog-legend-refresh:
     chunks: []
     releases: ["v2.0.16"]
@@ -619,6 +628,9 @@ scope_rollups:
   backlog-skill-repoint:
     chunks: ["01", "02"]
     releases: ["v3.2.0"]
+  backlog-title-enforcement:
+    chunks: ["01", "02", "03"]
+    releases: ["v3.2.7"]
   changelog-fail-loud:
     chunks: ["01"]
     releases: ["v2.3.0"]
@@ -661,6 +673,9 @@ scope_rollups:
   critic-protocol-budget:
     chunks: ["01"]
     releases: ["v2.1.8"]
+  critic-review-identity:
+    chunks: ["1", "2"]
+    releases: ["v3.2.7"]
   critic-session-guard:
     chunks: ["1"]
     releases: ["v2.0.14"]
@@ -685,6 +700,9 @@ scope_rollups:
   evidence-deferral:
     chunks: ["01", "02"]
     releases: ["v2.0.5"]
+  gate-as-dispatcher:
+    chunks: ["01", "02"]
+    releases: ["v3.2.7"]
   gate-hardening:
     chunks: ["01", "02", "03"]
     releases: ["v2.1.3"]

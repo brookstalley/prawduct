@@ -3,6 +3,329 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-07: an excellent issue title stopped being a suggestion
+
+<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement | release=v3.2.7 | status=shipped -->
+
+**The standard had been aspirational on every path that could enforce it.** `issuefmt._lint_title`
+implemented all four §1 checks and nothing blocked on them: `file` audited *after* the create,
+`update` never linted a title at all, and `import` never called them — which is how a 396-item
+migration reached GitHub carrying parsed titles up to 2319 characters against a 72-character
+budget. Only the handful breaching GitHub's own 256 cap announced themselves; the rest just read
+badly forever. All three paths now refuse. The norm in `data-model.md` moves from `in-transition`
+to `steady-state`, which is the whole point of the tracking item (#614).
+
+**#612 and #614 were one change, not two.** "import: conform or refuse" *is* the pre-flight
+validation — same call, same place in `migrate.py`. Built apart, either the pre-flight is written
+twice or #612 ships a length-only gate #614 immediately replaces. The pre-flight validates the
+WHOLE corpus before the first write and refuses with every offender named at zero writes; because
+§1's budget (72) sits far under GitHub's 256 cap, a corpus that passes cannot 422 for length at
+all. Replayed against the live 180-issue backlog it reproduces the hand-measured count exactly: 20
+offenders, all over budget, 5 of them also non-atomic — a **subset**, not five more.
+
+**Per-item isolation is error-class-scoped, and the issue text did not say so.** #612 asked for "a
+write failure records that item and continues". Taken literally, a revoked token becomes 396 futile
+round-trips and "your token expired" is buried in a 396-line failure list. Only `validation`
+isolates — a 422 is the item's own fault and says nothing about the next 395 — while `auth` /
+`not_found` / `unavailable` / exhausted `rate_limited` keep the resumable cut, reading the line
+`transport.py` already drew rather than inventing a parallel taxonomy. Five *consecutive*
+rejections stop the run, because consecutive means the corpus and not the item.
+
+**The `update` path gates the title being WRITTEN, not the resulting one** (owner ruling). The
+question was first framed as "20 live issues become un-updatable"; the owner asked whether an LLM
+was in the loop, and that dissolved the framing. Nothing automated calls `file`/`update` — an agent
+is at the write — so broad enforcement would never have *blocked* those issues. It would have made
+an agent silently **retitle** them to get past the gate while archiving them, unreviewed, with none
+of the aggregate owner approval the import scrub preserves. That is retro-conformance by the back
+door, forbidden by the norm's own `Retroactivity: contain`, and the confirmation-fatigue shape
+`security-model.md` rejects. Body and label lints stay WARN-only for the same reason.
+
+**Making a check blocking changed what its bugs cost.** The placeholder lint had matched phrases as
+unanchored substrings for its whole life, so `"fix it"` hit inside `"pre-FIX IT-em"` — harmless
+noise while advisory, a false refusal on an irreversible migration the moment it gated a write.
+Fixed at the classification with whole-word matching, never by loosening the budget, and pinned in
+both directions so the correction cannot blunt the check.
+
+**Chunk 03 is the co-ship condition, not polish.** Enforcing "≤72, atomic" alone would have used
+the intervening window to build a large, tidy, **over-split** backlog: a scrub rewriting 400 titles
+item-by-item cannot see that three of them are one defect, and rewriting each to a *tighter*
+symptom title entrenches the split, because a sharper title reads more like a well-formed issue.
+The dedup sweep and the migration scrub now ask *"would a single change close all of these?"* — a
+shared-root-cause test, not the duplicate test they already ran, and the only place it can live
+since no per-title lint can see a fact that exists *between* issues.
+
+Closes **#612** and **#614**.
+
+## 2026-08-06: the refusal became countable, and the prose stopped teaching the round
+
+<!-- prawduct: chunks=01,02 | type=feat | scope=gate-as-dispatcher | release=v3.2.7 | status=shipped -->
+
+**A control that cannot be counted cannot be retired.** Chunk 01 taught `critic-begin` to refuse a
+review the coverage gate would not require — and it did so silently. The governing norm is
+*a control names the yield it expects and emits it observably*, and the yield argument for this one
+rests on a measurement taken **before** the guard existed (62 of 492 reviews, 12.6%, ~5.2 opus-hours,
+spent on intervals that were free the whole time). Only a record of real firings can ever falsify
+that, or answer the question that eventually retires the guard: *did it ever refuse a round that
+turned out to be needed?* Every refusal now appends one `guard-refusal` fact, queryable as
+`prawduct-hook evidence list --kind guard-refusal`, carrying the interval and the files it waved
+through.
+
+**The sink was a ruling, not a default.** The build plan proposed the governance ledger; #596 already
+owned pre-dispatch-guard telemetry *as a class* and named the clone-shared evidence store instead.
+#596 wins on four counts — the ledger lives inside the worktree and these guards fire in worktrees
+that are then deleted; `evidence list --kind` is the yield query today while the ledger's reader
+handles `review.*` only; the ledger's envelope is review-cost-shaped (`duration_seconds`,
+`actor.model`) and a refusal has none of that; and a second path for one event class is the thing
+#596 forbids. The plan's own stated reason was corrected in passing: it argued the ledger cannot
+answer a *cross-clone* question, which is true and equally true of the evidence store — that store
+lives inside `.git` and is never committed either. The real axis is cross-*worktree* durability.
+
+**Putting an observational record into the store gates compose over needed proof it stays inert.**
+`coverage_algebra` derives edges from `kind == "review"` facts alone, so a refusal contributes
+neither an edge nor a node — asserted through the algebra rather than by reading the filter, using a
+fact deliberately shaped like an edge. One kind-blind reader turned up next door: `distinct_trees`
+harvested `base_tree`/`head_tree` from any body, which would have let a refusal inflate
+`evidence status`'s tree count with trees no review covers. Its docstring already claimed to return
+"the node set coverage composition actually walks"; now it does.
+
+**A test that passed no matter what the code did.** `_assert_no_dispatch_state` asserted that a
+refusal left no leftover partials — but `_archive_leftovers` returns before creating anything when
+the directory has no children, and every fixture had already had its partials swept by consolidate.
+All three call sites passed regardless. The fix inverts it: plant a partial that must **survive**,
+and the assertion becomes a real one. Mutation-checked — a refusal made to reach the sweep now fails
+four tests that previously slept through it. Third instance of this shape in two sessions, and the
+rule is durable: *absence of a thing that was never there proves nothing.*
+
+**Four things landed after the first draft of this entry, from the branch's own review rounds, and
+three of them change behavior a consuming repo will notice.**
+
+1. **A new waivable rule, `prawduct/chunk-ref-missing`.** A build-plan chunk body *discusses* paths as
+   well as declaring them, and a backtick scan cannot tell them apart — a carried-in review
+   observation naming the path a past defect was about is correct *because* that path is missing, so
+   `verify-chunk-refs` fired on it forever with no exit but laundering the record. The escape is the
+   ordinary pragma on the line or the one above; the rule is registered in `docs/waivers.md` with its
+   legitimacy test. `#552` (reconciling the two path extractors) is still the durable fix.
+2. **`waivers._clean_reason` now truncates at `-->`, and this one is worth reading twice.** A waiver in
+   any markdown file has to live inside `<!-- ... -->`, and the closing token parsed as the `--`
+   separator plus a reason of `>`. So a bare, reason-less pragma in markdown **silently waived** —
+   defeating the single guarantee the mandatory-reason rule exists to provide, repo-wide and in every
+   consuming repo. It now fires as reason-less, which is the correct and stricter behavior. Nothing in
+   this repo regresses (no live waiver puts its reason after the terminator); a consumer relying on
+   the old accident will start seeing the underlying check fire, which is the point.
+3. **`verify-resolutions` severity gained a middle.** The mode is BLOCKING-or-nothing by design, so a
+   reviewer holding a one-row registry gap had to either force a commit and a full round or say
+   nothing that enters `findings`. Measured on this very branch: the same finding class was a WARNING
+   in the cumulative and BLOCKING in a verify pass, decided by which mode noticed it. The dispatch
+   directive now separates *the tree must not move* from *this fix is owed* — record gaps ride a
+   commit already coming and are named with a destination, the five hard classes stay BLOCKING, and a
+   gap met while a chunk is CLOSING blocks that close.
+4. **`tests/preferences/test_registry_completeness.py`.** Four registries went stale in this one chunk
+   while the code that enumerates their members moved on. Now a suite-time set-difference for the two
+   instances that have an enumerated set in code (waiver rule ids, evidence fact kinds); exit codes and
+   concerns rows have no left-hand side and stay reviewer work, said plainly in the test so a green
+   suite is not read as full coverage.
+
+**Two of the three prose corrections held; one was withdrawn on its merits.** The plan said
+`check-cumulative-critic`'s remedy should name the free-interval check first. It should not:
+`coverage_verdict` already grants a direct free edge between the two endpoint trees whenever their
+diff holds no judgeable path, so an `uncovered` verdict *entails* the span is not free. Writing that
+line would have taught a false rule. The plan also mis-attributed the `NEXT-ACTION` text to
+`review-protocol.md` (it lives in `next_action_line`), and the "unconditional" round it proposed
+replacing turned out to be the BLOCKING arm's — which is correct, and is precisely why the refusal
+predicate has a second conjunct. What did need saying, at the two live decision points and in the
+findings carrier itself: **asking is free.** The builder no longer has to reason about judgeability
+after a fix commit; dispatch answers in under a second.
+
+## 2026-08-06: a title boundary for the backlog importer, and what "atomic" actually means
+
+<!-- prawduct: type=fix | scope=backlog-import-title-boundary | release=v3.2.7 | status=shipped -->
+
+<!-- Deliberately NO `scope=` tag. A scope-tagged entry is release-pending and
+     `regen-views` looks for a matching build-plan file to regenerate a `## Status`
+     from; this work went requirements → fix with no build plan, so a scope here
+     names a view that cannot be written and fails the real-artifacts scope check.
+     The discovery artifact declares `artifact: discovery`, so it is correctly
+     excluded from that search rather than mistaken for a plan. When the enforcement
+     work is planned, that plan carries the scope. -->
+
+**A 396-item migration was permanently pinned at 7%, and the loud failure was not the defect.**
+One GitHub 422 killed the whole run at item 28, and resuming made zero further progress because
+the failure is deterministic and position-ordered. The cause sat one layer down:
+`legacy._parse_title_line` had **no title boundary at all** — it stripped `**`/`~~` and returned
+the entire bullet line. Correct for products that put body prose on the *following* lines;
+catastrophic for one that writes provenance, title, areas and body on a single line, where the
+parsed "title" reached 2319 characters against a 72-character authoring norm.
+
+**The boundary was derived from the corpora, not guessed.** The upstream report was unusually good
+— root cause analysed, idempotency verified, a companion permissions defect found — and it still
+said it could not characterise 342 of its 396 lines and warned against trusting its regex. The
+rule is the inline `[areas: …]` marker: strip a leading `(orig …)` provenance parenthetical, cut
+at the marker, split anything still over GitHub's hard cap on a word boundary. Overflow **moves**
+to the body. Re-derive the effect with `tools/measure-backlog-titles.py` rather than citing
+figures — the script is committed precisely so the numbers stay falsifiable as either corpus grows.
+
+**The property that makes it shippable to a fleet is that it is a MARKER rule, not a length rule.**
+This repo's own long titles are *genuine authored statements*; the other corpus's are prose bleed.
+A length-based fix — the obvious one — would have damaged the working shape to repair the broken
+one. Only comparing two corpora exposed that. This repo had the defect latent too.
+
+**Three defects of my own, all caught before merge.** The first cut stripped the `[PFX]` marker
+from titles and two existing tests went red — correctly: it is the display string consumers
+expect, and `migrate.py` strips it downstream where the id lives in the alias. The cap was
+budgeted *before* re-adding the id prefix, leaving the exact items this fixes still over the
+limit. And the hard cap was named `TITLE_MAX` while `issuefmt.TITLE_MAX = 72` sits one module away
+— two constants, one name, one subsystem, meaning "the cap" and "the norm", which is how a later
+reader enforces 256 believing it is the standard. Renamed `GITHUB_TITLE_HARD_CAP`.
+
+**The cumulative review then found two more, both silent data loss in the fix itself**, which is
+the defect class this work is about wearing its own clothes. Slicing around the marker match left
+the authored `[areas: …]` span in *neither* field — dropped, not moved, under a docstring
+promising "loses none". And a bullet *leading* with the marker cut to an empty title, which
+`migrate._records_from_backlog` then skips with no collision record and no diagnostic — a silent
+drop. Both are fixed and both are pinned by tests red-verified against the code that shipped them.
+
+**The PR review then caught the artifact asserting numbers its own code makes impossible.** §2 told
+a maintainer to re-derive with `tools/measure-backlog-titles.py` — but that script imports the
+*current* parser, so it can only ever print the after-state, and running it reproduces neither the
+before-table nor §3's after-column. Worse, that after-column (`1` and `6` still over the cap) was a
+reading from the intermediate commit that budgeted the cap *before* re-adding the id prefix. The
+final split makes an over-cap title unreachable **by construction** for any corpus: the columns are
+`0`, and the artifact now says why that is a property rather than a measurement. The marker count is
+labelled the upper bound it always was — it matches title *or* body, because the rule moves the
+marker into the body. And `tools/` was a scan-free root: the `from __future__ import annotations`
+and `shell=True` conventions never looked there, so the second script to land under the root this
+branch resurrects could have skipped both silently. Both scans now cover it, red-verified by
+mutation.
+
+**Widening those roots then exposed a dead one — the same defect, one layer down.** The
+subprocess-safety scan bound `tests` to the *plugin* base, and `plugin/tests` has never existed: the
+repo's largest Python surface had never been checked for `shell=True`, and said nothing, because a
+missing root yields no files rather than an error. Green meant "no files", not "no violations". Both
+scans now assert every root exists (`test_scan_roots_all_exist`), and the subprocess scan names the
+repo test tree explicitly so a future root-list rewrite cannot drop it and stay green. The
+correction found no live `shell=True` anywhere — the exposure was latent, not exploited.
+
+**`TestTitleBoundary` is the coverage that should have existed first.** The parser gained four
+behaviours with zero tests; the discovery artifact had itself required one (the PFX-less
+idempotency-key hazard "must be guarded by a test rather than left to luck").
+
+**Standard §1 amended: atomicity is a property of the FIX, not of the sentence.** The rule was
+biased — every tell it offered (two clauses, an em-dash, a semicolon) pointed toward *splitting*,
+so an author following it faithfully over-splits and gets no signal back. One test now decides
+which direction applies: *would a single change close all of these?* `personas crash on emoji` +
+`on unicode` + `on UTF-16` is one defect at too low an altitude. Over-splitting is the more
+expensive error, because a split backlog looks *more* thorough and nothing prompts a re-read.
+Named plainly: **nothing screens for it today** — the dedup sweep pairs on keyword overlap, a
+duplicate test, and the two come apart exactly here.
+
+**Enforcement is designed and NOT built, deliberately.** The owner's directive is that titles
+conform on every write path, agent rewriting where needed. The design: the importer validates and
+refuses pre-flight (no model in the data plane), the scrub rewrites beforehand, the owner approves
+in aggregate. It must ship as one unit with the shared-root-cause check — shipping the length half
+first would use that window to build a large, tidy, over-split backlog. Both things it was owed are now done rather than
+owed: the norm has a `## Direction` home in `data-model.md` with a pointer row in the preferences
+index, and its collision with standard §4's ratified *"WARN only, never blocks"* was **ruled by
+the owner** — the §1 title checks block on all three write paths, every body lint stays WARN-only.
+Deferred scope is filed as #612 / #613 / #614 rather than left in a handoff note.
+
+## 2026-08-05: an archived review can be brought back as itself
+
+<!-- prawduct: chunks=2 | type=fix | scope=critic-review-identity | release=v3.2.7 | status=shipped -->
+
+**Binding a partial to its review removed a recovery that worked, and owing a replacement is why
+this shipped in the same plan rather than the backlog.** The documented way to rescue an archived
+review was to copy its partials into the *current* review's directory, and #602 named the
+uncomfortable part out loud: that copy worked *precisely because of the defect*. A partial bound
+only to the commit it reviewed was valid against whatever manifest happened to be there, so the
+rescue recorded one review's findings under another review's id. Keying the filenames and checking
+`dispatch_id` makes the copy inert — correctly, because it was always a mis-attribution — and
+leaves the subsystem archiving work it could no longer hand back.
+
+**`prawduct-hook critic-restore <review-id>` restores the review as itself.** It copies that
+review's manifest *and* its partials out of `.prawduct/.critic-partials-archive/`, so consolidation
+appends a fact carrying that review's own id, its own trees, its own findings. The property that
+makes the mis-attributing copy impossible is the same one that makes the honest restore lossless: a
+restored set is self-identifying, so nothing has to be re-stamped and nothing can be silently
+merged into the wrong review.
+
+**It copies rather than moves, and refuses rather than merges.** The archive is the last trace an
+unconsolidated review ever ran — consuming it to restore would mean a restored-then-swept review
+leaves nothing at all. And restoring on top of files already in the partials directory would put
+two reviews in one place, which is the mis-attribution the whole binding exists to prevent, so it
+refuses instead. The refusal names the remedy for the state actually on disk: a complete roster is
+finished work, so *record* it (`critic-consolidate`); anything else is cleared with
+`critic-discard`. `critic-end` is never offered while files are present — it clears the marker
+only, so it would send the caller back to an identical refusal, which is the failure the sibling
+dispatch refusal was rewritten to avoid.
+
+**Every message that ended at "archived to X" now names the way back.** Discard, the leftover
+sweep at dispatch, and the in-flight refusal all preserved work and then stopped talking — a
+preserved file nobody can act on is not a recovery. The refusal's line was the sharpest case: *"recoverable
+only by someone who knows the archive exists and still has the review id"* was an accurate
+description of a subsystem with no way out, and leaving it standing would understate the remedy at
+the exact moment someone is deciding whether to force past the guard.
+
+**What the restore does not pretend to be.** A set archived from an unreadable or absent manifest
+comes back as files an operator can read and `critic-consolidate` cannot act on; it says so rather
+than implying a consolidation is waiting. An unknown id, and a bare invocation, both answer the
+question they raise by listing what *is* restorable — the archive keeps only the newest three under
+names nobody memorised, so "not found" without a listing sends the reader to `ls` a dot-directory.
+
+## 2026-08-05: a reviewer's partial now belongs to the review that dispatched it
+
+<!-- prawduct: chunks=1 | type=fix | scope=critic-review-identity | release=v3.2.7 | status=shipped -->
+
+**Part 1 made the collision unreachable; this makes it unrepresentable.** v3.2.6 stopped a dispatch
+displacing a live review, and left the class open: a partial declared the commit it reviewed and
+nothing else, and its filename was keyed by role alone. So two reviews in one worktree still
+contended for one path — on 2026-07-30 the loser's only signal was a failed write, with nothing in
+the protocol saying what that meant, and a BLOCKING finding went unrecorded — and a straggler from
+an abandoned review, landing at an unchanged HEAD, was still schema-valid *and* commit-valid against
+whatever manifest was on disk.
+
+**Both layers now carry the review's identity.** A partial lives at `<role>.<review-id>.json` and
+its started marker beside it, so two reviews' writes are disjoint by construction: a straggler can
+neither satisfy another roster nor overwrite a live partial. And each partial declares
+`dispatch_id`, checked against the manifest — the case a filename cannot catch, where a reviewer is
+handed the wrong id and writes to a path that happens to be right. The comparison strips before it
+judges: a fail-closed validator over a model-written field rejects genuine ambiguity and tolerates
+the variant that normalizes identically, which is the lesson this same module already paid for when
+`"files": []` aborted whole consolidations.
+
+**The field is `dispatch_id`, not `review_id`, and the name is the finding.** A partial already
+carries `resolutions[].review_id`, meaning the *prior* review whose finding is being dispositioned.
+Two referents under one token, in a record a model writes from prose, is exactly the seam where an
+identifier degrades silently.
+
+**The filename shape has one home, which is why this is not five edits.** It was about to be
+restated in the code plus four instruction surfaces — and a fact needing N edits already has N−1
+wrong copies. `critic-begin` now resolves the per-role paths and records them in the manifest as
+`rendezvous`; the agent definition, the coordinator's dispatch template, `goals-1-3.md` and
+`SKILL.md` all send the reviewer to its entry instead of spelling a name. A future change to the
+shape needs no prose edit, and a guard test fails if any surface starts spelling one again.
+
+**Version skew is refused loudly, never accepted quietly.** A skill older than this hook writes the
+pre-keyed `<role>.json`, does its whole run, and would never be read. Accepting it as a fallback
+would reopen the hole for precisely the straggler this closes, so the incomplete no-op names the
+file, says a stale skill wrote it, and gives the reload remedy. A manifest with no `rendezvous` is
+likewise a loud validation failure rather than a silent skip.
+
+**A traversal the same change created the guard for, and did not apply.** `_archive_leftovers`
+builds its destination directory from the manifest `id`, read raw off disk — deliberately raw,
+since it must work when the manifest is unreadable, which is exactly why `validate_manifest`'s new
+component gate never runs on that path. `rev-../../escape` walked up out of the archive; `/tmp/x`
+replaced the base outright; and because an archive failure degrades to *delete*, both failed
+silently. Now gated at the use, falling through to the existing timestamped fallback name. Found by
+the review of the change that introduced the gate, and the honest reading is that the vulnerable
+line was not in the diff I was looking at.
+
+**One thing the token budget did not buy.** The first attempt funded the additions to
+`goals-1-3.md` by compressing the closing "**Either way** your last line is consolidate's
+`NEXT-ACTION:`" — which looked like removing a copy and was not: that sentence sits where a reader
+is about to shortcut it, and a test pins the phrase for that reason. Reverted, and paid for
+elsewhere; the file ended the same size it started. The remaining obvious cut in
+`review-protocol.md` is a reviewer-model safety instruction, and it stays.
+
 ## 2026-08-05: a dispatch no longer displaces a review that is still live
 
 <!-- prawduct: chunks=1,2 | type=fix | scope=critic-concurrent-dispatch | release=v3.2.6 | status=shipped -->

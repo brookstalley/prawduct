@@ -283,7 +283,11 @@ most reliable way an agent talks itself into a round nothing asked for:
 prawduct-hook check-cumulative-critic   # PR path
 ```
 
-If it passes, you are done — stop. **Batch the fixes: ONE commit, then ONE `verify-resolutions`.**
+If it passes, you are done — stop; if it does not, the span is not free and the round is real.
+
+**Batch the fixes: ONE commit, then ONE `verify-resolutions`** — and there, don't judge whether the
+pass is warranted: ask. `critic-begin` exits 3 (`no review needed`, no session state written) when
+the post-fix delta is free, applying the same predicate the gate charges by.
 Fix-commit-verify per finding multiplies 5-10 minute rounds and hands each new round the prose the
 last fix wrote. `critic-consolidate` prints this verbatim whenever a review lands findings
 (`_BATCH_FIX_DIRECTIVE`), so the builder meets it holding the findings rather than remembering it
@@ -471,7 +475,7 @@ When a significant architectural or design change spans multiple chunks, review 
 
 Every review cycle must produce a record — governance without an audit trail is documentation fiction. Every mode records the same way: `critic-begin` writes the dispatch manifest (code), the reviewer(s) write partials, and `prawduct-hook critic-consolidate` appends the review fact to the evidence store and regenerates `.prawduct/.critic-findings.json` from it. No model writes the manifest, the findings file, the store, or the ledger — a clean pass persists an empty findings array through the same path (see `review-protocol.md` "Review Execution").
 
-**Dispatch manifest** (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`; schema/validators in `lib/critic_consolidate.py`). Keys: review `id`, `mode` (verbose string), `mode_chosen_by` (the `infer-critic-mode` rationale, relayed via `--chosen-by`), `roster` + `roster_chosen_by`, `commit_reviewed` (HEAD at dispatch), the review interval (`base_tree`/`head_tree` + commits), `files_changed`/`files_reviewed` (derived from the interval), and the relayed telemetry `tier`, `scope`, `chunk`, `base_reviewed`. `critic-consolidate` refuses to persist unless every roster role reported a valid partial at the manifest's `commit_reviewed`.
+**Dispatch manifest** (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`; schema/validators in `lib/critic_consolidate.py`). Keys: review `id`, `mode` (verbose string), `mode_chosen_by` (the `infer-critic-mode` rationale, relayed via `--chosen-by`), `roster` + `roster_chosen_by`, `rendezvous` (each role's resolved partial + started paths, derived from `partial_path`/`started_path`, which own the shape — recorded here so no instruction surface spells a filename), `commit_reviewed` (HEAD at dispatch), the review interval (`base_tree`/`head_tree` + commits), `files_changed`/`files_reviewed` (derived from the interval), and the relayed telemetry `tier`, `scope`, `chunk`, `base_reviewed`. `critic-consolidate` refuses to persist unless every roster role reported a valid partial at the manifest's `commit_reviewed`, carrying the manifest's `id` as its `dispatch_id` — the binding that stops a straggler from a displaced review consolidating as this one.
 
 **The findings cache is a derived view.** `.prawduct/.critic-findings.json` is regenerated from the newest review fact and carries its `fact_id`; builders and briefings read it for *content*, and no gate reads it — gates compose over the store.
 

@@ -120,7 +120,8 @@ wrong agent_type). The consolidation core itself is `tests/test_critic_consolida
 **Verify (post-update, in a real medium+ session that triggers a coordinator review):**
 - Run a `final`/`cumulative` `/prawduct:critic`; confirm the coordinator writes
   `.prawduct/.critic-partials/manifest.json` and dispatches three `critic-reviewer`
-  subagents that each write `<role>.json`.
+  subagents that each write the partial path the manifest's `rendezvous` names for their role
+  (keyed by review id — an operator looking for a bare `<role>.json` will correctly find none).
 - Confirm that as the reviewers finish, `.critic-findings.json` appears with a
   `review.critic` ledger anchor and the `.critic-active` marker is cleared — WITHOUT
   the main loop having run `critic-consolidate` by hand (i.e. the hook did it).

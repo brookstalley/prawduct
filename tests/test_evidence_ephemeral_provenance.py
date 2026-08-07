@@ -188,6 +188,117 @@ class TestCliSurfaces:
         assert any("rev-normal" in ln and "[ephemeral" not in ln for ln in lines)
 
 
+class TestObservationalKindsRenderHonestly:
+    """`guard-refusal` is the store's first purely OBSERVATIONAL kind, and both
+    CLI readers had to change for it. Neither change was expressible with the
+    fixtures above, because `_fact()` defaults `kind="review"` — so all three
+    tests in `TestCliSurfaces` pass identically with the new filters present or
+    absent. That is the vacuous-assertion shape this repo has a durable rule
+    about: a check whose subject is a set needs proof the set contains what the
+    check names. These supply the fixtures that can express the difference.
+    """
+
+    def test_status_does_not_bill_a_refusal_as_spent_review_cost(
+        self, tmp_path, capsys
+    ):
+        """A refusal recorded in a disposable worktree covers no branch — but
+        saying "the review cost was spent" of it is exactly backwards, since no
+        reviewer ran. That is the whole point of the record.
+
+        The negative the `kind="review"` fixtures cannot express: an ephemeral
+        store holding ONLY a refusal must print no cost line at all.
+        """
+        repo = _make_repo(tmp_path)
+        _seed_store(repo, [
+            _fact(AGENT_WT, "guard-a", kind="guard-refusal", tree="eeee1111eeee"),
+        ])
+
+        assert evidence._cmd_status(repo) == 0
+        out = capsys.readouterr().out
+
+        assert "COVER NO BRANCH" not in out, (
+            "an ephemeral guard-refusal was billed as spent review cost — no "
+            f"reviewer ran, which is the entire point of the record:\n{out}"
+        )
+        assert "from ephemeral worktrees" not in out, (
+            f"the cost line fired for a refusal-only store:\n{out}"
+        )
+        # It is still counted as a fact — suppressed from the COST sentence, not
+        # from the store. The kind token alone is the claim; the count beside it
+        # is `by_kind`'s business, and this test is about which SENTENCE a
+        # refusal reaches, not how the tally renders.
+        assert "guard-refusal" in out
+
+    def test_status_still_bills_an_ephemeral_review(self, tmp_path, capsys):
+        """The paired positive. Without it, the assertion above is satisfied by
+        deleting the cost line entirely."""
+        repo = _make_repo(tmp_path)
+        _seed_store(repo, [
+            _fact(AGENT_WT, "rev-a", tree="eeee1111eeee"),
+            _fact(AGENT_WT, "guard-a", kind="guard-refusal", tree="ffff3333ffff"),
+        ])
+
+        assert evidence._cmd_status(repo) == 0
+        out = capsys.readouterr().out
+
+        assert "from ephemeral worktrees: 1" in out, (
+            "the review should still be billed, and ONLY the review — got:\n" + out
+        )
+        assert "COVER NO BRANCH" in out
+
+    def test_list_renders_the_refusal_payload(self, tmp_path, capsys):
+        """Chunk 02's acceptance criterion, asserted.
+
+        The R-26 sink ruling rests on "a reader already exists" — true only if
+        that reader shows enough to answer the retirement question ("did it ever
+        refuse a round that turned out to be needed?"). A row reading only "a
+        refusal happened, at this time" does not, so without this test a future
+        refactor of `_cmd_list` silently falsifies a recorded design ruling with
+        the suite green.
+
+        The interval is deliberately nested under `body.interval` so no
+        edge-walker mistakes a refusal for a coverage edge — which is exactly why
+        the top-level `tree=` lookup needs its own fallback, and why that
+        fallback needs its own test.
+        """
+        repo = _make_repo(tmp_path)
+        fact = _fact(str(repo), "guard-x", kind="guard-refusal")
+        fact["body"] = {
+            "guard": "critic-dispatch-free-interval",
+            "interval": {"base_tree": "aaaa1111aaaa", "head_tree": "bbbb2222bbbb"},
+            "free_files": ["docs/a.md", "docs/b.md", "docs/c.md", "docs/d.md"],
+        }
+        _seed_store(repo, [fact])
+
+        assert evidence._cmd_list(repo, ["--kind", "guard-refusal"]) == 0
+        out = capsys.readouterr().out
+        line = next((ln for ln in out.splitlines() if "guard-x" in ln), None)
+        assert line is not None, f"the guard-refusal row never printed:\n{out}"
+
+        assert "tree=bbbb2222bbbb" in line, (
+            f"the nested interval never reached the row: {line}"
+        )
+        assert "guard=critic-dispatch-free-interval" in line, line
+        assert "free=[docs/a.md, docs/b.md, docs/c.md +1]" in line, (
+            f"the free-file list (with +N truncation) is missing: {line}"
+        )
+
+    def test_list_leaves_a_review_row_unchanged(self, tmp_path, capsys):
+        """The new columns are keyed off body fields a review fact does not
+        carry, so a review row must gain nothing — otherwise the additions are
+        not scoped to the kind they were written for."""
+        repo = _make_repo(tmp_path)
+        _seed_store(repo, [_fact(str(repo), "rev-plain", tree="nnnn2222nnnn")])
+
+        assert evidence._cmd_list(repo, []) == 0
+        out = capsys.readouterr().out
+        line = next((ln for ln in out.splitlines() if "rev-plain" in ln), None)
+        assert line is not None, f"the review row never printed:\n{out}"
+
+        assert "tree=nnnn2222nnnn" in line
+        assert "guard=" not in line and "free=[" not in line, line
+
+
 class TestSchemaUnchanged:
     def test_provenance_is_derived_not_stored(self):
         """No new field, so no schema version moves and every fact already in the

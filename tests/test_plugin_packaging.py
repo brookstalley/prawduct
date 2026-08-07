@@ -190,6 +190,13 @@ NOT_DISTRIBUTED_DIRS = {
     "documentation",
     "plugin",
     "tests",
+    # Repo-local analysis scripts that back a claim in an artifact — the committed
+    # derivation behind a measured figure, so the number stays falsifiable instead
+    # of being a digit transcribed into prose. Deliberately NOT shipped: a product
+    # meets these concerns through the plugin's own surfaces (a corpus measurement
+    # matters here because two products' corpora had to be compared to design a
+    # rule; a product measuring its own reaches for the lint, not for this).
+    "tools",
 }
 
 

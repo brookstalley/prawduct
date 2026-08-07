@@ -116,7 +116,7 @@ def _manifest_dict(head: str = "abc123", *, roster=None, **overrides) -> dict:
     consolidator (it never resolves them via git), so fakes suffice for
     consolidate-side tests; begin-side tests use real captures."""
     manifest = {
-        "id": "rev-test-0001",
+        "id": FAKE_REVIEW_ID,
         "mode": FINAL_MODE,
         "mode_chosen_by": "rule-3 final",
         "roster": roster if roster is not None else ["correctness", "design", "sustainability"],
@@ -134,6 +134,16 @@ def _manifest_dict(head: str = "abc123", *, roster=None, **overrides) -> dict:
         "base_reviewed": None,
     }
     manifest.update(overrides)
+    # Derived last so an overridden roster or id still gets a consistent
+    # rendezvous — the real `begin_review` resolves these the same way, and a
+    # manifest whose rendezvous disagrees with its roster is invalid by design.
+    manifest.setdefault("rendezvous", {
+        role: {
+            "partial": f"{PARTIALS_REL}/{role}.{manifest['id']}.json",
+            "started": f"{PARTIALS_REL}/{role}.{manifest['id']}.started",
+        }
+        for role in manifest["roster"]
+    })
     return manifest
 
 
@@ -186,10 +196,28 @@ def _store_lines(repo: Path) -> list[str]:
     return [ln for ln in path.read_text().splitlines() if ln.strip()]
 
 
-def _partial(role: str, head: str, findings=None, **overrides) -> dict:
+FAKE_REVIEW_ID = "rev-test-0001"
+
+
+def _review_id(repo: Path) -> str:
+    """The id of the review currently on disk.
+
+    A partial is keyed by the review that dispatched it, so a test that wrote a
+    real manifest (via `critic-begin`) must write its partial under that
+    review's id or the consolidator will not look at it. Falls back to the id
+    `_manifest_dict` mints for the many tests that hand-write a manifest."""
+    try:
+        return json.loads((_partials_dir(repo) / "manifest.json").read_text())["id"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return FAKE_REVIEW_ID
+
+
+def _partial(role: str, head: str, findings=None, *,
+             dispatch_id: str = FAKE_REVIEW_ID, **overrides) -> dict:
     data = {
         "role": role,
         "goals": "1-3",
+        "dispatch_id": dispatch_id,
         "commit_reviewed": head,
         "model": "opus",
         "duration_seconds": 90,
@@ -201,7 +229,11 @@ def _partial(role: str, head: str, findings=None, **overrides) -> dict:
 
 
 def _write_partial(repo: Path, role: str, head: str, **kwargs) -> None:
-    (_partials_dir(repo) / f"{role}.json").write_text(json.dumps(_partial(role, head, **kwargs)))
+    """Write `role`'s partial where the review on disk expects it."""
+    rid = kwargs.pop("dispatch_id", None) or _review_id(repo)
+    (_partials_dir(repo) / f"{role}.{rid}.json").write_text(
+        json.dumps(_partial(role, head, dispatch_id=rid, **kwargs))
+    )
 
 
 def _set_marker(repo: Path) -> None:
@@ -921,45 +953,61 @@ class TestIncompleteNoopLiveness:
 
     # -- per-role started markers (the reviewer-written liveness signal) ------
 
-    def _prawduct_with_started(self, tmp_path, roles_minutes: dict) -> Path:
-        """A .prawduct dir whose partials dir holds a ``<role>.started`` marker
-        per entry, backdated by the given minutes via mtime."""
+    def _prawduct_with_started(self, tmp_path, roles_minutes: dict,
+                               review_id: str = FAKE_REVIEW_ID) -> Path:
+        """A .prawduct dir whose partials dir holds one started marker per
+        entry, backdated by the given minutes via mtime. Markers are keyed by
+        review id, so they belong to `review_id`'s review and to no other."""
         import os
         prawduct = tmp_path / ".prawduct"
         cc.partials_dir(prawduct).mkdir(parents=True)
         now = datetime.now(timezone.utc).timestamp()
         for role, minutes in roles_minutes.items():
-            marker = cc.started_path(prawduct, role)
+            marker = cc.started_path(prawduct, role, review_id)
             marker.write_text(role)
             os.utime(marker, (now - minutes * 60, now - minutes * 60))
         return prawduct
 
     def test_started_marker_annotates_the_missing_role(self, tmp_path):
-        prawduct = self._prawduct_with_started(tmp_path, {"design": 3.0})
+        rid = self._fresh_id(4)
+        prawduct = self._prawduct_with_started(tmp_path, {"design": 3.0}, rid)
         msg = cc._incomplete_noop_message(
-            ["design", "sustainability"], 1, 3, self._fresh_id(4), prawduct)
+            ["design", "sustainability"], 1, 3, rid, prawduct)
         assert re.search(r"design \(started 3\.\d min ago\)", msg)
         # No marker → bare role name, no started claim.
         assert "sustainability (started" not in msg
+
+    def test_a_prior_reviews_started_marker_is_not_this_reviews_liveness(self, tmp_path):
+        # The reason markers are keyed by review id. An abandoned review's
+        # marker under a shared name would age into the NEXT review's verdict
+        # and report a reviewer that never started as one at work — the exact
+        # false-liveness signal the keying exists to prevent.
+        rid = self._fresh_id(4)
+        prawduct = self._prawduct_with_started(
+            tmp_path, {"design": 3.0}, "rev-20260101T000000Z-0ldrev00")
+        msg = cc._incomplete_noop_message(
+            ["design", "sustainability"], 1, 3, rid, prawduct)
+        assert "design (started" not in msg
 
     def test_fresh_started_marker_holds_wait_past_dispatch_grace(self, tmp_path):
         # The observed field failure: reviewers (re)started late, so dispatch
         # age blew past the grace window while every reviewer was demonstrably
         # at work. A fresh started marker must keep the verdict on the wait
         # side — dispatch age alone no longer declares death.
+        rid = self._fresh_id(45)
         prawduct = self._prawduct_with_started(
-            tmp_path, {"correctness": 2.0, "design": 2.0})
+            tmp_path, {"correctness": 2.0, "design": 2.0}, rid)
         msg = cc._incomplete_noop_message(
-            ["correctness", "design"], 1, 3, self._fresh_id(45), prawduct)
+            ["correctness", "design"], 1, 3, rid, prawduct)
         assert "may have died" not in msg
         assert "NOT evidence the reviewers died" in msg
 
     def test_stale_started_markers_advise_critic_end(self, tmp_path):
         # A reviewer that started long ago and never wrote its partial is the
         # genuine-death case — the marker's own age carries the verdict.
-        prawduct = self._prawduct_with_started(tmp_path, {"design": 40.0})
-        msg = cc._incomplete_noop_message(
-            ["design"], 2, 3, self._fresh_id(45), prawduct)
+        rid = self._fresh_id(45)
+        prawduct = self._prawduct_with_started(tmp_path, {"design": 40.0}, rid)
+        msg = cc._incomplete_noop_message(["design"], 2, 3, rid, prawduct)
         assert "may have died" in msg
         assert "critic-end" in msg
 
@@ -968,34 +1016,54 @@ class TestIncompleteNoopLiveness:
         # stale dispatch. Death advice requires EVERY missing role past grace
         # on its own effective age — a live reviewer will report and shrink
         # `missing`, after which the dead one's age decides alone.
-        prawduct = self._prawduct_with_started(tmp_path, {"correctness": 1.0})
+        rid = self._fresh_id(45)
+        prawduct = self._prawduct_with_started(tmp_path, {"correctness": 1.0}, rid)
         msg = cc._incomplete_noop_message(
-            ["correctness", "design"], 1, 3, self._fresh_id(45), prawduct)
+            ["correctness", "design"], 1, 3, rid, prawduct)
         assert "may have died" not in msg
 
     def test_single_pass_roster_ignores_started_markers(self, tmp_path):
         # The single-pass reviewer IS the dispatching fork — there is no
         # waiting caller mid-review, so the coordinator liveness story (and its
         # markers) must not leak into that message.
-        prawduct = self._prawduct_with_started(tmp_path, {"reviewer": 2.0})
-        msg = cc._incomplete_noop_message(
-            ["reviewer"], 0, 1, self._fresh_id(2), prawduct)
+        rid = self._fresh_id(2)
+        prawduct = self._prawduct_with_started(tmp_path, {"reviewer": 2.0}, rid)
+        msg = cc._incomplete_noop_message(["reviewer"], 0, 1, rid, prawduct)
         assert "(started" not in msg
         assert "consolidates when it finishes" in msg
 
-    def test_dispatch_surfaces_instruct_the_started_marker(self):
-        # The marker is written by the model, so the instruction lives in
-        # prose — bind BOTH dispatch surfaces (the agent definition every
-        # dispatched reviewer loads, and the coordinator's prompt template) to
-        # the filename convention started_path() reads, or the signal silently
-        # stops being written while the reader keeps trusting its absence.
-        convention = cc.started_path(Path("x"), "<role>").name  # "<role>.started"
-        assert convention == "<role>.started"
+    def test_dispatch_surfaces_route_the_started_marker_through_the_manifest(self):
+        # The marker is written by the model, so the instruction lives in prose.
+        # It used to name the filename directly, which made the prose a second
+        # home for a shape only `started_path` owns. The CONTRACT — not the
+        # literal — is what binds: both dispatch surfaces must send the reviewer
+        # to the manifest's rendezvous entry, and the manifest must actually
+        # carry the path `started_path` reads. Asserting the old literal would
+        # now pass on prose that names a path nothing writes.
         agent_doc = (ROOT / "agents" / "critic-reviewer.md").read_text()
         protocol = (ROOT / "skills" / "critic" / "review-protocol.md").read_text()
-        assert "`.prawduct/.critic-partials/<role>.started`" in agent_doc
+        for surface, text in (("agent definition", agent_doc), ("protocol", protocol)):
+            assert "rendezvous" in text, f"{surface} does not route through the manifest"
+            assert "liveness marker" in text, f"{surface} no longer instructs the marker"
         assert "FIRST" in agent_doc
-        assert ".critic-partials/<ROLE>.started" in protocol
+        # The coordinator SUBSTITUTES; it needs a slot per value it substitutes.
+        # Trading these for a bare `"rendezvous" in text` was too loose — the
+        # template could lose the started-marker slot entirely and still pass on
+        # the word appearing in the surrounding sentence.
+        for slot in ("<STARTED>", "<PARTIAL>", "<ID>"):
+            assert slot in protocol, (
+                f"the coordinator prompt template no longer carries {slot} — a "
+                "reviewer cannot be told where to write, or which review it is for"
+            )
+        # The other half of the contract: what begin_review records IS what
+        # started_path reads. A rendezvous entry that drifted from the reader
+        # would leave the prose correct and the marker unread.
+        prawduct = Path("/repo/.prawduct")
+        rz = cc._rendezvous(Path("/repo"), prawduct, ["design"], "rev-x-1")
+        assert rz["design"]["started"] == str(
+            cc.started_path(prawduct, "design", "rev-x-1").relative_to(Path("/repo")))
+        assert rz["design"]["partial"] == str(
+            cc.partial_path(prawduct, "design", "rev-x-1").relative_to(Path("/repo")))
 
 
 # ---------------------------------------------------------------------------
@@ -1527,6 +1595,107 @@ class TestVerifyRatesBlockingOnlyDirective:
                 "Bash grant in skills/critic/SKILL.md covers."
             )
 
+    def test_blocking_is_defined_as_a_claim_about_the_tree(self):
+        """BLOCKING must be stated as a SCHEDULING claim, not only a risk rating.
+
+        Measured on `feat/gate-as-dispatcher` (2026-08-06): the same finding
+        class was a WARNING in the cumulative (a stale registry row — dispositioned,
+        no round) and BLOCKING in a verify pass (a registry row — a full round),
+        decided by which mode noticed it rather than by its cost. The verify
+        reviewer wrote both halves of the contradiction in one report — "it rides
+        the commit already owed ... it does not need one of its own", then rated
+        it BLOCKING, which by the gates' own semantics guarantees it gets one.
+        It knew the schedule and had no severity to say it in.
+
+        Pinned as STRUCTURE, like every sibling here: the directive must (a)
+        define BLOCKING against whether the TREE may move rather than whether
+        the fix is owed, and (b) distinguish the two on record-class gaps. The
+        wording is free. This clause lives ONLY in this constant — not in
+        `goals-1-3.md`, not in `review-cycle.md`, both of which sit against
+        their token ceilings — so without a pin a prose-diet pass deletes the
+        whole distinction with the suite green.
+        """
+        d = cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE
+
+        assert "tree" in d.lower(), (
+            "the directive no longer defines BLOCKING against the TREE. Without "
+            "that anchor 'blocking' collapses back to 'important', which is what "
+            "made a one-row doc gap cost a full review round"
+        )
+        # The distinction itself: something is owed AND the tree is still fine.
+        assert "owed" in d.lower(), (
+            "the directive no longer separates 'the tree must not move' from "
+            "'this fix is owed' — the two coming apart is the entire point"
+        )
+        # The class the distinction exists for, and its escape. `"record"` alone
+        # would be worthless here: the constant already says "record-lint",
+        # "recorded here" and "the record demands" elsewhere, so a bare
+        # substring passes on pre-existing text and guards nothing while its
+        # failure message claims otherwise. Pin the compound.
+        assert "record gap" in d.lower(), (
+            "the directive no longer names RECORD GAPS as the class the "
+            "distinction exists for, so a reviewer holding a registry row is "
+            "back to choosing between forcing a round and saying nothing"
+        )
+        assert "ride" in d.lower(), (
+            "the directive no longer offers the ride-along route for a demoted "
+            "record gap"
+        )
+        # A demotion with no destination is a drop. The route only works if the
+        # reviewer is told WHERE the builder must write it — deleting just this
+        # parenthetical would leave the clause reading fine and silently turn
+        # every demoted record gap into lost work.
+        assert ".handoff-notes.md" in d, (
+            "the ride-along route no longer names where the builder must write "
+            "the demoted gap. Without a destination the demotion is a drop, "
+            "which is the one way this rule could lose something real"
+        )
+        # The exemption must survive too, or the distinction silently weakens
+        # the five classes that mean the tree is ALREADY wrong.
+        assert "exempt" in d.lower() or "already wrong" in d.lower(), (
+            "the record-gap carve-out no longer states that the five BLOCKING "
+            "classes are exempt — as written it could be read as licensing a "
+            "demotion of a weakened test or an untested behavior change"
+        )
+        # And the close case, or the escape becomes a permanent deferral: a
+        # chunk with no further commit has nothing for the gap to ride.
+        assert "clos" in d.lower(), (
+            "the directive no longer says a record gap blocks a chunk CLOSE. "
+            "Without it the ride-along route has no terminator and a registry "
+            "row can be deferred forever by a chunk that never commits again"
+        )
+
+    def test_the_directive_has_a_size_ceiling(self):
+        """Its two alternative homes are capped and it is not, which makes it
+        the overflow route by default — the clause added on 2026-08-06 went here
+        precisely because `goals-1-3.md` and `review-cycle.md` sat 2 and 4 tokens
+        under their ceilings.
+
+        A dispatch directive is read by a model on every verify pass, so it
+        competes with the review itself for attention; unbounded growth here is
+        the same defect as unbounded growth there, minus the test that catches
+        it.
+
+        Measured in TOKENS with the same estimator every budgeted file in this
+        repo uses, and with the current reading pinned — a ceiling alone lets
+        growth accrete silently inside the headroom, which is the failure the
+        `LAST_MEASURED_TOKENS` convention exists to prevent. Two numbers, two
+        jobs: the pin fails on any drift and carries the new figure; the ceiling
+        says how much drift is allowed before a clause has to move out.
+        """
+        tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
+
+        assert tokens == 707, (
+            f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
+            f"says 707. Update it to {tokens} and say in the docstring what paid "
+            f"for the change — the ceiling below is not a budget to spend."
+        )
+        assert tokens < 900, (
+            f"the directive is ~{tokens} tokens. It is delivered on every verify "
+            f"dispatch and competes with the review for attention. Trim, or move "
+            f"a clause to the protocol file that owns it."
+        )
+
     def test_it_descends_rather_than_only_stating_a_rule(self):
         """Structure, not wording — the same property its sibling is held to,
         and for the same measured reason: a reviewer agrees that re-reviews
@@ -1974,8 +2143,9 @@ class TestConsolidateIntegration:
         _write_partial(repo, "correctness", head)
         _write_partial(repo, "design", head)
         # sustainability present but malformed (bad severity).
-        (repo / PARTIALS_REL / "sustainability.json").write_text(json.dumps({
+        (repo / PARTIALS_REL / f"sustainability.{FAKE_REVIEW_ID}.json").write_text(json.dumps({
             "role": "sustainability", "goals": "5-6", "commit_reviewed": head,
+            "dispatch_id": FAKE_REVIEW_ID,
             "summary": "s", "findings": [
                 {"name": "x", "goal": "g", "severity": "showstopper", "recommendation": "y"}],
         }))
@@ -2598,6 +2768,27 @@ class TestBeginArchivesLeftovers:
         assert entries[0].name.startswith("unmanifested-")
         assert (entries[0] / "correctness.json").is_file()
 
+    def test_a_traversal_shaped_manifest_id_archives_under_the_fallback_name(self, tmp_path):
+        # The hostile twin of the fallback test above. `_archive_leftovers`
+        # reads the manifest RAW — deliberately, since it must also work when
+        # the manifest is unreadable — so `validate_manifest`'s component gate
+        # never runs on this path, and the id becomes a directory name
+        # unchecked. `rev-../../escape` walked up out of the archive dir; and
+        # the failure is silent by construction, because a successful traversal
+        # prints nothing and an OSError degrades to DELETE.
+        repo = self._repo_with_leftovers(tmp_path, "rev-../../escape")
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        entries = [d for d in (repo / self.ARCHIVE_REL).iterdir() if d.is_dir()]
+        assert len(entries) == 1
+        assert entries[0].name.startswith("unmanifested-"), (
+            f"a traversal-shaped id was used as a directory name: {entries[0].name}"
+        )
+        assert (entries[0] / "correctness.json").is_file(), "the partial still archived"
+        # Nothing landed outside the repo — the assertion the name check exists for.
+        assert not (tmp_path / "escape").exists()
+        assert not (repo / ".prawduct" / "escape").exists()
+
     def test_archive_prunes_to_the_newest_three(self, tmp_path):
         import os
         repo = self._repo_with_leftovers(tmp_path, "rev-20260802T190415Z-0e2cd074")
@@ -2645,7 +2836,7 @@ class TestBeginArchivesLeftovers:
         pdir.mkdir(parents=True)
         (pdir / "manifest.json").write_text("{}")
         (pdir / "correctness.json").write_text("{}")
-        cc.started_path(prawduct, "correctness").write_text("correctness")
+        cc.started_path(prawduct, "correctness", FAKE_REVIEW_ID).write_text("correctness")
         cc.remove_partials(prawduct)
         assert not pdir.exists()
 
@@ -3622,6 +3813,12 @@ class TestScopeAttribution:
         (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
         _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
         (repo / ".prawduct" / "artifacts" / "notes.md").write_text("# Notes\n\nplain\n")
+        # A judgeable file in the diff, or there is no dispatch to attribute:
+        # an interval of `.prawduct/` prose alone is a free edge, and
+        # `critic-begin` now declines it (exit 3) rather than spending a
+        # reviewer the coverage gate never asked for. This test is about what
+        # record-lint REPORTS on a real dispatch, so it needs one.
+        (repo / "src" / "app.py").write_text("x = 2\n")
 
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
@@ -3842,3 +4039,228 @@ class TestLikelyDuplicateGroups:
     def test_distinct_count_with_no_groups_is_the_raw_count(self):
         findings = [self._f("R-1", "g", "alpha beta gamma"), self._f("R-2", "h", "delta epsilon zeta")]
         assert cc.distinct_finding_count(findings, []) == 2
+
+
+# ---------------------------------------------------------------------------
+# A partial belongs to the review that dispatched it
+# ---------------------------------------------------------------------------
+
+
+class TestPartialBelongsToItsReview:
+    """Part 1 of this defect stopped a dispatch DISPLACING a live review. It did
+    not stop the displaced review's stragglers being consolidated as the new
+    one: a partial was bound to the commit it reviewed and to nothing else, so
+    at an unchanged HEAD it was schema-valid and commit-valid against any
+    manifest. These pin both halves of the binding — the keyed filename, which
+    makes contention unrepresentable, and the declared `dispatch_id`, which
+    catches a reviewer handed the wrong id at a name that happens to be right.
+    """
+
+    _ABANDONED = "rev-20260101T000000Z-abandoned"
+
+    def _pending_three_roster(self, repo: Path) -> str:
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        return head
+
+    def test_a_straggler_from_another_review_does_not_complete_this_roster(self, tmp_path):
+        # The live incident, inverted: an abandoned review's third reviewer
+        # finally writes, at the same HEAD, into the current review's directory.
+        # Before the binding it satisfied that roster and consolidated as a fact
+        # attributed to a review that never read the files.
+        repo = tmp_path / "r"
+        head = self._pending_three_roster(repo)
+        _write_partial(repo, "correctness", head)
+        _write_partial(repo, "design", head)
+        (repo / PARTIALS_REL / f"sustainability.{self._ABANDONED}.json").write_text(
+            json.dumps(_partial("sustainability", head, dispatch_id=self._ABANDONED))
+        )
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "no-op" in result.stdout
+        assert "waiting on sustainability" in result.stdout
+        assert _store_lines(repo) == [], "a straggler must not become a review fact"
+
+    def test_the_straggler_is_named_as_another_reviews_and_not_as_silence(self, tmp_path):
+        # Correctly ignoring it is only half the job. Bare silence about a file
+        # sitting right there is what a caller reads as "the reviewer never
+        # wrote anything" — the death verdict that produced the double dispatch.
+        repo = tmp_path / "r"
+        head = self._pending_three_roster(repo)
+        _write_partial(repo, "correctness", head)
+        _write_partial(repo, "design", head)
+        (repo / PARTIALS_REL / f"sustainability.{self._ABANDONED}.json").write_text(
+            json.dumps(_partial("sustainability", head, dispatch_id=self._ABANDONED))
+        )
+
+        out = _run_consolidate(repo).stdout
+
+        assert f"sustainability.{self._ABANDONED}.json" in out
+        assert "belongs to an earlier review" in out
+        assert "not evidence" in out.lower()
+        # And the two REAL partials were counted. Without this the test passes
+        # on a build where nothing keyed is found at all, which is the opposite
+        # of what it claims to show.
+        assert "2/3 partials present" in out
+
+    def test_a_straggler_cannot_overwrite_this_reviews_partial(self, tmp_path):
+        # The 2026-07-30 collision: two reviews contended for one filename and
+        # the loser's only signal was a failed write, with nothing in the
+        # protocol saying what that meant. A BLOCKING finding was discarded that
+        # way. Keyed names make the two writes disjoint.
+        repo = tmp_path / "r"
+        head = self._pending_three_roster(repo)
+        _write_partial(repo, "sustainability", head, findings=[{
+            "name": "real", "goal": "Nothing Is Broken", "severity": "blocking",
+            "recommendation": "fix it"}])
+        (repo / PARTIALS_REL / f"sustainability.{self._ABANDONED}.json").write_text(
+            json.dumps(_partial("sustainability", head, dispatch_id=self._ABANDONED))
+        )
+
+        # Read back through `partial_path` — the subject. Composing the name
+        # here would assert only that the fixture wrote what the fixture wrote,
+        # and would stay green with the keying removed.
+        mine = json.loads(
+            cc.partial_path(repo / ".prawduct", "sustainability",
+                            FAKE_REVIEW_ID).read_text())
+        assert mine["findings"][0]["name"] == "real"
+        assert mine["dispatch_id"] == FAKE_REVIEW_ID
+
+    def test_a_wrong_dispatch_id_at_the_right_name_fails_closed(self, tmp_path):
+        # The case the filename cannot catch: a reviewer handed the wrong review
+        # id in its prompt writes to the path this review reads. Genuine
+        # ambiguity about whose judgment this is — so it blocks, and names both.
+        repo = tmp_path / "r"
+        head = self._pending_three_roster(repo)
+        _write_partial(repo, "correctness", head)
+        _write_partial(repo, "design", head)
+        (repo / PARTIALS_REL / f"sustainability.{FAKE_REVIEW_ID}.json").write_text(
+            json.dumps(_partial("sustainability", head, dispatch_id=self._ABANDONED))
+        )
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 1
+        assert self._ABANDONED in result.stderr
+        assert FAKE_REVIEW_ID in result.stderr
+        assert _store_lines(repo) == []
+
+    def test_a_whitespace_padded_dispatch_id_still_consolidates(self, tmp_path):
+        # The other side of the same check, and the reason it strips first: a
+        # fail-closed validator over a model-written field rejects genuine
+        # ambiguity and tolerates the variant that normalizes identically.
+        # `files: []` aborting a whole consolidation is the precedent, in this
+        # same module — and its strictness was never pinned by a test, so both
+        # sides of this one are.
+        repo = tmp_path / "r"
+        head = self._pending_three_roster(repo)
+        for role in ("correctness", "design"):
+            _write_partial(repo, role, head)
+        (repo / PARTIALS_REL / f"sustainability.{FAKE_REVIEW_ID}.json").write_text(
+            json.dumps(_partial("sustainability", head,
+                                dispatch_id=f"  {FAKE_REVIEW_ID}\n"))
+        )
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert len(_store_lines(repo)) == 1
+
+    def test_a_missing_dispatch_id_fails_closed(self, tmp_path):
+        repo = tmp_path / "r"
+        head = self._pending_three_roster(repo)
+        for role in ("correctness", "design"):
+            _write_partial(repo, role, head)
+        body = _partial("sustainability", head)
+        del body["dispatch_id"]
+        (repo / PARTIALS_REL / f"sustainability.{FAKE_REVIEW_ID}.json").write_text(
+            json.dumps(body))
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 1
+        assert "dispatch_id" in result.stderr
+
+    def test_a_partial_at_the_pre_keyed_path_is_named_with_its_remedy(self, tmp_path):
+        # Version skew, and the one behaviour change an operator will hit: a
+        # skill older than this hook writes `<role>.json`, does its whole run,
+        # and is never read. Accepting it as a fallback would reopen the hole,
+        # so the answer is to say so — a refusal that names no remedy is the
+        # failure this subsystem has already paid for once.
+        repo = tmp_path / "r"
+        head = self._pending_three_roster(repo)
+        _write_partial(repo, "correctness", head)
+        _write_partial(repo, "design", head)
+        (repo / PARTIALS_REL / "sustainability.json").write_text(
+            json.dumps(_partial("sustainability", head)))
+
+        out = _run_consolidate(repo).stdout
+
+        assert "sustainability.json" in out
+        assert "older than this hook" in out
+        assert "/reload-plugins" in out
+        # The remedy must REACH the state, which is the whole criterion. This
+        # note is appended to a message whose roster branch has just said "do
+        # not re-dispatch", and a bare re-dispatch is refused while the marker
+        # is live — so the abandon step and the override are both load-bearing,
+        # and pinning only the reload leaves the half that makes it work
+        # unasserted.
+        assert "critic-end" in out
+        assert "overrides the wait advice" in out
+        assert _store_lines(repo) == []
+
+    def test_a_manifest_without_a_rendezvous_is_refused_loudly(self, tmp_path):
+        # The forward-incompatibility posture the data-model norm requires: a
+        # manifest from an older hook is a loud block, never a silent skip.
+        repo = tmp_path / "r"
+        head = self._pending_three_roster(repo)
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        del manifest["rendezvous"]
+        (repo / PARTIALS_REL / "manifest.json").write_text(json.dumps(manifest))
+        _full_roster_partials(repo, head)
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 1
+        assert "rendezvous" in result.stderr
+
+    def test_a_review_id_that_is_not_a_filename_component_is_refused(self, tmp_path):
+        # The id becomes a path segment. Refused by the validator rather than by
+        # the path builder, so a malformed record yields a verdict the caller can
+        # name instead of an exception on the session-end backstop's read.
+        ok, reason = cc.validate_manifest(
+            _manifest_dict("abc123", id="rev-../../escape"))
+        assert not ok
+        assert "filename component" in reason
+
+    def test_the_partial_filename_shape_has_exactly_one_home(self, tmp_path):
+        # The norm this design serves: if changing a fact requires editing N
+        # places, N-1 are already wrong. The shape lives in `partial_path`; the
+        # manifest carries the RESOLVED paths; no instruction surface spells a
+        # partial filename. `manifest.json` is excluded — that one IS a fixed
+        # path an agent must be able to find without being told.
+        source = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        assert source.count('f"{role}.{review_id}.json"') == 1
+        assert source.count('f"{role}.{review_id}.started"') == 1
+
+        # Both suffixes `partial_path`/`started_path` own, not just `.json`:
+        # `started_path` owns its shape on exactly the same terms, so a surface
+        # reintroducing `.critic-partials/<role>.started` would pass a
+        # json-only guard while breaking the identical invariant. No live
+        # offender — this closes the axis rather than fixing a defect.
+        pattern = re.compile(r'\.critic-partials/[A-Za-z<][^/ `")]*\.(?:json|started)')
+        offenders = []
+        for path in sorted((ROOT / "skills").rglob("*.md")) + \
+                sorted((ROOT / "agents").rglob("*.md")) + \
+                sorted((ROOT / "methodology").rglob("*.md")):
+            for hit in pattern.findall(path.read_text()):
+                if not hit.endswith("/manifest.json"):
+                    offenders.append(f"{path.name}: {hit}")
+        assert offenders == [], (
+            "an instruction surface spells a partial filename — the shape must "
+            f"come from the manifest's `rendezvous` entry: {offenders}"
+        )

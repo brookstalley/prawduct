@@ -62,6 +62,14 @@ out where reality still lags.
   Why: a view (`.critic-findings.json` and kin) exists for human/agent read-speed and may be regenerated or deleted at will; letting a gate trust one would smuggle mutable, model-adjacent state back into the authority path.
   Status: steady-state.
   Rulings: [[regen-views-is-advice]] — collides with `architecture.md`'s *authority fails closed; advice fails soft*. **Precedence: this norm wins where a command's only output is a view**, so a view *writer* is advice and fails soft. Extends this norm from who may **read** a view to what posture its **writer** holds. Bounded: fail-soft is per-view — a view whose inputs are invalid is skipped and reported, never written half-right (VWS-6R4T's *no silent partial flips*, preserved with the atomicity unit moved from the run to the view).
+- **Every issue written to the backlog store conforms to the issue standard's §1 title rules — on every write path, `file` / `update` / `import` alike. Where a source title does not conform, the agent rewrites it; a non-conforming title is not written.**
+  Why: the title is the handle every later reader triages by, and a non-conforming one fails silently — it reads badly forever and nothing complains. The failure is proven at scale: a 396-item migration reached GitHub with parsed titles up to 2319 characters against a 72-character budget, and only the handful breaching GitHub's own 256 cap announced themselves. Enforcing at the write path is what makes the standard binding rather than aspirational, and the standard (`documentation/backlog-service-issue-standard.md` §1) stays the one home for the rules themselves — this norm binds *that* they are enforced, never restates them.
+  Scope: the backlog adapter's write paths. NOT the markdown backend's hand-authored bullets, which are the *source* a migration scrub rewrites.
+  Status: **steady-state** as of #614. All three write paths refuse a non-conforming title: `file` and `update` through `core._title_refusal`, `import` through `migrate.preflight_titles`, which validates the whole corpus before its first write. The interim hand-conformance rule is retired — conformance now rests on a refusal rather than on the agent having read the standard.
+  Retroactivity: **contain** — existing corpora are NOT migrated to conformance by this norm, and the containment boundary is the write path (everything written from here conforms; what is already stored does not change). Ref **#614**, whose scrub half is where retro-conformance would happen if it ever does. The reason it is contain rather than migrate is the standard's §1 altitude rule: a scrub rewriting titles item-by-item cannot see that three issues are one defect, so a bulk retro-conformance pass run before the dedup sweep's shared-root-cause question exists would entrench an over-split backlog — worse than the run-on titles it fixes.
+  Mechanism: `issuefmt.lint_title` (`title-too-long` / `-too-short` / `-placeholder` / `-non-atomic`), blocking on all three write paths. Body lints stay WARN-only by the same ruling — a body budget blocking an edit to an unrelated field is the confirmation-fatigue shape `security-model.md`'s approval norm rejects.
+  Ruled 2026-08-06 (owner): *"They must be EXCELLENT issue titles, always, whether migrated or created new or modified."* Superseded the standard's prior "WARN only, never blocks" posture, amended in §4 of that document.
+  Ruled 2026-08-06 (owner), scope of the `update` path: **the refusal gates the title BEING WRITTEN, not the issue's resulting title.** `update <id> title=…` is refused when the new value fails §1; `update <id> status=shipped` on an issue whose *stored* title fails §1 **succeeds**, emitting a named non-blocking lint finding that says the title was not changed. Why, engaging this norm's own `Retroactivity: contain`: an **agent**, not a human, sits at this write — nothing automated calls `file`/`update` — so gating every field on the stored title would not block the ~11% of live issues predating the rule (20 of 180 measured 2026-08-06), it would make an agent silently **retitle** them to get past the gate, one at a time, as a side effect of archiving them, with none of the aggregate owner approval the import scrub preserves. That is retro-conformance by the back door, which this norm's Retroactivity line forbids, and §1's altitude rule says item-by-item rewriting is precisely how an over-split backlog gets entrenched.
 - **A fact written by a newer schema than the reader is surfaced as a loud block, never silently dropped.**
   Why: forward-incompatibility must be visible — silently skipping an ahead-of-schema fact would let a gate render a verdict on incomplete evidence.
   Status: steady-state. Mechanism: `evidence status` exit 2 (schema-ahead).
@@ -89,7 +97,7 @@ An absent file is the empty store.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition` today; `test-run`, `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal` today; `test-run`, `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` — provenance: which session, which worktree, which plugin version wrote it |
@@ -115,6 +123,21 @@ An absent file is the empty store.
   and never on its own. Compaction that violated this would silently un-answer a finding; the
   sequenced id defends against it by stepping past ids already present rather than counting
   surviving history.
+- **Guard-refusal fact `body`** — that a **pre-dispatch guard** fired: a control that declined to
+  spend something (a reviewer, a build) *before* spending it. Carries the `guard` name (the grouping
+  key every yield query groups on, and the authority even if a caller's body offers its own), the
+  `interval` it judged, and whatever that guard needs to answer its own yield question later — for
+  `critic-dispatch-free-interval`, the `free_files` it waved through plus `mode`/`scope`/`chunk`/
+  `branch`. **The interval is nested under `interval`, never spread to the body's top level**, which
+  is where a coverage edge carries `base_tree`/`head_tree`: one level down, no reader walking bodies
+  for edges can mistake a refusal for one. **This kind is purely observational and CANNOT become
+  authoritative** — composition derives edges from `kind == "review"` alone, so a refusal contributes
+  neither node nor edge and can only ever coexist with a verdict, never produce one. It exists
+  because `nonfunctional-requirements.md` requires a control to emit its expected yield observably;
+  a guard whose only output is stderr can never be measured, and therefore never retired.
+  **Droppability:** a refusal sits on no coverage path and targets no other fact, so it is droppable
+  at any time — dropping one loses a data point about the guard's yield, never a governance answer.
+  Written by `evidence.append_guard_refusal`, the one sink for the whole class (#596).
 
 **Tree-keying (the load-bearing idea).** Facts reference git *tree SHAs*, captured via a temporary
 index that never touches the session's working tree or real index. Because a verbatim commit
@@ -177,9 +200,20 @@ only a compact `change_log_history`).
   still leave the last completed review anchorable. Consolidation rewrites the whole record, so the
   keys clear themselves.
 - **Dispatch manifest + partials** — `.prawduct/.critic-partials/manifest.json` (code-written at
-  `critic-begin`: the tree interval + roster a review will attest) and `<role>.json` partials (one
-  per reviewer, model-written, schema-validated before consolidation). The whole directory is removed
-  on successful consolidation.
+  `critic-begin`: the tree interval, the roster a review will attest, and `rendezvous`, the resolved
+  per-role write paths) and one partial per reviewer at those paths (model-written, schema-validated
+  before consolidation, each declaring the `dispatch_id` that binds it to its review). Partial paths
+  are keyed by review id, so two reviews in one worktree never share a name; the shape lives in
+  `critic_consolidate.partial_path` and nothing else spells it. The whole directory is removed on
+  successful consolidation.
+- **Review archive** — `.prawduct/.critic-partials-archive/<review-id>/` (gitignored) — where a
+  review's manifest + partials go instead of being deleted, whenever a dispatch sweeps leftovers or
+  `critic-discard` clears a stranded roster. **Not debris**: it is the last trace an unconsolidated
+  review ever ran, and it is operator-addressable — `critic-restore <review-id>` copies a set back
+  so it consolidates under its *own* id, which is sound only because partials carry review identity.
+  Bounded: the newest three sets are kept, pruned best-effort at dispatch. A set archived before
+  review-id keying carries no `rendezvous` and therefore restores as readable evidence that cannot
+  be recorded as a fact; the restore says so rather than promising a consolidation.
 - **Critic-active marker** — `.prawduct/.critic-active` — presence signals a review is in flight;
   guards against a reviewer mutating the session under review, and carries a TTL so a crashed review
   self-clears.
@@ -218,9 +252,12 @@ references or overrides it)`. No transition ever mutates a prior fact; supersess
 ### Critic review (data-plane lifecycle)
 `begin (manifest + active-marker written) → partials-collecting → consolidated (all roster partials
 valid → review fact appended, view regenerated, partials + marker removed)`. Off-ramps:
-`abandoned` (`critic-end` clears the marker with no fact) and `expired` (active-marker TTL elapses).
-Consolidation is fail-closed: it persists only when *every* roster role has a schema-valid partial
-at the dispatch commit.
+`abandoned` (`critic-end` clears the marker with no fact), `expired` (active-marker TTL elapses),
+and `archived` — a sweep at dispatch or a `critic-discard` moves the manifest + partials to the
+review archive rather than deleting them. `archived` is the one off-ramp that is not terminal:
+`critic-restore <review-id>` returns a set to `partials-collecting` **as the same review**, so it
+can consolidate to a fact carrying its own id. Consolidation is fail-closed: it persists only when
+*every* roster role has a schema-valid partial at the dispatch commit.
 
 ### Backlog item
 `idea → requirements → design → ready` (stage) and `open → shipped | dropped` (status). Shipped/

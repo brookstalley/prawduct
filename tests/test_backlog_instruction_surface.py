@@ -246,3 +246,48 @@ def test_surfaces_claim_no_unbacked_adapter_guard():
         "guard. Either build the mechanism or stop naming it (BKL-8V3D / "
         "BKL-2Q7F).\n  - " + "\n  - ".join(offenders)
     )
+
+
+# --- the altitude question (issue-standard §1 / discovery §4c) ---------------
+#
+# Not a phantom-guard check like the rest of this file, but the same shape of
+# hazard: an instruction surface that omits a step the standard depends on.
+
+_ALTITUDE_SURFACES = ("SKILL.md", "migration-scrub.md")
+
+
+def test_dedup_surfaces_ask_the_shared_root_cause_question():
+    """The co-ship condition on the §1 title enforcement (#614).
+
+    Enforcing "≤72, atomic" WITHOUT this question makes the backlog worse in a
+    specific way: a scrub rewriting titles item-by-item cannot see that three
+    issues are one defect, and rewriting each to a *tighter* symptom title
+    entrenches the split, because a sharper title reads more like a well-formed
+    issue. Over-splitting is the more expensive direction — a split backlog looks
+    more thorough, so nothing prompts a re-read.
+
+    No per-title lint can catch it: it is a fact *between* issues. The dedup
+    sweep and the migration scrub are the only places it can live, which is why
+    both are pinned rather than one. The existing grouping is a *duplicate* test
+    (title-keyword + body overlap) and the two come apart exactly where it
+    matters — `crash on emoji` and `crash on UTF-16` share a cause and almost no
+    keywords.
+    """
+    missing = []
+    for rel in _ALTITUDE_SURFACES:
+        text = (_BACKLOG_SKILL_DIR / rel).read_text(encoding="utf-8").lower()
+        # The question itself, however it is punctuated, plus the name of the
+        # test it encodes — a surface carrying only one of the two has kept the
+        # words and lost the instruction, or vice versa.
+        asks = "would a single change close all of these" in text
+        names = "shared-root-cause" in text or "shared root cause" in text
+        if not (asks and names):
+            missing.append(f"{rel} (asks={asks}, names_the_test={names})")
+
+    assert not missing, (
+        "A dedup/scrub surface no longer asks the altitude question. This is the "
+        "co-ship condition the owner attached to §1 title enforcement: shipping "
+        "the length/shape half alone uses the window to build a large, tidy, "
+        "OVER-SPLIT backlog that then has to be merged back by hand. Restore it "
+        "rather than relaxing this test.\n  - " + "\n  - ".join(missing)
+    )

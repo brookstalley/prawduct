@@ -95,7 +95,7 @@ def _by_id(records: list[dict], canonical: str) -> dict | None:
     return None
 
 
-def _file(fake, *, title="t", body="b"):
+def _file(fake, *, title="merge: the t item under test", body="b"):
     result = core.file_item(fake, owner=OWNER, repo=REPO, title=title, body=body)
     assert result["status"] == "ok", result
     return result["data"]["id"]
@@ -196,7 +196,7 @@ class TestMultiPrefixAbsorption:
     def test_duplicate_pfx_is_flagged_not_merged(self, fake):
         content = (
             "## Open\n\n"
-            "- **[DUP-0001]** first claimant\n"
+            "- **[DUP-0001]** core: the first claimant of this prefix\n"
             "  `effort: S · impact: S · area: core · status: open`\n\n"
             "- **[DUP-0001]** second claimant (collision)\n"
             "  `effort: M · impact: M · area: core · status: open`\n"
@@ -274,8 +274,8 @@ class TestMultiPrefixAbsorption:
 
 class TestArchiveAndCheckpoint:
     def test_separate_archive_file_imports_closed(self, fake):
-        main = "## Open\n\n- **[ARC-0001]** open item\n  `area: core · status: open`\n"
-        archive = "## Archive\n\n- **[ARC-0002]** shipped item\n  `area: core · status: shipped`\n"
+        main = "## Open\n\n- **[ARC-0001]** core: the open item this run must import\n  `area: core · status: open`\n"
+        archive = "## Archive\n\n- **[ARC-0002]** core: the shipped item in the archive file\n  `area: core · status: shipped`\n"
         result = migrate.import_backlog(
             fake, owner=OWNER, repo=REPO, content=main, archive_content=archive
         )
@@ -287,8 +287,8 @@ class TestArchiveAndCheckpoint:
     def test_cross_file_duplicate_pfx_flagged(self, fake):
         # A PFX in BOTH the main file and the archive file is a cross-file collision
         # (the shared seen-set catches it) — not a silent skip at the alias query.
-        main = "## Open\n\n- **[DUP-9]** in main\n  `area: core · status: open`\n"
-        archive = "## Archive\n\n- **[DUP-9]** in archive\n  `area: core · status: shipped`\n"
+        main = "## Open\n\n- **[DUP-9]** core: the item living in the main file\n  `area: core · status: open`\n"
+        archive = "## Archive\n\n- **[DUP-9]** core: the item living in the archive file\n  `area: core · status: shipped`\n"
         result = migrate.import_backlog(
             fake, owner=OWNER, repo=REPO, content=main, archive_content=archive
         )
@@ -297,8 +297,8 @@ class TestArchiveAndCheckpoint:
         assert len(_alias_issues(fake, "DUP-9")) == 1  # only the first (main-file) item
 
     def test_import_with_archive_cli_flag(self, fake, tmp_path):
-        (tmp_path / "main.md").write_text("## Open\n\n- **[CLI-1]** x\n  `area: core · status: open`\n")
-        (tmp_path / "arc.md").write_text("## Archive\n\n- **[CLI-2]** y\n  `area: core · status: shipped`\n")
+        (tmp_path / "main.md").write_text("## Open\n\n- **[CLI-1]** core: the first synthetic cli item\n  `area: core · status: open`\n")
+        (tmp_path / "arc.md").write_text("## Archive\n\n- **[CLI-2]** core: the second synthetic cli item\n  `area: core · status: shipped`\n")
         code = cli.run(
             str(tmp_path),
             ["import", "--repo", SCOPE, "--from", str(tmp_path / "main.md"),
@@ -335,11 +335,11 @@ class TestArchiveScope:
     git-tracked source markdown rather than minting a closed issue per ancient
     item. ``all`` is the pre-scrub default."""
 
-    _MAIN = "## Open\n\n- **[SCP-0001]** open item\n  `area: core · status: open`\n"
+    _MAIN = "## Open\n\n- **[SCP-0001]** core: the open item this run must import\n  `area: core · status: open`\n"
     _ARCHIVE = (
         "## Archive\n\n"
-        "- **[SCP-0002]** shipped item\n  `area: core · status: shipped`\n"
-        "- **[SCP-0003]** dropped item\n  `area: core · status: dropped`\n"
+        "- **[SCP-0002]** core: the shipped item in the archive file\n  `area: core · status: shipped`\n"
+        "- **[SCP-0003]** core: the dropped item in the archive file\n  `area: core · status: dropped`\n"
     )
 
     @staticmethod
@@ -494,9 +494,9 @@ class TestArchiveScope:
 
 class TestExportNativeGraph:
     def test_deps_subissues_assignees_timeline_serialized(self, fake, tmp_path):
-        a = _file(fake, title="parent A")
-        b = _file(fake, title="child B")
-        blk = _file(fake, title="blocker")
+        a = _file(fake, title="merge: the parent A item under test")
+        b = _file(fake, title="merge: the child B item under test")
+        blk = _file(fake, title="merge: the blocker item under test")
         assert core.link(fake, id_raw=a, edge="child", target_raw=b)["status"] == "ok"
         assert core.link(fake, id_raw=a, edge="blocked-by", target_raw=blk)["status"] == "ok"
         assert core.claim(fake, id_raw=a)["status"] == "ok"
@@ -516,7 +516,7 @@ class TestExportNativeGraph:
     def test_export_ignores_non_prawduct_issues(self, fake, tmp_path):
         # A plain repo issue (no prawduct marker) is out of scope (PROV-2).
         fake.seed_labels(OWNER, REPO, ["bug"])
-        fake.create_issue(OWNER, REPO, title="a plain issue", body="no block", labels=["bug"])
+        fake.create_issue(OWNER, REPO, title="merge: the a plain issue item under test", body="no block", labels=["bug"])
         _file(fake, title="a real backlog item")
         assert _export(fake, tmp_path / "x")["status"] == "ok"
         assert _export(fake, tmp_path / "x")["data"]["count"] == 1
@@ -826,8 +826,8 @@ class TestAliasSelfHeal:
 
 class TestMerge:
     def test_merge_redirects_then_closes(self, fake):
-        a = _file(fake, title="dup A")
-        b = _file(fake, title="keep B")
+        a = _file(fake, title="merge: the dup A item under test")
+        b = _file(fake, title="merge: the keep B item under test")
         result = migrate.merge(fake, source_raw=a, target_raw=b)
         assert result["status"] == "ok", result
 
@@ -838,8 +838,8 @@ class TestMerge:
         assert migrate.resolve(fake, a, owner=OWNER, repo=REPO) == b  # a resolves to b
 
     def test_crash_before_close_leaves_source_open_but_redirected(self, fake):
-        a = _file(fake, title="dup A")
-        b = _file(fake, title="keep B")
+        a = _file(fake, title="merge: the dup A item under test")
+        b = _file(fake, title="merge: the keep B item under test")
         fake.fail_at_mutation(2)  # step1 (redirect) lands; fail step2 (the close)
         broken = migrate.merge(fake, source_raw=a, target_raw=b)
         assert broken["status"] == "error"
@@ -855,7 +855,7 @@ class TestMerge:
         assert migrate.merge(fake, source_raw=a, target_raw=b)["status"] == "ok"  # 3rd = no-op
 
     def test_merge_into_self_rejected(self, fake):
-        a = _file(fake, title="x")
+        a = _file(fake, title="merge: the x item under test")
         assert migrate.merge(fake, source_raw=a, target_raw=a)["error"]["code"] == "validation"
 
     def test_merge_bad_ids_rejected(self, fake):
@@ -863,7 +863,7 @@ class TestMerge:
             "status"
         ] == "error"
 
-    def _file_with_alias(self, fake, pfx, *, title="t"):
+    def _file_with_alias(self, fake, pfx, *, title="merge: the t item under test"):
         cid = _file(fake, title=title)
         number = int(cid.split("#")[1])
         fake.seed_labels(OWNER, REPO, [ids.alias_label(pfx)])
@@ -873,8 +873,8 @@ class TestMerge:
     def test_merge_resolves_bare_pfx_endpoints(self, fake):
         # BKL-7Q2N — both merge endpoints may be hand-minted PFX aliases (the scrub
         # disposes duplicates by their original ids). Resolve each via id:PFX + --repo.
-        na = self._file_with_alias(fake, "SRC-0001", title="dup A")
-        nb = self._file_with_alias(fake, "DST-0001", title="keep B")
+        na = self._file_with_alias(fake, "SRC-0001", title="merge: the dup A item under test")
+        nb = self._file_with_alias(fake, "DST-0001", title="merge: the keep B item under test")
         result = migrate.merge(
             fake, source_raw="SRC-0001", target_raw="DST-0001", default_repo=(OWNER, REPO)
         )
@@ -1131,7 +1131,7 @@ class TestPacingTransport:
     def test_delegates_args_and_return_value_unchanged(self, fake):
         pacer = migrate.Pacer()
         wrapped = migrate._PacingTransport(fake, pacer)
-        issue = wrapped.create_issue(OWNER, REPO, title="t", body="b", labels=[])
+        issue = wrapped.create_issue(OWNER, REPO, title="merge: the t item under test", body="b", labels=[])
         # The wrapper is transparent: it returns the transport's own result verbatim.
         assert wrapped.get_issue(OWNER, REPO, issue["number"])["number"] == issue["number"]
 
@@ -1365,8 +1365,8 @@ class TestMigrateCli:
         assert code == 2
 
     def test_merge_cli(self, fake):
-        a = _file(fake, title="dup")
-        b = _file(fake, title="keep")
+        a = _file(fake, title="merge: the dup item under test")
+        b = _file(fake, title="merge: the keep item under test")
         code = cli.run("/x", ["merge", a, "--into", b, "--json"], transport=fake)
         assert code == 0
 
@@ -1410,8 +1410,8 @@ class TestMigrateCli:
         assert "status reconcile deferred" in captured.err
 
     def test_merge_human_mode_output(self, fake, capsys):
-        a = _file(fake, title="dup")
-        b = _file(fake, title="keep")
+        a = _file(fake, title="merge: the dup item under test")
+        b = _file(fake, title="merge: the keep item under test")
         assert cli.run("/x", ["merge", a, "--into", b], transport=fake) == 0
         assert "superseded-by" in capsys.readouterr().out
 
@@ -1520,7 +1520,7 @@ class TestPacingObservability:
         operator who kills a healthy run. Progress is a different signal from
         pacing state: it says "alive and here", not "throttled"."""
         content = "# Backlog\n\n## Open\n\n" + "\n".join(
-            f"- **[ITM-{i:04d}]** item number {i}\n  `status: open · stage: ready`\n"
+            f"- **[ITM-{i:04d}]** core: paced import item number {i}\n  `status: open · stage: ready`\n"
             for i in range(1, migrate.PROGRESS_EVERY * 2 + 2)
         )
         result = _import(fake, content)
@@ -1544,7 +1544,7 @@ class TestPacingObservability:
         src.write_text(
             "# Backlog\n\n## Open\n\n"
             + "\n".join(
-                f"- **[ITM-{i:04d}]** item number {i}\n  `status: open · stage: ready`\n"
+                f"- **[ITM-{i:04d}]** core: paced import item number {i}\n  `status: open · stage: ready`\n"
                 for i in range(1, migrate.PROGRESS_EVERY + 2)
             ),
             encoding="utf-8",
@@ -1626,7 +1626,7 @@ class TestVerifyMigration:
         something is wrong; only the ids tell them what to re-import."""
         _import(fake, DISCODON_MINI)
         extra = DISCODON_MINI + (
-            "\n- **[ZZZ-9999]** never imported\n  `status: open · stage: ready`\n"
+            "\n- **[ZZZ-9999]** core: the item this run never imported\n  `status: open · stage: ready`\n"
         )
         verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=extra)
         assert verdict["status"] == "error"
@@ -1644,7 +1644,7 @@ class TestVerifyMigration:
                 fake, owner=OWNER, repo=REPO, title=f"native {i}", body="b", facets={}
             )
         extra = DISCODON_MINI + (
-            "\n- **[ZZZ-9999]** stranded\n  `status: open · stage: ready`\n"
+            "\n- **[ZZZ-9999]** core: the stranded item with no alias\n  `status: open · stage: ready`\n"
         )
         verdict = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=extra)
         assert verdict["status"] == "error"
@@ -1656,7 +1656,7 @@ class TestVerifyMigration:
         src = tmp_path / "backlog.md"
         src.write_text(
             DISCODON_MINI
-            + "\n- **[ZZZ-9999]** stranded\n  `status: open · stage: ready`\n",
+            + "\n- **[ZZZ-9999]** core: the stranded item with no alias\n  `status: open · stage: ready`\n",
             encoding="utf-8",
         )
         code = cli.run(
@@ -1831,7 +1831,7 @@ class TestVerifyMigration:
         PFX-bearing records it would under-report the source while claiming full
         coverage — the arithmetic has to be visible."""
         extra = DISCODON_MINI + (
-            "\n- **[2026-07-28]** unaliasable\n  `status: open · stage: ready`\n"
+            "\n- **[2026-07-28]** core: the item that cannot be aliased\n  `status: open · stage: ready`\n"
         )
         migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
         details = migrate.verify_migration(
@@ -1844,7 +1844,7 @@ class TestVerifyMigration:
         idempotency key is a digest of title+body, so giving the item a real PFX
         changes the key and mints a second issue instead of adopting the first."""
         extra = DISCODON_MINI + (
-            "\n- **[2026-07-28]** unaliasable\n  `status: open · stage: ready`\n"
+            "\n- **[2026-07-28]** core: the item that cannot be aliased\n  `status: open · stage: ready`\n"
         )
         migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=extra)
         message = migrate.verify_migration(
@@ -1899,7 +1899,7 @@ class TestVerifyMigration:
         migrate.import_backlog(
             fake, owner=OWNER, repo=REPO, content=src, archive_scope="open"
         )
-        stranded = src + "\n- **[ZZZ-9999]** open and never imported\n  `status: open`\n"
+        stranded = src + "\n- **[ZZZ-9999]** core: an open item never imported here\n  `status: open`\n"
         verdict = migrate.verify_migration(
             fake, owner=OWNER, repo=REPO, content=stranded, archive_scope="open"
         )
@@ -1913,7 +1913,7 @@ class TestVerifyMigration:
         onto one alias — so it is never created, and being absent from `records`
         it left `missing` empty and the gate green."""
         src = DISCODON_MINI + (
-            "\n- **[DUP-0001]** first claimant\n  `status: open · stage: ready`\n"
+            "\n- **[DUP-0001]** core: the first claimant of this prefix\n  `status: open · stage: ready`\n"
             "- **[DUP-0001]** second claimant, same pfx\n  `status: open · stage: ready`\n"
         )
         result = migrate.import_backlog(fake, owner=OWNER, repo=REPO, content=src)
@@ -1928,7 +1928,7 @@ class TestVerifyMigration:
     def test_an_archive_file_is_included_in_the_source_set(self, fake, tmp_path):
         """A migration run with --archive must be verifiable the same way, or
         the check silently passes on a partially-imported archive."""
-        archive = "# Archive\n\n## Archive\n\n- **[ARC-0001]** archived\n  `status: shipped`\n"
+        archive = "# Archive\n\n## Archive\n\n- **[ARC-0001]** core: the archived item for this case\n  `status: shipped`\n"
         result = migrate.import_backlog(
             fake, owner=OWNER, repo=REPO, content=DISCODON_MINI, archive_content=archive
         )

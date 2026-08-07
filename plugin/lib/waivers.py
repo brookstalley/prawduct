@@ -70,8 +70,25 @@ def _clean_reason(rest: str) -> str:
     The canonical separator is ``--`` (ESLint-style); an em dash ``—`` is
     accepted for continuity with the legacy ``ok-broad-except`` spelling. A
     bare separator with no following text yields ``""`` (a malformed waiver).
+
+    An HTML comment terminator ENDS the reason, and everything from it onward is
+    discarded before the separator is even looked for. A waiver in a markdown
+    file has to live inside ``<!-- ... -->``, and without this the closing
+    ``-->`` is itself read as ``--`` + a reason of ``>`` — so a bare,
+    reason-less pragma would silently satisfy :meth:`Waiver.has_reason`, which
+    is the one thing the reason requirement exists to prevent.
+
+    Truncating at the token rather than stripping a trailing one is the
+    difference between a guard and a guard-shaped hole: ``<!-- prawduct:allow
+    prawduct/x --> and then some prose`` is a *closed* comment followed by
+    ordinary text, so the reason is still empty — but an end-of-line-only strip
+    would hand back ``"> and then some prose"`` and waive. Source-code comments
+    never contain the token, so this costs nothing anywhere else.
     """
     rest = rest.strip()
+    terminator = rest.find("-->")
+    if terminator != -1:
+        rest = rest[:terminator].rstrip()
     if rest.startswith("--"):
         rest = rest[2:]
     elif rest.startswith("—"):  # em dash
