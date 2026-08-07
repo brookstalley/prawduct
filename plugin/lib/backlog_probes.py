@@ -316,18 +316,26 @@ DORMANT_CHECKS = (
     (("skills/critic/review-cycle.md",), "its four backlog hygiene checks"),
     (("skills/pr/review-protocol.md",), "the PR reviewer's two backlog consistency checks"),
     (("skills/janitor/SKILL.md",), "the janitor's Backlog Health block"),
-    # Two `lib/norm_probes.py` rows stood here — dead-why and stalled-transition —
-    # and both are gone because neither is dormant any more: they resolve their
-    # citations through the backlog cache on both backends now.
+    # Three `lib/norm_probes.py` rows stood here and all three left, for two
+    # different reasons that this list has to keep apart.
     #
-    # **The third norm-probe row, `revisit-due`, was never on this list**, and its
-    # absence is the distinction this list turns on. It is dark post-cutover too,
-    # but nothing here can end that: `revisit:` records intent (*granted until
-    # date X*), which no age-based query can reconstruct, so what it waits on is a
-    # WRITE path for the field on the Issues backend, not a read path. This
-    # advisory promises that its members "return when the backlog read-through
-    # cache lands"; listing a check the cache cannot restore would make that
-    # promise false for one of them.
+    # `dead-why` and `stalled-transition` left because they are **no longer
+    # dormant**: they resolve their citations through the backlog cache on both
+    # backends now, so the cutover selects a reader for them rather than silencing
+    # one.
+    #
+    # `revisit-due` (the row read "norm-exception revisit-date expiry") left
+    # because it is dormant post-cutover in a way **nothing here can end**.
+    # `revisit:` records intent — *this exception was granted until date X* —
+    # which no age-based query reconstructs, so what it waits on is a WRITE path
+    # for the field on the Issues backend, not a read path. This advisory promises
+    # its members "return when the backlog read-through cache lands"; keeping that
+    # row would have made the promise false for one of them, which is worse than
+    # the silence it was added to announce. Its dark post-cutover leg is recorded
+    # in `.prawduct/cross-cutting-concerns.md`'s Norm-lifecycle row instead.
+    #
+    # So membership is not "is this check silent?" but "will the cache restore
+    # it?" — a narrower question, and the one the recommended_action commits to.
 )
 
 
