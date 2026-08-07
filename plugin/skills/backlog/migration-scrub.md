@@ -159,6 +159,18 @@ Propose two candidate sets:
      duplicates. (Lexical `search --like` is a post-cache accelerator, not
      available in the cacheless service — surface duplicates by reading the
      `list` output directly.)
+   - **One fix, many items (the altitude question)** — ask of the whole corpus:
+     **"would a SINGLE change close all of these?"** That is a *shared-root-cause*
+     test, not the duplicate test above, and it must run **corpus-wide, before
+     3b rewrites any title.** A restructure pre-pass that rewrites 400 titles
+     item-by-item cannot see that three of them are one defect — and rewriting
+     each to a tighter ≤72 symptom title actively *entrenches* the split, because
+     a sharper title reads more like a well-formed issue. Propose the upleveled
+     item as the survivor (`personas crash on character encoding`, not three
+     encoding-specific crashes). Over-splitting is a first-class failure beside
+     under-splitting (issue-standard §1); this and the `dedup` sweep are the only
+     places it can be caught, since no per-title lint can see a fact that lives
+     *between* issues.
 
    Present both sets as a **disposition table**: `id | action (keep | drop |
    merge→survivor) | reason`. This table is the model's decision, expressed as

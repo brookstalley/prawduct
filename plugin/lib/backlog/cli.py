@@ -107,10 +107,13 @@ _HELP = (
     "  merge    <source-id> --into <target-id> [--repo owner/repo]   (fold A→B, redirect-before-close)\n"
     "global: --json  (machine envelope on stdout; default is human)\n"
     "\n"
-    "issue standard: `file` emits an `area:`-prefixed title and audits the issue\n"
-    "  (WARN-only `lint` findings, never blocks). Author a scannable `area: summary`\n"
-    "  title (<=72) + a sectioned body (bug: Problem/Repro/Actual/Expected/Evidence;\n"
-    "  task: Problem/Proposed change/Acceptance `- [ ]`/Scope-out) and set --kind.\n"
+    "issue standard: `file` emits an `area:`-prefixed title and audits the issue.\n"
+    "  The four §1 TITLE checks BLOCK on every write path — `file`, `update` (on a\n"
+    "  title it is asked to write) and `import` (whole corpus, before the first\n"
+    "  write); body/label `lint` findings stay advisory. Author a scannable\n"
+    "  `area: summary` title (15-72) + a sectioned body (bug:\n"
+    "  Problem/Repro/Actual/Expected/Evidence; task: Problem/Proposed\n"
+    "  change/Acceptance `- [ ]`/Scope-out) and set --kind.\n"
     "  Full contract: documentation/backlog-service-issue-standard.md\n"
 )
 
@@ -974,8 +977,11 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         _print_human_ok(result.get("data"))
         for warning in result.get("warnings", []):
             print(f"warning: {warning}", file=sys.stderr)
-        # Standard lint findings (WARN-only, `file`): advisory, never affect the
-        # exit code, and kept distinct from operational warnings.
+        # Standard lint findings — emitted by `file` (body/label) and by `update`
+        # (a stored title left unconformed). Advisory by construction: a finding
+        # that BLOCKS never reaches here, because it returned a validation error
+        # instead. So these never affect the exit code, and stay distinct from
+        # operational warnings.
         for finding in result.get("lint", []):
             print(f"lint: {finding.get('message')}", file=sys.stderr)
     else:

@@ -390,6 +390,64 @@ class TestCliFront:
         text = out_path.read_text(encoding="utf-8")
         assert "### DIS-0001" in text and "**body after:**" in text
 
+    def test_preview_reports_the_titles_the_import_would_refuse(self, tmp_path, capsys):
+        """The preview is the owner's AGGREGATE pre-approval artifact for an
+        irreversible run, so it must ask the import's own §1 gate. Without this it
+        can report clean and then have the import hard-refuse the plan the owner
+        just approved — which is the whole failure this check exists to prevent.
+
+        The plan rewrites a title to something non-conforming (`title-too-short`),
+        which is exactly the case a per-item preview diff makes look fine."""
+        src = self._write(tmp_path, "backlog.md", DISCODON_MINI)
+        plan = self._write(
+            tmp_path, "plan.json",
+            json.dumps({"v": 1, "items": {
+                "DIS-0001": {"title": "ui: tiny", "kind": "feature", "sections": _SECTIONS},
+            }}),
+        )
+        code = cli.run(
+            str(tmp_path),
+            ["restructure-preview", "--from", src, "--plan", plan,
+             "--out", str(tmp_path / "preview.md"), "--json"],
+            transport=None,
+        )
+
+        # It REPORTS rather than refuses — a read-only preview must still render,
+        # and the refusal is the thing the operator needs to see.
+        assert code == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["data"]["preflight_blocking"] == 1
+        offenders = payload["data"]["nonconforming_titles"]
+        assert len(offenders) == 1
+        assert offenders[0]["title"] == "ui: tiny"
+        assert "title-too-short" in offenders[0]["rules"]
+        assert any("FAIL the issue standard §1" in w for w in payload["warnings"])
+
+    def test_preview_of_a_conforming_plan_reports_no_blockers(self, tmp_path, capsys):
+        """The boundary: a preview that reads clean is the owner's assurance the
+        import will not refuse. If this ever reports a blocker, the gate has become
+        stricter than the one the import actually applies."""
+        src = self._write(tmp_path, "backlog.md", DISCODON_MINI)
+        plan = self._write(
+            tmp_path, "plan.json",
+            json.dumps({"v": 1, "items": {
+                "DIS-0001": {"title": "ui: harbor overlay renders top-down",
+                             "kind": "feature", "sections": _SECTIONS},
+            }}),
+        )
+        code = cli.run(
+            str(tmp_path),
+            ["restructure-preview", "--from", src, "--plan", plan,
+             "--out", str(tmp_path / "preview.md"), "--json"],
+            transport=None,
+        )
+
+        assert code == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["data"]["preflight_blocking"] == 0
+        assert payload["data"]["nonconforming_titles"] == []
+        assert not any("FAIL the issue standard" in w for w in payload["warnings"])
+
     def test_preview_honors_archive_scope_open(self, tmp_path, capsys):
         # The preview must apply the same --archive-scope filter the import does, so
         # the owner reviews exactly what will land (MG4b parity, filter-first).

@@ -412,10 +412,10 @@ dropping them.
 
 ## A reviewer severity is a SCHEDULING decision, not just a risk rating — BLOCKING means "the tree must not move again without this", so a record gap that can ride a commit already owed is an observation; rating it BLOCKING spends a whole round on a one-row edit
 
-## Before choosing block-vs-warn for a gate, establish WHO is at the write — a refusal in front of a human is a stop, but a refusal in front of an AGENT is an auto-fix, and an auto-fix performed to satisfy a gate is a silent mutation nobody reviewed. Enforcing on every field would not have blocked the 11% of issues predating the rule; it would have made an agent retitle them while archiving them. Tell: you are weighing "strict vs lenient" and have not named the caller
+## Before choosing block-vs-warn for a gate, establish WHO is at the write — a refusal in front of a human is a stop, but in front of an AGENT it is an auto-fix, and an auto-fix performed to satisfy a gate is a silent mutation nobody reviewed. Tell: you are weighing "strict vs lenient" and have not named the caller
 
 ## Enumerating the surfaces a chunk EDITS is a different question from enumerating the surfaces its behaviour change FALSIFIES — only the second finds the docstring that now lies. A plan that lists the first and calls it a surface sweep misses the file the chunk never opens, which is exactly where a maintainer reads the old rule before changing a threshold
 
-## Promoting an advisory check to blocking changes what its false positives COST, so audit them as part of the wiring — a placeholder lint matched "fix it" inside "pre-FIX IT-em" harmlessly for its whole life, and became a false refusal on an irreversible migration the moment it gated a write. Fix the classification (whole-word matching), never the budget, and pin both directions so the correction does not blunt the check
+## Promoting an advisory check to blocking changes what its false positives COST, so audit them as part of the wiring — a placeholder lint matched "fix it" inside "pre-FIX IT-em" harmlessly for years, then became a false refusal on an irreversible migration. Fix the classification, never the budget
 
 ## A gate on a value that nearly every fixture supplies will touch nearly every fixture — estimate that blast radius in the plan, because it changes the chunk's real size. Enforcing a title rule broke 126 tests across 8 modules, none of which asserted anything about titles; fixing fixture DATA (never assertions) is correct, but discovering the number at build time is a planning miss

@@ -3,6 +3,59 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-07: an excellent issue title stopped being a suggestion
+
+<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement -->
+
+**The standard had been aspirational on every path that could enforce it.** `issuefmt._lint_title`
+implemented all four §1 checks and nothing blocked on them: `file` audited *after* the create,
+`update` never linted a title at all, and `import` never called them — which is how a 396-item
+migration reached GitHub carrying parsed titles up to 2319 characters against a 72-character
+budget. Only the handful breaching GitHub's own 256 cap announced themselves; the rest just read
+badly forever. All three paths now refuse. The norm in `data-model.md` moves from `in-transition`
+to `steady-state`, which is the whole point of the tracking item (#614).
+
+**#612 and #614 were one change, not two.** "import: conform or refuse" *is* the pre-flight
+validation — same call, same place in `migrate.py`. Built apart, either the pre-flight is written
+twice or #612 ships a length-only gate #614 immediately replaces. The pre-flight validates the
+WHOLE corpus before the first write and refuses with every offender named at zero writes; because
+§1's budget (72) sits far under GitHub's 256 cap, a corpus that passes cannot 422 for length at
+all. Replayed against the live 180-issue backlog it reproduces the hand-measured count exactly: 20
+offenders, all over budget, 5 of them also non-atomic — a **subset**, not five more.
+
+**Per-item isolation is error-class-scoped, and the issue text did not say so.** #612 asked for "a
+write failure records that item and continues". Taken literally, a revoked token becomes 396 futile
+round-trips and "your token expired" is buried in a 396-line failure list. Only `validation`
+isolates — a 422 is the item's own fault and says nothing about the next 395 — while `auth` /
+`not_found` / `unavailable` / exhausted `rate_limited` keep the resumable cut, reading the line
+`transport.py` already drew rather than inventing a parallel taxonomy. Five *consecutive*
+rejections stop the run, because consecutive means the corpus and not the item.
+
+**The `update` path gates the title being WRITTEN, not the resulting one** (owner ruling). The
+question was first framed as "20 live issues become un-updatable"; the owner asked whether an LLM
+was in the loop, and that dissolved the framing. Nothing automated calls `file`/`update` — an agent
+is at the write — so broad enforcement would never have *blocked* those issues. It would have made
+an agent silently **retitle** them to get past the gate while archiving them, unreviewed, with none
+of the aggregate owner approval the import scrub preserves. That is retro-conformance by the back
+door, forbidden by the norm's own `Retroactivity: contain`, and the confirmation-fatigue shape
+`security-model.md` rejects. Body and label lints stay WARN-only for the same reason.
+
+**Making a check blocking changed what its bugs cost.** The placeholder lint had matched phrases as
+unanchored substrings for its whole life, so `"fix it"` hit inside `"pre-FIX IT-em"` — harmless
+noise while advisory, a false refusal on an irreversible migration the moment it gated a write.
+Fixed at the classification with whole-word matching, never by loosening the budget, and pinned in
+both directions so the correction cannot blunt the check.
+
+**Chunk 03 is the co-ship condition, not polish.** Enforcing "≤72, atomic" alone would have used
+the intervening window to build a large, tidy, **over-split** backlog: a scrub rewriting 400 titles
+item-by-item cannot see that three of them are one defect, and rewriting each to a *tighter*
+symptom title entrenches the split, because a sharper title reads more like a well-formed issue.
+The dedup sweep and the migration scrub now ask *"would a single change close all of these?"* — a
+shared-root-cause test, not the duplicate test they already ran, and the only place it can live
+since no per-title lint can see a fact that exists *between* issues.
+
+Closes **#612** and **#614**.
+
 ## 2026-08-06: the refusal became countable, and the prose stopped teaching the round
 
 <!-- prawduct: chunks=01,02 | type=feat | scope=gate-as-dispatcher -->

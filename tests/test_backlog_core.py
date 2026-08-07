@@ -647,11 +647,21 @@ class TestUpdateItem:
     def test_sec2_rejects_the_whole_request_even_with_a_valid_field(self, fake):
         # A mix of a writable and a protected field is refused — the guard binds
         # only documented fields; it does not silently apply the allowed part.
+        #
+        # The valid field must be a CONFORMING title. With a non-conforming one
+        # this passes for the wrong reason: `validation` would come from the §1
+        # title refusal rather than the mass-assignment guard, so reordering those
+        # two checks would leave the test green while SEC-2 went untested.
         n = _seed_item(fake)
         r = core.update_item(
-            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "ok", "node_id": "x"}
+            fake,
+            id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"title": "core: a conforming title beside a protected field", "node_id": "x"},
         )
         assert r["status"] == "error" and r["error"]["code"] == "validation"
+        assert "node_id" in r["error"]["details"]["rejected"], (
+            "the refusal must be the mass-assignment guard, not the title lint"
+        )
         assert fake.get_issue(OWNER, REPO, n)["title"] == "core: the t item under test"  # nothing was written
 
 

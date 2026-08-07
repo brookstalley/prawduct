@@ -99,6 +99,21 @@ a second door, and it is a direct breach of the title norm's own `Retroactivity:
 Context: authored 2026-08-06 on `fix/backlog-title-enforcement` off `develop` at `486d453`
 (v3.2.6 released; #605, #615 and #616 merged-but-unreleased). Closes **#612** and **#614**.
 
+**ALL THREE CHUNKS COMPLETE — the empty boxes above are correct and must stay empty** (see the
+`views_enabled` note below). Chunk 01 at `1d1881e`, Chunk 02 at `02608c4`, Chunk 03 with the
+Chunk-02 review's blocking fix in the commit after them; `git log --oneline 486d453..HEAD` is the
+enumeration, because a list written here stops growing the moment a commit edits this paragraph
+without adding itself. Suite green — read the count from `prawduct-hook test-status`, not from a
+figure transcribed here.
+
+Reviews: `rev-20260807T035551Z-0e1d5837` (`cumulative`, Chunk 01 — 0 blocking, 6 warning, 2 note,
+all dispositioned) and `rev-20260807T042936Z-2fe91481` (`verify-resolutions`, Chunk 02 — all six
+prior findings verified fixed, **1 blocking**: R-3's `restructure-preview` fix shipped with no
+test). That blocker is closed by two tests in `tests/test_backlog_restructure.py`, red-verified
+against `1d1881e`'s `cli.py`. The same review's observation 1 caught a **fifth** instance of the
+advisory-prose class — `cli.py:111`'s usage text — which this plan's own Chunk 02 surface list had
+enumerated and the chunk still missed; fixed in the same commit rather than deferred.
+
 `active_build_plan` still points at `artifacts/build-plan-critic-review-identity.md` and **must not
 be repointed** until the `develop`→`main` release ships (gitflow, `methodology/planning.md` "Plan
 lifecycle"; the same note is on `build-plan-gate-as-dispatcher.md`, which shipped under it).
