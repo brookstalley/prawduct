@@ -10,6 +10,39 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.2.7
+
+An excellent issue title stopped being a suggestion — and a bad row can no longer end a migration.
+
+The issue standard's four §1 title rules were implemented and enforced nowhere: `file` audited
+*after* creating the issue, `update` never checked a title at all, and the importer never called
+them. That is how a 396-item migration reached GitHub carrying parsed titles up to 2319 characters
+against a 72-character budget — only the handful breaching GitHub's own 256 cap ever announced
+themselves. All three write paths refuse now. The importer validates the **whole corpus before its
+first write**, so a non-conforming source fails in the first second with every offending title
+named and nothing created, and the scrub pre-pass is where you fix them.
+
+On `update` the refusal deliberately gates only a title you are **writing**. Changing an unrelated
+field on an item whose stored title predates the rule still succeeds, with an advisory line saying
+the title was left alone. The narrow scope is the point: an agent, not a human, sits at that write,
+so a broader gate would not have blocked those items — it would have made an agent quietly retitle
+them while archiving them, which is retro-conformance by the back door.
+
+The importer also stopped treating one rejected row as fatal. A per-item validation failure is
+recorded and the run continues; a revoked token or a deleted repo still cuts cleanly, because those
+describe the run rather than the item. Five consecutive rejections stop it, since consecutive means
+the corpus.
+
+Shipping the length rule alone would have made backlogs *worse* — a scrub rewriting titles one at a
+time cannot see that three issues are one defect, and a tighter symptom title entrenches the split.
+So the dedup sweep and the migration scrub now ask the altitude question: **would a single change
+close all of these?**
+
+Also in this release: the Critic asks the coverage gate before spending a review round, and records
+every refusal so the guard can eventually be judged on evidence; a reviewer's partial findings are
+bound to the review that dispatched it, so a concurrent dispatch cannot mix them; and the backlog
+importer gained a real title boundary, ending the run-on titles at their source.
+
 ## v3.2.6
 
 A second Critic dispatch can no longer destroy the review already running — and every state it

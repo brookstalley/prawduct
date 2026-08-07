@@ -70,8 +70,8 @@ two narrower alternatives before planning began.
 
 ## Status
 
-- [ ] Chunk 1: The rendezvous carries review identity
-- [ ] Chunk 2: `critic-restore` — the recovery this binding replaces
+- [x] Chunk 1: The rendezvous carries review identity
+- [x] Chunk 2: `critic-restore` — the recovery this binding replaces
 Context: Built on `fix/critic-review-identity` off `develop` at `5812a02` (v3.2.6 released,
 nothing else in flight). **Both chunks are built.** Chunk 1 landed at `d7e4efd`, reviewed by
 `rev-20260806T011753Z-41c17624` (`cumulative`, 0 blocking); the follow-up commits through `258d12c`

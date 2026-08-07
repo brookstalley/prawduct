@@ -63,8 +63,8 @@ leans on the predicate.
 
 ## Status
 
-- [ ] Chunk 01: The dispatcher asks the gate before it spends a reviewer
-- [ ] Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
+- [x] Chunk 01: The dispatcher asks the gate before it spends a reviewer
+- [x] Chunk 02: The refusal is observable, and the prose stops teaching the treadmill
 Context: **BOTH CHUNKS COMPLETE — the empty boxes above are correct and must stay empty.**
 `views_enabled: true`, so `## Status` is a DERIVED VIEW, not a record: `regen-views` rewrites every
 checkbox from the change-log's shipped set, and this branch's entry is deliberately statusless because

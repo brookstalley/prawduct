@@ -5,7 +5,7 @@
 
 ## 2026-08-07: an excellent issue title stopped being a suggestion
 
-<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement -->
+<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement | release=v3.2.7 | status=shipped -->
 
 **The standard had been aspirational on every path that could enforce it.** `issuefmt._lint_title`
 implemented all four §1 checks and nothing blocked on them: `file` audited *after* the create,
@@ -58,7 +58,7 @@ Closes **#612** and **#614**.
 
 ## 2026-08-06: the refusal became countable, and the prose stopped teaching the round
 
-<!-- prawduct: chunks=01,02 | type=feat | scope=gate-as-dispatcher -->
+<!-- prawduct: chunks=01,02 | type=feat | scope=gate-as-dispatcher | release=v3.2.7 | status=shipped -->
 
 **A control that cannot be counted cannot be retired.** Chunk 01 taught `critic-begin` to refuse a
 review the coverage gate would not require — and it did so silently. The governing norm is
@@ -138,7 +138,7 @@ after a fix commit; dispatch answers in under a second.
 
 ## 2026-08-06: a title boundary for the backlog importer, and what "atomic" actually means
 
-<!-- prawduct: type=fix -->
+<!-- prawduct: type=fix | scope=backlog-import-title-boundary | release=v3.2.7 | status=shipped -->
 
 <!-- Deliberately NO `scope=` tag. A scope-tagged entry is release-pending and
      `regen-views` looks for a matching build-plan file to regenerate a `## Status`
@@ -230,7 +230,7 @@ Deferred scope is filed as #612 / #613 / #614 rather than left in a handoff note
 
 ## 2026-08-05: an archived review can be brought back as itself
 
-<!-- prawduct: chunks=2 | type=fix | scope=critic-review-identity -->
+<!-- prawduct: chunks=2 | type=fix | scope=critic-review-identity | release=v3.2.7 | status=shipped -->
 
 **Binding a partial to its review removed a recovery that worked, and owing a replacement is why
 this shipped in the same plan rather than the backlog.** The documented way to rescue an archived
@@ -273,7 +273,7 @@ names nobody memorised, so "not found" without a listing sends the reader to `ls
 
 ## 2026-08-05: a reviewer's partial now belongs to the review that dispatched it
 
-<!-- prawduct: chunks=1 | type=fix | scope=critic-review-identity -->
+<!-- prawduct: chunks=1 | type=fix | scope=critic-review-identity | release=v3.2.7 | status=shipped -->
 
 **Part 1 made the collision unreachable; this makes it unrepresentable.** v3.2.6 stopped a dispatch
 displacing a live review, and left the class open: a partial declared the commit it reviewed and

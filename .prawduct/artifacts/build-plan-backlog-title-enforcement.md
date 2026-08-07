@@ -92,9 +92,9 @@ a second door, and it is a direct breach of the title norm's own `Retroactivity:
 
 ## Status
 
-- [ ] Chunk 01: The import loop validates before it writes, and one bad row stops being fatal
-- [ ] Chunk 02: `file` and `update` refuse a non-conforming title they are asked to write
-- [ ] Chunk 03: The dedup sweep asks whether one fix would close all of these
+- [x] Chunk 01: The import loop validates before it writes, and one bad row stops being fatal
+- [x] Chunk 02: `file` and `update` refuse a non-conforming title they are asked to write
+- [x] Chunk 03: The dedup sweep asks whether one fix would close all of these
 
 Context: authored 2026-08-06 on `fix/backlog-title-enforcement` off `develop` at `486d453`
 (v3.2.6 released; #605, #615 and #616 merged-but-unreleased). Closes **#612** and **#614**.
