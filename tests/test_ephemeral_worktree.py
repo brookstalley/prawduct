@@ -292,6 +292,27 @@ class TestGuardRefusesWrites:
 
         assert "BLOCKED" in _run(wt, "backlog", op, "--repo", "owner/repo").stderr
 
+    def test_sync_is_not_refused_because_its_write_cannot_strand(self, tmp_path):
+        """The session-start cache warm must survive an agent worktree.
+
+        `pick` reaches `sync.incremental_sync` on every invocation and is
+        classified read-only because the cache lives under `--git-common-dir`;
+        `sync` runs the identical write to the identical path. Blocking one and
+        allowing the other made the guard contradict itself, and the failure was
+        SILENT — `briefing._spawn_cache_warm` spawns `backlog sync` detached with
+        stderr on DEVNULL, so nothing surfaced and the cache simply never warmed
+        in the tree where a dispatched reviewer reads it.
+        """
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        state = primary / ".prawduct" / "project-state.yaml"
+        state.write_text(state.read_text() + "backlog_service_repo: owner/repo\n")
+        _git(primary, "add", "-A")
+        _git(primary, "commit", "-m", "service backend", "--quiet")
+        wt = _agent_worktree(primary)
+
+        assert "BLOCKED" not in _run(wt, "backlog", "sync", "--repo", "owner/repo").stderr
+
     def test_refusal_names_the_consequence_and_the_override(self, tmp_path):
         """A refusal that does not explain itself just moves the confusion."""
         primary = tmp_path / "primary"

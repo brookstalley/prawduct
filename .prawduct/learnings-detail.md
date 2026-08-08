@@ -6,6 +6,39 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite, not its synonym — and it reads as deliberate, so review cannot see it
+
+Six change-log entries on `feat/backlog-cache` carried `release=unreleased | status=shipped`. The
+release flow defines its unreleased set as every entry tagged `scope=` with **no** `release=`, so a
+placeholder naming the absence removes the entry's whole scope from that set. Run at PR time,
+`check-releasability --release v3.2.8` answered *"releasable: no release-pending scopes — nothing to
+classify"*, exit 0 — the runbook's literal "there is nothing to cut. Stop." A finished branch, six
+chunks and five resolved review rounds, was invisible to the release meant to ship it.
+
+This is REL-2N8K (v2.0.14 shipped 8 of 10 entries unflipped) in a better disguise. **A typo looks
+wrong; a placeholder looks deliberate.** `unreleased` is honest, readable and self-describing — you
+read it, agree with what it says, and never think to ask whether the *machine* agrees. That is why
+sixteen reviewers across five rounds walked past it: nothing about it looks like a defect. Three
+consequences rode along unnoticed for the same reason — a literal `## unreleased` section in
+release-notes.md, `releases: ["unreleased"]` in project-state's rollups, and, quietest of all,
+`diagnose_scope_plan_coverage` skipping `status=shipped`, so the no-plan-file integrity check that
+exists *specifically* to guard release-pending scopes never applied to the entries that needed it.
+
+**The test that would have caught it costs one command:** ask the consumer, not the reader. Don't
+inspect the value and judge whether it looks right — run the probe that will act on the field and
+read its answer. The defect is invisible to inspection and obvious to execution.
+
+**Where guards go — pick by blast radius, not by resemblance to a neighbour.** `status=` has had a
+typo-guard since VWS-3K7P because a bad value silently fails to flip one checkbox. `release=` had no
+guard at all, though it fails in the same direction and harder: the entry does not merely skip its
+own checkbox, it takes its whole scope out of the release. The weaker failure was guarded; the
+stronger one was trusted, because the guarded field was the one that *looked* typo-prone.
+`validate_release_values` closes it, joining the global fail-closed set.
+
+One methodology note worth keeping: this was caught by `/prawduct:pr`'s Step 1d — a human reading a
+tag as bookkeeping ceremony between a finished branch and its PR. The step that felt like a checkbox
+was the only thing standing between the branch and a release that would have skipped it silently.
+
 ## A background agent's liveness is answered by ITS OWN completion signal, never by reading the files it is midway through writing — a death verdict from a directory listing is how a re-dispatch clobbers a live review. And the grep that "confirms" it may be matching the failure mode's own DOCUMENTATION, which feels exactly like verification
 
 Observed twice. `critic_consolidate._archive_leftovers` exists because on **2026-08-02** "a premature

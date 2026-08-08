@@ -5400,8 +5400,34 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # this tree — it cannot strand, which is the only question this guard asks.
     # `cache-query` is the strongest read in this set: it opens the store without
     # creating it and issues SELECTs, so unlike `pick` it does not even revalidate.
+    # `sync` is here for the SAME reason as `pick`, and the two must move
+    # together: `pick` reaches `sync.incremental_sync` on every invocation
+    # (`query.py`), which is byte-identical to what `sync` runs (`cli.py`), to the
+    # same `cache_path` under `--git-common-dir`. Classifying one read-only and
+    # the other a write made the guard contradict itself one hunk apart, and it
+    # had a live consequence: `briefing._spawn_cache_warm` fires `backlog sync`
+    # detached with stderr on DEVNULL, so the refusal was silent and the cache
+    # simply never warmed in an agent worktree — while every `unavailable`
+    # message names `sync` as the repair, in the one tree where a dispatched
+    # reviewer meets it.
+    #   NOT fixed here, and deliberately: `refresh-counts` writes
+    # `snapshot.snapshot_path`, which also keys off `--git-common-dir` and
+    # therefore also cannot strand — so it is misclassified by this same test.
+    # It stays a write because a shipped test pins it that way on a stated
+    # rationale ("a read + a local snapshot write"), and rewriting a test to
+    # match new reasoning is a decision to take deliberately, not a side effect
+    # of fixing `sync`. Revisit both together.
     "backlog": frozenset(
-        {"get", "show", "list", "counts", "pick", "verify-migration", "cache-query"}
+        {
+            "get",
+            "show",
+            "list",
+            "counts",
+            "pick",
+            "sync",
+            "verify-migration",
+            "cache-query",
+        }
     ),
 }
 
@@ -5412,7 +5438,6 @@ _EPHEMERAL_READ_ONLY_OPS = {
 # "a read + a local snapshot write".
 _BACKLOG_LOCAL_WRITE_OPS = frozenset({
     "refresh-counts",       # derives from the service, persists the briefing snapshot locally
-    "sync",                 # same shape as refresh-counts: reads the service, writes the local cache
     "export",               # writes its `--to` directory
     "restructure-preview",  # writes its `--out` artifact
     "import",               # migration; stamps local backlog-format state

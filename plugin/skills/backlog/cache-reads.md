@@ -31,8 +31,16 @@ nothing in the session mutated.
 
 **Developing prawduct itself** (the plugin is in the tree, uncommitted): `python3
 plugin/bin/prawduct-hook backlog cache-query …`. Identical contract. Both spellings are named because
-the readers below are granted both, and a reader that silently falls back to a prompt gets neither an
-answer nor an exit 6.
+every reader that runs under a **restricted tool list** is granted both explicitly — the Critic skill,
+the `critic-reviewer` agent, and the janitor — and a reader that silently falls back to a prompt gets
+neither an answer nor an exit 6.
+
+**The PR reviewer holds no such grant, and the difference is worth knowing rather than assuming.**
+`skills/pr/SKILL.md` names neither spelling in `allowed-tools`, and there is no `pr-reviewer` agent
+definition to carry one; R-1/R-2 reach the cache only because that reviewer is dispatched as an
+*unrestricted* agent that already has Bash. Narrow that dispatch the way `critic-reviewer` is
+narrowed and the two checks start meeting a prompt instead of an answer — so add the grant in the
+same edit that narrows it.
 
 | query | answers |
 |---|---|

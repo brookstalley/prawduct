@@ -352,6 +352,13 @@ def items_affecting(
     change touched — because a consumer reporting "this item looks related" has to
     be able to say which path made it think so.
     """
+    # Materialize FIRST: `changed_paths` is walked three times (here, then
+    # `encode.affected_matches` and `list(...)` inside `query`). A generator would
+    # exhaust on this line and leave the rest reading empty — `keys` correct,
+    # every `matched` empty, `changed_paths: []`, and `status: ok`. That is a
+    # confident wrong answer, which is the exact failure this module exists to
+    # avoid; no caller passes an iterator today, and this keeps it that way.
+    changed_paths = list(changed_paths)
     keys = sorted({key for path in changed_paths for key in encode.path_ancestors(path)})
 
     def query(conn: sqlite3.Connection) -> dict:

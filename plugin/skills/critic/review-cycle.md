@@ -354,7 +354,7 @@ For each open item, check whether this session's changes resolve it — directly
 intersection this walk used to infer by reading every body. For each resolved item, emit a **NOTE**: "Backlog item appears resolved: [item text]. Verify and archive it now, on this branch — `/prawduct:backlog update <id> status=shipped closed-by=<scope>` — so it ships in this PR." Do not change status yourself — the framework never infers status; the builder makes the explicit call.
 
 **Backlog hygiene checks (C-B1–C-B4 — all NOTE-level, never BLOCKING)** — four soft signals (`/prawduct:backlog` is the fix path for each), each with the yield it is kept for:
-- **C-B1 — missing metadata:** a new item in the diff with no metadata bar → NOTE the structured format. *Yield: items unfindable by `list`/`pick`.*
+- **C-B1 — missing metadata:** an item `created-since` the interval's base with no metadata bar → NOTE the structured format. Post-cutover a new item is an Issue, never in the diff. *Yield: items unfindable by `list`/`pick`.*
 - **C-B2 — no dedup evidence:** a new item whose `area:` already has ≥3 items (`by-area`) → NOTE "check [the existing IDs] for overlap (`/prawduct:backlog dedup`)." *Yield: duplicate filings.*
 - **C-B3 — missing hygiene step:** the diff touches an area with open items no chunk updated → NOTE "open items in area X — assess and update status." *Yield: work shipped beside an item nobody closed.*
 - **C-B4 — dangling ID:** a cited id `resolve` reports `resolved: false` for → NOTE (typo or forward reference). *Yield: citations pointing at nothing.*

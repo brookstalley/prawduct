@@ -87,7 +87,7 @@ LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4807,
     "skills/critic/review-protocol.md": 3612,
     "skills/critic/goals-1-3.md": 1998,
-    "skills/critic/review-cycle.md": 9578,
+    "skills/critic/review-cycle.md": 9592,
     "skills/critic/framework-checks.md": 1116,
 }
 
@@ -1376,6 +1376,15 @@ class TestReviewCycle:
         # asks, and the NOTE it emits when the store cannot answer. The addition
         # that did land is the per-check yield line the proportionality norm
         # requires of a re-added control. Net -18.
+        #
+        # +14 (2026-08-07): C-B1's trigger was WRONG, not merely terse -- it read
+        # "a new item in the diff", and post-cutover a new item is an Issue that
+        # never appears in a diff, so the check could not fire on the backend the
+        # walk was restored for. `created-since` was already built and listed in
+        # the walk's query set with nothing reaching it. Paid for by stating the
+        # reason in one clause rather than the paragraph the first draft carried:
+        # a correction to an instruction that cannot fire is not spending the
+        # ceiling, but the explanation of it would have been.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
