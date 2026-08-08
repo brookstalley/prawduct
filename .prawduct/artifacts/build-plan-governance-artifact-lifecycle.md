@@ -161,7 +161,7 @@ Chunk 05 starts.
 
 - [x] Chunk 01: Rehome the survivors — two named modules, nothing deleted yet
 - [x] Chunk 02: One reading — retire the flag, the command, and the dual progress path
-- [ ] Chunk 03: Trim the tag schema, the doc restatements, and the two norm decisions
+- [x] Chunk 03: Trim the tag schema, the doc restatements, and the two norm decisions
 - [ ] Chunk 04: Archival — completion frontmatter, five deletion sites, two terminal states
 - [ ] Chunk 05: Doctor repair, the archive backfill, and the guards that keep it converged
 Context: Plan written 2026-08-08 on `feature/governance-artifact-lifecycle` (off `develop`),
@@ -256,8 +256,37 @@ Chunk 03, which is why this plan ships as one PR.
 Chunk 05's doctor repair removes them, and the plan names this repo as that repair's verification
 subject — hand-editing them now would delete the subject.
 
-Next: Chunk 03. Its enumeration is confirmed complete (above). It owes TWO learnings rewrites, not
-one, and must not re-locate them by line number.
+**Chunk 03 shipped and its review is closed.** `chunks=` and `status=` are out of the tag schema and
+out of every document that taught it; `check-releasability` reads `scope=` and `release=` and nothing
+else. Both norm decisions are recorded rather than doc-synced: GD4 retires the
+`regen-views-is-advice` ruling on both norms it touched and promotes its category-level sentence onto
+`architecture.md`, so a future view writer needs no new ruling; BP7 narrows the ephemeral-ref firewall
+onto ids that *mutate*, which is why the sibling count rule turned out to be the same rule. The
+checkbox default landed in both digests. All three Chunk 02 carry-ins are discharged — R-16 in the
+build-plan template where an author meets it, R-9's four fixtures, and R-22 decided (HOIST, executing
+in Chunk 04).
+
+`rev-20260808T182148Z-46964b12` (`cumulative`, 3 reviewers) returned 1 blocking / 4 warning / 15
+note; the blocker and seven others were fixed at `b2c86d48`, all 20 findings are dispositioned, and
+`rev-20260808T184452Z-a04d85ab` (`verify-resolutions`) returned **0/0/0**.
+
+**The blocker is the lesson of this chunk, and it was a class of miss no sweep would have caught.**
+`docs/principles.md` — the parent statement CLAUDE.md cites and every `final` review reads — still
+taught the deletion premise and `chunks=` while three of its own children had just been narrowed. It
+was in no chunk's enumeration. **The pattern: when you re-derive a rule, find the statement it is
+derived FROM**, because the enumeration you inherited lists the places the rule is *applied*, not the
+place it is *stated*. Two of the three reviewers found it independently.
+
+Two enumeration misses in one chunk, both found by running rather than reading: `methodology/planning.md`
+(inside a directory Chunk 02 recorded as "independently confirmed complete") and `docs/principles.md`
+above. **The interim cost Chunk 02 flagged is discharged** — `documentation/release-process.md` no
+longer instructs an operator to run a retired command and read exit codes that do not exist.
+
+Next: Chunk 04. It now carries THREE code items, two of which the plan requires in ONE commit (the
+tripwire's regex narrowing and DV7's missing wiring — arming a control whose first firing is a known
+false positive is the ordering that makes things worse). Its BP6 deletion list is **two sites
+shorter** than written; both were absorbed by Chunk 03's BP7 re-derivation. Check the token budgets
+BEFORE writing: `building.md` has 2 tokens of headroom and the full digest ~15 characters (#630).
 
 ## Scaffolding
 
@@ -524,13 +553,25 @@ only gate that reads tags.
   - Completion frontmatter carrying: terminal state (**completed** or **superseded/abandoned** — BP10's
     two states), date, the release that carried it where the product versions, an explicit
     no-longer-maintained statement, and for the superseded case what replaced it or why it stopped.
-  - **All five deletion surfaces** (BP6), because naming one would leave the behaviour in force in
-    four: `plugin/skills/pr/SKILL.md` (merge flow archives instead of deleting; the gitflow-vs-trunk
-    branch still decides *when*, not *whether*), `plugin/skills/janitor/SKILL.md` (its
-    delete-the-plan cleanup step), `plugin/lib/briefing.py` (**two** nudges that tell the operator to
-    delete the plan every session), `plugin/methodology/building.md` (the self-containment rule's
-    premise that plans "are deleted when work ships"), `plugin/skills/critic/review-protocol.md` (the
-    WARNING resting on that premise, re-derived per BP7).
+  - **The deletion surfaces** (BP6), because fixing one leaves the behaviour in force in the rest.
+    **THREE remain — the list is two shorter than when it was written**, and the two that went were
+    removed by Chunk 03's BP7 re-derivation rather than by this chunk: `plugin/methodology/building.md`
+    (the "deleted when work ships" premise) and `plugin/skills/critic/review-protocol.md` (the WARNING
+    resting on it) are already done — `grep -rniE 'deleted when (the )?work ships|plan is deleted'
+    plugin/` comes back empty. Do not go looking for them. Still open, and all three genuinely
+    instruct deletion rather than merely assuming it: `plugin/skills/pr/SKILL.md` (merge flow archives
+    instead of deleting; the gitflow-vs-trunk branch still decides *when*, not *whether*),
+    `plugin/skills/janitor/SKILL.md` (its delete-the-plan cleanup step), `plugin/lib/briefing.py`
+    (**two** nudges telling the operator to delete the plan every session).
+    **A live interim contradiction until this lands:** `docs/principles.md` now says a completed plan
+    is archived while those three still say delete. Nothing reaches a consumer inconsistent because
+    the branch ships as one PR — but that is the reason it must, not a reason to relax.
+  - **Cosmetic, free on any commit this chunk makes:** `plugin/lib/change_log.py`'s docstring says
+    "21 repos'" — a count in a durable docstring, which is the exact shape Chunk 03 re-derived
+    Principle 13 to prohibit. It is illustrative, not load-bearing (the argument survives at 22), so
+    it was NOT fixed in Chunk 03: `change_log.py` is judgeable, and a two-word docstring edit after a
+    clean `verify-resolutions` buys a whole review round for nothing. Make it relational here, where
+    the file is being opened anyway.
   - `plugin/templates/build-plan.md` gains the completion-frontmatter shape.
   - **A false positive DV7's tripwire produced on this repo, minutes after it shipped.**
     `_CHUNK_COMMIT_RE` is `Chunk\s+(\d+)`, which matches a chunk id anywhere in a commit subject —
