@@ -17,10 +17,10 @@ Actions bot). Everything else is GitHub's problem, deliberately.
 | Defend against | How |
 |---|---|
 | Leaking a token (logs, cache, export, error text) | §4 — structured errors + extended scrub |
-| **Content-borne secrets** (a pasted `.env`/log in an issue body → cache + export) | §3/§5 — cache reclassified sensitive; gitignore-enforced-by-doctor |
+| **Content-borne secrets** (a pasted `.env`/log in an issue body → cache + export) | §3/§5 — cache reclassified sensitive; **uncommittable by location** (inside `.git`), superseding the doctor gitignore check (W1) |
 | A hostile *upstream*/*anonymous* submission (spam, poisoned item, forged `source`) | §5 untrusted-until-triaged (permission-enforced for non-collaborators) + §6 |
 | **Actions untrusted-trigger escalation** (a stranger's PR/comment → bot-privileged write) | §1b — no write under untrusted-triggerable events; bot scope is the ceiling |
-| **Cross-access-boundary cache read** (broad fetch → narrow reader) | §3/F4 — cache scoped to the fetching identity; cross-repo revalidate-on-read |
+| **Cross-access-boundary cache read** (broad fetch → narrow reader) | §3/F4 — **vacuous as built** (one repo per store, W1); the fetching-identity scoping + cross-repo revalidate-on-read are what a widening would owe |
 | A human UI edit corrupting encoded state | Data Model §4 CC5 reconciliation (integrity, not adversary) |
 | Acting as the wrong identity (git≠gh, cloud proxy, Actions bot) | §1 validate-early + attribute off the API identity |
 | **Not defended:** GitHub compromised; a trusted repo-write collaborator acting maliciously; nation-state; the owner's laptop compromise | GitHub's model + repo-access trust is the boundary (PV1) |
@@ -116,11 +116,24 @@ exposes a CLI/MCP surface (AG1/AG6), so the OWASP API design failures apply, han
   (`item.body`, `item_fts`, `comment.body`) — and a bug tracker routinely holds pasted logs, stack
   traces, and `.env` fragments containing secrets. So the cache is **as sensitive as its most-sensitive
   stored body**, and unlike GitHub it has **no access control at rest**. Therefore: it must never be
-  committed (**gitignore is *not* enforcement** — an `add -f` or a differing global ignore can commit
-  it, so `/prawduct:doctor` verifies the cache path is actually ignored), and export (G5/MG2) carries
-  the same sensitivity as its source repo.
-- **Fetch-time vs read-time authorization (F4).** The cache is one `git-common-dir`-keyed store that can
-  hold items from **multiple repos/owners** (`id = owner/repo#number`). Access is checked by the
+  committed, and export (G5/MG2) carries the same sensitivity as its source repo.
+  **[W1 DISPOSITION — the gitignore obligation is retired, not merely satisfied.]** This bullet
+  previously argued that *gitignore is not enforcement* (an `add -f` or a differing global ignore can
+  commit the file) and therefore that `/prawduct:doctor` must verify the cache path is actually
+  ignored. W1 removed the premise rather than meeting it: the store lives at
+  `<git-common-dir>/prawduct/backlog-cache.sqlite3`, **inside `.git`**, so there is no ignore contract
+  to get wrong and `add -f` cannot reach it either. The doctor check has nothing left to catch and is
+  not owed — building one would be a control with no yield. The sensitivity classification above is
+  unchanged; only its enforcement mechanism moved from a check to the location.
+- **Fetch-time vs read-time authorization (F4).** **[W1 DISPOSITION — the exposure is made vacuous,
+  and the mitigations below are what a *widening* would owe.]** As built, the store holds items from
+  exactly the one repo named in `backlog_service_repo`, so there is no cross-owner content in it to be
+  read back by a narrower identity. That is a deliberate narrowing recorded at `cache.py`'s
+  "One repo per store" docstring, and widening it is a **design change, never a config flag** —
+  whoever widens it inherits every requirement in this bullet, which is why the bullet stays here in
+  full rather than being deleted as answered. The analysis, stated for that case: a
+  `git-common-dir`-keyed store that can
+  hold items from **multiple repos/owners** (`id = owner/repo#number`) has access checked by the
   **fetching** identity at fetch time, not the **reading** identity at read time — so a broad-identity
   fetch (a Q4 fan-out) could later be read by a **narrower** identity in the same clone (a second agent,
   a differently-scoped cloud `proxy-injected` token, or after access to one repo is revoked). Rule:
@@ -198,7 +211,9 @@ shipped/committed; scrubbed like any credential, §4); installation tokens are s
 - No bespoke authentication, authorization, RBAC, or session system — GitHub is the identity provider.
 - No defense against a trusted repo-write collaborator acting maliciously, or against GitHub itself.
 - No encryption-at-rest beyond what GitHub/the OS provide — but the local cache is **content-sensitive**
-  (§3/F5), so it is gitignore-verified, not left to assumption.
+  (§3/F5), so it is **uncommittable by location** — it lives inside `.git` rather than beside the
+  working tree, which is a structural guarantee rather than the gitignore verification an earlier
+  draft of §3/F5 called for (W1 disposition, recorded there).
 
 ## 9. Traceability
 PV1→§2; PV2→§1 (no shared secret) / §2 (BOLA) / §3 (cache boundary, F4); PV3→§6; PV4→§6; O5/D8→§1/§1b;

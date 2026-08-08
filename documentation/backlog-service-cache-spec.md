@@ -27,8 +27,14 @@ interim state, not a defect. The owner decision of 2026-07-19 was that every dor
 served by **one persisted format** rather than each minting a bespoke projection and migrating
 off it later. This document specifies that format.
 
-The enumeration and count of dormant readers has one home: `DORMANT_CHECKS` in
-`plugin/lib/backlog_probes.py`. Do not restate the list elsewhere.
+The enumeration and count of dormant readers had one home while they were dormant —
+`DORMANT_CHECKS` in `plugin/lib/backlog_probes.py`, which shrank as each reader landed. **Both it
+and the advisory it fed are gone**, removed with the last restoration (W1 Chunk 06): a list with no
+members is not a shorter list, and each restored reader now reports an unreadable store at the point
+of use. §2 below remains the record of which consumers this work restored, which one still waits
+(#529), and which stood down. Note that §2.1's "janitor checks 6 and 7 are retired, not restored"
+was **narrowed in the build**: they are scoped to the markdown backend, where their subject still
+exists, rather than removed — the retirement argument holds only once Issues is system of record.
 
 ## 2. Requirements — what the consumers actually query
 
@@ -141,8 +147,9 @@ the ten restored consumers bind to prawduct semantics and never learn what GitHu
 - **`working-branch`** *(new)* — replaces the "claimed-by" concept. If populated, someone is
   working the item.
   - Chosen because **staleness becomes observable rather than stored**: the branch's last commit
-    is the activity signal, so no claim timestamp and no expiry policy are needed. Merge
-    self-resolves the claim, and it gives record-keeping at merge and close for free.
+    is the activity signal, so no claim timestamp and no expiry policy are needed. A merge makes
+    the marker inert rather than clearing it — the item leaves ready-work on its status — which is
+    what gives record-keeping at merge and close for free.
   - Provider-neutral by substrate — branches are git, which every backend shares, and
     `architecture.md`'s local-first norm already names the git object database as coordination
     substrate.
@@ -183,6 +190,18 @@ The machinery already exists — `id_aliases`, the `id:PFX` alias label, and the
 self-heal in `lib/backlog/core.py` — built for the markdown→Issues cutover. It needs pointing at
 provider ids rather than legacy PFX ids.
 
+**As built (W1 Chunk 04): the alias *table* is the cache's `item_alias`, and labels stay PFX-only.**
+The asymmetry is deliberate rather than a partial job. A label is the *live* path's index — what
+lets `core.resolve_ref` find an item by alias with one search against the provider — and a
+hand-minted `PFX` has no other coordinates, so without a label it is unfindable. A **provider**
+alias does have coordinates: it is a real `owner/repo#number` that `item_alias` resolves without
+asking the provider anything. Minting labels for it would add a write path, a self-heal obligation
+and a 50-character label budget to buy a second index over a set that is already indexed. So the
+grammar for both spellings lives in `lib/backlog/ids.py` (`provider_alias`, `parse_provider_alias`,
+`is_alias_token`) and the resolution — live id, then alias, then redirect, in a documented order
+that is reported rather than guessed — lives in `lib/backlog/cachequery.py`. Rule 3 holds where it
+matters: a stored citation resolves through the table, never by being parsed as live coordinates.
+
 ## 5. Cache semantics
 
 - **A cache, never truth.** `data-model.md` § Direction: *derived views are disposable and never
@@ -206,19 +225,57 @@ provider ids rather than legacy PFX ids.
 - **That same test is the provider-adequacy test.** If the cache rebuilds completely from a given
   backend, that backend's mapping is complete. One invariant proves both properties; no separate
   portability suite is needed.
+  - **Its reach is exactly the columns the cache holds, and W1 gave up one on purpose.** `tags` has
+    no cache column (Chunk 04 — no consumer query reads it, so the no-dead-fields rule took it), so
+    a backend unable to represent tags would pass the invariant. That is the accepted cost of not
+    carrying a dead field, and it is small on this particular field: `tags` → labels is the mapping
+    every candidate provider satisfies most trivially, and the live `--tag` filter exercises it end
+    to end. The zero-cache-only-fields half above is untouched — a field the cache does not store
+    cannot become a cache-only one.
 
 ## 6. Sync
 
 - **Server-side `updated_at` watermark.** Fetch only items updated since the watermark and
-  upsert. GitHub's REST issues endpoint takes `since`; JQL has the equivalent. *Verify the exact
-  semantics at design time rather than from recall.*
+  upsert. GitHub's REST issues endpoint takes `since`; JQL has the equivalent.
+  **GitHub's `since` semantics, verified live against the backing repo (2026-08-07), not
+  recalled** — the four answers this design rests on:
+  1. **`since` filters on `updated_at`, not `created_at`.** In a probe window, 9 of 32 returned
+     items had been *created* before the window and none had `updated_at` before it.
+  2. **It is inclusive** (`updated_at >= since`): `since` set to an item's exact `updated_at`
+     returns that item; one second later does not. So a re-issued query always re-reads the
+     boundary item — the overlap margin below is belt-and-braces, not the only guard.
+  3. **`since` and `state` are independent AND filters.** Same window: 24 open + 8 closed = 32
+     with `state=all`. **A close is therefore only visible with `state=all`** — the sync query
+     must not use the `state=open` default, or the bullet below is false and closed items keep
+     a stale open row forever. This is the single most load-bearing fact in this section.
+  4. **The list endpoint supports `ETag`/`If-None-Match`, and a 304 costs zero rate-limit
+     points.** Measured from each response's own `X-RateLimit-Used` header, **with a positive
+     control**: three unconditional 200s stepped it 134 → 135 → 136, and three conditional
+     requests then held it at 136. Read the header, not the `rate_limit` endpoint — polling
+     that reported `used: 0` for *both* arms of this experiment, which looks like a confirming
+     result and is actually a dead instrument. The validator is **query-specific** —
+     `(state, since, per_page, page)` each change it.
 - **Timestamps come from server values, never the local clock.** Overlap the watermark window by
   a margin and make upserts idempotent, so an item updated at the boundary is re-read rather than
   missed.
 - **The watermark lives with the cache**, uncommitted. Its absence means full sync, which makes
   rebuild the safe default rather than a special case.
-- **No scheduled deletion sweep.** `since` catches closes, and closed ≠ deleted; only hard
-  deletion and transfer-out are invisible, and both are rare. Owner decision — accepted risk.
+- **Two different validators, and conflating them is a defect.** The list ETag above validates
+  *the query*; `item.etag` (Data Model §6) validates *one item's endpoint*, and they are not
+  interchangeable — verified live: a list ETag replayed against `GET /issues/{n}` returns 200,
+  while that item's own ETag returns 304, and the list response body carries no per-item
+  validator (only `node_id`, excluded as a dead read). **Sync therefore cannot populate
+  `item.etag` from a list fetch and must not try.** Sync's validator belongs with the cursor,
+  which is the thing whose identity the query has; `item.etag` is written by the decision-path
+  read that actually issues a single-item request, and stays NULL until one does.
+- **The no-op sync is free, and that is what the cursor-scoped ETag buys.** When a sync returns
+  nothing new the cursor does not advance, so the next sync re-issues a *byte-identical* query,
+  matches the stored validator, and gets a 304 at zero rate cost. Once items do come back the
+  cursor advances, the query changes, and the next request is an unconditional 200 — the 304
+  path is the steady state, not the general case.
+- **No scheduled deletion sweep.** `since` catches closes — *given `state=all` above* — and
+  closed ≠ deleted; only hard deletion and transfer-out are invisible, and both are rare. Owner
+  decision — accepted risk.
 - **A full-scan rebuild path still exists** for first build, schema change, and lost or corrupt
   cache. It is a rebuild path, not a deletion sweep.
 - **W1 discharges #230.** `pick`'s ~12.4s full scan at ~6× the NFR floor is explicitly W1-gated;
@@ -282,4 +339,6 @@ dependency of §3 rather than of the restoration work.
   (recommendation: the latter; `pick` stays advisory, which leaves the pick-window race
   unsolved but visible as two branches on one item).
 - Whether janitor checks 6 and 7 are retired by this work or by a separate proportionality sweep.
-- The exact `since` semantics on each provider — a design-time verification, not a recall.
+- The exact `since` semantics on **non-GitHub** providers — a design-time verification, not a
+  recall. GitHub's are now closed: verified live 2026-08-07 and written into §6, including the
+  `state=all` requirement that the no-deletion-sweep decision turns out to rest on.

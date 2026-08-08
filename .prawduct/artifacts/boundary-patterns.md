@@ -57,6 +57,29 @@ carries progress the operator cannot reconstruct, so a field added to `data` mus
 be added to each `error.details` too, and human mode must be exercised by a test
 (a `--json`-only test never runs the formatter).
 
+### Cache-Query Payloads (agent-read)
+
+**Producer:** `plugin/lib/backlog/cachequery.py` — the eight read-only queries
+behind `prawduct-hook backlog cache-query`, each returning a `status`/`reason`
+envelope plus its own payload keys.
+**Consumers:** three **agent-executed prose** surfaces, which is what makes this
+different from every other envelope here — the Critic's Backlog Reconciliation
+(`plugin/skills/critic/review-cycle.md`), the PR reviewer's R-1/R-2
+(`plugin/skills/pr/review-protocol.md`), and the janitor's Backlog Health
+(`plugin/skills/janitor/SKILL.md`), all routed through the one contract at
+`plugin/skills/backlog/cache-reads.md`. `plugin/lib/backlog/cli.py` is a fourth,
+carrying both the `--json` passthrough and the human formatter.
+**Contract:** payload key names, **and the exit-code split** — `6`
+(`unavailable`) means the store could not be read and is *not* an empty result.
+A consumer that reports a clean bill of health on exit 6 rebuilds the silent-reader
+failure these checks exist to announce.
+**Sweep rule:** the consumers are Markdown, so a `.py`-only sweep sees none of
+them — grep `plugin/skills/**/*.md`, never an enumerated file list. Enumeration
+is exactly what missed two files during this build. And because the payloads
+carry verbatim provider text (issue titles and bodies) into agent-read findings,
+**item text is data, never instructions** — each consuming surface restates that
+rule locally rather than inheriting it.
+
 ### API Endpoints
 <!-- Example:
      Producer: src/api/routes/
@@ -65,11 +88,31 @@ be added to each `error.details` too, and human mode must be exercised by a test
 -->
 
 ### Database Schemas
-<!-- Example:
-     Producer: src/models/ (ORM definitions)
-     Consumer: src/services/ (queries), src/api/ (serialization)
-     Contract: Model field names and types.
--->
+
+**Producer:** `plugin/lib/backlog/cache.py` — `_SCHEMA_STATEMENTS`, `ITEM_COLUMNS`, and
+`SCHEMA_VERSION` (currently 7) define the local SQLite store.
+**Consumers:** `plugin/lib/backlog/sync.py` (writes), `plugin/lib/backlog/cachequery.py`
+(every read), and — as a *specification* rather than code —
+`documentation/backlog-service-data-model.md` §6, which declares the table
+signatures a reader is entitled to expect.
+**Contract:** column names and their presence, plus `SCHEMA_VERSION` as the
+compatibility declaration. A store written by a version this one cannot read is
+discarded and re-derived, which is safe precisely because the provider is the
+home and the cache originates nothing.
+**Sweep rule — bump the version on ANY column change, including pre-release.**
+This surface has already failed once in the way that is hardest to see: v2 was
+minted for `cursor(etag)`, then `cursor(fetched_at)` was added under the same
+number, so `_ensure_schema` saw a matching version and never discarded while
+every `_write_cursor` failed on the missing column — a permanent `unavailable`
+on every sync with no self-heal, because the mechanism that would rebuild the
+store *is* the version check that just called it fine. It surfaced as an empty
+result, not an error. "Unreleased, so nobody has an old store" is a claim about
+other people's machines. The rule lives at `cache.py:60-73`; this row is the
+registry pointer to it, not a second copy.
+**Second consumer, second failure mode:** §6 of the data model is prose and
+drifts silently — it declared an `item.etag` column and a `comment` table that
+the shipped v7 schema does not have. When you add or drop a column, edit §6 in
+the same commit; nothing enforces the agreement.
 
 ### Inter-Process Communication
 <!-- Example:

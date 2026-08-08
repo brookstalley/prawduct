@@ -3489,6 +3489,9 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
     global_errors: list[str] = []
     # Unrecognized status= (typo) — the entry would silently never flip.
     global_errors.extend(views.validate_status_values(parsed_entries))
+    # A release= that isn't a version — the entry counts as already released, so
+    # its scope drops out of the release-pending set and never ships.
+    global_errors.extend(views.validate_release_values(parsed_entries))
     # Conflicting scalar values across tag lines — first-wins may be wrong.
     global_errors.extend(views.validate_tag_conflicts(parsed_entries))
 
@@ -5391,7 +5394,41 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # necessary for a local write — `export` and `restructure-preview` take
     # none and write to caller-supplied `--to`/`--out` paths, which is why they
     # sit in `_BACKLOG_LOCAL_WRITE_OPS` below alongside the two that do.
-    "backlog": frozenset({"get", "show", "list", "counts", "pick", "verify-migration"}),
+    # `pick` stays read-only although it revalidates the backlog cache on its way
+    # in. The cache lives under `--git-common-dir`, which every worktree of a
+    # clone shares by construction, so that write lands in the clone and not in
+    # this tree — it cannot strand, which is the only question this guard asks.
+    # `cache-query` is the strongest read in this set: it opens the store without
+    # creating it and issues SELECTs, so unlike `pick` it does not even revalidate.
+    # `sync` is here for the SAME reason as `pick`, and the two must move
+    # together: `pick` reaches `sync.incremental_sync` on every invocation
+    # (`query.py`), which is byte-identical to what `sync` runs (`cli.py`), to the
+    # same `cache_path` under `--git-common-dir`. Classifying one read-only and
+    # the other a write made the guard contradict itself one hunk apart, and it
+    # had a live consequence: `briefing._spawn_cache_warm` fires `backlog sync`
+    # detached with stderr on DEVNULL, so the refusal was silent and the cache
+    # simply never warmed in an agent worktree — while every `unavailable`
+    # message names `sync` as the repair, in the one tree where a dispatched
+    # reviewer meets it.
+    #   NOT fixed here, and deliberately: `refresh-counts` writes
+    # `snapshot.snapshot_path`, which also keys off `--git-common-dir` and
+    # therefore also cannot strand — so it is misclassified by this same test.
+    # It stays a write because a shipped test pins it that way on a stated
+    # rationale ("a read + a local snapshot write"), and rewriting a test to
+    # match new reasoning is a decision to take deliberately, not a side effect
+    # of fixing `sync`. Revisit both together.
+    "backlog": frozenset(
+        {
+            "get",
+            "show",
+            "list",
+            "counts",
+            "pick",
+            "sync",
+            "verify-migration",
+            "cache-query",
+        }
+    ),
 }
 
 # Backlog ops that write into THIS tree even when the backlog itself lives on a
@@ -5449,8 +5486,7 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
     if read_only_ops is not None:
         op = _first_positional(argv)
         if op in read_only_ops:
-            # `backlog pick --claim` writes a claim; the bare form only reads.
-            return op == "pick" and "--claim" in argv
+            return False
         return True
     return True
 

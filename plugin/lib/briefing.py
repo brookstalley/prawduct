@@ -858,6 +858,11 @@ def _backlog_pending_line(
         # Read the snapshot first, then warm — the warm's outcome decides what the
         # no-snapshot line may honestly claim, so its result is never discarded.
         warmed = _spawn_snapshot_warm(project_dir, scope, popen=popen)
+        # The backlog cache's only trigger, fired beside the counts warm rather
+        # than folded into it: two ops, two stores, and `refresh-counts` deriving a
+        # count is not the sync that fills the item rows the review-time consumers
+        # read. See `_spawn_cache_warm` on why its result is not kept.
+        _spawn_cache_warm(project_dir, scope, popen=popen)
         line = None
         if snap and isinstance(snap.get("counts"), dict):
             by_status = snap["counts"].get("by_status") or {}
@@ -900,12 +905,44 @@ def _spawn_snapshot_warm(project_dir: Path, scope: str, *, popen=None) -> bool:
     """Fire the detached snapshot refresh (D6). Never raises, never waits."""
     from .backlog import snapshot  # noqa: PLC0415 — lazy
 
-    hook = Path(__file__).resolve().parent.parent / "bin" / "prawduct-hook"
-    if not hook.is_file():
+    hook = _hook_argv()
+    if hook is None:
         return False
-    return snapshot.spawn_refresh(
-        [sys.executable, str(hook)], project_dir, scope, popen=popen
-    )
+    return snapshot.spawn_refresh(hook, project_dir, scope, popen=popen)
+
+
+def _spawn_cache_warm(project_dir: Path, scope: str, *, popen=None) -> bool:
+    """Fire the detached backlog-cache sync. Never raises, never waits.
+
+    The cache's only trigger. It rides the same session-start moment as the counts
+    warm and for the same reason — the readers that consume it (the Critic's
+    reconciliation walk, the PR reviewer's checks, the janitor's Backlog Health)
+    run later in the session, so warming at the start is what makes their visible
+    age small instead of merely honest.
+
+    **Its outcome is deliberately discarded, where the snapshot warm's is not.**
+    The snapshot warm decides what the briefing line may claim, because a
+    "warming" line with no warm behind it is a standing falsehood. This one
+    decides nothing a reader sees: every cache consumer reports the store's own
+    age and reports ``unavailable`` when it cannot read it, so a failed warm is
+    already visible at the point of use rather than needing a briefing line to
+    pre-announce it. Adding one would be a second home for the same fact, and the
+    worse-sited of the two — session start cannot know whether anything will ask
+    the cache a question this session."""
+    from .backlog import sync  # noqa: PLC0415 — lazy; pre-cutover repos never pay it
+
+    hook = _hook_argv()
+    if hook is None:
+        return False
+    return sync.spawn_sync(hook, project_dir, scope, popen=popen)
+
+
+def _hook_argv() -> list[str] | None:
+    """The argv prefix that reaches ``prawduct-hook``, or ``None`` if it is not
+    there. One home, because two detached warms resolve the same interpreter and
+    the same script, and a copy is how they would come to disagree about which."""
+    hook = Path(__file__).resolve().parent.parent / "bin" / "prawduct-hook"
+    return [sys.executable, str(hook)] if hook.is_file() else None
 
 
 def _humanize_age(age_seconds) -> str:

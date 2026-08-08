@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -54,15 +55,36 @@ def transport():
     return GhTransport()
 
 
-def _run_cli(capsys, argv, transport, sink):
+@pytest.fixture(scope="module")
+def live_work_tree(tmp_path_factory):
+    """A throwaway git work tree for the store-backed ops.
+
+    ``pick`` reads its candidates from the clone-shared backlog cache and syncs on
+    its way in, so it needs a real work tree — and it must **not** be the
+    developer's own clone, because a sync against the live smoke repo would
+    rebuild that clone's store around a different backlog. Module-scoped so the
+    cache is built once and the later `pick` calls exercise the warm path, which
+    is the one an operator meets.
+    """
+    path = tmp_path_factory.mktemp("live-backlog-store")
+    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    return str(path)
+
+
+def _run_cli(capsys, argv, transport, sink, project_dir="."):
     """Drive the CLI front with ``--json``; return ``(exit_code, envelope)``.
 
     ``--json`` makes the envelope the *sole* stdout content, so ``json.loads`` of
     stdout must never choke. Raw stdout+stderr are appended to ``sink`` so the
     SEC-1 assertion covers the actual bytes a caller would see, not just the
     re-serialized payload.
+
+    ``project_dir`` matters only for the store-backed ops (``pick``, ``sync``,
+    ``refresh-counts``); pass ``live_work_tree`` for those. It was ``None`` for
+    every call until `pick` moved onto the cache, at which point ``Path(None)``
+    raised inside the CLI boundary and came back as a bare ``unavailable``.
     """
-    exit_code = cli.run(None, [*argv, "--json"], transport=transport)
+    exit_code = cli.run(project_dir, [*argv, "--json"], transport=transport)
     captured = capsys.readouterr()
     sink.append(captured.out)
     sink.append(captured.err)
@@ -163,7 +185,7 @@ def test_status_transition_round_trip(transport, capsys):
         assert marker not in blob
 
 
-def test_list_pick_round_trip(transport, capsys):
+def test_list_pick_round_trip(transport, capsys, live_work_tree):
     """A real ``list`` + ``pick`` round-trip through the CLI front (Chunk 03).
 
     file a ``stage: ready`` item → ``list --stage ready`` sees it online
@@ -191,7 +213,10 @@ def test_list_pick_round_trip(transport, capsys):
     assert code == 0, listed
     assert item_id in {i["id"] for i in listed["data"]["items"]}
 
-    code, picked = _run_cli(capsys, ["pick", "--repo", _LIVE_REPO, "--limit", "10"], transport, output_sink)
+    code, picked = _run_cli(
+        capsys, ["pick", "--repo", _LIVE_REPO, "--limit", "10"], transport, output_sink,
+        project_dir=live_work_tree,
+    )
     assert code == 0, picked
     picked_ids = {c["id"] for c in picked["data"]["candidates"]}
     assert item_id in picked_ids  # unassigned, no open blockers → ready work
@@ -314,7 +339,7 @@ def test_merge_round_trip(transport, capsys):
         assert marker not in blob
 
 
-def test_blocked_item_excluded_from_pick(transport, capsys):
+def test_blocked_item_excluded_from_pick(transport, capsys, live_work_tree):
     """The Chunk-05 Done-when-0 live check: the ``blocked_by`` *read* shape ``pick``
     parses is confirmed against live GitHub (Chunk 03 built it against the fake
     only). Link a real blocker → ``pick`` excludes the blocked item; close the
@@ -349,13 +374,19 @@ def test_blocked_item_excluded_from_pick(transport, capsys):
     )
     assert code == 0, linked
 
-    code, picked = _run_cli(capsys, ["pick", "--repo", _LIVE_REPO, "--limit", "50"], transport, output_sink)
+    code, picked = _run_cli(
+        capsys, ["pick", "--repo", _LIVE_REPO, "--limit", "50"], transport, output_sink,
+        project_dir=live_work_tree,
+    )
     assert code == 0
     assert blocked["data"]["id"] not in {c["id"] for c in picked["data"]["candidates"]}
 
     code, _ = _run_cli(capsys, ["status", blocker["data"]["id"], "--to", "shipped"], transport, output_sink)
     assert code == 0
-    code, picked2 = _run_cli(capsys, ["pick", "--repo", _LIVE_REPO, "--limit", "50"], transport, output_sink)
+    code, picked2 = _run_cli(
+        capsys, ["pick", "--repo", _LIVE_REPO, "--limit", "50"], transport, output_sink,
+        project_dir=live_work_tree,
+    )
     assert code == 0
     assert blocked["data"]["id"] in {c["id"] for c in picked2["data"]["candidates"]}
 

@@ -3,6 +3,339 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-07: a placeholder version tag hid a whole branch from the release
+
+<!-- prawduct: type=fix | scope=backlog-cache -->
+
+**Six entries on this branch carried `release=unreleased | status=shipped`, and the release flow
+read that as already shipped.** The unreleased set is every entry tagged `scope=` with *no*
+`release=`, so a placeholder naming the absence removes the entry's whole scope from it. Run against
+the branch at PR time, `check-releasability --release v3.2.8` reported `releasable: no
+release-pending scopes — nothing to classify` — the runbook's explicit "nothing to cut. Stop." Three
+consequences rode along: release-notes.md grew a literal `## unreleased` section above v3.2.7,
+`project-state.yaml` recorded `releases: ["unreleased"]`, and because
+`diagnose_scope_plan_coverage` skips `status=shipped`, the no-plan-file integrity check that exists
+to guard release-pending scopes never applied to them. This is REL-2N8K — v2.0.14 shipping 8 of 10
+entries unflipped — in a better disguise: a typo looks wrong, a placeholder looks deliberate.
+
+**The tags are corrected, and `release=` is now validated rather than trusted.** `status=` has had a
+typo-guard since VWS-3K7P precisely because a bad value silently fails to flip a checkbox; `release=`
+had none, though it fails in the same direction and harder — the entry does not merely skip its own
+checkbox, it takes its scope out of the release entirely. `validate_release_values` requires
+`vMAJOR.MINOR.PATCH` (optional `-suffix`) and joins the global fail-closed set: `regen-views` exits 2
+and writes nothing. Absent stays legal — that IS the release-pending state.
+
+The guard was run against the failure before being trusted: 6 errors on the defective blob
+(`f17dbd5`), 0 on the fixed tree, and 0 across all 62 `release=` tags of real history, which a
+too-strict pattern would have failed closed on. After the correction the probe names `backlog-cache`
+as the one release-pending scope, and the Status checkboxes return to `[ ]` — the documented
+development state, the plan's Context line and git history being the progress record until the
+release flips them.
+
+## 2026-08-07: the last dormant readers come back, and the advisory that announced them retires
+
+<!-- prawduct: chunks=06 | type=feat | scope=backlog-cache -->
+
+**The three prose readers that went dark at the Issues cutover read the backlog again.** The Critic's
+backlog reconciliation walk and its four hygiene checks, the PR reviewer's R-1 and R-2, and the
+janitor's Backlog Health block each lost their "the live backlog is frozen markdown, so skip and
+announce it" branch and gained a cache-backed query. Against the real 453-item backlog the answers
+are ones a reader would act on: the changed-file intersection over this branch's own diff returns the
+tracking item and nothing else, naming the three `affected:` entries that matched — an inference that
+previously required reading every item's text, and the one capability this work adds rather than
+restores.
+
+**The machinery that announced the dormancy is deleted rather than reworded.** `DORMANT_CHECKS` and
+the `backlog-checks-dormant` probe are gone, and the advisory retires through the ordinary reconcile
+path — a probe that stops producing a candidate resolves its own advisory, so no removal step was
+needed. It shrank as each reader landed, which was always the intended shape. Two checks stay dark
+and each now says so where a reader meets it rather than in a session-start nag: the neglected-hygiene
+sweep, because the `promoted` status value has no Issues equivalent for a query to ask for, and
+norm-exception expiry, which waits on a write path rather than a read path. Two others — counting
+unstructured legacy items, and proposing an archive split — are **scoped to the markdown backend**
+rather than retired: post-cutover there is nothing to migrate and closed issues are the archive, but
+on markdown the split proposal is the only surface that makes one, so deleting them would have taken
+a live control from every markdown-backend product to suit a cut-over one.
+
+**Reading the cache needed a door, and the door needed a grant.** Every consumer bound before this
+one was in-process Python; these are agents, so `prawduct-hook backlog cache-query` is new — eight
+read-only queries, no network, no writes. The blocker was the Critic: the walk belongs to the
+sustainability reviewer, whose narrow tool list *is* the no-execution enforcement. It is granted the
+one op, and the sentence in its own prose claiming it could run nothing was corrected in the same
+edit — shipping the grant while leaving that standing would have been a document lying about its own
+enforcement. Two alternatives are recorded in the plan with why each lost; the deciding fact was that
+a dangling-id check resolves ids discovered while reading the diff, which no pre-computed payload can
+enumerate.
+
+**A miss and an unreachable store must never look alike, and that is what the exit code is for.**
+Every query exits 6 with a reason and the command that fixes it when the store cannot be read, and
+each restored surface states that rule in its own words — reporting an empty set instead would have
+rebuilt the silent-reader failure these checks were built to announce, in a new costume. The query
+mechanics themselves live in one file the three surfaces route to, because stating them three times
+is precisely the drift the coherence tripwire exists to catch; routed rather than copied, the
+restored walk came in smaller than the notice it replaced.
+
+**The cache had no trigger until now.** Its only writer reachable from outside a test was a human
+typing the command — while several of the consumers added here are restricted-tool agents that cannot
+run one. It now warms detached at session start beside the counts snapshot, incremental so the steady
+state is a rate-free conditional request. Driven end to end, store age went from 43 minutes to 12
+seconds after one warm.
+
+**A citation spelled `#621` did not resolve, and nearly shipped that way.** The resolver needed a
+repo it could not infer, so bare refs came back as "no such item" — and bare is how they are written:
+this repo's change-log carries 259 of them against 5 qualified. The two checks that read `closes:`
+lines would have matched almost nothing while reporting confidently. Fixed in the query layer rather
+than at the CLI, so the norm probes bound in the previous chunk get it too; it is sound only because
+the store holds exactly one repo by design, and that condition is written where the code depends on
+it.
+
+## 2026-08-07: ready-work comes off the cache, and the claim mechanism retires
+
+<!-- prawduct: chunks=05 | type=feat | scope=backlog-cache -->
+
+**`pick` stopped scanning the backlog.** Its candidate set was a paginated walk of every open issue
+on every call, decoded in full to rank — ~12.4s against ~209 issues, about six times the latency
+floor. It is now one indexed read of the local store behind a revalidating conditional request, and
+the blocker fan-out is the only provider traffic left. Measured against the real 453-item backlog:
+~0.9s at `--limit 1`, ~2.0s at `--limit 3`.
+
+**The blocker predicate deliberately did NOT move, and the store lost the table that tempted it to.**
+A blocker can live in a repo this single-repo cache does not hold, so a cached edge could record only
+that a dependency existed, never whether it is still open. `pick` reads dependencies live,
+permanently — which means a stale store cannot let a blocked item through, because it is never asked.
+The empty `relationship` table that had stood since the first chunk is gone: it could never gain the
+consumer it was shaped for, and an empty table shaped like the answer is what a later builder wires
+the fan-out to.
+
+**Taking an item on the Issues backend is now a pushed branch, not a claim.** `claim`, `unclaim`, the
+staleness TTL, the reap tier in the ranking, the `claimed_at` stamp and `pick --claim` are all retired
+together — three mechanisms answering *is someone on this?* replaced by one that also answers the
+follow-up the TTL was guessing at, *is that work still alive?*, from the branch's own commits. Nothing
+expires and nothing is reaped; a merge makes the marker inert rather than clearing it, since the
+branch that shipped an item is the record of what did. `assignee` returns to native/protected:
+GitHub's UI still assigns, and prawduct stops reading assignment as meaning. Exit code 4 is
+unchanged — it means `conflict`, and `update`'s CAS path still produces it.
+
+**The retirement is scoped to the adapter, and the review is why.** A first pass took `accepted-by:`
+out of the markdown backend too. But the argument for retiring was entirely about the Issues op — a
+release-current surface, `working-branch` shipping in the same release, three coupled mechanisms
+collapsing into one — and none of it holds for a line in a markdown file: `accepted-by:` has no TTL,
+no reap and no assignee coupling, and `working-branch` demands a *pushed* ref and a named repo that a
+local-only repo or a shared-trunk team cannot supply. Removing it would have taken a working control
+from a whole class of products on borrowed reasoning. One field per backend now, each native to its
+substrate, and CC3 in the requirements records the supersession rather than the requirement quietly
+changing meaning.
+
+**`revisit-due` came back for the same reason.** It was retired outright on the argument that
+exception clocks had already migrated to prose on the norm — true of this repo and of no other. For
+every markdown-backend product the probe was live and working, and `docs/norms.md` states the
+two-path split normatively, with the janitor's Norm Health sweep declining dated clocks *because*
+this probe fires them. It keeps its cutover early return: post-cutover it is dark, and unlike its two
+siblings the cache cannot change that — `revisit:` records intent, which no age-based query
+reconstructs, so what it waits on is a *write* path for the field, not a read path. That is also why
+it is not in `DORMANT_CHECKS`, whose advisory promises its members return when the cache lands.
+
+**Two dormant norm probes came back.** `dead-why` and `stalled-transition` resolve their citations
+through the cache now, on both backends and through aliases, so a norm citing a pre-migration `PFX`
+id still finds the issue carrying it. A store that cannot answer raises one shared advisory rather
+than silence — the two probes report the same outage under one id, and it names both repairs rather
+than picking one from the error code, because the deduplication that gives them one id would
+otherwise let registration order decide which repair the operator saw.
+
+**Pointing `dead-why` at real data for the first time since the cutover found a defect in it.** It
+fired three times on this repo's own observability strategy, every hit a `Status: steady-state …
+transitioned when <item> closed` line — the transition's own record, reported as rotting rationale.
+The `Status:` arm now counts only while the status still reads `in-transition`. Dormancy had hidden
+this for the whole period the probe returned `[]`.
+
+**Changes:**
+- `plugin/lib/backlog/query.py` — `pick` sources candidates from `cachequery.ready_items` after a
+  revalidating sync, ranks oldest-first, and surfaces the store's confirmed-at stamp and age in
+  `warnings` on every answer (and the revalidation's failure when it failed). `_claim_eligibility`,
+  the reap tier and the claim clauses in `_why` are gone.
+- `plugin/lib/backlog/cachequery.py` — `ready_items`, the one function here whose consumer the cache
+  spec does not enumerate, because `pick` never went dormant. It reads bodies, unlike the other
+  listings, so an open-but-redirected item is dropped rather than offered as buildable.
+- `plugin/lib/backlog/cache.py` — schema **v6**: `relationship` dropped. `comment` stays, with the
+  trigger written at the table. **Superseded later on this branch — the shipped schema is v7:** the
+  trigger written at that table fired when the query surface settled with no comment-reading
+  consumer, so `comment` went too, and `item.etag` with it (its producer was retired by the same
+  work). The tree's tables are `cursor`, `item`, `item_affected`, `item_alias`, `item_fts`; a pre-v7
+  store reports the mismatch and rebuilds. A reader assembling the release story from this entry
+  alone would state the wrong persisted-format version, which is why the correction lives here
+  rather than only in the entry that made it. A new test pins `SCHEMA_VERSION` to a fingerprint of the schema
+  statements, because mutation testing found the bump had no guard at all: the one earlier case was
+  caught only because a query broke against the stale store, and a change that *removes* something no
+  query reads leaves the old store working and the bump silently optional — which is how a rule with
+  a real incident behind it erodes into a judgement call made freshly each time.
+- `plugin/lib/backlog/core.py`, `cli.py`, `encode.py` — `claim`/`unclaim`, `DEFAULT_CLAIM_TTL_SECONDS`,
+  the CLI ops and flags, and `Block.claimed_at` removed. `claimed_at` keys already written into issue
+  bodies stay readable as unknown block fields forever, and are asserted inert rather than assumed so.
+- `plugin/lib/norm_probes.py` — the two restorations, the issue-ref citation spelling, the narrowed
+  `Status:` arm, and one shared scan skeleton so the backend selection has a single home.
+- `plugin/lib/backlog_probes.py` — the two restored rows leave `DORMANT_CHECKS`; the advisory shrinks
+  rather than being reworded, and `post_cutover`'s docstring now distinguishes the callers that
+  retire on the switch from the two that use it to choose a backend.
+- `documentation/backlog-service-test-specifications.md`, `-nfr.md`, `-requirements.md` — CRASH-6,
+  the `claim_conflict` coverage row, QRY-2's setup, the rate and latency budgets, and CC3/GV1
+  reconciled. The first sweep stopped at the two documents the plan's Done-when named; a retired
+  operation still specified is a second home for a decision that no longer holds, and that rule does
+  not stop at the two documents someone remembered to list.
+- `tests/test_backlog_smoke_live.py`, `tests/spikes/s2_migration.py` — both call `pick` and both are
+  invisible to the default suite (one env-gated, one an uncollected `__main__` script), so both were
+  broken by the new signature with everything green. A new guard binds every spike `pick` call
+  against the live signature.
+- `plugin/skills/backlog/adapter-mode.md` — `accepted-by:` becomes `working-branch:`,
+  `--include-claimed` becomes `--include-working`. `plugin/skills/backlog/SKILL.md` keeps **both**,
+  one per backend, and loses only the claim grants from `allowed-tools`. A
+  grep test now fails if a retired op or flag reappears in the prose: the code and the prose retiring
+  in one commit is what stops a CLI that exits "unknown op" while the skill still says to run it.
+- `documentation/backlog-service-data-model.md`, `backlog-service-api-contract.md` — the Claim entity,
+  the `claim`/`unclaim` row, `claim_conflict`, and the `relationship` table row reconciled to what
+  now exists.
+
+## 2026-08-07: the backlog cache answers its consumers' questions
+
+<!-- prawduct: chunks=04 | type=feat | scope=backlog-cache -->
+
+**The query surface.** Eight functions covering the consumer union the cache spec enumerates —
+grouping and counting by area, creation-time filtering, text search scoped to an area, two date
+predicates, the changed-file intersection, and id resolution through aliases including dead items.
+Verified against the real 453-item backlog rather than only against fixtures: every query run and
+its answers read, and the intersection matched against this branch's own 529 changed files.
+
+**A latent defect this release would otherwise have shipped.** `sqlite_master` lists an FTS5 virtual
+table *after* its own shadow tables, so the rebuild's drop loop deleted `item_fts_config` and then
+could not construct `item_fts` to drop it. A bare `except … continue` swallowed the failure, the
+next step reported it as "SQLite built without FTS5", and what survived was an index that `has_fts()`
+called present and every query raised on — so text search would have broken permanently at any
+schema bump, including this one.
+
+**The visible age had been over-reporting since sync went incremental.** It answered
+`MIN(item.fetched_at)`, honest while every sync rewrote every row; once only the fetched window is
+restamped it becomes the fetch time of the least-recently-*edited* item and grows without bound while
+syncs succeed. Nothing failed — the number just started lying.
+
+**Changes:**
+- `plugin/lib/backlog/cachequery.py` grows the query union. The two invariants every payload
+  inherits — unavailable is never empty, every payload carries a visible age — are enforced in one
+  place and asserted across the whole surface, so a query added later without going through it fails
+  rather than quietly opting out.
+- Cache **schema v5**. `cursor.fetched_at` → `coverage_confirmed_at`, renamed *and widened*: every
+  successful sync advances it, **including the 304**, which previously returned before touching the
+  store and so left the cheapest and most common successful sync with no trace at all. Row stamps
+  stay as the reader's fallback.
+- **`item.tags` removed.** It shipped in v4 with its justification stated as explicitly *not* a
+  consumer query, and named its own removal trigger: the first release of the query surface that
+  ships no cache-served tag query. This is that release — `list --tag` is served live off the
+  provider's label filter. Re-adding a column to a rebuildable store costs a version bump and a
+  re-fetch, so the usual lock-in argument for keeping a persisted column runs the other way here.
+- **`item_alias(alias, ref, item_id)`** — the alias table the spec's "all resolution goes through
+  the alias table" rule requires, derived from the stored body in the same transaction. `ref` holds
+  a tagged alias's untagged canonical id, because a citation in a change-log is written untagged
+  while the record stores it tagged, and matching across that gap otherwise takes a leading-wildcard
+  `LIKE` no index can serve. No `UNIQUE`: uniqueness is an integrity constraint, and a store that
+  refused to hold a violation could not report it as `alias_collision`.
+- `plugin/lib/backlog/ids.py` gains the provider-alias grammar. The ref half is re-normalized rather
+  than trusted — an alias arrives from issue-body text and its canonical id reaches a REST path, so
+  the question is not *is this well-formed* but *what else could this successfully resolve*.
+- Three seams fixed around the FTS drop: virtual tables drop first, survivors are refused rather
+  than swallowed, and only a genuine `no such module` counts as missing FTS5.
+- One `optimize` + `VACUUM` after a rebuild, best-effort — a `DELETE`-based rebuild leaves its pages
+  and FTS segments behind, and a rebuild is the one moment nobody is waiting on a query.
+- Date predicates compare **instants, not strings**: the provider stamps `...Z` and Python writes
+  `...+00:00`, so one moment has two spellings whose lexicographic order is not chronological.
+
+**Classification:** structural
+
+## 2026-08-07: the backlog cache learns three domain fields
+
+<!-- prawduct: chunks=03 | type=feat | scope=backlog-cache -->
+
+**`affected`, `tags` and `working-branch`** — the one place this work extends the domain model
+rather than consuming it. With `affected` indexed, a reviewer asking "does this change touch any
+open item?" runs a set intersection instead of reading item text and inferring.
+
+**Two of the chunk's own stated deliverables were wrong on mechanism.** "Name all three in
+`_UPDATE_FACETS`" would have written `affected:` labels for a body-block field and made setting a
+second tag remove the first, because that loop is a label *swap*. And the "`affected` index" cannot
+be an index on a column: the intersection runs entry-contains-changed-file, and `WHERE ? LIKE
+affected || '%'` puts the variable on the side no index helps.
+
+**Changes:**
+- `tags` → `tag:` labels, the one multi-valued facet, namespaced like every other prawduct label so
+  it cannot collide with a repo's own. Binding rule stated at the constant: **nothing ever gates on
+  tags** — that is what makes synonym drift harmless rather than corrosive.
+- `affected` and `working_branch` → the `prawduct:` block. `affected` takes repo-relative paths
+  only: prose and globs are refused at the write, because a glob is not a broader match here, it is
+  a literal that matches nothing forever.
+- `working-branch` is `owner/repo@branch` and must be a **pushed** ref, checked through the new
+  `transport.branch_exists`. Endpoint verified live, not recalled. The branch is held to git's
+  `check-ref-format` rules first, because it is interpolated into a REST path and
+  `owner/repo@../../../user` would otherwise resolve some other endpoint and be stored as verified —
+  the check failing open, which is the invisible claim it exists to prevent.
+- The SEC-2 mass-assignment allowlist gains `_UPDATE_MULTI_FACETS` and `_UPDATE_BLOCK_FIELDS`
+  beside `_UPDATE_FACETS` — a deliberate widening, three names, each with its own writer.
+- Cache **schema v4**: `item` gains `affected`/`tags`/`working_branch`, and `item_affected(item_id,
+  path)` + its index is the changed-file intersection, derived from the column in the same
+  transaction exactly as `item_fts` is.
+- Incremental sync now **evicts** an item that leaves prawduct scope. Upsert-only had no way to
+  learn that a stripped item stopped being one, so the row sat in the store as open forever —
+  a stale positive reaching the consumers that walk the open set.
+- `--tags` / `--affected` / `--working-branch` on `update`; `--tag` on `list`. A populated
+  working-branch shows in the default human view, since visibility is that field's only job.
+
+**Classification:** feature
+
+## 2026-08-07: the backlog cache learns to sync incrementally
+
+<!-- prawduct: chunks=02 | type=feat | scope=backlog-cache -->
+
+**The chunk's own verify-api step falsified the chunk's stated mechanism.** The plan said sync
+writes `item.etag`. Sync reads the *list* endpoint, and a list ETag replayed against
+`GET /issues/{n}` returns 200 where that item's own returns 304 — the list body carries no per-item
+validator at all. Storing it would have made the Chunk 05 revalidation miss on every read, spend a
+full request, and look like it was working. The two validators are now separate: `cursor` carries
+the list-query validator, `item.etag` stays NULL until a decision-path read populates it.
+**Superseded later on this branch:** that decision-path read was never built — `pick` revalidates
+through `cursor.etag` instead — so the column had no producer and was dropped in the v7 schema.
+`cursor.etag` is unaffected and remains the live list validator described above.
+
+**Changes:**
+- `cursor(scope, since, etag, fetched_at)`; `apply_incremental` writes rows and watermark in one
+  transaction, verified by a test that cuts exactly at the row write (and by mutation).
+- The watermark is a **provider** timestamp, rewound by a 2-minute overlap. It was the local clock,
+  which the next sync hands back to the provider as `since` — a fast machine would have skipped
+  everything stamped in the gap, silently and permanently.
+- `cachequery._freshness` ages the **rows**, not the cursor. Reading the watermark as an age was a
+  provider timestamp answering a local-clock question; an empty-but-synced scope now ages off the
+  cursor's own stamp, so "empty" and "never synced" stop being the same report.
+- `state="all"` on the sync query: `since` and `state` are independent filters, so the `open`
+  default would drop exactly the closes that the no-deletion-sweep decision depends on `since`
+  catching.
+- A validator is stored only for the window it validates — when the watermark moves, the old one is
+  dropped rather than kept to miss.
+- `prawduct-hook backlog sync [--rebuild]` — the writer's entry point, which three `unavailable`
+  messages already told operators to run.
+- `gh` exits 1 on a 304; `_run_conditional` reads the status line from stdout rather than matching
+  stderr text.
+
+**Classification:** feature
+
+## 2026-08-07: the backlog cache store, and the invariant it rests on
+
+<!-- prawduct: chunks=01 | type=feat | scope=backlog-cache -->
+
+**Changes:** the per-clone SQLite read-through store — schema, `PRAGMA user_version` with
+discard-and-rebuild on any mismatch, WAL plus busy timeout for the concurrent-worktree case, visible
+age on every served payload, and unavailable-is-never-empty on every read path. The load-bearing
+test is rebuild-equivalence: drop the store, rebuild from the provider, compare — a difference means
+a field lives only in the cache, which is both data loss on rebuild and a second home for a fact.
+`assignee` and `reviewed` were dropped from the schema when the claim retirement removed their only
+consumers.
+
+**Classification:** feature
+
 ## 2026-08-07: an excellent issue title stopped being a suggestion
 
 <!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement | release=v3.2.7 | status=shipped -->

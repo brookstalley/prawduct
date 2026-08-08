@@ -246,142 +246,70 @@ class TestMigrationRequiredProbe:
         assert not [c for c in cands if c.type == "backlog-service-migration-required"]
 
 
-class TestChecksDormantProbe:
-    def test_fires_post_cutover(self, tmp_path):
-        out = bp.probe_checks_dormant(
-            ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
-        )
-        assert len(out) == 1
-        assert out[0].type == "backlog-checks-dormant"
-        assert out[0].priority == "info"
-        # The evidence names every dormant reader: someone dismissing this advisory
-        # is choosing to run without those checks and has to be told which.
-        #
-        # Derived from `DORMANT_CHECKS` rather than a hand-written vocabulary. The
-        # old form listed the internal check labels ("Backlog Reconciliation",
-        # "R-1/R-2", "revisit-due"); those were replaced with plain-language names
-        # when `observability-strategy.md` § Direction ruled that emitted text names
-        # no internal id — an operator downstream cannot resolve "R-2". The contract
-        # the assertion enforces is unchanged: every dormant reader is named.
-        assert len(bp.DORMANT_CHECKS) >= 4
-        for _, reader in bp.DORMANT_CHECKS:
-            assert reader in out[0].evidence[0]
+class TestTheDormancyAdvisoryIsRetired:
+    """The `backlog-checks-dormant` advisory and its `DORMANT_CHECKS` roster are
+    gone (W1 Chunk 06), and these tests are what stops them coming back by accident.
 
-    def test_silent_pre_cutover(self, tmp_path):
-        assert bp.probe_checks_dormant(ProjectState({}), _cb(tmp_path)) == []
+    They are the *inverse* of the tests that stood here. Those asserted the
+    dormancy was said out loud, because a reader returning nothing is
+    indistinguishable from a clean bill of health. That risk has not gone away —
+    it moved: each restored reader now reports an unreadable store at the point of
+    use (`skills/backlog/cache-reads.md`), which is a better place to say it than a
+    session-start advisory. What must not happen is the roster emptying while the
+    probe survives, firing an advisory that names nothing.
+    """
 
-    def test_silent_on_empty_service_repo(self, tmp_path):
-        # An empty scalar is not a cutover (post_cutover is truthiness-based), so a
-        # half-written key must not read as "migrated, checks dormant".
-        assert bp.probe_checks_dormant(
-            ProjectState({"backlog_service_repo": ""}), _cb(tmp_path)
-        ) == []
+    def test_the_probe_and_its_roster_are_gone(self):
+        # Both, because either alone is a half-retirement: a surviving probe over an
+        # empty roster fires an advisory naming no checks, and a surviving roster
+        # with no probe is a list nothing reads.
+        assert not hasattr(bp, "probe_checks_dormant")
+        assert not hasattr(bp, "DORMANT_CHECKS")
 
-    def test_fires_independently_of_the_markdown_file(self, tmp_path):
-        # Dormancy is a property of the backend, not of what backlog.md holds. A
-        # cut-over repo whose frozen file still parses as full of open items must
-        # still fire — that file is precisely what the dormant readers misread.
-        _write_backlog(tmp_path, _structured_backlog(3))
-        out = bp.probe_checks_dormant(
-            ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
-        )
-        assert len(out) == 1
-
-    def test_partitions_with_migration_required(self, tmp_path):
-        # GV7 ("you have not migrated") and GV8 ("you have, and these checks are
-        # dormant") are mirrors across the cutover line: exactly one describes any
-        # given repo, never both and never neither.
-        _write_backlog(tmp_path, _structured_backlog(3))
-        pre, post = ProjectState({}), ProjectState({"backlog_service_repo": "acme/widgets"})
-        assert bp.probe_migration_required(pre, _cb(tmp_path))
-        assert bp.probe_checks_dormant(pre, _cb(tmp_path)) == []
-        assert bp.probe_checks_dormant(post, _cb(tmp_path))
-        assert bp.probe_migration_required(post, _cb(tmp_path)) == []
-
-    def test_surfaced_through_registered_roster(self, tmp_path):
+    def test_nothing_registers_to_announce_backlog_dormancy(self, tmp_path):
+        # The durable form of "no advisory promises these checks return". It moved
+        # here from `test_norm_probes.py`, which used to make the claim as an
+        # assertion about `DORMANT_CHECKS` membership and lost its subject when the
+        # roster went.
+        from lib import advisory_store
         bp.register()
-        cands = run_all_probes(
-            ProjectState({"backlog_service_repo": "acme/widgets"}), make_codebase(tmp_path)
-        )
-        fired = [c for c in cands if c.type == "backlog-checks-dormant"]
-        assert fired
-        assert fired[0].feature == "backlog" and fired[0].probe_version == bp.PROBE_VERSION
+        assert not [k for k in advisory_store._REGISTRY if "dormant" in k]
 
-    def test_operator_facing_action_is_consistent_and_id_free(self, tmp_path):
-        # The advisory's two operator-facing strings must not contradict each other:
-        # trigger_summary says the checks ARE dormant, so the action must not read as
-        # though they already work. It also lands in a downstream product's briefing,
-        # where prawduct's internal requirement ids mean nothing.
-        out = bp.probe_checks_dormant(
-            ProjectState({"backlog_service_repo": "acme/widgets"}), _cb(tmp_path)
-        )
-        action = out[0].recommended_action
-        assert "dormant" in out[0].trigger_summary
-        assert "are restored" not in action
-        for internal_id in ("GV8", "W1"):
-            assert internal_id not in action
-        assert "dismiss" in action.lower()
-
-    def test_dormancy_is_said_out_loud_against_this_repo(self):
-        # Repo-coupled tripwire (deliberately NOT hermetic), RE-AIMED 2026-08-01 by
-        # owner ruling when prawduct cut over in v3.2.0 Chunk 06.
+    def test_no_advisory_fires_post_cutover_against_this_repo(self):
+        # Repo-coupled tripwire (deliberately NOT hermetic), inverted from the one
+        # that stood here. This repo is post-cutover, so it is the live case: if any
+        # backlog probe starts nagging on the far side of the switch, this catches
+        # it against real state rather than a fixture.
         #
-        # It used to assert the probe was SILENT here, on the true premise that this
-        # repo had not cut over. That premise expired at the cutover — by design, since
-        # the probe exists to start firing at exactly that switch. The old assertion
-        # also prescribed a remedy that is not available: "restore them against the
-        # read-through cache" is roadmap W1, so the tripwire demanded, at the moment it
-        # fired, work no chunk of this release carries. A test that can only be
-        # satisfied by unbuilt machinery stops being a contract and becomes a standing
-        # red, which is how waivers get trained.
-        #
-        # What is re-aimed is the SIDE of the transition, not the risk. The risk was
-        # always silent degradation, and it still is: post-cutover the dormancy must be
-        # SAID OUT LOUD (GV8 — "retirement is not silence"), because a dormant reader
-        # returning nothing is indistinguishable from a clean bill of health. So this
-        # now fails if the probe goes quiet here, if it stops being dismissible `info`,
-        # or if a dormant check is added to DORMANT_CHECKS without its name reaching
-        # the operator. Restoring the readers is still the real fix; it is tracked, and
-        # when it lands DORMANT_CHECKS shrinks and this test follows it down.
+        # `external-backlog-detected` is the deliberate exception and is excluded by
+        # name: stray TODO.md files are a problem wherever the real backlog lives.
         repo_root = Path(__file__).resolve().parents[1]
         state = load_project_state(repo_root)
         assert bp.post_cutover(state), (
             "this repo is expected to be post-cutover since v3.2.0 Chunk 06; if the "
             "cutover was deliberately reverted, this test is what should tell you."
         )
-
-        fired = bp.probe_checks_dormant(state, Codebase(root=repo_root))
-        assert len(fired) == 1, (
-            "the dormancy must surface as exactly one consolidated advisory — one nag "
-            "per dormant reader trains dismissal, which is what makes the next real "
-            f"signal invisible. Got {len(fired)}."
+        bp.register()
+        fired = [
+            c.type
+            for c in run_all_probes(state, Codebase(root=repo_root))
+            if c.type != "external-backlog-detected"
+        ]
+        assert fired == [], (
+            f"a backlog advisory fired post-cutover: {fired}. Every markdown-premised "
+            "probe retires at this switch and the dormancy advisory is retired "
+            "outright, so anything here is reading frozen history as live state."
         )
-        assert fired[0].priority == "info", (
-            "an accepted, time-boxed interim state is reportable, not actionable — "
-            "escalating it is how a dismissible advisory becomes noise."
-        )
-
-        # Every dormant check reaches the operator by NAME. Derived from the roster on
-        # both sides, so adding a check without surfacing it fails here rather than
-        # going out silently — the exact failure GV8 exists to prevent.
-        evidence = " ".join(fired[0].evidence)
-        for _, name in bp.DORMANT_CHECKS:
-            assert name in evidence, (
-                f"dormant check {name!r} is in DORMANT_CHECKS but never reaches the "
-                "operator's advisory — a check that goes dark unannounced is the "
-                "silent degradation this probe exists to prevent."
-            )
 
 
 class TestRegistration:
-    def test_register_adds_six_probes(self):
+    def test_register_adds_five_probes(self):
         from lib import advisory_store
         bp.register()
         keys = set(advisory_store._REGISTRY)
         assert keys == {
             "backlog:legacy-backlog-format",
             "backlog:backlog-service-migration-required",
-            "backlog:backlog-checks-dormant",
             "backlog:external-backlog-detected",
             "backlog:legacy-section-schema",
             "backlog:backlog-overdue-grooming",

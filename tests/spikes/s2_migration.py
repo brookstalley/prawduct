@@ -191,7 +191,7 @@ def check_resume(transport, owner, repo, source, facts) -> None:
     facts["resume_created_duplicates"] = after - before
 
 
-def check_pick_latency(transport, owner, repo, facts) -> None:
+def check_pick_latency(transport, owner, repo, facts, project_dir=None) -> None:
     """Step 6: time pick's ready-work fan-out (pins the PROBE-LAT floor, NFR §4).
 
     **Read the result carefully — before 2026-07-28 this probe could not detect
@@ -200,17 +200,26 @@ def check_pick_latency(transport, owner, repo, facts) -> None:
     the candidate count here IS ``limit``, and ``pick`` applied ``limit`` only
     *after* fanning out over every eligible issue — so varying 1/3/5 varied
     nothing about the number of blocker reads. The measured flatness came from
-    the constant ``_all_issues`` full-scan and was recorded across four documents
+    the constant ``all_issues`` full-scan and was recorded across four documents
     as evidence of a batched fan-out that was never built.
 
     ``pick`` now bounds the fan-out by ``limit``, so the parameterization is
     meaningful for the first time and the linear-vs-flat reading is finally
-    sound. The full-scan still dominates the absolute number, so read the
-    *slope*, not the magnitude.
+    sound.
+
+    **And the full scan it used to be dominated by is gone.** The candidate set
+    comes from the local store after one conditional revalidation, so what remains
+    on the wire is the blocker fan-out — which means the slope IS the measurement
+    now, and the intercept is a revalidation plus a local read rather than a
+    paginated walk of the whole backlog. The first call against a fresh
+    ``project_dir`` builds the store, so it measures a cold cache; the 3 and 5
+    readings are the warm path an operator meets.
     """
+    store = Path(project_dir or tempfile.mkdtemp(prefix="s2-backlog-store-"))
+    subprocess.run(["git", "init", "-q"], cwd=store, check=True)
     for limit in (1, 3, 5):
         start = time.monotonic()
-        query.pick(transport, owner=owner, repo=repo, limit=limit)
+        query.pick(transport, project_dir=store, owner=owner, repo=repo, limit=limit)
         facts["pick_latency_ms_by_candidates"][limit] = round((time.monotonic() - start) * 1000)
 
 

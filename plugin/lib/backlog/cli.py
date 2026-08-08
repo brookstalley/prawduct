@@ -24,12 +24,13 @@ import sys
 from . import context, core, ids, query
 
 # GitHub-mutating ops — refused under an untrusted-triggered Actions run absent an
-# explicit triggering-actor authorization check (SEC-5). Reads, ``counts``, and
-# ``refresh-counts`` (a read + a local snapshot write) are never withheld —
+# explicit triggering-actor authorization check (SEC-5). Reads, ``counts``,
+# ``refresh-counts`` and ``sync`` (reads plus a local write) are never withheld —
 # read-only reporting under such triggers is fine (Security §1b). ``pick`` is a
-# write only with ``--claim`` (handled in ``_is_write``).
+# read on every path now that it takes nothing: it revalidates the local store and
+# ranks, and mutates nothing on the provider.
 _WRITE_OPS: frozenset[str] = frozenset(
-    {"file", "status", "update", "comment", "claim", "unclaim",
+    {"file", "status", "update", "comment",
      "link", "unlink", "provision", "reconcile-labels", "import", "merge"}
 )
 
@@ -46,8 +47,8 @@ _WRITE_OPS: frozenset[str] = frozenset(
 _ALL_OPS: tuple[str, ...] = (
     "file", "get", "show", "status", "update", "comment", "list", "pick",
     "counts", "verify-migration", "refresh-counts", "reconcile-labels",
-    "claim", "unclaim", "link", "unlink", "provision", "import",
-    "restructure-preview", "export", "merge",
+    "link", "unlink", "provision", "import",
+    "restructure-preview", "export", "merge", "sync", "cache-query",
 )
 
 # code → exit class. A code absent here (should not happen) falls back to 1.
@@ -57,8 +58,11 @@ _EXIT_CLASS: dict[str, int] = {
     "alias_collision": 2,
     "unsupported": 2,
     "not_found": 3,
+    # 4 is `conflict`, and `update`'s optimistic-CAS path is what produces it. A
+    # `claim_conflict` value produced it too until the claim op was retired; the
+    # CODE keeps its meaning, which is what the additive-first contract protects —
+    # retiring one producer of a code is not repurposing the code.
     "conflict": 4,
-    "claim_conflict": 4,
     "auth": 5,
     "unavailable": 6,
     "rate_limited": 6,
@@ -71,19 +75,33 @@ _HELP = (
     "  get      <id> [--repo owner/repo]\n"
     "  status   <id> --to submitted|open|in-progress|shipped|dropped [--repo owner/repo]\n"
     "  update   <id> [--title T] [--body B] [--stage S] [--kind K] [--area A] "
-    "[--effort E] [--impact I] [--source SRC] [--if-updated-at TS] [--repo owner/repo]\n"
+    "[--effort E] [--impact I] [--source SRC] [--tags a,b] [--affected p1,p2] "
+    "[--working-branch owner/repo@branch] [--if-updated-at TS] [--repo owner/repo]\n"
+    "           --tags sets the WHOLE tag set (absent ones are stripped; --tags '' clears)\n"
+    "           --affected takes repo-relative paths only, no prose (a directory "
+    "covers everything under it)\n"
+    "           --working-branch must name a PUSHED branch, repo-qualified\n"
     "  comment  <id> --body B [--repo owner/repo]\n"
     "  list     --repo owner/repo [--status S] [--stage S] [--kind K] [--area A] "
-    "[--effort E] [--impact I] [--source SRC] [--assignee A|none|*] "
+    "[--effort E] [--impact I] [--source SRC] [--tag T] [--assignee A|none|*] "
     "[--state open|closed|all] [--sort created|updated] [--direction asc|desc] "
     "[--per-page N] [--page N] [--untriaged]\n"
     "           --untriaged inverts the scope filter: shows only issues with no "
     "prawduct labels or block\n"
-    "  pick     --repo owner/repo [--limit N] [--claim] [--claim-ttl SECONDS]\n"
+    "  pick     --repo owner/repo [--limit N] [--include-working]\n"
+    "           ready work, ranked; items naming a `working-branch` are excluded "
+    "unless --include-working\n"
     "  counts   --repo owner/repo\n"
     "  refresh-counts   --repo owner/repo   (derive + persist the briefing snapshot)\n"
-    "  claim    <id> [--repo owner/repo] [--claim-ttl SECONDS]\n"
-    "  unclaim  <id> [--repo owner/repo]\n"
+    "  sync     --repo owner/repo [--rebuild]   (populate the local cache; "
+    "incremental unless --rebuild)\n"
+    "  cache-query <query> [args] --repo owner/repo   (read the local cache; "
+    "never touches the network)\n"
+    "           open | unstaged | by-area [--all] | stale [--older-than N] |\n"
+    "           search <text> [--area A] | affecting <path>... [--all] |\n"
+    "           created-since <ISO> | resolve <id>\n"
+    "           exit 6 means the cache could not be read — NOT that nothing matched\n"
+
     "  link     <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  unlink   <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
     "  provision --repo owner/repo\n"
@@ -156,19 +174,19 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         elif op == "list":
             result = _run_list(rest, transport)
         elif op == "pick":
-            result = _run_pick(rest, transport)
+            result = _run_pick(rest, transport, project_dir)
         elif op == "counts":
             result = _run_counts(rest, transport)
         elif op == "verify-migration":
             result = _run_verify_migration(rest, transport)
         elif op == "refresh-counts":
             result = _run_refresh_counts(rest, transport, project_dir)
+        elif op == "sync":
+            result = _run_sync(rest, transport, project_dir)
+        elif op == "cache-query":
+            result = _run_cache_query(rest, project_dir)
         elif op == "reconcile-labels":
             result = _run_reconcile_labels(rest, transport)
-        elif op == "claim":
-            result = _run_claim(rest, transport)
-        elif op == "unclaim":
-            result = _run_unclaim(rest, transport)
         elif op in ("link", "unlink"):
             result = _run_link(op, rest, transport)
         elif op == "provision":
@@ -297,15 +315,22 @@ def _run_update(rest: list[str], transport):
         valued={
             "repo", "title", "body", "stage", "kind", "area",
             "effort", "impact", "source", "if-updated-at",
+            "tags", "affected", "working-branch",
         },
     )
     if err:
         return core.error("validation", err)
     if not positionals:
         return core.error("validation", "update requires an <id>")
+    # `--tags` is plural because it sets the whole set rather than adding one —
+    # the `--tag` on `list` filters by a single tag, which is a different verb on
+    # purpose and is named for it.
     fields = {
         key: flags[key]
-        for key in ("title", "body", "stage", "kind", "area", "effort", "impact", "source")
+        for key in (
+            "title", "body", "stage", "kind", "area", "effort", "impact", "source",
+            "tags", "affected", "working-branch",
+        )
         if key in flags
     }
     default_owner, default_repo, err = _repo_defaults(flags)
@@ -349,6 +374,7 @@ def _run_list(rest: list[str], transport):
         valued={
             "repo", "status", "stage", "kind", "area", "effort", "impact",
             "source", "assignee", "state", "sort", "direction", "per-page", "page",
+            "tag",
         },
         boolean={"untriaged"},
     )
@@ -362,7 +388,7 @@ def _run_list(rest: list[str], transport):
         key: flags[key]
         for key in (
             "status", "stage", "kind", "area", "effort", "impact", "source",
-            "assignee", "state",
+            "assignee", "state", "tag",
         )
         if key in flags
     }
@@ -398,9 +424,9 @@ def _run_list(rest: list[str], transport):
     )
 
 
-def _run_pick(rest: list[str], transport):
+def _run_pick(rest: list[str], transport, project_dir):
     flags, _positionals, err = _parse_flags(
-        rest, valued={"repo", "limit", "claim-ttl"}, boolean={"claim"}
+        rest, valued={"repo", "limit"}, boolean={"include-working"}
     )
     if err:
         return core.error("validation", err)
@@ -411,18 +437,16 @@ def _run_pick(rest: list[str], transport):
     limit, err = _int_flag(flags, "limit", 1)
     if err:
         return core.error("validation", err)
-    ttl, err = _int_flag(flags, "claim-ttl", core.DEFAULT_CLAIM_TTL_SECONDS)
-    if err:
-        return core.error("validation", err)
     transport = _resolve_transport(transport)
+    from pathlib import Path  # noqa: PLC0415 — only the store-backed ops need a path
+
     return query.pick(
         transport,
+        project_dir=Path(project_dir),
         owner=owner,
         repo=repo,
         limit=limit,
-        claim="claim" in flags,
-        claim_ttl_seconds=ttl,
-        default_owner=owner,
+        include_working="include-working" in flags,
     )
 
 
@@ -490,6 +514,179 @@ def _run_refresh_counts(rest: list[str], transport, project_dir):
     )
 
 
+def _run_sync(rest: list[str], transport, project_dir):
+    """Populate the backlog cache — the writer's entry point.
+
+    Incremental by default: it fetches only what the provider reports changed
+    since the stored watermark, and takes a rate-free 304 when nothing has.
+    ``--rebuild`` forces the full scan, which is the answer to a corrupt store or
+    a schema bump; the incremental path already falls back to it on its own when
+    no watermark exists.
+
+    This op is what three ``unavailable`` messages in ``cache.py`` and
+    ``cachequery.py`` already tell the operator to run — a cache with no writer
+    reachable from the CLI is a cache that only ever reports being empty."""
+    flags, _positionals, err = _parse_flags(rest, valued={"repo"}, boolean={"rebuild"})
+    if err:
+        return core.error("validation", err)
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "sync requires --repo owner/repo")
+    owner, repo = parsed
+    transport = _resolve_transport(transport)
+    from pathlib import Path  # noqa: PLC0415 — only this op needs a path
+
+    from . import sync as sync_mod  # noqa: PLC0415 — only this op drives the store
+
+    run = sync_mod.full_rebuild if flags.get("rebuild") else sync_mod.incremental_sync
+    return run(transport, project_dir=Path(project_dir), owner=owner, repo=repo)
+
+
+#: The default staleness horizon for `cache-query stale`, in days — carried over
+#: from the janitor's Backlog Health check, which has said ">90d" since it was
+#: written against the markdown backend.
+#:
+#: An earlier version of this comment claimed the number "moves here rather than
+#: being retyped in the skill, so the prose and the query cannot disagree" — which
+#: was false as written: `skills/janitor/SKILL.md` and `skills/backlog/cache-reads.md`
+#: both name a default, and this constant cannot stop them. The two now say "the
+#: query's default" instead of a figure, so there is one number; the claim is
+#: dropped rather than restated, because a comment asserting a property its own
+#: tree contradicts is worse than no comment.
+_STALE_DEFAULT_DAYS = 90
+
+#: Each ``cache-query`` sub-query, mapped to the ``cachequery`` function that
+#: answers it and the flags it accepts. ``ready`` is deliberately absent: its only
+#: consumer is ``pick``, which is already an op here, so exposing it would give one
+#: query two operator-facing doors.
+#:
+#: The queries are named for what a reader asks, not for the Python function —
+#: `stale`, not `stale_items` — because the operator typing this has no register
+#: to resolve module names against.
+_CACHE_QUERIES: tuple[str, ...] = (
+    "open", "created-since", "by-area", "affecting", "search",
+    "stale", "unstaged", "resolve",
+)
+
+
+#: Per-query argument contracts, so the dispatcher can refuse what a query does
+#: not take instead of dropping it. Kept as data beside `_CACHE_QUERIES` rather
+#: than as per-branch guards: a query added to the tuple without an entry here
+#: raises a `KeyError` at dispatch and fails its test, where a missing guard would
+#: simply have gone quiet — which is the failure mode being fixed.
+#:
+#: Arity is the count of positionals, or `None` for "one or more".
+_CACHE_QUERY_ARITY: dict[str, int | None] = {
+    "open": 0, "unstaged": 0, "by-area": 0, "stale": 0,
+    "created-since": 1, "resolve": 1,
+    "search": None, "affecting": None,
+}
+
+#: Valued/boolean flags each query accepts, beyond the universal `--repo`.
+_CACHE_QUERY_FLAGS: dict[str, frozenset[str]] = {
+    "open": frozenset(),
+    "unstaged": frozenset(),
+    "by-area": frozenset({"all"}),
+    "affecting": frozenset({"all"}),
+    "stale": frozenset({"older-than"}),
+    "search": frozenset({"area"}),
+    "created-since": frozenset(),
+    "resolve": frozenset(),
+}
+
+
+def _run_cache_query(rest: list[str], project_dir):
+    """Read the local backlog cache — the **agent-facing** door onto ``cachequery``.
+
+    Every consumer bound before this one was in-process Python (the norm probes,
+    ``pick``), so the query surface needed no CLI. The consumers this serves are
+    agents — the Critic's backlog-reconciliation walk, the PR reviewer's
+    resolved-items and closes/status checks, the janitor's Backlog Health block —
+    and an agent reaches a Python module only by running something.
+
+    **This op reads and does nothing else**: no provider call, no store write, no
+    session state touched. That is what makes it grantable to the ``critic-reviewer``
+    agent type, whose narrow tool list is the Critic's no-execution enforcement — a
+    reviewer holding this can ask the backlog a question and still cannot run a
+    test, reach the network, or mutate the session it is reviewing.
+
+    ``unavailable`` surfaces as exit 6, which is the whole contract for these
+    consumers: a reader that cannot reach the store must be able to say so rather
+    than report an empty set, and an exit code says it without the caller parsing
+    prose.
+    """
+    flags, positionals, err = _parse_flags(
+        rest,
+        valued={"repo", "area", "older-than"},
+        boolean={"all"},
+    )
+    if err:
+        return core.error("validation", err)
+    if not positionals:
+        return core.error(
+            "validation",
+            f"cache-query requires a query ({'|'.join(_CACHE_QUERIES)})",
+        )
+    name, args = positionals[0], positionals[1:]
+    if name not in _CACHE_QUERIES:
+        return core.error(
+            "validation",
+            f"unknown query {name!r} (expected {'|'.join(_CACHE_QUERIES)})",
+        )
+    parsed = ids.parse_repo(flags.get("repo", ""))
+    if parsed is None:
+        return core.error("validation", "cache-query requires --repo owner/repo")
+    scope = f"{parsed[0]}/{parsed[1]}"
+
+    from datetime import datetime, timezone  # noqa: PLC0415 — only this op needs a clock
+    from pathlib import Path  # noqa: PLC0415 — only this op needs a path
+
+    from . import cachequery  # noqa: PLC0415 — lazy; no other op reads the store
+
+    # **Everything a query does not take is refused, never ignored.** The rule was
+    # applied to `--all` alone at first and left the rest silent, which put two
+    # opposite policies in one dispatcher: `cache-query stale 60` returned the
+    # 90-day set as `status: ok` — the caller meant `--older-than 60` — and extra
+    # positionals were dropped without a word. A wrong answer that looks right is
+    # the failure this whole surface exists to prevent, so the strict half wins.
+    accepted = _CACHE_QUERY_FLAGS[name]
+    for flag in sorted(set(flags) - accepted - {"repo"}):
+        return core.error("validation", f"--{flag} does not apply to {name!r}")
+    expected = _CACHE_QUERY_ARITY[name]
+    if expected is not None and len(args) != expected:
+        return core.error(
+            "validation",
+            f"{name} takes exactly {expected} argument(s), got {len(args)}",
+        )
+    if expected is None and not args:
+        return core.error("validation", f"{name} requires at least one argument")
+
+    common = {"project_dir": Path(project_dir), "scope": scope,
+              "now": datetime.now(timezone.utc)}
+    open_only = not flags.get("all")
+
+    if name == "open":
+        return cachequery.open_items(**common)
+    if name == "unstaged":
+        return cachequery.unstaged_items(**common)
+    if name == "by-area":
+        return cachequery.by_area(**common, open_only=open_only)
+    if name == "stale":
+        days, int_err = _int_flag(flags, "older-than", _STALE_DEFAULT_DAYS)
+        if int_err:
+            return core.error("validation", int_err)
+        return cachequery.stale_items(**common, older_than_days=days)
+    if name == "affecting":
+        return cachequery.items_affecting(**common, changed_paths=args, open_only=open_only)
+    if name == "created-since":
+        return cachequery.items_created_since(**common, since=args[0])
+    if name == "search":
+        return cachequery.search(**common, text=" ".join(args), area=flags.get("area"))
+    # `resolve` — the only remaining member, and the exhaustiveness is guaranteed
+    # by the membership check above rather than by a fallback that could go stale.
+    return cachequery.resolve(**common, id_raw=args[0], default_owner=parsed[0])
+
+
 def _run_reconcile_labels(rest: list[str], transport):
     flags, _positionals, err = _parse_flags(rest, valued={"repo"})
     if err:
@@ -500,46 +697,6 @@ def _run_reconcile_labels(rest: list[str], transport):
     owner, repo = parsed
     transport = _resolve_transport(transport)
     return core.reconcile_labels(transport, owner=owner, repo=repo)
-
-
-def _run_claim(rest: list[str], transport):
-    flags, positionals, err = _parse_flags(rest, valued={"repo", "claim-ttl"})
-    if err:
-        return core.error("validation", err)
-    if not positionals:
-        return core.error("validation", "claim requires an <id>")
-    default_owner, default_repo, err = _repo_defaults(flags)
-    if err:
-        return core.error("validation", err)
-    ttl, err = _int_flag(flags, "claim-ttl", core.DEFAULT_CLAIM_TTL_SECONDS)
-    if err:
-        return core.error("validation", err)
-    transport = _resolve_transport(transport)
-    return core.claim(
-        transport,
-        id_raw=positionals[0],
-        default_owner=default_owner,
-        default_repo=default_repo,
-        claim_ttl_seconds=ttl,
-    )
-
-
-def _run_unclaim(rest: list[str], transport):
-    flags, positionals, err = _parse_flags(rest, valued={"repo"})
-    if err:
-        return core.error("validation", err)
-    if not positionals:
-        return core.error("validation", "unclaim requires an <id>")
-    default_owner, default_repo, err = _repo_defaults(flags)
-    if err:
-        return core.error("validation", err)
-    transport = _resolve_transport(transport)
-    return core.unclaim(
-        transport,
-        id_raw=positionals[0],
-        default_owner=default_owner,
-        default_repo=default_repo,
-    )
 
 
 def _run_link(op: str, rest: list[str], transport):
@@ -801,10 +958,13 @@ def _read_source(path_str: str, flag: str) -> tuple[str | None, str | None]:
 
 def _is_write(op: str, rest: list[str]) -> bool:
     """Whether ``op`` performs a GitHub mutation (subject to the SEC-5 withhold).
-    ``pick`` mutates only with ``--claim``; everything else is fixed by op name."""
-    if op in _WRITE_OPS:
-        return True
-    return op == "pick" and "--claim" in rest
+
+    Fixed by op name. It once had a flag-sensitive arm — ``pick --claim`` was the
+    one read that could mutate — and it went with the claim op; the signature
+    keeps ``rest`` because the withhold decision is the kind that grows an arm
+    again the moment an op takes a mutating flag, and re-threading the argument at
+    that point is how the check gets skipped instead."""
+    return op in _WRITE_OPS
 
 
 def _resolve_transport(transport):
@@ -834,6 +994,59 @@ def _repo_defaults(
         return None, None, "--repo must be owner/repo"
     return parsed[0], parsed, None
 
+
+
+def _print_cache_query(data: dict) -> None:
+    """Human-mode rendering for `cache-query`, freshness line included.
+
+    **The age is printed on every shape, not only the ones with rows.** It is the
+    invariant the whole store is built to carry, and `cache-reads.md` tells readers
+    to name a conspicuously old store beside their finding — which they cannot do
+    if the default output drops it. An empty result with a visible age is a
+    different fact from an empty result of unknown vintage.
+    """
+    if "groups" in data:  # by-area
+        for group in data.get("groups", []):
+            print(f"{group.get('area')}  ({group.get('count')} item(s))")
+            for item in group.get("items", []):
+                _print_item_line(item)
+        print(f"  {len(data.get('groups', []))} area(s)")
+    elif "resolved" in data:  # resolve — a miss is an ANSWER, so it prints as one
+        if not data.get("resolved"):
+            # `reason` distinguishes "no such item" (None) from "that is not an id"
+            # (a message). Dropping it sends a reader to the wrong repair.
+            why = data.get("reason") or "no item in the cache claims that id"
+            print(f"{data.get('requested')}: unresolved — {why}")
+        else:
+            _print_item_line(data)
+            bits = [f"status={data.get('status')}", f"dead={data.get('dead')}"]
+            if data.get("via"):
+                bits.append(f"via={data['via']}")
+            if data.get("redirected_from"):
+                bits.append(f"redirected-from={data['redirected_from']}")
+            print("  " + "  ".join(bits))
+    else:  # every row-returning query
+        items = data.get("items", [])
+        for item in items:
+            _print_item_line(item)
+        print(f"  {len(items)} item(s)")
+    print(f"  cache: {data.get('scope')}, confirmed {data.get('synced_at')} "
+          f"({_humanize_seconds(data.get('age_seconds'))})")
+
+
+def _humanize_seconds(age) -> str:
+    """A compact age for the freshness line. Mirrors `briefing._humanize_age`'s
+    vocabulary so one store does not read as two different ages depending on which
+    surface reported it."""
+    if not isinstance(age, (int, float)) or age < 0:
+        return "age unknown"
+    if age < 60:
+        return "just now"
+    if age < 3600:
+        return f"{int(age // 60)}m old"
+    if age < 86400:
+        return f"{int(age // 3600)}h old"
+    return f"{int(age // 86400)}d old"
 
 def _parse_flags(tokens: list[str], *, valued: set[str], boolean: set[str] | None = None):
     """Parse ``--key value`` / ``--key=value`` / ``--flag`` tokens and positionals.
@@ -1076,6 +1289,23 @@ def _print_human_ok(data) -> None:
             f"{data.get('lint_findings')} lint finding(s), "
             f"{data.get('collisions')} collision(s)"
         )
+    elif "synced_at" in data and "age_seconds" in data:
+        # A `cache-query` result. Matched on the pair of freshness keys
+        # every `cachequery` payload carries and no other op produces — the shapes
+        # underneath overlap several branches below (`items`, `id`), so keying on
+        # those would route a cache read into a formatter built for a live one.
+        # (Two branches sit above this one; neither can collide — an `edge`+`target`
+        # link result and a `preview` result share no key with a cache payload.)
+        #
+        # This branch exists because `boundary-patterns.md` records "Result
+        # Envelopes" as a contract surface with TWO consumers — the `--json`
+        # passthrough and these formatters — and its recurring defect is that a
+        # `--json`-only test never runs the second. It did so again here: before
+        # this branch, `unstaged` printed every item and then `0 item(s)` (the
+        # `items` branch reads a `count` key no cache payload carries), a `resolve`
+        # miss printed a blank line and `status=None`, and `by-area` fell through
+        # to a raw JSON dump.
+        _print_cache_query(data)
     elif "total_source" in data:
         # An import result (checked before `items`: an export result also carries an
         # `items` key, so the migration results are matched first on their own keys).
@@ -1178,6 +1408,13 @@ def _print_human_ok(data) -> None:
             bits.append(f"stage={data['stage']}")
         if data.get("assignee"):
             bits.append(f"assignee={data['assignee']}")
+        if data.get("working_branch"):
+            # The someone-is-on-it signal, and visibility is its ONLY job — a populated
+            # `working-branch` that the default human view omits fails at exactly
+            # the thing the field exists for. `tags` and `affected` are not here
+            # for the same reason `area`/`effort`/`impact` are not: they are read
+            # by filters and by the changed-file intersection, not off this line.
+            bits.append(f"working-branch={data['working_branch']}")
         print("  " + "  ".join(bits))
         if data.get("superseded_by"):
             # A merged-away item: the human reader needs the breadcrumb to the

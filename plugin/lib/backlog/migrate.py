@@ -18,8 +18,16 @@ INV-1), all **return-value** enveloped (project preference):
 
 2. **`export`** (``export_backlog``) — a cheap, full-fidelity **dump** to plain
    files: the body block **plus the native graph** (dependencies, sub-issues,
-   timeline, assignees). Not a lossless one-liner re-import into a non-GitHub
-   backend (out of scope, Data Model §8) — a *backup/inspection* dump (MG2/G5).
+   timeline, assignees). A *backup/inspection* dump (MG2/G5), not a lossless
+   one-liner re-import into a second provider.
+
+   The scope of that caveat has narrowed and the old wording overstated it. Data
+   Model §8 put re-import into a non-GitHub **backend** out of scope, and it still
+   is; what the read-through cache added is a provider-neutral **domain schema**
+   stated in prawduct's vocabulary rather than the provider's (Cache Spec §§3, 8),
+   which is the piece a future adapter would bind to. So the honest statement is
+   that no second adapter exists and none is planned here — not that the model
+   forecloses one.
 
 3. **`merge`** (``merge``) — the minimal fold A→B the migration scrub needs: a
    **redirect-before-close** so a crash leaves the source open-but-redirected (a
@@ -397,8 +405,9 @@ class _PacingTransport:
     ``__getattr__`` requires that the wrapped methods be absent here. That is also
     what makes the metering **non-fragile**: a call is metered by classifying its
     *name* (``get_``/``list_`` = read, ``create_``/``update_``/``add_``/``remove_`` =
-    write), and any transport method that fits neither prefix raises rather than
-    silently escaping the budget — closing the "only paced call" gap (BKL-6X5D b).
+    write, plus the exact-named predicate reads in ``_READ_METHODS``), and any
+    transport method that fits none of those raises rather than silently escaping
+    the budget — closing the "only paced call" gap (BKL-6X5D b).
 
     Because the migration passes *this* wrapper into ``core.set_status`` (the shared
     close/reconcile path), that path's reads and the close write are metered too,
@@ -406,13 +415,19 @@ class _PacingTransport:
 
     _READ_PREFIXES = ("get_", "list_")
     _WRITE_PREFIXES = ("create_", "update_", "add_", "remove_")
+    #: Reads whose name is a predicate rather than a ``get_``/``list_`` verb, so
+    #: the prefix rule cannot see them. Named exactly rather than by widening the
+    #: prefixes, because a rule like "``*_exists`` is a read" would classify by
+    #: accident of naming — and the guard test below is what keeps this set in
+    #: step, having refused the first such method the moment it appeared.
+    _READ_METHODS = frozenset({"branch_exists"})
 
     def __init__(self, transport: Transport, pacer: "Pacer") -> None:
         self._transport = transport
         self._pacer = pacer
 
     def _cost(self, name: str) -> int:
-        if name.startswith(self._READ_PREFIXES):
+        if name.startswith(self._READ_PREFIXES) or name in self._READ_METHODS:
             return _REST_READ_POINTS
         if name.startswith(self._WRITE_PREFIXES):
             return _REST_WRITE_POINTS

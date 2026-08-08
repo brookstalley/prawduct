@@ -15,12 +15,21 @@ re-ported here. ``backlog-service-migration-required`` is its structured-format
 sibling (GV7): once a backlog *is* structured, this one nudges it onward onto the
 GitHub Issues service, so a repo that upgraded past prawduct's own cutover is told
 to migrate rather than silently losing its briefing count when the shared markdown
-read path eventually retires (MG3). ``backlog-checks-dormant`` is GV7's mirror on
-the far side of cutover: where GV7 says "you have not migrated yet", it says "you
-have migrated, and these checks have no Issues-backend path yet" — so the dormancy
-is stated rather than read as a clean bill of health (GV8). The other three
+read path eventually retires (MG3). The other three
 (``external-backlog-detected``, ``legacy-section-schema``,
 ``backlog-overdue-grooming``) were the v0.2-deferred roster.
+
+A sixth probe stood here — ``backlog-checks-dormant``, which named every backlog
+reader with no Issues-backend path so the dormancy was stated rather than read as
+a clean bill of health. It is **gone because there is nothing left for it to
+name**: the readers it enumerated now query the backlog cache
+(``skills/backlog/cache-reads.md``), and a reader that cannot reach the store says
+so at the point of use, which is a better place to say it than a session-start
+advisory. The one check still dark post-cutover — the janitor's neglected-hygiene
+sweep — waits on the ``promoted`` status value having no Issues equivalent, not on
+anything this probe could announce, and it states that in its own block. Removal
+rather than rewording was always the intended end state: the advisory shrank as
+each reader landed.
 
 Registration is wired at the runtime composition root (``bin/prawduct-hook``
 ``cmd_clear``), not at ``advisory_store`` import time, so the infrastructure stays
@@ -110,15 +119,24 @@ def post_cutover(state: ProjectState) -> bool:
     frozen history and any nudge derived from it would be stale by construction.
     Shared across probe families (this module's **four** markdown probes —
     ``legacy-backlog-format``, ``backlog-service-migration-required``,
-    ``legacy-section-schema``, ``backlog-overdue-grooming`` — AND the
-    ``norm_probes`` trio that reads item liveness from the same file: one
-    predicate, not per-module copies). ``external-backlog-detected`` keeps
-    firing: stray TODO.md files are a problem regardless of where the real
+    ``legacy-section-schema``, ``backlog-overdue-grooming`` — AND
+    ``norm_probes.probe_revisit_due``, which reads exception clocks from the same
+    file: one predicate, not per-module copies). ``external-backlog-detected``
+    keeps firing: stray TODO.md files are a problem regardless of where the real
     backlog lives.
 
-    Note the partition: those seven consumers *retire* on this switch, while
-    :func:`probe_checks_dormant` is the one consumer that **fires** on it — it
-    exists to say out loud what the others' silence would otherwise hide."""
+    **Two former callers now use it to CHOOSE a backend rather than to retire.**
+    ``norm_probes``' ``dead-why`` and ``stalled-transition`` resolve their
+    citations against the markdown file before the cutover and against the backlog
+    cache after it, so for them this predicate selects a reader instead of
+    silencing one. Anyone adding a guard here should decide which of the two
+    shapes they are writing.
+
+    **No caller *fires* on this switch any more.** One did — the dormancy advisory
+    existed to say out loud what the retiring probes' silence would otherwise hide
+    — and it went when the readers it named came back on the backlog cache. So the
+    predicate now has exactly two shapes and no third: retire, or choose a
+    backend."""
     return bool(state.get("backlog_service_repo"))
 
 
@@ -290,82 +308,8 @@ def probe_migration_required(state: ProjectState, codebase: Codebase):
     ]
 
 
-#: The dormant readers this advisory enumerates, each paired with the surface that
-#: owns it. **One source for the list and the count** — the two used to be an
-#: independently-maintained string and a hardcoded "7", so a reader going dormant
-#: (or coming back) could leave the advisory confidently naming a stale set. That
-#: is the same silent-under-report this whole advisory exists to prevent, one layer
-#: down. ``tests/test_cutover_prose_coherence.py`` pins every surface that emits a
-#: dormancy NOTE to an entry here, so adding a reader without listing it fails.
-#:
-#: Named in plain language, not by internal check label: the operator reading this
-#: in a downstream briefing has no register to resolve ``C-B1`` or ``R-2`` against
-#: (``observability-strategy.md`` § Direction).
-#: Each entry pairs the surfaces that state the dormancy with the check's
-#: operator-facing name (a tuple, because a check may be stated on more than one
-#: surface).
-DORMANT_CHECKS = (
-    (("skills/critic/review-cycle.md",), "the Critic's backlog reconciliation walk"),
-    (("skills/critic/review-cycle.md",), "its four backlog hygiene checks"),
-    (("skills/pr/review-protocol.md",), "the PR reviewer's two backlog consistency checks"),
-    (("skills/janitor/SKILL.md",), "the janitor's Backlog Health block"),
-    (("lib/norm_probes.py",), "norm-exception revisit-date expiry"),
-    (("lib/norm_probes.py",), "dead-why detection"),
-    (("lib/norm_probes.py",), "stalled-transition detection"),
-)
-
-
-def probe_checks_dormant(state: ProjectState, codebase: Codebase):
-    """Fire post-cutover, naming every backlog check that has no Issues-backend path.
-
-    The GV8 interim signal. ``/prawduct:backlog`` routes on ``backlog_service_repo``,
-    but the *other* backlog readers do not: the Critic's Backlog Reconciliation and
-    C-B1--C-B4, the PR reviewer's R-1/R-2, and the janitor's Backlog Health block all
-    read ``.prawduct/backlog.md`` — which is frozen history once a project cuts over.
-    Alongside them, three norm-lifecycle probes (``revisit-due``, ``dead-why``,
-    ``stalled-transition``) guard on cutover and return nothing at all.
-
-    Both failure shapes are *silent*: a reader that reports confident findings from
-    frozen markdown, and a probe that returns ``[]``, are indistinguishable from a
-    clean bill of health. That silence is what GV8 exists to prevent — a norm
-    exception that stops expiring visibly is a silent norm departure. Until the
-    read-through cache lands (W1) and these readers are restored against it, the
-    dormancy itself is the thing to say out loud.
-
-    One consolidated advisory rather than one per dormant check: one nag per dormant
-    reader, for a single known and time-boxed cause, trains dismissal — and dismissal
-    is what makes the *next* real signal invisible. Both the enumeration and the count
-    derive from :data:`DORMANT_CHECKS`; neither is written out by hand, because a
-    hand-maintained list drifts from the readers it claims to describe.
-    ``info`` priority — this reports an accepted interim state with a known
-    resolution, not a risk the reader must act on; it is dismissible like any
-    advisory.
-    """
-    if not post_cutover(state):
-        return []
-    return [
-        AdvisoryCandidate(
-            type="backlog-checks-dormant",
-            evidence=(
-                "backlog readers outside /prawduct:backlog have no Issues-backend "
-                "path yet: " + ", ".join(name for _, name in DORMANT_CHECKS),
-            ),
-            trigger_summary=(
-                f"this project is on the GitHub Issues backend, where {len(DORMANT_CHECKS)} "
-                "backlog checks are dormant — they report nothing rather than reading "
-                "the frozen markdown backlog as if it were live"
-            ),
-            recommended_action=(
-                "no action needed — these checks return when the backlog "
-                "read-through cache lands; dismiss this advisory to stop the reminder"
-            ),
-            priority="info",
-        )
-    ]
-
-
 def register() -> None:
-    """Register the six backlog probes. Idempotent (register_probe overwrites).
+    """Register the five backlog probes. Idempotent (register_probe overwrites).
 
     ``backlog-service-migration-required`` fires live. It spent several releases
     wired to a no-op while the migration path was unproven, because its
@@ -393,7 +337,6 @@ def register() -> None:
         PROBE_VERSION,
         probe_migration_required,
     )
-    register_probe(FEATURE, "backlog-checks-dormant", PROBE_VERSION, probe_checks_dormant)
     register_probe(FEATURE, "external-backlog-detected", PROBE_VERSION, probe_external_backlog)
     register_probe(FEATURE, "legacy-section-schema", PROBE_VERSION, probe_legacy_section_schema)
     register_probe(FEATURE, "backlog-overdue-grooming", PROBE_VERSION, probe_overdue_grooming)

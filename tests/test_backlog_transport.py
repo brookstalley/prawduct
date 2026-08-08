@@ -222,3 +222,227 @@ class TestIdentityMemoization:
             assert t.get_authenticated_user()["login"] == "octocat"
         user_reads = [c for c in api_calls if c[:2] == ["api", "user"]]
         assert len(user_reads) == 1
+
+
+class _FakeProc:
+    """A finished ``gh`` process, as ``_spawn`` would return one."""
+
+    def __init__(self, *, returncode: int, stdout: str = "", stderr: str = ""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+class _ProbeGh(tp.GhTransport):
+    """GhTransport with ``_spawn`` replaced, so everything above it is real.
+
+    Overriding ``_spawn`` rather than ``_run`` is the point: the conditional path
+    is ``get_issues_validator`` → ``_run_conditional`` → ``_parse_head``, none of
+    which ``_run`` touches. A fake seated at ``_run`` (or at the transport
+    interface, as ``FakeGitHub`` is) leaves that whole stack unexecuted."""
+
+    def __init__(self, proc: _FakeProc):
+        super().__init__()
+        self.proc = proc
+        self.calls: list[list[str]] = []
+
+    def _spawn(self, args, *, input_json=None):
+        self.calls.append(args)
+        return self.proc
+
+
+_HEADERS_200 = (
+    "HTTP/2.0 200 OK\r\n"
+    'Etag: W/"abc123"\r\n'
+    "X-Ratelimit-Used: 41\r\n"
+    "\r\n"
+    "[]\r\n"
+)
+_HEADERS_304 = 'HTTP/2.0 304 Not Modified\r\nEtag: W/"abc123"\r\n\r\n'
+
+
+class TestParseHead:
+    """`gh api -i` writes the status line and headers to STDOUT — including on a
+    304, which is what lets the status be read rather than inferred from stderr
+    text (a human-facing string, not a contract)."""
+
+    def test_status_and_headers_come_off_stdout(self):
+        status, headers = tp._parse_head(_HEADERS_200)
+
+        assert status == 200
+        assert headers["etag"] == 'W/"abc123"'
+
+    def test_header_names_are_lowercased_so_callers_need_not_guess_the_casing(self):
+        _status, headers = tp._parse_head("HTTP/2.0 200 OK\r\nETag: W/\"x\"\r\n\r\n")
+
+        assert headers["etag"] == 'W/"x"'
+
+    def test_a_304_is_read_as_a_status_not_as_an_absence(self):
+        status, _headers = tp._parse_head(_HEADERS_304)
+
+        assert status == 304
+
+    def test_an_unreadable_response_yields_no_status_which_callers_read_as_changed(self):
+        """The safe direction. A misparse that reports "unchanged" would serve a
+        stale cache forever; one that reports "changed" costs a single fetch."""
+        status, headers = tp._parse_head("not a response at all\r\n\r\n")
+
+        assert status is None
+        assert headers == {}
+
+    def test_the_body_after_the_blank_line_is_not_scanned_for_headers(self):
+        """A JSON body containing a colon would otherwise be parsed as a header."""
+        _status, headers = tp._parse_head(
+            'HTTP/2.0 200 OK\r\nEtag: W/"a"\r\n\r\n[{"title": "not: a header"}]'
+        )
+
+        assert set(headers) == {"etag"}
+
+
+class TestConditionalRequest:
+    """`gh` EXITS 1 ON A 304 — verified against the live API. Treating that as a
+    failure would turn the cheapest successful outcome in the sync path into a
+    hard error, so every warm sync would report unavailable."""
+
+    def test_a_304_with_exit_1_is_a_successful_not_modified(self):
+        gh = _ProbeGh(_FakeProc(returncode=1, stdout=_HEADERS_304, stderr="gh: HTTP 304"))
+
+        result = gh.get_issues_validator(
+            "o", "r", state="all", since="2026-01-01T00:00:00Z", etag='W/"abc123"'
+        )
+
+        assert result.changed is False
+        assert result.etag == 'W/"abc123"', "a 304 keeps the validator it was asked with"
+
+    def test_a_200_reports_changed_and_returns_the_new_validator(self):
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout=_HEADERS_200))
+
+        result = gh.get_issues_validator(
+            "o", "r", state="all", since="2026-01-01T00:00:00Z", etag='W/"stale"'
+        )
+
+        assert result.changed is True
+        assert result.etag == 'W/"abc123"'
+
+    def test_a_real_failure_still_raises_rather_than_reading_as_not_modified(self):
+        """Exit 1 is only forgiven when the status line actually says 304."""
+        gh = _ProbeGh(
+            _FakeProc(returncode=1, stdout="HTTP/2.0 500 Internal Server Error\r\n\r\n",
+                      stderr="gh: HTTP 500")
+        )
+
+        with pytest.raises(tp.TransportError):
+            gh.get_issues_validator("o", "r", state="all", since="2026-01-01T00:00:00Z", etag=None)
+
+    def test_a_response_with_no_etag_reports_changed_rather_than_a_null_validator(self):
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout="HTTP/2.0 200 OK\r\n\r\n[]"))
+
+        result = gh.get_issues_validator(
+            "o", "r", state="all", since="2026-01-01T00:00:00Z", etag=None
+        )
+
+        assert result.changed is True
+        assert result.etag is None
+
+    def test_the_stored_validator_is_sent_as_if_none_match(self):
+        gh = _ProbeGh(_FakeProc(returncode=1, stdout=_HEADERS_304))
+
+        gh.get_issues_validator("o", "r", state="all", since="2026-01-01T00:00:00Z", etag='W/"e"')
+
+        args = gh.calls[0]
+        assert "-i" in args, "headers are unreadable without -i"
+        assert 'If-None-Match: W/"e"' in args
+
+    def test_no_conditional_header_is_sent_when_nothing_is_stored(self):
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout=_HEADERS_200))
+
+        gh.get_issues_validator("o", "r", state="all", since="2026-01-01T00:00:00Z", etag=None)
+
+        assert not any("If-None-Match" in token for token in gh.calls[0])
+
+    def test_the_probe_query_is_the_one_that_makes_one_row_sufficient(self):
+        """Ordered `updated_at` descending: any touched item becomes the single
+        row returned, so a byte-identical response means nothing was touched."""
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout=_HEADERS_200))
+
+        gh.get_issues_validator("o", "r", state="all", since="2026-01-01T00:00:00Z", etag=None)
+
+        path = gh.calls[0][2]
+        assert "sort=updated" in path
+        assert "direction=desc" in path
+        assert f"per_page={tp.PROBE_PAGE_SIZE}" in path
+        assert "state=all" in path
+        assert "since=2026-01-01T00%3A00%3A00Z" in path
+
+
+class TestListIssuesSince:
+    def test_since_reaches_the_query_string_url_encoded(self):
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout="[]"))
+
+        gh.list_issues("o", "r", state="all", since="2026-01-01T00:00:00Z")
+
+        path = gh.calls[0][1]
+        assert "since=2026-01-01T00%3A00%3A00Z" in path
+
+    def test_no_since_parameter_is_sent_when_none_is_given(self):
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout="[]"))
+
+        gh.list_issues("o", "r", state="all")
+
+        assert "since=" not in gh.calls[0][1]
+
+
+class TestBranchExists:
+    """The pushed-ref probe behind `working-branch`, exercised through the real
+    `GhTransport` stack — `FakeGitHub` sits at the transport *interface*, so it
+    cannot reach `_api`/`_run`/`_map_failure`, which is where this lives.
+
+    Endpoint verified live against the backing repo rather than recalled:
+    `GET /repos/{owner}/{repo}/branches/{branch}` answers 200 for a pushed branch,
+    including a slash-bearing name un-escaped in the path, and 404 `Branch not
+    found` otherwise.
+    """
+
+    def test_a_pushed_branch_is_true(self):
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout='{"name": "main"}'))
+
+        assert gh.branch_exists("o", "r", "main") is True
+        assert gh.calls[0] == ["api", "repos/o/r/branches/main"]
+
+    def test_a_slash_bearing_branch_goes_into_the_path_unescaped(self):
+        """Verified live: the endpoint takes `feature/backlog-service` directly in
+        the path. Percent-encoding the slash would 404 every branch that has one,
+        which is most of them."""
+        gh = _ProbeGh(_FakeProc(returncode=0, stdout='{"name": "feat/a/b"}'))
+
+        gh.branch_exists("o", "r", "feat/a/b")
+
+        assert gh.calls[0] == ["api", "repos/o/r/branches/feat/a/b"]
+
+    def test_a_missing_branch_is_false_not_an_error(self):
+        gh = _ProbeGh(
+            _FakeProc(returncode=1, stdout="", stderr="gh: Branch not found (HTTP 404)")
+        )
+
+        assert gh.branch_exists("o", "r", "ghost") is False
+
+    def test_an_auth_failure_still_raises_rather_than_answering_no(self):
+        """"I could not ask" is not "it is not there" — collapsing the two would
+        let an expired token silently refuse every `working-branch` write as if
+        the branch had never been pushed."""
+        gh = _ProbeGh(_FakeProc(returncode=4, stdout="", stderr="gh: auth required"))
+
+        with pytest.raises(tp.TransportError) as excinfo:
+            gh.branch_exists("o", "r", "main")
+
+        assert excinfo.value.code == "auth"
+
+    def test_an_unreachable_provider_still_raises(self):
+        gh = _ProbeGh(
+            _FakeProc(returncode=1, stdout="", stderr="dial tcp: could not resolve host")
+        )
+
+        with pytest.raises(tp.TransportError) as excinfo:
+            gh.branch_exists("o", "r", "main")
+
+        assert excinfo.value.code == "unavailable"

@@ -6,6 +6,39 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite, not its synonym — and it reads as deliberate, so review cannot see it
+
+Six change-log entries on `feat/backlog-cache` carried `release=unreleased | status=shipped`. The
+release flow defines its unreleased set as every entry tagged `scope=` with **no** `release=`, so a
+placeholder naming the absence removes the entry's whole scope from that set. Run at PR time,
+`check-releasability --release v3.2.8` answered *"releasable: no release-pending scopes — nothing to
+classify"*, exit 0 — the runbook's literal "there is nothing to cut. Stop." A finished branch, six
+chunks and five resolved review rounds, was invisible to the release meant to ship it.
+
+This is REL-2N8K (v2.0.14 shipped 8 of 10 entries unflipped) in a better disguise. **A typo looks
+wrong; a placeholder looks deliberate.** `unreleased` is honest, readable and self-describing — you
+read it, agree with what it says, and never think to ask whether the *machine* agrees. That is why
+sixteen reviewers across five rounds walked past it: nothing about it looks like a defect. Three
+consequences rode along unnoticed for the same reason — a literal `## unreleased` section in
+release-notes.md, `releases: ["unreleased"]` in project-state's rollups, and, quietest of all,
+`diagnose_scope_plan_coverage` skipping `status=shipped`, so the no-plan-file integrity check that
+exists *specifically* to guard release-pending scopes never applied to the entries that needed it.
+
+**The test that would have caught it costs one command:** ask the consumer, not the reader. Don't
+inspect the value and judge whether it looks right — run the probe that will act on the field and
+read its answer. The defect is invisible to inspection and obvious to execution.
+
+**Where guards go — pick by blast radius, not by resemblance to a neighbour.** `status=` has had a
+typo-guard since VWS-3K7P because a bad value silently fails to flip one checkbox. `release=` had no
+guard at all, though it fails in the same direction and harder: the entry does not merely skip its
+own checkbox, it takes its whole scope out of the release. The weaker failure was guarded; the
+stronger one was trusted, because the guarded field was the one that *looked* typo-prone.
+`validate_release_values` closes it, joining the global fail-closed set.
+
+One methodology note worth keeping: this was caught by `/prawduct:pr`'s Step 1d — a human reading a
+tag as bookkeeping ceremony between a finished branch and its PR. The step that felt like a checkbox
+was the only thing standing between the branch and a release that would have skipped it silently.
+
 ## A background agent's liveness is answered by ITS OWN completion signal, never by reading the files it is midway through writing — a death verdict from a directory listing is how a re-dispatch clobbers a live review. And the grep that "confirms" it may be matching the failure mode's own DOCUMENTATION, which feels exactly like verification
 
 Observed twice. `critic_consolidate._archive_leftovers` exists because on **2026-08-02** "a premature
@@ -2782,3 +2815,249 @@ named test is passing for the wrong reason. Instance 2 was found exactly that wa
 
 **Ties to**: the free-edge/judgeable work in `gate-as-dispatcher-requirements.md` (instances 2-3) and
 `.prawduct/change-log.md`'s 2026-08-06 entry (instance 1).
+
+
+## A measurement with no POSITIVE CONTROL cannot support a claim — before believing "X costs nothing", confirm the instrument MOVES when it should, because a dead instrument reads zero for the treatment and the control alike, and zero is the answer you were hoping for. Tell: the confirming result arrived first try and the null case was never run
+
+Chunk 02 needed to know whether a conditional request against GitHub's issues list is free. Polling
+the `rate_limit` endpoint before and after three 304s showed `used` unchanged, which is exactly the
+hoped-for answer, and it went into `cache-spec.md` §6 and two docstrings as "measured".
+
+The positive control was run only because the number looked too clean: five *unconditional* 200s
+also moved it by zero, and so did a 452-item rebuild. That is impossible, so the instrument was
+dead — `rate_limit` was not reflecting these calls at all. Each response's own `X-RateLimit-Used`
+header gave 134 → 135 → 136 across three 200s and a flat 136 across three 304s. Same conclusion,
+but the first version of the evidence supported nothing.
+
+The general shape: a null result is only informative if the measurement can produce a non-null one.
+When the claim is "X costs nothing" / "Y never fires" / "Z is not called", the control is not
+optional politeness, it is the whole experiment.
+
+**Ties to**: `documentation/backlog-service-cache-spec.md` §6, which now records the *method* and
+the dead instrument alongside the result.
+
+
+## For every value you plan to PERSIST from a provider, verify the exact request that will later REPLAY it, not just the one that produced it — a verify-api step scoped to the plan's own mechanism confirms that mechanism and misses the one the plan got wrong
+
+Chunk 02's build plan scheduled a `verify-api` step as step 0, specifically so the fakes could not
+be built from recall. It asked four questions — what `since` filters on, whether it interacts with
+`state`, whether closed items return, and the etag/304 behaviour — and all four came back clean.
+
+The finding that mattered was not among them. The plan said sync would write `item.etag`; sync reads
+the *list* endpoint. Asking "which endpoint will replay this stored value?" showed a list etag
+returns 200 against `GET /issues/{n}` where that item's own returns 304, and the list body carries
+no per-item validator at all. Chunk 05's revalidation would have missed on every read, spent a full
+request each time, and looked like it was working.
+
+The step was scoped to the plan's stated mechanism, so it could only ever confirm that mechanism.
+The question that broke it came from the *persistence* direction: every value crossing from a
+provider into a store is later replayed into some request, and that request is the one to verify.
+
+**Ties to**: the DECISION block in Chunk 02 of `build-plan-backlog-cache.md`, and the two-validator
+split now recorded in `backlog-service-data-model.md` §6.
+
+
+## A test written RELATIVE to the constant it polices can never detect that constant being wrong — pin the absolute value when the value is a historical fact (a version a real store was stamped with, a format that shipped), because `CONST - 1` moves with CONST and passes at every setting of it. Tell: the mutation you expected to go red stayed green
+
+`cursor.fetched_at` was added to the v2 cache schema without bumping past v2. A store written by the
+earlier v2 code matches on version, is never discarded, and then fails every `_write_cursor` on the
+missing column — `unavailable` on every sync, permanently, because the self-heal is gated behind the
+version check that just approved the store. It happened on this machine and read as an empty result,
+not as an error.
+
+The fix was a bump to 3. The first test written for it seeded the store with
+`PRAGMA user_version = cache.SCHEMA_VERSION - 1` — which looks careful, and is inert: mutate
+SCHEMA_VERSION back to 2 and the fixture obediently writes 1, still behind, still discarded, still
+green. The test could not fail for the reason it existed.
+
+The seed had to be the literal `2`, because 2 is a fact about a format that existed, not a
+expression over the current constant. Rewritten that way the mutation fails with the real
+production error (`table cursor has no column named fetched_at`).
+
+Generalises past versions: any fixture derived from the code under test inherits that code's bug.
+Thresholds, limits, schema numbers, retry counts — if the test computes its input from the constant,
+it is asserting internal consistency, which the defect also satisfies.
+
+**Ties to**: `tests/test_backlog_cache.py::TestSchemaMismatch::test_the_v2_shaped_store_that_actually_shipped_is_discarded`,
+whose docstring carries the do-not-relativise warning at the seed itself.
+
+## A build plan can name a CODE IDENTIFIER it never opened
+
+Two of one chunk's stated deliverables were wrong on mechanism, and both read as bookkeeping until
+the named symbol was opened.
+
+"Name all three fields in `_UPDATE_FACETS`" — `_UPDATE_FACETS` is the label *swap* loop: add the new
+value, strip every other label sharing the prefix. Correct for `area` (exactly-one, wired to the
+title); wrong twice over here. It would have written `affected:` labels for a field the spec puts in
+the body block, and made setting a second tag silently remove the first, since `tags` is the one
+deliberately multi-valued facet.
+
+"The three cache columns and the `affected` index" — unimplementable as written. The intersection
+runs *entry-contains-changed-file* (`plugin/lib` matches `plugin/lib/sync.py`), so the natural SQL is
+`WHERE ? LIKE affected || '%'`, whose variable is on the side no index can help. It had to become a
+normalised table (`item_affected(item_id, path)`) matched by equality after expanding each changed
+file into its ancestor directories.
+
+Why this is narrower than "plans go stale": a plan written at design altitude is usually right about
+*intent* and is checked against reality when its prose is read. A named code identifier skips that
+check — the sentence looks like an instruction rather than a claim, so it is followed instead of
+verified. Both errors here were caught by the same move (open the symbol before editing it), and
+neither would have been caught by re-reading the plan.
+
+**Ties to**: `plugin/lib/backlog/core.py` (`_UPDATE_MULTI_FACETS` / `_UPDATE_BLOCK_FIELDS`, the
+SEC-2 allowlist's third and fourth categories); `plugin/lib/backlog/cache.py` (`item_affected` and
+the comment stating the query direction).
+
+## A VALIDATOR that only refuses the malformed can still let a control fail OPEN
+
+`working-branch`'s one job is to make a claim visible to other agents, so the write path verifies the
+branch is actually pushed — `GET /repos/{owner}/{repo}/branches/{branch}`. The parser guarding that
+value checked whitespace, the `owner/repo@branch` shape, and leading/trailing slashes. All
+well-formedness questions.
+
+`owner/repo@../../../user` passes every one of them, and is then interpolated into the REST path. The
+request resolves a *different* endpoint, succeeds, and the value is stored as a **verified** working
+branch pointing at a branch nobody can find — the exact invisible claim the check exists to prevent.
+
+What it is not: injection (the call is list-form with no shell), or a privilege crossing (same
+token, GET, one bit returned). Which is why it reads as low-severity on a first pass and is not. The
+harm is that a control **reports success about something other than the thing it was asked about**,
+and a control that can do that is worse than no control, because its output is trusted.
+
+The same seam produced the mirror image on the other new field. `validate_affected` refused prose and
+accepted globs, which the docs say are unsupported: `plugin/lib/**` is written happily and then
+matches nothing forever — a silent *negative* where the branch case was a silent *positive*.
+
+The fix in both cases was to add rejections of a second kind. Branch names are now held to git's own
+`check-ref-format` rules (a name git could never create cannot be a pushed ref, so accepting one can
+only mean the check passed against something else); `affected` refuses glob metacharacters at the
+same seam that refuses prose, with the directory-prefix form named in the message.
+
+**Ties to**: `plugin/lib/backlog/encode.py` (`_is_valid_branch_name`, `parse_working_branch`,
+`validate_affected`); `tests/test_backlog_encode.py::TestWorkingBranch` (17 refused spellings, 5
+accepted — including `docs.github.com`, since a dot is legal in a repo name).
+
+## Changing HOW data ARRIVES silently re-scopes every aggregate over it
+
+**Origin:** W1 backlog cache, Chunk 04 (2026-08-07), carried in as a finding from Chunk 03's review.
+
+`cachequery._freshness` answered the cache's visible age with `MIN(item.fetched_at)`, and its
+docstring argued the case well: *an age is a promise about the whole payload, and the honest promise
+is the worst row in it.* That was exactly right while the cache was rebuild-only — every sync
+rewrote every row, so the oldest row stamp *was* the age of the payload.
+
+Chunk 02 made sync incremental. It changed no line of `_freshness`, and it did not need to: from
+that commit on, only the fetched window gets restamped, so `MIN(item.fetched_at)` became the fetch
+time of the **least-recently-edited** item. It grows without bound precisely while syncs keep
+succeeding. A store synced ten seconds ago could honestly report an age of weeks, and a consumer
+reading that age would treat the cache as abandoned at the moment it was most current. The 304 path
+was worse still: it returned before touching the store at all, so the cheapest and most common
+successful sync left no trace whatsoever.
+
+**Why no test could have caught it.** Every test still passed. The value was still a well-formed
+timestamp, still monotonic, still derived from real data by correct code. Nothing was broken in any
+sense a suite can assert — the *inputs* changed meaning, and the aggregate over them inherited the
+new meaning silently. The rebuild-era fixtures in particular could never have shown it, because in a
+rebuild every row shares one stamp and the two readings coincide.
+
+**What caught it** was a reviewer asking what the number *means* now, rather than whether it is
+computed correctly. That is the transferable move: after a change to how data arrives — full scan to
+incremental, batch to streaming, snapshot to event log, single-writer to many — walk every aggregate,
+watermark, MIN/MAX, count and age over that data and ask what each one now denotes. The ones that
+broke will not announce themselves, because computing correctly is exactly what they still do.
+
+**The fix, and why it is two facts rather than one.** Row provenance (`item.fetched_at`: when this
+machine last read *this row*) and coverage (`cursor.coverage_confirmed_at`: when a sync last
+established that the store is level with the provider) are different questions, and the age wants the
+second. Every successful sync advances it, **including a 304** — which establishes something
+positive, that the provider has nothing newer, not merely that nothing was written. Row provenance
+stays as the reader's fallback for a store that holds rows but carries no cursor row.
+
+**Related:** the sibling failure is [[a-behaviour-change-falsifies-surfaces-a-chunk-never-edits]] —
+there the stale thing is a docstring that now lies; here it is a *value* that now lies, which is
+harder, because prose can be read and disagreed with while a plausible number cannot.
+
+
+## A retirement is one act PER SUBSTRATE the thing lives on
+
+The `claim` retirement's case was entirely about the Issues adapter: a release-current op, its
+replacement (`working-branch`) shipping in the same release, and three coupled mechanisms — an
+assignee take, a `claimed_at` stamp, a staleness TTL — collapsing into one field. Executed, it also
+stripped the **markdown** backend's `accepted-by:`, which has none of those three mechanisms and
+cannot supply what replaces them: `working-branch` must name a *pushed* ref and a repo, which a
+local-only repo or a shared-trunk team has not got. `accepted-by:` cost those products nothing.
+
+The same session made the identical mistake a second time, one file over. `probe_revisit_due` was
+retired on the argument that exception clocks *"had already migrated to prose on the norm"* — true of
+this repo's single live exception and of no other product. For every markdown-backend product the
+probe was live and working; `docs/norms.md` § Exceptions expire states the two-path split
+normatively, and the janitor's Norm Health sweep declines dated clocks **because** this probe fires
+them. Removing it took a working control from a whole class of products and left four active surfaces
+promising a mechanism that no longer existed.
+
+Two instances in one changeset is what makes it a rule rather than a slip. The tell is cheap and was
+available both times: **the argument names a substrate and the diff does not.** Where a rationale is
+stated in terms of one op, one release, one provider or one backend, the edit has to be bounded by
+that substrate — otherwise the next question is which other substrate it just governed by accident.
+Found by the Critic (`rev-20260807T202943Z-a483337f`, R-4/R-10/R-16/R-23), from two independent
+goals; the fix was to scope the retirement to the adapter, and the requirements' CC3 now records the
+supersession rather than quietly changing meaning.
+
+## A rule enforced only as a SIDE EFFECT of some other failure is unenforced for changes whose failure mode differs
+
+`cache.py`'s `SCHEMA_VERSION` comment is emphatic and has a real incident behind it: a `cursor` column
+was once added under an unchanged version, and because the version check is the same mechanism that
+would have rebuilt the store, it approved the store and every sync failed permanently with no
+self-heal. So the rule reads *bump on any column change, including one made before release*.
+
+Chunk 05 dropped the `relationship` table and bumped to v6 — then mutation testing left
+`SCHEMA_VERSION` at 5 and the whole suite stayed green. An old v5 store simply carries an extra table
+nobody reads, so nothing breaks. Looking at why the earlier incident *was* caught: a query broke
+loudly against the stale store. That is not the rule being enforced; that is a different failure
+happening to be noisy. A **removal** is quiet by construction, so the rule had no guard for half the
+changes it governs, and the bump was silently optional whenever the failure mode was silence.
+
+Fixed by pinning `SCHEMA_VERSION` to a fingerprint of `_SCHEMA_STATEMENTS` in a test, mutated both
+ways (bump missed → red; schema edited under an unchanged version → red). The generalizable move:
+when a rule cites a past incident, ask what *actually* caught that incident before assuming the rule
+is enforced.
+
+## Sweeping for the IDENTIFIER is not sweeping for the CLAIM
+
+Three instances on one branch (`feat/backlog-cache`, 2026-08-07), each caught by review rather than
+by the sweep that was supposed to catch it:
+
+1. **Chunk 05 — the `claim` retirement.** Done-when named `data-model.md` and `api-contract.md`; both
+   were reconciled carefully, and `-test-specifications.md`, `-nfr.md` and `-requirements.md` were
+   left specifying a mechanism that no longer existed. A Done-when list is a floor, not a scope.
+2. **Chunk 06 — janitor checks 6 and 7.** Retired on "meaningless once Issues is system of record",
+   an argument true of one backend, applied to both. (This one also has its own rule — *a retirement
+   is one act per substrate* — and recurring anyway is the point: recognizing a pattern in a review
+   finding is not the same as recognizing it in a task list.)
+3. **Chunk 06 verify — `adapter-mode.md`.** One section routed `find`/`dedup` through the new cache
+   while two others in the *same file* said they were unavailable: the action menu printed on every
+   invocation ("present `find`/`dedup` as **not available on this backend yet**") and the `add` flow
+   ("**Dedup-on-create is degraded** … say full dedup is not available"). The preceding fix commit
+   had addressed the tool-grant half of the very finding that named this file, and never re-read it.
+
+**Why grep does not catch this.** The falsifying prose contains none of the identifiers. "Not
+available on this backend yet", "is degraded", "meaningless once X", "remains dormant" — no `find`,
+no `dedup`, no `cache-query`. Searching for the dormancy-notice text I had written came back clean,
+because **I was searching a string I wrote, not a claim I had falsified** — which is the tell, and
+the clause the rule heading had to shed to fit its budget.
+
+**The check that would have worked** is a question, not a pattern: *what did this change make true or
+false, and who asserts the opposite in words?* For a restoration the query is "what still says this
+is unavailable"; for a retirement, "what still says this works". Both are read-and-judge over the
+files that describe the capability, and neither is a `grep` for a symbol.
+
+A fifth instance closed the loop on the *fix* rather than the defect. The tripwire written for #3
+**enumerated two files**; `migration-scrub.md` carried the same claim ("full-text `find` is
+unavailable for *every* item post-cutover") and was edited by Chunk 06's own commit. Enumeration was
+what missed #4 as well. The tripwire now **globs every `.md` under `skills/`**, so a surface added
+later is covered the day it lands — scoped to `skills/` because that is agent-executed prose, where a
+build plan or change-log is a record of what was once true and may say so. It was validated against
+all three historical blobs (3 hits, 1 hit, 1 hit) and the fixed tree (0).
+
+Related: *a retirement is one act per substrate the thing lives on* (the scoping half of the same
+family) and *a rule about second homes does not stop at the homes someone remembered to enumerate*.

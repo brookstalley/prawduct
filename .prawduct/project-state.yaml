@@ -17,9 +17,11 @@ backlog_format_version: 2
 # THE CUTOVER (API §2.4). Set 2026-08-01 by v3.2.0 Chunk 06, after
 # `backlog verify-migration` returned exit 0 with all five conflict lists empty
 # (source_items 371 = aliased 371). This single key repoints the session briefing
-# to the GV2 snapshot and retires every markdown-premise advisory probe — and
-# `backlog-checks-dormant` starts firing at the same switch, so the operator
-# learns what went dark rather than discovering it as an unexplained absence.
+# to the GV2 snapshot and retires every markdown-premise advisory probe. An
+# advisory (`backlog-checks-dormant`) used to start firing at the same switch so
+# the operator learned what went dark; it was retired 2026-08-07 once the readers
+# it named came back on the backlog cache, and each now reports an unreadable
+# store at the point of use instead.
 #
 # From here `.prawduct/backlog.md` is FROZEN HISTORY for this repo. It records
 # the corpus as it stood at the moment of migration; the tracker is authoritative
@@ -469,7 +471,12 @@ views_enabled: true
 # was in flight — so this is a fresh set inheriting none of the staleness the
 # incidents above record, and no plan is orphaned by the move. The work is part 2
 # of the concurrent-dispatch defect (#602/#171), sequenced by the owner.
-active_build_plan: artifacts/build-plan-critic-review-identity.md
+#
+# REPOINTED 2026-08-07 on branch feat/backlog-cache. The critic-review-identity
+# plan's chunks are all complete and shipped in v3.2.7 (tagged), which is the
+# release the plan-lifecycle rule waits for before repointing — so no plan is
+# orphaned and the stale-plan advisory this resolves was correct to fire.
+active_build_plan: artifacts/build-plan-backlog-cache.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

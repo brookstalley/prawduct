@@ -197,6 +197,18 @@ On a repo whose integration branch is **protected** (commits land only by PR), r
 itself rides in a PR — that one release PR is the only bookkeeping vehicle the flow ever
 needs; no per-feature housekeeping commit exists anywhere in the lifecycle.
 
+### The `release=` tag names a version, or it is absent
+
+There is no placeholder. The unreleased set is every entry tagged `scope=` with **no**
+`release=`, so *any* value marks the entry already-released — a placeholder that names the
+absence (`release=unreleased`) reads as deliberate while removing that entry's whole scope
+from the release-pending set. `check-releasability` then answers "no release-pending scopes
+— nothing to classify" and the work never ships, which is REL-2N8K's failure with a more
+convincing disguise (six entries hid a whole branch from v3.2.8 that way). A `release=`
+that is not `vMAJOR.MINOR.PATCH` (optionally `-suffix`) is therefore a **global validation
+error** on the same fail-closed terms as a `status=` typo. Release-pending is statusless
+with no `release=` tag; step 3 adds both at once.
+
 Any other `status=` value (including a typo) is a **global validation error** (VWS-6R4T,
 promoting the VWS-3K7P typo-guard): `regen-views` exits 2 with an ERROR line and writes
 nothing — a typo'd `status=` means that entry never contributes its flip, which would leave
