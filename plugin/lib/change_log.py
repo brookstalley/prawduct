@@ -6,11 +6,19 @@ jobs under a name describing neither, which is part of why a dual-reading defect
 reached three consumers before anyone generalised it.
 
 Tagged-entry format — one line after each ``## YYYY-MM-DD:`` header (blank lines
-between are tolerated)::
+between are tolerated). **The format a new entry is written in is two keys**::
+
+    <!-- prawduct: scope=v1.4 | release=v1.3.18 -->
+
+Older entries carry two more, and the parser still accepts them because 21 repos'
+committed logs are full of them::
 
     <!-- prawduct: chunks=00,01,02 | release=v1.3.18 | status=shipped | scope=v1.4 -->
 
-Keys, and who reads them:
+**Accepting is not the same as reading.** ``chunks`` and ``status`` are retired
+and inert: nothing consults either, no value of them means anything, and they are
+neither rewritten nor removed. Anything below describing them is describing what
+a *historical* entry may contain. Keys, and who reads them:
 
 * ``scope``   — the rollup identifier. Read by the release gate to enumerate
   what has not shipped, and by :mod:`lib.plan_index` to find the plan that
@@ -18,14 +26,14 @@ Keys, and who reads them:
 * ``release`` — the version that carried this entry. Its ABSENCE is what marks
   an entry release-pending, which is why a malformed value is an error rather
   than a curiosity (see :func:`validate_change_log_tags`).
-* ``chunks``  — comma-separated chunk IDs. **Being retired**: nothing outside
-  the derived-view machinery reads it.
-* ``status``  — ``shipped`` | ``merged``. **Retired**, with ``chunks``: nothing
-  reads it, and the commands that wrote it are inert. A tagged entry with NO
-  ``status=`` is the normal release-pending state — the entry rides in the
-  feature PR, so its presence on the integration branch already means the work
-  is merged. Historical entries carrying either value still parse, because the
-  parser preserves unknown keys and this is now one of them.
+* ``chunks``  — comma-separated chunk IDs. **RETIRED**, with the derived views
+  that were its only reader. Which chunks an entry shipped belongs in the entry
+  BODY, where release notes and readers actually look.
+* ``status``  — ``shipped`` | ``merged``. **RETIRED**, with ``chunks``: nothing
+  reads it and the commands that wrote it are inert. Release-pending is now
+  carried by the ABSENCE of ``release=`` alone. Historical entries carrying
+  either value still parse, because the parser preserves unknown keys and both
+  are now among them.
 
 Unknown keys are preserved verbatim so a future reader can pick them up without
 a schema bump. Entries with no tag line are ignored — untagged historical

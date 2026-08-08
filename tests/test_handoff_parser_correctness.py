@@ -254,6 +254,33 @@ class TestSingleReadingCurrentChunk:
         assert "current_chunk" not in status
         assert buildplan_refs.build_plan_is_complete(status) is True
 
+    def test_handoff_omits_work_section_for_a_completed_plan(self, tmp_path: Path):
+        """SCN-4H9T end-to-end: a finished plan is never stamped as the next
+        session's work.
+
+        The sibling above asserts the same thing about the *parse*, and that is
+        not a substitute — `generate_session_handoff` composes the parse with a
+        project-state read, and it is the composition that reaches a reader. The
+        surviving unit tests all stub a project-state WIP, so every one of them
+        passes against a writer that renders the section unconditionally.
+
+        This regression was carried by the retired `views_enabled` fixture class
+        and went down with it. It is restored deliberately rather than
+        rewritten: the checkbox is now the SINGLE reading of completeness, so
+        the composed path this pins is strictly more load-bearing than it was
+        when the assertion was first written.
+        """
+        _init_repo(tmp_path)
+        _write_plan(
+            tmp_path,
+            "# Build Plan — Done (2026-07-26)\n\n## Status\n\n- [x] Chunk 01: A\n",
+        )
+        (tmp_path / ".prawduct" / ".session-reflected").write_text("did the thing")
+        briefing.generate_session_handoff(tmp_path)
+        handoff = (tmp_path / ".prawduct" / ".session-handoff.md").read_text()
+        assert "## Work In Progress" not in handoff
+        assert "did the thing" in handoff
+
     def test_an_unchecked_non_chunk_item_still_blocks_completion(self, tmp_path: Path):
         """A Status section may hold items that name no chunk (a plain to-do).
         Such an item is done iff its box is ticked — the walk covers EVERY Status

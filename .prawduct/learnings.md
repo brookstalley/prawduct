@@ -171,7 +171,7 @@ dropping them.
 
 ## Hand-tick a build plan's `## Status` box the moment its chunk's review passes — nothing derives the boxes, so an unticked one claims the work is open and every reader believes it. Review first, tick after: the LAST tick disarms the Stop gates. **Inverted 2026-08-08** ([[the-derived-views-retirement]]) — prose calling the boxes untrustworthy is the old rule still running — [learnings-detail.md]
 
-## A change-log entry's BODY must cover every chunk the entry shipped — the body IS the release note, so a deliverable the prose omits ships invisibly. Losing `chunks=` ([[the-derived-views-retirement]]) removed the *illusion* of a check: the tag counted chunks, never read the prose. Tell, now the only one: a multi-chunk narrative with ONE throughline — the last chunk's separate mechanism goes missing
+## A change-log entry's BODY must cover every chunk the entry shipped — the body IS the release note, so a deliverable the prose omits ships invisibly. Losing `chunks=` ([[the-derived-views-retirement]]) removed the *illusion* of a check: the tag counted chunks, never read the prose. Tell, now the only one: a multi-chunk narrative with ONE throughline — the last chunk's mechanism goes missing
 
 ## When a requirement is about a COST, assert the operation that costs — not a proxy that usually accompanies it. Tell: your test names a side effect ("was the file read") where the requirement names work ("was the directory walked"); the two come apart in exactly the implementation the requirement forbids
 
@@ -266,8 +266,6 @@ dropping them.
 ## Excising a subsystem silently kills the incidental work it happened to host — re-home the orphaned call, and test the positive
 
 ## A deletion's SURVIVORS owe new coverage when their behaviour changed — the deleted thing's tests dying correctly is a different question
-
-When a change deletes a module and rewrites a command that used to live off it, ask separately what the SURVIVOR now promises: its old tests died with the deleted thing's test file, correctly, and nothing replaced the contract it kept. Retiring `regen-views`/`stamp-merged` to "callable, notice, no writes, exit 0" took ~20 tests down with `test_views.py` and left that new contract — advertised in `api-contract.md` to operator scripts — held by nothing, so a later edit restoring a non-zero exit would break a copied release script and stay green. Its sibling rule above asks what the deleted thing HOSTED; this asks what stayed and changed, which no amount of re-homing finds.
 
 ## A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
 

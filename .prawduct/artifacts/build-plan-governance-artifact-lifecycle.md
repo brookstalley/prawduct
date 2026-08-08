@@ -547,6 +547,19 @@ only gate that reads tags.
     **Why it is worth doing rather than accepting:** a brand-new control whose first firing is
     wrong teaches its first readers to ignore it, which is the habituation the proportionality norm
     exists to prevent — and this control's whole defence is that it emits its yield observably.
+  - **DV7 is wired where no governed session reaches it** (Chunk 03's cumulative review, W-3;
+    carried here because it is code and the tripwire's regex fix is already in this chunk — one
+    commit, no extra round). Its only call sites are `cmd_verify_chunk_refs` and `cmd_handoff`;
+    the Stop hook and `critic-begin` grade through `record_lint` → `buildplan_refs`, and `/clear`
+    writes the handoff via `briefing.generate_session_handoff`, so an ordinary session never
+    sees the notice. **This is worse than an unfired control**: DV7's stated defence is that it
+    emits its yield observably, so a later "zero recorded yield" would read as *no defect
+    occurred* when the truth is *never armed* — the retirement-on-evidence argument would be
+    made from a control that was never in the path. Wire it into the session-boundary surface
+    (`/clear`'s handoff generation is the natural one — it already reads the plan), and pin the
+    call site, not just the function. Fix this in the SAME commit as the regex narrowing above:
+    arming a control whose first firing is a known false positive is the one ordering that makes
+    things worse.
   - **R-22, decided in Chunk 03 and landing here because the decision is HOIST and the edit is code.**
     `duplicate_scope_errors` currently sits inside `_plan_coverage_warnings`, which
     `check_releasability` reaches only after `if not pending: return 0` — so on a repo with nothing

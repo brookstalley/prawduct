@@ -323,9 +323,10 @@ Evolution rules we want to hold, so new versions stay rare:
 - **Deprecated and inert** (callable, notice on stderr, writes nothing, exits 0; removal deferred
   to a major): `stamp-merged` and `regen-views`. Both lost their bodies when derived views were
   retired — `regen-views` had no views left to regenerate, and `stamp-merged`'s only output
-  (`status=`) had no reader left. Kept callable because prawduct's own release runbook and any
-  copied operator script may still call them, and a non-zero exit there would break a pipeline
-  mid-release; the notice tells such a caller to drop the call.
+  (`status=`) had no reader left. **Prawduct's own release runbook no longer calls either**, so the
+  remaining reason to keep them callable is the one that cannot be audited from here: a consumer's
+  copied operator script, where a non-zero exit would break a pipeline mid-release. The notice
+  tells such a caller to drop the call.
 
   The `--check` flag's earlier state is worth keeping on the record: it was a *repurposing* rather
   than a clean deprecation — it performed a full regen where it documented "writes nothing" — and
