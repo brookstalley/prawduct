@@ -249,60 +249,6 @@ class TestParseChangeLogMultiTagLines:
         assert entries[1].tags["chunks"] == ["02"]
 
 
-class TestValidateStatusValues:
-    """VWS-3K7P: surface change-log `status=` typos as non-fatal warnings.
-
-    An unrecognized status (e.g. `status=shippd`) parses fine but silently fails
-    to flip any checkbox — the typo guard turns that into a visible warning.
-    """
-
-    def test_typo_yields_one_warning(self):
-        entries = [
-            change_log.ChangeLogEntry(
-                title="2026-06-04: typo", tags={"chunks": ["01"], "status": "shippd"}
-            )
-        ]
-        warnings = change_log.validate_status_values(entries)
-        assert len(warnings) == 1
-        assert "shippd" in warnings[0]
-
-    def test_valid_shipped_yields_none(self):
-        entries = [
-            change_log.ChangeLogEntry(
-                title="2026-06-04: ok", tags={"chunks": ["01"], "status": "shipped"}
-            )
-        ]
-        assert change_log.validate_status_values(entries) == []
-
-    def test_valid_merged_yields_none(self):
-        entries = [
-            change_log.ChangeLogEntry(
-                title="2026-06-04: ok", tags={"chunks": ["01"], "status": "merged"}
-            )
-        ]
-        assert change_log.validate_status_values(entries) == []
-
-    def test_absent_status_yields_none(self):
-        entries = [
-            change_log.ChangeLogEntry(title="2026-06-04: untagged", tags={}),
-            change_log.ChangeLogEntry(
-                title="2026-06-04: chunks-only", tags={"chunks": ["02"]}
-            ),
-        ]
-        assert change_log.validate_status_values(entries) == []
-
-    def test_one_warning_per_bad_entry(self):
-        entries = [
-            change_log.ChangeLogEntry(title="a", tags={"status": "shippd"}),
-            change_log.ChangeLogEntry(title="b", tags={"status": "shipped"}),
-            change_log.ChangeLogEntry(title="c", tags={"status": "in-progress"}),
-        ]
-        warnings = change_log.validate_status_values(entries)
-        assert len(warnings) == 2  # shippd + in-progress (shipped is valid)
-
-
-
-
 class TestValidateChangeLogTags:
     """The merged validator, and the three shapes it refuses or reports.
 

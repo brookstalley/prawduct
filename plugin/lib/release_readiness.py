@@ -72,12 +72,13 @@ def scopes_tagged_for(entries: list, version: str) -> set[str]:
 def release_pending_scopes(entries: list) -> list[str]:
     """Scopes with at least one tagged change-log entry carrying no ``release=``.
 
-    Narrower than :func:`views.collect_release_pending_scopes`, which also
-    includes ``status=shipped`` scopes so ``regen-views`` can flip plans
-    regardless of convention. For *releasability* the question is strictly
-    "what has not shipped yet", and the authoritative marker for that is the
-    absence of ``release=`` — a status stamp is bookkeeping that can lag, but a
-    ``release=`` tag names the release that carried the code.
+    **The absence of ``release=`` is the marker, and it is now the only one.**
+    A wider collector once sat beside this, adding ``status=shipped`` scopes so
+    the derived-view regenerator could flip plan checkboxes regardless of tagging
+    convention; it went with that regenerator, and its extra input — a ``status=``
+    stamp — is bookkeeping that could lag reality, where a ``release=`` tag names
+    the release that actually carried the code. So this was always the right
+    question for *releasability*, and it is no longer the narrower of two.
     """
     seen: set[str] = set()
     ordered: list[str] = []

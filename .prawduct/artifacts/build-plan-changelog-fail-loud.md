@@ -88,7 +88,8 @@ chunks=1 vs Chunk 01 tolerant-validates). Checkbox flips at release via regen-vi
 
 ## Scaffolding
 
-Existing repo — no scaffold. Tests: `pytest tests/test_views.py` (full suite before
+Existing repo — no scaffold. Tests: the `tests/test_views.py` suite, since retired with derived
+views (full suite before
 commit).
 
 ### Verification Strategy

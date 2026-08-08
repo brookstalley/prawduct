@@ -75,7 +75,8 @@ Disjoint file ownership per chunk (this is what makes the parallel build safe):
   (File and symbol kept as separate backtick tokens — `path::symbol` trips the chunk-ref parser; see BLD-8F2Q.)
 - Tests in `tests/test_views.py` cover the extracted helper (true/false/missing-key/missing-file/
   malformed-line) and confirm both call sites still resolve correctly.
-**Done when:** `python3 -m pytest tests/test_views.py -n0` green; behavior unchanged; integrated.
+**Done when:** the `tests/test_views.py` suite green (that file was retired with derived views;
+the helper's tests now live in `tests/test_core_yaml_keys.py`); behavior unchanged; integrated.
 
 ### Chunk 02: TST-5W1J — cache test-file contents in `bin/test-reference-verify`
 **Type:** code

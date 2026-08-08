@@ -23,7 +23,7 @@ governed_by:
     dispositions:
       - "governance verdicts computed from the append-only ledger, never from mutable model-written state; no model in a fact's write path → conforms, and strengthened. FL3 keeps doctor out of live checkbox state; DV7's tripwire reports and never writes"
       - "facts are immutable and append-only; a state change is a new fact → conforms; no chunk edits the evidence store"
-      - "derived views are disposable and never authoritative — no gate reads a view → conforms, and this plan removes the last subsystem where a view existed at all"
+      - "derived views are disposable and never authoritative — no gate reads a view → conforms. CORRECTED at Chunk 02: this originally read 'removes the last subsystem where a view existed at all', which is false and was caught by that chunk's own claim sweep. `.critic-findings.json` is a derived view of the newest review fact, and `dispositions.py`'s census is another; both survive and both conform, because no gate reads either. What this plan removes is the only derived-view subsystem whose views were WRITTEN BACK INTO COMMITTED GOVERNANCE ARTIFACTS — a build plan's Status, release-notes.md, a project-state block — which is the class where a stale view is indistinguishable from an author's statement"
       - "every issue written to the backlog store conforms to the issue standard's §1 title rules → inapplicable because no chunk writes to the backlog store"
       - "a fact from a newer schema is a loud block, never silently dropped → inapplicable because no chunk introduces or reads a versioned fact schema"
       - "two stores, two lifetimes: committed answers vs gitignored nags and caches → conforms. Build plans (live and archived) are committed answers per BP4; release-notes.md is demoted to frozen archive, not promoted"
@@ -160,7 +160,7 @@ Chunk 05 starts.
 ## Status
 
 - [x] Chunk 01: Rehome the survivors — two named modules, nothing deleted yet
-- [ ] Chunk 02: One reading — retire the flag, the command, and the dual progress path
+- [x] Chunk 02: One reading — retire the flag, the command, and the dual progress path
 - [ ] Chunk 03: Trim the tag schema, the doc restatements, and the two norm decisions
 - [ ] Chunk 04: Archival — completion frontmatter, five deletion sites, two terminal states
 - [ ] Chunk 05: Doctor repair, the archive backfill, and the guards that keep it converged
@@ -168,27 +168,57 @@ Context: Plan written 2026-08-08 on `feature/governance-artifact-lifecycle` (off
 requirements v0.4 committed at `b681fab`. Ships as one PR — Chunk 05's cumulative review is the
 `/prawduct:pr create` gate. Suite state is read from the evidence store, not recorded here.
 
-**Chunk 01 shipped.** `views.py` is now a re-export of `change_log.py` (tags) and `plan_index.py`
-(plans) — one implementation, two import paths, per DECISION-3 taken at build time. Review
-`rev-20260808T151454Z-ec50015f` (`final`, 3 reviewers) returned 2 blocking / 5 warning / 8 note; all
-fifteen dispositioned in one pass, ten fixed and five accepted with reasons recorded.
+**Chunk 01 shipped.** `views.py` became a re-export of `change_log.py` (tags) and `plan_index.py`
+(plans) per DECISION-3. Its three review rounds are closed with nothing outstanding.
 
-**The blocking finding Chunk 02 most needs to know.** BP9 was NOT implemented on the first pass:
-`Path.rglob` has no pruning hook, so `rglob("*.md")` + `continue` descends the whole archive subtree
-and only discards the results — a cost profile identical to the code it replaced. `plan_index` now
-uses `os.walk` with in-place `dirnames[:]` assignment, which is the actual prune. Two tests hold it:
-one spies on `os.scandir` to prove the subtree is never ENTERED (the read-level test passes on both
-implementations, which is why it was not enough). Both the rglob shape and the rebind-instead-of-slice
-footgun were confirmed red by **hand-mutation at build time** — a transient experiment, not a
-committed artifact; nothing in `tests/` runs those mutations, so re-run them by hand if you change
-the walk.
+**Chunk 02 shipped.** `views.py` is deleted; chunk progress has ONE reading — the Status
+checkboxes, ticked by hand. `_git_aware_progress`, `degraded_progress_notice`,
+`DEGRADED_PROGRESS_TOKEN` and `ChunkProgress.git_derived` are gone; `_resolve_chunk_progress_from`
+is now a pure function of the plan text (it no longer takes `project_dir`, which is the collapse
+made structural). `regen-views` and `stamp-merged` are deprecated-and-inert per DECISION-1/4.
+DV7's tripwire — `unticked_committed_chunk_notice` — replaces the degraded-reading notice at both
+of its call sites.
 
-Also settled here, so Chunk 02 can rely on it: `validate_status_values` is deliberately NOT folded
-into the merged validator — `status=` is a retiring key read only by `regen-views`, and folding it in
-would make the release gate refuse entries over a tag nothing reads. It goes when that caller goes.
+**Verification Strategy item 1 is DISCHARGED, and by A/B rather than by reading the diff.** A
+control worktree at the pre-chunk HEAD ran the same four fixtures through a real `clear` → edit →
+`stop` boundary. Results identical in every cell, including on a `views_enabled: true` repo:
+reflection and critic-review gates both fire on an unticked chunk with session changes, and both
+fall silent only when every box is ticked. **The worry this retired: there is no gate narrowing.**
+The Stop gate always read the checkboxes directly (`_count_build_plan_chunks`), never the git
+reading, so success criterion 6 holds by construction and is now measured rather than asserted.
+One consequence is worth naming because it is newly load-bearing: ticking the last box now
+disarms the gate, so the plan's own "Done when" ordering (Critic passes, THEN mark `[x]`) is the
+thing keeping the final chunk reviewed. DV7's tripwire covers the opposite error.
 
-Next: Chunk 02. Its deliverables now name the three shim dependents it breaks; repair by repointing,
-never by weakening the positive control.
+**The two acceptance sweeps, as commands rather than a tally.**
+
+```
+# (1) identifiers
+grep -rnE 'views_enabled|regen.views|scope_rollups|stamp.merged' plugin/ \
+  --include='*.py' --include='*.yaml' --include='prawduct-hook'
+# (2) the claim, in a vocabulary sharing no word with (1)
+grep -rniE 'derived view|regenerat|flips at release|do not hand-edit|hand-flip' plugin/ \
+  --include='*.py' --include='*.yaml' --include='prawduct-hook'
+```
+
+Both return nothing that ASSERTS the retired model over Chunk 02's surface. What they do return,
+and why each is correct: the two deprecated commands and their notices (required by DECISION-1/4);
+past-tense retirement statements (required by GD3 — a reader looking for the flag must find the
+retirement, not silence); and `.critic-findings.json` plus the disposition census, which are
+derived views that legitimately survive. That last group is what corrected the `data-model`
+disposition above — the sweep caught the plan overclaiming about its own architecture.
+
+Run over `plugin/skills`, `plugin/methodology` and `plugin/templates` instead, both sweeps return
+**exactly the eight files Chunk 03's Deliverables already enumerate** — no unowned surface, and an
+independent confirmation that Chunk 03's enumeration is complete rather than representative.
+
+**Deliberately NOT done here, so it reads as a decision rather than an omission:** this repo's own
+`.prawduct/project-state.yaml` keeps its now-inert `views_enabled:` and `scope_rollups:` keys.
+Chunk 05's doctor repair removes them, and the plan names this repo as that repair's verification
+subject — hand-editing them now would delete the subject.
+
+Next: Chunk 03. Its enumeration is confirmed complete (above). It owes TWO learnings rewrites, not
+one, and must not re-locate them by line number.
 
 ## Scaffolding
 
@@ -321,9 +351,11 @@ only gate that reads tags.
     `plugin/lib/release_readiness.py::release_pending_scopes` (contrasts itself against
     `views.collect_release_pending_scopes` and explains itself in terms of what `regen-views` needs) and
     `plugin/lib/buildplan_refs.py::_normalize_chunk_id` (says it is "**not** `views.normalize_chunk_id`,
-    which is the canonical one" — after the deletion it IS the only one). The retired controls also owe
-    `.prawduct/cross-cutting-concerns.md` their surviving backstop and restore trigger rather than a
-    deleted row, per the `test_public_function_coverage` precedent.
+    which is the canonical one" — after the deletion it IS the only one).
+    **Not here: `.prawduct/cross-cutting-concerns.md`'s derived-views row.** It is already Chunk 03's,
+    and splitting one row's rewrite across two chunks is the incoherence this branch exists to remove.
+    Chunk 03 owes it the `test_public_function_coverage` treatment — the surviving backstop and the
+    restore trigger recorded, not the row deleted.
   - `plugin/lib/buildplan_refs.py` — `_git_aware_progress`, `_committed_chunk_ids`'s progress role,
     `degraded_progress_notice` and `DEGRADED_PROGRESS_TOKEN` removed; `resolve_chunk_progress` becomes
     the checkbox reading; `_completed_chunk_ids`' two-reading branch collapses to one.

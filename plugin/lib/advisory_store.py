@@ -398,7 +398,7 @@ def load_project_state(product_dir) -> ProjectState:
     """Parse top-level scalar fields from ``project-state.yaml`` (column-0 scan).
 
     No PyYAML dependency — mirrors the column-0 pattern used elsewhere
-    (``_read_sync_config``, ``views_enabled``). Only top-level ``key: value``
+    (``_read_sync_config``, ``core.read_bool_yaml_key``). Only top-level ``key: value``
     scalars are captured; nested-block headers (``key:`` with no value) are
     skipped. Resolution-condition facts probes consult (e.g.
     ``uses_llm_inference``) live at the top level.

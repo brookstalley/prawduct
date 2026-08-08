@@ -5,12 +5,13 @@ Explicit ``$ARGUMENTS`` always wins (the per-invocation override path).
 Below it sits the **plan-level override**: when the active build plan's
 CURRENT chunk declares a valid ``**Critic mode:**`` field, that mode is
 honored as a successive override (rationale ``"plan-override: <mode>"``).
-"Current" is normally the first unchecked ``- [ ]`` item, but on a
-``views_enabled`` feature branch the Status checkboxes are a derived view
-that only flips at release (so "first unchecked" is always Chunk 01) — there
-the current chunk is derived from git instead (CRT-7B4M). Choosing between
-those two readings lives in :func:`lib.buildplan_refs.resolve_chunk_progress`,
-which this module consumes rather than reimplements. The methodology has always called this field
+"Current" is the first unchecked ``- [ ]`` item, read through
+:func:`lib.buildplan_refs.resolve_chunk_progress`, which this module consumes
+rather than reimplements. A second, git-derived reading of that question once
+existed for repos whose checkboxes only flipped at release; both it and the
+precedence between the two are retired, but the single-owner discipline is not
+— re-deriving "current" here is what let the original defect reach three
+consumers (CRT-7B4M). The methodology has always called this field
 a "successive override," and this is where it is read (CRT-3M8Q). Only when neither override fires
 does :func:`infer_mode` walk four inference rules in precedence order and
 return the first that fires:
@@ -146,15 +147,11 @@ def infer_mode(
 
     prawduct_dir = project_dir / ".prawduct"
 
-    # Resolve chunk progress ONCE, through the one owner of the question. The
-    # Status checkboxes are the default signal, but with ``views_enabled`` they
-    # are a *derived view* that only flips at release — so on a pre-release
-    # feature branch they never flip and "first unchecked" is always Chunk 01,
-    # which would pin every chunk's mode to Chunk 01's declaration; there
-    # progress comes from git instead (CRT-7B4M). Choosing BETWEEN those two
-    # readings is exactly what `resolve_chunk_progress` owns. Writing that
-    # choice out here as well is what let the defect reach three consumers, so
-    # this module asks rather than re-derives.
+    # Resolve chunk progress ONCE, through the one owner of the question.
+    # Re-deriving "which chunk is current" locally is what let the original
+    # defect reach three consumers (CRT-7B4M), so this module asks rather than
+    # re-derives — that discipline outlives the second reading it was written
+    # for.
     # Which plan this branch is building. The `active_build_plan` pointer answers
     # "which plan is in progress in this repo", which on a repo running several
     # plans across worktrees is a different question — and rule 4 used to ground

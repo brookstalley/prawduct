@@ -180,8 +180,8 @@ DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """Value of a top-level (column-0) ``key: value`` scalar, or None.
 
-    Mirrors the column-0 idiom used by ``is_views_enabled`` and bin/prawduct-hook's
-    ``_read_bool_yaml_key`` — no PyYAML dependency, fail-soft to None on a
+    Mirrors the column-0 idiom used by :func:`read_bool_yaml_key` and
+    bin/prawduct-hook's ``_read_bool_yaml_key`` — no PyYAML dependency, fail-soft to None on a
     missing/unreadable file or absent key. Surrounding quotes and inline ``#``
     comments are stripped; an empty value, or the YAML null literal (``null`` /
     ``~``, case-insensitive), reads as None — so ``active_build_plan: null`` means
@@ -216,10 +216,11 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
     reads as False). Fail-soft to False on a missing/unreadable file, an absent
     key, or a malformed/indented line — opt-in by design.
 
-    Factors out the scan shared by ``is_views_enabled`` (``views_enabled``) and
-    bin/prawduct-hook's ``_read_bool_yaml_key`` (``coverage_required``); the
-    latter stays an inline mirror (import-light hot path), pinned by a parity
-    test.
+    Reads the repo's opt-in flags — ``coverage_required`` today. It once also
+    read ``views_enabled``, which was retired along with derived views; the
+    function is general and outlived its second caller. bin/prawduct-hook's
+    ``_read_bool_yaml_key`` stays an inline mirror (import-light hot path),
+    pinned by a parity test.
     """
     if not path.exists():
         return False

@@ -54,7 +54,7 @@ def get_project_dir() -> Path:
     Bootstrap-resilient: this runs before command dispatch, so a broken/absent
     plugin ``lib/`` must not crash here — fall back to the env/cwd behavior and
     let the command that actually needs ``lib`` surface the import error with its
-    own handling (e.g. ``regen-views``)."""
+    own handling (e.g. ``coverage-scaffold``)."""
     try:
         gitstate = _gitstate()
     except ImportError:
@@ -3130,9 +3130,10 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
 
     With no ``chunk_id``, resolves the current chunk via
     ``buildplan_refs._current_chunk_id_from_status`` — the first unchecked
-    ``- [ ]`` item normally, and the git-derived chunk on a ``views_enabled``
-    branch, where the checkboxes only flip at release and "first unchecked"
-    would grade Chunk 01 for the whole branch (BLD-7K3Q). If there is no current
+    ``- [ ]`` item. That reading is only as good as the ticking, so this path
+    first reports any chunk whose box is empty while commits on the branch name
+    it: grading Chunk 01 for a whole branch is the BLD-7K3Q failure, and an
+    unticked finished chunk is now the way back into it. If there is no current
     chunk (all complete or no Status section), exits 0 — nothing to verify.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
@@ -3142,11 +3143,11 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # One canonical current-chunk resolution (shared with the stop hook and
         # the Critic helper); handles both the "### Chunk NN:" and
         # "## Chunk N (ID) — Name" Status-item forms.
-        # #327: announce a KNOWN-degraded reading before acting on it. Only on
-        # the inference path — an explicit chunk_id does not consume the
-        # progress reading, so warning there would be noise about something the
-        # caller already overrode.
-        notice = _buildplan_refs().degraded_progress_notice(project_dir)
+        # Announce a chunk that looks finished-but-unticked BEFORE grading on
+        # the checkbox reading. Only on the inference path — an explicit
+        # chunk_id does not consume that reading, so warning there would be
+        # noise about something the caller already overrode.
+        notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir)
         if notice:
             print(notice, file=sys.stderr)
         chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
@@ -3354,223 +3355,42 @@ def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
 
 
 def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
-    """Regenerate derived views from the change-log canonical store.
+    """DEPRECATED and inert — derived views are retired. Prints a notice, writes
+    nothing, exits 0.
 
-    Three views are produced in one pass when `views_enabled: true`:
+    This once regenerated three views from change-log tags: a build plan's
+    ``## Status`` checkboxes, a release-notes file, and a scope-rollup block in
+    ``project-state.yaml``. All three are gone. A build plan's checkboxes are now
+    the plan's own content, ticked by hand when a chunk finishes, so there is
+    nothing to regenerate them FROM and nothing that would be more authoritative
+    if there were.
 
-      1. Build-plan `## Status` block — checkbox flips from `status=shipped` tags
-      2. Release-notes view — `.prawduct/release-notes.md` from `release=` tags
-      3. Scope-rollup view — `scope_rollups:` block in `project-state.yaml`
-         from `scope=` tags
+    **Why it is still callable.** ``api-contract.md``'s deprecation norm requires
+    a retired subcommand to be signalled rather than removed: kept working,
+    announced on stderr, removal deferred to a major. The skew that norm protects
+    against cannot arise between a prawduct skill and this CLI — they ship from
+    one version-keyed cache — but it absolutely can in a hand-written operator
+    script or a copied runbook, and prawduct's own release runbook called this
+    command. Those callers get a notice telling them what to do instead, not a
+    non-zero exit that breaks a pipeline mid-release.
 
-    No-op when `views_enabled: true` is absent (enabled by default in v1.4;
-    sync auto-enables for existing repos and `false` is the explicit opt-out).
-
-    **There is ONE mode: views always regenerate.** Validation still runs before
-    any write, but its granularity is the VIEW, not the run (the
-    regen-views-is-advice ruling, 2026-08-01 — `.prawduct/learnings.md`, with
-    precedence recorded on `architecture.md`'s authority-fails-closed norm and
-    `data-model.md`'s derived-views norm). Two error classes:
-
-    * **Scope-attributed** (`views.ScopedError`, from
-      `diagnose_scope_plan_coverage` and `validate_chunk_roster`) — can only make
-      ONE scope's `## Status` view wrong, so that view is suppressed and every
-      other view is still written. This is the coupling VWS-6R4T introduced: one
-      unresolvable scope used to stop release-notes and scope-rollups too, which
-      have no plan-roster dependency at all. One consumer lost whole
-      release-notes sections to it; the repos carrying the most nested plans
-      were merely LATENT, safe only because `views_enabled` was unset.
-    * **Global** (unrecognized `status=`, conflicting tag lines) — an entry that
-      cannot be interpreted leaves a view silently HALF-RIGHT rather than absent,
-      which is precisely the bug class VWS-6R4T names. Still fail-closed: exit 2,
-      nothing written.
-
-    Mere tag-line multiplicity (union repair is correct) stays a WARNING.
-
-    `--check` is **deprecated**: it prints a notice and performs the full regen.
-    A dry run that validated identically to the real run never caught anything
-    the real run didn't, and because it exits 0 while writes are *pending*, a
-    clean check meant "the tags parse", not "the views are correct" — which is
-    how one consumer lost six whole release-notes sections while the check read
-    clean. Removal defers to the next major, per `api-contract.md`'s
-    deprecation-is-signalled-not-silent norm.
-
-    Exit codes:
-      0 - every view is current (written, created, or already up to date)
-      1 - the plugin lib/ could not be imported (incomplete install) — a
-          state-mutating command must not report success on a broken install
-          (mirrors accept/verify-operator-verification's ImportError handling)
-      2 - nothing written: I/O or schema error (missing change-log or
-          build-plan), a global validation error, or a usage error
-      3 - PARTIAL: scope-attributed errors suppressed their own `## Status`
-          views; every other view WAS written and each suppression is named on
-          stderr. A documented per-command sentinel in the established style of
-          `critic-begin` 2 (scope-widened) and `backlog verify-migration` 4, so
-          neither 1 nor 2 changes meaning.
+    Exit 0 unconditionally, including for unknown flags: a command that does
+    nothing cannot be misused, and a usage error here would be the pipeline break
+    the deprecation exists to avoid. ``--check`` was already deprecated and is
+    accepted silently for the same reason.
     """
-    # `api-contract.md`: "unknown flags rejected with a usage error (exit 2)".
-    # The previous `"--check" in args` membership test silently ignored every
-    # other argument, so a typo'd flag ran a full regen while its author believed
-    # they were dry-running.
-    deprecated_check = False
-    for arg in args or []:
-        if arg == "--check":
-            deprecated_check = True
-            continue
-        print(
-            f"error: regen-views: unknown flag {arg!r} — regen-views takes no "
-            f"arguments (`--check` is deprecated and performs a full regen).",
-            file=sys.stderr,
-        )
-        return 2
-    if deprecated_check:
-        print(
-            "WARNING: `regen-views --check` is deprecated and now performs a FULL "
-            "regeneration — views always regenerate, there is no dry-run mode. "
-            "Drop the flag; it is removed in the next major.",
-            file=sys.stderr,
-        )
-    # Ensure the plugin root is on sys.path so `from lib import views` resolves
-    # both when invoked as a script and when imported via SourceFileLoader in tests.
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import change_log, views  # noqa: PLC0415 — lazy import keeps top-level cheap
-    except ImportError:
-        # Honest failure: regen-views mutates state (build-plan checkboxes,
-        # release-notes, scope_rollups), so it must not claim success when its
-        # machinery is absent (an incomplete plugin install). Matches
-        # accept/verify-operator-verification — exit 1, not a silent exit 0.
-        print(
-            "error: regen-views could not import the plugin lib/ from "
-            "${CLAUDE_PLUGIN_ROOT}; Status not auto-regenerated.",
-            file=sys.stderr,
-        )
-        return 1
-
-    prawduct_dir = get_prawduct_dir(project_dir)
-    try:
-        enabled, results = views.plan_regen(prawduct_dir)
-    except FileNotFoundError as e:
-        msg = str(e)
-        if "change-log" in msg:
-            print(f"ERROR: {msg}", file=sys.stderr)
-        elif "build-plan" in msg:
-            print(f"ERROR: {msg}", file=sys.stderr)
-        else:
-            print(f"ERROR: {msg}", file=sys.stderr)
-        return 2
-    except OSError as e:
-        print(f"ERROR reading view inputs: {e}", file=sys.stderr)
-        return 2
-
-    if not enabled:
-        print("Views disabled (set views_enabled: true in project-state.yaml).")
-        return 0
-
-    # Validate BEFORE any write (VWS-6R4T, fail closed). The validators are
-    # pure lib functions; severity policy lives here: a tag that would produce
-    # a wrong or silently-partial view is an ERROR that aborts the regen with
-    # nothing written; a tag whose union repair still yields correct output
-    # (mere multiplicity) is a WARNING. The read is load-bearing now — a
-    # change-log read failure fails the command rather than skipping checks.
-    try:
-        change_log_text = (prawduct_dir / "change-log.md").read_text(encoding="utf-8")
-    except OSError as e:
-        print(f"ERROR reading change-log for validation: {e}", file=sys.stderr)
-        return 2
-    parsed_entries = views.parse_change_log(change_log_text)
-    artifacts_dir = prawduct_dir / "artifacts"
-
-    # GLOBAL errors — no single view owns them, and each one would leave a view
-    # silently half-right rather than absent. Fail closed (VWS-6R4T's actual
-    # content, which the advice ruling preserves).
-    global_errors: list[str] = []
-    # A malformed `release=`, and tag lines that disagree with each other. Both
-    # now come from one validator in `lib.change_log`, alongside the multiplicity
-    # warning collected below — the three shapes were three functions whose only
-    # caller was this one.
-    tag_errors, tag_warnings = change_log.validate_change_log_tags(parsed_entries)
-    global_errors.extend(tag_errors)
-    # Unrecognized status= (typo) — the entry would silently never flip. Kept
-    # separate because `status=` is a retiring key: it is read here and nowhere
-    # else, so folding its guard into the validator the release gate calls would
-    # make that gate refuse entries over a tag nothing reads.
-    global_errors.extend(change_log.validate_status_values(parsed_entries))
-
-    # SCOPE-ATTRIBUTED errors — each can only make its own scope's `## Status`
-    # view wrong. Unreleased scope with no plan file, duplicate scope across
-    # plan files, and chunks= IDs matching nothing in their plan's roster.
-    scoped_errors: list[views.ScopedError] = []
-    scoped_errors.extend(views.diagnose_scope_plan_coverage(change_log_text, artifacts_dir))
-    scoped_errors.extend(views.validate_chunk_roster(change_log_text, artifacts_dir))
-    # A scope-attributed error that carries no scope has nothing to suppress, so
-    # suppressing "the scope it names" would silently suppress nothing and the
-    # bad input would ride into a written view. Treat it as global — fail closed
-    # is the safe direction when attribution is missing.
-    global_errors.extend(e for e in scoped_errors if e.scope is None)
-    scoped_errors = [e for e in scoped_errors if e.scope is not None]
-
-    for warning in tag_warnings:
-        print(f"WARNING: {warning}", file=sys.stderr)
-
-    if global_errors:
-        for err in global_errors:
-            print(f"ERROR: {err}", file=sys.stderr)
-        print(
-            f"{len(global_errors)} validation error(s) affecting every view — no "
-            f"views written. Fix the change-log tags and re-run.",
-            file=sys.stderr,
-        )
-        return 2
-
-    suppressed_scopes = {e.scope for e in scoped_errors}
-    for err in scoped_errors:
-        print(f"ERROR: {err}", file=sys.stderr)
-
-    kept = [
-        r
-        for r in results
-        if not (r.name == "status" and r.scope in suppressed_scopes)
-    ]
-    if suppressed_scopes:
-        # Report what was actually withheld, not what was matched. The
-        # no-plan-file case names a scope that HAS no Status view — there was
-        # nothing to suppress, and claiming otherwise tells an operator to go
-        # look for a view that was never going to be written.
-        withheld = sorted(
-            {r.scope for r in results if r.name == "status" and r.scope in suppressed_scopes}
-        )
-        unresolvable = sorted(suppressed_scopes - set(withheld))
-        parts = []
-        if withheld:
-            parts.append(
-                "withheld the ## Status view for "
-                + ", ".join(f"scope={s!r}" for s in withheld)
-            )
-        if unresolvable:
-            parts.append(
-                "no ## Status view exists to write for "
-                + ", ".join(f"scope={s!r}" for s in unresolvable)
-            )
-        print(
-            f"{len(scoped_errors)} scope-local validation error(s) — "
-            + "; ".join(parts)
-            + ". Every other view was regenerated; fix these and re-run to "
-            "complete them.",
-            file=sys.stderr,
-        )
-
-    try:
-        views.apply_regen(prawduct_dir, kept)
-    except OSError as e:
-        print(f"ERROR writing view output: {e}", file=sys.stderr)
-        return 2
-
-    for r in kept:
-        print(r.summary)
-    return 3 if suppressed_scopes else 0
+    # Both parameters are kept so the dispatcher's call site is unchanged — a
+    # deprecated command that still accepts its old invocation is the point.
+    del project_dir, args
+    print(
+        "WARNING: regen-views no longer does anything and will be removed in a "
+        "future major version. A build plan's Status checkboxes are now written "
+        "by hand — tick a box when its chunk is finished, and nothing will "
+        "overwrite it. Release notes are kept in the change log itself. If a "
+        "script or checklist still calls this command, drop the call.",
+        file=sys.stderr,
+    )
+    return 0
 
 
 def cmd_check_operator_verification(project_dir: Path) -> int:
@@ -3904,12 +3724,13 @@ def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
-    # #327: the preview's Resume line is derived from the chunk reading, so a
-    # known-degraded reading makes the thing being previewed wrong. Emitted here
-    # rather than inside `briefing.py` — the notice belongs to the deliberately
-    # invoked command, and the same renderer also serves the SessionStart hot
-    # path, where this must NOT fire.
-    notice = _buildplan_refs().degraded_progress_notice(project_dir)
+    # The preview's Resume line is the chunk reading, so an unticked finished
+    # chunk makes the thing being previewed wrong — and this preview is what a
+    # session hands the next one, which is precisely how a false progress signal
+    # propagates as testimony. Emitted here rather than inside `briefing.py`: the
+    # notice belongs to the deliberately invoked command, and the same renderer
+    # also serves the SessionStart hot path, where this must NOT fire.
+    notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir)
     if notice:
         print(notice, file=sys.stderr)
 
@@ -4286,7 +4107,7 @@ def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
 
     Exit 0 on dry run or successful ``--apply``; exit 1 if the plugin ``lib/`` is
     not importable (a state-mutating command must not claim success on a broken
-    install — mirrors ``regen-views``)."""
+    install — mirrors ``accept-operator-verification``)."""
     apply = "--apply" in argv
     want_json = "--json" in argv
     lib_root = _plugin_root()
@@ -4472,105 +4293,37 @@ def cmd_print_install_reference() -> int:
 
 
 def cmd_stamp_merged(project_dir: Path) -> int:
-    """Stamp ``status=merged`` onto statusless tagged change-log entries.
+    """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
 
-    DEPRECATED — no flow runs this anymore (single-pr-bookkeeping). A
-    statusless tagged entry is first-class release-pending state: the entry
-    rides in the feature PR, so its presence on the integration branch
-    already proves the work is merged. The post-merge stamp commit this
-    command fed forced consumers with protected integration branches into a
-    second, bookkeeping-only PR. The command stays callable (stamping is
-    harmless, convergent, and idempotent) and announces its deprecation on
-    stderr; removal is deferred to a future major.
+    This stamped ``status=merged`` onto tagged change-log entries. It had already
+    been removed from every flow before being emptied here: a statusless tagged
+    entry IS the release-pending state, since the entry rides in the feature PR
+    and its presence on the integration branch already proves the work merged.
+    The post-merge stamp commit it fed forced consumers with protected
+    integration branches into a second, bookkeeping-only PR.
 
-    Branch guard: stamping asserts "this work is integrated," which is only
-    true ON the integration branch — running on a feature branch would lie.
-    The current branch must equal the configured ``base_branch:`` (or ``main``
-    when the knob is unset). Fails closed when the branch cannot be determined.
+    **Why the body went and not just the flow.** ``status=`` had exactly one
+    reader — the derived-view regeneration — and that reader is retired. A
+    command whose sole effect is writing a key nothing reads is not harmless
+    bookkeeping; it is a channel produced and never consumed, and the next reader
+    of a stamped entry would reasonably infer a consumer exists. Kept callable
+    and signalled, per ``api-contract.md``'s deprecation norm, on the same
+    reasoning as ``regen-views``: removal defers to a major.
 
-    Exit codes:
-      0 - stamped (titles printed) or nothing to stamp
-      1 - refused (not on the integration branch / branch undeterminable) or
-          the plugin lib/ could not be imported (state-mutating command must
-          not claim success on a broken install — mirrors regen-views)
-      2 - I/O error (missing/unreadable change-log)
+    The branch guard went with the body. It existed because stamping asserted
+    "this work is integrated", which is only true on the integration branch —
+    an assertion nothing makes anymore. Exits 0 everywhere, so a checklist that
+    still calls this does not break.
     """
+    del project_dir  # kept so the dispatcher's call site is unchanged
     print(
-        "deprecated: stamp-merged is no longer part of any flow — a "
-        "statusless tagged entry IS the release-pending state, and the "
-        "release checklist flips statusless and merged entries alike. "
-        "Stamping remains harmless; the command may be removed in a future "
-        "major version.",
+        "WARNING: stamp-merged no longer does anything and will be removed in a "
+        "future major version. A tagged change-log entry with no release marker "
+        "is already the record that work is merged and not yet shipped, so there "
+        "is nothing to stamp. If a checklist still calls this command, drop the "
+        "call.",
         file=sys.stderr,
     )
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
-        from lib.core import read_str_yaml_key  # noqa: PLC0415
-    except ImportError:
-        print(
-            "error: stamp-merged could not import the plugin lib/ from "
-            "${CLAUDE_PLUGIN_ROOT}; change-log not stamped.",
-            file=sys.stderr,
-        )
-        return 1
-
-    prawduct_dir = get_prawduct_dir(project_dir)
-    configured = read_str_yaml_key(
-        prawduct_dir / "project-state.yaml", "base_branch"
-    )
-    integration_branch = configured or "main"
-    # REL-7P3X: project-state.yaml's own comment calls `origin/develop`
-    # "preferred", but this guard compares against the LOCAL branch name from
-    # `git rev-parse --abbrev-ref HEAD` (a deliberate divergence from
-    # `_resolve_base_branch`, on record in the 2026-06-10 ch.02 Critic
-    # findings). Strip a single leading `origin/` so an origin-prefixed config
-    # normalizes to the local branch instead of refusing permanently.
-    if integration_branch.startswith("origin/"):
-        integration_branch = integration_branch[len("origin/"):]
-    proc = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    current = proc.stdout.strip() if proc.returncode == 0 else ""
-    if not current or current == "HEAD":
-        print(
-            "refusing: current branch could not be determined (detached HEAD "
-            "or not a git repo) — stamp-merged runs on the integration branch.",
-            file=sys.stderr,
-        )
-        return 1
-    if current != integration_branch:
-        print(
-            f"refusing: current branch {current!r} is not the integration "
-            f"base {integration_branch!r} — status=merged asserts the work is "
-            f"integrated; run stamp-merged after the merge, on the base branch.",
-            file=sys.stderr,
-        )
-        return 1
-
-    change_log_path = prawduct_dir / "change-log.md"
-    try:
-        content = change_log_path.read_text(encoding="utf-8")
-    except OSError as e:
-        print(f"ERROR reading change-log: {e}", file=sys.stderr)
-        return 2
-    new_content, stamped = views.stamp_merged(content)
-    if not stamped:
-        print("nothing to stamp: no statusless tagged entries.")
-        return 0
-    try:
-        change_log_path.write_text(new_content, encoding="utf-8")
-    except OSError as e:
-        print(f"ERROR writing change-log: {e}", file=sys.stderr)
-        return 2
-    for title in stamped:
-        print(f"stamped status=merged: {title}")
     return 0
 
 
@@ -4960,7 +4713,7 @@ _USAGE = (
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
-    "regen-views [--check, deprecated]|stamp-merged|"
+    "regen-views [deprecated, inert]|stamp-merged [deprecated, inert]|"
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"

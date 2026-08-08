@@ -20,11 +20,12 @@ Keys, and who reads them:
   than a curiosity (see :func:`validate_change_log_tags`).
 * ``chunks``  — comma-separated chunk IDs. **Being retired**: nothing outside
   the derived-view machinery reads it.
-* ``status``  — ``shipped`` | ``merged``. **Being retired** with ``chunks``.
-  A tagged entry with NO ``status=`` is the normal release-pending state: the
-  entry rides in the feature PR, so its presence on the integration branch
-  already means the work is merged. ``merged`` is an accepted legacy synonym
-  from the retired ``stamp-merged`` flow step.
+* ``status``  — ``shipped`` | ``merged``. **Retired**, with ``chunks``: nothing
+  reads it, and the commands that wrote it are inert. A tagged entry with NO
+  ``status=`` is the normal release-pending state — the entry rides in the
+  feature PR, so its presence on the integration branch already means the work
+  is merged. Historical entries carrying either value still parse, because the
+  parser preserves unknown keys and this is now one of them.
 
 Unknown keys are preserved verbatim so a future reader can pick them up without
 a schema bump. Entries with no tag line are ignored — untagged historical
@@ -161,8 +162,6 @@ def parse_change_log(content: str) -> list[ChangeLogEntry]:
     return entries
 
 
-VALID_STATUS_VALUES = frozenset({"shipped", "merged"})
-
 RELEASE_VALUE_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
 
 
@@ -238,37 +237,3 @@ def validate_change_log_tags(
                 f"across them. Merge them into a single tag line."
             )
     return errors, warnings
-
-
-def validate_status_values(entries: list[ChangeLogEntry]) -> list[str]:
-    """One warning per entry whose ``status=`` value is unrecognized.
-
-    **Transitional, and deliberately not folded into**
-    :func:`validate_change_log_tags`. ``status=`` is a retiring key: it is read
-    only by the derived-view regenerator, which is itself being retired, and the
-    merged validator above covers the keys that outlive it. Folding a check for
-    a doomed key into the surviving validator would leave the release gate
-    refusing entries over a tag nothing reads.
-
-    It is kept rather than dropped because its caller still exists. A
-    ``status=`` typo silently flips nothing — the entry parses fine,
-    ``shipped_chunks`` returns ``[]``, and no error is raised — so removing the
-    guard while the mechanism it guards is still running would reintroduce
-    exactly the silent failure this branch exists to remove. It goes when its
-    last caller goes, not before.
-
-    Returns ``[]`` when every status value is valid or absent.
-    """
-    warnings: list[str] = []
-    for entry in entries:
-        status = entry.tags.get("status")
-        if status is None:
-            continue
-        if status not in VALID_STATUS_VALUES:
-            warnings.append(
-                f"change-log entry {entry.title!r} (line {entry.line_number}) "
-                f"has unrecognized status={status!r} — expected one of "
-                f"{sorted(VALID_STATUS_VALUES)}; this entry will not flip any "
-                f"checkbox. Likely a typo."
-            )
-    return warnings

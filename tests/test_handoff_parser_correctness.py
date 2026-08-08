@@ -7,17 +7,25 @@ live build plan (SCN-4H9T, BLD-7K3Q), all in the path from build-plan Status to
 * a completed plan was reported as the next session's active ``**Task**`` —
   ``staleness_scan`` applied a done-predicate and ``_get_active_work`` read the
   *identical* parse without one;
-* on a ``views_enabled`` repo the current chunk was "first ``- [ ]``", which is
-  Chunk 01 forever because the checkboxes only flip at release;
+* the current chunk was read as "first ``- [ ]``" against Status checkboxes that
+  were a derived view flipping only at release, so it was Chunk 01 forever;
 * a frontmatter-style plan (no ``# Build Plan`` H1) produced no description, and
   description is the sole key gating the handoff's whole Work In Progress
   section, so the section silently vanished;
 * ``Context:`` was read as one physical line, truncating the multi-paragraph
   block ``building.md`` calls "the cross-session handoff".
 
-Real ``git init`` repos where the behavior is git-derived: the defect survived
-unit-level correctness for months precisely because nothing exercised the real
-path.
+Real ``git init`` repos throughout: the defects survived unit-level correctness
+for months precisely because nothing exercised the real path.
+
+The second defect was fixed twice. First by deriving progress from git commits
+when the checkboxes could not be trusted — two readings of one question, with a
+precedence between them. Then by removing the reason for the second reading: the
+derived view is retired and a ticked box is a statement the builder made. What
+remains from the git era is a **report**, not a reading —
+``unticked_committed_chunk_notice`` — because the single reading is only as good
+as the ticking, and a chunk whose work is committed under an empty box is the way
+back into exactly this defect.
 """
 
 from __future__ import annotations
@@ -31,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import briefing, buildplan_refs, critic_mode, gates, views  # noqa: E402
+from lib import briefing, buildplan_refs, critic_mode, gates, plan_index  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -87,20 +95,18 @@ def _write_state(project_dir: Path, content: str) -> None:
     state.write_text(content)
 
 
-# A views_enabled plan mid-flight: every box is `- [ ]` because the Status
-# section is a derived view that only flips at release.
-VIEWS_PLAN = """---
+# A plan mid-flight under the single reading: chunks 01-03 ticked by the builder,
+# 04 open. `- [x]` is a statement, not a regenerated value.
+LIVE_PLAN = """---
 artifact: build-plan
 scope: session-handoff-continuity
 ---
 
 ## Status
 
-<!-- views_enabled: true — these checkboxes are a DERIVED VIEW. -->
-
-- [ ] Chunk 01: The forward channel
-- [ ] Chunk 02: Parser correctness
-- [ ] Chunk 03: Proactive close
+- [x] Chunk 01: The forward channel
+- [x] Chunk 02: Parser correctness
+- [x] Chunk 03: Proactive close
 - [ ] Chunk 04: The Critic summary
 
 Context: Chunks 01-03 shipped.
@@ -118,85 +124,44 @@ Touches `.prawduct/artifacts/build-plan.md`.
 """
 
 
-def _views_repo(tmp_path: Path, *, committed_chunks: int = 3) -> Path:
-    """A views_enabled repo on a feature branch off ``develop``, with the first
-    ``committed_chunks`` chunks recorded by commit subject and NO box flipped —
-    the state that reported "Chunk 01" live for an entire branch."""
+def _live_repo(tmp_path: Path, *, commit_chunk: int | None = 4) -> Path:
+    """Chunks 01-03 ticked; 04 open and — by default — already COMMITTED.
+
+    That combination is deliberate and makes the fixture discriminating rather
+    than merely representative. Every consumer must answer "04", which is what
+    the boxes say; the retired git-derived reading would have counted 04 as done
+    too and answered "nothing current". So a consumer that quietly reintroduced a
+    commit-derived reading fails here instead of agreeing by coincidence.
+
+    It is also the exact state the tripwire exists to report, so one fixture
+    carries both halves of the contract: the boxes decide, and the discrepancy is
+    reported rather than silently resolved.
+    """
     repo = tmp_path / "repo"
     _init_repo(repo, branch="develop")
-    _write_state(repo, "views_enabled: true\nbase_branch: develop\n")
-    _write_plan(repo, VIEWS_PLAN)
+    _write_state(repo, "base_branch: develop\n")
+    _write_plan(repo, LIVE_PLAN)
     _commit(repo, "chore: plan")
     _git(repo, "checkout", "-b", "feature/session-handoff-continuity", "--quiet")
-    for n in range(1, committed_chunks + 1):
-        _commit(repo, f"feat(continuity): land it (Chunk 0{n})")
+    if commit_chunk is not None:
+        _commit(repo, f"feat(continuity): land it (Chunk 0{commit_chunk})")
     return repo
 
 
-# ---------------------------------------------------------------------------
-# Defect 3 — the done-predicate
-# ---------------------------------------------------------------------------
-
-
-class TestCompletedPlanIsNotActiveWork:
-    def test_all_boxes_checked_is_not_active_work(self, tmp_path: Path):
-        """A finished plan must never be stamped as the next session's Task."""
-        _write_plan(
-            tmp_path,
-            "# Build Plan — Done (2026-07-26)\n\n"
-            "## Status\n\n- [x] Chunk 01: A\n- [x] Chunk 02: B\n",
-        )
-        status = buildplan_refs._parse_build_plan_status(tmp_path)
-        assert status["_has_status_items"] == "true"
-        assert "current_chunk" not in status
-        assert buildplan_refs.build_plan_is_complete(status) is True
-        assert briefing._get_active_work(tmp_path) == {}
-
-    def test_in_flight_plan_is_still_active_work(self, tmp_path: Path):
-        _write_plan(
-            tmp_path,
-            "# Build Plan — Doing (2026-07-26)\n\n"
-            "## Status\n\n- [x] Chunk 01: A\n- [ ] Chunk 02: B\n",
-        )
-        status = buildplan_refs._parse_build_plan_status(tmp_path)
-        assert buildplan_refs.build_plan_is_complete(status) is False
-        assert briefing._get_active_work(tmp_path)["current_chunk"] == "Chunk 02: B"
-
-    def test_plan_with_no_status_items_is_not_complete(self, tmp_path: Path):
-        """No items means nothing to be complete — distinct from all-done, and
-        the caller must not read it as a finished plan."""
-        _write_plan(tmp_path, "# Build Plan — Empty (2026-07-26)\n\n## Status\n\nContext: soon.\n")
-        status = buildplan_refs._parse_build_plan_status(tmp_path)
-        assert buildplan_refs.build_plan_is_complete(status) is False
-
-    def test_handoff_omits_work_section_for_a_completed_plan(self, tmp_path: Path):
-        _init_repo(tmp_path)
-        _write_plan(
-            tmp_path,
-            "# Build Plan — Done (2026-07-26)\n\n## Status\n\n- [x] Chunk 01: A\n",
-        )
-        (tmp_path / ".prawduct" / ".session-reflected").write_text("did the thing")
-        briefing.generate_session_handoff(tmp_path)
-        handoff = (tmp_path / ".prawduct" / ".session-handoff.md").read_text()
-        assert "## Work In Progress" not in handoff
-        assert "did the thing" in handoff
-
-
-# ---------------------------------------------------------------------------
-# Defect 4 — views_enabled, at EVERY consumer
+# Defect 4 — one reading of chunk progress, at EVERY consumer
 # ---------------------------------------------------------------------------
 
 
-class TestViewsEnabledCurrentChunk:
-    """Three chunks committed, no box flipped. Every consumer must say 04."""
+class TestSingleReadingCurrentChunk:
+    """Chunks 01-03 ticked, 04 open and committed. Every consumer must say 04."""
 
     def test_parse_reports_the_chunk_actually_in_flight(self, tmp_path: Path):
-        repo = _views_repo(tmp_path)
+        repo = _live_repo(tmp_path)
         status = buildplan_refs._parse_build_plan_status(repo)
         assert status["current_chunk"] == "Chunk 04: The Critic summary"
 
     def test_current_chunk_id(self, tmp_path: Path):
-        repo = _views_repo(tmp_path)
+        repo = _live_repo(tmp_path)
         assert buildplan_refs._current_chunk_id_from_status(repo) == "04"
 
     def test_verify_chunk_refs_grades_the_right_chunk(self, tmp_path: Path):
@@ -207,7 +172,7 @@ class TestViewsEnabledCurrentChunk:
         stdout, which is what a `cannot-verify` exit produces — so it would
         have gone green against the pre-fix code too.
         """
-        repo = _views_repo(tmp_path)
+        repo = _live_repo(tmp_path)
         proc = subprocess.run(
             [sys.executable, str(REPO_ROOT / "bin" / "prawduct-hook"), "verify-chunk-refs"],
             cwd=str(repo),
@@ -219,27 +184,38 @@ class TestViewsEnabledCurrentChunk:
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert "ok: chunk 04" in proc.stdout, proc.stdout + proc.stderr
 
-    def test_progress_counts_committed_chunks(self, tmp_path: Path):
-        """CRT-7B4M's derivation keeps its answer after the move."""
-        repo = _views_repo(tmp_path)
+    def test_progress_counts_ticked_chunks(self, tmp_path: Path):
+        repo = _live_repo(tmp_path)
         progress = buildplan_refs.resolve_chunk_progress(repo)
         assert (progress.complete, progress.current_id) == (3, "04")
-        assert progress.git_derived is True
+
+    def test_progress_is_a_pure_function_of_the_plan_text(self, tmp_path: Path):
+        """The collapse's structural claim: no git, no repo state, no I/O beyond
+        reading the plan. Asserted by making every subprocess call raise — a
+        reading that still consults git cannot survive it."""
+        repo = _live_repo(tmp_path)
+
+        def _boom(*_a, **_k):
+            raise AssertionError("chunk progress must not shell out")
+
+        import unittest.mock
+
+        with unittest.mock.patch.object(buildplan_refs.subprocess, "run", _boom):
+            progress = buildplan_refs.resolve_chunk_progress(repo)
+        assert (progress.complete, progress.current_id) == (3, "04")
 
     def test_mode_inference_routes_through_the_single_owner(
         self, tmp_path: Path, monkeypatch
     ):
-        """`infer_mode` must not re-derive the git-vs-checkbox precedence.
+        """`infer_mode` must not re-derive which chunk is current.
 
         Asserted by DEPENDENCE, not by agreement: two functions returning "04"
         is equally true of an `infer_mode` that derives "04" for itself. So
         redirect the owner and require `infer_mode`'s answer to move with it.
         Chunk 04 declares `**Critic mode:** final`; Chunk 02 declares none, so
-        the plan-override appears only when 04 is the resolved chunk. An
-        `infer_mode` that composed the precedence itself would still resolve 04
-        from git and stay green.
+        the plan-override appears only when 04 is the resolved chunk.
         """
-        repo = _views_repo(tmp_path)
+        repo = _live_repo(tmp_path)
         mode, rationale = critic_mode.infer_mode(repo)
         assert (mode, rationale) == ("final", "plan-override: final")
 
@@ -261,42 +237,37 @@ class TestViewsEnabledCurrentChunk:
         )
 
     def test_briefing_resume_line_names_the_right_chunk(self, tmp_path: Path):
-        repo = _views_repo(tmp_path)
+        repo = _live_repo(tmp_path)
         text = briefing.assemble_session_briefing(repo, [])
         assert "Resume: Chunk 04: The Critic summary" in text
 
     def test_handoff_names_the_right_chunk(self, tmp_path: Path):
-        repo = _views_repo(tmp_path)
+        repo = _live_repo(tmp_path)
         briefing.generate_session_handoff(repo)
         handoff = (repo / ".prawduct" / ".session-handoff.md").read_text()
         assert "**Current chunk**: Chunk 04: The Critic summary" in handoff
 
-    def test_all_chunks_committed_clears_the_current_chunk(self, tmp_path: Path):
-        """Every chunk has a commit → the plan is complete, so there is no
-        current chunk even though every box still reads `- [ ]`."""
-        repo = _views_repo(tmp_path, committed_chunks=4)
+    def test_all_boxes_ticked_clears_the_current_chunk(self, tmp_path: Path):
+        repo = _live_repo(tmp_path)
+        _write_plan(repo, LIVE_PLAN.replace("- [ ] Chunk", "- [x] Chunk"))
         status = buildplan_refs._parse_build_plan_status(repo)
         assert "current_chunk" not in status
         assert buildplan_refs.build_plan_is_complete(status) is True
 
     def test_an_unchecked_non_chunk_item_still_blocks_completion(self, tmp_path: Path):
-        """The git reading must never be *worse* than the checkbox reading.
-
-        A Status section may hold items that name no chunk (a plain to-do). The
-        git-derived walk skips those, so with every chunk committed it reported
-        "no current item" and the plan read as COMPLETE while an unchecked item
-        sat right there — a strictly worse answer than the checkboxes, which is
-        the one thing the derivation promises never to be. Downstream that
-        retires a live plan and blanks the handoff's work section.
+        """A Status section may hold items that name no chunk (a plain to-do).
+        Such an item is done iff its box is ticked — the walk covers EVERY Status
+        item, not just the chunk-shaped ones. Skipping them once made a plan with
+        every chunk done read as COMPLETE while an unchecked item sat right
+        there, which retires a live plan and blanks the handoff's work section.
         """
-        repo = _views_repo(tmp_path, committed_chunks=4)
-        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
-        plan.write_text(
-            plan.read_text(encoding="utf-8").replace(
+        repo = _live_repo(tmp_path)
+        _write_plan(
+            repo,
+            LIVE_PLAN.replace(
                 "- [ ] Chunk 04: The Critic summary",
-                "- [ ] Chunk 04: The Critic summary\n- [ ] Retire the shim",
+                "- [x] Chunk 04: The Critic summary\n- [ ] Retire the shim",
             ),
-            encoding="utf-8",
         )
         status = buildplan_refs._parse_build_plan_status(repo)
         assert buildplan_refs.build_plan_is_complete(status) is False
@@ -304,76 +275,183 @@ class TestViewsEnabledCurrentChunk:
 
     def test_a_status_of_only_non_chunk_items_is_not_complete(self, tmp_path: Path):
         """The degenerate end of the same defect: nothing chunk-shaped to walk,
-        so the git reading returned "0 complete, nothing current" and the
+        so a chunk-only walk returned "0 complete, nothing current" and the
         done-predicate read that as *finished* with zero work done."""
-        repo = _views_repo(tmp_path, committed_chunks=4)
-        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
-        content = plan.read_text(encoding="utf-8")
+        content = LIVE_PLAN
         for n in range(1, 5):
-            content = re.sub(rf"- \[ \] Chunk 0{n}: .*", f"- [ ] Task {n}", content)
-        plan.write_text(content, encoding="utf-8")
+            content = re.sub(rf"- \[[ x]\] Chunk 0{n}: .*", f"- [ ] Task {n}", content)
+        repo = _live_repo(tmp_path)
+        _write_plan(repo, content)
         status = buildplan_refs._parse_build_plan_status(repo)
         assert buildplan_refs.build_plan_is_complete(status) is False
         assert status["current_chunk"] == "Task 1"
 
-    def test_a_prior_releases_shipped_chunk_is_never_current(self, tmp_path: Path):
-        """A `[x]` chunk shipped in an EARLIER release has no commit on this
-        branch, so a commit-only reading walks back and names it current —
-        strictly worse than the checkbox fallback the derivation promises never
-        to be worse than. Completion is `[x]` OR committed, never commits alone.
-        """
-        repo = tmp_path / "repo"
-        _init_repo(repo, branch="develop")
-        _write_state(repo, "views_enabled: true\nbase_branch: develop\n")
+    def test_a_ticked_chunk_after_the_current_one_still_counts_as_done(
+        self, tmp_path: Path
+    ):
+        """Done-ness is per-item and non-contiguous. The retired git reading
+        reported a bare COUNT with the predicate locked in a closure, so callers
+        had to approximate with the roster prefix before `current_id` and
+        under-reported a ticked chunk sitting after it. With one reading the flag
+        is exact, so this must be counted, not approximated."""
+        repo = _live_repo(tmp_path)
         _write_plan(
             repo,
-            VIEWS_PLAN.replace("- [ ] Chunk 01", "- [x] Chunk 01").replace(
-                "- [ ] Chunk 02", "- [x] Chunk 02"
+            LIVE_PLAN.replace("- [x] Chunk 03", "- [ ] Chunk 03").replace(
+                "- [ ] Chunk 04", "- [x] Chunk 04"
             ),
         )
-        _commit(repo, "chore: plan")
-        _git(repo, "checkout", "-b", "feature/next", "--quiet")
-        _commit(repo, "feat: continue (Chunk 03)")
         progress = buildplan_refs.resolve_chunk_progress(repo)
-        assert progress.current_id == "04"
-        assert progress.complete == 3
+        assert (progress.complete, progress.current_id) == (3, "03")
+        assert buildplan_refs._completed_chunk_ids(
+            (repo / ".prawduct" / "artifacts" / "build-plan.md").read_text()
+        ) == {"1", "2", "4"}
+
+
+class TestUntickedCommittedChunkTripwire:
+    """DV7: the single reading is only as good as the ticking, so a chunk whose
+    work is committed under an empty box is REPORTED — never silently resolved.
+
+    This is the branch's own opening failure, generalized: a plan said a chunk
+    was not done, every consumer believed it, and the next session inherited the
+    false signal as testimony because a handoff is written by an agent reading
+    the same surface.
+    """
+
+    def test_it_fires_and_names_the_chunk_and_the_commit(self, tmp_path: Path):
+        repo = _live_repo(tmp_path)
+        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
+        assert notice is not None
+        assert buildplan_refs.UNTICKED_CHUNK_TOKEN in notice
+        assert "Chunk 04: The Critic summary" in notice
+        assert "land it (Chunk 04)" in notice, (
+            "the notice must cite the commit — a report nobody can check is a "
+            f"report nobody acts on (got {notice!r})"
+        )
+
+    def test_it_is_silent_when_the_boxes_match_the_commits(self, tmp_path: Path):
+        repo = _live_repo(tmp_path)
+        _write_plan(repo, LIVE_PLAN.replace("- [ ] Chunk 04", "- [x] Chunk 04"))
+        assert buildplan_refs.unticked_committed_chunk_notice(repo) is None
+
+    def test_it_is_silent_when_no_commit_names_a_chunk(self, tmp_path: Path):
+        repo = _live_repo(tmp_path, commit_chunk=None)
+        assert buildplan_refs.unticked_committed_chunk_notice(repo) is None
+
+    def test_it_never_writes(self, tmp_path: Path):
+        """Reporting-only, asserted rather than asserted-in-prose: the plan on
+        disk must be byte-identical after the notice fires. A tripwire that
+        'helpfully' ticked the box would be a model in a fact's write path."""
+        repo = _live_repo(tmp_path)
+        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
+        before = plan.read_bytes()
+        assert buildplan_refs.unticked_committed_chunk_notice(repo) is not None
+        assert plan.read_bytes() == before
+
+    def test_it_does_not_change_what_any_consumer_reads(self, tmp_path: Path):
+        """The report must not become a second reading by the back door: with the
+        tripwire firing on 04, the current chunk is STILL 04 (the boxes), not
+        "nothing current" as a commit-derived reading would say."""
+        repo = _live_repo(tmp_path)
+        assert buildplan_refs.unticked_committed_chunk_notice(repo) is not None
+        assert buildplan_refs.resolve_chunk_progress(repo).current_id == "04"
+
+    def test_a_foreign_plans_chunk_ids_are_not_reported(self, tmp_path: Path):
+        """Chunk ids are PER-PLAN (SCN-5B8Q R-2/R-7): a sibling plan's
+        `(Chunk 02)` must not produce a report about THIS plan's chunk 02.
+        Scoping by conventional-commit scope is what stops it."""
+        repo = tmp_path / "repo"
+        _init_repo(repo, branch="develop")
+        _write_state(repo, "base_branch: develop\n")
+        _write_plan(
+            repo,
+            "---\nartifact: build-plan\nscope: boundary-events\n---\n\n"
+            "## Status\n\n"
+            "- [x] Chunk 01: Split the acts\n- [ ] Chunk 02: Handoff vintage\n",
+        )
+        _commit(repo, "chore: plan")
+        _git(repo, "checkout", "-b", "feature/x", "--quiet")
+        _commit(repo, "fix(boundary-events): split the acts (Chunk 01)")
+        _commit(repo, "feat(other-plan): unrelated work (Chunk 02)")
+
+        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
+        assert notice is None, (
+            f"a foreign plan's (Chunk 02) was reported against this plan: {notice!r}"
+        )
+
+    def test_an_unmatched_plan_scope_keeps_the_unscoped_reading(self, tmp_path: Path):
+        """Scope tags are a convention, not a guarantee — on the branch that
+        surfaced this, the continuity plan's commits said `session-continuity`
+        while its frontmatter said `session-handoff-continuity`. A strict filter
+        would erase the plan's whole signal, so when nothing matches the scope,
+        the unscoped reading survives and the tripwire still reports."""
+        repo = tmp_path / "repo"
+        _init_repo(repo, branch="develop")
+        _write_state(repo, "base_branch: develop\n")
+        _write_plan(repo, LIVE_PLAN)  # scope: session-handoff-continuity
+        _commit(repo, "chore: plan")
+        _git(repo, "checkout", "-b", "feature/x", "--quiet")
+        _commit(repo, "fix(session-continuity): the critic summary (Chunk 04)")
+
+        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
+        assert notice is not None and "Chunk 04" in notice
+
+    def test_a_git_failure_degrades_to_silence_not_to_a_claim(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """A raising git call (absent binary, timeout) must produce no report.
+        The honest answer when the evidence cannot be read is nothing at all."""
+        repo = _live_repo(tmp_path)
+
+        def _boom(*_a, **_k):
+            raise subprocess.TimeoutExpired(cmd="git", timeout=10)
+
+        monkeypatch.setattr(buildplan_refs.subprocess, "run", _boom)
+        assert buildplan_refs.unticked_committed_chunk_notice(repo) is None
 
 
 class TestGateSemanticsUnchanged:
     """Success criterion 6 of the governing plan: no gate semantics change.
 
-    The gate trigger deliberately stays on the CHECKBOX reading. Git answers
-    "which chunk is in flight," which is right for reporting; the gate asks "is
-    there still governed work," and a chunk's last commit lands BEFORE its
-    Critic pass and its reflection. Deriving the gate from git switched the
-    blocking reflection and Critic gates off for the entire complete-but-
-    unmerged window — the PR-fix and finding-resolution sessions.
+    The gate trigger reads the CHECKBOXES and must never read a commit-derived
+    signal. The gate asks "is there still governed work", and a chunk's last
+    commit lands BEFORE its Critic pass and its reflection. Deriving the gate
+    from git switched the blocking reflection and Critic gates off for the entire
+    complete-but-unmerged window — the PR-fix and finding-resolution sessions.
+
+    The git-derived progress reading that caused it is gone, but the tripwire is
+    a commit-derived signal still in the tree, and it reports precisely the state
+    in which this gate must keep saying "governed". So the pin stays.
     """
 
     def test_gate_armed_mid_branch(self, tmp_path: Path):
-        repo = _views_repo(tmp_path)
+        repo = _live_repo(tmp_path)
         assert gates._has_active_build_plan_file(repo / ".prawduct") is True
 
     def test_gate_stays_armed_through_the_complete_but_unmerged_window(
         self, tmp_path: Path
     ):
-        repo = _views_repo(tmp_path, committed_chunks=4)
+        """Every chunk COMMITTED but the last box not yet ticked — the window in
+        which the Critic pass and the reflection still have to happen. This is
+        also when the tripwire is firing, which is the temptation to disarm."""
+        repo = _live_repo(tmp_path)
+        assert buildplan_refs.unticked_committed_chunk_notice(repo) is not None
         assert gates._has_active_build_plan_file(repo / ".prawduct") is True
 
-    def test_gate_disarms_once_the_release_flips_the_boxes(self, tmp_path: Path):
-        repo = _views_repo(tmp_path, committed_chunks=4)
-        _write_plan(repo, VIEWS_PLAN.replace("- [ ] Chunk", "- [x] Chunk"))
+    def test_gate_disarms_once_every_box_is_ticked(self, tmp_path: Path):
+        repo = _live_repo(tmp_path)
+        _write_plan(repo, LIVE_PLAN.replace("- [ ] Chunk", "- [x] Chunk"))
         assert gates._has_active_build_plan_file(repo / ".prawduct") is False
 
-    def test_git_failure_degrades_to_the_checkboxes_not_to_nothing(
+    def test_a_git_failure_leaves_the_parse_and_the_gate_intact(
         self, tmp_path: Path, monkeypatch
     ):
-        """A raising git call (absent binary, timeout) must fall back to the
-        checkbox reading. Collapsing the whole parse to `{}` would blank the
+        """Collapsing the parse to `{}` on a transient git hiccup would blank the
         handoff's work section AND read as "no build plan" to the gates —
-        authority failing OPEN, on a transient hiccup.
+        authority failing OPEN. Progress no longer consults git at all, so this
+        now asserts the stronger property: a raising git call changes nothing.
         """
-        repo = _views_repo(tmp_path)
+        repo = _live_repo(tmp_path)
 
         def _boom(*_a, **_k):
             raise subprocess.TimeoutExpired(cmd="git", timeout=10)
@@ -381,108 +459,9 @@ class TestGateSemanticsUnchanged:
         monkeypatch.setattr(buildplan_refs.subprocess, "run", _boom)
         status = buildplan_refs._parse_build_plan_status(repo)
         assert status["description"] == "session-handoff-continuity"
-        assert status["current_chunk"] == "Chunk 01: The forward channel"
+        assert status["current_chunk"] == "Chunk 04: The Critic summary"
         assert "Chunks 01-03 shipped." in status["context"]
         assert gates._has_active_build_plan_file(repo / ".prawduct") is True
-
-    def test_foreign_plans_chunk_ids_do_not_mark_this_plan_complete(
-        self, tmp_path: Path
-    ):
-        """Chunk ids are PER-PLAN, so a branch carrying two plans conflated them
-        (SCN-5B8Q review R-2/R-7): a sibling plan's `(Chunk 02)` marked THIS
-        plan's chunk 02 done. Scoping by the conventional-commit scope fixes it.
-
-        The fixture mirrors the branch that surfaced it: the active plan has two
-        chunks and only its Chunk 01 is committed under its own scope, while a
-        foreign scope contributes `(Chunk 02)` and `(Chunk 03)`.
-        """
-        repo = tmp_path / "repo"
-        _init_repo(repo, branch="develop")
-        _write_state(repo, "views_enabled: true\nbase_branch: develop\n")
-        _write_plan(
-            repo,
-            "---\nartifact: build-plan\nscope: boundary-events\n---\n\n"
-            "## Status\n\n<!-- views_enabled: true -->\n\n"
-            "- [ ] Chunk 01: Split the acts\n- [ ] Chunk 02: Handoff vintage\n",
-        )
-        _commit(repo, "chore: plan")
-        _git(repo, "checkout", "-b", "feature/x", "--quiet")
-        _commit(repo, "fix(boundary-events): split the acts (Chunk 01)")
-        _commit(repo, "feat(other-plan): unrelated work (Chunk 02)")
-        _commit(repo, "docs(other-plan): more unrelated work (Chunk 03)")
-
-        status = buildplan_refs._parse_build_plan_status(repo)
-        assert status["current_chunk"] == "Chunk 02: Handoff vintage", (
-            "a foreign plan's (Chunk 02) must not complete this plan's chunk 02"
-        )
-
-    def test_unmatched_plan_scope_keeps_the_unscoped_reading(self, tmp_path: Path):
-        """The filter narrows only a set demonstrably about this plan. Scope tags
-        are a convention, not a guarantee — on the branch that surfaced this, the
-        continuity plan's commits said `session-continuity` while its frontmatter
-        said `session-handoff-continuity`. A strict filter would erase that plan's
-        whole git signal and fall back to all-unchecked boxes: cross-contamination
-        traded for a different wrong answer. So when nothing matches, behave as
-        before."""
-        repo = tmp_path / "repo"
-        _init_repo(repo, branch="develop")
-        _write_state(repo, "views_enabled: true\nbase_branch: develop\n")
-        _write_plan(repo, VIEWS_PLAN)  # scope: session-handoff-continuity
-        _commit(repo, "chore: plan")
-        _git(repo, "checkout", "-b", "feature/x", "--quiet")
-        # Short-form scope that does NOT equal the plan's frontmatter scope.
-        _commit(repo, "feat(session-continuity): the forward channel (Chunk 01)")
-        _commit(repo, "fix(session-continuity): parser correctness (Chunk 02)")
-
-        status = buildplan_refs._parse_build_plan_status(repo)
-        assert status["current_chunk"] == "Chunk 03: Proactive close", (
-            "with no scope match the unscoped reading must survive, not vanish"
-        )
-
-    def test_scoped_commits_without_chunk_ids_do_not_fall_through(
-        self, tmp_path: Path
-    ):
-        """The window between "no commit carries this scope" and "no scoped commit
-        carries a chunk id". A plan identifiable in the log but with no `(Chunk NN)`
-        subject yet must NOT fall back to the unscoped reading — that re-imports a
-        sibling plan's ids, which is the defect the filter exists to stop. Empty is
-        the truthful answer, and the caller degrades to checkboxes."""
-        repo = tmp_path / "repo"
-        _init_repo(repo, branch="develop")
-        _write_state(repo, "views_enabled: true\nbase_branch: develop\n")
-        _write_plan(
-            repo,
-            "---\nartifact: build-plan\nscope: boundary-events\n---\n\n"
-            "## Status\n\n<!-- views_enabled: true -->\n\n"
-            "- [ ] Chunk 01: Split the acts\n- [ ] Chunk 02: Handoff vintage\n",
-        )
-        _commit(repo, "chore: plan")
-        _git(repo, "checkout", "-b", "feature/x", "--quiet")
-        # This plan IS identifiable — but no chunk has landed under it yet.
-        _commit(repo, "docs(boundary-events): write the plan up")
-        # A sibling plan has landed chunks 01 and 02.
-        _commit(repo, "feat(other-plan): unrelated (Chunk 01)")
-        _commit(repo, "feat(other-plan): unrelated (Chunk 02)")
-
-        status = buildplan_refs._parse_build_plan_status(repo)
-        # `.get` deliberately: under the defect both chunks read complete and the
-        # key disappears entirely, so indexing would fail with a KeyError that
-        # hides what went wrong.
-        assert status.get("current_chunk") == "Chunk 01: Split the acts", (
-            "a scoped-but-chunkless plan must fall to checkboxes, not import a "
-            f"sibling plan's chunk ids (got {status.get('current_chunk')!r})"
-        )
-
-    def test_non_views_repo_still_uses_checkboxes(self, tmp_path: Path):
-        """The git path is opt-in; a hand-maintained plan is unaffected."""
-        repo = tmp_path / "repo"
-        _init_repo(repo, branch="develop")
-        _write_state(repo, "views_enabled: false\nbase_branch: develop\n")
-        _write_plan(repo, VIEWS_PLAN)
-        _commit(repo, "chore: plan")
-        _git(repo, "checkout", "-b", "feature/x", "--quiet")
-        _commit(repo, "feat: land it (Chunk 01)")
-        assert buildplan_refs._current_chunk_id_from_status(repo) == "01"
 
 
 class TestOneCurrentChunkImplementation:
@@ -491,12 +470,30 @@ class TestOneCurrentChunkImplementation:
     consumer and the defect recurred at two more — the recurrence is the reason
     this pin exists."""
 
+    # `_git_aware_progress` was a member until the git-derived progress reading
+    # was retired; it is deleted, so asserting `buildplan_refs` owns it would be
+    # a pin on a name that no longer exists. The three survivors still belong
+    # here: `_commits_ahead_of_base` is used by `critic_mode` and the rest feed
+    # the unticked-chunk tripwire, so the "one home" rule still has subjects.
     MOVED_OUT_OF_CRITIC_MODE = (
-        "_git_aware_progress",
         "_commits_ahead_of_base",
         "_committed_chunk_ids",
         "_CHUNK_COMMIT_RE",
     )
+
+    def test_the_retired_derivation_is_really_gone(self):
+        """The git-derived progress reading must not come back anywhere.
+
+        Its absence is what makes the checkbox the single reading; a module
+        quietly reintroducing it would restore the precedence this work removed
+        without any test above going red.
+        """
+        for module in (buildplan_refs, critic_mode, gates, briefing):
+            assert "_git_aware_progress" not in vars(module), (
+                f"{module.__name__} defines _git_aware_progress — chunk progress "
+                "has ONE reading (the Status checkboxes), and a second derived "
+                "reading is the defect shape this work removed."
+            )
 
     def test_critic_mode_no_longer_defines_the_derivation(self):
         for name in self.MOVED_OUT_OF_CRITIC_MODE:
@@ -518,8 +515,9 @@ class TestOneCurrentChunkImplementation:
         itself, which is exactly how this defect reached three consumers. A bare
         ``- [ ]`` grep is NOT the guard — backlog acceptance-checkbox lint and
         docstring prose both match it — so the pin is on the walkers instead.
-        (``lib/views.py`` rewrites Status by line index rather than reading it,
-        and is deliberately separate.)
+        The one module that used to be exempt — the derived-view regenerator,
+        which rewrote Status by line index rather than reading it — no longer
+        exists, so the rule is now without exception.
         """
         walkers = ("_iter_status_section_lines", "_iter_status_section_items")
         offenders = []
@@ -781,43 +779,19 @@ class TestNonUtf8PlanDegrades:
         assert "cannot-verify" in proc.stderr, proc.stdout + proc.stderr
         assert "Traceback" not in proc.stderr, proc.stderr
 
-    def test_regen_reports_the_bad_plan_and_keeps_going(self, tmp_path: Path):
-        """One unreadable plan must not take out a multi-plan repo's whole regen.
-
-        Asserted POSITIVELY on both halves. `not any("Traceback" in r.summary)`
-        was the first draft and could not fail: summaries are f-strings this
-        module builds, so the needle can never be in that haystack, and an empty
-        result list satisfied it too. Second vacuous negative assertion on this
-        branch — both were negatives over a haystack that cannot contain the
-        needle, which is the shape to distrust.
-        """
-        prawduct = tmp_path / ".prawduct"
-        self._write_undecodable_plan(tmp_path)
-        artifacts = prawduct / "artifacts"
-        (artifacts / "build-plan-readable.md").write_text(
-            "---\nscope: readable\n---\n\n## Status\n\n- [ ] Chunk 01: A\n",
-            encoding="utf-8",
-        )
-        change_log = (
-            "## 2026-07-27: something\n\n"
-            "<!-- prawduct: chunks=01 | scope=readable -->\n"
-        )
-        results = views._plan_status_results(prawduct, change_log)
-        summaries = [r.summary for r in results]
-        # "reports the bad plan" — the degradation names its cause.
-        assert any("unreadable build-plan" in s for s in summaries), summaries
-        # "keeps going" — the readable sibling is still processed. This is what
-        # the `continue` buys, and a one-plan fixture never exercised it.
-        assert any("build-plan-readable.md" in s for s in summaries), summaries
-
     def test_duplicate_scope_diagnosis_survives_an_unreadable_plan(
         self, tmp_path: Path
     ):
-        """`diagnose_scope_plan_coverage` is the twin of `build_scope_to_plan_map`
-        and was the last reader still on the narrow guard — called bare by
-        `prawduct-hook` with no global handler, so one bad file tracebacked out
-        of `regen-views`. Its duplicate-scope branch had no coverage at all,
-        which is how a rename into it could have gone unnoticed."""
+        """`duplicate_scope_errors` is the twin of `build_scope_to_plan_map` and
+        was the last reader still on the narrow guard — called bare with no
+        global handler, so one bad file tracebacked out of its caller. Its
+        duplicate-scope branch had no coverage at all, which is how a rename into
+        it could have gone unnoticed.
+
+        The check outlived the derived-view regenerator that used to host it: it
+        guards frontmatter `scope:`, a field that survives, so it was rehomed to
+        `plan_index` and is now reached through the release gate rather than
+        dying with its old caller."""
         artifacts = tmp_path / ".prawduct" / "artifacts"
         artifacts.mkdir(parents=True)
         self._write_undecodable_plan(tmp_path)
@@ -826,5 +800,8 @@ class TestNonUtf8PlanDegrades:
                 "---\nscope: dup\n---\n\n## Status\n\n- [ ] Chunk 01: A\n",
                 encoding="utf-8",
             )
-        warnings = views.diagnose_scope_plan_coverage("", artifacts)
-        assert any("duplicate scope=" in w and "build-plan-b.md" in w for w in warnings), warnings
+        errors = plan_index.duplicate_scope_errors(artifacts)
+        assert any(
+            "duplicate scope=" in message and "build-plan-b.md" in message
+            for _scope, message in errors
+        ), errors

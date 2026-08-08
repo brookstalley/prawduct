@@ -69,17 +69,17 @@ def _shipped_item(item_id: str) -> str:
 
 class TestReleasePendingScopes:
     def test_release_tagged_entries_are_not_pending(self):
-        from lib import views
+        from lib import change_log
 
         content = _entry("A", "alpha") + _entry("B", "beta", release="v3.1.2")
-        scopes = release_readiness.release_pending_scopes(views.parse_change_log(content))
+        scopes = release_readiness.release_pending_scopes(change_log.parse_change_log(content))
         assert scopes == ["alpha"], "a release= tag means the code already shipped"
 
     def test_untagged_entries_are_invisible(self):
-        from lib import views
+        from lib import change_log
 
         content = "## Historical entry\n\nNo tag line at all.\n\n" + _entry("A", "alpha")
-        scopes = release_readiness.release_pending_scopes(views.parse_change_log(content))
+        scopes = release_readiness.release_pending_scopes(change_log.parse_change_log(content))
         assert scopes == ["alpha"]
 
 

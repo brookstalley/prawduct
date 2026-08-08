@@ -476,8 +476,8 @@ def _get_work_in_progress(project_dir: Path, wip: dict[str, str] | None = None) 
     """Format work in progress as a one-line summary for the session briefing.
 
     ``wip`` lets a caller that has already resolved the active work pass it in;
-    resolution reads git on a ``views_enabled`` repo, and the briefing needs the
-    same answer twice.
+    resolution walks the artifacts tree, and the briefing needs the same answer
+    twice.
     """
     if wip is None:
         wip = _get_active_work(project_dir)
@@ -588,7 +588,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     lines = ["== SESSION BRIEFING =="]
 
     # Project identity + work in progress (branch-scoped). Resolved once and
-    # reused below — on a views_enabled repo this reads git.
+    # reused below — this walks the artifacts tree to resolve the branch's plan.
     project_name = _get_product_name(prawduct_dir)
     current_branch = _get_current_branch(project_dir)
     wip = _get_active_work(project_dir)

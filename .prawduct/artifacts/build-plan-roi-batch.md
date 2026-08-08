@@ -85,7 +85,8 @@ N/A — edits land in existing trees (`lib/`, `bin/`, `skills/critic/`, `methodo
 - **Deliverables:** `lib/views.py`, `tests/test_views.py`
 - **Tests:** `scope: null` + a change-log with a prior `scope=` entry → inference suppressed
   (no inherited scope); key-absent still infers (contrast case).
-- **Acceptance criteria:** `python3 -m pytest tests/test_views.py -q` green.
+- **Acceptance criteria:** the `tests/test_views.py` suite green (that file was retired with
+  derived views).
 - **Type:** code
 - **Done when:** acceptance + scoped tests pass; cumulative Critic in the launching session.
 

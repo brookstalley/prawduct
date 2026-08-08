@@ -47,7 +47,6 @@ PLUGIN = Path(__file__).resolve().parent.parent.parent / "plugin"
 # Modules that exist to read the build plan — swept exhaustively (mechanism 1).
 PLAN_MODULES = (
     "lib/buildplan_refs.py",
-    "lib/views.py",
     "lib/plan_index.py",  # the scope→plan resolver; every plan read now lands here
 )
 
@@ -56,18 +55,12 @@ PLAN_MODULES = (
 PLAN_PARSERS = frozenset(
     {
         "parse_build_plan_frontmatter_scope",
-        # The pre-split private name. `views.py` still aliases it and older
-        # call sites may too, so BOTH stay listed until the alias goes —
-        # dropping the old name is how this pin silently narrows.
-        "_parse_build_plan_frontmatter_scope",
         "frontmatter_lines",
         "_iter_status_section_lines",
         "_iter_status_section_items",
         "_chunk_section_lines",
         "_resolve_chunk_progress_from",
         "_chunk_id_from_item_text",
-        "build_status_view",
-        "extract_status_section",
     }
 )
 
@@ -159,10 +152,23 @@ def _plan_reads() -> list[_Read]:
 
 
 def test_the_pin_has_something_to_check():
-    """Guard the guard: a refactor must not silently empty this file's coverage."""
+    """Guard the guard: a refactor must not silently empty this file's coverage.
+
+    The floor moved 12 -> 11 when the derived-view module was deleted, and the
+    membership assertion below is the reason that is a retune rather than a
+    weakening: it requires EVERY listed module to contribute a read, so a
+    module going silent fails here regardless of what the count says. The
+    count alone would have been satisfied by any eleven reads.
+
+    Three parser names left `PLAN_PARSERS` in the same change — the two Status
+    view builders and the pre-split private frontmatter alias — because the
+    functions no longer exist anywhere in `plugin/`. A name that can never match
+    inflates the vocabulary without widening the sweep, which is how this pin
+    reads as broader than it is.
+    """
     reads = _plan_reads()
     modules = {r.rel for r in reads}
-    assert len(reads) >= 12, f"only {len(reads)} build-plan reads matched: {reads}"
+    assert len(reads) >= 11, f"only {len(reads)} build-plan reads matched: {reads}"
     assert set(PLAN_MODULES) <= modules, f"a plan module contributed nothing: {modules}"
 
 

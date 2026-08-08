@@ -49,13 +49,23 @@ EXPECTED_FLAT_EXPORTS = frozenset({
 })
 
 # Heavy submodules that must NOT be pulled in by importing a leaf.
+#
+# `lib.views` was a member and served as the positive control below. It was
+# deleted with the derived-view machinery, so the control moved to
+# `lib.advisory_store` — a heavy module with no retirement in view. **The list
+# must keep at least one member that something imports directly**, or
+# `test_the_probe_can_fail` has nothing to prove the probe with and every
+# empty-set assertion here goes vacuous rather than red.
 HEAVY_SUBMODULES = (
     "lib.advisory_store",
-    "lib.views",
     "lib.operator_verification",
     "lib.critic_mode",
     "lib.audit_learnings_cmd",
 )
+
+# The control's subject, named once so the two places that must agree — the
+# import statement and the membership assertion — cannot drift apart.
+POSITIVE_CONTROL = "lib.advisory_store"
 
 
 def _clean_import_probe(import_stmt: str, probe_modules: tuple[str, ...]) -> set[str]:
@@ -106,19 +116,36 @@ class TestLazyIsolation:
         `sys.modules` key, a subprocess whose import failed and printed nothing.
         So one test imports a heavy module directly and requires the probe to
         SEE it. If this fails, none of the greens above mean anything.
+
+        The subject is `POSITIVE_CONTROL` rather than a literal, because the
+        previous control (`lib.views`) was deleted by the work that retired
+        derived views — and a control whose subject can vanish is a control that
+        can go vacuous without anyone editing this file.
         """
-        dragged = _clean_import_probe("import lib.views", HEAVY_SUBMODULES)
-        assert "lib.views" in dragged, (
+        dragged = _clean_import_probe(f"import {POSITIVE_CONTROL}", HEAVY_SUBMODULES)
+        assert POSITIVE_CONTROL in dragged, (
             "the probe reported no heavy module after importing one directly — "
             f"it is not measuring what these tests claim (got {sorted(dragged)})"
         )
+
+    def test_the_positive_control_is_actually_probed(self):
+        """The control's subject must be in the probed set.
+
+        `_clean_import_probe` only reports modules it was ASKED about, so a
+        `POSITIVE_CONTROL` missing from `HEAVY_SUBMODULES` would make the test
+        above fail confusingly rather than guard anything — and a future edit
+        that drops the control's module from the tuple is exactly the edit that
+        would do it.
+        """
+        assert POSITIVE_CONTROL in HEAVY_SUBMODULES
 
     def test_plan_index_does_not_drag_in_heavy(self):
         """`plan_index` is imported at MODULE scope by `buildplan_refs`.
 
         That is a deliberate change from its predecessor `views`, which had to
-        be lazy because it also carried the change-log parser. The module-scope
-        import is only defensible while `plan_index` stays cheap, and "cheap" is
+        be lazy because it also carried the change-log parser and is now deleted.
+        The module-scope import is only defensible while `plan_index` stays
+        cheap, and "cheap" is
         a property that decays silently — one convenience import inside it bills
         every SessionStart and every Stop. Probed at the module itself so the
         regression is attributed here rather than at the three consumers.
@@ -157,9 +184,9 @@ class TestLazyIsolation:
         `buildplan_refs` resolves a branch's plan, which `briefing`
         (SessionStart) and `gates` (Stop) both reach through a module-scope
         import — so a heavy import here bills every session. It used to reach
-        `views` for that and had to do so lazily; it now imports `plan_index` at
-        module scope, which is only safe while that module stays light (probed
-        separately above). The `ledger`/`telemetry` probes were added in the
+        the now-deleted `views` for that and had to do so lazily; it now imports
+        `plan_index` at module scope, which is only safe while that module stays
+        light (probed separately above). The `ledger`/`telemetry` probes were added in the
         same work that let a heavy import land at the *hotter* consumer, so the
         two importers are probed alongside the module itself rather than trusted
         to inherit its discipline.
@@ -171,7 +198,7 @@ class TestLazyIsolation:
         )
 
     def test_accessing_one_flat_name_loads_only_its_owner(self):
-        # Touching a core-owned name must not import advisory_store/views/etc.
+        # Touching a core-owned name must not import advisory_store/critic_mode/etc.
         dragged = _clean_import_probe(
             "import lib; lib.GITIGNORE_ENTRIES", HEAVY_SUBMODULES
         )
@@ -199,10 +226,12 @@ class TestFlatApiPreserved:
         assert isinstance(GITIGNORE_ENTRIES, list)
 
     def test_submodule_exports_resolve(self):
-        # `from lib import views` / `waivers` — native submodule access.
-        from lib import views, waivers
+        # `from lib import plan_index` / `waivers` — native submodule access.
+        # `views` was the first of these until it was deleted; any surviving
+        # submodule exercises the same PEP-562 path.
+        from lib import plan_index, waivers
 
-        assert views.__name__ == "lib.views"
+        assert plan_index.__name__ == "lib.plan_index"
         assert waivers.__name__ == "lib.waivers"
 
     def test_unknown_attribute_raises(self):
@@ -216,4 +245,4 @@ class TestFlatApiPreserved:
 
         names = set(dir(lib))
         assert EXPECTED_FLAT_EXPORTS <= names
-        assert {"views", "waivers"} <= names
+        assert {"plan_index", "waivers"} <= names

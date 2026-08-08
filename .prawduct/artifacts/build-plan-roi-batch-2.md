@@ -87,7 +87,8 @@ N/A — edits land in existing trees: `lib/views.py`, `lib/advisory_store.py`, `
   ever flips.
 - Tests in `tests/test_views.py`: a typo `status=shippd` yields one warning; valid `shipped`/`merged`
   yield none; absent status yields none.
-**Done when:** scoped `pytest tests/test_views.py` green; `/prawduct:critic` (cumulative, by launching session).
+**Done when:** the scoped `tests/test_views.py` suite green (that file was retired with derived
+views); `/prawduct:critic` (cumulative, by launching session).
 
 ### Chunk 02: STH-2J9F — regen-views returns exit 1 on ImportError
 **Type:** code

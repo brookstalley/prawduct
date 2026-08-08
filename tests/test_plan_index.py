@@ -169,6 +169,27 @@ class TestBuildScopeToPlanMap:
     def test_missing_dir_returns_empty(self, tmp_path: Path):
         assert plan_index.build_scope_to_plan_map(tmp_path / "nope") == {}
 
+    def test_a_nested_plan_is_discovered(self, tmp_path: Path):
+        """#201 leg 1: plans below the top level of `artifacts/` must be visible.
+
+        A `glob("*.md")` saw only the top level, so a repo organizing plans as
+        `artifacts/plans/<id>/build-plan.md` had every one invisible — the scope
+        resolved to nothing, the coverage diagnostic errored, and the caller then
+        failed closed for the whole run. Four surveyed repos carried 16 nested
+        plans each (2026-07-21 fleet survey).
+
+        This is the POSITIVE half of the archive-pruning walk. `TestArchivePruning`
+        asserts subtrees are skipped; without this, a walk that descended nothing
+        at all would satisfy every pruning test in this file.
+        """
+        artifacts = tmp_path / "artifacts"
+        nested = artifacts / "plans" / "deep"
+        nested.mkdir(parents=True)
+        _write_scoped_plan(nested, "build-plan.md", "nested", ["01"])
+        mapping = plan_index.build_scope_to_plan_map(artifacts)
+        assert set(mapping) == {"nested"}
+        assert mapping["nested"] == nested / "build-plan.md"
+
 
 class TestDeclaresNonBuildPlanArtifact:
     """Direct cases for the plan/not-a-plan predicate.
