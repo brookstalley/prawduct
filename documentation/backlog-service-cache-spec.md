@@ -338,6 +338,21 @@ the write surface does not:
 | `provision` | no | repo label definitions, not items |
 | `comment` | no | the `comment` table was removed at schema v7 |
 
+**A write outside the store's scope is not mirrored, and the store is what decides.** An id
+carries its own `owner/repo` and `--repo` supplies only a default, so any single-id write can
+target an item in a repo this store does not hold. The store holds exactly the repo named in
+`backlog_service_repo` (§7, and the F4 disposition below rests on it), so mirroring a foreign item
+would put a row in it that no rebuild would reproduce — breaking rebuild-equivalence and
+un-vacuating the cross-boundary read F4 calls answered.
+
+The check is made **against the scope the store actually holds** (its `cursor` row), not against
+the invoking command's `--repo`. The two are usually the same and the difference is the whole
+point: `--repo` names what this *command* is operating on, so a command run wholly against another
+backlog would compare a foreign item to a foreign default, agree with itself, and write the row.
+Asking the store means a caller cannot get this wrong by passing the wrong thing. A mismatch skips
+silently — it is a correct write to an item this cache was never meant to hold, not a degraded
+one, so it is not a warning either.
+
 **What this does not cover, deliberately.** Foreign writes — the GitHub UI, another client, an
 agent on a different clone — are still served by the watermark sync and disclosed by visible age;
 nothing here changes that, and nothing here should, because the adapter cannot observe them at

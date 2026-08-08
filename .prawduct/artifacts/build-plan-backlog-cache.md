@@ -707,9 +707,13 @@ the same shape that makes `transport.py` the sole egress.
   not merely un-refreshed. **Rejected: keeping both columns.** A separate write-stamp beside the
   coverage stamp would have had no reader — `item.fetched_at` already ages the rows — so it would
   have been the dead column this same chunk removed one table over. `_freshness` keeps row
-  provenance as its fallback, which no writer can produce today (every write path stamps the cursor
-  in the same transaction as its rows) and which exists so a *reader* never claims "never synced"
-  about a store whose rows are visibly there | user can veto/override]`
+  provenance as its fallback, which no writer produces and which exists so a *reader* never claims
+  "never synced" about a store whose rows are visibly there. (**Superseded reason, kept because the
+  conclusion outlived it:** this said "every write path stamps the cursor in the same transaction
+  as its rows". The local-write mirror added by `build-plan-backlog-cache-write-path.md` is a
+  writer that deliberately does not — a mirror is not a fetch — so the state is now unreachable
+  because that mirror refuses to run against a scope with no cursor row, not because no such writer
+  exists. `cachequery._freshness` carries the current statement) | user can veto/override]`
 
   `[DECISION: the alias index is `item_alias(alias, ref, item_id)`, and labels stay PFX-only |
   Spec §4 rule 3 says all resolution goes through the alias table, so it is a table — a lookup

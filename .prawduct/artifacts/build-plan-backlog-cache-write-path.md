@@ -116,9 +116,18 @@ something.
 **Deliverables**
 
 - `core.file_item`, `core.set_status`, `core.update_item` and `core._related` take an injected
-  `absorb: Callable[[dict], None] | None`, called with the authoritative post-write issue each
-  already holds. `core` imports neither `cache` nor `sync` — the seam keeps it provider-only and
-  the callback testable without a store.
+  `absorb: Callable[[dict, str, str], None] | None`, called with the authoritative post-write
+  issue each already holds **plus the item's resolved `owner`/`repo`**. `core` imports neither
+  `cache` nor `sync` — the seam keeps it provider-only and the callback testable without a store.
+- **The scope guard** (added at Chunk 02 design time; Cache Spec §6.1 carries the rule). An id
+  carries its own `owner/repo` and `--repo` is only a default, so a single-id write can target a
+  repo this store does not hold. `sync.absorb_issue` refuses a scope the store does not hold,
+  checked against the `cursor` row via a new `cache.holds_scope(conn, scope)` — **not** against
+  the caller's `--repo`, which a command run wholly against another backlog would satisfy
+  vacuously. Enforcing it at the store is what makes it unbypassable by a caller passing the
+  wrong thing. The callback still takes owner/repo rather than inferring them from the issue JSON:
+  `nid` has already resolved them, and re-deriving from `repository_url` would be a second, weaker
+  spelling of a fact core already holds.
 - `cli.py` binds the callback for `file`, `status`, `update`, `link`, `unlink`. `merge` inherits
   it: it closes its source through `core.set_status`, whose final `get_issue` reflects the
   `superseded_by` body written a step earlier.
@@ -139,6 +148,8 @@ something.
   than an assertion that the count equals a number I typed.
 - A store that cannot be written (missing, or locked) leaves the write `ok` with a warning naming
   the cause — asserted for both, since "already succeeded remotely" is the whole argument.
+- A write to an item in a repo other than the store's scope mirrors **nothing** and warns about
+  nothing: the store is unchanged and the envelope carries no mirror warning.
 - `core` write functions still work with `absorb=None`, and no `core` module imports the store.
 
 **Done when** — acceptance criteria pass, full suite green, `/prawduct:critic`, chunk committed.

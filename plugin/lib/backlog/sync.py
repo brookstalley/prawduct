@@ -185,6 +185,93 @@ def full_rebuild(
     return ok(data, warnings)
 
 
+def absorb_issue(
+    project_dir: Path,
+    *,
+    owner: str,
+    repo: str,
+    issue: dict,
+    now: datetime | None = None,
+) -> dict:
+    """Mirror one just-written provider issue into the store. Never raises.
+
+    Called by the adapter's write paths with the authoritative issue they already
+    hold — a create response, or the ``get_issue`` a status/field write ends on —
+    so mirroring spends **no additional provider request**.
+
+    **The issue is decoded by the same function a full fetch uses**, which is what
+    makes a mirrored row equal to the row a rebuild would write. The alternative
+    shape — patching the one column the caller knows changed — is wrong twice: it
+    silently skips every other column the provider moved (a status write also
+    moves ``updated_at``, and a body write moves the alias and path indexes), and
+    it makes the store an author rather than a mirror, which is the property
+    rebuild-equivalence exists to deny.
+
+    **An unsynced store stays unsynced, and the test is a cursor row rather than a
+    file.** A store conjured or half-filled by a write would hold exactly one item
+    and answer ``open-items`` with it — authoritative-looking and wrong by the size
+    of the backlog. ``create=False`` stops the first case but not the second:
+    ``_ensure_schema`` commits the schema in its own transaction, so a rebuild
+    whose ``replace_items`` step then fails leaves a **schema-only store** — file
+    present, ``item`` and ``cursor`` both empty. That store today reads as
+    never-synced because ``cachequery._freshness`` finds no coverage stamp and no
+    row stamps; one mirrored row into it would produce a payload of one item aged
+    seconds, which is the freshness lie this whole section exists to prevent.
+    Requiring a ``cursor`` row is what makes "the store was actually synced" the
+    condition, instead of "a file is there".
+
+    (``create=False`` governs *creation*, not write permission — an existing store
+    opens read-write either way — which is why a writer reaching for what
+    :func:`cache.open_store` calls the reader's door is deliberate.)
+
+    **The same row check answers a second question: whether this item belongs
+    here at all.** An id carries its own ``owner/repo`` and ``--repo`` is only a
+    default, so a single-id write can target a repo this store does not hold, and
+    mirroring it would write a row no rebuild would reproduce. The check is made
+    against the scope the **store** holds rather than against the caller's
+    ``--repo``, which a command run wholly against another backlog would satisfy
+    vacuously. A store that holds some other scope skips silently — that is a
+    correct write to an item this cache was never meant to hold, not a degraded
+    one — while a store that holds no scope at all is the unsynced case above and
+    says so.
+
+    An issue that no longer decodes as an item is evicted rather than upserted. It
+    is barely reachable through the write ops (none of them can strip the block or
+    the labels), which is exactly why it is handled here rather than assumed away:
+    the cost is one branch, and the failure it prevents is a row that answers the
+    open-item walk forever.
+    """
+    stamp = (now or datetime.now(timezone.utc)).isoformat()
+
+    try:
+        rows, out_of_scope = _rows_from_issues([issue], owner, repo)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        log_diag(
+            f"could not decode a written issue for the backlog cache: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return error("unavailable", "the backlog cache could not decode the written issue")
+
+    conn = cache.open_store(project_dir, create=False)
+    if isinstance(conn, dict):
+        return conn  # absent, unreadable, or schema-mismatched — say so, build nothing
+    try:
+        scope = f"{owner}/{repo}"
+        covered = cache.cursor_scopes(conn)
+        if scope not in covered:
+            if not covered:
+                return error(
+                    "unavailable",
+                    "the backlog cache has not been synced yet; "
+                    "run `prawduct-hook backlog sync`",
+                )
+            # The store is fine and this item simply is not its business.
+            return ok({"written": 0, "evicted": 0, "skipped": "out-of-scope"})
+        return cache.absorb_rows(conn, rows, fetched_at=stamp, evict=out_of_scope)
+    finally:
+        conn.close()
+
+
 def _watermark_from(issues: list[dict], *, floor: str | None) -> str | None:
     """The watermark a fetch of ``issues`` earns, rewound by the overlap margin.
 
