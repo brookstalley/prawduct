@@ -1,6 +1,14 @@
 # Governance Artifact Lifecycle — Requirements
 
-`status: draft v0.3 — 2026-08-08 · source: owner-initiated simplification review (this session) · stage: requirements · supersedes: .prawduct/artifacts/change-log-ledger-design.md (GO'd 2026-07-31, never scheduled — see "Out of scope")`
+`status: draft v0.4 — 2026-08-08 · source: owner-initiated simplification review (this session) · stage: requirements · tracked: brookstalley/prawduct#629 · related: #558 · supersedes: .prawduct/artifacts/change-log-ledger-design.md (GO'd 2026-07-31, never scheduled — see "Out of scope")`
+
+> **Tracking.** Filed as **#629** (`governance: shipped build plans and derived views have no
+> end-of-life`, `stage: research`). **#558** (`views: views_enabled is a vestigial flag gating two
+> checkbox meanings`) is `related`, not duplicate — it deliberately scoped *out* "whether derived views
+> are the right model, only whether the flag still earns its branch," which is exactly this doc's
+> question, so #558 is the item that left this unowned. #558 also pre-inventories the retirement blast
+> radius (4 `is_views_enabled` read sites, ~10 doc surfaces carrying the conditional caveat) — reconcile
+> against it rather than re-deriving. Adjacent and deliberately not merged: #252, #539, #587, #334.
 
 > **v0.2 (same session, owner-requested simplification pass).** Added CL6/CL7 (six validators have
 > `regen-views` as their *only* caller — two guard surviving fields and must be rehomed, consolidated
@@ -16,6 +24,13 @@
 > delete plans, and the methodology plus a Critic check both *teach* the premise; naming only the PR
 > flow would have left the behaviour in force. **BP10 added**: abandoned/superseded plans archive too,
 > or they accumulate in live `artifacts/` forever reading as active.
+>
+> **v0.4 (same session, owner direction).** Backfilling existing shipped plans into the archive is now
+> **required** for this repo and for consumers (**FL6**), not deferred to "from now on" — and
+> **checkbox state is explicitly not a precondition and is not corrected on the way in**, because
+> nothing reads an archived plan's boxes. That removes the only step v0.3 could not automate, so the
+> backfill is fully mechanical; FL3's "report, never write" narrows to plans that stay live. **FL7**
+> records that archival is normal operations, so the live directory never re-accumulates.
 
 Evidence below was measured this session against the framework tree at `ede8801` and against all
 21 local checkouts under `~/source` carrying `.prawduct/project-state.yaml`. **Re-derive rather than
@@ -276,15 +291,32 @@ defect reached three consumers before anyone generalised it.
   in the target state: remove the `views_enabled:` key, remove the `scope_rollups:` block and its
   comments, freeze `release-notes.md` as an archive, strip `<!-- views_enabled: … -->` comments from
   build plans.
-- **FL3** Doctor **reports and never auto-fixes** the checkbox reconciliation. A Status block that was
-  derived is stale on any in-flight chunk, and only a human or a session with the work in context can
-  say which chunk is done — **a model must not write that state** (`data-model.md`: no model in a
-  fact's write path).
+- **FL3** Doctor **reports and never auto-fixes** the checkbox reconciliation **on plans that stay
+  live**. A derived Status block is stale on an in-flight chunk, only a session with the work in context
+  can say which chunk is done, and the Stop hook's gates read that state — **a model must not write it**
+  (`data-model.md`: no model in a fact's write path). *Narrowed by FL6: this applies to live plans only,
+  because an archived plan's boxes are not read by anything.*
 - **FL4** The behaviour change is **attributed** on the release that carries it — a version-delta
   banner headline naming the retired flag and command. Per the existing rule, a plugin update may change
   behaviour immediately provided the change is announced and traceable to the version.
-- **FL5** (SHOULD) Archival applies **from this release forward**. Already-deleted plans are not
-  resurrected from git history.
+- **FL5** Already-deleted plans are **not** resurrected from git history. *(Reduced from v0.3, which also
+  said archival applies only from this release forward — FL6 replaces that half.)*
+- **FL6** **Existing shipped plans are backfilled into the archive**, for this repo and for consumers —
+  not left for "from now on." Accumulated live plans reading as active is the confusion this whole set
+  exists to remove, and prawduct alone carries 114 artifacts.
+  **Checkbox state is explicitly NOT a precondition for archiving, and is not corrected on the way in.**
+  An archived plan may be left with unticked boxes; nothing reads them once it is out of the live
+  directory, so "make it look complete first" would be ceremony with no consumer. *This is what makes
+  the backfill fully mechanical* — it was the only step v0.3 could not automate, and removing the
+  checkbox precondition removes the judgment.
+  What remains to decide is only **which plans are shipped**, and one mechanical test is available
+  today: a plan whose `scope=` carries a `release=` tag in the change log shipped. That reuses the field
+  CL3 keeps, needs no judgment, and is a fitting last use of the tag data before it goes inert. Where a
+  product has no release tags, doctor **proposes** the set and the operator confirms — proposing a move
+  is not writing governance state, so FL3's prohibition does not reach it.
+- **FL7** Archiving is **normal operations, not a migration event.** FL6's backfill is one-time; BP6's
+  five surfaces make archival the routine end-of-life step thereafter, so the live directory does not
+  re-accumulate and no second backfill is ever needed.
 
 ### GD — Guard against recurrence
 
@@ -340,10 +372,9 @@ surviving as its own check.
 
 ## Open assumptions
 
-- `[ASSUMPTION: build-plan ## Status checkboxes are KEPT and hand-ticked, rather than dropped so chunk
-  progress lives only in the plan's prose plus git | MED impact | user can override → drop the Status
-  blocks, which removes ~256 more hand-maintained lines but makes resolve_chunk_progress the only
-  answer to "which chunk is current"]` — **the one assumption worth vetoing before design.**
+- ~~`[ASSUMPTION: build-plan ## Status checkboxes are KEPT and hand-ticked …]`~~ — **RESOLVED, owner
+  confirmed.** Kept and hand-ticked, plus DV7's reporting-only tripwire. The evidence that settled it is
+  recorded in DV3 rather than here, because it is a reason the design rests on, not an open question.
 - `[ASSUMPTION: the archive is a flat .prawduct/artifacts/archive/, not per-year subdirectories | LOW |
   user can correct — per-year matters past a few hundred plans]`
 - `[ASSUMPTION: release-notes.md is frozen as release-notes-archive.md rather than deleted | LOW |
