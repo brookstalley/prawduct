@@ -489,7 +489,20 @@ views_enabled: true
 # the finished plan for the duration of this branch would have reproduced exactly
 # those. The rule exists to stop a plan being orphaned before its release ships;
 # the backlog-cache plan is not orphaned, it is finished and awaiting a tag.
-active_build_plan: artifacts/build-plan-backlog-cache-write-path.md
+#
+# REPOINTED 2026-08-08 → build-plan-governance-artifact-lifecycle.md, on the same
+# recorded argument as the entry directly above (one commit old, same conditions):
+# the write-path plan's three chunks are all shipped and MERGED (PR #628), it is
+# `scope:`-tagged so v3.2.8's cut keys on the change-log tag rather than on this
+# pointer, and leaving the slot on a merged plan would misgrade every Critic review
+# on this branch. The write-path plan is finished and awaiting a tag, not orphaned.
+#
+# Worth recording because this branch exists to fix it: the session briefing said
+# "Resume: Chunk 01" for the write-path plan AFTER all three chunks shipped and
+# merged, because its `## Status` boxes are a derived view that stays `[ ]` until a
+# release flips it. The false resume signal is DV7's stated yield, observed live on
+# the branch that removes its cause.
+active_build_plan: artifacts/build-plan-governance-artifact-lifecycle.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

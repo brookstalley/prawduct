@@ -3070,3 +3070,26 @@ Tagged `scope=backlog-cache` on a branch whose plan scope is `backlog-cache-writ
 **This is the same failure class as `807cd75` on the parent branch** — the `release=unreleased` placeholder that made a finished branch invisible to its release — recurring three weeks later inside the change-log entry describing the fix for it. Cause both times: the tag was copied from the surrounding entries rather than derived from the artifact it points at. A neighbouring entry is the most available model and the least reliable one, because it was written for a different scope.
 
 **Related:** [[observable-beats-stored]] shares the shape — a field whose value must be remembered rather than derived is a field that will eventually be wrong.
+
+
+## Never hand-check a build plan's `## Status` boxes while `views_enabled`
+
+Caught by the PR reviewer on `fix/backlog-cache-write-path` (`8551e26`): the plan's three boxes were
+`[x]` while the change-log entry is deliberately statusless on a `develop` base.
+`views.build_status_view` counts only `status=shipped` entries, so the next `regen-views` at release
+would have reverted all three — the hand-set state survives right up to the moment anyone would
+consult it, then silently disappears.
+
+**Tell:** your boxes disagree with a sibling release-pending plan's. The sibling
+(`build-plan-backlog-cache.md`) kept `[ ]` and recorded completion in prose, which is the documented
+convention.
+
+**The other half of the cost, observed 2026-08-08.** With the boxes correctly `[ ]`, the session
+briefing announced `Resume: Chunk 01` for that plan *after all three chunks had shipped and merged*
+(PR #628), and the handoff notes repeated it as fact. So the convention that keeps `regen-views` from
+lying costs a false resume signal at every session start until the release lands. Both halves are the
+same root cause — completion has two readings and neither is authoritative — which is what
+`documentation/governance-artifact-lifecycle-requirements.md` exists to remove.
+
+**Related:** [[a-change-log-scope-tag-borrowed-from-the-neighbouring-entry]] — same branch, same
+release-bookkeeping surface, both found by review rather than by a check.

@@ -172,6 +172,10 @@ dropping them.
 
 ## A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
 
+## Never hand-check a build plan's `## Status` boxes while `views_enabled` — they are a derived view `regen-views` silently reverts at release, so record completion in the plan's prose instead
+
+## A change-log entry's BODY must cover every chunk its `chunks=` tag claims — release notes derive from the body, so a deliverable the prose omits ships invisibly even though the tag counted it. Tell: a multi-chunk entry whose narrative has one throughline (the last chunk's separate mechanism is the one that goes missing)
+
 ## When a feature's logic lives in a `context:fork` skill (no Bash), `lib/` holds the DATA, not the LOGIC — logic helpers nothing imports are dead code
 
 ## At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
