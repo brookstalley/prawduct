@@ -119,18 +119,27 @@ something.
   `absorb: Callable[[dict, str, str], None] | None`, called with the authoritative post-write
   issue each already holds **plus the item's resolved `owner`/`repo`**. `core` imports neither
   `cache` nor `sync` — the seam keeps it provider-only and the callback testable without a store.
-- **The scope guard** (added at Chunk 02 design time; Cache Spec §6.1 carries the rule). An id
-  carries its own `owner/repo` and `--repo` is only a default, so a single-id write can target a
-  repo this store does not hold. `sync.absorb_issue` refuses a scope the store does not hold,
-  checked against the `cursor` row via a new `cache.holds_scope(conn, scope)` — **not** against
-  the caller's `--repo`, which a command run wholly against another backlog would satisfy
-  vacuously. Enforcing it at the store is what makes it unbypassable by a caller passing the
-  wrong thing. The callback still takes owner/repo rather than inferring them from the issue JSON:
-  `nid` has already resolved them, and re-deriving from `repository_url` would be a second, weaker
-  spelling of a fact core already holds.
-- `cli.py` binds the callback for `file`, `status`, `update`, `link`, `unlink`. `merge` inherits
-  it: it closes its source through `core.set_status`, whose final `get_issue` reflects the
-  `superseded_by` body written a step earlier.
+- ~~**The scope guard**~~ — **shipped early, in Chunk 01. Nothing left to build here.** It was
+  specified for this chunk, then subsumed by the fix for Chunk 01's blocking finding: requiring a
+  `cursor` row for the scope answers "was this store ever synced?" and "does this store hold this
+  repo?" with one check. The shipped API is **`cache.cursor_scopes(conn)`** returning the covered
+  scopes (`None` on a read failure, which is a distinct answer from `[]`), with the membership test
+  at the `sync.absorb_issue` call site — *not* the `cache.holds_scope(conn, scope)` this plan named
+  before the code existed, which a builder would grep for and never find. Cache Spec §6.1 carries
+  the rule; `test_a_mirror_skips_an_item_outside_the_stores_scope` carries the behaviour.
+  **Chunk 02 must not re-add a comparison against the caller's `--repo`** — that is the weaker
+  check this replaced, and a command run wholly against another backlog satisfies it vacuously.
+  What Chunk 02 still owes is only the callback's `owner`/`repo` arguments, which come from `nid`
+  rather than from the issue JSON: `nid` has already resolved them, and re-deriving from
+  `repository_url` would be a second, weaker spelling of a fact core already holds.
+- `cli.py` binds the callback for `file`, `status`, `update`, `link`, `unlink`.
+- **`merge` does NOT inherit it for free** — corrected during Chunk 01, where the plan had claimed
+  it would. `migrate.merge` calls `core.set_status` itself (`migrate.py:1747`) with no callback to
+  forward, so `merge` must take and thread one. The good half of the original claim survives: it
+  closes its source *through* `set_status`, whose final `get_issue` already reflects the
+  `superseded_by` body written a step earlier, so one mirror at that point carries both the
+  redirect and the closed status. `migrate.py:1352` (`import`'s per-item status write) stays
+  callback-free deliberately — the post-import sync in Chunk 03 covers the whole run at once.
 - A mirror failure appends a warning to the write's envelope; the write still reports `ok`.
 - A partition test over `_WRITE_OPS`: every op is classified mirrors / does-not-mirror with a
   recorded reason, so an op added without a decision fails a test rather than silently shipping
@@ -186,7 +195,7 @@ something.
 
 ## Status
 
-- [ ] Chunk 01: The mirror primitive — and the three negatives that keep it honest
+- [x] Chunk 01: The mirror primitive — and the three negatives that keep it honest
 - [ ] Chunk 02: Wire the eligible write paths, and make a future op fail something
 - [ ] Chunk 03: `import`, the reader-facing surfaces, and the coherence sweep
 
@@ -195,3 +204,39 @@ Tracking item **#627**. The requirement's home is `documentation/backlog-service
 §6.1, added at plan time; it restates a property Data Model §1 and NFR §4 already assert rather
 than adding a new one. This lands before v3.2.8 cuts — `backlog-cache` is the release-pending
 scope the fix belongs to.
+
+**Chunk 01 shipped `3434305`**, suite 4223 passed / 7 skipped. Review
+`rev-20260808T062229Z-56ca858e` returned 1 blocking / 1 warning / 1 note, all three fixed in the
+chunk's own commit.
+
+**The blocking finding is the one thing a Chunk 02 builder most needs to know, because the guard it
+produced is now load-bearing in two directions.** `open_store(create=False)` proves a *file*
+exists, not that a sync ever ran — `_ensure_schema` commits the schema in its own transaction, so a
+rebuild whose `replace_items` step then fails leaves a schema-only store with `item` and `cursor`
+both empty. One mirrored row into that serves, through `cachequery._freshness`'s row-stamp
+fallback, a payload of **one item aged 0.0 seconds** (measured directly, not reasoned about). So
+`sync.absorb_issue` requires a `cursor` row for its scope, and that single check also *is* the
+cross-repo scope guard Chunk 02 was going to add at the binding: no row at all → unsynced, error;
+a row for another scope → silent `skipped: out-of-scope`. **Chunk 02 must not re-add a scope
+comparison against the caller's `--repo`** — that is the weaker check the store-side one replaced,
+and duplicating it would put the decision in two places with the wrong one winning on a command
+run wholly against another backlog.
+
+Also settled in Chunk 01, so Chunk 02 can rely on it: `absorb_rows` catches the parse errors its
+index re-derivation can raise, not only `sqlite3.Error`, so `absorb_issue`'s "never raises" is
+literally true and the callback seam does not need its own wrapper for that. **That sentence is
+load-bearing for the next chunk, so it is tested rather than asserted** — the verify round's
+blocking finding was that I had written it while exercising only the `sqlite3` arm that already
+worked. `test_a_mirror_failure_comes_back_as_an_envelope` is now parametrized over all four.
+
+The verify round also left two things recorded rather than fixed, both cheap and both taken in the
+same commit: `cursor_scopes` distinguishes `None` (unreadable) from `[]` (never synced), because
+sending an operator to run a sync when the store is not answering points them at the wrong repair;
+and this plan's Chunk 02 section no longer names a `holds_scope` function that was never built.
+
+**Left open deliberately:** the record-lint's four `governed-by-gap` counts against this plan
+(3 of 7 data-model norms dispositioned, 3 of 8 architecture, 2 of 3 security-model, 2 of 3
+api-contract). The `governed_by` preamble states the position — this is a delta on a corpus already
+dispositioned norm-by-norm in `build-plan-backlog-cache.md`, and re-transcribing thirty unchanged
+judgments is not judgment. The lint wants each absent norm to say "inapplicable, because —" in its
+own words. Accepted as a record-only gap rather than fixed.

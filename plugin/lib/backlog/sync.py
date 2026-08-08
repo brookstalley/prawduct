@@ -258,6 +258,11 @@ def absorb_issue(
     try:
         scope = f"{owner}/{repo}"
         covered = cache.cursor_scopes(conn)
+        if covered is None:
+            # Readable enough to open, not readable enough to answer. Saying
+            # "run a sync" here would send an operator to repair a store whose
+            # problem a sync does not address.
+            return error("unavailable", "the backlog cache could not be read")
         if scope not in covered:
             if not covered:
                 return error(

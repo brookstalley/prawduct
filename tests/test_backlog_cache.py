@@ -961,6 +961,33 @@ class TestMirrorOnWrite:
         assert result["data"]["written"] == 0
         assert _rebuild_snapshot(repo_dir) == before
 
+    def test_an_unreadable_cursor_is_not_reported_as_an_unsynced_store(self, fake, repo_dir):
+        """Both decline the write; only one of them is honest about why. Telling an
+        operator to run a sync when the store is not answering sends them to repair
+        something a sync does not fix."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        issue = fake.get_issue(OWNER, REPO, 1)
+
+        # `cursor_scopes` reports the real failure: a genuinely absent table, not a
+        # mocked one, so the arm is exercised through sqlite rather than around it.
+        raw = sqlite3.connect(str(cache.cache_path(repo_dir)))
+        raw.execute("DROP TABLE cursor")
+        raw.commit()
+        raw.close()
+        conn = cache.open_store(repo_dir, create=False)
+        assert cache.cursor_scopes(conn) is None
+        conn.close()
+
+        # And the caller turns that into an honest message rather than the
+        # never-synced one, which is the half an operator actually reads.
+        with mock.patch.object(cache, "cursor_scopes", return_value=None):
+            result = sync.absorb_issue(repo_dir, owner=OWNER, repo=REPO, issue=issue, now=NOW)
+
+        assert result["status"] == "error"
+        assert "could not be read" in result["error"]["message"]
+        assert "backlog sync" not in result["error"]["message"]
+
     def test_a_mirrored_create_carries_its_derived_indexes(self, fake, repo_dir):
         """The row and its three indexes travel together, so a just-filed item is
         findable every way an existing one is — by id, by changed file, by text."""
@@ -1038,16 +1065,32 @@ class TestMirrorOnWrite:
 
         assert target not in [row["id"] for row in _domain_rows(repo_dir)]
 
-    def test_a_sqlite_failure_comes_back_as_an_envelope(self, fake, repo_dir):
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            sqlite3.OperationalError("disk I/O error"),
+            # The three non-database arms, which are the whole content of the
+            # widened catch: `_write_rows` re-derives the alias and path indexes
+            # through `parse_block` / `parse_list`, whose failures are value
+            # errors. Testing only the sqlite arm would exercise the half that
+            # already worked and leave the half that was added unproven — while
+            # the build plan tells the next chunk it may omit its own guard on
+            # the strength of exactly this behaviour.
+            ValueError("malformed alias block"),
+            TypeError("affected column was not a string"),
+            KeyError("id"),
+        ],
+        ids=["sqlite", "value", "type", "key"],
+    )
+    def test_a_mirror_failure_comes_back_as_an_envelope(self, fake, repo_dir, failure):
         """A mirror runs after the provider write has already succeeded, so it may
-        never raise across the boundary and turn a landed write into a failure."""
+        never raise across the boundary and turn a landed write into a failure —
+        which would invite the caller to retry a mutation that is already done."""
         ids, _closed = _corpus(fake)
         assert _rebuild(fake, repo_dir)["status"] == "ok"
         issue = fake.get_issue(OWNER, REPO, int(ids[0].split("#")[1]))
 
-        with mock.patch.object(
-            cache, "_write_rows", side_effect=sqlite3.OperationalError("disk I/O error")
-        ):
+        with mock.patch.object(cache, "_write_rows", side_effect=failure):
             result = sync.absorb_issue(repo_dir, owner=OWNER, repo=REPO, issue=issue, now=NOW)
 
         assert result["status"] == "error"

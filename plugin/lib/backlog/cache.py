@@ -795,20 +795,26 @@ def absorb_rows(
     return ok({"written": len(rows), "evicted": evicted, "fts": fts})
 
 
-def cursor_scopes(conn: sqlite3.Connection) -> list[str]:
+def cursor_scopes(conn: sqlite3.Connection) -> list[str] | None:
     """Every scope this store has a cursor row for — that is, every scope some
-    sync has actually covered. Empty on any read failure, which is the safe
-    direction: callers treat "no scope" as "not synced" and decline to write.
+    sync has actually covered. ``None`` when the question could not be asked.
 
     The existence of the row is the signal, not its contents: ``since`` is legitimately
     NULL after a rebuild that found no provider timestamp to take, so a caller
     asking "has this scope ever been synced?" cannot ask :func:`get_cursor_state`
-    and read the answer off ``since``."""
+    and read the answer off ``since``.
+
+    **``None`` and ``[]`` are different answers and collapsing them misdirects an
+    operator.** An empty list means the store is readable and nothing has been
+    synced into it — the fix is to run a sync. A read failure means the store is
+    not answering, and telling that operator to run a sync sends them to repair
+    something that is not broken. Both decline the write; only one of them is
+    honest about why."""
     try:
         return [row[0] for row in conn.execute("SELECT scope FROM cursor ORDER BY scope")]
     except sqlite3.Error as exc:
         log_diag(f"could not read the backlog cache cursor scopes: {type(exc).__name__}: {exc}")
-        return []
+        return None
 
 
 def replace_items(
