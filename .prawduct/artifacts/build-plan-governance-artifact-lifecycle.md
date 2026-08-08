@@ -112,6 +112,24 @@ fields that CEASE TO EXIST (chunks=, status=), which is retirement by constructi
 judgement. The two guarding surviving fields are NOT retired; they are rehomed (CL6, CL7), and CL6's
 keep-reason is a named incident rather than a principle | user can veto any individual retirement]`
 
+`[DECISION-3: Chunk 01 MOVES the survivors and leaves `views.py` re-exporting them — it does NOT keep
+a second copy as an equivalence oracle | The chunk as written prescribed "keep the old implementation
+as reference and test both," and the learnings sweep run at build time put two rules against it. (1)
+The architecture norm *every fact has one home; every other mention is a reference to it* — two live
+copies of the change-log parser is the duplication class this branch exists to remove, reintroduced by
+the chunk that starts it, and the twin-loop incident of 2026-08-01 (`diagnose_scope_plan_coverage`
+condemning a file `build_scope_to_plan_map` never considered) is what that costs in this exact code.
+(2) *When claiming something is provably equivalent, name the proposition the proof actually
+establishes* — an oracle test over a delegating module proves only that delegation happened, and the
+plan's own Chunk 01 checkpoint already warns about an oracle that passes because it exercises neither
+side. Neither rule was available when the chunk was written. What replaces the oracle is stronger for
+the thing the oracle was FOR: Chunk 02 deletes `views.py`, so what has to survive is the BEHAVIOUR, and
+that is pinned by characterization tests running the new modules against this repo's real
+`change-log.md` and real `artifacts/` tree. Those outlive `views.py`; an A-vs-B oracle dies with it.
+The architecture disposition *goals and verification bind; prescribed method is advice* is the clause
+being used, in the form it invites — a better split, recorded | user can override → restore the
+duplicate-and-compare shape and accept a knowingly-duplicated parser for one chunk]`
+
 **Retroactivity: `migrate`, declared** — not `contain`. Every norm carries this field, and a fleet
 default cannot leave it implicit. Existing sites are swept: `views_enabled` keys and `scope_rollups`
 blocks across onboarded repos, and accumulated live build plans into the archive (FL6). The norm's
@@ -175,12 +193,14 @@ only gate that reads tags.
 
 ### Chunk 01: Rehome the survivors — two named modules, nothing deleted yet
 
-- **Description:** The thin slice that proves the split before anything is removed. Extract what must
+- **Description:** The thin slice that proves the split before anything is removed. **Move** what must
   outlive `views.py` into two clearly-named modules, repoint callers, and fold the two earned checks
-  into the gate that needs them — with `views.py` still present and still working. This is deliberately
-  the "keep the old implementation as reference and test both" discipline that carried the coverage-perf
-  rewrite: after this chunk the tree has two paths and one behaviour, so Chunk 02's deletion is a
-  subtraction with an oracle rather than a rewrite.
+  into the gate that needs them — with `views.py` still present and still working, now as a
+  **re-export** of the moved names rather than a second copy (DECISION-3, taken at build time on two
+  learnings rules that were not available when this chunk was written). After this chunk the tree has
+  one implementation reached by two import paths, and the behaviour Chunk 02 must not change is pinned
+  by characterization tests over this repo's real data — which survive `views.py`, where an
+  A-vs-B oracle would not.
 - **Depends on:** none
 - **Artifacts consumed:** requirements v0.4 — "What survives the deletion", CL6, CL7
 - **Deliverables:**
@@ -203,14 +223,20 @@ only gate that reads tags.
     functions into raisers on the way across.
 - **Tests:** unit — the merged validator against each malformed shape the four separate ones caught,
   including the `release=unreleased` case by name; `plan_index` archive pruning (an archived namesake
-  must not shadow its live sibling, and must not be parsed); equivalence tests asserting
-  `change_log.parse_change_log` and `plan_index.build_scope_to_plan_map` agree with the `views.py`
-  originals across this repo's real change log and artifacts directory — the old implementation is the
-  oracle while it still exists. Integration — `check-releasability` exits non-zero on a malformed
-  `release=` and names it.
+  must not shadow its live sibling, and must not be parsed). **Characterization** (replacing the
+  equivalence oracle, per DECISION-3) — `change_log.parse_change_log` over this repo's real
+  `change-log.md` and `plan_index.build_scope_to_plan_map` over its real `artifacts/` tree, asserting
+  the properties Chunk 02 must not change: every scope the log declares resolves to the plan file that
+  declares it, the tagged-entry count and the release-pending scope set are what the tree says, and no
+  archived path appears. These pin behaviour against data, so they still discriminate after `views.py`
+  is gone. Integration — `check-releasability` exits non-zero on a malformed `release=` and names it.
+  Perf — `plan_index` must not drag a heavy submodule (the NFR hot-path budget: three governance paths
+  import it, two of them per session), asserted the way `test_lib_lazy_imports.py` already asserts it,
+  with `lib.views` as the positive control that proves the probe can fail.
 - **Acceptance criteria:** `check-releasability` refuses a `release=unreleased` entry with a named
   reason (this is the acceptance criterion, not a side effect — it is the guard that hid a branch from
-  v3.2.8); the equivalence tests pass; review dispatch, session start and session end all still
+  v3.2.8); the characterization tests pass and are shown to discriminate (each fails on a deliberately
+  perturbed input, not merely passes); review dispatch, session start and session end all still
   resolve the branch's plan.
 - **Critic mode:** final
   <!-- Override: inference picks `chunk` mid-plan. This chunk lands the architectural keystone —
@@ -293,11 +319,17 @@ only gate that reads tags.
   `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` (Phase 1 steps 2 and 10).
   Norm decisions: `.prawduct/artifacts/architecture.md` and `.prawduct/artifacts/data-model.md` lose
   the `regen-views-is-advice` precedence annotations; `.prawduct/learnings.md` +
-  `learnings-detail.md` retire the ruling and the eight format-rule entries, and **invert L:175**
-  ("never hand-check the boxes" becomes the opposite instruction). While inverting it, fix its shape —
-  `verify-records` reports that entry as 438 chars against a 400 budget, so the rewrite moves its
-  evidence to `learnings-detail.md` under the same heading rather than carrying the overflow forward.
-  Several of these carry token-budget guardrail tests — expect the trim, do not discover it at close.
+  `learnings-detail.md` retire the ruling and the eight format-rule entries, and **invert the
+  never-hand-check-the-boxes rule** (it becomes the opposite instruction, and its `learnings-detail.md`
+  body — which now also records the false `Resume:` signal the derived boxes produce — is rewritten
+  with it, not left asserting the retired mechanism). Its shape was already fixed at `4dcd883`, so the
+  400-char budget is no longer the inverting author's problem; **do not re-locate it by line number**,
+  the numbers moved in that commit. Its neighbour — *a change-log entry's BODY must cover every chunk
+  its `chunks=` tag claims* — is a **second** entry this chunk owes a rewrite: `chunks=` leaves the tag
+  schema here, but the lesson under it (release notes derive from the entry body, so an omitted
+  deliverable ships invisibly) survives the tag and must be re-expressed without it rather than retired
+  along with the eight format rules. Several of these carry token-budget guardrail tests — expect the
+  trim, do not discover it at close.
 - **Tests:** the structural//assert-absent scans that pin retired vocabulary; the guardrail tests on
   the trimmed surfaces; `test_record_lint.py`'s citation checks against the retired learnings ids.
 - **Acceptance criteria:** no shipped document teaches `chunks=`, `status=`, or a derived Status block;
@@ -409,9 +441,11 @@ removal, doctor's repair, and the attribution banner must land in the same relea
 silent break (see the HIGH open assumption). Chunk 05's cumulative review is the `/prawduct:pr create`
 gate.
 
-- **After Chunk 01** (architecture validation): confirm the two module boundaries hold and the
-  equivalence oracle actually discriminates — a test that passes against both implementations because
-  it exercises neither is the trap the ledger spike documented.
+- **After Chunk 01** (architecture validation): confirm the two module boundaries hold and that the
+  characterization tests actually discriminate — perturb each input and watch the test fail. Under
+  DECISION-3 there is no second implementation to be vacuously equal to, which removes the ledger
+  spike's trap but not the obligation: a characterization test asserting a property the data cannot
+  violate is the same empty pass by another route.
 - **After Chunk 02** (midpoint, highest risk): verify the Stop hook's gates against a real session
   boundary, not by reading the diff. This is where `gates.py:808`'s incident happened, and it failed
   silently.
