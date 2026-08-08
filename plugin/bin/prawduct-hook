@@ -3489,6 +3489,9 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
     global_errors: list[str] = []
     # Unrecognized status= (typo) — the entry would silently never flip.
     global_errors.extend(views.validate_status_values(parsed_entries))
+    # A release= that isn't a version — the entry counts as already released, so
+    # its scope drops out of the release-pending set and never ships.
+    global_errors.extend(views.validate_release_values(parsed_entries))
     # Conflicting scalar values across tag lines — first-wins may be wrong.
     global_errors.extend(views.validate_tag_conflicts(parsed_entries))
 

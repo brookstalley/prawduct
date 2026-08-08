@@ -593,6 +593,62 @@ class TestValidateStatusValues:
         assert len(warnings) == 2  # shippd + in-progress (shipped is valid)
 
 
+class TestValidateReleaseValues:
+    """A `release=` that isn't a version hides its whole scope from the release.
+
+    The unreleased set is every entry tagged `scope=` with NO `release=`, so any
+    value at all — a placeholder most of all — marks the entry already-released
+    and drops its scope from `check-releasability`. Release-pending is
+    statusless with no release tag.
+    """
+
+    def test_placeholder_yields_one_error(self):
+        entries = [
+            views.ChangeLogEntry(
+                title="2026-08-07: cache",
+                tags={"scope": "backlog-cache", "release": "unreleased"},
+            )
+        ]
+        errors = views.validate_release_values(entries)
+        assert len(errors) == 1
+        assert "unreleased" in errors[0]
+
+    def test_version_yields_none(self):
+        entries = [
+            views.ChangeLogEntry(title="ok", tags={"release": "v3.2.7"}),
+            views.ChangeLogEntry(title="ok", tags={"release": "v2.0.10"}),
+            views.ChangeLogEntry(title="ok", tags={"release": "v1.3.16"}),
+        ]
+        assert views.validate_release_values(entries) == []
+
+    def test_prerelease_suffix_yields_none(self):
+        entries = [views.ChangeLogEntry(title="rc", tags={"release": "v3.2.8-rc.1"})]
+        assert views.validate_release_values(entries) == []
+
+    def test_absent_release_is_the_pending_state_not_an_error(self):
+        entries = [
+            views.ChangeLogEntry(title="untagged", tags={}),
+            views.ChangeLogEntry(
+                title="release-pending", tags={"chunks": ["01"], "scope": "s"}
+            ),
+        ]
+        assert views.validate_release_values(entries) == []
+
+    def test_other_placeholders_and_malformed_versions(self):
+        for bad in ("TBD", "next", "pending", "unknown", "3.2.7", "v3.2", "v3.2.x", ""):
+            entries = [views.ChangeLogEntry(title="b", tags={"release": bad})]
+            assert len(views.validate_release_values(entries)) == 1, bad
+
+    def test_every_release_tag_in_the_real_change_log_passes(self):
+        """The guard must not fail closed on 60+ entries of real history."""
+        content = (
+            Path(__file__).resolve().parents[1] / ".prawduct" / "change-log.md"
+        ).read_text()
+        entries = views.parse_change_log(content)
+        assert [e for e in entries if e.tags.get("release")], "no release tags parsed"
+        assert views.validate_release_values(entries) == []
+
+
 class TestParseBuildPlanFrontmatterScope:
     def test_scope_field_present(self):
         content = (
@@ -2367,6 +2423,40 @@ class TestRegenViewsImportError:
             "- [ ] Chunk 00: A"
             in (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
         )
+
+
+class TestRegenViewsBadReleaseValueError:
+    """A non-version `release=` is FATAL for the same reason a `status=` typo is,
+    and it fails harder: the entry counts as already-released, so its scope drops
+    out of `check-releasability` and the work never ships. Exit 2, ERROR on
+    stderr, nothing written."""
+
+    def test_placeholder_release_errors_and_writes_nothing(self, tmp_path: Path):
+        product = _make_product_repo(
+            tmp_path,
+            views_enabled=True,
+            change_log=(
+                "## 2026-08-07: good entry\n"
+                "<!-- prawduct: chunks=00 | release=v3.2.7 | status=shipped -->\n"
+                "\n"
+                "## 2026-08-07: placeholder entry\n"
+                "<!-- prawduct: chunks=01 | release=unreleased | status=shipped -->\n"
+            ),
+            build_plan=(
+                "## Status\n"
+                "- [ ] Chunk 00: A\n"
+                "- [ ] Chunk 01: B\n"
+            ),
+        )
+        result = _run_regen(product)
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "unreleased" in result.stderr
+        assert "ERROR" in result.stderr
+        assert "no views written" in result.stderr
+        new_plan = (product / ".prawduct" / "artifacts" / "build-plan.md").read_text()
+        # Fail closed: NOTHING flipped, the valid entry included.
+        assert "- [ ] Chunk 00: A" in new_plan
+        assert "- [ ] Chunk 01: B" in new_plan
 
 
 class TestRegenViewsStatusTypoError:

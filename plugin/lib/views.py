@@ -288,6 +288,50 @@ def validate_status_values(entries: list[ChangeLogEntry]) -> list[str]:
     return warnings
 
 
+RELEASE_VALUE_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
+
+
+def validate_release_values(entries: list[ChangeLogEntry]) -> list[str]:
+    """Return an error string for each entry whose ``release=`` is not a version.
+
+    ``release=`` is how the release flow decides what is *already out*: the
+    unreleased set is every entry tagged ``scope=`` with NO ``release=``
+    (``check-releasability``), and :func:`_collect_releases` groups the shipped
+    entries by this value to build release notes. A non-version value therefore
+    fails in the same silent direction a ``status=`` typo does — worse, in fact:
+    the entry does not merely skip its own checkbox, it removes its whole scope
+    from the release-pending set, so ``check-releasability`` answers "nothing to
+    cut" and the work never ships. A placeholder reads as deliberate, which is
+    exactly why nothing questioned it (``release=unreleased | status=shipped``
+    on six entries hid an entire branch from the v3.2.8 release; the
+    release-pending state is *statusless with no release tag*, never a
+    placeholder naming the absence).
+
+    Accepts ``vMAJOR.MINOR.PATCH`` with an optional ``-suffix`` for
+    pre-releases. Entries with no ``release=`` tag are the normal
+    release-pending state and are never flagged. The regen-views caller treats
+    these as fatal (fail closed, nothing written — VWS-6R4T); the function
+    itself stays pure.
+
+    Returns ``[]`` when every release value is well-formed or absent.
+    """
+    errors: list[str] = []
+    for entry in entries:
+        release = entry.tags.get("release")
+        if release is None:
+            continue
+        if not (isinstance(release, str) and RELEASE_VALUE_RE.match(release)):
+            errors.append(
+                f"change-log entry {entry.title!r} (line {entry.line_number}) "
+                f"has release={release!r}, which is not a version — expected "
+                f"vMAJOR.MINOR.PATCH. Any release= tag marks this entry as "
+                f"already released, so its whole scope drops out of the "
+                f"release-pending set and the work never ships. Release-pending "
+                f"is statusless with NO release= tag; delete the tag."
+            )
+    return errors
+
+
 def validate_tag_line_multiplicity(entries: list[ChangeLogEntry]) -> list[str]:
     """Return a warning string for each entry parsed from >1 tag line.
 

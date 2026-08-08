@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-07: a placeholder version tag hid a whole branch from the release
+
+<!-- prawduct: type=fix | scope=backlog-cache -->
+
+**Six entries on this branch carried `release=unreleased | status=shipped`, and the release flow
+read that as already shipped.** The unreleased set is every entry tagged `scope=` with *no*
+`release=`, so a placeholder naming the absence removes the entry's whole scope from it. Run against
+the branch at PR time, `check-releasability --release v3.2.8` reported `releasable: no
+release-pending scopes — nothing to classify` — the runbook's explicit "nothing to cut. Stop." Three
+consequences rode along: release-notes.md grew a literal `## unreleased` section above v3.2.7,
+`project-state.yaml` recorded `releases: ["unreleased"]`, and because
+`diagnose_scope_plan_coverage` skips `status=shipped`, the no-plan-file integrity check that exists
+to guard release-pending scopes never applied to them. This is REL-2N8K — v2.0.14 shipping 8 of 10
+entries unflipped — in a better disguise: a typo looks wrong, a placeholder looks deliberate.
+
+**The tags are corrected, and `release=` is now validated rather than trusted.** `status=` has had a
+typo-guard since VWS-3K7P precisely because a bad value silently fails to flip a checkbox; `release=`
+had none, though it fails in the same direction and harder — the entry does not merely skip its own
+checkbox, it takes its scope out of the release entirely. `validate_release_values` requires
+`vMAJOR.MINOR.PATCH` (optional `-suffix`) and joins the global fail-closed set: `regen-views` exits 2
+and writes nothing. Absent stays legal — that IS the release-pending state.
+
+The guard was run against the failure before being trusted: 6 errors on the defective blob
+(`f17dbd5`), 0 on the fixed tree, and 0 across all 62 `release=` tags of real history, which a
+too-strict pattern would have failed closed on. After the correction the probe names `backlog-cache`
+as the one release-pending scope, and the Status checkboxes return to `[ ]` — the documented
+development state, the plan's Context line and git history being the progress record until the
+release flips them.
+
 ## 2026-08-07: the last dormant readers come back, and the advisory that announced them retires
 
 <!-- prawduct: chunks=06 | type=feat | scope=backlog-cache -->
