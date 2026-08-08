@@ -3219,3 +3219,96 @@ tests against *nearby* wrong code, not against the family of wrong code you are 
 
 **Related:** [[a-stage-whose-worth-is-speed-needs-a-test-that-fails-when-it-stops-being-fast]] — this
 is the sharper form of it: not merely *a* test, but a test whose observable is the cost itself.
+
+---
+
+## A pattern narrowed to kill a false positive is validated against the case that PROVOKED it
+
+**Context.** The unticked-committed-chunk tripwire (DV7) shipped with `_CHUNK_COMMIT_RE =
+Chunk\s+(\d+)`, which matched a chunk id anywhere in a commit subject. Minutes later it fired on
+`plan(...): carry R-9's tail to Chunk 03` — a commit that merely *mentions* a later chunk. The build
+plan recorded a fix: `\(Chunk\s+(\d+)\)|:\s*Chunk\s+(\d+)\b`, described as "a narrowing verified
+against this branch's real subjects."
+
+**What the full corpus said.** Over the repo's last 800 commit subjects the proposed narrowing
+disagreed with the old pattern on 22 subjects — all in the direction of matching less, as intended.
+But grouping by conventional-commit scope showed it removed *all* chunk coverage from two entire
+plans: `drift-burndown` (chunks 1–4) and `critic-burndown` (chunks 1, 3). Those plans named their
+chunks only in a third idiom the sample never contained — `docs(scope): close Chunk 01 — the census`.
+A control that is silent for a whole plan is indistinguishable from one that found nothing, which is
+the failure mode this control's own docstring names.
+
+**Why the sample was the defect.** The branch that provoked the false positive contains, by
+construction, the conventions that branch happens to use. It cannot contain a convention used by a
+plan written six months earlier. The check that changed the decision was one `git log --format=%s
+-800 | python3 -` comparing old-vs-new match sets grouped by scope, and it took under a minute.
+
+**What shipped.** Three anchored arms — parenthesised, immediately after the conventional-commit
+colon, and the `clos(e|es|ed) Chunk NN` idiom — pinned positively for all three forms, negatively
+for three real prose mentions from the log, and by a property test asserting the pattern *strictly
+narrows*: over the real history it matches nothing the old pattern missed. That property is the one
+no positive test can replace, because the risk in a rewrite is not "it stops matching" but "it starts
+matching something else."
+
+**The general shape.** Narrowing a matcher is a two-sided change and it is nearly always evaluated on
+one side. Ask both: what does it stop matching that it should, and what does it stop matching that it
+shouldn't? The second question needs a corpus, not a case.
+
+---
+
+## A new key in a shared namespace needs a collision check against real DATA before it needs a test
+
+**Context.** Build-plan archival records "the release that carried this work" in the archived plan's
+frontmatter. The obvious key was `release:`. The writer also has to be idempotent — re-archiving must
+replace its own keys rather than append a second contradicting copy — so it strips every key it
+considers its own before rewriting them.
+
+**The collision.** `.prawduct/artifacts/release-plan-v3.2.7.md` already carries `release: v3.2.7`,
+meaning *the release this plan governs* — a different fact from *the release that carried this plan*.
+And release plans are among the artifacts most likely to be archived, because the gate that reads
+them (`check-releasability._find_release_plan`) searches the archive by design, specifically so
+archiving a shipped release plan does not make the gate fail closed. So the one artifact type whose
+archival was explicitly designed for was the one whose data the writer would silently delete.
+
+**Why every test passed.** The unit tests were written against the writer's own semantics: stamp,
+read back, assert the keys. A test suite validates the contract you thought you had. It has no
+opinion about what else in the repo already means something by the name you chose.
+
+**The check that found it.** A loop over `.prawduct/artifacts/*.md` printing any top-level
+frontmatter key matching the set the writer claims. One hit, and it was the decisive one. Renaming to
+`released_in` removed the ambiguity permanently and reads better besides; a regression test now pins
+that a release plan's own `release:` survives both a first and a second stamp.
+
+**The general shape.** Any writer that owns a subset of a shared namespace — frontmatter keys, config
+keys, tag fields, env-var prefixes, label names — is defining what it will overwrite. Enumerate the
+existing occupants from real data before choosing the name, not from memory and not from the schema
+you are about to write.
+
+---
+
+## An assert-absent guard passes when the instruction is simply DROPPED
+
+**Context.** Retiring "delete the build plan" across five instruction surfaces, the coverage shipped
+as a property-matched sweep asserting that no shipped surface instructs deleting a plan — matched on
+the instruction rather than on the sentences that were removed, and verified red against rewordings
+that never shipped.
+
+**What it could not see.** An edit that removes the *archive* instruction from `pr/SKILL.md`'s trunk
+branch leaves the sweep green, because nothing then instructs deletion either. Silence satisfies a
+negative guard by construction. This is the same never-armed failure the same branch had just closed
+for the DV7 tripwire — a control nothing reaches reads as a control that found nothing — reproduced
+one file over, by the author who had written the argument.
+
+**What was added.** A positive pin per surface, scoped to the *branch* rather than the file: the
+trunk path must name `archive-plan`; the gitflow path must say RETAIN and must NOT name
+`archive-plan`, because gitflow decides *when* a plan is archived, never *whether*, and that
+distinction is the entire rule. A whole-file grep passes when the instruction is present but sitting
+in the wrong branch, which is the likeliest way this actually breaks. The locator asserts it found
+exactly one matching line, so a rename makes the pin go red rather than silently match nothing.
+
+**A second trap in the same guard.** The sweep's first exemption clause skipped any match whose
+±90-character window contained "archive" — which, after the change, is every line on those surfaces.
+It would have excused a genuine deletion instruction written beside an archival one. Replacing it
+with a negator scoped to the 24 characters immediately before the verb is tight and testable, and
+the motivating case is now a fixture: *"Archive the plan at the release; on trunk, delete the plan
+file now."* must still be caught. **A negative test's exemption clause is where its teeth go.**

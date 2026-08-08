@@ -462,3 +462,9 @@ dropping them.
 ## Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
 
 ## A change-log `scope=` tag comes from the PLAN you are in, never the entry above it — `check-releasability` matches it to plan frontmatter by exact string, so a copied neighbouring scope attributes your work to someone else's plan and BOTH readings stay quiet: that scope does resolve to a plan, and yours reports as pending with nothing describing it. Tell: your branch narrows an existing scope
+
+## A pattern narrowed to kill a false positive is validated against the case that PROVOKED it — which is the one case already known — so re-run it over the whole corpus before installing it, counting what it stops matching as well as what it starts. Tell: the narrowing was "verified against this branch's real subjects"
+
+## A new key in a shared namespace needs a collision check against real DATA before it needs a test — grep the live corpus for the name and ask what already means something by it, because a writer that strips "its own" keys silently deletes a homonym and every test you wrote for your own semantics still passes. Tell: you picked the obvious short name for a frontmatter/config/tag key
+
+## An assert-absent guard passes when the instruction is simply DROPPED — silence satisfies it by construction — so any retired-behaviour sweep needs a positive pin on each surface that must now carry the replacement, scoped to the BRANCH rather than the file, because which branch carries it is usually the whole rule. Tell: your only coverage of a governance surface is a negative grep

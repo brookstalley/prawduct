@@ -162,7 +162,7 @@ Chunk 05 starts.
 - [x] Chunk 01: Rehome the survivors — two named modules, nothing deleted yet
 - [x] Chunk 02: One reading — retire the flag, the command, and the dual progress path
 - [x] Chunk 03: Trim the tag schema, the doc restatements, and the two norm decisions
-- [ ] Chunk 04: Archival — completion frontmatter, five deletion sites, two terminal states
+- [x] Chunk 04: Archival — completion frontmatter, five deletion sites, two terminal states
 - [ ] Chunk 05: Doctor repair, the archive backfill, and the guards that keep it converged
 Context: Plan written 2026-08-08 on `feature/governance-artifact-lifecycle` (off `develop`),
 requirements v0.4 committed at `b681fab`. Ships as one PR — Chunk 05's cumulative review is the
@@ -285,7 +285,8 @@ longer instructs an operator to run a retired command and read exit codes that d
 **Chunk 04 shipped.** `plan_archive.py` + `prawduct-hook archive-plan` give a plan an end of life
 that is not deletion: completion frontmatter, both terminal states, a move into an `archive/` beside
 the plan, checkboxes untouched. All three carried-in code items landed (the tripwire's narrowing and
-DV7's wiring in one commit, R-22's hoist, R-14's symmetric walks). Suite 4213 passed / 7 skipped.
+DV7's wiring in one commit, R-22's hoist, R-14's symmetric walks). Suite state is read from the
+evidence store, not copied here — the copy drifts and nothing reads it.
 
 **BP6's list was three open sites and turned out to be four.** `plugin/methodology/planning.md`
 taught the deletion premise and was in nobody's enumeration — found by running the sweep rather than
@@ -309,7 +310,9 @@ release plans are exactly what gets archived, since `check-releasability` search
 design. The short name would have made re-stamping silently strip it. Found by asking "what already
 uses this name?" against the real artifacts directory; every test written at the time passed.
 
-`rev-20260808T192216Z-35d1afc0` (`chunk`) returned 1 blocking / 1 warning / 2 note. The blocker was
+`rev-20260808T192216Z-35d1afc0` (`chunk`) returned 1 blocking / 1 warning / 2 note, and
+`rev-20260808T193445Z-6f2c8912` (`verify-resolutions`) returned **0/0/0** with R-1 and R-2 both
+settled from the tree rather than from the fix commit. The blocker was
 a record defect I caused by editing during the review (evidence and fact anchored to a pre-rename
 tree), remedied by re-running the suite and re-covering with `verify-resolutions`. R-2 and R-3 are
 fixed: the merge flow is now pinned **positively** on both paths (an assert-absent sweep passes when
