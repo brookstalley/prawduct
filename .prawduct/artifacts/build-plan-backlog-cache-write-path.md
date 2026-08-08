@@ -208,9 +208,9 @@ something.
 
 ## Status
 
-- [x] Chunk 01: The mirror primitive — and the three negatives that keep it honest
-- [x] Chunk 02: Wire the eligible write paths, and make a future op fail something
-- [x] Chunk 03: `import`, the reader-facing surfaces, and the coherence sweep
+- [ ] Chunk 01: The mirror primitive — and the three negatives that keep it honest
+- [ ] Chunk 02: Wire the eligible write paths, and make a future op fail something
+- [ ] Chunk 03: `import`, the reader-facing surfaces, and the coherence sweep
 
 **Context:** Branch `fix/backlog-cache-write-path` off `develop`, baseline 4214 passed / 7 skipped.
 Tracking item **#627**. The requirement's home is `documentation/backlog-service-cache-spec.md`

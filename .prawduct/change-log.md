@@ -47,10 +47,24 @@ failure warns on an otherwise-`ok` envelope and never fails the write — the pr
 already landed, and failing would invite a retry of a completed write. An *absent* store is silent,
 since every read already reports that with the command that fixes it.
 
+**`import` is the one write the mirror cannot serve, so it refreshes by sync instead.** A bulk
+create holds no single authoritative issue to hand the mirror — the importer creates through the
+transport directly, hundreds of times — and re-fetching each one to feed it would spend a request
+per item to save one. A successful import now runs a single `incremental_sync` on the import's own
+transport (a fresh one would drop the injected fake under test and open a second `gh` session in
+production): every created issue has an `updated_at` past the watermark, so one pass catches them
+all. This is a new provider round-trip on a command that previously made none. It is skipped, with
+a diagnostic rather than a warning, when no store exists — `import` is the command most likely to
+run *before* a first sync, and building a store here would be the store-creation §6.1 forbids. A
+sync failure warns on the otherwise-`ok` import envelope and never fails the import.
+
 `merge` needed the callback threaded rather than inherited (`migrate.merge` calls `core.set_status`
 itself); only `related` mirrors among the edges, since the native `blocks`/`parent` edges have no
 column here. A partition test over `_WRITE_OPS` makes a future op fail something until someone
-decides whether it changes cached state.
+decides whether it changes cached state. The two reader-facing prose surfaces
+(`plugin/skills/backlog/cache-reads.md`, `plugin/skills/backlog/adapter-mode.md`) gained the
+write-reflection contract: a cached read reflects this session's own writes, while the coverage
+stamp still measures the last confirmed fetch — two separate claims, and the docs now say so.
 
 ## 2026-08-07: a placeholder version tag hid a whole branch from the release
 
