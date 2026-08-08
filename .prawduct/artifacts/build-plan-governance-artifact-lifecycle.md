@@ -130,6 +130,26 @@ The architecture disposition *goals and verification bind; prescribed method is 
 being used, in the form it invites — a better split, recorded | user can override → restore the
 duplicate-and-compare shape and accept a knowingly-duplicated parser for one chunk]`
 
+`[DECISION-4: `stamp-merged` becomes INERT in the same shape as `regen-views` — callable, a stderr
+notice, writes nothing, exit 0 — rather than being repointed at `change_log.py` and kept working |
+Chunk 02's Description says "`regen-views` and `stamp-merged` go" while its Deliverables say only
+"`stamp-merged` is already deprecated in this shape — match it", which is silent on whether its BODY
+survives. The body cannot be left alone either way: `stamp_merged` lives in `views.py`, which this
+chunk deletes, so the choice is repoint-and-keep-working or make-inert. Two facts decide it. (1) Its
+entire output is `status=merged`, and after this chunk `status=` has **zero readers** — verified by
+call-site trace, not memory: every live reader (`validate_status_values`, the suppression logic at
+`prawduct-hook:3535/3543`, `collect_shipped_chunks`, `_plan_status_results`) sits inside
+`cmd_regen_views` or `views.py`, and `release_readiness` reads `release=`/`scope=` only. Chunk 03 then
+removes `status=` from the tag schema outright. Keeping the writer alive would leave prawduct emitting
+a tag its own schema no longer defines and nothing consumes — *a channel that is produced and never
+consumed is a defect, not an inefficiency* (`learnings.md`), and *a retirement ruling also retires
+whatever existed only to serve the retired thing*. (2) Inertness is the LESS invasive option for the
+norm that governs here: `api-contract.md`'s deprecation-is-signalled norm demands the subcommand stay
+callable and signalled with removal deferred to a major, and an inert stub satisfies all three. No
+flow runs `stamp-merged` (its own docstring says so), so no caller observes the behaviour change
+except as the notice | user can override → move `stamp_merged` into `change_log.py` and keep it
+writing, which then obliges Chunk 03 to keep `status=` in the schema for a writer with no reader]`
+
 **Retroactivity: `migrate`, declared** — not `contain`. Every norm carries this field, and a fleet
 default cannot leave it implicit. Existing sites are swept: `views_enabled` keys and `scope_rollups`
 blocks across onboarded repos, and accumulated live build plans into the archive (FL6). The norm's
@@ -290,6 +310,20 @@ only gate that reads tags.
     callable, prints a `WARNING:` stderr notice in **plain language naming no internal identifier**
     (the observability norm), writes nothing, and exits 0. `stamp-merged` is already deprecated in this
     shape — match it rather than inventing a second convention. Removal of both defers to a major.
+    **`stamp-merged` becomes inert in that same shape** (DECISION-4), because `views.stamp_merged`
+    dies with the module and its only output — `status=` — has no reader left after this chunk.
+  - **The registries and prose that name what changed here, in THIS commit** — *removing a mechanism
+    requires removing its name too*, and *the registry documenting an enumerated set is owed its row in
+    the same commit that changes the set*. Three that a `views_enabled` grep alone does not reach:
+    `.prawduct/artifacts/api-contract.md`'s Surface Inventory (its Deprecated row lists
+    `regen-views --check` and `stamp-merged`; both entries change meaning), and two docstrings that
+    become false the moment `views.py` is gone —
+    `plugin/lib/release_readiness.py::release_pending_scopes` (contrasts itself against
+    `views.collect_release_pending_scopes` and explains itself in terms of what `regen-views` needs) and
+    `plugin/lib/buildplan_refs.py::_normalize_chunk_id` (says it is "**not** `views.normalize_chunk_id`,
+    which is the canonical one" — after the deletion it IS the only one). The retired controls also owe
+    `.prawduct/cross-cutting-concerns.md` their surviving backstop and restore trigger rather than a
+    deleted row, per the `test_public_function_coverage` precedent.
   - `plugin/lib/buildplan_refs.py` — `_git_aware_progress`, `_committed_chunk_ids`'s progress role,
     `degraded_progress_notice` and `DEGRADED_PROGRESS_TOKEN` removed; `resolve_chunk_progress` becomes
     the checkbox reading; `_completed_chunk_ids`' two-reading branch collapses to one.
