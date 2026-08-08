@@ -226,7 +226,13 @@ grep -rniE 'derived view|regenerat|flips at release|do not hand-edit|hand-flip' 
   --include='prawduct-hook' --include='*.md'
 ```
 
-Neither returns anything that ASSERTS the retired model outside Chunk 03's declared surfaces. What
+Neither returns anything that ASSERTS the retired model outside Chunk 03's declared surfaces —
+though the identifier sweep does not come back literally EMPTY over `tests/`, and the distinction is
+worth keeping honest: four test files still write `views_enabled: true` as inert fixture filler
+(carried to Chunk 03 above). Nothing reads it, so it asserts nothing; it does make the claim harder
+to check than a clean grep would. The recorded commands also do not root at `.prawduct/`, where
+everything is either frozen record or Chunk 03's declared work — true, but not falsifiable by the
+command as written. What
 they do return, and why each is correct: the two deprecated commands and their notices (DECISION-1/4);
 past-tense retirement statements (required by GD3 — a reader looking for the flag must find the
 retirement, not silence); `.critic-findings.json` and the disposition census, which are derived views
@@ -473,6 +479,22 @@ only gate that reads tags.
   trim, do not discover it at close.
 - **Tests:** the structural//assert-absent scans that pin retired vocabulary; the guardrail tests on
   the trimmed surfaces; `test_record_lint.py`'s citation checks against the retired learnings ids.
+  - **Carried in from Chunk 02's review (R-16), the half that did not land.** The tripwire's
+    precondition — it fires only on a `Chunk <n>` commit subject, so a repo without that habit gets
+    permanent silence indistinguishable from "every box is correct" — is recorded in
+    `unticked_committed_chunk_notice`'s docstring but NOWHERE A READER OF THE NOTICE SEES IT. The
+    finding named two remedies and Chunk 02 delivered neither: an author-facing statement in
+    `plugin/templates/build-plan.md` or `plugin/methodology/building.md` (both this chunk's files),
+    or the emitted notice stating its own basis. Take one. A control whose blind spot is documented
+    only where its authors read is a control that looks healthy to everyone else.
+  - **Carried in from Chunk 02's review (R-9's tail), while this chunk is already sweeping.** Four
+    test files still write `views_enabled: true` as inert fixture filler —
+    `tests/test_release_verification.py`, `tests/test_plugin_runtime.py` (two sites) and
+    `tests/test_classify_diff_risk.py`. Nothing reads it and no assertion depends on it, so this
+    is cosmetic; it matters only because it is why an identifier sweep over `tests/` does not come
+    back empty, which makes the completeness claim harder to check than it should be. (Leave
+    `tests/test_plugin_migrate.py` alone — it models a pre-2.0 file-sync repo where the flag really
+    existed.)
   - **Carried in from Chunk 02's review (R-22), a one-line judgement rather than a code change.**
     `check_releasability` returns early at `if not pending:` before reaching `_plan_coverage_warnings`,
     so the rehomed `duplicate_scope_errors` — repo hygiene, independent of what is pending — never runs
@@ -499,9 +521,9 @@ only gate that reads tags.
 - **Depends on:** Chunk 03
 - **Artifacts consumed:** requirements v0.4 — BP1–BP3, BP5, BP6, BP8, BP10
 - **Deliverables:**
-  - The archival operation itself — add completion frontmatter, move into `.prawduct/artifacts/archive/`
-    (created by this chunk), leave checkbox state untouched (FL6: it is not a precondition and is not
-    corrected, because nothing reads an archived plan's boxes).
+  - The archival operation itself — add completion frontmatter, move plans into
+    new `.prawduct/artifacts/archive/`, and leave checkbox state untouched (FL6: it is not a
+    precondition and is not corrected, because nothing reads an archived plan's boxes).
   - Completion frontmatter carrying: terminal state (**completed** or **superseded/abandoned** — BP10's
     two states), date, the release that carried it where the product versions, an explicit
     no-longer-maintained statement, and for the superseded case what replaced it or why it stopped.
@@ -515,8 +537,8 @@ only gate that reads tags.
   - `plugin/templates/build-plan.md` gains the completion-frontmatter shape.
   - **Carried in from Chunk 02's review (R-14), because this chunk creates the directory that makes
     it real.** `plan_index._markdown_files` prunes ANY directory component named `archive` at every
-    depth, but `iter_scoped_plan_candidates(include_archived=True)` re-walks only
-    `artifacts_dir/archive`. On a repo nesting plans as `plans/<id>/build-plan.md` with a sibling
+    depth, but `iter_scoped_plan_candidates(include_archived=True)` re-walks only the archive
+    directly beneath the artifacts root. On a repo nesting plans as `plans/<id>/build-plan.md` with a sibling
     `plans/<id>/archive/`, an archived plan is therefore pruned from the live pass AND absent from
     the archived pass — invisible to every reader, which BP8's live-then-archive rule assumes cannot
     happen. Today it costs only a spurious "no build-plan file" advisory because no archive exists;
