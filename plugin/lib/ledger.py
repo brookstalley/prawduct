@@ -113,8 +113,9 @@ def _scope_from_plan(prawduct_dir: Path) -> str | None:
     # claimed an observable disagreement that does not exist.
     # Still imported lazily, for a reason that survived the split: a
     # module-scope import here would pull the callee into `lib.telemetry` too,
-    # which imports `ledger`. `lib.plan_index` is cheap where `lib.views` was
-    # not, so the cost argument is gone — but the coupling would be invisible to
+    # which imports `ledger`. `lib.plan_index` is cheap where the module it was
+    # split out of was not, so the cost argument is gone — but the coupling
+    # would be invisible to
     # the lazy-import pin, which probes only `lib` and `lib.core`, and cheap is
     # not the same as free on a path that never asks.
     from .plan_index import parse_build_plan_frontmatter_scope  # noqa: PLC0415

@@ -227,12 +227,22 @@ class TestFlatApiPreserved:
 
     def test_submodule_exports_resolve(self):
         # `from lib import plan_index` / `waivers` — native submodule access.
-        # `views` was the first of these until it was deleted; any surviving
-        # submodule exercises the same PEP-562 path.
-        from lib import plan_index, waivers
+        # `views` was the first of these until it was deleted; both of its
+        # successors took its place, so both are exercised here.
+        from lib import change_log, plan_index, waivers
 
+        assert change_log.__name__ == "lib.change_log"
         assert plan_index.__name__ == "lib.plan_index"
         assert waivers.__name__ == "lib.waivers"
+
+    def test_bare_attribute_access_resolves_every_submodule_export(self):
+        """The form `_SUBMODULE_EXPORTS` exists FOR — `lib.<name>` with no prior
+        submodule import — asserted over the whole set rather than a sample, so
+        adding a member without it working fails here."""
+        import lib
+
+        for name in sorted(lib._SUBMODULE_EXPORTS):
+            assert getattr(lib, name).__name__ == f"lib.{name}"
 
     def test_unknown_attribute_raises(self):
         import lib
@@ -245,4 +255,4 @@ class TestFlatApiPreserved:
 
         names = set(dir(lib))
         assert EXPECTED_FLAT_EXPORTS <= names
-        assert {"plan_index", "waivers"} <= names
+        assert {"change_log", "plan_index", "waivers"} <= names

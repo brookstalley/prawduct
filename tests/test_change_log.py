@@ -110,9 +110,13 @@ class TestParseChangeLog:
         )
         entries = change_log.parse_change_log(content)
         assert len(entries) == 3
-        assert entries[0].shipped_chunks == ["05"]
-        assert entries[1].shipped_chunks == ["01"]
-        assert entries[2].shipped_chunks == []
+        # The retired `chunks=`/`status=` keys still PARSE — asserted on the
+        # tags directly since the `shipped_chunks` property that composed them
+        # went with its only caller. Historical entries must keep round-tripping.
+        assert entries[0].tags["chunks"] == ["05"]
+        assert entries[0].tags["status"] == "shipped"
+        assert entries[1].tags["chunks"] == ["01"]
+        assert entries[2].tags == {}
 
     def test_body_paragraph_before_tag_line_blocks_parse(self):
         """If a prose paragraph appears before the tag line, the tag line is not
@@ -130,10 +134,13 @@ class TestParseChangeLog:
         entries = change_log.parse_change_log(content)
         assert entries[0].tags == {}
 
-    def test_non_shipped_status_returns_no_chunks(self):
+    def test_an_unrecognized_status_value_still_parses(self):
+        """No validator rejects a `status=` value anymore — the one that did
+        went with its only caller — so an arbitrary value must survive the
+        parse rather than be dropped."""
         content = "## X\n<!-- prawduct: chunks=07 | status=in-progress -->\n"
         entries = change_log.parse_change_log(content)
-        assert entries[0].shipped_chunks == []
+        assert entries[0].tags["chunks"] == ["07"]
         assert entries[0].tags["status"] == "in-progress"
 
 
@@ -159,7 +166,6 @@ class TestParseChangeLogMultiTagLines:
         )
         entries = change_log.parse_change_log(content)
         assert entries[0].tags["chunks"] == ["01", "02"]
-        assert entries[0].shipped_chunks == ["01", "02"]
         assert entries[0].tag_line_count == 2
         assert entries[0].tag_conflicts == []
 

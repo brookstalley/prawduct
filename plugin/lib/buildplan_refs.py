@@ -657,6 +657,19 @@ def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
     dismiss it without re-deriving anything, and so the control can be retired on
     evidence rather than defended on principle.
 
+    **Its precondition is a commit convention, and its failure mode is silence —
+    which is worth stating because the two together are how a control looks
+    healthy while covering nothing.** Firing requires a commit subject matching
+    ``Chunk <n>`` (digits only), and, where any commit carries the plan's
+    conventional-commit scope, a matching scope. A repo without that habit gets
+    permanent silence, and silence here is indistinguishable from "every box is
+    correct" — so this reports cleanest in exactly the repos least likely to be
+    ticking reliably. A git failure degrades to the same silence. The honest
+    summary is that this catches the mistake in repos that already follow the
+    convention and does nothing elsewhere; a signal independent of commit
+    subjects (comparing the ticked set against which chunks' *files* changed) is
+    the obvious strengthening and is not attempted here.
+
     Emitted from deliberately-invoked surfaces only, never from the
     SessionStart/Stop hot path: this runs ``git log``, which the nonfunctional
     budget does not want twice a session for a diagnostic.
@@ -690,7 +703,15 @@ def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
         # treats `None` as "nothing to report", which is the honest answer when
         # the evidence could not be read.
         return None
-    flagged = sorted(set(unticked) & set(committed), key=lambda c: int(c) if c.isdigit() else 0)
+    # Numeric order, and the key is TOTAL on this domain rather than merely
+    # usually-right: the input is a SET, so a key with ties would leave the
+    # tied ids in set-iteration order and the same repo could print the same
+    # finding two ways on two runs. Every key here is a digit string because
+    # `_CHUNK_COMMIT_RE` captures `\d+` — which also means a plan using
+    # non-numeric chunk ids (`Chunk A`) gets no report at all, since no commit
+    # subject can ever match one. That is a real gap in this control's coverage,
+    # not a case handled elsewhere.
+    flagged = sorted(set(unticked) & set(committed), key=int)
     if not flagged:
         return None
     lines = [
@@ -835,6 +856,33 @@ def build_plan_is_complete(status: dict[str, str]) -> bool:
 
 _BUILD_PLAN_PATH_RE = re.compile(r"`([^`\s]+)`")
 _BUILD_PLAN_NEW_QUALIFIER_RE = re.compile(r"\bnew\s+`([^`\s]+)`")
+# The mirror of `new`: a deliverable declared as a REMOVAL is satisfied by the
+# file's absence, not falsified by it.
+#
+# Without this the ref check is structurally unable to pass a retirement chunk.
+# It asserts existence for every backticked deliverable ref, so a chunk whose
+# job is deleting `x.py` reports `missing-ref: x.py` **because it succeeded** —
+# and the check is rated BLOCKING, so the work cannot be closed honestly. The
+# tempting workaround is to reword the plan until the parser stops seeing the
+# path, which satisfies the checker by making the plan describe its own deletion
+# less clearly. That is fixing the symptom at the cost of the artifact.
+#
+# Deliberately an EXPLICIT qualifier rather than a heuristic over removal verbs
+# near a path. A fuzzy rule would exempt real deliverables sitting in a sentence
+# that happens to mention a deletion, and an exemption that fires by accident is
+# worse than no exemption — it fails open on exactly the input the gate exists
+# to judge. Both orders are accepted because both read naturally in a
+# Deliverables line (``deleted `x.py` `` and ``` `x.py` deleted ```), but the
+# verb must be ADJACENT to the path, so the binding is visible to a reader.
+#
+# No expiry, where `new` has one. `new` expires when the chunk completes because
+# a promised file that still does not exist is a real miss; a removal is the
+# opposite — before completion the file is still there and resolves on its own,
+# and after completion its absence IS the delivery.
+_REMOVAL_VERBS = r"(?:deleted|removed|retired)"
+_BUILD_PLAN_GONE_QUALIFIER_RE = re.compile(
+    rf"\b{_REMOVAL_VERBS}\s+`([^`\s]+)`|`([^`\s]+)`\s+(?:is\s+|are\s+)?{_REMOVAL_VERBS}\b"
+)
 # #224(b): `new` is also an ordinary English adjective. Narrative prose ABOUT a
 # file — a `Context:` paragraph recording that a chunk "added new `x.py`" — is
 # not a declaration that THIS chunk creates it, but the qualifier matched any
@@ -1224,6 +1272,16 @@ def _parse_build_plan_chunk_refs(
     if completed is not None and _normalize_chunk_id(chunk_id) in completed:
         forward_refs = set()
 
+    # Paths this chunk declares it REMOVES — satisfied by absence. Same list-item
+    # scoping as `new` above and for the same reason: the declaration routinely
+    # lands on a wrapped continuation line. See `_BUILD_PLAN_GONE_QUALIFIER_RE`
+    # for why this is an explicit qualifier and why it never expires.
+    gone_refs: set[str] = {
+        _ref_path_part(m.group(1) or m.group(2))
+        for _, section_line in _qualifier_scope_lines(section_lines)
+        for m in _BUILD_PLAN_GONE_QUALIFIER_RE.finditer(section_line)
+    }
+
     seen: set[tuple[str, int]] = set()
     # Waiver lookup needs the line ABOVE as well as the line itself (both
     # placements are supported — `waivers.waives`), and a plan puts the pragma
@@ -1253,7 +1311,7 @@ def _parse_build_plan_chunk_refs(
             path_part = _ref_path_part(match.group(1))
             if not _looks_like_file_path(path_part):
                 continue
-            if path_part in forward_refs:
+            if path_part in forward_refs or path_part in gone_refs:
                 continue
             key = (path_part, line_num)
             if key in seen:

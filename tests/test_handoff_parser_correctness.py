@@ -356,6 +356,50 @@ class TestUntickedCommittedChunkTripwire:
         assert buildplan_refs.unticked_committed_chunk_notice(repo) is not None
         assert buildplan_refs.resolve_chunk_progress(repo).current_id == "04"
 
+    def test_the_report_is_ordered_numerically_and_skips_alpha_ids(
+        self, tmp_path: Path
+    ):
+        """Two properties, one fixture, because the second explains the first.
+
+        Chunks are listed in NUMERIC order (`10` after `2`, not lexically), and
+        the sort key is total on its domain — the report is built from a set, so
+        a key with ties would leave tied ids in set-iteration order and the same
+        repo could print the same finding two ways on two runs.
+
+        The domain is digit strings only, and that is the second assertion: a
+        `Chunk A` is never reported, because `_CHUNK_COMMIT_RE` captures `\\d+`
+        and no commit subject can match one. Pinned as a KNOWN GAP rather than
+        left to be discovered — a plan on alpha chunk ids gets no tripwire
+        coverage, and a future widening of the commit pattern must widen the
+        sort key with it.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo, branch="develop")
+        _write_state(repo, "base_branch: develop\n")
+        _write_plan(
+            repo,
+            "---\nartifact: build-plan\nscope: ordering\n---\n\n## Status\n\n"
+            "- [ ] Chunk 02: two\n- [ ] Chunk 10: ten\n- [ ] Chunk 01: one\n"
+            "- [ ] Chunk B: bee\n- [ ] Chunk A: ay\n",
+        )
+        _commit(repo, "chore: plan")
+        _git(repo, "checkout", "-b", "feature/x", "--quiet")
+        for cid in ("01", "02", "10", "A", "B"):
+            _commit(repo, f"feat(ordering): land it (Chunk {cid})")
+
+        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
+        assert notice is not None
+        listed = [
+            line.split("Chunk ", 1)[1].split(":", 1)[0]
+            for line in notice.splitlines()
+            if line.startswith("  - ")
+        ]
+        assert listed == ["01", "02", "10"], notice
+        assert "Chunk A" not in notice and "Chunk B" not in notice, (
+            "an alpha chunk id was reported — if the commit pattern widened to "
+            "accept one, `flagged`'s `key=int` now raises on it"
+        )
+
     def test_a_foreign_plans_chunk_ids_are_not_reported(self, tmp_path: Path):
         """Chunk ids are PER-PLAN (SCN-5B8Q R-2/R-7): a sibling plan's
         `(Chunk 02)` must not produce a report about THIS plan's chunk 02.

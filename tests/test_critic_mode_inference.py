@@ -1533,13 +1533,12 @@ class TestMetadataPathClassification:
         assert "no build plan" in rationale
 
 
-def _setup_views_branch(
+def _setup_progressed_branch(
     tmp_path: Path,
     items: list[tuple[str, str]],
     *,
     chunk_modes: dict[str, str] | None = None,
     committed: list[str] | None = None,
-    views_enabled: bool = True,
     chunk_commit_subjects: bool = True,
     uncommitted: bool = True,
 ) -> None:
@@ -1601,7 +1600,7 @@ class TestBranchProgressCRT7B4M:
         # Chunk 01 declares final; chunks 01-02 done (ticked + committed).
         # Pre-fix: first-[ ]=Chunk 01 → override final on EVERY chunk.
         # Fixed: current chunk = 03 (first uncommitted), no mode → rule-4 chunk.
-        _setup_views_branch(
+        _setup_progressed_branch(
             tmp_path, _FIVE_CHUNKS, chunk_modes={"01": "final"}, committed=["01", "02"]
         )
         mode, rationale = infer_mode(tmp_path, None)
@@ -1609,7 +1608,7 @@ class TestBranchProgressCRT7B4M:
 
     def test_current_chunk_override_is_honored_on_branch(self, tmp_path):
         # The CURRENT chunk (03) declares final → override reads chunk 03, not 01.
-        _setup_views_branch(
+        _setup_progressed_branch(
             tmp_path, _FIVE_CHUNKS, chunk_modes={"03": "final"}, committed=["01", "02"]
         )
         mode, rationale = infer_mode(tmp_path, None)
@@ -1619,7 +1618,7 @@ class TestBranchProgressCRT7B4M:
     def test_last_chunk_infers_final(self, tmp_path):
         # 3-chunk plan, chunks 01-02 done, last chunk in progress → rule-3.
         three = [(" ", f"Chunk 0{i}: step {i}") for i in range(1, 4)]
-        _setup_views_branch(tmp_path, three, committed=["01", "02"])
+        _setup_progressed_branch(tmp_path, three, committed=["01", "02"])
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "final"
         assert "rule-3" in rationale
@@ -1627,7 +1626,7 @@ class TestBranchProgressCRT7B4M:
     def test_first_chunk_in_progress_no_override(self, tmp_path):
         # Nothing committed yet (current = chunk 01). Chunk 02 declares final, but
         # the current chunk is 01 (no mode) → chunk, not chunk-02's final.
-        _setup_views_branch(
+        _setup_progressed_branch(
             tmp_path, _FIVE_CHUNKS, chunk_modes={"02": "final"}, committed=[]
         )
         mode, _ = infer_mode(tmp_path, None)
@@ -1648,7 +1647,7 @@ class TestBranchProgressCRT7B4M:
         without_refs = tmp_path / "without-refs"
         for path, refs in ((with_refs, True), (without_refs, False)):
             path.mkdir()
-            _setup_views_branch(
+            _setup_progressed_branch(
                 path,
                 _FIVE_CHUNKS,
                 chunk_modes={"03": "final"},

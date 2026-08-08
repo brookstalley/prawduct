@@ -57,18 +57,13 @@ class ChangeLogEntry:
     # an earlier one — first-wins, the losing value recorded here for the error.
     tag_conflicts: list[str] = field(default_factory=list)
 
-    @property
-    def shipped_chunks(self) -> list[str]:
-        """Chunk IDs marked shipped by this entry, or ``[]``.
-
-        Reads the two retiring keys, and is retired with them.
-        """
-        if self.tags.get("status") != "shipped":
-            return []
-        chunks = self.tags.get("chunks")
-        if isinstance(chunks, list):
-            return [c for c in chunks if isinstance(c, str)]
-        return []
+    # A `shipped_chunks` property stood here, composing `status=shipped` with
+    # `chunks=` to answer "which chunks did this entry ship". Both keys are
+    # retired and its only caller — the derived-view regenerator that flipped
+    # checkboxes from that answer — is gone, so it was retired with them rather
+    # than left as a helper with no consumer. Both keys still PARSE: the parser
+    # preserves unknown keys, so historical entries carrying them round-trip and
+    # `tags["chunks"]` reads them directly if anything ever needs to.
 
 
 def parse_tag_line(tag_body: str) -> dict[str, object]:

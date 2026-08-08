@@ -198,9 +198,11 @@ class TestParseAllWipBranches:
 # --------------------------------------------------------------------------- #
 class TestGetActiveWork:
     def test_prefers_build_plan_status(self, tmp_path, monkeypatch):
-        # `_get_active_work` takes the PROJECT dir now: on a views_enabled repo
-        # "which chunk is current" is git-derived, so the repo root is part of
-        # the question (BLD-7K3Q).
+        # `_get_active_work` takes the PROJECT dir rather than `.prawduct/`.
+        # That signature outlived its original reason — "which chunk is current"
+        # was git-derived on repos whose checkboxes were a derived view — and is
+        # kept because the project dir is what resolves the branch's plan
+        # (BLD-7K3Q).
         _prawduct(tmp_path)
         monkeypatch.setattr(
             briefing.buildplan_refs, "_parse_build_plan_status",

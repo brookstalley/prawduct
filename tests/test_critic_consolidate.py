@@ -1222,9 +1222,11 @@ class TestBatchFixDirective:
 
     def test_unbackticked_free_surfaces_still_match_the_predicate(self):
         # The directive also names free surfaces in prose rather than backticks
-        # ("everything under `.prawduct/` — change-log, backlog, project-state,
-        # build plans, regen-views output"). Pin the concrete files those words
-        # denote; the token scan above cannot see them.
+        # ("everything under `.prawduct/` — change-log, backlog, project-state
+        # and build plans"). Pin the concrete files those words denote; the token
+        # scan above cannot see them. `release-notes.md` stays in this list after
+        # the directive stopped naming it: the file is still there, now a frozen
+        # archive, and "everything under `.prawduct/`" still covers it.
         from lib import coverage_algebra
 
         for path in (

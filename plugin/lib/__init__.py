@@ -101,13 +101,19 @@ _FLATTENED_EXPORTS: dict[str, str] = {
     "run_verify_entry": "operator_verification",
 }
 
-# Submodules historically re-exported as attributes (`from . import waivers`).
-# `from lib import waivers` resolves natively, but bare `lib.waivers` attribute
-# access (no prior submodule import) needs this so the behavior is unchanged.
-# `views` was a member until the derived-view machinery was retired; the set is
-# the historical re-export list, so a deleted module leaves it rather than
-# lingering as a name that resolves to nothing.
-_SUBMODULE_EXPORTS: frozenset[str] = frozenset({"plan_index", "waivers"})
+# Submodules that must resolve under BARE attribute access (`lib.waivers` with
+# no prior `import lib.waivers`). `from lib import waivers` resolves natively
+# through the import system and needs no entry; this set is only for the
+# attribute form.
+#
+# `views` was a member until the derived-view machinery was retired. Its two
+# successors both take its place rather than one of them: a consumer reaching
+# for `lib.views` was reaching for either the change-log parser or the plan
+# resolver, and they now live in `change_log` and `plan_index` respectively, so
+# leaving one out would make the attribute form work for half of what the
+# retired name covered. That is the whole membership rule — no module is here
+# for historical reasons alone.
+_SUBMODULE_EXPORTS: frozenset[str] = frozenset({"change_log", "plan_index", "waivers"})
 
 
 def __getattr__(name: str) -> Any:

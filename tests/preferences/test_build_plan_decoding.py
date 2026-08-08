@@ -26,7 +26,7 @@ blind to two readers that spelled it ``path`` — a limitation this file's own
 prose once *documented* while the sweep it called for went undone. So:
 
 1. **File-scoped and exhaustive** over the modules whose job IS the build plan
-   (``lib/buildplan_refs.py``, ``lib/views.py``). Every ``read_text`` in them,
+   (``lib/buildplan_refs.py``, ``lib/plan_index.py``). Every ``read_text`` in them,
    whatever the local is called. No naming convention to drift from.
 2. **Data-flow** for readers outside those modules: any read whose content is
    passed to a build-plan parser. Catches ``critic_mode`` and ``ledger``

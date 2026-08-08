@@ -190,27 +190,45 @@ One consequence is worth naming because it is newly load-bearing: ticking the la
 disarms the gate, so the plan's own "Done when" ordering (Critic passes, THEN mark `[x]`) is the
 thing keeping the final chunk reviewed. DV7's tripwire covers the opposite error.
 
-**The two acceptance sweeps, as commands rather than a tally.**
+**The two acceptance sweeps, as commands rather than a tally.** The versions below are the
+CORRECTED ones. The first pass was recorded with two structural gaps the Critic caught, and the
+correction is the more useful record: it omitted **the deleted module's own name** (`views.py`,
+`lib.views`) from the identifier list, and it rooted only at `plugin/`. Both gaps produced real
+residue — a standalone spike script whose `from lib import views` no suite run can go red on, a
+shipped plugin docstring in `backlog/legacy.py` describing itself as the analogue of the deleted
+module, and `documentation/project-structure.md` naming a deleted test file. **The lesson is that a
+retirement's identifier sweep must include the retired thing's OWN name**, which is the one term the
+author is least likely to list because it is the thing being removed rather than a symptom of it.
 
 ```
-# (1) identifiers
-grep -rnE 'views_enabled|regen.views|scope_rollups|stamp.merged' plugin/ \
-  --include='*.py' --include='*.yaml' --include='prawduct-hook'
+# (1) identifiers — including the module's own name, over every source root
+grep -rnE 'views_enabled|regen.views|scope_rollups|stamp.merged|lib[./]views|views\.py|test_views' \
+  plugin/ tests/ documentation/ --include='*.py' --include='*.yaml' \
+  --include='prawduct-hook' --include='*.md'
 # (2) the claim, in a vocabulary sharing no word with (1)
-grep -rniE 'derived view|regenerat|flips at release|do not hand-edit|hand-flip' plugin/ \
-  --include='*.py' --include='*.yaml' --include='prawduct-hook'
+grep -rniE 'derived view|regenerat|flips at release|do not hand-edit|hand-flip' \
+  plugin/ tests/ documentation/ --include='*.py' --include='*.yaml' \
+  --include='prawduct-hook' --include='*.md'
 ```
 
-Both return nothing that ASSERTS the retired model over Chunk 02's surface. What they do return,
-and why each is correct: the two deprecated commands and their notices (required by DECISION-1/4);
+Neither returns anything that ASSERTS the retired model outside Chunk 03's declared surfaces. What
+they do return, and why each is correct: the two deprecated commands and their notices (DECISION-1/4);
 past-tense retirement statements (required by GD3 — a reader looking for the flag must find the
-retirement, not silence); and `.critic-findings.json` plus the disposition census, which are
-derived views that legitimately survive. That last group is what corrected the `data-model`
-disposition above — the sweep caught the plan overclaiming about its own architecture.
+retirement, not silence); `.critic-findings.json` and the disposition census, which are derived views
+that legitimately survive; `plugin/CHANGELOG.md` and the requirements docs, which are **records** of
+what was true when written and are falsified by editing; and `tests/test_plugin_migrate.py`, which
+models a pre-2.0 file-sync repo where both the module and the flag really existed.
 
-Run over `plugin/skills`, `plugin/methodology` and `plugin/templates` instead, both sweeps return
-**exactly the eight files Chunk 03's Deliverables already enumerate** — no unowned surface, and an
-independent confirmation that Chunk 03's enumeration is complete rather than representative.
+The residue inside `plugin/skills`, `plugin/methodology`, `plugin/templates` and
+`documentation/release-process.md` is Chunk 03's declared work. **Two files were owned by nobody and
+are fixed here rather than left**: `documentation/project-structure.md` (named a deleted module and a
+deleted test file in its tree map) and `plugin/lib/backlog/legacy.py` (a shipped docstring calling
+itself the analogue of the deleted module).
+
+**Known interim cost, stated rather than discovered at PR time:** until Chunk 03 lands,
+`documentation/release-process.md` tells an operator to run `regen-views` and read exit codes 2 and 3
+that no longer exist. That document is a release runbook, so the window matters — it is closed by
+Chunk 03, which is why this plan ships as one PR.
 
 **Deliberately NOT done here, so it reads as a decision rather than an omission:** this repo's own
 `.prawduct/project-state.yaml` keeps its now-inert `views_enabled:` and `scope_rollups:` keys.
@@ -376,12 +394,13 @@ only gate that reads tags.
     every empty-set assertion in that file goes vacuous rather than red; (2)
     `tests/spikes/change_log_roundtrip.py` does `from lib import views` and is a **standalone,
     non-collected script**, so the suite will not catch it (the shim's `noqa` names it); (3)
-    `plugin/lib/views.py::_plan_label`, the inlined path helper, goes with the module; and (4)
-    `tests/preferences/test_build_plan_decoding.py::test_the_pin_has_something_to_check` asserts
+    `plugin/lib/views.py::_plan_label` is deleted, the inlined path helper going with the module;
+    and (4) `tests/preferences/test_build_plan_decoding.py::test_the_pin_has_something_to_check` asserts
     `set(PLAN_MODULES) <= modules`, so deleting `views.py` turns the pin red until `PLAN_MODULES`
     drops it. Repair by repointing, never by weakening the probe.
-- **Tests:** the ~30 `tests/test_views.py` tests targeting `parse_change_log` are **the contract** —
-  rewritten against `change_log.py` in Chunk 01 and retired here, never deleted wholesale. Rewrite the
+- **Tests:** `tests/test_views.py` is retired here. Its ~30 tests targeting `parse_change_log` are
+  **the contract** — rewritten against `change_log.py` in Chunk 01, so they move rather than die with
+  the file, and the same applies to every other survivor it hosts. Rewrite the
   `views_enabled`-parameterised cases in `test_build_plan_resolution.py`,
   `test_critic_mode_inference.py`, `test_handoff_parser_correctness.py` (its "Defect 4 — at EVERY
   consumer" section becomes a single-reading assertion), `test_briefing_functions.py`,
@@ -439,6 +458,14 @@ only gate that reads tags.
   trim, do not discover it at close.
 - **Tests:** the structural//assert-absent scans that pin retired vocabulary; the guardrail tests on
   the trimmed surfaces; `test_record_lint.py`'s citation checks against the retired learnings ids.
+  - **Carried in from Chunk 02's review (R-22), a one-line judgement rather than a code change.**
+    `check_releasability` returns early at `if not pending:` before reaching `_plan_coverage_warnings`,
+    so the rehomed `duplicate_scope_errors` — repo hygiene, independent of what is pending — never runs
+    on a repo with nothing release-pending, where its old caller ran it every invocation. Decide
+    explicitly: hoist it above the no-pending return to keep its old reach, or record that the narrower
+    trigger is accepted (two plans declaring one scope still resolve deterministically, first by sorted
+    path). Either is fine; leaving it undecided is what is not, because the narrowing was a side effect
+    of the rehoming rather than a choice.
 - **Acceptance criteria:** no shipped document teaches `chunks=`, `status=`, or a derived Status block;
   the release process describes adding `release=` and nothing else; both norm retirements are recorded
   as decisions naming what changed and why, and a reader of either norm finds the retirement rather
@@ -471,6 +498,15 @@ only gate that reads tags.
     premise that plans "are deleted when work ships"), `plugin/skills/critic/review-protocol.md` (the
     WARNING resting on that premise, re-derived per BP7).
   - `plugin/templates/build-plan.md` gains the completion-frontmatter shape.
+  - **Carried in from Chunk 02's review (R-14), because this chunk creates the directory that makes
+    it real.** `plan_index._markdown_files` prunes ANY directory component named `archive` at every
+    depth, but `iter_scoped_plan_candidates(include_archived=True)` re-walks only
+    `artifacts_dir/archive`. On a repo nesting plans as `plans/<id>/build-plan.md` with a sibling
+    `plans/<id>/archive/`, an archived plan is therefore pruned from the live pass AND absent from
+    the archived pass — invisible to every reader, which BP8's live-then-archive rule assumes cannot
+    happen. Today it costs only a spurious "no build-plan file" advisory because no archive exists;
+    once this chunk creates them, it is a correctness bug. Make the two walks symmetric, and test the
+    nested case specifically — the flat fixture passes under both shapes.
 - **Tests:** unit — frontmatter round-trips for both terminal states; a named artifact resolves after
   archival and a live file wins over an archived namesake (BP8); an archived plan is not treated as a
   live assertion by any scanner (BP5). Integration — the merge flow archives rather than deletes on

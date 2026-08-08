@@ -281,9 +281,10 @@ class TestChunkIdFromItemText:
         assert _chunk_id_from_item_text("Chunky monkey business") is None
 
     def test_current_chunk_id_from_h2_status(self, tmp_path: Path):
-        # Takes the PROJECT dir, not `.prawduct/` — resolving "current" is
-        # git-aware on a views_enabled repo (BLD-7K3Q), so the repo root is
-        # part of the question.
+        # Takes the PROJECT dir, not `.prawduct/`. Resolving "current" was once
+        # git-aware, which is where the signature came from; it now reads the
+        # checkboxes alone, and the project dir is what locates the plan
+        # (BLD-7K3Q).
         _write_plan(tmp_path / ".prawduct", PLAN_H2)
         assert _current_chunk_id_from_status(tmp_path) == "1"
 
@@ -324,8 +325,10 @@ class TestConsolidationPins:
         """The Status / chunk-section walk skeletons are recognizable by their
         anchor literals. Readers in consumer modules must go through the
         shared walkers, so the literals may appear only in
-        ``lib/buildplan_refs.py`` (and ``lib/views.py``'s index-based Status
-        REWRITER, which is deliberately separate)."""
+        ``lib/buildplan_refs.py``. The one module that was previously exempt —
+        an index-based Status REWRITER, which needed positions rather than a
+        reader's view — went with the derived views it regenerated, so the rule
+        is now without exception."""
         for mod in ("critic_mode.py", "gates.py"):
             src = (LIB_DIR / mod).read_text()
             assert '"## Status"' not in src, f"lib/{mod} regrew a Status walk"

@@ -55,7 +55,7 @@ class TestResolveBuildPlanPath:
         assert resolved == prawduct / "artifacts" / "v1.6.0-foo-plan.md"
 
     def test_pointer_absent_falls_back_to_default(self, tmp_path: Path):
-        prawduct = _prawduct(tmp_path, "views_enabled: true\n")
+        prawduct = _prawduct(tmp_path, "coverage_required: true\n")
         resolved = resolve_build_plan_path(prawduct)
         assert resolved == prawduct / "artifacts" / "build-plan.md"
 
@@ -123,7 +123,7 @@ class TestReadStrYamlKey:
 
     def test_missing_key_returns_none(self, tmp_path: Path):
         p = tmp_path / "s.yaml"
-        p.write_text("views_enabled: true\n")
+        p.write_text("coverage_required: true\n")
         assert read_str_yaml_key(p, "active_build_plan") is None
 
     def test_missing_file_returns_none(self, tmp_path: Path):
@@ -172,7 +172,7 @@ class TestProductHookMirrorParity:
         assert _hook._resolve_build_plan_path(prawduct) == resolve_build_plan_path(prawduct)
 
     def test_pointer_absent_parity(self, tmp_path: Path):
-        prawduct = _prawduct(tmp_path, "views_enabled: true\n")
+        prawduct = _prawduct(tmp_path, "coverage_required: true\n")
         assert _hook._resolve_build_plan_path(prawduct) == resolve_build_plan_path(prawduct)
 
     def test_repo_relative_pointer_parity(self, tmp_path: Path):
@@ -404,7 +404,7 @@ class TestGitRefPrefixes:
             "feat/module.py",
             "ci/config.yml",
             # Ordinary source paths are unaffected.
-            "plugin/lib/views.py",
+            "plugin/lib/plan_index.py",
             "documentation/release-process.md",
             # THE load-bearing case for rejecting the shape-rule alternative:
             # this repo's most-cited path carries no extension, so "a token is a
@@ -761,6 +761,84 @@ class TestNewQualifierExpiry:
         assert _bpr._verify_chunk_refs(project, refs) == []
 
 
+class TestRemovalQualifier:
+    """A deliverable declared as a REMOVAL is satisfied by absence.
+
+    Without this the check is structurally unable to pass a retirement chunk: it
+    asserts existence for every backticked deliverable ref, so a chunk whose job
+    is deleting `x.py` reports `missing-ref: x.py` **because it succeeded** — at
+    BLOCKING severity, so the work cannot be closed honestly. It bit this repo's
+    own derived-views retirement, on three refs at once.
+    """
+
+    def test_verb_before_the_path_exempts(self, tmp_path: Path):
+        _project, prawduct = _project_with_chunk(
+            tmp_path, "- deleted `lib/gone.py` — the derived-view module\n"
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    @pytest.mark.parametrize("phrase", ["deleted", "removed", "retired", "is deleted", "are removed"])
+    def test_verb_after_the_path_exempts(self, tmp_path: Path, phrase: str):
+        """Both orders, because both read naturally in a Deliverables line and a
+        plan author should not have to know which one the parser prefers."""
+        _project, prawduct = _project_with_chunk(
+            tmp_path, f"- `lib/gone.py` {phrase} here\n"
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_wrapped_list_item_continuation_still_exempts(self, tmp_path: Path):
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Deliverables:**\n"
+            "  - the machinery goes, which means\n"
+            "    deleted `lib/gone.py` alongside its tests\n",
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_narrative_prose_does_not_exempt(self, tmp_path: Path):
+        """Same narrowing as `new`, for the same reason: one sentence mentioning
+        a deletion must not exempt a real deliverable for the whole chunk."""
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "Context: this follows the run that deleted `lib/gone.py` last week.\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
+
+    def test_an_undeclared_missing_path_is_still_reported(self, tmp_path: Path):
+        """The exemption must be NARROW — the control's whole value is catching a
+        deliverable that was promised and skipped. A removal declaration for one
+        path must not blanket the item it sits in.
+        """
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- deleted `lib/gone.py`, and `lib/promised.py` lands\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/promised.py"]
+        assert [m["ref"] for m in _bpr._verify_chunk_refs(project, refs)] == [
+            "lib/promised.py"
+        ]
+
+    def test_a_removed_path_that_still_exists_is_not_reported_either(
+        self, tmp_path: Path
+    ):
+        """No expiry, where `new` has one, and this is the asymmetry.
+
+        `new` expires when the chunk completes because a promised file that still
+        does not exist is a real miss. A removal is the opposite: before the work
+        lands the file is still there and resolves on its own, and after it lands
+        its absence IS the delivery — so there is no state in which the ref check
+        is the right instrument for "was it actually deleted?".
+        """
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- deleted `lib/gone.py` — retiring the module\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "gone.py").write_text("x = 1\n")
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+
 class TestNewQualifierScope:
     """#224(b): `new` before a backticked token is not always a declaration."""
 
@@ -813,14 +891,14 @@ class TestNewQualifierScope:
 class TestVerifyChunkRefsPathSymbol:
     def test_existing_path_symbol_reports_no_missing(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
-            tmp_path, "- touches `lib/views.py::is_views_enabled`\n"
+            tmp_path, "- touches `lib/gone.py::some_symbol`\n"
         )
         (project / "lib").mkdir()
-        (project / "lib" / "views.py").write_text("x = 1\n")
+        (project / "lib" / "gone.py").write_text("x = 1\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert refs["error"] is None
         # The stored ref is the PATH portion only — not the full `path::symbol`.
-        assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
         assert _bpr._verify_chunk_refs(project, refs) == []
 
     def test_missing_path_symbol_reports_path_portion_only(self, tmp_path: Path):
@@ -844,13 +922,13 @@ class TestVerifyChunkRefsPathSymbol:
 
     def test_path_and_path_symbol_same_line_dedup(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
-            tmp_path, "- see `lib/views.py` and `lib/views.py::sym`\n"
+            tmp_path, "- see `lib/gone.py` and `lib/gone.py::sym`\n"
         )
         (project / "lib").mkdir()
-        (project / "lib" / "views.py").write_text("x = 1\n")
+        (project / "lib" / "gone.py").write_text("x = 1\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         # Both collapse to one path existence-check.
-        assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
 
     def test_plain_path_unchanged(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(tmp_path, "- see `docs/x.md`\n")
@@ -905,12 +983,12 @@ class TestVerifyChunkRefsGlobPaths:
         # Per-token filter: the glob is skipped while a real path on the SAME line
         # is still existence-checked (the fix doesn't drop the whole line).
         project, prawduct = _project_with_chunk(
-            tmp_path, "- `lib/views.py` plus all `docs/*.md`\n"
+            tmp_path, "- `lib/gone.py` plus all `docs/*.md`\n"
         )
         (project / "lib").mkdir()
-        (project / "lib" / "views.py").write_text("x = 1\n")
+        (project / "lib" / "gone.py").write_text("x = 1\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
-        assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
         assert _bpr._verify_chunk_refs(project, refs) == []
 
 
@@ -1101,12 +1179,12 @@ class TestVerifyChunkRefsLineSuffix:
 
     def test_path_and_line_citation_dedup_on_same_line(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
-            tmp_path, "- `lib/views.py` at `lib/views.py:10`\n"
+            tmp_path, "- `lib/gone.py` at `lib/gone.py:10`\n"
         )
         (project / "lib").mkdir()
-        (project / "lib" / "views.py").write_text("x = 1\n")
+        (project / "lib" / "gone.py").write_text("x = 1\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
-        assert [e["ref"] for e in refs["file_paths"]] == ["lib/views.py"]
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
 
     def test_line_and_column_suffix_stripped(self, tmp_path: Path):
         # Editor-style `path:line:col` — both numeric groups belong to the
