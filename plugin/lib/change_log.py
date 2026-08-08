@@ -1,0 +1,274 @@
+"""Reading `.prawduct/change-log.md` tag lines, and validating what they say.
+
+This module knows **tags and nothing about plans**. Scope→plan resolution lives
+in :mod:`lib.plan_index`; the two were one module named ``views`` that did both
+jobs under a name describing neither, which is part of why a dual-reading defect
+reached three consumers before anyone generalised it.
+
+Tagged-entry format — one line after each ``## YYYY-MM-DD:`` header (blank lines
+between are tolerated)::
+
+    <!-- prawduct: chunks=00,01,02 | release=v1.3.18 | status=shipped | scope=v1.4 -->
+
+Keys, and who reads them:
+
+* ``scope``   — the rollup identifier. Read by the release gate to enumerate
+  what has not shipped, and by :mod:`lib.plan_index` to find the plan that
+  declares the same scope in its frontmatter.
+* ``release`` — the version that carried this entry. Its ABSENCE is what marks
+  an entry release-pending, which is why a malformed value is an error rather
+  than a curiosity (see :func:`validate_change_log_tags`).
+* ``chunks``  — comma-separated chunk IDs. **Being retired**: nothing outside
+  the derived-view machinery reads it.
+* ``status``  — ``shipped`` | ``merged``. **Being retired** with ``chunks``.
+  A tagged entry with NO ``status=`` is the normal release-pending state: the
+  entry rides in the feature PR, so its presence on the integration branch
+  already means the work is merged. ``merged`` is an accepted legacy synonym
+  from the retired ``stamp-merged`` flow step.
+
+Unknown keys are preserved verbatim so a future reader can pick them up without
+a schema bump. Entries with no tag line are ignored — untagged historical
+entries coexist with tagged ones.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+
+
+TAG_LINE_RE = re.compile(r"<!--\s*prawduct:\s*(.+?)\s*-->")
+H2_RE = re.compile(r"^##\s+(.+?)\s*$")
+
+
+@dataclass
+class ChangeLogEntry:
+    """A change-log entry with optional tagged metadata."""
+
+    title: str
+    tags: dict[str, object] = field(default_factory=dict)
+    line_number: int = 0  # 1-indexed line of the H2 header
+    # How many `<!-- prawduct: ... -->` lines headed this entry. The canonical
+    # format is exactly one; >1 means the tags above are a union and
+    # `validate_change_log_tags` will warn.
+    tag_line_count: int = 0
+    # Scalar keys that appeared on a later tag line with a DIFFERENT value than
+    # an earlier one — first-wins, the losing value recorded here for the error.
+    tag_conflicts: list[str] = field(default_factory=list)
+
+    @property
+    def shipped_chunks(self) -> list[str]:
+        """Chunk IDs marked shipped by this entry, or ``[]``.
+
+        Reads the two retiring keys, and is retired with them.
+        """
+        if self.tags.get("status") != "shipped":
+            return []
+        chunks = self.tags.get("chunks")
+        if isinstance(chunks, list):
+            return [c for c in chunks if isinstance(c, str)]
+        return []
+
+
+def parse_tag_line(tag_body: str) -> dict[str, object]:
+    """Parse the body of a tag line (between ``prawduct:`` and ``-->``).
+
+    Pipe-delimited ``key=value`` pairs. ``chunks`` is split on commas into a
+    list; other keys are kept as plain strings. Unknown keys are preserved as-is
+    so a future reader can pick them up without a schema bump.
+    """
+    tags: dict[str, object] = {}
+    for part in tag_body.split("|"):
+        part = part.strip()
+        if "=" not in part:
+            continue
+        k, v = part.split("=", 1)
+        k = k.strip()
+        v = v.strip()
+        if not k:
+            continue
+        if k == "chunks":
+            tags[k] = [c.strip() for c in v.split(",") if c.strip()]
+        else:
+            tags[k] = v
+    return tags
+
+
+def _merge_tag_line(entry: ChangeLogEntry, new_tags: dict[str, object]) -> None:
+    """Merge a subsequent tag line's pairs into an entry, union semantics.
+
+    ``chunks`` lists are concatenated with order-preserving dedup; a key not yet
+    present is adopted; a scalar key already present with a *different* value is
+    first-wins, the ignored value recorded in ``tag_conflicts`` so
+    :func:`validate_change_log_tags` can surface it.
+    """
+    for k, v in new_tags.items():
+        if k not in entry.tags:
+            entry.tags[k] = v
+            continue
+        existing = entry.tags[k]
+        if k == "chunks" and isinstance(existing, list) and isinstance(v, list):
+            entry.tags[k] = existing + [c for c in v if c not in existing]
+        elif existing != v:
+            entry.tag_conflicts.append(f"{k}: kept {existing!r}, ignored {v!r}")
+
+
+def parse_change_log(content: str) -> list[ChangeLogEntry]:
+    """Parse change-log markdown into a list of entries.
+
+    An entry is ``## YYYY-MM-DD: title`` followed (after up to a few blank
+    lines) by ``<!-- prawduct: key=value | ... -->``. The tag block, if present,
+    must begin before the next non-blank content line under the H2.
+
+    The canonical format is ONE tag line per entry, but **all consecutive** tag
+    lines at the head of the body are consumed (blank lines between them
+    tolerated, the same leniency as before the first one). The historical
+    first-line-only parse silently dropped the later lines' pairs, which nearly
+    shipped a second line's ``chunks=`` unflipped at v2.1.0. Multiple lines are
+    unioned per :func:`_merge_tag_line`, ``tag_line_count`` records how many were
+    seen, and :func:`validate_change_log_tags` warns on >1 and errors when they
+    disagree. A tag line after intervening prose is still later body content,
+    never entry metadata.
+    """
+    entries: list[ChangeLogEntry] = []
+    lines = content.splitlines()
+    i = 0
+    while i < len(lines):
+        m = H2_RE.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        entry = ChangeLogEntry(title=m.group(1), line_number=i + 1)
+        j = i + 1
+        while j < len(lines):
+            stripped = lines[j].strip()
+            if not stripped:
+                j += 1
+                continue
+            tag_match = TAG_LINE_RE.search(lines[j])
+            if not tag_match:
+                # First non-blank non-tag line ends the tag block.
+                break
+            new_tags = parse_tag_line(tag_match.group(1))
+            entry.tag_line_count += 1
+            if entry.tag_line_count == 1:
+                entry.tags = new_tags
+            else:
+                _merge_tag_line(entry, new_tags)
+            j += 1
+        entries.append(entry)
+        i += 1
+    return entries
+
+
+VALID_STATUS_VALUES = frozenset({"shipped", "merged"})
+
+RELEASE_VALUE_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
+
+
+def validate_change_log_tags(
+    entries: list[ChangeLogEntry],
+) -> tuple[list[str], list[str]]:
+    """Check the tag lines, returning ``(errors, warnings)``.
+
+    One validator over the three failure shapes that can affect a **surviving**
+    tag key — malformed value, the same key set twice to different values, and
+    an entry assembled from more than one tag line. It replaces three separate
+    per-shape functions whose only caller was the derived-view regenerator, and
+    it moves the checks to the gate that has a reason to run them: the release
+    gate is the thing that acts on ``release=`` and ``scope=``, so it is where a
+    malformed one must be refused.
+
+    **Errors** (the caller fails closed — this is an authority gate, and an
+    unevaluable release state must never read as "fine"):
+
+    * ``release=`` present but not a version. This fails in the worst possible
+      direction. The release-pending set is every ``scope=``-tagged entry with
+      NO ``release=``, so *any* value at all — including a placeholder naming
+      the absence — removes the whole scope from that set, and the gate answers
+      "nothing to cut" while the work never ships. That is not hypothetical:
+      ``release=unreleased`` on six entries hid an entire branch from the
+      v3.2.8 release, and it read as deliberate, which is exactly why nothing
+      questioned it. Release-pending is *statusless with no* ``release=`` *tag*.
+      Accepts ``vMAJOR.MINOR.PATCH`` with an optional ``-suffix``.
+    * Tag lines that CONFLICT. When several tag lines set one scalar key to
+      different values, :func:`_merge_tag_line` keeps the first — a repair that
+      may have picked the wrong one (two ``release=`` lines disagreeing about
+      whether something shipped). Fix the entry; do not guess.
+
+    **Warnings** (the caller reports and proceeds):
+
+    * More than one tag line on an entry. The union produces correct output, so
+      this is a style problem the repair already fixed — surfaced so the author
+      merges the lines, not to stop a release.
+
+    Entries whose tags are absent are never flagged: an untagged historical
+    entry is not a malformed tagged one.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    for entry in entries:
+        where = f"change-log entry {entry.title!r} (line {entry.line_number})"
+
+        release = entry.tags.get("release")
+        if release is not None and not (
+            isinstance(release, str) and RELEASE_VALUE_RE.match(release)
+        ):
+            errors.append(
+                f"{where} has release={release!r}, which is not a version — "
+                f"expected vMAJOR.MINOR.PATCH. Any release= tag marks this entry "
+                f"as already released, so its whole scope drops out of the "
+                f"release-pending set and the work never ships. Release-pending "
+                f"is statusless with NO release= tag; delete the tag."
+            )
+
+        if entry.tag_conflicts:
+            errors.append(
+                f"{where} has conflicting values across its "
+                f"{entry.tag_line_count} prawduct tag lines (kept first-wins: "
+                + "; ".join(entry.tag_conflicts)
+                + ") — the wrong value may have won. Merge the tag lines and "
+                f"resolve the conflict."
+            )
+
+        if entry.tag_line_count > 1:
+            warnings.append(
+                f"{where} has {entry.tag_line_count} prawduct tag lines — the "
+                f"canonical format is one per entry; the pairs were unioned "
+                f"across them. Merge them into a single tag line."
+            )
+    return errors, warnings
+
+
+def validate_status_values(entries: list[ChangeLogEntry]) -> list[str]:
+    """One warning per entry whose ``status=`` value is unrecognized.
+
+    **Transitional, and deliberately not folded into**
+    :func:`validate_change_log_tags`. ``status=`` is a retiring key: it is read
+    only by the derived-view regenerator, which is itself being retired, and the
+    merged validator above covers the keys that outlive it. Folding a check for
+    a doomed key into the surviving validator would leave the release gate
+    refusing entries over a tag nothing reads.
+
+    It is kept rather than dropped because its caller still exists. A
+    ``status=`` typo silently flips nothing — the entry parses fine,
+    ``shipped_chunks`` returns ``[]``, and no error is raised — so removing the
+    guard while the mechanism it guards is still running would reintroduce
+    exactly the silent failure this branch exists to remove. It goes when its
+    last caller goes, not before.
+
+    Returns ``[]`` when every status value is valid or absent.
+    """
+    warnings: list[str] = []
+    for entry in entries:
+        status = entry.tags.get("status")
+        if status is None:
+            continue
+        if status not in VALID_STATUS_VALUES:
+            warnings.append(
+                f"change-log entry {entry.title!r} (line {entry.line_number}) "
+                f"has unrecognized status={status!r} — expected one of "
+                f"{sorted(VALID_STATUS_VALUES)}; this entry will not flip any "
+                f"checkbox. Likely a typo."
+            )
+    return warnings

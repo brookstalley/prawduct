@@ -209,6 +209,13 @@ that is not `vMAJOR.MINOR.PATCH` (optionally `-suffix`) is therefore a **global 
 error** on the same fail-closed terms as a `status=` typo. Release-pending is statusless
 with no `release=` tag; step 3 adds both at once.
 
+**Where the refusal now happens.** `check-releasability` itself refuses it — exit 1 with a
+`bad-change-log-tag:` line naming the entry and its line number. It used to be checked only by
+`regen-views`, a command a release does not run, which is why the v3.2.8 placeholder reached a
+release at all: the guard existed and nothing on the release path called it. The gate also
+reports two **advisories** that do not change its exit code — a release-pending scope with no
+build-plan file (work shipping with nothing describing it), and two plans declaring one scope.
+
 Any other `status=` value (including a typo) is a **global validation error** (VWS-6R4T,
 promoting the VWS-3K7P typo-guard): `regen-views` exits 2 with an ERROR line and writes
 nothing — a typo'd `status=` means that entry never contributes its flip, which would leave

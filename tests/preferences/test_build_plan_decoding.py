@@ -45,13 +45,22 @@ from pathlib import Path
 PLUGIN = Path(__file__).resolve().parent.parent.parent / "plugin"
 
 # Modules that exist to read the build plan — swept exhaustively (mechanism 1).
-PLAN_MODULES = ("lib/buildplan_refs.py", "lib/views.py")
+PLAN_MODULES = (
+    "lib/buildplan_refs.py",
+    "lib/views.py",
+    "lib/plan_index.py",  # the scope→plan resolver; every plan read now lands here
+)
 
 # Functions that consume build-plan text. A read feeding one of these IS a
 # build-plan read, whatever its local is called (mechanism 2).
 PLAN_PARSERS = frozenset(
     {
+        "parse_build_plan_frontmatter_scope",
+        # The pre-split private name. `views.py` still aliases it and older
+        # call sites may too, so BOTH stay listed until the alias goes —
+        # dropping the old name is how this pin silently narrows.
         "_parse_build_plan_frontmatter_scope",
+        "frontmatter_lines",
         "_iter_status_section_lines",
         "_iter_status_section_items",
         "_chunk_section_lines",

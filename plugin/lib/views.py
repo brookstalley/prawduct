@@ -7,46 +7,70 @@ entries — `prawduct-hook regen-views` rewrites the checkboxes from
 HTML comment, and the freeform `Context:` line are author-curated; regen never
 touches them.
 
-Tagged-entry format (in change-log.md, on a line after each ``## YYYY-MM-DD:``
-header — blank lines between are tolerated):
+**This module is being retired.** What outlives it has moved out and is
+re-exported below, so there is one implementation reached by two import paths
+rather than two copies:
 
-    <!-- prawduct: chunks=00,01,02 | release=v1.3.18 | status=shipped | scope=v1.4 -->
+* :mod:`lib.change_log` — reading and validating change-log tag lines. Its
+  reason to exist outlives the views: the release gate acts on ``scope=`` and
+  ``release=``.
+* :mod:`lib.plan_index` — which files under ``artifacts/`` are build plans and
+  what scope each declares. Review dispatch, the session briefing and the Stop
+  hook all ask it.
 
-Recognized keys:
-
-* ``chunks``  comma-separated chunk IDs (zero-padded, matching build-plan headers)
-* ``release`` version string (used by release-notes view, Chunk 06)
-* ``status``  ``shipped`` | ``merged`` — the two recognized values. Only
-  ``shipped`` flips a checkbox to ``[x]``. A tagged entry with NO ``status=``
-  is the normal release-pending state: the entry rides in the feature PR, so
-  its presence on the integration branch means the work is merged — no stamp
-  required (single-pr-bookkeeping). ``merged`` is an accepted legacy synonym
-  of that state (older logs carry it from the retired ``stamp-merged`` flow
-  step); neither flips a checkbox.
-* ``scope``   rollup identifier, e.g., ``v1.4``
-
-Entries without a tag line are ignored — untagged historical entries coexist
-with tagged ones. Only chunks with a ``status=shipped`` tag flip to ``[x]``;
-all other Chunk lines flip to ``[ ]`` so the view is fully derived.
+New code should import from those directly. What remains here is the derived
+machinery itself: the ``## Status`` regeneration, the scope-rollup and
+release-notes views, and the tag keys (``chunks=``, ``status=``) that only those
+views read.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
+from .change_log import (
+    TAG_LINE_RE,
+    VALID_STATUS_VALUES,
+    ChangeLogEntry,
+    parse_change_log,
+    parse_tag_line,  # noqa: F401 — re-export; `tests/spikes/change_log_roundtrip.py` reads it here
+)
 from .core import (
     BUILD_PLAN_POINTER_KEY,
     read_bool_yaml_key,
     read_str_yaml_key,
     resolve_build_plan_path,
 )
+from .plan_index import (
+    build_scope_to_plan_map,
+    duplicate_scope_errors,
+    parse_build_plan_frontmatter_scope,
+)
 
 
-TAG_LINE_RE = re.compile(r"<!--\s*prawduct:\s*(.+?)\s*-->")
-H2_RE = re.compile(r"^##\s+(.+?)\s*$")
+def _plan_label(plan_path: Path, artifacts_dir: Path) -> str:
+    """A plan path relative to the artifacts dir, for a message a human reads.
+
+    A local two-liner rather than an import of `plan_index._display_path`: that
+    helper is private and stays private (after this module goes, its only
+    consumer is inside `plan_index`), and importing an underscore name across a
+    module boundary is the exact smell the comment below names.
+    """
+    try:
+        return str(plan_path.relative_to(artifacts_dir))
+    except ValueError:
+        return plan_path.name
+
+
+# The pre-split private name, kept as an alias only for this module's own body.
+# External callers were repointed at the public name in `plan_index`; a
+# cross-module import of an underscore-prefixed function is a smell that
+# outlived its excuse the moment the function got a module of its own.
+_parse_build_plan_frontmatter_scope = parse_build_plan_frontmatter_scope
+
+
 # The Status-line twin of `buildplan_refs._CHUNK_ID_SEP`, kept character-for-
 # character identical with it — `**` included. A plan author who writes
 # `## Chunk A — Name` as a body heading writes `- [ ] **Chunk A** — Name` in
@@ -106,20 +130,6 @@ class ScopedError(str):
         return obj
 
 
-def _display_path(path: Path, artifacts_dir: Path) -> str:
-    """A plan path as written for a human, relative to ``artifacts/`` when possible.
-
-    Bare ``path.name`` was adequate while discovery was flat. Recursive
-    discovery makes ``build-plan.md`` a near-certain collision across
-    ``plans/<id>/`` directories, so a duplicate-scope message naming two files
-    called ``build-plan.md`` tells the operator nothing about which two.
-    """
-    try:
-        return str(path.relative_to(artifacts_dir))
-    except ValueError:
-        return path.name
-
-
 def normalize_chunk_id(chunk_id: str) -> str:
     """Canonical form of a chunk ID for matching (VWS-6R4T).
 
@@ -139,253 +149,6 @@ def normalize_chunk_id(chunk_id: str) -> str:
     if norm.isdigit():
         norm = str(int(norm))
     return norm
-
-
-@dataclass
-class ChangeLogEntry:
-    """A change-log entry with optional tagged metadata."""
-
-    title: str
-    tags: dict[str, object] = field(default_factory=dict)
-    line_number: int = 0  # 1-indexed line of the H2 header
-    # How many `<!-- prawduct: ... -->` lines headed this entry. The canonical
-    # format is exactly one; >1 means the tags above are a union (VWS-4D8J) and
-    # validate_tag_line_multiplicity will warn.
-    tag_line_count: int = 0
-    # Scalar keys that appeared on a later tag line with a DIFFERENT value than
-    # an earlier one — first-wins, the losing value recorded here for the warning.
-    tag_conflicts: list[str] = field(default_factory=list)
-
-    @property
-    def shipped_chunks(self) -> list[str]:
-        """Chunk IDs marked shipped by this entry, or []."""
-        if self.tags.get("status") != "shipped":
-            return []
-        chunks = self.tags.get("chunks")
-        if isinstance(chunks, list):
-            return [c for c in chunks if isinstance(c, str)]
-        return []
-
-
-def parse_tag_line(tag_body: str) -> dict[str, object]:
-    """Parse the body of a tag-line (between ``prawduct:`` and ``-->``).
-
-    Pipe-delimited ``key=value`` pairs. ``chunks`` is split on commas into a list;
-    other keys are kept as plain strings. Unknown keys are preserved as-is so
-    future views can read them without a schema bump.
-    """
-    tags: dict[str, object] = {}
-    for part in tag_body.split("|"):
-        part = part.strip()
-        if "=" not in part:
-            continue
-        k, v = part.split("=", 1)
-        k = k.strip()
-        v = v.strip()
-        if not k:
-            continue
-        if k == "chunks":
-            tags[k] = [c.strip() for c in v.split(",") if c.strip()]
-        else:
-            tags[k] = v
-    return tags
-
-
-def _merge_tag_line(entry: ChangeLogEntry, new_tags: dict[str, object]) -> None:
-    """Merge a subsequent tag line's pairs into an entry, union semantics.
-
-    ``chunks`` lists are concatenated with order-preserving dedup; a key not
-    yet present is adopted; a scalar key already present with a *different*
-    value is first-wins, the ignored value recorded in ``tag_conflicts`` so
-    :func:`validate_tag_line_multiplicity` can surface it.
-    """
-    for k, v in new_tags.items():
-        if k not in entry.tags:
-            entry.tags[k] = v
-            continue
-        existing = entry.tags[k]
-        if k == "chunks" and isinstance(existing, list) and isinstance(v, list):
-            entry.tags[k] = existing + [c for c in v if c not in existing]
-        elif existing != v:
-            entry.tag_conflicts.append(f"{k}: kept {existing!r}, ignored {v!r}")
-
-
-def parse_change_log(content: str) -> list[ChangeLogEntry]:
-    """Parse change-log markdown into a list of entries.
-
-    An entry is ``## YYYY-MM-DD: title`` followed (after up to a few blank
-    lines) by ``<!-- prawduct: key=value | ... -->``. The tag block, if
-    present, must begin before the next non-blank content line under the H2.
-
-    The canonical format is ONE tag line per entry, but **all consecutive**
-    tag lines at the head of the body are consumed (blank lines between them
-    tolerated, the same leniency as before the first one) — the historical
-    first-line-only parse silently dropped the later lines' ``chunks=`` at
-    release time (VWS-4D8J). Multiple lines are unioned per
-    :func:`_merge_tag_line`, ``tag_line_count`` records how many were seen,
-    and :func:`validate_tag_line_multiplicity` warns on >1. A tag line after
-    intervening prose is still later body content, never entry metadata.
-    """
-    entries: list[ChangeLogEntry] = []
-    lines = content.splitlines()
-    i = 0
-    while i < len(lines):
-        m = H2_RE.match(lines[i])
-        if not m:
-            i += 1
-            continue
-        entry = ChangeLogEntry(title=m.group(1), line_number=i + 1)
-        j = i + 1
-        while j < len(lines):
-            stripped = lines[j].strip()
-            if not stripped:
-                j += 1
-                continue
-            tag_match = TAG_LINE_RE.search(lines[j])
-            if not tag_match:
-                # First non-blank non-tag line ends the tag block.
-                break
-            new_tags = parse_tag_line(tag_match.group(1))
-            entry.tag_line_count += 1
-            if entry.tag_line_count == 1:
-                entry.tags = new_tags
-            else:
-                _merge_tag_line(entry, new_tags)
-            j += 1
-        entries.append(entry)
-        i += 1
-    return entries
-
-
-VALID_STATUS_VALUES = frozenset({"shipped", "merged"})
-
-
-def validate_status_values(entries: list[ChangeLogEntry]) -> list[str]:
-    """Return a warning string for each entry with an unrecognized ``status=`` tag.
-
-    A change-log ``status=`` typo (e.g. ``status=shippd``) silently fails to flip
-    a checkbox — the entry parses fine but ``shipped_chunks`` returns ``[]``, so
-    the chunk never marks complete and the release driver sees no error. This
-    pure helper flags every entry whose ``status=`` tag is PRESENT but not in
-    ``{shipped, merged}``. Entries with no ``status=`` tag (untagged historical
-    entries) are not flagged. The regen-views caller treats these as fatal
-    (fail closed, nothing written — VWS-6R4T); the function itself stays pure.
-
-    Returns ``[]`` when every status value is valid or absent.
-    """
-    warnings: list[str] = []
-    for entry in entries:
-        status = entry.tags.get("status")
-        if status is None:
-            continue
-        if status not in VALID_STATUS_VALUES:
-            warnings.append(
-                f"change-log entry {entry.title!r} (line {entry.line_number}) "
-                f"has unrecognized status={status!r} — expected one of "
-                f"{sorted(VALID_STATUS_VALUES)}; this entry will not flip any "
-                f"checkbox. Likely a typo."
-            )
-    return warnings
-
-
-RELEASE_VALUE_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
-
-
-def validate_release_values(entries: list[ChangeLogEntry]) -> list[str]:
-    """Return an error string for each entry whose ``release=`` is not a version.
-
-    ``release=`` is how the release flow decides what is *already out*: the
-    unreleased set is every entry tagged ``scope=`` with NO ``release=``
-    (``check-releasability``), and :func:`_collect_releases` groups the shipped
-    entries by this value to build release notes. A non-version value therefore
-    fails in the same silent direction a ``status=`` typo does — worse, in fact:
-    the entry does not merely skip its own checkbox, it removes its whole scope
-    from the release-pending set, so ``check-releasability`` answers "nothing to
-    cut" and the work never ships. A placeholder reads as deliberate, which is
-    exactly why nothing questioned it (``release=unreleased | status=shipped``
-    on six entries hid an entire branch from the v3.2.8 release; the
-    release-pending state is *statusless with no release tag*, never a
-    placeholder naming the absence).
-
-    Accepts ``vMAJOR.MINOR.PATCH`` with an optional ``-suffix`` for
-    pre-releases. Entries with no ``release=`` tag are the normal
-    release-pending state and are never flagged. The regen-views caller treats
-    these as fatal (fail closed, nothing written — VWS-6R4T); the function
-    itself stays pure.
-
-    Returns ``[]`` when every release value is well-formed or absent.
-    """
-    errors: list[str] = []
-    for entry in entries:
-        release = entry.tags.get("release")
-        if release is None:
-            continue
-        if not (isinstance(release, str) and RELEASE_VALUE_RE.match(release)):
-            errors.append(
-                f"change-log entry {entry.title!r} (line {entry.line_number}) "
-                f"has release={release!r}, which is not a version — expected "
-                f"vMAJOR.MINOR.PATCH. Any release= tag marks this entry as "
-                f"already released, so its whole scope drops out of the "
-                f"release-pending set and the work never ships. Release-pending "
-                f"is statusless with NO release= tag; delete the tag."
-            )
-    return errors
-
-
-def validate_tag_line_multiplicity(entries: list[ChangeLogEntry]) -> list[str]:
-    """Return a warning string for each entry parsed from >1 tag line.
-
-    The canonical change-log format is one ``<!-- prawduct: ... -->`` line per
-    entry. :func:`parse_change_log` now unions consecutive tag lines rather
-    than silently dropping the later ones (VWS-4D8J — a second line's
-    ``chunks=`` nearly shipped unflipped at v2.1.0), but the union is a repair,
-    not a blessing: this pure helper (mirroring :func:`validate_status_values`)
-    surfaces each multi-tag entry so the author merges the lines. The caller
-    treats these as WARNINGS — the union produces correct output. Conflicting
-    scalar values across the lines do NOT (first-wins may pick the wrong one);
-    those are surfaced separately by :func:`validate_tag_conflicts` and treated
-    as errors (VWS-6R4T).
-
-    Returns ``[]`` when every entry has at most one tag line.
-    """
-    warnings: list[str] = []
-    for entry in entries:
-        if entry.tag_line_count <= 1:
-            continue
-        warnings.append(
-            f"change-log entry {entry.title!r} (line {entry.line_number}) has "
-            f"{entry.tag_line_count} prawduct tag lines — the canonical format "
-            f"is one per entry; chunks= lists were unioned across them. Merge "
-            f"them into a single tag line."
-        )
-    return warnings
-
-
-def validate_tag_conflicts(entries: list[ChangeLogEntry]) -> list[str]:
-    """Return an error string per entry whose tag lines CONFLICT (VWS-6R4T).
-
-    When multiple tag lines set the same scalar key to different values,
-    :func:`_merge_tag_line` keeps the first and records the loser in
-    ``tag_conflicts`` — a repair that may have picked the wrong value (e.g.
-    two ``status=`` lines disagreeing about whether work shipped). Unlike mere
-    multiplicity (a style problem the union fixes), a conflict means the
-    derived views may be built from the wrong tag, so the caller treats these
-    as fatal: fix the entry, don't guess.
-
-    Returns ``[]`` when no entry has conflicting tag lines.
-    """
-    errors: list[str] = []
-    for entry in entries:
-        if not entry.tag_conflicts:
-            continue
-        errors.append(
-            f"change-log entry {entry.title!r} (line {entry.line_number}) has "
-            f"conflicting values across its {entry.tag_line_count} tag lines "
-            f"(kept first-wins: " + "; ".join(entry.tag_conflicts) + ") — the "
-            f"derived views may be built from the wrong value. Merge the tag "
-            f"lines and resolve the conflict."
-        )
-    return errors
 
 
 def stamp_merged(content: str) -> tuple[str, list[str]]:
@@ -459,91 +222,6 @@ def collect_shipped_chunks(
             continue
         shipped.update(entry.shipped_chunks)
     return shipped
-
-
-def _parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]:
-    """Parse ``scope:`` from a build-plan's YAML frontmatter block.
-
-    The frontmatter is the block bounded by ``---`` on its own line. A leading
-    HTML comment block (``<!-- ... -->``) and blank lines before the opening
-    ``---`` are tolerated — a third of this repo's build plans (16 of 48 as of
-    2026-07-27) open with a comment header before the frontmatter, so requiring
-    ``---`` on line 1 would make the field inert for all of them. (This sentence
-    previously read "every real build-plan", which was never true and was
-    copied into three other places before anyone checked it: ``for f in
-    .prawduct/artifacts/build-plan*.md; do head -1 "$f"; done``.)
-
-    Returns a ``(present, value)`` tuple. ``present`` distinguishes "the
-    ``scope:`` key appears in the frontmatter" from "the key is absent" — a
-    distinction that matters because the two cases drive different fallback
-    behavior in :func:`_detect_active_scope` (see BLD-4Q9X):
-
-    * ``(True, "v1.5")`` — key present with a real value (quotes stripped).
-    * ``(True, None)``   — key present but set to the YAML null literal
-      (``null`` / ``~``) or left empty. This is the documented *explicit
-      opt-out* form: the author is saying "do not scope-filter," and inference
-      MUST be suppressed rather than silently inheriting a change-log scope.
-    * ``(False, None)``  — key absent, nested inside another key, outside the
-      frontmatter, the file lacks a frontmatter entirely, OR a leading HTML
-      comment header is never closed (no ``-->``). The unclosed-comment case is
-      handled LENIENTLY: the comment scan walks to EOF without finding ``-->``,
-      so no ``---`` opener is located and the result is ``(False, None)`` — a
-      safe "absent" reading that lets inference fall back to the change-log
-      rather than raising on a malformed file. A real build-plan always closes
-      its header, so this only affects hand-corrupted input.
-    """
-    fm = _frontmatter_lines(content)
-    if fm is None:
-        return (False, None)
-    for line in fm:
-        if line[:1] in (" ", "\t"):
-            continue
-        stripped = line.split("#", 1)[0].rstrip()
-        if not stripped.startswith("scope:"):
-            continue
-        value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-        # Key is present. An empty or null-literal value is an explicit
-        # opt-out, not an absence — return (True, None) so callers can
-        # suppress change-log inference.
-        if not value or value.lower() in ("null", "~"):
-            return (True, None)
-        return (True, value)
-    return (False, None)
-
-
-def _frontmatter_lines(content: str) -> list[str] | None:
-    """The frontmatter block's body lines, or ``None`` when there is no block.
-
-    Extracted so ``scope:`` and ``artifact:`` are read by ONE walker. Two
-    independent walkers over the same block is the shape that lets a file be a
-    build plan to one reader and not to another, which is exactly the class of
-    disagreement the scope collectors were already exhibiting.
-
-    Tolerances (unchanged, and load-bearing — a third of this repo's build
-    plans open with a comment header): leading blank lines and one leading HTML
-    comment block are skipped before the opening ``---``. An UNCLOSED comment
-    header or an unterminated frontmatter both read as *absent* rather than
-    raising — a deliberately lenient reading of a malformed header.
-    """
-    lines = content.splitlines()
-    i = 0
-    while i < len(lines) and not lines[i].strip():
-        i += 1
-    if i < len(lines) and lines[i].lstrip().startswith("<!--"):
-        while i < len(lines) and "-->" not in lines[i]:
-            i += 1
-        if i < len(lines):
-            i += 1  # consume the line containing `-->`
-    while i < len(lines) and not lines[i].strip():
-        i += 1
-    if i >= len(lines) or lines[i].strip() != "---":
-        return None
-    body: list[str] = []
-    for j in range(i + 1, len(lines)):
-        if lines[j].strip() == "---":
-            return body
-        body.append(lines[j])
-    return None  # unterminated frontmatter reads as absent
 
 
 def _detect_active_scope(
@@ -655,133 +333,6 @@ def build_status_view(
     return "\n".join(new_lines) + trailing, changes
 
 
-def _declares_non_build_plan_artifact(content: str) -> bool:
-    """True when frontmatter declares an ``artifact:`` type that is NOT a build
-    plan — i.e. this file is scope-tagged but is not a plan to regenerate.
-
-    Both scope collectors below glob ``artifacts/*.md`` and treated ANY file
-    with a frontmatter ``scope:`` as a build plan. That is detection by surface
-    marker rather than by declared type, and several files in this repo already
-    carry a scope while being a design note, a discovery, a reference, a
-    release plan or a collapse map. Enumerate rather than trust a digit::
-
-        grep -l '^scope:' .prawduct/artifacts/*.md \
-          | xargs grep -l '^artifact:' \
-          | xargs grep -L '^artifact: build-plan'
-
-    The middle stage is load-bearing, and omitting it was this docstring's own
-    first mistake: ``grep -L`` alone cannot distinguish "declares another type"
-    from "declares NO type" — precisely the distinction this predicate draws —
-    so it wrongly returns ``build-plan-release-readiness.md`` (a real plan, the
-    counter-example named below) and a file whose ``scope:`` sits inside an
-    HTML comment and never parses. They were invisible only because none
-    happened to share a scope VALUE with a real plan; the first one that did
-    (`collapse-map-learnings-firing.md`, 2026-08-01) made
-    ``diagnose_scope_plan_coverage`` fatal and stopped ``regen-views`` writing
-    views for EVERY scope — the mechanism release time depends on.
-
-    Absence is treated as a build plan, not excluded: `build-plan-release-
-    readiness.md` declares no ``artifact:`` key at all, so requiring
-    ``artifact: build-plan`` would silently drop a real plan. Excluding only an
-    explicit *other* type fails safe in the direction that keeps plans.
-    """
-    fm = _frontmatter_lines(content)
-    if fm is None:
-        return False
-    for line in fm:
-        if line[:1] in (" ", "\t"):
-            continue  # nested key, not a top-level declaration
-        stripped = line.split("#", 1)[0].rstrip()
-        if not stripped.startswith("artifact:"):
-            continue
-        value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-        return bool(value) and value != "build-plan"
-    return False
-
-
-def build_scope_to_plan_map(artifacts_dir: Path) -> dict[str, Path]:
-    """Map each frontmatter ``scope:`` to its build-plan FILE under artifacts/.
-
-    Scans ``artifacts_dir`` **recursively** (see
-    :func:`iter_scoped_plan_candidates`, which owns the scan) and records
-    ``{scope_value: path}`` for every
-    file whose YAML frontmatter declares a non-empty ``scope:`` (parsed by
-    :func:`_parse_build_plan_frontmatter_scope`) **and does not declare an
-    ``artifact:`` type other than ``build-plan``** (see
-    :func:`_declares_non_build_plan_artifact` — a design note, discovery,
-    reference, release plan or collapse map may legitimately carry a scope and
-    is not a plan to regenerate). Both keys are stated here, not only in the
-    private helper, because the question a reader arrives with is "why won't my
-    scope regenerate?" and the answer is now two keys rather than one. This is
-    the scope→FILE resolver that lets ``regen-views`` regenerate every
-    release-pending plan in one pass instead of via the single
-    ``active_build_plan`` pointer (REL-4T8N).
-
-    On a duplicate scope across two files, the first by sorted filename wins
-    (deterministic; a duplicate scope is malformed — surfaced separately by
-    :func:`diagnose_scope_plan_coverage`). Returns ``{}`` when the directory is
-    absent or holds no scope-tagged plans. Read-only.
-    """
-    result: dict[str, Path] = {}
-    for plan_path, scope in iter_scoped_plan_candidates(artifacts_dir):
-        if scope not in result:
-            result[scope] = plan_path
-    return result
-
-
-def iter_scoped_plan_candidates(artifacts_dir: Path) -> Iterator[tuple[Path, str]]:
-    """Yield ``(path, scope)`` for every scope-declaring build plan under ``artifacts_dir``.
-
-    The ONE home for "which files are build plans, and what scope does each
-    declare." :func:`build_scope_to_plan_map` and
-    :func:`diagnose_scope_plan_coverage` were line-for-line twins of this loop,
-    and both carried a docstring warning that letting them diverge would make
-    the diagnostic condemn a file the map never considered — which is exactly
-    what happened on 2026-08-01. A warning that a duplicate must be kept in sync
-    is worth less than not having the duplicate.
-
-    **Discovery is recursive** (VWS-4T9P / #201 leg 1). The previous
-    ``glob("*.md")`` saw only the top level, so a repo organizing plans as
-    ``artifacts/plans/<id>/build-plan.md`` had every one of them invisible: their
-    scopes resolved to nothing, the coverage diagnostic errored, and — because
-    the caller then failed closed for the whole run — release-notes and
-    scope-rollups died with them. Four surveyed repos carry 16 nested plans each
-    (2026-07-21 fleet survey on the item).
-
-    Ordering is by sorted path so the first-wins tie-break in both consumers
-    stays deterministic, which now makes *directory depth* part of that
-    tie-break. Consumers report paths via :func:`_display_path` rather than
-    ``Path.name`` — see its docstring for why nesting makes that necessary.
-    """
-    if not artifacts_dir.is_dir():
-        return
-    # Named `plan_path` because these ARE build-plan candidates — consistency
-    # with every other reader, and NOT load-bearing. The decoding rule reaches
-    # this module file-scoped (`tests/preferences/test_build_plan_decoding.py`),
-    # so it no longer depends on a local's name.
-    for plan_path in sorted(artifacts_dir.rglob("*.md")):
-        # Archived plans are history, not live assertion — the same rule every
-        # record check applies (`record_lint._ARCHIVE_MARKERS`). Load-bearing
-        # once discovery went recursive: the scan is `sorted()` and first-wins,
-        # and `artifacts/archive/build-plan-foo.md` sorts BEFORE
-        # `artifacts/build-plan-foo.md`, so an archived copy would shadow its
-        # own live sibling and regenerate the retired plan's Status instead.
-        if any(part == "archive" for part in plan_path.relative_to(artifacts_dir).parts):
-            continue
-        try:
-            content = plan_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            # One malformed file under artifacts/ must not blind the scan to
-            # every other plan. `UnicodeDecodeError` is a `ValueError`, so the
-            # narrower `except OSError` here let it escape to `regen-views`.
-            continue
-        if _declares_non_build_plan_artifact(content):
-            continue  # scope-tagged, but declares itself a non-plan artifact
-        _present, scope = _parse_build_plan_frontmatter_scope(content)
-        if scope:
-            yield plan_path, scope
-
-
 def collect_release_pending_scopes(entries: list[ChangeLogEntry]) -> list[str]:
     """Distinct ``scope=`` values from unreleased/shipped entries, newest-first.
 
@@ -815,7 +366,8 @@ def diagnose_scope_plan_coverage(
 ) -> list[ScopedError]:
     """Flag release-pending scopes with no plan file + duplicate scopes.
 
-    Pure diagnostic (mirrors :func:`validate_status_values`). Every error it
+    Pure diagnostic (mirrors the tag validators in :mod:`lib.change_log`).
+    Every error it
     returns is **scope-attributed** (:class:`ScopedError`), because both cases
     can only make ONE scope's ``## Status`` view wrong: the caller suppresses
     that view and still writes release-notes and scope-rollups, which have no
@@ -840,7 +392,7 @@ def diagnose_scope_plan_coverage(
 
     **Both cases apply only to files this module considers build plans**, and
     that determination now has ONE home —
-    :func:`iter_scoped_plan_candidates` — rather than a copy here that had to
+    :func:`lib.plan_index.iter_scoped_plan_candidates` — rather than a copy here that had to
     stay identical to :func:`build_scope_to_plan_map`'s. It did not: on
     2026-08-01 a scope-tagged collapse-map artifact made this function fatal and
     stopped ``regen-views`` writing views for EVERY scope, because the
@@ -848,21 +400,10 @@ def diagnose_scope_plan_coverage(
 
     Returns ``[]`` when coverage is clean.
     """
-    warnings: list[ScopedError] = []
-    first_seen: dict[str, Path] = {}
-    for plan_path, scope in iter_scoped_plan_candidates(artifacts_dir):
-        if scope in first_seen:
-            warnings.append(
-                ScopedError(
-                    f"duplicate scope={scope!r}: "
-                    f"{_display_path(plan_path, artifacts_dir)} also declares it "
-                    f"(keeping {_display_path(first_seen[scope], artifacts_dir)}); "
-                    f"one plan is malformed.",
-                    scope=scope,
-                )
-            )
-        else:
-            first_seen[scope] = plan_path
+    warnings: list[ScopedError] = [
+        ScopedError(message, scope=scope)
+        for scope, message in duplicate_scope_errors(artifacts_dir)
+    ]
 
     plan_map = build_scope_to_plan_map(artifacts_dir)
     seen: set[str] = set()
@@ -972,7 +513,7 @@ def validate_chunk_roster(
                 ScopedError(
                     f"change-log entry {entry.title!r} (line {entry.line_number}) "
                     f"has chunks={','.join(missing)} not present in "
-                    f"{_display_path(plan_path, artifacts_dir)}'s ## Status roster "
+                    f"{_plan_label(plan_path, artifacts_dir)}'s ## Status roster "
                     f"[{roster_desc}] — these IDs will never flip a checkbox "
                     f"(scope={scope!r}).",
                     scope=scope,

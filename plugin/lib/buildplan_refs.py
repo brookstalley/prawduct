@@ -10,9 +10,9 @@ the file alone — no git mutation, no network.
 
 Depends on its lib siblings ``gitstate`` (for ``_is_metadata_path``), ``core``
 (``resolve_build_plan_path``, ``read_bool_yaml_key``), ``coverage``
-(``_resolve_base_branch``) and ``views`` (the canonical frontmatter ``scope:``
-reader) plus the stdlib — still a clean DAG node, since ``coverage`` and
-``views`` each depend only on ``core``. The hook's inline build-plan-resolution
+(``_resolve_base_branch``) and ``plan_index`` (the canonical frontmatter ``scope:``
+reader) plus the stdlib — still a clean DAG node, since ``coverage`` depends only
+on ``core`` and ``plan_index`` on nothing in ``lib`` at all. The hook's inline build-plan-resolution
 mirror (``_resolve_build_plan_path``) stays in the hook for its import-light hot
 path; this module is a lib citizen and reaches the canonical resolver in
 ``lib.core`` directly, exactly as ``critic_mode`` and ``views`` do.
@@ -44,16 +44,29 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
-from . import gitstate, waivers
+from . import gitstate, plan_index, waivers
 from .core import read_bool_yaml_key, read_str_yaml_key, resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
-# `lib.views` is a HEAVY_SUBMODULE and is imported lazily, inside the one
-# function that needs it (see `_plan_description_fallback`). Unlike `ledger`'s
-# identical call — where the cost was hypothetical — this module IS the hot
-# path: `briefing` and `gates` both import it at module scope, so a
-# module-scope `from .views import ...` here bills every SessionStart and every
-# Stop for a parse that most of them never use.
+# `plan_index` is imported at MODULE scope, deliberately, where its predecessor
+# `lib.views` had to be lazy. This module IS the hot path — `briefing` and
+# `gates` both import it at module scope, so it is billed at every SessionStart
+# and every Stop — and a lazy import inside the function is a cost of its own
+# once the callee is cheap. Measured marginal cost on top of this module's own
+# imports: `plan_index` 0.29ms, `views` 7.39ms. `plan_index` shares `pathlib`
+# and `collections.abc` with this module and pulls nothing else, which is the
+# property that has to hold, not the number: `tests/test_lib_lazy_imports.py`
+# asserts it structurally, with `lib.views` as the positive control that proves
+# the probe can fail. Re-measure with
+# `python3 -c "import lib.buildplan_refs, time; ..."`, do not trust these
+# figures on a different tree.
+#
+# This replaces a "deliberately no millisecond figure here" note that used to sit
+# on `_scope_plan_map`, and the reversal is narrower than it looks: that note
+# governed the SCAN cost, which is a property of each consumer's artifacts/ tree
+# and therefore drifts the moment it is written down. These are IMPORT costs — a
+# property of this code, identical in every checkout of a given version — and what
+# binds is the structural test, not the numbers.
 
 
 def _iter_status_section_lines(content: str):
@@ -170,15 +183,15 @@ def _count_build_plan_chunks(
 _CHUNK_COMMIT_RE = re.compile(r"Chunk\s+(\d+)")
 # Conventional-commit scope: `fix(session-boundary-events): … (Chunk 01)`.
 _COMMIT_SCOPE_RE = re.compile(r"^\w+\(([^)]+)\)!?:")
-# NOTE: the plan's own `scope:` is read through `views._parse_build_plan_frontmatter_scope`,
+# NOTE: the plan's own `scope:` is read through `plan_index.parse_build_plan_frontmatter_scope`,
 # NOT a regex here. A hand-rolled `^scope:\s*(\S+)$` shipped briefly and was wrong in three
 # ways the canonical reader already handles: it kept surrounding quotes (so a legal
 # `scope: "session-boundary-events"` matched no commit scope, `scoped` came back empty, and
 # the filter silently fell through to the unscoped reading — reinstating the very cross-plan
 # contamination it was added to stop), it ignored the documented `null`/`~` opt-out, and it
-# searched the whole document rather than the frontmatter block. This module's docstring
-# already names `views` as the canonical frontmatter reader, and the same bundle deleted
-# `ledger`'s inline copy for exactly this reason (ROB-7T2N).
+# searched the whole document rather than the frontmatter block. `plan_index` is the ONE home
+# for that reading — the module exists to be it — and the same bundle deleted `ledger`'s inline
+# copy for exactly this reason (ROB-7T2N).
 
 
 def _commits_ahead_of_base(project_dir: Path, base: str) -> int:
@@ -335,9 +348,7 @@ def _git_aware_progress(
         # bounded to the frontmatter block. Both `(True, None)` (explicit opt-out)
         # and `(False, None)` (no key) yield None here, which correctly means
         # "do not scope-filter" — the same unscoped reading as before the filter.
-        from .views import _parse_build_plan_frontmatter_scope  # noqa: PLC0415 — heavy; see the module-header note
-
-        _present, plan_scope = _parse_build_plan_frontmatter_scope(content)
+        _present, plan_scope = plan_index.parse_build_plan_frontmatter_scope(content)
         committed = _committed_chunk_ids(project_dir, base, plan_scope)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -413,28 +424,26 @@ class ReviewedPlan(NamedTuple):
 def _scope_plan_map(prawduct_dir: Path) -> dict[str, Path]:
     """``{frontmatter scope: plan path}`` over this repo's artifacts directory.
 
-    Lazy import: ``lib.views`` is a HEAVY_SUBMODULE. **Three paths ask this**:
-    review dispatch, every session END (the Stop hook resolves its gate plan
-    from the branch BEFORE deciding whether a plan is active, so the scan runs
-    whenever the hook runs — not only where a plan and changes both exist), and
-    every session START (the briefing's advisory reads the same plan so it
-    cannot diverge from the gate). So the cost moved onto a hot path from one
-    already measured in minutes. Lazy still earns its keep: it stays off the
-    import graph of every consumer that never asks.
+    **Three paths ask this**: review dispatch, every session END (the Stop hook
+    resolves its gate plan from the branch BEFORE deciding whether a plan is
+    active, so the scan runs whenever the hook runs — not only where a plan and
+    changes both exist), and every session START (the briefing's advisory reads
+    the same plan so it cannot diverge from the gate). The cost sits on a hot
+    path, which is why the callee is now :mod:`lib.plan_index` — a module that
+    answers only this question — rather than the module that also carried the
+    change-log parser and had to be imported lazily to keep its weight off these
+    three paths. See this module's header for the measurement and the structural
+    test that holds it.
 
-    **Nothing memoizes the scan across calls.** The import is cached by the
-    module system; the recursive walk of ``artifacts/`` and its per-file
-    frontmatter parse are not. :func:`resolve_branch_plan` builds the map ONCE
-    and hands it to both halves, so a resolution is one walk — an earlier
-    version wrote the composite longhand at each caller and paid two.
-    Deliberately no millisecond figure here: a machine-held number
-    hand-copied into prose that ships to consumer repos whose ``artifacts/``
-    is nothing like this one's is the drift ``record_lint``'s suite-total
-    tripwire exists to catch, one file over.
+    **Nothing memoizes the scan across calls.** The recursive walk of
+    ``artifacts/`` and its per-file frontmatter parse happen every time.
+    :func:`resolve_branch_plan` builds the map ONCE and hands it to both halves,
+    so a resolution is one walk — an earlier version wrote the composite longhand
+    at each caller and paid two. What bounds the walk as plans accumulate is
+    :mod:`lib.plan_index` pruning the archive at directory level, so a repo's
+    completed plans are not re-read twice a session forever.
     """
-    from . import views  # noqa: PLC0415 — lazy; views is a HEAVY_SUBMODULE
-
-    return views.build_scope_to_plan_map(prawduct_dir / "artifacts")
+    return plan_index.build_scope_to_plan_map(prawduct_dir / "artifacts")
 
 
 def resolve_branch_plan(project_dir: Path, prawduct_dir: Path) -> ReviewedPlan:
@@ -750,9 +759,7 @@ def _plan_description_fallback(plan_path: Path, content: str) -> str:
     frontmatter ``scope:``, then to the filename with the conventional
     ``build-plan-`` prefix stripped, so the section can never silently vanish.
     """
-    from .views import _parse_build_plan_frontmatter_scope  # noqa: PLC0415 — heavy; see the module-header note
-
-    _present, scope = _parse_build_plan_frontmatter_scope(content)
+    _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
     if scope:
         return scope
     return plan_path.stem.removeprefix("build-plan-") or plan_path.stem

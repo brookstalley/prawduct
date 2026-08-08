@@ -3436,7 +3436,7 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
     try:
-        from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
+        from lib import change_log, views  # noqa: PLC0415 — lazy import keeps top-level cheap
     except ImportError:
         # Honest failure: regen-views mutates state (build-plan checkboxes,
         # release-notes, scope_rollups), so it must not claim success when its
@@ -3487,13 +3487,17 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
     # silently half-right rather than absent. Fail closed (VWS-6R4T's actual
     # content, which the advice ruling preserves).
     global_errors: list[str] = []
-    # Unrecognized status= (typo) — the entry would silently never flip.
-    global_errors.extend(views.validate_status_values(parsed_entries))
-    # A release= that isn't a version — the entry counts as already released, so
-    # its scope drops out of the release-pending set and never ships.
-    global_errors.extend(views.validate_release_values(parsed_entries))
-    # Conflicting scalar values across tag lines — first-wins may be wrong.
-    global_errors.extend(views.validate_tag_conflicts(parsed_entries))
+    # A malformed `release=`, and tag lines that disagree with each other. Both
+    # now come from one validator in `lib.change_log`, alongside the multiplicity
+    # warning collected below — the three shapes were three functions whose only
+    # caller was this one.
+    tag_errors, tag_warnings = change_log.validate_change_log_tags(parsed_entries)
+    global_errors.extend(tag_errors)
+    # Unrecognized status= (typo) — the entry would silently never flip. Kept
+    # separate because `status=` is a retiring key: it is read here and nowhere
+    # else, so folding its guard into the validator the release gate calls would
+    # make that gate refuse entries over a tag nothing reads.
+    global_errors.extend(change_log.validate_status_values(parsed_entries))
 
     # SCOPE-ATTRIBUTED errors — each can only make its own scope's `## Status`
     # view wrong. Unreleased scope with no plan file, duplicate scope across
@@ -3508,7 +3512,7 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
     global_errors.extend(e for e in scoped_errors if e.scope is None)
     scoped_errors = [e for e in scoped_errors if e.scope is not None]
 
-    for warning in views.validate_tag_line_multiplicity(parsed_entries):
+    for warning in tag_warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
 
     if global_errors:

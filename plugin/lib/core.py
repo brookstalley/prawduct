@@ -185,7 +185,7 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     missing/unreadable file or absent key. Surrounding quotes and inline ``#``
     comments are stripped; an empty value, or the YAML null literal (``null`` /
     ``~``, case-insensitive), reads as None — so ``active_build_plan: null`` means
-    "unset", the same opt-out :func:`lib.views._parse_build_plan_frontmatter_scope`
+    "unset", the same opt-out :func:`lib.plan_index.parse_build_plan_frontmatter_scope`
     already honors for ``scope:`` (VWS-7N3K). Without this, a literal ``null``
     survived as the truthy string ``"null"`` and resolved to ``.prawduct/null``.
     """

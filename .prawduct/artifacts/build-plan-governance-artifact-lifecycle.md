@@ -139,15 +139,34 @@ Chunk 05 starts.
 
 ## Status
 
-- [ ] Chunk 01: Rehome the survivors — two named modules, nothing deleted yet
+- [x] Chunk 01: Rehome the survivors — two named modules, nothing deleted yet
 - [ ] Chunk 02: One reading — retire the flag, the command, and the dual progress path
 - [ ] Chunk 03: Trim the tag schema, the doc restatements, and the two norm decisions
 - [ ] Chunk 04: Archival — completion frontmatter, five deletion sites, two terminal states
 - [ ] Chunk 05: Doctor repair, the archive backfill, and the guards that keep it converged
 Context: Plan written 2026-08-08 on `feature/governance-artifact-lifecycle` (off `develop`),
-requirements v0.4 committed at `b681fab`. Nothing built. Next: Chunk 01, after reconciling against the
-in-flight learnings sweep. Ships as one PR — Chunk 05's cumulative review is the `/prawduct:pr create`
-gate. Suite state is read from the evidence store, not recorded here.
+requirements v0.4 committed at `b681fab`. Ships as one PR — Chunk 05's cumulative review is the
+`/prawduct:pr create` gate. Suite state is read from the evidence store, not recorded here.
+
+**Chunk 01 shipped.** `views.py` is now a re-export of `change_log.py` (tags) and `plan_index.py`
+(plans) — one implementation, two import paths, per DECISION-3 taken at build time. Review
+`rev-20260808T151454Z-ec50015f` (`final`, 3 reviewers) returned 2 blocking / 5 warning / 8 note; all
+fifteen dispositioned in one pass, ten fixed and five accepted with reasons recorded.
+
+**The blocking finding Chunk 02 most needs to know.** BP9 was NOT implemented on the first pass:
+`Path.rglob` has no pruning hook, so `rglob("*.md")` + `continue` descends the whole archive subtree
+and only discards the results — a cost profile identical to the code it replaced. `plan_index` now
+uses `os.walk` with in-place `dirnames[:]` assignment, which is the actual prune. Two tests hold it:
+one spies on `os.scandir` to prove the subtree is never ENTERED (the read-level test passes on both
+implementations, which is why it was not enough), and the mutation battery confirms the rglob shape
+and the rebind-instead-of-slice footgun each go red.
+
+Also settled here, so Chunk 02 can rely on it: `validate_status_values` is deliberately NOT folded
+into the merged validator — `status=` is a retiring key read only by `regen-views`, and folding it in
+would make the release gate refuse entries over a tag nothing reads. It goes when that caller goes.
+
+Next: Chunk 02. Its deliverables now name the three shim dependents it breaks; repair by repointing,
+never by weakening the positive control.
 
 ## Scaffolding
 
@@ -216,6 +235,12 @@ only gate that reads tags.
   - `plugin/lib/release_readiness.py` — calls `validate_change_log_tags`, and gains the rehomed
     "unreleased scope with no build-plan file" diagnostic, searching live **and** archived plans (CL7,
     BP8). Note `_find_release_plan` globs non-recursively today; BP8's live-then-archive rule lands here.
+    **Also rehomed: the duplicate-scope half of `diagnose_scope_plan_coverage`** — CL6 lists that
+    function whole among the six checks dying with `regen-views`, and its duplicate half guards
+    frontmatter `scope:`, a field that SURVIVES. Enumerating the doomed module's callees is what this
+    branch asks of every deletion, so leaving it would be the thesis's own failure inside the chunk
+    written to prevent it. Reported, never fatal, like CL7. Recorded here so Chunk 02's sweep reads it
+    as a survivor rather than as an orphan.
   - `plugin/lib/buildplan_refs.py::_scope_plan_map` repointed at `plan_index`.
   - Both new modules follow this repo's **return-value error convention** — `lib/` functions return
     dicts carrying `status`/`reason`; exceptions escape only at boundaries. New raising code inside
@@ -276,6 +301,15 @@ only gate that reads tags.
     `plugin/lib/briefing.py`, `critic_mode.py`, `gates.py`, `advisory_store.py`,
     `operator_verification.py` lose their `views_enabled` branches and caveats.
   - `.prawduct/release-notes.md` renamed to frozen archive with a header saying so (DV5).
+  - **Three dependents of Chunk 01's re-export shim that this chunk breaks.** Each is a correct
+    Chunk 01 decision with an obligation landing here, and none would name its cause in the failure:
+    (1) `tests/test_lib_lazy_imports.py::test_the_probe_can_fail` uses `lib.views` as its **positive
+    control**, and `HEAVY_SUBMODULES` lists it — the control needs a new subject, and without one
+    every empty-set assertion in that file goes vacuous rather than red; (2)
+    `tests/spikes/change_log_roundtrip.py` does `from lib import views` and is a **standalone,
+    non-collected script**, so the suite will not catch it (the shim's `noqa` names it); (3)
+    `plugin/lib/views.py::_plan_label`, the inlined path helper, goes with the module. Repair by
+    repointing, never by weakening the probe.
 - **Tests:** the ~30 `tests/test_views.py` tests targeting `parse_change_log` are **the contract** —
   rewritten against `change_log.py` in Chunk 01 and retired here, never deleted wholesale. Rewrite the
   `views_enabled`-parameterised cases in `test_build_plan_resolution.py`,
@@ -315,7 +349,10 @@ only gate that reads tags.
   because place-once preferences and the thin CLAUDE.md anchor do **not** reach migrated repos, and
   "the checkbox is yours to tick" is exactly such a default. Repo records:
   `documentation/release-process.md` (step 3's knowingly-broken sweep and step 4 both go),
-  `.prawduct/cross-cutting-concerns.md` (the derived-views row and its READ-side rule),
+  `.prawduct/cross-cutting-concerns.md` (the derived-views row and its READ-side rule — **and the
+  Requirements-clarity row, which gains a runtime leg**: `check-releasability` now reports a
+  release-pending scope with no build-plan file, a Principle 6 detector the row's discovery /
+  artifact / `building.md` / UserPromptSubmit legs do not cover),
   `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` (Phase 1 steps 2 and 10).
   Norm decisions: `.prawduct/artifacts/architecture.md` and `.prawduct/artifacts/data-model.md` lose
   the `regen-views-is-advice` precedence annotations; `.prawduct/learnings.md` +
@@ -412,6 +449,12 @@ only gate that reads tags.
     which described the file-sync auto-enable for three minor versions after that engine was deleted.
   - **FL4** — a version-delta banner headline naming the retired flag and command, plus the
     `plugin/CHANGELOG.md` entry that becomes the GitHub Release notes.
+  - **One test this chunk's backfill is expected to break**, named so it is repaired rather than
+    weakened: `tests/test_plan_index.py::TestAgainstTheRealArtifactsDirectory` asserts a floor on how
+    many scopes the LIVE map resolves. The backfill archives shipped plans, so the floor moves. It was
+    deliberately set low (>= 2) rather than tightened, and the sibling assertion pins this branch's own
+    in-flight plan, which carries no `release=` and so is not backfilled — but a red here is archival
+    working, not a `plan_index` regression.
 - **Tests:** unit — repair idempotence (twice is a no-op) and per-cohort behaviour across all three
   cohorts; the backfill's shipped-set derivation; GD1 across every opt-in flag; GD2's detection.
   Integration — a scratch copy of one real repo per cohort converges, per Verification Strategy item 2.

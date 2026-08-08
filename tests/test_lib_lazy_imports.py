@@ -98,9 +98,40 @@ class TestLazyIsolation:
             "not eager-import heavy submodules"
         )
 
+    def test_the_probe_can_fail(self):
+        """The positive control, without which every assertion above is vacuous.
+
+        Each test here asserts an empty set. An empty set is also what a probe
+        that silently stopped working returns — a renamed module, a changed
+        `sys.modules` key, a subprocess whose import failed and printed nothing.
+        So one test imports a heavy module directly and requires the probe to
+        SEE it. If this fails, none of the greens above mean anything.
+        """
+        dragged = _clean_import_probe("import lib.views", HEAVY_SUBMODULES)
+        assert "lib.views" in dragged, (
+            "the probe reported no heavy module after importing one directly — "
+            f"it is not measuring what these tests claim (got {sorted(dragged)})"
+        )
+
+    def test_plan_index_does_not_drag_in_heavy(self):
+        """`plan_index` is imported at MODULE scope by `buildplan_refs`.
+
+        That is a deliberate change from its predecessor `views`, which had to
+        be lazy because it also carried the change-log parser. The module-scope
+        import is only defensible while `plan_index` stays cheap, and "cheap" is
+        a property that decays silently — one convenience import inside it bills
+        every SessionStart and every Stop. Probed at the module itself so the
+        regression is attributed here rather than at the three consumers.
+        """
+        dragged = _clean_import_probe("import lib.plan_index", HEAVY_SUBMODULES)
+        assert dragged == set(), (
+            f"importing lib.plan_index pulled in heavy modules {sorted(dragged)} — "
+            "it is on the session hot path at module scope and must stay light"
+        )
+
     def test_ledger_does_not_drag_in_heavy(self):
-        """`ledger` reaches `views._parse_build_plan_frontmatter_scope` for its
-        scope fallback. A module-scope import there would pull a HEAVY_SUBMODULE
+        """`ledger` reaches `plan_index.parse_build_plan_frontmatter_scope` for
+        its scope fallback. A module-scope import there would pull that module
         into every consumer of `ledger`; the existing probes only cover `lib`
         and `lib.core`, so the coupling would have re-landed green."""
         dragged = _clean_import_probe("import lib.ledger", HEAVY_SUBMODULES)
@@ -123,14 +154,15 @@ class TestLazyIsolation:
     def test_the_hot_path_does_not_drag_in_heavy(self, module: str):
         """The SessionStart/Stop path, probed at all three of its modules.
 
-        `buildplan_refs` reaches the same `views` helper `ledger` does, for the
-        same scope fallback — but here the cost is not hypothetical: `briefing`
-        (SessionStart) and `gates` (Stop) both import `buildplan_refs` at module
-        scope, so a module-scope `views` import bills every session for a parse
-        most of them never reach. The `ledger`/`telemetry` probes above were
-        added in the same work that let this land at the *hotter* consumer, so
-        the two importers are probed alongside the module itself rather than
-        trusted to inherit its discipline.
+        `buildplan_refs` resolves a branch's plan, which `briefing`
+        (SessionStart) and `gates` (Stop) both reach through a module-scope
+        import — so a heavy import here bills every session. It used to reach
+        `views` for that and had to do so lazily; it now imports `plan_index` at
+        module scope, which is only safe while that module stays light (probed
+        separately above). The `ledger`/`telemetry` probes were added in the
+        same work that let a heavy import land at the *hotter* consumer, so the
+        two importers are probed alongside the module itself rather than trusted
+        to inherit its discipline.
         """
         dragged = _clean_import_probe(f"import lib.{module}", HEAVY_SUBMODULES)
         assert dragged == set(), (

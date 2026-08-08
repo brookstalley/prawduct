@@ -33,6 +33,8 @@ import re
 import sys
 from pathlib import Path
 
+from . import plan_index
+
 _CHANGE_LOG_REL_PATH = ".prawduct/change-log.md"
 _BACKLOG_REL_PATH = ".prawduct/backlog.md"
 _ARTIFACTS_REL_DIR = ".prawduct/artifacts"
@@ -260,15 +262,60 @@ def _resolve_version(project_dir: Path, release: str | None) -> str | None:
 
 
 def _find_release_plan(project_dir: Path, version: str) -> Path | None:
-    """The release-plan artifact for ``version``.
+    """The release-plan artifact for ``version``, live first, then archived.
 
-    Globbed rather than exact-matched: shipped plans carry a descriptive
-    suffix (``release-plan-v3.1.2-pruned.md``), so an exact name would miss
-    every real one.
+    Globbed rather than exact-matched: shipped plans carry a descriptive suffix
+    (``release-plan-v3.1.2-pruned.md``), so an exact name would miss every real
+    one.
+
+    **Live wins, archive is the fallback.** A release plan is one of the
+    artifacts eligible for archival once its release ships, and this gate is the
+    one thing that must not fail because an artifact reached its end of life:
+    a re-run against an already-cut version would otherwise report
+    ``no-release-plan`` and fail closed on a release that demonstrably happened.
+    Ordering matters as much as coverage — an archived plan for a version being
+    re-cut must never shadow the live one that supersedes it.
     """
     artifacts = project_dir / _ARTIFACTS_REL_DIR
-    matches = sorted(artifacts.glob(f"release-plan-{version}*.md"))
-    return matches[0] if matches else None
+    pattern = f"release-plan-{version}*.md"
+    for root in (artifacts, artifacts / plan_index.ARCHIVE_DIR_NAME):
+        matches = sorted(root.glob(pattern)) if root.is_dir() else []
+        if matches:
+            return matches[0]
+    return None
+
+
+def _plan_coverage_warnings(project_dir: Path, pending: list[str]) -> list[str]:
+    """Report release-pending scopes with no build plan, and duplicate scopes.
+
+    Both checks lived in the derived-view regenerator, whose only product was a
+    view; each error there suppressed one scope's regeneration. That caller is
+    being retired, and the field they guard — the frontmatter ``scope:`` that
+    ties a change-log entry to the plan describing the work — is not. This is
+    the gate that resolves scopes to plans, so it is where they belong.
+
+    **Reported, not fatal, and deliberately.** The gate fails closed on state it
+    cannot evaluate: no change log, no release plan, an unclassified scope. A
+    missing *build* plan is none of those — the classification table still
+    classifies the scope, so the release stays evaluable. What it signals is a
+    Principle 6 problem (work shipping with no documented parent), which is a
+    message for a person rather than a reason to refuse the release. Escalating
+    it here would be a new gate semantic, not a rehoming.
+
+    Archived plans count as coverage: a scope whose plan reached its end of life
+    is documented, just not current. Only "no plan anywhere" is the signal.
+    """
+    artifacts = project_dir / _ARTIFACTS_REL_DIR
+    known = plan_index.build_scope_to_plan_map(artifacts, include_archived=True)
+    warnings = [
+        f"release-pending scope={scope!r} has no build-plan file under "
+        f"{_ARTIFACTS_REL_DIR}/ (live or archived) — work is shipping with no "
+        f"plan describing it."
+        for scope in pending
+        if scope not in known
+    ]
+    warnings.extend(message for _scope, message in plan_index.duplicate_scope_errors(artifacts))
+    return warnings
 
 
 def check_releasability(project_dir: Path, release: str | None = None) -> int:
@@ -278,7 +325,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     state (missing change log, missing release plan) fails closed — the whole
     point is that an unclassified scope must never read as "fine".
     """
-    from . import views  # noqa: PLC0415 -- lazy: mirrors coverage.py's import posture
+    from . import change_log as change_log_mod  # noqa: PLC0415 -- lazy: mirrors coverage.py's import posture
 
     change_log = project_dir / _CHANGE_LOG_REL_PATH
     try:
@@ -287,7 +334,26 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         print(f"no-change-log: cannot read {_CHANGE_LOG_REL_PATH}: {exc}", file=sys.stderr)
         return 1
 
-    entries = views.parse_change_log(change_log_content)
+    entries = change_log_mod.parse_change_log(change_log_content)
+
+    # The tag checks run BEFORE the pending set is computed, because a malformed
+    # tag is precisely what makes that set wrong. `release_pending_scopes` skips
+    # any entry carrying a `release=` value — it cannot tell a version from a
+    # placeholder — so `release=unreleased` silently removes its whole scope and
+    # the gate answers "nothing to cut". That is not a hypothetical failure
+    # mode: it hid an entire branch from the v3.2.8 release. These checks had
+    # lived in the derived-view regenerator, which was their only caller and
+    # which is not what a release depends on.
+    tag_errors, tag_warnings = change_log_mod.validate_change_log_tags(entries)
+    for warning in tag_warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    if tag_errors:
+        # Fail closed: this gate's job is that an unclassifiable release state
+        # never reads as "fine", and a tag it cannot interpret is exactly that.
+        for err in tag_errors:
+            print(f"bad-change-log-tag: {err}", file=sys.stderr)
+        return 1
+
     pending = release_pending_scopes(entries)
     if not pending:
         # Name the denominator: "0 pending" from a change log the parser could
@@ -305,6 +371,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
             detail += f", {stamped} scope(s) already tagged release={asked}"
         print(f"releasable: no release-pending scopes — nothing to classify ({detail}).")
         return 0
+
+    for warning in _plan_coverage_warnings(project_dir, pending):
+        print(f"WARNING: {warning}", file=sys.stderr)
 
     version = _resolve_version(project_dir, release)
     if version is None:

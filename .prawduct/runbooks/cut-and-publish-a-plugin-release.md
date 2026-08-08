@@ -162,6 +162,21 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      **Fix or restore `.prawduct/project-state.yaml`**, then re-run. (This is not the cutover case —
      the message says so precisely because the two need different remedies.)
 
+   `bad-change-log-tag:`
+   - A change-log tag line the gate refuses to act on. **This is not a gate defect — fix the tag.**
+     The common case is a `release=` value that is not a version (`release=unreleased`,
+     `release=TBD`): *any* `release=` value marks the entry already-released, so its whole scope
+     drops out of the pending set and the gate would otherwise answer "nothing to cut" while the
+     work never ships. That is not hypothetical — it hid an entire branch from v3.2.8.
+     **Release-pending is statusless with NO `release=` tag: delete the tag.** The other case is one
+     entry carrying several `prawduct:` tag lines that disagree — merge them and resolve the
+     conflict. The message names the entry and its line number.
+
+   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=`
+   - **Advisory, not a stop.** The first says work is shipping with no plan describing it (worth a
+     look, not worth blocking a release); the second says two plans declare one scope, so
+     scope→plan resolution is decided by sort order. Neither changes the exit code.
+
    `no-release-plan:` · `no-change-log:` · `no-version:` · `unreadable-release-plan:` · `no-backlog:`
    - An input the gate needs is missing or unreadable. **The message names the path** — create or
      fix it, then re-run. (`no-version:` means neither `--release` nor `plugin/VERSION` resolved;
