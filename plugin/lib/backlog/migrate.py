@@ -1711,7 +1711,7 @@ def merge(
     target_raw: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
-    absorb=None,
+    absorb: core.Absorb | None = None,
 ) -> dict:
     """Fold ``source`` into ``target`` (AU3/DM7): the minimal merge the scrub needs
     to dispose duplicates. **Canonical write order** — write the block

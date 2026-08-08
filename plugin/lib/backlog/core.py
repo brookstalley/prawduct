@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from . import encode, ids, issuefmt, provision
@@ -69,7 +70,13 @@ def from_transport_error(exc: TransportError) -> dict:
     return error(exc.code, exc.message, retryable=exc.retryable, details=exc.details)
 
 
-def _mirror(absorb, issue: dict, owner: str, repo: str) -> None:
+#: A write path's local-mirror hook: ``(issue, owner, repo) -> None``. Named once
+#: so the eight signatures that thread it agree by construction, and so a reader
+#: binding one in Chunk 03 has a shape to bind against rather than a bare `absorb`.
+Absorb = Callable[[dict, str, str], None]
+
+
+def _mirror(absorb: Absorb | None, issue: dict, owner: str, repo: str) -> None:
     """Hand a just-written issue to the local mirror, if a caller bound one.
 
     **This module stays provider-only and never imports the store.** The write
@@ -108,7 +115,7 @@ def file_item(
     facets: dict[str, str] | None = None,
     automated: bool = False,
     worker: str | None = None,
-    absorb=None,
+    absorb: Absorb | None = None,
 ) -> dict:
     """Create one item (AG2): ``title`` + ``body`` suffice; every facet optional.
 
@@ -477,7 +484,7 @@ def set_status(
     target: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
-    absorb=None,
+    absorb: Absorb | None = None,
 ) -> dict:
     """Idempotent, crash-safe two-axis status transition (Data Model §4 B1, CC1/M5).
 
@@ -653,7 +660,7 @@ def update_item(
     expected_updated_at: str | None = None,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
-    absorb=None,
+    absorb: Absorb | None = None,
 ) -> dict:
     """Field-wise edit with optimistic CAS (CC2) and a mass-assignment guard (SEC-2).
 
@@ -906,7 +913,7 @@ def link(
     target_raw: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
-    absorb=None,
+    absorb: Absorb | None = None,
 ) -> dict:
     """Set a typed edge from an item to a target (idempotent). ``edge`` is one of
     ``blocks``/``blocked-by``/``parent``/``child``/``related``. Either endpoint may
@@ -924,7 +931,7 @@ def unlink(
     target_raw: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
-    absorb=None,
+    absorb: Absorb | None = None,
 ) -> dict:
     """Clear a typed edge from an item to a target (idempotent)."""
     return _mutate_edge(
@@ -941,7 +948,7 @@ def _mutate_edge(
     default_repo: tuple[str, str] | None,
     *,
     add: bool,
-    absorb=None,
+    absorb: Absorb | None = None,
 ) -> dict:
     if edge not in _EDGE_TYPES:
         return error(

@@ -19,6 +19,7 @@ All offline: no ``gh``, no network.
 
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -237,9 +238,54 @@ class TestTheMirrorCostsNothingAndBreaksNothing:
             f"the mirror spent {with_mirror - without_mirror} extra provider request(s)"
         )
 
-    def test_an_unwritable_store_warns_and_the_write_still_succeeds(self, fake, repo_dir):
-        """The remote mutation has already landed. Failing the command here would
-        tell the caller to retry a write that is already done."""
+    def test_the_stores_first_query_cannot_escape_the_guard(self, fake, repo_dir):
+        """`absorb_rows`' first statement to touch the connection is `has_fts`, and
+        it once sat OUTSIDE the function's own `try` — so an unreadable-at-that-
+        moment store (no WAL, a concurrent writer past the busy timeout) raised
+        there and nowhere else, escaping every frame up to the CLI boundary.
+
+        Asserted by making that exact call raise, because that is the line the
+        defect was on. A read-only store does *not* reproduce it — reads succeed on
+        one, so the failure lands later, inside the guard, and the test would pass
+        against the defect."""
+        _warm(repo_dir, fake)
+        conn = cache.open_store(repo_dir, create=False)
+        try:
+            with pytest.MonkeyPatch.context() as patch:
+                patch.setattr(
+                    cache, "has_fts",
+                    lambda _conn: (_ for _ in ()).throw(sqlite3.OperationalError("locked")),
+                )
+                result = cache.absorb_rows(conn, [], fetched_at="2026-08-08T00:00:00Z")
+        finally:
+            conn.close()
+
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "unavailable"
+
+    def test_a_raise_anywhere_in_the_mirror_never_fails_the_write(self, fake, repo_dir):
+        """The structural half. Every function in the mirror chain is written not
+        to raise, and one of them stopped being true once — so the seam catches
+        rather than trusting the chain, and a landed provider write is reported as
+        the success it is.
+
+        End to end through `cli.run`: exit 0, with the failure surfaced as a
+        warning rather than swallowed."""
+        core.file_item(fake, owner=OWNER, repo=REPO_NAME,
+                       title="backlog: the item under test here", body="b")
+        _warm(repo_dir, fake)
+
+        def _explode(*a, **k):
+            raise RuntimeError("the mirror blew up")
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(sync, "absorb_issue", _explode)
+            code = _run(repo_dir, ["status", f"{SCOPE}#1", "--to", "shipped", "--json"], fake)
+
+        assert code == 0, "a raising mirror turned a landed provider write into a failed command"
+
+    def test_a_mirror_failure_is_reported_as_a_warning(self, fake, repo_dir):
+        """The other half of the same contract: degraded, and *said* so."""
         core.file_item(fake, owner=OWNER, repo=REPO_NAME,
                        title="backlog: the item under test here", body="b")
         _warm(repo_dir, fake)

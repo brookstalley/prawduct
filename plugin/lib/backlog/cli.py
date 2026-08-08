@@ -1012,9 +1012,30 @@ def _with_mirror(project_dir, call):
     def absorb(issue, owner, repo):
         from . import sync  # noqa: PLC0415 — lazy; no store import on other paths
 
-        outcome = sync.absorb_issue(
-            Path(project_dir), owner=owner, repo=repo, issue=issue
-        )
+        try:
+            outcome = sync.absorb_issue(
+                Path(project_dir), owner=owner, repo=repo, issue=issue
+            )
+        # prawduct:allow prawduct/broad-except -- a supervisor boundary: the
+        # provider mutation has already landed by the time this runs, so ANY
+        # escape here would report a completed write as failed and send the caller
+        # to retry it into a duplicate. The mirror is local bookkeeping and the
+        # command's success does not depend on it. Nothing is silenced — the
+        # failure becomes a warning on the envelope below, and the type is named.
+        #
+        # The functions this calls are each written not to raise, and one of them
+        # stopped being true once: `absorb_rows` ran its first query outside its
+        # own guard, so an unreadable store escaped the whole chain. Distributing
+        # a never-raises guarantee across a call chain means every future edit to
+        # any link has to preserve it; catching at the seam makes it structural.
+        except Exception as exc:
+            warnings.append(
+                "the write succeeded, but the local backlog cache was not updated "
+                f"({type(exc).__name__}); cached reads stay stale until the next "
+                "`prawduct-hook backlog sync`"
+            )
+            core.log_diag(f"the backlog cache mirror raised: {type(exc).__name__}: {exc}")
+            return
         if outcome.get("status") == "ok":
             return
         failure = outcome.get("error") or {}

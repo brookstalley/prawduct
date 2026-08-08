@@ -115,9 +115,13 @@ something.
 
 **Deliverables**
 
-- `core.file_item`, `core.set_status`, `core.update_item` and `core._related` take an injected
+- `core.file_item`, `core.set_status`, `core.update_item` and `core.link`/`unlink` take an injected
   `absorb: Callable[[dict, str, str], None] | None`, called with the authoritative post-write
-  issue each already holds **plus the item's resolved `owner`/`repo`**. `core` imports neither
+  issue each already holds **plus the item's resolved `owner`/`repo`**, typed as `core.Absorb`.
+  (`_related` takes no callback in the shipped shape — it *returns* the updated issue, or `None`
+  when the write was an idempotent no-op, and `_mutate_edge` mirrors it. Better than threading a
+  callback two levels down, because "there was nothing to mirror" becomes a value rather than a
+  branch inside the writer.) `core` imports neither
   `cache` nor `sync` — the seam keeps it provider-only and the callback testable without a store.
 - ~~**The scope guard**~~ — **shipped early, in Chunk 01. Nothing left to build here.** It was
   specified for this chunk, then subsumed by the fix for Chunk 01's blocking finding: requiring a
@@ -155,8 +159,17 @@ something.
 - **No additional provider request is spent** — asserted by counting transport calls with the
   mirror on and off and comparing, which is the positive control the learnings rule demands rather
   than an assertion that the count equals a number I typed.
-- A store that cannot be written (missing, or locked) leaves the write `ok` with a warning naming
-  the cause — asserted for both, since "already succeeded remotely" is the whole argument.
+- A store that cannot be written leaves the write `ok` — asserted end to end, not against an
+  injected stub, because a stub returns an envelope and so can only prove the envelope is handled,
+  never that nothing *raises* on the way there.
+  **[DEPARTURE from this criterion as first written | it said "missing, or locked … with a warning
+  naming the cause, asserted for both". A MISSING store now passes silently: a repo with no cache
+  is not a degraded mirror, it is a repo not using one, and every read already reports that
+  condition with the command that fixes it — warning per write would restate a known condition
+  where nothing is wrong and nothing is lost, since the next sync picks the item up by watermark.
+  Written from the mechanism at plan time rather than from the caller's experience. Cache Spec §6.1
+  carries the rule; `test_an_absent_store_is_silent` carries the behaviour | user can
+  veto/override]**
 - A write to an item in a repo other than the store's scope mirrors **nothing** and warns about
   nothing: the store is unchanged and the envelope carries no mirror warning.
 - `core` write functions still work with `absorb=None`, and no `core` module imports the store.
@@ -196,7 +209,7 @@ something.
 ## Status
 
 - [x] Chunk 01: The mirror primitive — and the three negatives that keep it honest
-- [ ] Chunk 02: Wire the eligible write paths, and make a future op fail something
+- [x] Chunk 02: Wire the eligible write paths, and make a future op fail something
 - [ ] Chunk 03: `import`, the reader-facing surfaces, and the coherence sweep
 
 **Context:** Branch `fix/backlog-cache-write-path` off `develop`, baseline 4214 passed / 7 skipped.

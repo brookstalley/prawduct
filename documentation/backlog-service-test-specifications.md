@@ -456,6 +456,30 @@ rather than impossible (Data Model §1.4).
   off, `sync` is a no-op (cheap-polling baseline; webhooks are an optional AU1 enhancement, not tested
   here).
 
+**QRY-6 — the local-write mirror: read-your-writes, and the three stores it must refuse**
+(→ Data Model §1 read-your-writes, Cache Spec §6.1, NFR §4/§5)
+- Level: integration (the write half through the CLI, the invariants at the store)
+- Setup: a warmed cache; a fake provider; and three degenerate stores — one absent, one
+  **schema-only** (schema committed, `item` and `cursor` both empty, which is what a rebuild whose
+  `replace_items` step failed leaves behind), one holding a different scope.
+- Action: each op that changes cached state, driven the way a caller drives it — `file`, `status`,
+  `update`, `link --edge related`, `merge` — then a cache read; plus a mirror attempted against
+  each degenerate store.
+- Expected: the write is visible to the next cache read with **no additional provider request**
+  (asserted against a control run with the mirror absent, not against a fixed count). The mirrored
+  row equals what a rebuild would write, indexes included. The mirror moves **neither** `since`,
+  `etag`, **nor** `coverage_confirmed_at` — a mirror is not a fetch and has no coverage to claim.
+  It creates no store, declines the schema-only one (which would otherwise serve one item aged ~0s
+  through the row-stamp fallback — the freshness lie §6.1 forbids), and silently skips an item
+  outside the store's scope. A mirror failure warns on an otherwise-`ok` envelope and never fails
+  the write, because the provider mutation has already landed; an *absent* store is silent, since
+  every read already reports that condition. Native `blocks`/`parent` edges mirror nothing — the
+  store holds no column for them.
+- Anti-test: do **not** assert the mirror against `cachequery.resolve` for a merged source or for
+  body content — `resolve` follows the `superseded_by` redirect to the survivor and returns a
+  resolution payload with no `body`, so such an assertion silently examines the wrong item and
+  passes regardless of whether the mirror ran.
+
 ### 3.9 Security-negative (Security Model F1–F7)
 
 **SEC-1 — No token in any output; structured-error primary + scrub backstop** (→ F2/N4, Security §4, API §4)
@@ -830,6 +854,7 @@ duplicates (the same behavior stated in 4–5 docs) collapse to one row.
 | Q1-fulltext/Q3 search cache-served; semantic capability-probed | **QRY-3** |
 | Q5/Q4 counts-on-read; rollup fan-out | **QRY-4** |
 | Q2/AU1 sync changed-since cursor | **QRY-5** |
+| Read-your-writes (Data Model §1) — the local-write mirror | **QRY-6** |
 | F2/N4 no token in output; scrub patterns | **SEC-1** |
 | Security §2 mass-assignment guard | **SEC-2** |
 | CC4/N3 attribution off API identity, once/process | **SEC-3** |

@@ -776,8 +776,16 @@ def absorb_rows(
     rather than a gap. Everything commits in one transaction so a reader never
     observes a row without its derived index rows.
     """
-    fts = has_fts(conn)
     try:
+        # INSIDE the guard, and the placement is the point rather than tidiness:
+        # this is the first statement to touch the connection, so a store that is
+        # unreadable at this moment raises HERE and nowhere else. Left outside, the
+        # exception escapes every frame up to the CLI boundary and turns a provider
+        # write that has ALREADY LANDED into a reported failure — whereupon the
+        # caller retries into a duplicate. The siblings below can afford the same
+        # statement outside their `try`, because a raise there is attributed to a
+        # sync the caller chose to run; a mirror has no such caller to blame.
+        fts = has_fts(conn)
         with conn:
             _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
             evicted = _delete_items(conn, evict or [], fts=fts)
