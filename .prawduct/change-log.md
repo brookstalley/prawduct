@@ -157,7 +157,13 @@ this for the whole period the probe returned `[]`.
   spec does not enumerate, because `pick` never went dormant. It reads bodies, unlike the other
   listings, so an open-but-redirected item is dropped rather than offered as buildable.
 - `plugin/lib/backlog/cache.py` — schema **v6**: `relationship` dropped. `comment` stays, with the
-  trigger written at the table. A new test pins `SCHEMA_VERSION` to a fingerprint of the schema
+  trigger written at the table. **Superseded later on this branch — the shipped schema is v7:** the
+  trigger written at that table fired when the query surface settled with no comment-reading
+  consumer, so `comment` went too, and `item.etag` with it (its producer was retired by the same
+  work). The tree's tables are `cursor`, `item`, `item_affected`, `item_alias`, `item_fts`; a pre-v7
+  store reports the mismatch and rebuilds. A reader assembling the release story from this entry
+  alone would state the wrong persisted-format version, which is why the correction lives here
+  rather than only in the entry that made it. A new test pins `SCHEMA_VERSION` to a fingerprint of the schema
   statements, because mutation testing found the bump had no guard at all: the one earlier case was
   caught only because a query broke against the stale store, and a change that *removes* something no
   query reads leaves the old store working and the bump silently optional — which is how a rule with
@@ -291,6 +297,9 @@ writes `item.etag`. Sync reads the *list* endpoint, and a list ETag replayed aga
 validator at all. Storing it would have made the Chunk 05 revalidation miss on every read, spend a
 full request, and look like it was working. The two validators are now separate: `cursor` carries
 the list-query validator, `item.etag` stays NULL until a decision-path read populates it.
+**Superseded later on this branch:** that decision-path read was never built — `pick` revalidates
+through `cursor.etag` instead — so the column had no producer and was dropped in the v7 schema.
+`cursor.etag` is unaffected and remains the live list validator described above.
 
 **Changes:**
 - `cursor(scope, since, etag, fetched_at)`; `apply_incremental` writes rows and watermark in one
