@@ -1,0 +1,419 @@
+---
+artifact: build-plan
+version: 2
+scope: governance-artifact-lifecycle
+# Requirements: documentation/governance-artifact-lifecycle-requirements.md (v0.4).
+# Tracked: brookstalley/prawduct#629 · related: #558 (pre-inventories the blast radius).
+depends_on:
+  - artifact: architecture
+  - artifact: data-model
+  - artifact: nonfunctional-requirements
+governed_by:
+  - artifact: architecture
+    dispositions:
+      - "an independent reviewer never mutates the session it reviews → conforms; no chunk touches critic-begin/consolidate or the mutation guard"
+      - "authority fails closed; advice fails soft → SUBJECT REMOVED. The regen-views-is-advice ruling exists only to reconcile this norm with data-model's derived-views norm for one command; that command goes in Chunk 02 and the ruling is retired as a recorded decision in Chunk 03 (GD4), not deleted quietly"
+      - "local-first governance coordination, no network, no third-party deps → conforms; every chunk is local file + git work"
+      - "the plugin writes nothing into a governed repo except its own .prawduct/ state and the files it must reconcile → conforms, and Chunk 05 narrows it: doctor's repair touches .prawduct/ only"
+      - "written in Python, never specific to Python → conforms; nothing here inspects product source"
+      - "prawduct guides and reviews, never implements → inapplicable because this plan changes prawduct's own governance machinery, not a governed product's code"
+      - "goals and verification bind; prescribed method is advice → conforms, and relied upon: each chunk's Deliverables name a route derived before the code was re-read. A builder who finds a better split takes it and records why"
+      - "every fact has one home; every other mention is a reference to it → conforms, and this is the plan's thesis. Chunk 03 applies it to the shipping version (BP3 canonicality: release= is home, the plan's frontmatter copy is permitted only because a shipped version is immutable)"
+  - artifact: data-model
+    dispositions:
+      - "governance verdicts computed from the append-only ledger, never from mutable model-written state; no model in a fact's write path → conforms, and strengthened. FL3 keeps doctor out of live checkbox state; DV7's tripwire reports and never writes"
+      - "facts are immutable and append-only; a state change is a new fact → conforms; no chunk edits the evidence store"
+      - "derived views are disposable and never authoritative — no gate reads a view → conforms, and this plan removes the last subsystem where a view existed at all"
+      - "every issue written to the backlog store conforms to the issue standard's §1 title rules → inapplicable because no chunk writes to the backlog store"
+      - "a fact from a newer schema is a loud block, never silently dropped → inapplicable because no chunk introduces or reads a versioned fact schema"
+      - "two stores, two lifetimes: committed answers vs gitignored nags and caches → conforms. Build plans (live and archived) are committed answers per BP4; release-notes.md is demoted to frozen archive, not promoted"
+      - "backlog_service_repo selects the authoritative store; backlog.md is then frozen history → conforms; #629 was filed through the skill and backlog.md was not touched"
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "review wall-clock is P0; run-count and unit-cost are both levers; PR-boundary reviews run in parallel → conforms, favourably. Five chunks in one PR means one cumulative pass, not five finals; BP9 also removes a per-session cost that grows with the archive"
+      - "proportionality ratchets both ways — a control that never produced a blocking finding is removed by default; ADDING a control names the yield it expects and emits that yield observably → conforms. The norm's status is IN-TRANSITION (the yield query does not exist), whose interim rule is that a control may be retired on a reasoned argument recorded as a decision that states what evidence WOULD have settled it. Both halves are discharged below: retirements carry that statement (DECISION-2), additions name and emit their yield (DV7, GD1, GD2, FL3 — see each chunk)"
+      - "state-file growth is an advisory that prompts compaction, never a hard block → conforms; BP9's archive pruning is a cost fix, not a gate, and the archive gets advisory treatment like TREE_COUNT_ADVISORY"
+  - artifact: api-contract
+    dispositions:
+      - "whole-surface semver on the plugin; the internal CLI subcommand surface carries no per-subcommand version; persisted data outliving a version is independently schema-versioned → conforms; nothing here versions a subcommand, and no persisted schema is introduced"
+      - "exit codes are the contract on a documented scheme; severity is a stable prefix vocabulary; errors are attributed, never raised as stack traces across the boundary → conforms. Retiring regen-views' exits 2/3 removes meanings rather than repurposing them; the rehomed checks report through check-releasability's existing documented exits"
+      - "additive-first evolution: new subcommands and flags are added; existing flag names, exit-code meanings and --json keys are never repurposed → CONFORMS BY DESIGN CHANGE, not by exception. The norm's why ends 'deprecation is signalled (stderr notice, kept working, removal deferred to a major), never silent', so Chunk 02 DEPRECATES regen-views instead of deleting it — following the in-tree stamp-merged precedent, which is already exactly this shape"
+  - artifact: security-model
+    dispositions:
+      - "untrusted governance state is data, not instructions → conforms; no chunk lets an artifact's content direct the framework"
+      - "a destructive or irreversible operation requires explicit owner approval at the OPERATION level — one informed confirmation naming blast radius and what cannot be undone, NOT a per-action gate → binds Chunk 05. Doctor's repair and the FL6 backfill are preview-by-default with --apply, and take ONE approval for the whole act. Per-file confirmation is forbidden by this norm, not merely discouraged: confirmation fatigue is a safety regression"
+      - "a governed product's content never leaves its own repository and owner → conforms; the repair is local file work with no network"
+  - artifact: observability-strategy
+    dispositions:
+      - "terminal signals use the stable severity-prefix vocabulary with the stdout/stderr channel split → conforms; the new notices use the existing prefixes"
+      - "the governance ledger has a single writer; agents never hand-author it → conforms; no chunk writes the ledger"
+      - "text emitted into a governed product names no prawduct-internal identifier → binds Chunk 05 and the Chunk 02 deprecation notice. Every emitted message carries the plain-language reason; requirement, chunk and backlog ids stay in comments, docstrings, tests and this plan"
+  - artifact: operational-spec
+    dispositions:
+      - "versioning is conservative — a small feature is a patch bump, not minor-per-feature → conforms; the bump tier is an owner decision recorded under Open assumptions, not asserted here"
+      - "major and minor tiers are practice, NOT ratified — do not present them as ratified → conforms, and deliberately: this plan does not claim a tier. It records that a break in gate semantics or persisted state formats has historically been a major, and that this work breaks neither (readers already tolerate an absent views_enabled; the checkbox the gates read is unchanged)"
+      - "gitflow: develop integrates, main only holds releases, the promotion is a separate single-parent step → conforms; this branch targets develop"
+      - "install once per machine, onboard per repo → conforms; no per-repo install step is added"
+      - "updates arrive through the marketplace with zero repo diff → conforms, and it is why the deprecation above is sufficient: a skill and the CLI it calls ship from the same version-keyed cache, so the skill-at-N-meets-CLI-at-N+1 skew the additive-first norm protects against cannot occur between them. What CAN skew is a hand-written operator script or a copied runbook, which is exactly what the deprecation notice serves"
+      - "the version bump is the release mechanism — a release that forgets the bump does not ship → conforms; Chunk 05 carries the bump with the attribution banner"
+last_validated: 2026-08-08
+---
+
+## Requirements Confidence
+
+**Level:** High
+
+**Why:** Problem, success, and scope are each statable in one sentence and are written down in
+`documentation/governance-artifact-lifecycle-requirements.md` (v0.4), which was measured against code
+and 21 real checkouts rather than inferred. Every consumer of every affected output was traced to its
+call sites. The owner has confirmed the direction, the checkbox decision, the DV7 tripwire, and the
+archive backfill.
+
+**Open assumptions / unknowns:**
+
+- `[ASSUMPTION: this ships as ONE PR and one release — the removal, doctor's repair, and the
+  attribution banner must land together or consumers get a silent break | HIGH impact | user can
+  override → stage it, but then the flag must survive until doctor's repair ships]`
+- `[ASSUMPTION: the bump tier is the owner's call and this plan does not assert one | MED | user
+  decides]` — the operational-spec norm is explicit that **major and minor tiers are practice, not
+  ratified, and must not be presented as ratified**; only conservative-bumping binds. What the plan can
+  say: historically a break in gate semantics or persisted state formats has been a major, and this
+  work breaks **neither** — readers already tolerate an absent `views_enabled` (that is today's
+  default), the checkbox the gates read is unchanged, and DECISION-1 keeps the CLI callable. On those
+  facts a patch or minor is defensible; a major is only forced if DECISION-1 is overridden.
+- `[ASSUMPTION: the archive is flat .prawduct/artifacts/archive/, not per-year | LOW | user can
+  correct; per-year matters past a few hundred plans]`
+- `[ASSUMPTION: #629 stays one item rather than splitting into views-retirement and plan-archival |
+  LOW | user can correct at any point; the two chunks are already separable]`
+
+**What would raise confidence:** N/A at High.
+
+## Recorded decisions
+
+Two departures-or-near-departures, recorded rather than left to silence
+(`/prawduct:methodology norms`).
+
+`[DECISION-1: regen-views is DEPRECATED, not deleted — it stays callable, prints a stderr notice
+saying derived views are retired, does nothing, and its removal defers to a major | The additive-first
+norm's why ends "deprecation is signalled (stderr notice, kept working, removal deferred to a major),
+never silent." Deleting the subcommand outright would be exactly the silent removal it forbids. The
+skew that norm protects against cannot occur between a prawduct skill and the prawduct CLI — they ship
+from one version-keyed cache — but it absolutely can occur in a hand-written operator script or a
+copied runbook, and prawduct's own release runbook calls this command. The in-tree stamp-merged
+retirement is already this exact shape, so this conforms by precedent rather than by argument |
+user can override → hard-delete and accept the break, which then argues for a major bump]`
+
+`[DECISION-2: the four validators, two diagnostics, and the derived-view machinery are retired on a
+reasoned argument, per the proportionality norm's in-transition interim rule | That rule requires the
+argument state what evidence WOULD have settled it. It would have been: a yield record showing each
+control had produced at least one blocking finding. No such record exists — the norm's own status says
+the yield query does not exist yet — so the substitute is call-site tracing: four of the six guard
+fields that CEASE TO EXIST (chunks=, status=), which is retirement by construction rather than by
+judgement. The two guarding surviving fields are NOT retired; they are rehomed (CL6, CL7), and CL6's
+keep-reason is a named incident rather than a principle | user can veto any individual retirement]`
+
+**Retroactivity: `migrate`, declared** — not `contain`. Every norm carries this field, and a fleet
+default cannot leave it implicit. Existing sites are swept: `views_enabled` keys and `scope_rollups`
+blocks across onboarded repos, and accumulated live build plans into the archive (FL6). The norm's
+`migrate` form also requires a tracking item whose **first acceptance criterion is the completion of
+the enumeration** — that item is **#629**, and its acceptance must be updated to say so before
+Chunk 05 starts.
+
+## Status
+
+- [ ] Chunk 01: Rehome the survivors — two named modules, nothing deleted yet
+- [ ] Chunk 02: One reading — retire the flag, the command, and the dual progress path
+- [ ] Chunk 03: Trim the tag schema, the doc restatements, and the two norm decisions
+- [ ] Chunk 04: Archival — completion frontmatter, five deletion sites, two terminal states
+- [ ] Chunk 05: Doctor repair, the archive backfill, and the guards that keep it converged
+Context: Plan written 2026-08-08 on `feature/governance-artifact-lifecycle` (off `develop`),
+requirements v0.4 committed at `b681fab`. Nothing built. Next: Chunk 01, after reconciling against the
+in-flight learnings sweep. Ships as one PR — Chunk 05's cumulative review is the `/prawduct:pr create`
+gate. Suite state is read from the evidence store, not recorded here.
+
+## Scaffolding
+
+Existing repo; no new scaffold, no new dependencies, no build-config change. `uv run pytest -q` runs
+the suite as today. The one structural addition is two new `plugin/lib/` modules in Chunk 01, which
+need no scaffolding beyond their files and tests.
+
+### Verification Strategy
+
+Tests carry most of this, but three things tests cannot see, each assigned to a chunk:
+
+1. **The gates still fire.** After Chunk 02 the Stop hook's Critic and reflection gates depend on the
+   hand-ticked checkbox alone. Verify by exercising a real session boundary — not by reading the code
+   that was just changed. This is the `gates.py:808` failure mode, and it failed silently last time.
+2. **A real repo converges.** After Chunk 05, run doctor's repair against an actual consumer checkout
+   from each cohort — one key-absent, one inert-`true`, one live-`true` (the requirements doc names
+   which repos are which) — on a scratch copy, and confirm idempotence by running it twice.
+3. **An archived plan still reads right.** After Chunk 04, open an archived plan cold and confirm the
+   frontmatter answers "is this current?" before any body text can mislead, and that `grep` hits from
+   it carry `archive/` in the path.
+
+## Project Structure
+
+```
+plugin/lib/
+├── change_log.py     # new (Chunk 01): tag reading + the merged validator
+├── plan_index.py     # new (Chunk 01): scope→plan resolution, archive-aware
+├── views.py          # deleted (Chunk 02)
+├── buildplan_refs.py # dual reading collapses (Chunk 02)
+├── release_readiness.py  # gains the rehomed checks (Chunk 01)
+└── doctor/…          # gains the repair + backfill (Chunk 05)
+```
+
+### Module Boundaries
+
+`change_log.py` knows tags and nothing about plans. `plan_index.py` knows plans and nothing about
+tags. Nothing named `views` survives — the current module does both jobs under a name describing
+neither, which is part of why the dual-reading defect reached three consumers before anyone
+generalised it. `release_readiness.py` is the only caller of the tag validator, because it owns the
+only gate that reads tags.
+
+## Build Chunks
+
+### Chunk 01: Rehome the survivors — two named modules, nothing deleted yet
+
+- **Description:** The thin slice that proves the split before anything is removed. Extract what must
+  outlive `views.py` into two clearly-named modules, repoint callers, and fold the two earned checks
+  into the gate that needs them — with `views.py` still present and still working. This is deliberately
+  the "keep the old implementation as reference and test both" discipline that carried the coverage-perf
+  rewrite: after this chunk the tree has two paths and one behaviour, so Chunk 02's deletion is a
+  subtraction with an oracle rather than a rewrite.
+- **Depends on:** none
+- **Artifacts consumed:** requirements v0.4 — "What survives the deletion", CL6, CL7
+- **Deliverables:**
+  - new `plugin/lib/change_log.py` — `parse_change_log`, `ChangeLogEntry`, `parse_tag_line`, plus one
+    merged `validate_change_log_tags` over the two surviving keys (value format, duplicate key,
+    duplicate tag line), replacing four separate validators.
+  - new `plugin/lib/plan_index.py` — `build_scope_to_plan_map`, `iter_scoped_plan_candidates`, the
+    frontmatter/artifact-kind parsers, and the archive-skip guard. **Prune the archive directory at
+    walk level** — new `.prawduct/artifacts/archive/`, created in Chunk 04 — rather than
+    rglob-then-filter (BP9): three hot paths ask this, so the cost is paid at every session START via
+    the briefing, at every session END via the Stop hook, and at review dispatch. Pruning a directory
+    that does not exist yet is a no-op, so this lands safely before Chunk 04 creates it.
+  - `plugin/lib/release_readiness.py` — calls `validate_change_log_tags`, and gains the rehomed
+    "unreleased scope with no build-plan file" diagnostic, searching live **and** archived plans (CL7,
+    BP8). Note `_find_release_plan` globs non-recursively today; BP8's live-then-archive rule lands here.
+  - `plugin/lib/buildplan_refs.py::_scope_plan_map` repointed at `plan_index`.
+  - Both new modules follow this repo's **return-value error convention** — `lib/` functions return
+    dicts carrying `status`/`reason`; exceptions escape only at boundaries. New raising code inside
+    governance internals is a preferences violation, so the extraction must not "simplify" the existing
+    functions into raisers on the way across.
+- **Tests:** unit — the merged validator against each malformed shape the four separate ones caught,
+  including the `release=unreleased` case by name; `plan_index` archive pruning (an archived namesake
+  must not shadow its live sibling, and must not be parsed); equivalence tests asserting
+  `change_log.parse_change_log` and `plan_index.build_scope_to_plan_map` agree with the `views.py`
+  originals across this repo's real change log and artifacts directory — the old implementation is the
+  oracle while it still exists. Integration — `check-releasability` exits non-zero on a malformed
+  `release=` and names it.
+- **Acceptance criteria:** `check-releasability` refuses a `release=unreleased` entry with a named
+  reason (this is the acceptance criterion, not a side effect — it is the guard that hid a branch from
+  v3.2.8); the equivalence tests pass; review dispatch, session start and session end all still
+  resolve the branch's plan.
+- **Critic mode:** final
+  <!-- Override: inference picks `chunk` mid-plan. This chunk lands the architectural keystone —
+       two module boundaries every later chunk builds on, plus the rehoming that decides whether the
+       deletion in Chunk 02 is safe. Coherence matters before, not after. -->
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 02: One reading — retire the flag, the command, and the dual progress path
+
+- **Description:** Delete the machinery now that its survivors have homes. `views_enabled` goes from
+  code, template, and every conditional; `regen-views` and `stamp-merged` go; the git-derived
+  precedence composition and its degraded-reading notice go, leaving the hand-ticked checkbox as the
+  single reading. Add DV7's reporting-only staleness tripwire, which is the one thing the git reading
+  was genuinely good for.
+- **Depends on:** Chunk 01
+- **Artifacts consumed:** requirements v0.4 — DV1–DV5, DV7; #558's blast-radius inventory
+- **Deliverables:**
+  - `plugin/lib/views.py` deleted; `plugin/lib/core.py` loses `views_enabled` from the opt-in scan
+    surface.
+  - `plugin/bin/prawduct-hook` — `regen-views` is **deprecated, not removed** (DECISION-1): it stays
+    callable, prints a `WARNING:` stderr notice in **plain language naming no internal identifier**
+    (the observability norm), writes nothing, and exits 0. `stamp-merged` is already deprecated in this
+    shape — match it rather than inventing a second convention. Removal of both defers to a major.
+  - `plugin/lib/buildplan_refs.py` — `_git_aware_progress`, `_committed_chunk_ids`'s progress role,
+    `degraded_progress_notice` and `DEGRADED_PROGRESS_TOKEN` removed; `resolve_chunk_progress` becomes
+    the checkbox reading; `_completed_chunk_ids`' two-reading branch collapses to one.
+    `_commits_ahead_of_base` **stays** — `critic_mode` uses it independently.
+  - DV7's tripwire: `_committed_chunk_ids` is **repurposed, not deleted** — it feeds a
+    reporting-only comparison of the ticked set against the chunk ids the session's commits mention.
+    **Expected yield, per the proportionality norm:** it catches a finished-but-unticked chunk before
+    the session boundary. It **emits that yield observably** — every firing names the chunk and the
+    commit, so the control can be retired on evidence later rather than defended on principle.
+  - `plugin/templates/project-state.yaml` loses `views_enabled` and `scope_rollups`;
+    `plugin/lib/briefing.py`, `critic_mode.py`, `gates.py`, `advisory_store.py`,
+    `operator_verification.py` lose their `views_enabled` branches and caveats.
+  - `.prawduct/release-notes.md` renamed to frozen archive with a header saying so (DV5).
+- **Tests:** the ~30 `tests/test_views.py` tests targeting `parse_change_log` are **the contract** —
+  rewritten against `change_log.py` in Chunk 01 and retired here, never deleted wholesale. Rewrite the
+  `views_enabled`-parameterised cases in `test_build_plan_resolution.py`,
+  `test_critic_mode_inference.py`, `test_handoff_parser_correctness.py` (its "Defect 4 — at EVERY
+  consumer" section becomes a single-reading assertion), `test_briefing_functions.py`,
+  `test_plugin_runtime.py`, `test_plugin_migrate.py`. New: the tripwire reports and never writes.
+- **Acceptance criteria:** one reading of chunk progress exists; the Stop hook's Critic and reflection
+  gates still engage on a plan with an unticked chunk **and still engage after the final chunk is
+  committed but before its review** — verify against a real session boundary, per Verification Strategy
+  item 1; `regen-views` still exits 0 with its notice.
+  **Completeness is a falsifying command returning nothing, never a count of sites fixed** — a count is
+  true of any prefix of the real set. And the identifier sweep is only half: grepping `views_enabled`
+  finds the sites that *name* it and misses the prose that *asserts the old model in other words*. So
+  two sweeps, in vocabularies sharing no word: (1) the identifiers — `views_enabled`, `regen-views`,
+  `scope_rollups`, `stamp-merged`; (2) the claim — "derived view", "regenerate", "flips at release",
+  "canonical source is the change-log tag", "do not hand-edit", "hand-flip". Both must come back empty
+  of live assertions before this chunk closes. Record the commands, not the tally.
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 03: Trim the tag schema, the doc restatements, and the two norm decisions
+
+- **Description:** The prose half, and the two norm lifecycle events. `chunks=` and `status=` leave the
+  tag schema; every document that teaches the derived-views model is corrected; the
+  `regen-views-is-advice` ruling is retired with its precedence annotations removed from both norms it
+  touched, and the ephemeral-ref firewall is narrowed. Both are recorded decisions, not doc-sync.
+- **Depends on:** Chunk 02
+- **Artifacts consumed:** requirements v0.4 — CL1, CL2, CL5, GD3, GD4, BP7
+- **Deliverables — the surfaces, enumerated so the chunk's true size is visible.** Plugin docs
+  shipping to consumers: `plugin/skills/critic/review-protocol.md`, `plugin/skills/critic/SKILL.md`,
+  `plugin/skills/critic/review-cycle.md`, `plugin/skills/pr/SKILL.md`,
+  `plugin/skills/pr/review-protocol.md`, `plugin/methodology/building.md`,
+  `plugin/templates/build-plan.md`, `plugin/templates/change-log.md`, and
+  **`plugin/methodology/session-digest.md`** — a new framework-wide default must land in the digest,
+  because place-once preferences and the thin CLAUDE.md anchor do **not** reach migrated repos, and
+  "the checkbox is yours to tick" is exactly such a default. Repo records:
+  `documentation/release-process.md` (step 3's knowingly-broken sweep and step 4 both go),
+  `.prawduct/cross-cutting-concerns.md` (the derived-views row and its READ-side rule),
+  `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` (Phase 1 steps 2 and 10).
+  Norm decisions: `.prawduct/artifacts/architecture.md` and `.prawduct/artifacts/data-model.md` lose
+  the `regen-views-is-advice` precedence annotations; `.prawduct/learnings.md` +
+  `learnings-detail.md` retire the ruling and the eight format-rule entries, and **invert L:175**
+  ("never hand-check the boxes" becomes the opposite instruction). While inverting it, fix its shape —
+  `verify-records` reports that entry as 438 chars against a 400 budget, so the rewrite moves its
+  evidence to `learnings-detail.md` under the same heading rather than carrying the overflow forward.
+  Several of these carry token-budget guardrail tests — expect the trim, do not discover it at close.
+- **Tests:** the structural//assert-absent scans that pin retired vocabulary; the guardrail tests on
+  the trimmed surfaces; `test_record_lint.py`'s citation checks against the retired learnings ids.
+- **Acceptance criteria:** no shipped document teaches `chunks=`, `status=`, or a derived Status block;
+  the release process describes adding `release=` and nothing else; both norm retirements are recorded
+  as decisions naming what changed and why, and a reader of either norm finds the retirement rather
+  than silence.
+- **Type:** doc-only
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 04: Archival — completion frontmatter, five deletion sites, two terminal states
+
+- **Description:** Give build plans an end-of-life that is not deletion. A completed or superseded plan
+  gains completion frontmatter and moves to the archive; every surface that deletes a plan or teaches
+  that plans are deleted is changed; archived plans stay findable by name.
+- **Depends on:** Chunk 03
+- **Artifacts consumed:** requirements v0.4 — BP1–BP3, BP5, BP6, BP8, BP10
+- **Deliverables:**
+  - The archival operation itself — add completion frontmatter, move into `.prawduct/artifacts/archive/`
+    (created by this chunk), leave checkbox state untouched (FL6: it is not a precondition and is not
+    corrected, because nothing reads an archived plan's boxes).
+  - Completion frontmatter carrying: terminal state (**completed** or **superseded/abandoned** — BP10's
+    two states), date, the release that carried it where the product versions, an explicit
+    no-longer-maintained statement, and for the superseded case what replaced it or why it stopped.
+  - **All five deletion surfaces** (BP6), because naming one would leave the behaviour in force in
+    four: `plugin/skills/pr/SKILL.md` (merge flow archives instead of deleting; the gitflow-vs-trunk
+    branch still decides *when*, not *whether*), `plugin/skills/janitor/SKILL.md` (its
+    delete-the-plan cleanup step), `plugin/lib/briefing.py` (**two** nudges that tell the operator to
+    delete the plan every session), `plugin/methodology/building.md` (the self-containment rule's
+    premise that plans "are deleted when work ships"), `plugin/skills/critic/review-protocol.md` (the
+    WARNING resting on that premise, re-derived per BP7).
+  - `plugin/templates/build-plan.md` gains the completion-frontmatter shape.
+- **Tests:** unit — frontmatter round-trips for both terminal states; a named artifact resolves after
+  archival and a live file wins over an archived namesake (BP8); an archived plan is not treated as a
+  live assertion by any scanner (BP5). Integration — the merge flow archives rather than deletes on
+  both the trunk and gitflow paths. Assert-absent: no shipped surface instructs deleting a plan.
+- **Acceptance criteria:** a completed plan ends up in the archive with frontmatter that answers "is
+  this current?" on open; a superseded half-finished plan archives too, with unticked boxes intact; no
+  surface anywhere tells anyone to delete a plan.
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 05: Doctor repair, the archive backfill, and the guards that keep it converged
+
+- **Description:** Land the fleet. Doctor performs the mechanical repair and the one-time backfill;
+  two guards stop the divergence recurring; the release attributes the change. Nothing here asks the
+  owner to hand-edit a repo.
+- **Depends on:** Chunk 04
+- **Artifacts consumed:** requirements v0.4 — FL1–FL7, GD1, GD2, GD3
+- **Deliverables:**
+  - Doctor's mechanical repair (FL2), idempotent and a no-op on repos already converged: remove the
+    `views_enabled:` key, remove `scope_rollups:` and its comments, freeze `release-notes.md`, strip
+    `<!-- views_enabled: … -->` comments from build plans.
+    **Preview-by-default with `--apply`, and ONE operation-level approval** naming the blast radius and
+    what cannot be undone — the security-model norm forbids a per-action gate here, in those terms:
+    per-file confirmation is not merely noisy, it is a safety regression through confirmation fatigue.
+    Every emitted line carries a plain-language reason and **no prawduct-internal identifier**.
+  - The FL6 backfill: archive existing shipped plans, here and in consumer repos. Shipped is decided
+    mechanically — a plan whose `scope=` carries a `release=` tag in the change log — which is a
+    fitting last use of the tag data before it goes inert. Where a product has no release tags, doctor
+    **proposes** the set and the operator confirms; proposing a move is not writing governance state,
+    so FL3 does not reach it. **This repo is a subject, not an exception** — its own accumulated plans
+    are backfilled by the same code path, which is also the verification that the path works.
+  - FL3's report-only notice for live plans whose Status was derived and is stale on an in-flight
+    chunk. **Expected yield:** it names the plans a human must look at once, per repo, during the
+    transition. **Emitted observably:** it prints the plan and the chunk, so it can be retired when it
+    stops firing.
+  - **GD1** — a test asserting every opt-in flag's template value equals its code default. **Expected
+    yield:** it fails on the next flag whose template and code disagree, which is the actual root cause
+    of the split this plan exists to fix (three disagreeing declarations, nothing comparing them).
+    **Emitted observably:** the failure names the flag and both values.
+  - **GD2** — a doctor check that fails if `views_enabled` reappears. **Expected yield:** a repo
+    reintroducing the flag by copying an old state file. Prints the repo and the key.
+  - **GD3** — the retirement is recorded where someone looking for `views_enabled` or `regen-views`
+    finds it, not silence. The failure mode being designed against is the `cmd_regen_views` docstring,
+    which described the file-sync auto-enable for three minor versions after that engine was deleted.
+  - **FL4** — a version-delta banner headline naming the retired flag and command, plus the
+    `plugin/CHANGELOG.md` entry that becomes the GitHub Release notes.
+- **Tests:** unit — repair idempotence (twice is a no-op) and per-cohort behaviour across all three
+  cohorts; the backfill's shipped-set derivation; GD1 across every opt-in flag; GD2's detection.
+  Integration — a scratch copy of one real repo per cohort converges, per Verification Strategy item 2.
+- **Acceptance criteria:** all three cohorts converge with no hand-editing; running the repair twice
+  changes nothing the second time; GD1 fails if a template default is edited away from its code
+  default; the banner names the change on the release that carries it.
+- **Type:** cumulative-final
+  <!-- Last chunk of a plan shipping as one PR: its review IS the one
+       `/prawduct:critic cumulative` over merge-base...HEAD. Commit first, run once, no separate
+       `final`. That review is also the `/prawduct:pr create` gate. -->
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
+  3. Chunk marked `[x]` in Status; change-log entry added carrying `scope=governance-artifact-lifecycle`
+
+## Early Feedback Milestone
+
+**Milestone chunk:** 02
+**What the user can do:** open a build plan mid-branch and see checkboxes that mean what they say —
+tick one when a chunk finishes and have it stay ticked. That is the whole user-visible point, and it
+arrives as soon as the derivation is gone.
+
+## Governance Checkpoints
+
+**Commit & PR cadence:** commit per chunk after its Critic review passes. Ships as **one PR** — the
+removal, doctor's repair, and the attribution banner must land in the same release or consumers get a
+silent break (see the HIGH open assumption). Chunk 05's cumulative review is the `/prawduct:pr create`
+gate.
+
+- **After Chunk 01** (architecture validation): confirm the two module boundaries hold and the
+  equivalence oracle actually discriminates — a test that passes against both implementations because
+  it exercises neither is the trap the ledger spike documented.
+- **After Chunk 02** (midpoint, highest risk): verify the Stop hook's gates against a real session
+  boundary, not by reading the diff. This is where `gates.py:808`'s incident happened, and it failed
+  silently.
+- **Before Chunk 05 completes** (release readiness): confirm no consumer repo needs a manual step, and
+  that #558 is closed or repointed rather than left describing a flag that no longer exists.
