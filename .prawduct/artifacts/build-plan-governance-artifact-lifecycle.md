@@ -535,6 +535,21 @@ only gate that reads tags.
     premise that plans "are deleted when work ships"), `plugin/skills/critic/review-protocol.md` (the
     WARNING resting on that premise, re-derived per BP7).
   - `plugin/templates/build-plan.md` gains the completion-frontmatter shape.
+  - **A false positive DV7's tripwire produced on this repo, minutes after it shipped.**
+    `_CHUNK_COMMIT_RE` is `Chunk\s+(\d+)`, which matches a chunk id anywhere in a commit subject —
+    including a commit that merely *mentions* a later chunk. Chunk 02's own closing commit ("…carry
+    R-16's undelivered half and R-9's tail to Chunk 03") made the notice report Chunk 03 as
+    finished-but-unticked. Not caught by review; caught by running the thing.
+    **This lands here rather than in Chunk 03 only because that chunk is `Type: doc-only`** — the
+    fix is code, and retyping a chunk to carry a rider is how a review mode gets chosen for the
+    wrong diff. A narrowing verified against this branch's real subjects, which keeps both
+    conventions in use and drops the prose mention:
+    `re.compile(r"\(Chunk\s+(\d+)\)|:\s*Chunk\s+(\d+)\b")` — parenthesised (`land it (Chunk 04)`)
+    or immediately after the conventional-commit colon (`feat(scope): Chunk 02 — …`). Take the
+    `_committed_chunk_ids` group-handling with it (two groups now), and pin all four subject forms.
+    **Why it is worth doing rather than accepting:** a brand-new control whose first firing is
+    wrong teaches its first readers to ignore it, which is the habituation the proportionality norm
+    exists to prevent — and this control's whole defence is that it emits its yield observably.
   - **Carried in from Chunk 02's review (R-14), because this chunk creates the directory that makes
     it real.** `plan_index._markdown_files` prunes ANY directory component named `archive` at every
     depth, but `iter_scoped_plan_candidates(include_archived=True)` re-walks only the archive
