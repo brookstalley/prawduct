@@ -24,7 +24,7 @@ dropping them.
 ## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
-## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite, not its synonym — and it reads as deliberate, so review cannot see it. `release=unreleased` hid a finished branch from its own release, past five rounds and sixteen reviewers. Ask the CONSUMER, not the reader — run the probe that acts on the field. Guard by BLAST RADIUS: `status=` was guarded; `release=`, which drops a whole scope, was not — [learnings-detail.md]
+## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite — and it reads as deliberate, so review cannot see it. `release=unreleased` hid a finished branch from its own release. Ask the CONSUMER, not the reader: run the probe that acts on the field. Guard by BLAST RADIUS — `status=` was guarded, `release=` (drops a whole scope) was not — [learnings-detail.md]
 
 ## `grep -rn <new symbol> tests/` before calling a behaviour change done — a guard with no test is one a regression deletes silently. Three rounds running found that, the last two in code written to FIX the previous instance: applying a rule to the finding in front of you is not applying it to the code you write while applying it
 

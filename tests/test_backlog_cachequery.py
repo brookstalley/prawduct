@@ -345,6 +345,29 @@ class TestItemsAffecting:
 
         assert _ids(result) == []
 
+    def test_a_one_shot_iterator_answers_the_same_as_a_list(self, fake, repo_dir):
+        """`changed_paths` is walked three times, so a generator would exhaust.
+
+        Without the materialization at function entry the caller gets `keys`
+        correct and everything after it empty — no matches, `changed_paths: []`,
+        and `status: ok`. A confident wrong answer, which is the shape this
+        module exists to prevent. This is the assertion that keeps the one-line
+        guard from being deleted as redundant by a later reader.
+        """
+        item_id = self._touching(fake, "plugin/lib/backlog, docs/x.md")
+        _rebuild(fake, repo_dir)
+
+        result = cachequery.items_affecting(
+            repo_dir,
+            scope=SCOPE,
+            changed_paths=iter(["plugin/lib/backlog/sync.py"]),
+            now=NOW,
+        )
+
+        assert _ids(result) == [item_id]
+        assert result["data"]["items"][0]["matched"] == ["plugin/lib/backlog"]
+        assert result["data"]["changed_paths"] == ["plugin/lib/backlog/sync.py"]
+
     def test_an_empty_change_set_still_carries_an_age(self, fake, repo_dir):
         """The answer is empty because the *input* was, and a caller cannot tell
         that from an unreachable cache unless the envelope says which."""
