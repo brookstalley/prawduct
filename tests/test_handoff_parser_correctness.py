@@ -35,6 +35,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -481,6 +483,126 @@ class TestUntickedCommittedChunkTripwire:
         assert buildplan_refs.unticked_committed_chunk_notice(repo) is None
 
 
+class TestChunkCommitSubjectForms:
+    """Which commit subjects mean *this commit carried chunk N*.
+
+    The original pattern matched a chunk id ANYWHERE in a subject, so a commit
+    saying "…carried to Chunk 04" reported 04 as finished-but-unticked minutes
+    after the tripwire shipped. A brand-new control whose first firing is wrong
+    teaches its first readers to ignore it — and this control's whole defence is
+    that it emits its yield observably, so being ignorable is the failure that
+    matters.
+
+    All four forms are pinned together because the narrowing is only correct as a
+    set: the three that must match are the conventions actually in use in this
+    repo's history, and the one that must not is the false positive. Dropping any
+    match arm silences a real convention; widening past them re-admits prose.
+    """
+
+    def _notice_for(self, tmp_path: Path, subject: str) -> str | None:
+        repo = tmp_path / "repo"
+        _init_repo(repo, branch="develop")
+        _write_state(repo, "base_branch: develop\n")
+        _write_plan(
+            repo,
+            "---\nartifact: build-plan\nscope: forms\n---\n\n## Status\n\n"
+            "- [ ] Chunk 04: the subject under test\n",
+        )
+        _commit(repo, "chore: plan")
+        _git(repo, "checkout", "-b", "feature/x", "--quiet")
+        _commit(repo, subject)
+        return buildplan_refs.unticked_committed_chunk_notice(repo)
+
+    @pytest.mark.parametrize(
+        "subject",
+        [
+            "feat(forms): land it (Chunk 04)",
+            "docs(forms): Chunk 04 — the prose half",
+            "docs(forms): close Chunk 04 — the verify pass and the reflection",
+        ],
+        ids=["parenthesised", "after-the-colon", "close-idiom"],
+    )
+    def test_a_commit_that_carries_the_chunk_is_reported(self, tmp_path: Path, subject):
+        notice = self._notice_for(tmp_path, subject)
+        assert notice is not None, f"{subject!r} names chunk 04's work and was not reported"
+        assert "Chunk 04" in notice
+
+    @pytest.mark.parametrize(
+        "subject",
+        [
+            "plan(forms): the tripwire's false positive, carried to Chunk 04",
+            "docs(forms): the two rules Chunk 04 produced, with narrative in detail",
+            "docs(forms): the Context line still said Chunk 04 was next",
+        ],
+        ids=["carried-to", "produced-by", "said-was-next"],
+    )
+    def test_a_commit_that_merely_mentions_the_chunk_is_not(self, tmp_path: Path, subject):
+        """Every one of these is a real subject from this repo's log, and every
+        one made the original pattern report a chunk that had not been done."""
+        notice = self._notice_for(tmp_path, subject)
+        assert notice is None, (
+            f"{subject!r} only MENTIONS chunk 04 — reporting it is the false "
+            f"positive that teaches readers to ignore this control (got {notice!r})"
+        )
+
+    def test_the_session_boundary_actually_emits_it(self, tmp_path: Path, capsys):
+        """**The call site, not just the function.** Its only callers were two
+        deliberately-invoked commands, so an ordinary governed session never
+        reached it — and a control nothing runs is worse than one that runs and
+        finds nothing: a later "zero recorded yield" reads as *no defect
+        occurred* when the truth is *never armed*, and the retirement-on-evidence
+        argument this control offers would be made from a control that was never
+        in the path.
+
+        `/clear` is the surface an ordinary session passes through. Pinned here
+        because a refactor that drops the call leaves every unit test above
+        green.
+        """
+        import importlib.machinery
+        import importlib.util
+
+        repo = _live_repo(tmp_path)
+        loader = importlib.machinery.SourceFileLoader(
+            "prawduct_hook_dv7_call_site",
+            str(Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"),
+        )
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        hook = importlib.util.module_from_spec(spec)
+        loader.exec_module(hook)
+
+        capsys.readouterr()
+        assert hook.cmd_clear(repo) == 0
+        out = capsys.readouterr().out
+        assert buildplan_refs.UNTICKED_CHUNK_TOKEN in out, (
+            "the session boundary did not emit the unticked-chunk notice — the "
+            "control is defined but not armed anywhere a session reaches"
+        )
+        assert "Chunk 04" in out
+
+    def test_the_narrowing_strictly_narrows(self):
+        """Over this repo's own history the new pattern must match nothing the
+        old one missed. Pinned as a property because the risk of a rewrite is
+        not "it stops matching" — a test of the three forms above would catch
+        that — but "it starts matching something else", which no positive test
+        can see."""
+        old = re.compile(r"Chunk\s+(\d+)")
+        subjects = subprocess.run(
+            ["git", "log", "--format=%s", "-800"],
+            cwd=str(Path(__file__).resolve().parent.parent),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.splitlines()
+        if not subjects:
+            pytest.skip("no git history available to compare against")
+        gained = [
+            s
+            for s in subjects
+            if buildplan_refs._CHUNK_COMMIT_RE.search(s) and not old.search(s)
+        ]
+        assert gained == [], f"the pattern widened rather than narrowed: {gained}"
+
+
 class TestGateSemanticsUnchanged:
     """Success criterion 6 of the governing plan: no gate semantics change.
 
@@ -741,11 +863,19 @@ class TestContextBlock:
 COMPLETE_PLAN = "# Build Plan — Done (2026-07-26)\n\n## Status\n\n- [x] Chunk 01: A\n"
 
 
-class TestDeleteNudgeIsMergeAware:
-    def test_unmerged_feature_branch_says_keep(self, tmp_path: Path):
-        """The plan is session-local and gitignored, so it survives a branch
-        switch — the nudge told the user to delete a plan whose work had not
-        shipped, which would orphan it."""
+class TestEndOfLifeNudgeIsMergeAware:
+    """The nudge's *timing* logic is unchanged; what it recommends is not.
+
+    It used to say "delete the plan". A completed plan is now archived, never
+    deleted, so these assert the new instruction — and, positively, that the old
+    one is gone from the surface that told an operator to do it every session.
+    """
+
+    def test_unmerged_feature_branch_says_keep_it_live(self, tmp_path: Path):
+        """The plan survives a branch switch, so the nudge once told the user to
+        retire a plan whose work had not shipped — which would orphan it. Under
+        archival the harm is smaller (an archived plan is still findable) but the
+        recommendation is the same: not yet."""
         repo = tmp_path / "repo"
         _init_repo(repo, branch="develop")
         _write_state(repo, "base_branch: develop\n")
@@ -754,23 +884,55 @@ class TestDeleteNudgeIsMergeAware:
         _write_plan(repo, COMPLETE_PLAN)
         _commit(repo, "feat: land it (Chunk 01)")
         findings = "\n".join(briefing.staleness_scan(repo))
-        assert "keep the plan until it merges" in findings
-        assert "delete the plan" not in findings
+        assert "keep the plan live until it merges" in findings
+        assert "archive the plan" not in findings
 
-    def test_merged_branch_still_gets_the_delete_nudge(self, tmp_path: Path):
+    def test_merged_branch_still_gets_the_end_of_life_nudge(self, tmp_path: Path):
         """Merge-awareness may only ADD a keep-recommendation on positive
-        evidence — a plan that really is finished and merged must still be
-        cleaned up, or the nudge silently stops working."""
+        evidence — a plan that really is finished and merged must still reach its
+        end of life, or the nudge silently stops working."""
         repo = tmp_path / "repo"
         _init_repo(repo, branch="develop")
         _write_state(repo, "base_branch: develop\n")
         _write_plan(repo, COMPLETE_PLAN)
         _commit(repo, "feat: land it (Chunk 01)")
         findings = "\n".join(briefing.staleness_scan(repo))
-        assert "delete the plan" in findings
+        assert "archive the plan" in findings
         assert "keep the plan" not in findings
 
-    def test_foreign_branch_wip_says_keep(self, tmp_path: Path):
+    def test_it_names_the_command_rather_than_leaving_the_operator_to_guess(
+        self, tmp_path: Path
+    ):
+        """The old nudge described an action any operator could perform with
+        `rm`. This one names an operation that has to be run, so the nudge that
+        does not carry it is a nudge that gets answered with a deletion."""
+        repo = tmp_path / "repo"
+        _init_repo(repo, branch="develop")
+        _write_state(repo, "base_branch: develop\n")
+        _write_plan(repo, COMPLETE_PLAN)
+        _commit(repo, "feat: land it (Chunk 01)")
+        findings = "\n".join(briefing.staleness_scan(repo))
+        assert "archive-plan" in findings
+
+    def test_no_nudge_anywhere_still_says_to_delete_a_plan(self, tmp_path: Path):
+        """Asserted over BOTH branches of the stale-plan scan, because the
+        deletion instruction lived in two of them and fixing one leaves the
+        behaviour in force in the other."""
+        for state in (
+            "base_branch: develop\n",
+            "base_branch: develop\n"
+            "work_in_progress:\n  feature/elsewhere:\n    description: unshipped\n",
+        ):
+            repo = tmp_path / f"repo{abs(hash(state)) % 1000}"
+            _init_repo(repo, branch="develop")
+            _write_state(repo, state)
+            _write_plan(repo, COMPLETE_PLAN)
+            _commit(repo, "feat: land it (Chunk 01)")
+            findings = "\n".join(briefing.staleness_scan(repo)).lower()
+            assert "delete the plan" not in findings
+            assert "deleting now" not in findings
+
+    def test_foreign_branch_wip_says_keep_it_live(self, tmp_path: Path):
         """The reported repro: a plan surviving a switch onto the base branch,
         with project-state.yaml still recording work on the feature branch."""
         repo = tmp_path / "repo"
@@ -783,7 +945,7 @@ class TestDeleteNudgeIsMergeAware:
         _write_plan(repo, COMPLETE_PLAN)
         _commit(repo, "feat: land it (Chunk 01)")
         findings = "\n".join(briefing.staleness_scan(repo))
-        assert "keep the plan until it merges" in findings
+        assert "keep the plan live until it merges" in findings
 
     def test_non_git_directory_fails_toward_the_ordinary_nudge(self, tmp_path: Path):
         _write_plan(tmp_path, COMPLETE_PLAN)

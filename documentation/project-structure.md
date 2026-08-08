@@ -82,7 +82,9 @@ my-product/
 │   ├── change-log.md                  # change log
 │   ├── artifacts/                     # generated specifications
 │   │   ├── boundary-patterns.md       # contract surfaces between components
-│   │   └── project-preferences.md     # developer preferences (language, testing, style)
+│   │   ├── project-preferences.md     # developer preferences (language, testing, style)
+│   │   └── archive/                   # plans past their end of life (`prawduct-hook archive-plan`) — committed
+│   │                                  #   history, pruned at directory level by every scan on a hot path
 │   ├── .pr-reviews/                   # PR review evidence (gitignored)
 │   ├── .test-evidence.json            # test evidence for the Critic (gitignored)
 │   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file)

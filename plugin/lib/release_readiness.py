@@ -286,14 +286,35 @@ def _find_release_plan(project_dir: Path, version: str) -> Path | None:
     return None
 
 
-def _plan_coverage_warnings(project_dir: Path, pending: list[str]) -> list[str]:
-    """Report release-pending scopes with no build plan, and duplicate scopes.
+def _duplicate_scope_warnings(project_dir: Path) -> list[str]:
+    """Report scopes declared by more than one live build plan.
 
-    Both checks lived in the derived-view regenerator, whose only product was a
+    **Split out of :func:`_plan_coverage_warnings` and hoisted above the
+    no-pending early return.** The rehoming put it behind ``if not pending:
+    return 0``, so on a repo with nothing release-pending it stopped running —
+    where its previous caller ran it on every invocation. Nobody chose that
+    coupling: this asks a question about repo *structure* (two plans claiming one
+    scope), takes only the artifacts directory, and is answerable whether or not
+    a release is in flight. Its message is actionable at any time, and the defect
+    it names is cheap to fix on a quiet day and expensive to discover mid-release,
+    when scope→plan resolution has just become load-bearing. Noise risk is near
+    zero — two plans genuinely declaring one scope is rare and always wrong.
+
+    The missing-plan half stays in :func:`_plan_coverage_warnings`: that one is
+    *about* the pending set and is correctly scoped to it.
+    """
+    artifacts = project_dir / _ARTIFACTS_REL_DIR
+    return [message for _scope, message in plan_index.duplicate_scope_errors(artifacts)]
+
+
+def _plan_coverage_warnings(project_dir: Path, pending: list[str]) -> list[str]:
+    """Report release-pending scopes with no build plan.
+
+    This check lived in the derived-view regenerator, whose only product was a
     view; each error there suppressed one scope's regeneration. That caller is
-    being retired, and the field they guard — the frontmatter ``scope:`` that
+    being retired, and the field it guards — the frontmatter ``scope:`` that
     ties a change-log entry to the plan describing the work — is not. This is
-    the gate that resolves scopes to plans, so it is where they belong.
+    the gate that resolves scopes to plans, so it is where it belongs.
 
     **Reported, not fatal, and deliberately.** The gate fails closed on state it
     cannot evaluate: no change log, no release plan, an unclassified scope. A
@@ -315,7 +336,6 @@ def _plan_coverage_warnings(project_dir: Path, pending: list[str]) -> list[str]:
         for scope in pending
         if scope not in known
     ]
-    warnings.extend(message for _scope, message in plan_index.duplicate_scope_errors(artifacts))
     return warnings
 
 
@@ -354,6 +374,14 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         for err in tag_errors:
             print(f"bad-change-log-tag: {err}", file=sys.stderr)
         return 1
+
+    # Structure, not release state — so it runs BEFORE the no-pending return.
+    # A duplicate scope makes scope→plan resolution a coin toss, and a repo with
+    # nothing pending is exactly where that is cheapest to fix; discovering it
+    # mid-release, when the resolution has just become load-bearing, is the
+    # expensive order. See `_duplicate_scope_warnings`.
+    for warning in _duplicate_scope_warnings(project_dir):
+        print(f"WARNING: {warning}", file=sys.stderr)
 
     pending = release_pending_scopes(entries)
     if not pending:

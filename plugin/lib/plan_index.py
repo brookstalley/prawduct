@@ -35,24 +35,21 @@ def _display_path(path: Path, artifacts_dir: Path) -> str:
         return path.name
 
 
-def frontmatter_lines(content: str) -> list[str] | None:
-    """The frontmatter block's body lines, or ``None`` when there is no block.
+def frontmatter_body_start(lines: list[str]) -> int:
+    """Index of the line where a frontmatter block may legally open.
 
-    ONE walker, so ``scope:`` and ``artifact:`` are read the same way. Two
-    independent walkers over the same block is the shape that lets a file be a
-    build plan to one reader and not to another, which is exactly the class of
-    disagreement the scope collectors were already exhibiting.
+    The prelude skip, factored out so the reader and the writer cannot disagree
+    about where a block begins: leading blank lines and one leading HTML comment
+    block. That tolerance is load-bearing — a third of this repo's build plans
+    open with a comment header before the frontmatter (16 of 48 as of
+    2026-07-27, counted with ``for f in .prawduct/artifacts/build-plan*.md; do
+    head -1 "$f"; done``).
 
-    Tolerances, and load-bearing — a third of this repo's build plans open with
-    a comment header before the frontmatter (16 of 48 as of 2026-07-27, counted
-    with ``for f in .prawduct/artifacts/build-plan*.md; do head -1 "$f"; done``):
-    leading blank lines and one leading HTML comment block are skipped before
-    the opening ``---``. An UNCLOSED comment header or an unterminated
-    frontmatter both read as *absent* rather than raising — a deliberately
-    lenient reading of a malformed header, so one hand-corrupted file cannot
-    make a governance path fail instead of degrade.
+    An UNCLOSED comment header runs off the end and returns ``len(lines)``,
+    which reads downstream as "no frontmatter" rather than raising — a
+    deliberately lenient reading, so one hand-corrupted file cannot make a
+    governance path fail instead of degrade.
     """
-    lines = content.splitlines()
     i = 0
     while i < len(lines) and not lines[i].strip():
         i += 1
@@ -63,14 +60,39 @@ def frontmatter_lines(content: str) -> list[str] | None:
             i += 1  # consume the line containing `-->`
     while i < len(lines) and not lines[i].strip():
         i += 1
+    return i
+
+
+def frontmatter_span(content: str) -> tuple[int, int] | None:
+    """``(opening ---, closing ---)`` line indices, or ``None`` when there is none.
+
+    ONE walker, so ``scope:``, ``artifact:`` and any writer that has to put a key
+    INTO the block all locate it the same way. Two independent walkers over the
+    same block is the shape that lets a file be a build plan to one reader and
+    not to another — exactly the class of disagreement the scope collectors were
+    already exhibiting — and a writer with its own walker is the same defect
+    pointed at the file rather than at a verdict.
+
+    An unterminated frontmatter reads as *absent*, for the same
+    degrade-don't-fail reason as :func:`frontmatter_body_start`'s unclosed
+    comment.
+    """
+    lines = content.splitlines()
+    i = frontmatter_body_start(lines)
     if i >= len(lines) or lines[i].strip() != "---":
         return None
-    body: list[str] = []
     for j in range(i + 1, len(lines)):
         if lines[j].strip() == "---":
-            return body
-        body.append(lines[j])
+            return (i, j)
     return None  # unterminated frontmatter reads as absent
+
+
+def frontmatter_lines(content: str) -> list[str] | None:
+    """The frontmatter block's body lines, or ``None`` when there is no block."""
+    span = frontmatter_span(content)
+    if span is None:
+        return None
+    return content.splitlines()[span[0] + 1 : span[1]]
 
 
 def parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]:
@@ -181,7 +203,9 @@ def iter_scoped_plan_candidates(
     and ``archive/build-plan-foo.md`` sorts BEFORE ``build-plan-foo.md``, so an
     archived copy would shadow its own live sibling. When ``include_archived``
     is set the live tree is therefore walked FIRST and the archive appended, so
-    a live plan still wins its scope.
+    a live plan still wins its scope. "The archive" is every directory named
+    ``archive`` at any depth (:func:`_archive_roots`), because that is exactly
+    what the live pass pruned — the two rules are one rule, and they were not.
 
     Ordering is by sorted path so the first-wins tie-break in both consumers
     stays deterministic, which makes *directory depth* part of that tie-break.
@@ -192,9 +216,34 @@ def iter_scoped_plan_candidates(
         return
     yield from _walk_for_scopes(artifacts_dir, artifacts_dir, prune_archive=True)
     if include_archived:
-        archive_dir = artifacts_dir / ARCHIVE_DIR_NAME
-        if archive_dir.is_dir():
+        for archive_dir in _archive_roots(artifacts_dir):
             yield from _walk_for_scopes(archive_dir, artifacts_dir, prune_archive=False)
+
+
+def _archive_roots(artifacts_dir: Path) -> list[Path]:
+    """Every directory named ``archive`` at any depth, sorted, outermost only.
+
+    **The two passes have to prune and re-walk on the SAME rule.** The live pass
+    drops any path component named ``archive`` at every depth; re-walking only
+    ``artifacts_dir/archive`` therefore left a nested ``plans/<id>/archive/``
+    pruned from the live pass AND absent from the archived one — invisible to
+    every reader, which the live-then-archive resolution rule assumes cannot
+    happen. That shape is not hypothetical: repos that organize plans as
+    ``plans/<id>/build-plan.md`` archive beside the plan, and a flat fixture
+    passes under either rule, so only a nested one can tell them apart.
+
+    An ``archive`` inside an ``archive`` is not sought separately — the walk
+    rooted at the outer one already yields its whole subtree, and descending
+    further would yield the same file twice.
+    """
+    roots: list[Path] = []
+    for dirpath, dirnames, _filenames in os.walk(artifacts_dir):
+        dirnames.sort()
+        roots.extend(Path(dirpath) / d for d in dirnames if d == ARCHIVE_DIR_NAME)
+        # In-place, for the same reason `_markdown_files` says: rebinding leaves
+        # `os.walk` holding the original list and descends anyway.
+        dirnames[:] = [d for d in dirnames if d != ARCHIVE_DIR_NAME]
+    return sorted(roots)
 
 
 def _markdown_files(root: Path, *, prune_archive: bool) -> list[Path]:

@@ -28,6 +28,26 @@ governed_by:
       - "all timestamps UTC ISO-8601 → conforms"
       - "money as integer minor units → inapplicable because this plan touches no money fields"
 last_validated: 2026-07-03
+# END OF LIFE — written by `prawduct-hook archive-plan`, not by hand. A plan is
+# never deleted: when its work is done, or has stopped, been descoped, or been
+# absorbed elsewhere, it is stamped with these keys and moved into `archive/`.
+# The command writes them; they are shown here so a reader of an archived plan
+# knows what they mean.
+#   lifecycle: completed | superseded   <- which of the two terminal states
+#   archived: YYYY-MM-DD                <- when it reached one
+#   released_in: vX.Y.Z                 <- the release that carried it, where the
+#                                          product versions. NOT `release:` — a
+#                                          release plan uses that for the release
+#                                          it GOVERNS, which is a different fact.
+#                                          The change-log `release=` tag stays
+#                                          canonical; this is a permitted copy
+#                                          because a shipped version is immutable
+#                                          and cannot drift.
+#   superseded_by: <what replaced it, or why it stopped>   <- superseded only
+#   maintained: false
+# Status checkboxes are NOT touched on the way in. An archived plan may carry
+# unticked boxes — that records how the work ended, and nothing reads them once
+# the plan is out of the live directory.
 ---
 
 ## Requirements Confidence
@@ -58,11 +78,19 @@ last_validated: 2026-07-03
      hook's Critic and reflection gates, which is why "Done when" puts the review before
      the tick. The opposite error — a chunk built, committed, left unticked — is caught
      by an advisory, and ITS PRECONDITION IS YOUR COMMIT CONVENTION: it fires only on a
-     commit subject matching `Chunk <n>` with a NUMERIC id. A repo that doesn't name
-     chunks in commit subjects, or numbers them `Chunk A`, gets permanent silence from
-     it — and silence there is indistinguishable from every box being right. Number the
-     chunks and name them in the subject line, or accept that the boxes have no
-     backstop. -->
+     NUMERIC chunk id in one of three anchored positions —
+
+         feat(scope): land it (Chunk 02)          <- parenthesised
+         docs(scope): Chunk 02 — the prose half   <- right after the colon
+         docs(scope): close Chunk 02 — the census <- the closing idiom
+
+     A chunk id anywhere else in the subject is read as a MENTION, not as work — so
+     "carried into Chunk 03" reports nothing, which is the point: an advisory whose
+     first firing is wrong is an advisory people learn to ignore. A repo that doesn't
+     name chunks in commit subjects, or numbers them `Chunk A`, gets permanent silence
+     from it — and silence there is indistinguishable from every box being right.
+     Number the chunks and name them in one of the three forms, or accept that the
+     boxes have no backstop. -->
 
 - [ ] Chunk 01: Walking skeleton — list page backed by SQLite
 - [ ] Chunk 02: Add and check off items, grouped by store section

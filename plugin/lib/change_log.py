@@ -10,8 +10,8 @@ between are tolerated). **The format a new entry is written in is two keys**::
 
     <!-- prawduct: scope=v1.4 | release=v1.3.18 -->
 
-Older entries carry two more, and the parser still accepts them because 21 repos'
-committed logs are full of them::
+Older entries carry two more, and the parser still accepts them because every
+onboarded repo's committed log is full of them::
 
     <!-- prawduct: chunks=00,01,02 | release=v1.3.18 | status=shipped | scope=v1.4 -->
 

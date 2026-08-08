@@ -697,6 +697,50 @@ class TestPlanCoverageIsReportedNotFatal:
         assert release_readiness.check_releasability(project) == 0
         assert "duplicate scope" in capsys.readouterr().err
 
+    def test_a_duplicate_scope_is_reported_with_nothing_release_pending(
+        self, tmp_path, capsys
+    ):
+        """**The case that was silent.** Rehoming this check put it behind the
+        no-pending early return, so a repo between releases — the state most
+        repos are in most of the time, and the cheapest moment to fix a malformed
+        plan — never ran it. The question it asks is about repo *structure*, not
+        about the pending set, so it is not the early return's business.
+
+        Fixing it here is cheap; discovering it mid-release, when scope→plan
+        resolution has just become load-bearing, is the expensive order.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0"),
+            classification=None,
+        )
+        for name in ("build-plan-a.md", "build-plan-b.md"):
+            _write(
+                project / ".prawduct" / "artifacts" / name,
+                "---\nartifact: build-plan\nscope: alpha\n---\n\n## Status\n",
+            )
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr()
+        assert "no release-pending scopes" in out.out, (
+            "the fixture must exercise the no-pending path, or this tests nothing"
+        )
+        assert "duplicate scope" in out.err
+
+    def test_the_missing_plan_half_stays_scoped_to_the_pending_set(
+        self, tmp_path, capsys
+    ):
+        """Only the duplicate-scope half hoists. "A release-pending scope has no
+        plan" is a statement ABOUT the pending set, so on an empty one it has
+        nothing to say and must stay quiet rather than reach for a denominator
+        it does not have."""
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0"),
+            classification=None,
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert "no build-plan file" not in capsys.readouterr().err
+
 
 class TestReleasePlanSurvivesArchival:
     """BP8: archiving a shipped release plan must not make this gate fail closed.

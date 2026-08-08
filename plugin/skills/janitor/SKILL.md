@@ -158,7 +158,7 @@ Has past work left behind artifacts that no longer serve a purpose?
 - Exhausted feature flags — flags for features that shipped or were abandoned
 - Unnecessary backwards compatibility — shims, fallbacks, or adapters for versions nobody runs
 - Resolved TODOs — comments marking work that was done but the marker wasn't removed
-- Stale build plans — `.prawduct/artifacts/build-plan.md` from completed work (all Status items checked). Clean up: delete plan file
+- Stale build plans — a plan in `.prawduct/artifacts/` whose work is over. Two shapes, and the second is the one that accumulates: **completed** (every Status item checked) and **superseded** (work stopped, was descoped, or was absorbed elsewhere — a half-finished plan can never satisfy "all boxes ticked", so nothing else ever sweeps it and it sits in the live directory reading as active). Clean up: **archive, never delete** — `prawduct-hook archive-plan <path> --state completed|superseded`, which stamps the plan with what became of it and moves it into `archive/`. Unticked boxes are left as they are; they record how the work ended and nothing reads them once the plan is out of the live directory. On gitflow, leave a merged-but-unreleased plan live until its release ships
 
 ### Norm Health
 

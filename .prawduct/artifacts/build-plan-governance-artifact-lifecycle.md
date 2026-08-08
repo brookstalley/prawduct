@@ -282,11 +282,45 @@ Two enumeration misses in one chunk, both found by running rather than reading: 
 above. **The interim cost Chunk 02 flagged is discharged** — `documentation/release-process.md` no
 longer instructs an operator to run a retired command and read exit codes that do not exist.
 
-Next: Chunk 04. It now carries THREE code items, two of which the plan requires in ONE commit (the
-tripwire's regex narrowing and DV7's missing wiring — arming a control whose first firing is a known
-false positive is the ordering that makes things worse). Its BP6 deletion list is **two sites
-shorter** than written; both were absorbed by Chunk 03's BP7 re-derivation. Check the token budgets
-BEFORE writing: `building.md` has 2 tokens of headroom and the full digest ~15 characters (#630).
+**Chunk 04 shipped.** `plan_archive.py` + `prawduct-hook archive-plan` give a plan an end of life
+that is not deletion: completion frontmatter, both terminal states, a move into an `archive/` beside
+the plan, checkboxes untouched. All three carried-in code items landed (the tripwire's narrowing and
+DV7's wiring in one commit, R-22's hoist, R-14's symmetric walks). Suite 4213 passed / 7 skipped.
+
+**BP6's list was three open sites and turned out to be four.** `plugin/methodology/planning.md`
+taught the deletion premise and was in nobody's enumeration — found by running the sweep rather than
+reading the list, which is now the second consecutive chunk where that is how the missing site was
+found. A *second* sweep, over the statements this change FALSIFIES rather than the ones that instruct
+it, then found three more: `briefing.py`'s helper docstrings still called it "the delete nudge", and
+`templates/build-plan.md` still stated the tripwire's precondition as `Chunk <n>` matched anywhere.
+**Two sweeps, different vocabularies, different answers** — the falsification pass is the one that
+keeps being skipped, and it is where the docstring that now lies lives.
+
+**Two departures from this chunk's written deliverables, both recorded rather than silent.**
+(1) `_CHUNK_COMMIT_RE` ships THREE anchored forms, not the two the plan gave verbatim: over this
+repo's last 800 commit subjects the two-arm version silences `drift-burndown` and `critic-burndown`
+entirely, whose chunks are only ever named `close Chunk NN`. The plan's narrowing was verified
+against this branch alone — the sample was the defect. The third arm is pinned positively for all
+three forms, negatively for three real prose mentions, and by a strictly-narrowing property (0
+subjects match that the old pattern missed). Accepted as R-4 on the review record.
+(2) The frontmatter key for the shipping release is **`released_in`, not `release`** —
+`release-plan-v3.2.7.md` already carries `release:` meaning *the release this plan governs*, and
+release plans are exactly what gets archived, since `check-releasability` searches the archive by
+design. The short name would have made re-stamping silently strip it. Found by asking "what already
+uses this name?" against the real artifacts directory; every test written at the time passed.
+
+`rev-20260808T192216Z-35d1afc0` (`chunk`) returned 1 blocking / 1 warning / 2 note. The blocker was
+a record defect I caused by editing during the review (evidence and fact anchored to a pre-rename
+tree), remedied by re-running the suite and re-covering with `verify-resolutions`. R-2 and R-3 are
+fixed: the merge flow is now pinned **positively** on both paths (an assert-absent sweep passes when
+the instruction is simply dropped — the never-armed failure this branch closed for DV7, one file
+over), and the frontmatter round trip is lossless in both directions (`absorbed "here"` used to read
+back as `absorbed "here`; Chunk 05's backfill is its first reader).
+
+Next: Chunk 05. Doctor repair, the FL6 backfill, the convergence guards, FL4's attribution, and the
+`cumulative` that gates the PR. **`check-change-log-entry` is RED and Chunk 05 owes the entry** —
+no entry exists for this branch at all. Check the token budgets BEFORE writing: `building.md` has 2
+tokens of headroom and the full digest ~15 characters (#630).
 
 ## Scaffolding
 

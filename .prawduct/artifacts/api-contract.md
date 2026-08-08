@@ -85,6 +85,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`,
   `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
+- **Build-plan lifecycle** — `archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD]
+  [--release vX.Y.Z] [--superseded-by <text>] [--dry-run]` (mutating): stamps a plan with its
+  terminal state and moves it into `archive/`. Writes on invocation rather than defaulting to a dry
+  run — the `--apply` default belongs to the repo-wide lifecycle commands below, and this one acts on
+  a single file the operator named; `--dry-run` is the preview. Refuses (exit 1, nothing written)
+  rather than half-completing: a plan stamped but not moved still reads as live to every directory
+  scan, and one moved but not stamped answers "is this current?" only to a reader who noticed the
+  path. Status checkboxes are never touched.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating).
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.

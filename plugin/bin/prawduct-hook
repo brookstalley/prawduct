@@ -163,6 +163,18 @@ def _coverage_algebra():
     return coverage_algebra
 
 
+def _plan_archive():
+    """Lazy-import the build-plan end-of-life operation (lib/plan_archive).
+    Same lazy idiom as _release_readiness() — seeds sys.path so the hook's top
+    level stays lib-free."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import plan_archive  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return plan_archive
+
+
 def _release_readiness():
     """Lazy-import the Phase 0 releasability gate (lib/release_readiness).
     Same lazy idiom as _coverage() — seeds sys.path so the hook's top level
@@ -643,6 +655,24 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     OVER, so none of it may run on a continuation (SCN-5B8Q) — a new boundary
     statement belongs inside this function, which is the point of extracting it.
     """
+    # Announce a finished-but-unticked chunk BEFORE the handoff is generated, and
+    # to STDOUT. Both halves are deliberate. Before, because the handoff's Resume
+    # line IS the checkbox reading, so an unticked finished chunk makes the thing
+    # being written wrong — and a handoff is how a false progress signal
+    # propagates to the next session as testimony. Stdout, because this boundary's
+    # documented audience split sends continuity facts to the incoming agent
+    # (stdout is what SessionStart shows the model) and housekeeping the operator
+    # must fix to stderr; the remedy here — tick the box — is the agent's. That is
+    # why it differs from the two operator-invoked commands that print it to
+    # stderr. Its own guard, not the handoff's: a diagnostic that failed must not
+    # print "could not generate the session handoff", which would be false.
+    try:
+        notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir)
+        if notice:
+            print(notice)
+    except Exception:  # prawduct:allow prawduct/broad-except -- a diagnostic must never block /clear, and it has no remedy to narrate
+        pass
+
     # Generate handoff BEFORE archiving/deleting session files, then consume the
     # notes it carried. Both live under one guard because both need lib.briefing,
     # which an incomplete install may not have — and neither may ever block /clear.
@@ -3578,6 +3608,144 @@ def cmd_check_releasability(project_dir: Path, args: list[str] | None = None) ->
     return _release_readiness().check_releasability(project_dir, release)
 
 
+def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
+    """Give a build plan its end of life: stamp it, then move it into `archive/`.
+
+    A state-mutating writer, so it follows that row of the error-model table:
+    0 written (or an idempotent no-op), 1 refused with nothing written, 2 usage
+    error. It writes on invocation rather than defaulting to a dry run — the
+    dry-run default belongs to the repo-wide lifecycle commands, and this one
+    acts on a single file the operator named. `--dry-run` is available for the
+    preview.
+
+    Thin wrapper; the body lives in ``lib.plan_archive``, reached lazily so the
+    hook's top level stays lib-free."""
+    usage = (
+        "usage: prawduct-hook archive-plan <path> [--state completed|superseded] "
+        "[--date YYYY-MM-DD] [--release vX.Y.Z] [--superseded-by <text>] [--dry-run]"
+    )
+    plan_arg: str | None = None
+    state = "completed"
+    date: str | None = None
+    release: str | None = None
+    superseded_by: str | None = None
+    dry_run = False
+    argv = list(args or [])
+    # Explicit scan for the same reason `check-releasability` uses one: a
+    # swallowed token would archive under a DIFFERENT terminal state than the
+    # operator named, and the state is the whole content of the record. Unknown
+    # tokens are usage errors, never ignored.
+    valued = {
+        "--state": "state",
+        "--date": "date",
+        "--release": "release",
+        "--superseded-by": "superseded_by",
+    }
+    parsed: dict[str, str] = {}
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--dry-run":
+            dry_run = True
+            i += 1
+            continue
+        key = None
+        value = None
+        if token in valued:
+            if i + 1 >= len(argv):
+                print(f"{usage}\n{token} requires an argument", file=sys.stderr)
+                return 2
+            key, value, i = valued[token], argv[i + 1], i + 2
+        else:
+            for flag, name in valued.items():
+                if token.startswith(f"{flag}="):
+                    key, value, i = name, token.split("=", 1)[1], i + 1
+                    break
+        if key is not None:
+            if not value:
+                print(f"{usage}\n{token} requires a non-empty argument", file=sys.stderr)
+                return 2
+            parsed[key] = value
+            continue
+        if token.startswith("-"):
+            print(f"unknown argument: {token}\n{usage}", file=sys.stderr)
+            return 2
+        if plan_arg is not None:
+            print(f"unexpected second path: {token}\n{usage}", file=sys.stderr)
+            return 2
+        plan_arg, i = token, i + 1
+
+    if plan_arg is None:
+        print(f"{usage}\nname the plan to archive", file=sys.stderr)
+        return 2
+    state = parsed.get("state", state)
+    date = parsed.get("date")
+    release = parsed.get("release")
+    superseded_by = parsed.get("superseded_by")
+
+    plan_archive = _plan_archive()
+    if state not in plan_archive.TERMINAL_STATES:
+        # A usage error, not a refusal: the operator mistyped an enumerated
+        # value, which the CLI can tell them without reading a single file.
+        print(
+            f"unknown --state {state!r} (expected one of "
+            f"{', '.join(plan_archive.TERMINAL_STATES)})\n{usage}",
+            file=sys.stderr,
+        )
+        return 2
+
+    if date is None:
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    plan_path = Path(plan_arg)
+    if not plan_path.is_absolute():
+        plan_path = project_dir / plan_path
+    artifacts_dir = project_dir / ".prawduct" / "artifacts"
+
+    if dry_run:
+        destination = plan_archive.archive_destination(plan_path, artifacts_dir)
+        fields = plan_archive.completion_fields(
+            state=state, date=date, release=release, superseded_by=superseded_by
+        )
+        print(f"would archive: {plan_path} -> {destination}")
+        for key, value in fields.items():
+            print(f"  {key}: {value}")
+        return 0
+
+    result = plan_archive.archive_plan(
+        plan_path,
+        artifacts_dir,
+        state=state,
+        date=date,
+        release=release,
+        superseded_by=superseded_by,
+    )
+    if result["status"] != "archived":
+        print(f"not-archived: {result['reason']}", file=sys.stderr)
+        return 1
+
+    print(f"archived: {result['source']} -> {result['destination']}")
+    for key, value in result["fields"].items():
+        print(f"  {key}: {value}")
+
+    # The pointer is state a session owns, so this reports rather than writes —
+    # but it must report, because a pointer left naming a moved file is read by
+    # every gate as "no active build plan", which is the right end state reached
+    # by an accident nobody recorded.
+    pointer = _read_str_yaml_key(
+        project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
+    )
+    if pointer:
+        pointed_at = (project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")).resolve()
+        if pointed_at == Path(result["source"]).resolve():
+            print(
+                "NOTE: active_build_plan still names the plan just archived "
+                f"({pointer}) — clear it, or point it at the plan that is now live.",
+                file=sys.stderr,
+            )
+    return 0
+
+
 def cmd_check_released(project_dir: Path, args: list[str] | None = None) -> int:
     """Post-release verification: did the whole release actually arrive?
 
@@ -4712,6 +4880,8 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
+    "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
+    "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
     "regen-views [deprecated, inert]|stamp-merged [deprecated, inert]|"
     "infer-critic-mode [args]|"
@@ -5467,6 +5637,8 @@ def main() -> int:
         return cmd_check_change_log_entry(project_dir)
     elif command == "check-releasability":
         return cmd_check_releasability(project_dir, sys.argv[2:])
+    elif command == "archive-plan":
+        return cmd_archive_plan(project_dir, sys.argv[2:])
     elif command == "check-released":
         return cmd_check_released(project_dir, sys.argv[2:])
     elif command == "check-pr-doc-only":

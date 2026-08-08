@@ -56,7 +56,7 @@ The **strategy-class** artifacts (data model, security model, non-functional req
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
 
-**Plan lifecycle on gitflow.** When authoring a new plan while the prior plan's work is merged-but-unreleased, leave `active_build_plan` pointing at the pending plan until the release ships (`check-releasability` pairs each release-pending `scope=` against the plan declaring it, so an early deletion makes the shipped work read as having no documented parent). Write the new plan under a scope-named file (`build-plan-<scope>.md`) and repoint after the release (see `/prawduct:pr` merge-flow step 7). Build plans are tracked artifacts — commit them.
+**Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live and `active_build_plan` pointing at it until the release ships. Write the new plan under a scope-named file (`build-plan-<scope>.md`) and repoint after the release (see `/prawduct:pr` merge-flow step 7). Build plans are tracked artifacts — commit them, archived ones included.
 
 ### Requirements Confidence
 

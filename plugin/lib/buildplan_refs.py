@@ -181,10 +181,38 @@ def _count_build_plan_chunks(
     return total, complete
 
 
-# A commit subject that references a build-plan chunk, e.g. "feat: … (Chunk 03)".
-# Capital-C + digits matches the "Chunk NN" commit convention without
-# false-matching prose like "10-chunk plan" (CRT-7B4M).
-_CHUNK_COMMIT_RE = re.compile(r"Chunk\s+(\d+)")
+# A commit subject whose commit IS a chunk's work — three ANCHORED forms, not a
+# match anywhere in the subject. Capital-C + digits still matches the "Chunk NN"
+# convention without false-matching prose like "10-chunk plan" (CRT-7B4M); what
+# the anchors add is the distinction between *carrying* a chunk and merely
+# *mentioning* one.
+#
+# Why it had to narrow: `Chunk\s+(\d+)` matched a chunk id anywhere, so
+# "…carry R-9's tail to Chunk 03" reported chunk 03 as finished-but-unticked
+# minutes after this tripwire shipped. A brand-new control whose first firing is
+# wrong teaches its first readers to ignore it — the habituation the
+# proportionality norm exists to prevent, and doubly bad here because this
+# control's whole defence is that it emits its yield observably.
+#
+# Why THREE forms and not the two the plan specified: the plan's narrowing was
+# verified against one branch. Over this repo's last 800 subjects it also
+# silenced two entire plans (`drift-burndown`, `critic-burndown`), whose chunks
+# were only ever named by the third idiom — "close Chunk NN". Losing a real
+# convention to drop a false positive trades one wrong answer for a quieter one.
+# Each form is explicit and adjacent (a delimiter or a verb touching the id),
+# never a heuristic over the whole subject:
+#   1. `feat(scope): land it (Chunk 04)`      — parenthesised
+#   2. `docs(scope): Chunk 03 — the prose half` — immediately after the conventional-commit colon
+#   3. `docs(scope): close Chunk 01 — the census` — the explicit closing idiom
+# Verified strictly narrowing: over 800 subjects it matches nothing the old
+# pattern missed, and every subject it newly drops is a prose reference. Other
+# idioms ("resolve Chunk 02 Critic findings") fall to this control's documented
+# failure mode, silence — enumerating verbs is the slide this stops short of.
+_CHUNK_COMMIT_RE = re.compile(
+    r"\(Chunk\s+(\d+)\)"
+    r"|:\s*Chunk\s+(\d+)\b"
+    r"|\bclos(?:e|es|ed)\s+Chunk\s+(\d+)\b"
+)
 # Conventional-commit scope: `fix(session-boundary-events): … (Chunk 01)`.
 _COMMIT_SCOPE_RE = re.compile(r"^\w+\(([^)]+)\)!?:")
 # NOTE: the plan's own `scope:` is read through `plan_index.parse_build_plan_frontmatter_scope`,
@@ -276,7 +304,10 @@ def _committed_chunk_ids(
         out: dict[str, str] = {}
         for subject in reversed(subjects):
             for m in _CHUNK_COMMIT_RE.finditer(subject):
-                out.setdefault(m.group(1).lstrip("0") or "0", subject)
+                # One group per anchored form; exactly one is ever set, and
+                # reading `group(1)` alone would silently drop forms 2 and 3.
+                cid = next(g for g in m.groups() if g is not None)
+                out.setdefault(cid.lstrip("0") or "0", subject)
         return out
 
     subjects = proc.stdout.splitlines()
@@ -659,20 +690,29 @@ def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
 
     **Its precondition is a commit convention, and its failure mode is silence —
     which is worth stating because the two together are how a control looks
-    healthy while covering nothing.** Firing requires a commit subject matching
-    ``Chunk <n>`` (digits only), and, where any commit carries the plan's
-    conventional-commit scope, a matching scope. A repo without that habit gets
-    permanent silence, and silence here is indistinguishable from "every box is
-    correct" — so this reports cleanest in exactly the repos least likely to be
-    ticking reliably. A git failure degrades to the same silence. The honest
-    summary is that this catches the mistake in repos that already follow the
-    convention and does nothing elsewhere; a signal independent of commit
-    subjects (comparing the ticked set against which chunks' *files* changed) is
-    the obvious strengthening and is not attempted here.
+    healthy while covering nothing.** Firing requires a commit subject naming
+    ``Chunk <n>`` (digits only) in one of :data:`_CHUNK_COMMIT_RE`'s three
+    anchored forms, and, where any commit carries the plan's conventional-commit
+    scope, a matching scope. A repo without that habit gets permanent silence,
+    and silence here is indistinguishable from "every box is correct" — so this
+    reports cleanest in exactly the repos least likely to be ticking reliably. A
+    git failure degrades to the same silence. The honest summary is that this
+    catches the mistake in repos that already follow the convention and does
+    nothing elsewhere; a signal independent of commit subjects (comparing the
+    ticked set against which chunks' *files* changed) is the obvious
+    strengthening and is not attempted here.
 
-    Emitted from deliberately-invoked surfaces only, never from the
-    SessionStart/Stop hot path: this runs ``git log``, which the nonfunctional
-    budget does not want twice a session for a diagnostic.
+    **Where it is emitted, and the one budget line that governs it.** This runs
+    ``git log``, so it stays off the surfaces that run twice a session: never
+    from the SessionStart orientation path and never from the Stop hook. Its
+    call sites are the deliberately-invoked commands (``verify-chunk-refs``,
+    ``handoff preview``) and the ``/clear`` session boundary, which runs once,
+    already shells out to git, and is the only one an ordinary governed session
+    passes through. Wiring it there is what makes the control *armed*: while its
+    only callers were the two commands, an ordinary session never reached it, so
+    a later "zero recorded yield" would have read as *no defect occurred* when
+    the truth was *never in the path* — and the retirement-on-evidence argument
+    this control offers would have been made from a control nothing ran.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     plan_path = resolve_build_plan_path(prawduct_dir)
@@ -707,7 +747,7 @@ def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
     # usually-right: the input is a SET, so a key with ties would leave the
     # tied ids in set-iteration order and the same repo could print the same
     # finding two ways on two runs. Every key here is a digit string because
-    # `_CHUNK_COMMIT_RE` captures `\d+` — which also means a plan using
+    # every `_CHUNK_COMMIT_RE` group captures `\d+` — which also means a plan using
     # non-numeric chunk ids (`Chunk A`) gets no report at all, since no commit
     # subject can ever match one. That is a real gap in this control's coverage,
     # not a case handled elsewhere.
