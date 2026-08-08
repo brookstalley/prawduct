@@ -210,13 +210,15 @@ something.
 
 - [x] Chunk 01: The mirror primitive — and the three negatives that keep it honest
 - [x] Chunk 02: Wire the eligible write paths, and make a future op fail something
-- [ ] Chunk 03: `import`, the reader-facing surfaces, and the coherence sweep
+- [x] Chunk 03: `import`, the reader-facing surfaces, and the coherence sweep
 
 **Context:** Branch `fix/backlog-cache-write-path` off `develop`, baseline 4214 passed / 7 skipped.
 Tracking item **#627**. The requirement's home is `documentation/backlog-service-cache-spec.md`
 §6.1, added at plan time; it restates a property Data Model §1 and NFR §4 already assert rather
 than adding a new one. This lands before v3.2.8 cuts — `backlog-cache` is the release-pending
 scope the fix belongs to.
+
+**Verified live against the real backlog at chunk 03:** `#627`'s cached status read `open`, `backlog status --to shipped` ran, and `cache-query resolve` then read `shipped`/`dead=True` **with no sync in between** — while the coverage stamp stayed at its previous value, 9 minutes old. That is the two-claims-are-separate property stated in `cache-reads.md`, demonstrated: the store is honestly minutes behind the provider and exactly current about what this session wrote. Before this branch the same read answered `open`, which is the false R-2 closes/status finding.
 
 **Chunk 01 shipped `3434305`** (fixes `9fa0a0d`), suite 4227 passed / 7 skipped at that point. Review
 `rev-20260808T062229Z-56ca858e` returned 1 blocking / 1 warning / 1 note, all three fixed in the

@@ -5,7 +5,7 @@
 
 ## 2026-08-08: the cache never learned about our own writes
 
-<!-- prawduct: chunks=01,02 | type=fix | scope=backlog-cache -->
+<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-cache-write-path -->
 
 **No backlog write path touched the read-through cache, so every local write left the shared store
 holding a pre-write snapshot for the rest of the session.** `core.py` held zero references to the

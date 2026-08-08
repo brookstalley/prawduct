@@ -801,7 +801,7 @@ def _run_import(rest: list[str], transport, project_dir):
         f"{owner}/{repo}",
         migrate.run_key(content, archive_content, plan_text),
     )
-    return migrate.import_backlog(
+    result = migrate.import_backlog(
         transport,
         owner=owner,
         repo=repo,
@@ -811,6 +811,49 @@ def _run_import(rest: list[str], transport, project_dir):
         archive_scope=archive_scope,
         checkpoint=checkpoint,
     )
+    return _refresh_after_import(result, transport, Path(project_dir), owner=owner, repo=repo)
+
+
+def _refresh_after_import(result: dict, transport, project_dir, *, owner: str, repo: str) -> dict:
+    """Bring the cache level after an import, by sync rather than by mirror.
+
+    A bulk create holds no single authoritative issue to hand to the mirror — the
+    importer creates through the transport directly, hundreds of times — so the
+    per-write path does not apply and re-fetching each issue to feed it would
+    spend a request per item to save one. An incremental sync costs one pass and
+    is the mechanism already built for "the provider moved a lot": every created
+    issue has an `updated_at` past the watermark, so the window catches them all.
+
+    **Skipped, with a reason, when no store exists.** The import is by far the most
+    likely command to run *before* a first sync — it is how a repo becomes a
+    backlog at all — and building a store here would be a mirror creating one,
+    which §6.1 forbids for the same reason it forbids it per write.
+
+    A sync failure never fails the import. The issues are on the provider; the
+    local cache is a mirror of them, and the next sync converges it."""
+    if result.get("status") != "ok":
+        return result
+
+    from . import cache  # noqa: PLC0415 — lazy; only this tail touches the store
+
+    path = cache.cache_path(project_dir)
+    if path is None or not path.exists():
+        return result
+
+    from . import sync  # noqa: PLC0415 — lazy
+
+    # The import's own transport, not a fresh one: building a second would drop
+    # the injected fake under test and open a second `gh` session in production.
+    warmed = sync.incremental_sync(
+        transport, project_dir=project_dir, owner=owner, repo=repo
+    )
+    if warmed.get("status") != "ok":
+        message = (warmed.get("error") or {}).get("message") or "unknown reason"
+        result["warnings"] = list(result.get("warnings") or []) + [
+            f"the import succeeded, but the local backlog cache was not refreshed ({message}); "
+            "run `prawduct-hook backlog sync` before relying on cached reads"
+        ]
+    return result
 
 
 def _run_restructure_preview(rest: list[str]):

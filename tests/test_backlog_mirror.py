@@ -19,6 +19,7 @@ All offline: no ``gh``, no network.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import subprocess
 import sys
@@ -34,6 +35,7 @@ import pytest  # noqa: E402
 
 from lib.backlog import cache, cachequery, cli, core, sync  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
+from fixtures.backlog_fixtures import DISCODON_MINI  # noqa: E402
 
 OWNER, REPO_NAME = "octo", "repo"
 SCOPE = f"{OWNER}/{REPO_NAME}"
@@ -263,7 +265,7 @@ class TestTheMirrorCostsNothingAndBreaksNothing:
         assert result["status"] == "error"
         assert result["error"]["code"] == "unavailable"
 
-    def test_a_raise_anywhere_in_the_mirror_never_fails_the_write(self, fake, repo_dir):
+    def test_a_raise_anywhere_in_the_mirror_never_fails_the_write(self, fake, repo_dir, capsys):
         """The structural half. Every function in the mirror chain is written not
         to raise, and one of them stopped being true once — so the seam catches
         rather than trusting the chain, and a landed provider write is reported as
@@ -281,8 +283,18 @@ class TestTheMirrorCostsNothingAndBreaksNothing:
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr(sync, "absorb_issue", _explode)
             code = _run(repo_dir, ["status", f"{SCOPE}#1", "--to", "shipped", "--json"], fake)
+            captured = capsys.readouterr()
 
         assert code == 0, "a raising mirror turned a landed provider write into a failed command"
+        # **Degraded AND said so.** This assertion is what makes the broad-except
+        # waiver's "nothing is silenced" claim true rather than merely stated:
+        # without it, deleting the `warnings.append` in that handler leaves the
+        # suite green, and a swallowed failure is exactly what the pragma promises
+        # not to be. The other failure test takes the pre-existing return-an-envelope
+        # path, so it does not reach this handler at all.
+        payload = json.loads(captured.out)
+        assert any("was not updated" in w for w in payload["warnings"])
+        assert "RuntimeError" in captured.err, "the raised type must reach the diagnostic log"
 
     def test_a_mirror_failure_is_reported_as_a_warning(self, fake, repo_dir):
         """The other half of the same contract: degraded, and *said* so."""
@@ -341,6 +353,50 @@ class TestTheMirrorCostsNothingAndBreaksNothing:
         assert "from .cache" not in source
         assert "import sync" not in source
         assert "from .sync" not in source
+
+
+class TestImportRefreshesTheCache:
+    """`import` is the one write op with no single issue to mirror.
+
+    It creates through the transport directly, hundreds of times, so the per-write
+    seam does not apply and re-fetching each issue to feed it would spend a request
+    per item to save one. An incremental sync is the mechanism already built for
+    "the provider moved a lot" — every created issue has an `updated_at` past the
+    watermark.
+    """
+
+    #: The suite's own representative legacy backlog, rather than one written here
+    #: — a hand-rolled source encodes my belief about the parser's shape, which is
+    #: exactly the belief a fixture cannot check.
+    SOURCE = DISCODON_MINI
+
+    def test_an_import_into_a_warm_store_leaves_the_items_visible(self, fake, repo_dir):
+        _warm(repo_dir, fake)
+        assert _open_ids(repo_dir) == [], "the store must start empty, or this counts fixtures"
+        source = repo_dir / "backlog.md"
+        source.write_text(self.SOURCE)
+
+        code = _run(
+            repo_dir, ["import", "--repo", SCOPE, "--from", str(source), "--json"], fake
+        )
+
+        assert code == 0
+        cached = _open_ids(repo_dir)
+        assert cached, f"the imported items never reached the cache: {cached}"
+
+    def test_an_import_with_no_store_creates_none(self, fake, repo_dir):
+        """`import` is the command most likely to run BEFORE a first sync — it is
+        how a repo becomes a backlog at all — so the refusal to build a store here
+        matters more than anywhere else."""
+        source = repo_dir / "backlog.md"
+        source.write_text(self.SOURCE)
+
+        code = _run(
+            repo_dir, ["import", "--repo", SCOPE, "--from", str(source), "--json"], fake
+        )
+
+        assert code == 0
+        assert not cache.cache_path(repo_dir).exists()
 
 
 class TestEveryWriteOpIsClassified:
