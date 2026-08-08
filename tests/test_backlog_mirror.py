@@ -408,19 +408,27 @@ class TestImportRefreshesTheCache:
         assert code == 0, "a failed cache refresh must not fail an import that created issues"
         assert any("was not refreshed" in w for w in payload["warnings"])
 
-    def test_an_import_with_no_store_creates_none(self, fake, repo_dir):
+    def test_an_import_with_no_store_creates_none_and_says_so(self, fake, repo_dir, capsys):
         """`import` is the command most likely to run BEFORE a first sync — it is
         how a repo becomes a backlog at all — so the refusal to build a store here
-        matters more than anywhere else."""
+        matters more than anywhere else.
+
+        The diagnostic is asserted, not just the refusal. It is the whole delivery
+        of "reports the skip rather than creating one", and the sibling branch of
+        this same function pins its own diagnostic for the same reason — leaving
+        this one unpinned is how one half of a detection contract stays guarded
+        while the other is silently deletable."""
         source = repo_dir / "backlog.md"
         source.write_text(self.SOURCE)
 
         code = _run(
             repo_dir, ["import", "--repo", SCOPE, "--from", str(source), "--json"], fake
         )
+        captured = capsys.readouterr()
 
         assert code == 0
         assert not cache.cache_path(repo_dir).exists()
+        assert "no backlog cache to refresh" in captured.err
 
 
 class TestEveryWriteOpIsClassified:

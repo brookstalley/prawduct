@@ -458,4 +458,4 @@ dropping them.
 
 ## Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
 
-## A change-log entry's `scope=` tag comes from the PLAN you are in, never from the entry above it — `collect_shipped_chunks` matches `scope=` by exact string, so a plausible neighbouring scope flips the wrong plan's checkboxes while yours regenerate to `[ ]`, and `diagnose_scope_plan_coverage` stays quiet because the borrowed scope really does have chunks by those ids. Tell: your branch's scope is a NARROWING of an existing one
+## A change-log `scope=` tag comes from the PLAN you are in, never the entry above it — `collect_shipped_chunks` matches it by exact string, so a neighbouring scope flips the wrong plan's checkboxes while yours regenerate to `[ ]`, and the coverage check stays quiet because that scope really does have those chunk ids. Tell: your branch narrows an existing scope

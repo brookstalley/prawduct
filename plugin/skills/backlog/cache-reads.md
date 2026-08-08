@@ -70,7 +70,7 @@ A conspicuously old store is worth naming beside the finding, because a stale an
 thing from a wrong one and the reader deciding what to do needs to tell them apart.
 
 **Your own writes are already in there — but the age does not say so.** A `file`, `status`,
-`update`, `merge` or `link --edge related` through this adapter updates the store as it goes, so an
+`update`, `merge` or `link`/`unlink --edge related` through this adapter updates the store as it goes, so an
 item you just filed resolves and one you just shipped reads `shipped`, with no sync in between.
 (`import` refreshes by a sync after the run instead; `comment`, `provision`, `reconcile-labels` and
 the native edges change nothing the store holds.) The two
