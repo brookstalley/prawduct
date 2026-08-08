@@ -1233,7 +1233,7 @@ class TestBatchFixDirective:
             ".prawduct/backlog.md",
             ".prawduct/project-state.yaml",
             ".prawduct/artifacts/build-plan-demo.md",
-            ".prawduct/release-notes.md",   # regen-views output
+            ".prawduct/release-notes.md",   # frozen archive of the retired views
         ):
             assert not coverage_algebra.is_judgeable_path(path)
 

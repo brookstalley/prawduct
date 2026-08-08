@@ -24,7 +24,7 @@ The stop hook enforces review for code changes when a build plan exists: it asks
 Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical caller is `/prawduct:critic` (no args) — the SKILL forwards any invocation arguments verbatim to `prawduct-hook infer-critic-mode`, which owns the full precedence and records `mode_chosen_by` as its verbatim rationale string. Three precedence layers, highest first, all implemented inside the helper:
 
 1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). Rationale: `"explicit-args"`. The skill must forward, never parse (Skill-tool invocation of a fork-context skill does not substitute `$ARGUMENTS`; SKILL step 1 collects arguments from whichever delivery path carried them).
-2. **Plan-level override** — the active build plan's current chunk's `Critic mode:` field (on a `views_enabled` feature branch the current chunk is git-derived, since checkboxes only flip at release). A valid value wins over inference with rationale `plan-override: <mode>`; an absent, blank, or unrecognized value is ignored.
+2. **Plan-level override** — the active build plan's current chunk's `Critic mode:` field (the current chunk is the first unticked `## Status` box). A valid value wins over inference with rationale `plan-override: <mode>`; an absent, blank, or unrecognized value is ignored.
 3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`).
 
 See `methodology/planning.md` "Critic Mode Per Chunk" for the authoring heuristic — what inference will pick per plan shape, and when an explicit declaration is worth the override.
@@ -295,8 +295,8 @@ from here.
 
 **Which writes are free while a review is in flight** — the question the builder actually has
 mid-review, answered by `coverage_algebra.is_judgeable_path`. Free: **everything under
-`.prawduct/`** (change-log, backlog, learnings, `project-state.yaml`, plan prose, `regen-views`
-output, and the gitignored session files), `.claude/settings.json`, and `.md` outside the protected
+`.prawduct/`** (change-log, backlog, learnings, `project-state.yaml`, plan prose including its
+`## Status` boxes, and the gitignored session files), `.claude/settings.json`, and `.md` outside the protected
 set — README, `docs/**`, product prose. These are **non-judgeable**: a commit touching only those
 composes as a free edge, so it never needs new coverage and a fix confined to them cannot mandate
 another review. Two traps, both in the direction of *more* review than the extension suggests: a

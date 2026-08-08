@@ -495,14 +495,11 @@ only gate that reads tags.
     back empty, which makes the completeness claim harder to check than it should be. (Leave
     `tests/test_plugin_migrate.py` alone — it models a pre-2.0 file-sync repo where the flag really
     existed.)
-  - **Carried in from Chunk 02's review (R-22), a one-line judgement rather than a code change.**
-    `check_releasability` returns early at `if not pending:` before reaching `_plan_coverage_warnings`,
-    so the rehomed `duplicate_scope_errors` — repo hygiene, independent of what is pending — never runs
-    on a repo with nothing release-pending, where its old caller ran it every invocation. Decide
-    explicitly: hoist it above the no-pending return to keep its old reach, or record that the narrower
-    trigger is accepted (two plans declaring one scope still resolve deterministically, first by sorted
-    path). Either is fine; leaving it undecided is what is not, because the narrowing was a side effect
-    of the rehoming rather than a choice.
+  - **R-22 — DECIDED: hoist, executed in Chunk 04.** The narrowing of `duplicate_scope_errors`'
+    trigger was a side effect of Chunk 01's rehoming rather than a choice, and the arm taken is to
+    restore its old reach. The reasoning and the test to write are recorded on Chunk 04's
+    Deliverables, where the edit lands — this chunk is `Type: doc-only` and the fix is code, the
+    same call made for the tripwire narrowing.
 - **Acceptance criteria:** no shipped document teaches `chunks=`, `status=`, or a derived Status block;
   the release process describes adding `release=` and nothing else; both norm retirements are recorded
   as decisions naming what changed and why, and a reader of either norm finds the retirement rather
@@ -550,6 +547,19 @@ only gate that reads tags.
     **Why it is worth doing rather than accepting:** a brand-new control whose first firing is
     wrong teaches its first readers to ignore it, which is the habituation the proportionality norm
     exists to prevent — and this control's whole defence is that it emits its yield observably.
+  - **R-22, decided in Chunk 03 and landing here because the decision is HOIST and the edit is code.**
+    `duplicate_scope_errors` currently sits inside `_plan_coverage_warnings`, which
+    `check_releasability` reaches only after `if not pending: return 0` — so on a repo with nothing
+    release-pending it never runs, where its old caller ran it every invocation. **Hoist it above that
+    early return.** The reasoning, recorded because "either is fine" was the offer and this is the arm
+    taken: the function takes only `artifacts_dir` and asks a question about repo structure, so gating
+    it on `pending` is a coupling nobody chose — it was a side effect of the rehoming. Its message
+    ("one plan is malformed") is actionable at any time, and the defect it names is exactly the kind
+    that is cheap to fix on a quiet day and expensive to discover mid-release, when scope→plan
+    resolution has just become load-bearing. Noise risk is near zero: two plans genuinely declaring
+    one scope is rare and always wrong. Keep the missing-plan half where it is — that one is *about*
+    the pending set and correctly scoped to it. Test the no-pending repo with a duplicate scope, which
+    is the case that is silent today.
   - **Carried in from Chunk 02's review (R-14), because this chunk creates the directory that makes
     it real.** `plan_index._markdown_files` prunes ANY directory component named `archive` at every
     depth, but `iter_scoped_plan_candidates(include_archived=True)` re-walks only the archive

@@ -228,7 +228,60 @@ Same family as [[the fix for a review finding needs the same adversarial pass as
 concrete instance of the test-evidence prompt's standing warning that a fixture which never reaches
 the subject passes forever.
 
-## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
+## When you retire a MECHANISM, sort its rules into three piles before deleting any
+
+Retiring the derived views touched **eleven** learnings, and the interesting result is that only
+five of them actually died. The piles:
+
+**Died (5)** — pure format rules for a tag schema that no longer exists: zero-padded `chunks=`
+matching, `status=in-progress` tripping the typo-guard, flip-statusless-at-release, `scope: null`
+inheriting another scope's flips, and the `regen-views-is-advice` ruling. Nothing generalises out of
+these; each was a fact about how one parser read one field. Their narratives stay in this file with
+a RETIRED banner rather than being deleted — the incidents were real, and the record of *why* a
+format rule existed is what stops the next schema inventing the same trap.
+
+**Rewritten (5)** — the rule was real and only its named mechanism changed: `scope:` must be the
+scope-NAME not a version; a `scope=` tag comes from the plan you are in; KEEP the build plan until
+the release; number your chunks; a change-log entry's body must cover every chunk it shipped. Each
+had been written with its enforcing mechanism inline, so each *read* as dead when the mechanism
+went. The test that separates this pile from the first: strike the mechanism's name out of the
+sentence and see whether a rule is left. For all five, one was.
+
+**Inverted (1)** — *never hand-check the Status boxes* became *always hand-tick them*. This is the
+pile nobody looks for, and it is the only one where missing an entry leaves an **actively harmful**
+rule standing rather than a merely useless one: a reader following the old form would now
+deliberately avoid doing the thing the framework requires, and would be able to cite this file for
+it.
+
+**The tell for the third pile:** the rule's imperative is a *prohibition*, and its stated reason is
+that some tool exists. Prohibitions justified by a tool's existence do not decay into silence when
+the tool goes — they decay into an instruction to avoid something that is now correct. Grep the
+retirement's vocabulary for imperatives, not just for the tool's name.
+
+**Why this is worth a rule at all.** The temptation at retirement is a single sweep: grep the dead
+token, delete every hit. That is right for the first pile, loses real knowledge in the second, and is
+actively wrong in the third — and all three look identical to a grep, because the dead token appears
+in all of them.
+
+## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned
+
+**Retired 2026-08-08 with the derived views (GD4).** The ruling below was correct and is kept
+verbatim as the record of a collision that was genuinely decided; what changed is that the command
+it decided about no longer exists. `regen-views` was the only writer whose sole product was a view,
+so there is nothing left for the precedence to apply to.
+
+**What survives, and where it went.** The category-level sentence — *a command's failure posture
+follows what it produces* — was promoted out of the ruling and onto `architecture.md`'s norm itself,
+because it never depended on `regen-views`: it falls out of that norm's own why (a verdict must not
+be satisfiable by feeding it garbage, which reaches a command only where a verdict exists to
+corrupt). A future view writer therefore inherits the answer and needs no new ruling. Both norms'
+`Rulings:` lines now record the retirement rather than pointing at a live ruling, and this heading
+is kept rather than deleted so the `[[regen-views-is-advice]]` links still land somewhere.
+
+**The original ruling, as decided.** When two norms reach one command, its OUTPUT decides the
+posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no
+gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still
+fails closed. Skip-and-report a bad view, never write it half-right.
 
 **Collision ruling, owner decision 2026-08-01**, raised by #201's fourth leg. Two `## Direction`
 norms both reached `regen-views` and pointed opposite ways: `architecture.md`'s *authority fails
@@ -641,7 +694,13 @@ Relates to Bring Expertise (#7), Honest Confidence (#5), Verify-don't-guess, Pro
 (#11).
 
 When a framework brands itself language/platform-agnostic, a core ingest surface must not be gated on one ecosystem's interchange format. test-evidence `record` accepted results ONLY as JUnit XML (default pytest, `test_command:` requiring `{junit_xml}`, `--from-junit`) — fine for the many stacks that emit JUnit, but it left embedded/HIL/bespoke toolchains with no paved on-ramp (hand-write the JSON, or fake a JUnit file). The fix is to expose the MINIMAL primitive the gate actually needs — for test results, pass/fail/skip counts (`--from-counts`) — so any toolchain participates without writing an adapter. It surfaced only because the user asked "are we breaking non-Python/embedded users?"; so when adding an ingest path, ask up front which real toolchains CAN'T produce its format. Corollary (same cycle): an upstream bug report's stated root cause is a HYPOTHESIS — the scriob report blamed a `git diff base...HEAD` membership shift the producers don't do (they diff base→worktree, commit-invariant); verify against source before designing, because the real fix was docs + this on-ramp, not the report's suggested content-hash (which a deliberate prior decision had rejected). Relates to Bring Expertise (#7), Honest Confidence (#5), Proportional Effort (#11), Verify-don't-guess, and [[backlog]] COV-4M2J (the Python-only coverage-floor residual).
-## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version) — `regen-views` resolves plans by it and a version there silently skips Status flipping at release
+## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version)
+
+**Mechanism renamed 2026-08-08 ([[the-derived-views-retirement]]), rule unchanged.** The field is still
+the join between a change-log `scope=` tag and the plan describing that work; the reader is now
+`check-releasability` rather than the retired regenerator, and the symptom is now a
+*release-pending scope with no build-plan file* advisory instead of unflipped checkboxes. The 2026-06
+narrative below is preserved as the incident record and names the old reader.
 
 **Pattern**: v2.1.8 batch release (2026-06-22). The `hook-cli-robustness` branch was built
 targeting v2.1.7, then batched into the v2.1.8 release alongside three other branches. Its
@@ -927,15 +986,21 @@ So the post-fix cost is ONE light pass, not a full re-review — but that is bes
 
 <!-- Narratives moved from learnings.md 2026-06-10 (MET-6W3J compaction) -->
 
-## A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
+## RETIRED — A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
 
 When creating a build plan, set the frontmatter `scope:` to a unique slug immediately (matching the change-log entry's `scope=` tag) — do NOT leave it `scope: null`. With `views_enabled: true`, `regen-views` derives each plan's `## Status` checkboxes from `status=shipped` change-log entries; `collect_shipped_chunks` filters by the plan's detected scope, but a `scope: null` plan falls into "legacy unfiltered" mode where EVERY shipped entry contributes its chunk IDs. So a brand-new single-chunk plan whose chunk is "Chunk 1" gets flipped to `[x]` by an unrelated shipped entry like `chunks=1,2,3 | status=shipped | scope=work-model` — a spurious "shipped" on work that's only on a feature branch. (Discovered building CRT-3X9D: my `scope: null` plan's Chunk 1 flipped from the work-model v2.0.13 entry.) The build-plan template's `scope:` comment warns about this, but the warning lives in a template comment that from-scratch plan authors don't see, so it keeps recurring. Fix-shape: every build plan declares a unique `scope:` slug up front; verify by running `regen-views` after adding the change-log entry and reading the plan back (a statusless branch entry must leave the chunk `[ ]`) — `--check` is gone, views always regenerate. Discovered CRT-3X9D (2026-06-07, branch). Relates to Coherent Artifacts (#13), [[new change-log entries on a feature branch are statusless]] (the sibling regen-views trap), and Validate Before Propagating (#15).
 
-## New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
+## RETIRED — New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
 
 When adding a `.prawduct/change-log.md` entry for work on a feature branch (before it reaches develop), leave the `status=` tag OFF entirely — do NOT use `status=in-progress`. `lib/views.py` recognizes only `{shipped, merged}` (`VALID_STATUS_VALUES`), and `warn_unrecognized_status_tags` flags any *present-but-unrecognized* `status=` as "Likely a typo" on every `regen-views` run; `in-progress` is a deprecated legacy value (`docs/release-process.md` "Change-log `status=` values" documents the current model). The documented lifecycle (updated by single-pr-bookkeeping, 2026-07-10): the entry stays **statusless** through the feature→develop merge — a statusless tagged entry IS the release-pending state, and the old post-merge `status=merged` stamp step was retired because it required a commit on the integration branch, forcing protected-branch consumers into bookkeeping-only PRs (`merged` in older logs is an accepted legacy synonym, treated as statusless). Flip to `status=shipped` + `release=vX.Y.Z` at the develop→main release (gitflow), or write `status=shipped` (+ `release=` when the product versions) in the closing PR when its base is the release surface (trunk). A statusless entry triggers no warning (the guard only fires when `status=` is *present*) and flips no checkbox (that needs `status=shipped` + `chunks=`), which is exactly correct for branch-state and release-pending work. The work-model entry (v2.0.13, the immediately prior session) used `status=in-progress` on its branch and it slipped through only because `regen-views` wasn't run during that window — REL-8K3M's cumulative Critic caught the same value as a WARNING. Fix-shape: branch entries carry only `type=`/`scope=`; statuses change only inside a PR (release-prep or a trunk closing PR), never as a post-merge commit. Discovered REL-8K3M (2026-06-06, develop). Relates to Coherent Artifacts (#13), Escape hatches create silent failures (#22), Honest Confidence (#5), and Living Documentation (#3).
 
-## A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
+## RETIRED — A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
 
 When tagging a multi-chunk change-log entry, the `chunks=` list must use the **same numbering format** as the plan's `## Status` headings — if the plan reads `Chunk 01 … Chunk 10`, the tag must be `chunks=01,02,…,10`, not `chunks=1,2,…,10`. `lib/views.py`'s `regenerate_status_section` matches chunk IDs as **literal strings** (`CHUNK_LINE_RE` captures `01` from `Chunk 01:`), so `chunks=1` does not match `Chunk 01` — and the failure is *partial and silent*: at v2.0.15 release-prep, `chunks=1,2,…,10` against `Chunk 01..10` headings flipped **only chunk 10** (the one token that happened to match), leaving 01–09 stuck `[ ]` with no error. The tell is `regen-views`' own output — `"1 chunk(s) flipped — shipped [10]"` when you expected 10. The work-model release (v2.0.13) dodged this by using single-digit `Chunk 1/2/3` headings to match `chunks=1,2,3` (noted inline in its prep commit), but a plan written with zero-padded headings needs zero-padded tags. Fix-shape: after `regen-views` at release, read its flipped-count and confirm it equals the chunk count; if fewer flipped, the `chunks=` numbering doesn't match the headings — align the tag to the headings (don't renumber the plan). Discovered v2.0.15 backlog-rework release (2026-06-08, release). Relates to Coherent Artifacts (#13), Validate Before Propagating (#15), and [[At release, flip statusless unreleased change-log entries]].
 
@@ -943,7 +1008,9 @@ When tagging a multi-chunk change-log entry, the `chunks=` list must use the **s
 
 A `context:fork` skill (e.g. `/prawduct:backlog`, `allowed-tools: Read, Edit, Write, Grep, Glob` — no Bash) is LLM-interpreted prose: it cannot import or call a `lib/` module. So its filtering/routing/dedup/ranking *logic* is the agent reasoning over the file it reads — there is no Python call site. The runtime (`bin/prawduct-hook` and the hooks it runs) is the only consumer of `lib/`. Consequence: when planning such a feature, `lib/` should carry the **data layer** (a parser + pure query accessors — like `lib/backlog.py` mirroring `lib/views.py`) that the *runtime* needs (briefing counts, probes), and the **logic** belongs in the skill prose. A planned `lib/` "logic helper" the skill would supposedly use (`is_implementable`, a dedup-candidate scorer, an archive-split function) is **dead code** — nothing imports it — and the Critic flags it (Goal 7) or it sits untested-by-a-real-consumer. The backlog-rework plan listed four such helpers; each was correctly descoped, but the descope must be **recorded** (Principle 2) — the Critic flagged the first one left silent (ch.03). Fix-shape: when a plan assigns logic to a fork-skill feature, put data in `lib/` (+ tests) and logic in the SKILL.md; if a plan line says "add `lib/` helper X for the skill," ask "does any *Python* path call X?" — if no, it's skill prose, descope the helper and record it. Discovered backlog-rework v0.3 (2026-06-08, branch). Relates to The Design Is Sound (#7 — no dead code), Complete Delivery (#2 — record descopes), Scope Discipline (#12), and [[fine-grained tool restriction needs a fork-skill, not a named subagent]].
 
-## At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
+## RETIRED — At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
 
 `docs/release-process.md` step 3 says to flip entries "from `status=merged` to `status=shipped`," but in practice most unreleased entries reach release-prep **statusless**, not `status=merged`. The documented two-state lifecycle (add `status=merged` at the feature→develop merge — see [[new change-log entries on a feature branch are statusless]]) is manual, and the `/prawduct:pr` merge flow does NOT apply it, so a branch entry stays statusless from branch through develop into release-prep. A release author who follows step 3 literally flips only the `status=merged` entries and **silently drops every statusless one** — and because `regen-views` acts only on entries with `status ∈ {shipped, merged}`, a dropped statusless entry's build-plan `## Status` checkboxes never flip, and it never appears in `release-notes.md` or `scope_rollups`. The omission is invisible (no warning — a statusless entry trips no typo-guard), so the release ships looking complete while quietly missing scopes. At v2.0.14 (batched: hook-decomp ch.1–7 + critic-session-guard) **8 of 10** unreleased entries were statusless; only the two bugfixes carried `status=merged`. Fix-shape: at release-prep, enumerate ALL change-log entries above the prior `release=vX` boundary and flip each (statusless OR `status=merged`) to `status=shipped` + `release=vX.Y.Z`; then run `regen-views` (exit 0, not 3 — a 3 means some scope's `## Status` was suppressed) and confirm every shipped scope's plan flipped to `[x]` and appears in `scope_rollups`. Deeper fix is filed ([[backlog]] REL-2N8K): either make the feature→develop merge reliably set `status=merged`, or reword release-process.md step 3 to say "statusless or `status=merged`." Discovered v2.0.14 release (2026-06-08, release). Relates to Complete Delivery (#2), Living Documentation (#3), [[new change-log entries on a feature branch are statusless]], and Validate Before Propagating (#15).
 
@@ -975,7 +1042,13 @@ When changing a framework-level *default behavior* that every product (any vinta
 
 When a plugin and its `.claude-plugin/marketplace.json` live in the SAME repo (prawduct's topology), the marketplace entry's plugin `source` must be the relative `"./"`, NOT a `{ "source": "github", "repo": …, "ref": … }` object. The github-source form makes Claude Code **re-clone the repo over SSH** (`git@github.com:…`) to fetch the plugin — which fails with "Permission denied (publickey)" on any machine without SSH keys (most HTTPS/`gh`-auth users), **even for a public repo**. The `"./"` form reuses the marketplace's own HTTPS checkout (one clone, no SSH) and inherits the marketplace's pinned `ref`. Don't confuse the two source surfaces: the *consumer's* `extraKnownMarketplaces` source IS `{source:github,repo,ref:main}` (that's the marketplace clone — HTTPS, fine); the *plugin* source inside `marketplace.json` is `"./"`. Empirically proven in the v2.0.0 Chunk-2 spike (throwaway public repo) and confirmed on prawduct's real marketplace install (`claude plugin install prawduct@prawduct` → v2.0.0, no SSH). Related operational gotchas from the same release: `claude plugin marketplace remove <name>` **cascades** — it disables dependent plugins and wipes their `enabledPlugins`/`extraKnownMarketplaces` from settings (don't use it as "cleanup" if you want the plugin to stay enabled); and `git merge -F -` does **not** read stdin like `git commit` (use `-m` or a real file). Full spike results in `docs/release-process.md`. Relates to Validate Before Propagating (#15) and Visible Costs (#9).
 
-## Release-bound work merged feature→develop under gitflow: KEEP the build plan — it's a live release artifact, not spent
+## Release-bound work merged feature→develop under gitflow: KEEP the build plan and the `active_build_plan` pointer until the release
+
+**Mechanism renamed 2026-08-08 ([[the-derived-views-retirement]]), rule unchanged.** The reason to keep
+the plan used to be that the release's regeneration pass needed something to regenerate. It is now
+that `check-releasability` pairs each release-pending `scope=` against the plan declaring it, so an
+early deletion turns your own shipped work into "work with no documented parent" (Principle 6). The
+conclusion is identical and the narrative below is preserved with its original mechanism named.
 
 When you merge a feature branch whose work ships at a *later* `develop→main` release (gitflow batched-release, not the old develop-merge=release model), do NOT delete the build plan at merge time. The PR skill's merge-flow **step 7** ("delete `artifacts/build-plan.md` after merge; git preserves history") assumes the older model where the develop-merge *is* the release. Under gitflow the build plan stays a *live release artifact* in the window between the develop-merge and the develop→main release: release-checklist **step 4** runs `regen-views` *on the build plan* to flip its `## Status` checkboxes `[ ]`→`[x]` from the change-log's `status=shipped` entries (`docs/release-process.md`). Delete it at merge and the release step has nothing to regenerate — and the `active_build_plan` pointer in `project-state.yaml` must likewise survive until the release. Retention loses nothing: the release-pending state is already fully captured in the change-log's `status=merged` entry plus its "Deferred" note, and git preserves the plan regardless. So the deletion is both premature and lossy. Fix-shape: the skill's step 7 should be *conditioned on whether the merge is itself the release* (develop-merge that ships now → delete; develop-merge ahead of a batched develop→main release → retain). Discovered v2.0.0 PR #49 merge to develop (release deferred to develop→main per `docs/release-process.md`). Relates to Coherent Artifacts (#13), Living Documentation (#3), and Proportional Effort (#11).
 
@@ -1027,7 +1100,19 @@ When deprecating or removing a mechanism, grep for the mechanism's **name** in a
 
 When adding a new build-plan field, format the label as `**Title Case:**` (bold, words-with-spaces, colon) — matching `**Type:**`, `**Critic mode:**`, `**Requirements Confidence:**`, `**Acceptance criteria:**`, `**Done when:**`. Snake_case (`foreign_api:`, `coverage_required:`) is the YAML-key namespace in `project-state.yaml`, a different surface. The methodology's prose form must be string-identical to the template's label except for the `**...**` bolding — so the Critic's substring-match finds real plans. Wave 1's F8 conflated the two namespaces (`foreign_api:` in prose, `**Foreign API:**` in template) and the Critic-check substring never matched a real plan. Relates to Coherent Artifacts (#13).
 
-## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but `regen-views`/`chunks=` still key on the colon Status form
+## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but number your chunks
+
+**The residual colon dependency is GONE as of 2026-08-08** ([[the-derived-views-retirement]]):
+`regen-views` and its separate `CHUNK_LINE_RE` Status-line parser were deleted with the views, and
+the follow-up VWS-2F9K they were tracked under is closed by removal. Both heading forms now parse
+through the one shared primitive, with leading-zero tolerance, everywhere.
+
+**A different constraint replaced it, and it is narrower than the old one.** The
+unticked-committed-chunk advisory (`buildplan_refs.unticked_committed_chunk_notice`) matches
+`Chunk <n>` against COMMIT SUBJECTS via `_CHUNK_COMMIT_RE`, which captures `\d+` only. A plan using
+non-numeric chunk ids (`Chunk A`) can never be matched by any commit subject, so it gets permanent
+silence from the only backstop the hand-ticked boxes have — and silence there is indistinguishable
+from every box being correct. Number your chunks.
 
 **Superseded 2026-07-18 (BLD-5J8N / PDT-C6R4).** The `verify-chunk-refs` chunk-id/section parsers were historically hardwired to the colon form: they isolated the id via `rest.split(":",1)[0]`, so an em-dash separator (`### Chunk N — Name`) or the research-plan form (`## Chunk N (ID) — Name`) made the *whole string* the "id", matched no heading, and — worse — surfaced as a generic exit-1 "chunk not found" indistinguishable from a real missing deliverable, so reviewers learned to hand-wave the exit (false-negative habituation) and a real dropped-deliverable BLOCKING could hide behind it. Now the shared `lib/buildplan_refs.py` primitives (`_chunk_section_lines`, `_chunk_id_from_item_text`, `_current_chunk_id_from_status`) match both H2/H3 headings with a `:`, `—`, `–`, `-`, or `(` after the id via `_CHUNK_HEADING_RE`/`_CHUNK_ITEM_RE` — the id MUST be followed by a separator/paren/EOL, so a notes sub-heading like `### Chunk 2 build-session decisions` (no separator) is NOT mistaken for a chunk boundary. This fixes `verify-chunk-refs` (Goal-2) AND `infer-critic-mode`'s chunk-type/current-chunk lookup (they share these primitives — the GOV-8N4V facet), and `cmd_verify_chunk_refs` now emits a distinct `cannot-verify:` (gate could not run) message vs `missing-ref:` (a named deliverable is absent), so the two are never conflated. Leading-zero tolerance is preserved (`1` matches `### Chunk 01:`). Guard tests: `tests/test_buildplan_walkers.py::TestH2ChunkHeadingForm`/`::TestChunkIdFromItemText`.
 
@@ -3072,26 +3157,43 @@ Tagged `scope=backlog-cache` on a branch whose plan scope is `backlog-cache-writ
 **Related:** [[observable-beats-stored]] shares the shape — a field whose value must be remembered rather than derived is a field that will eventually be wrong.
 
 
-## Never hand-check a build plan's `## Status` boxes while `views_enabled`
+## Hand-tick a build plan's `## Status` box the moment its chunk's review passes
 
-Caught by the PR reviewer on `fix/backlog-cache-write-path` (`8551e26`): the plan's three boxes were
-`[x]` while the change-log entry is deliberately statusless on a `develop` base.
-`views.build_status_view` counts only `status=shipped` entries, so the next `regen-views` at release
-would have reverted all three — the hand-set state survives right up to the moment anyone would
-consult it, then silently disappears.
+**This entry is the inversion of the rule that stood here until 2026-08-08, and the history is the
+useful part** — a rule this file once stated as a prohibition is now stated as an obligation, so
+anything still repeating the old form is running on a mechanism that no longer exists.
 
-**Tell:** your boxes disagree with a sibling release-pending plan's. The sibling
-(`build-plan-backlog-cache.md`) kept `[ ]` and recorded completion in prose, which is the documented
+**What the old rule was, and why it was right at the time.** The boxes were a derived view:
+`views.build_status_view` counted `status=shipped` change-log entries and regenerated the `## Status`
+block at release. Hand-ticking therefore survived right up to the moment anyone would consult it,
+then silently disappeared. It was caught by the PR reviewer on `fix/backlog-cache-write-path`
+(`8551e26`), where three boxes were `[x]` against a deliberately statusless entry on a `develop`
+base, and the sibling plan that kept `[ ]` and recorded completion in prose was the documented
 convention.
 
-**The other half of the cost, observed 2026-08-08.** With the boxes correctly `[ ]`, the session
-briefing announced `Resume: Chunk 01` for that plan *after all three chunks had shipped and merged*
-(PR #628), and the handoff notes repeated it as fact. So the convention that keeps `regen-views` from
-lying costs a false resume signal at every session start until the release lands. Both halves are the
-same root cause — completion has two readings and neither is authoritative — which is what
-`documentation/governance-artifact-lifecycle-requirements.md` exists to remove.
+**What the convention cost, and why it lost.** With the boxes correctly `[ ]`, the session briefing
+announced `Resume: Chunk 01` for that plan *after all three chunks had shipped and merged* (PR #628),
+and the handoff notes repeated it as fact. That is the shape of the whole defect: completion had two
+readings, neither was authoritative, and the framework's own answer was to tell every reader not to
+trust the one printed in the artifact. A governance file whose most-read field is documented as
+untrustworthy is not a file with a caveat, it is a file with a bug — and the bug was the tool that
+overwrote it, not the people ticking boxes.
 
-**Related:** [[a-change-log-scope-tag-borrowed-from-the-neighbouring-entry]] — same branch, same
+**The rule now.** Tick `[x]` by hand when a chunk's "Done when" steps are all satisfied, and in that
+order — the Critic review comes before the tick, because ticking the LAST box disarms the Stop hook's
+Critic and reflection gates. Nothing derives the boxes, nothing reverts them, and everything reads
+them: the briefing's `Resume:` line, the handoff, review-mode inference, chunk-ref grading, and both
+Stop gates. The opposite error is now the live one — a chunk built, committed, and left unticked —
+and its only backstop is `buildplan_refs.unticked_committed_chunk_notice`, an advisory that fires
+solely on a `Chunk <n>` commit subject with a numeric id. A repo without that commit habit gets
+silence from it, indistinguishable from every box being right.
+
+**Tell that the old rule is still running somewhere:** any prose telling a reader the boxes are
+untrustworthy, that they "only flip at release", or to consult git history or the Context line
+instead of the checkboxes.
+
+**Related:** [[the-derived-views-retirement]] — the sorting rule this inversion produced;
+[[a-change-log-scope-tag-borrowed-from-the-neighbouring-entry]] — same branch, same
 release-bookkeeping surface, both found by review rather than by a check.
 
 

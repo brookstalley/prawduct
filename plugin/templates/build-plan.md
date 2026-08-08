@@ -8,8 +8,8 @@
 ---
 artifact: build-plan
 version: 2
-# scope: change-log scope tag (with `views_enabled`, regen-views flips Status
-# checkboxes from entries matching it). Use your in-flight chunks' tag; null is fine
+# scope: change-log scope tag. The release gate pairs this plan with the change-log
+# entries carrying the same `scope=`. Use your in-flight chunks' tag; null is fine
 # for single-version products.
 scope: pantry-v1
 depends_on:
@@ -46,12 +46,23 @@ last_validated: 2026-07-03
 
 ## Status
 
-<!-- The cross-session handoff. Mark `[x]` when a chunk's "Done when" steps are all
-     satisfied; keep Context current. Context runs from `Context:` to the end of this
+<!-- The cross-session handoff, and the ONLY reading of chunk progress. The boxes are
+     yours to tick: mark `[x]` by hand when a chunk's "Done when" steps are all
+     satisfied — nothing derives them, so an unticked box is read everywhere as work
+     still open. Keep Context current. Context runs from `Context:` to the end of this
      section, so it may be several paragraphs — the handoff carries it whole. Keep it
      LAST: a chunk checkbox after it closes the block, and anything below that is
-     dropped from the handoff. When `views_enabled`, checkboxes regenerate from tagged
-     change-log entries — update the tag, don't hand-flip. -->
+     dropped from the handoff.
+
+     Ticking is load-bearing in both directions. Ticking the LAST box disarms the Stop
+     hook's Critic and reflection gates, which is why "Done when" puts the review before
+     the tick. The opposite error — a chunk built, committed, left unticked — is caught
+     by an advisory, and ITS PRECONDITION IS YOUR COMMIT CONVENTION: it fires only on a
+     commit subject matching `Chunk <n>` with a NUMERIC id. A repo that doesn't name
+     chunks in commit subjects, or numbers them `Chunk A`, gets permanent silence from
+     it — and silence there is indistinguishable from every box being right. Number the
+     chunks and name them in the subject line, or accept that the boxes have no
+     backstop. -->
 
 - [ ] Chunk 01: Walking skeleton — list page backed by SQLite
 - [ ] Chunk 02: Add and check off items, grouped by store section
