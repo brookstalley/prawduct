@@ -3061,3 +3061,12 @@ all three historical blobs (3 hits, 1 hit, 1 hit) and the fixed tree (0).
 
 Related: *a retirement is one act per substrate the thing lives on* (the scoping half of the same
 family) and *a rule about second homes does not stop at the homes someone remembered to enumerate*.
+
+
+## A change-log `scope=` tag borrowed from the neighbouring entry
+
+Tagged `scope=backlog-cache` on a branch whose plan scope is `backlog-cache-write-path`, caught by the Chunk 02 cumulative reviewer. Under `views_enabled`, `views.collect_shipped_chunks` filters entries by exact `scope=` equality, so at release these chunks would have flipped `build-plan-backlog-cache.md`'s boxes — already covered by its own entries — while `build-plan-backlog-cache-write-path.md`'s chunks collected nothing and regenerated to `[ ]`. The integrity check does not catch it: `diagnose_scope_plan_coverage` complains only when a `chunks=` id matches no line in the mapped plan's roster, and `backlog-cache` genuinely has chunks 01 and 02.
+
+**This is the same failure class as `807cd75` on the parent branch** — the `release=unreleased` placeholder that made a finished branch invisible to its release — recurring three weeks later inside the change-log entry describing the fix for it. Cause both times: the tag was copied from the surrounding entries rather than derived from the artifact it points at. A neighbouring entry is the most available model and the least reliable one, because it was written for a different scope.
+
+**Related:** [[observable-beats-stored]] shares the shape — a field whose value must be remembered rather than derived is a field that will eventually be wrong.

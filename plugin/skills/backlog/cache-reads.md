@@ -70,8 +70,10 @@ A conspicuously old store is worth naming beside the finding, because a stale an
 thing from a wrong one and the reader deciding what to do needs to tell them apart.
 
 **Your own writes are already in there — but the age does not say so.** A `file`, `status`,
-`update`, `link`, `merge` or `import` through this adapter updates the store as it goes, so an item
-you just filed resolves and one you just shipped reads `shipped`, with no sync in between. The two
+`update`, `merge` or `link --edge related` through this adapter updates the store as it goes, so an
+item you just filed resolves and one you just shipped reads `shipped`, with no sync in between.
+(`import` refreshes by a sync after the run instead; `comment`, `provision`, `reconcile-labels` and
+the native edges change nothing the store holds.) The two
 claims are separate and it matters which you rely on: the age still measures the last confirmed
 *fetch* from the provider, so a store can be minutes old by that number and completely current about
 everything this session wrote. It errs the safe way — more current than it says, never less — and it

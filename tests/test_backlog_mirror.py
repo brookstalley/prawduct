@@ -384,6 +384,30 @@ class TestImportRefreshesTheCache:
         cached = _open_ids(repo_dir)
         assert cached, f"the imported items never reached the cache: {cached}"
 
+    def test_a_failed_post_import_refresh_is_reported(self, fake, repo_dir, capsys):
+        """The sole operator-visible signal that an import left the cache behind.
+
+        Pinned because the per-write seam's equivalent warning is pinned twice and
+        this one was not — the two halves of one detection contract, unevenly
+        guarded, is how the branch's own learning says a guard gets deleted
+        silently."""
+        _warm(repo_dir, fake)
+        source = repo_dir / "backlog.md"
+        source.write_text(self.SOURCE)
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(
+                sync, "incremental_sync",
+                lambda *a, **k: core.error("unavailable", "the provider was unreachable"),
+            )
+            code = _run(
+                repo_dir, ["import", "--repo", SCOPE, "--from", str(source), "--json"], fake
+            )
+            payload = json.loads(capsys.readouterr().out)
+
+        assert code == 0, "a failed cache refresh must not fail an import that created issues"
+        assert any("was not refreshed" in w for w in payload["warnings"])
+
     def test_an_import_with_no_store_creates_none(self, fake, repo_dir):
         """`import` is the command most likely to run BEFORE a first sync — it is
         how a repo becomes a backlog at all — so the refusal to build a store here

@@ -838,6 +838,11 @@ def _refresh_after_import(result: dict, transport, project_dir, *, owner: str, r
 
     path = cache.cache_path(project_dir)
     if path is None or not path.exists():
+        # A diagnostic rather than a warning: an absent store is reported at every
+        # read with the command that fixes it (§6.1), so a per-import warning would
+        # restate it — but a maintainer asking "why is the cache empty after the
+        # import?" deserves the answer where they are looking.
+        core.log_diag("no backlog cache to refresh after the import; run `backlog sync` to build one")
         return result
 
     from . import sync  # noqa: PLC0415 — lazy
@@ -1059,18 +1064,20 @@ def _with_mirror(project_dir, call):
             outcome = sync.absorb_issue(
                 Path(project_dir), owner=owner, repo=repo, issue=issue
             )
-        # prawduct:allow prawduct/broad-except -- a supervisor boundary: the
-        # provider mutation has already landed by the time this runs, so ANY
-        # escape here would report a completed write as failed and send the caller
-        # to retry it into a duplicate. The mirror is local bookkeeping and the
-        # command's success does not depend on it. Nothing is silenced — the
-        # failure becomes a warning on the envelope below, and the type is named.
+        # A supervisor boundary. The provider mutation has already landed by the
+        # time this runs, so ANY escape would report a completed write as failed
+        # and send the caller to retry it into a duplicate. The mirror is local
+        # bookkeeping and the command's success does not depend on it. Nothing is
+        # silenced — the failure becomes a warning on the envelope below, and the
+        # type reaches the diagnostic log.
         #
         # The functions this calls are each written not to raise, and one of them
         # stopped being true once: `absorb_rows` ran its first query outside its
         # own guard, so an unreadable store escaped the whole chain. Distributing
         # a never-raises guarantee across a call chain means every future edit to
         # any link has to preserve it; catching at the seam makes it structural.
+        #
+        # prawduct:allow prawduct/broad-except -- supervisor boundary; see above
         except Exception as exc:
             warnings.append(
                 "the write succeeded, but the local backlog cache was not updated "
@@ -1091,7 +1098,14 @@ def _with_mirror(project_dir, call):
         )
 
     result = call(absorb)
-    if result.get("status") == "ok" and warnings:
+    if warnings:
+        # Attached regardless of the result's status. Today no call site can
+        # mirror and then fail — every one invokes the mirror immediately before
+        # its `ok(...)` — but conditioning advisory data on the success path is
+        # the exact recurring defect this repo records for result envelopes
+        # (BKL-3K9N, BKL-9V2W), and `_emit` already prints `warnings` on the error
+        # branch. One clause removes the trap for the first op that mirrors before
+        # a later failure.
         result["warnings"] = list(result.get("warnings") or []) + warnings
     return result
 

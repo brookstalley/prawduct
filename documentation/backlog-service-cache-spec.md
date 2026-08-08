@@ -360,6 +360,14 @@ Asking the store means a caller cannot get this wrong by passing the wrong thing
 silently — it is a correct write to an item this cache was never meant to hold, not a degraded
 one, so it is not a warning either.
 
+**The non-mirroring ops still drift one column, and it is the right trade.** `comment`,
+`reconcile-labels` and a native-edge `link` all move the issue's provider `updated_at` without
+changing anything the store projects, so the cached `updated_at` goes stale by that write. Two
+consumers read it — stale-items (>90d) and `stalled-transition`'s date floor — and both are
+staleness *nags* whose whole point is coarse age. Mirroring for a column no other query reads would
+spend the write path's simplicity on making a nag marginally less nagging; the next sync corrects it
+for free. Named here rather than left to be rediscovered as a bug.
+
 **What this does not cover, deliberately.** Foreign writes — the GitHub UI, another client, an
 agent on a different clone — are still served by the watermark sync and disclosed by visible age;
 nothing here changes that, and nothing here should, because the adapter cannot observe them at

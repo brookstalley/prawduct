@@ -290,7 +290,12 @@ def absorb_issue(
                     details={"mirror": MIRROR_ABSENT},
                 )
             # The store is fine and this item simply is not its business.
-            return ok({"written": 0, "evicted": 0, "skipped": "out-of-scope"})
+            # Same key set as the mirror's other ok exits, plus the reason —
+            # a consumer reading `written` must not have to know which exit it got.
+            return ok(
+                {"written": 0, "evicted": 0, "fts": cache.has_fts(conn),
+                 "skipped": "out-of-scope"}
+            )
         return cache.absorb_rows(conn, rows, fetched_at=stamp, evict=out_of_scope)
     finally:
         conn.close()
@@ -487,7 +492,11 @@ def spawn_sync(
     popen=None,
     env: dict | None = None,
 ) -> bool:
-    """Warm the cache in a **detached** subprocess — the store's only trigger.
+    """Warm the cache in a **detached** subprocess — the only automatic SYNC trigger.
+
+    Not the store's only writer: every eligible backlog write mirrors itself into
+    the store as it goes (Cache Spec §6.1). This is what pulls in what someone
+    ELSE changed.
 
     Until this existed, the only writer reachable from outside a test was a human
     typing ``prawduct-hook backlog sync``: nothing scheduled it and no hook spawned
