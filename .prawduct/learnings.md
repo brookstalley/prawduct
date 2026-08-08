@@ -176,6 +176,8 @@ dropping them.
 
 ## A change-log entry's BODY must cover every chunk its `chunks=` tag claims — release notes derive from the body, so a deliverable the prose omits ships invisibly even though the tag counted it. Tell: a multi-chunk entry whose narrative has one throughline (the last chunk's separate mechanism is the one that goes missing)
 
+## When a requirement is about a COST, assert the operation that costs — not a proxy that usually accompanies it. Tell: your test names a side effect ("was the file read") where the requirement names work ("was the directory walked"); the two come apart in exactly the implementation the requirement forbids
+
 ## When a feature's logic lives in a `context:fork` skill (no Bash), `lib/` holds the DATA, not the LOGIC — logic helpers nothing imports are dead code
 
 ## At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`

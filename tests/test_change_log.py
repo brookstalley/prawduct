@@ -493,3 +493,39 @@ class TestAgainstTheRealChangeLog:
             if scope is None:
                 continue
             assert isinstance(scope, str) and scope.strip(), (entry.title, scope)
+
+    def test_every_log_scope_that_resolves_maps_to_a_plan_declaring_it(self):
+        """The log→plan join, in the only form that is true of real history.
+
+        The unrestricted property R-3 named — "every scope the log declares
+        resolves to a plan file" — is FALSE here by design, and asserting it
+        would pin a bug rather than a contract: a `status=shipped` scope whose
+        plan predates the `scope:` frontmatter convention, or was retired, has
+        no file, and `diagnose_scope_plan_coverage` deliberately does not flag
+        that case. So the restricted form: of the log's scopes that DO resolve,
+        every one maps to a plan that declares that same scope in its
+        frontmatter. That is the property the two modules must agree on, and it
+        is the one the branch's join actually relies on.
+        """
+        from lib import plan_index
+
+        artifacts = Path(__file__).resolve().parents[1] / ".prawduct" / "artifacts"
+        if not artifacts.is_dir():
+            pytest.skip("no .prawduct/artifacts/ in this checkout")
+        mapping = plan_index.build_scope_to_plan_map(artifacts)
+
+        log_scopes = {
+            e.tags["scope"]
+            for e in self._entries()
+            if isinstance(e.tags.get("scope"), str) and e.tags["scope"]
+        }
+        joined = log_scopes & set(mapping)
+        # Non-emptiness first: an empty intersection would make the loop below
+        # pass while asserting nothing, which is the failure this whole class
+        # was rewritten to stop.
+        assert joined, "no change-log scope resolves to a plan — the join is broken"
+        for scope in sorted(joined):
+            present, declared = plan_index.parse_build_plan_frontmatter_scope(
+                mapping[scope].read_text(encoding="utf-8")
+            )
+            assert present and declared == scope, (scope, mapping[scope])

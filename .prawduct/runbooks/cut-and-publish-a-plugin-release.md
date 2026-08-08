@@ -26,7 +26,13 @@ not grading a plan:
 ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
 ```
 
-**Read the scope list, not the exit code.** Two outcomes matter:
+**Read the scope list, not the exit code.** Two outcomes matter — plus one that gives you no
+scope list to read at all:
+
+- **`bad-change-log-tag:` on stderr, exit 1, and NO scope list.** The gate refused a tag line before
+  it could compute the pending set, so there is nothing to read here yet. **Fix the tag and re-run**;
+  the reason-code table in Phase 0 step 0 says how. Do not read this as either outcome below — the
+  absence of a scope list is the tell.
 
 - **It names one or more release-pending scopes** — change-log entries tagged
   `scope=` with no `release=`. That set is the unreleased content. **Proceed.**

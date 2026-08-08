@@ -158,8 +158,10 @@ fifteen dispositioned in one pass, ten fixed and five accepted with reasons reco
 and only discards the results — a cost profile identical to the code it replaced. `plan_index` now
 uses `os.walk` with in-place `dirnames[:]` assignment, which is the actual prune. Two tests hold it:
 one spies on `os.scandir` to prove the subtree is never ENTERED (the read-level test passes on both
-implementations, which is why it was not enough), and the mutation battery confirms the rglob shape
-and the rebind-instead-of-slice footgun each go red.
+implementations, which is why it was not enough). Both the rglob shape and the rebind-instead-of-slice
+footgun were confirmed red by **hand-mutation at build time** — a transient experiment, not a
+committed artifact; nothing in `tests/` runs those mutations, so re-run them by hand if you change
+the walk.
 
 Also settled here, so Chunk 02 can rely on it: `validate_status_values` is deliberately NOT folded
 into the merged validator — `status=` is a retiring key read only by `regen-views`, and folding it in
@@ -228,7 +230,7 @@ only gate that reads tags.
     duplicate tag line), replacing four separate validators.
   - new `plugin/lib/plan_index.py` — `build_scope_to_plan_map`, `iter_scoped_plan_candidates`, the
     frontmatter/artifact-kind parsers, and the archive-skip guard. **Prune the archive directory at
-    walk level** — new `.prawduct/artifacts/archive/`, created in Chunk 04 — rather than
+    walk level** — the archive directory under .prawduct/artifacts/, created in Chunk 04 — rather than
     rglob-then-filter (BP9): three hot paths ask this, so the cost is paid at every session START via
     the briefing, at every session END via the Stop hook, and at review dispatch. Pruning a directory
     that does not exist yet is a no-op, so this lands safely before Chunk 04 creates it.
@@ -308,8 +310,10 @@ only gate that reads tags.
     every empty-set assertion in that file goes vacuous rather than red; (2)
     `tests/spikes/change_log_roundtrip.py` does `from lib import views` and is a **standalone,
     non-collected script**, so the suite will not catch it (the shim's `noqa` names it); (3)
-    `plugin/lib/views.py::_plan_label`, the inlined path helper, goes with the module. Repair by
-    repointing, never by weakening the probe.
+    `plugin/lib/views.py::_plan_label`, the inlined path helper, goes with the module; and (4)
+    `tests/preferences/test_build_plan_decoding.py::test_the_pin_has_something_to_check` asserts
+    `set(PLAN_MODULES) <= modules`, so deleting `views.py` turns the pin red until `PLAN_MODULES`
+    drops it. Repair by repointing, never by weakening the probe.
 - **Tests:** the ~30 `tests/test_views.py` tests targeting `parse_change_log` are **the contract** —
   rewritten against `change_log.py` in Chunk 01 and retired here, never deleted wholesale. Rewrite the
   `views_enabled`-parameterised cases in `test_build_plan_resolution.py`,

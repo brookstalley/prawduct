@@ -3093,3 +3093,23 @@ same root cause — completion has two readings and neither is authoritative —
 
 **Related:** [[a-change-log-scope-tag-borrowed-from-the-neighbouring-entry]] — same branch, same
 release-bookkeeping surface, both found by review rather than by a check.
+
+
+## When a requirement is about a COST, assert the operation that costs
+
+Requirement BP9 said a growing archive must not be walked twice per session. I implemented
+`sorted(root.rglob("*.md"))` followed by `if <archived>: continue`, wrote "pruned at directory level,
+not filtered per file" into three docstrings, and wrote a test asserting **no archived file was
+opened** — which the defective shape satisfies perfectly. `Path.rglob` has no pruning hook: it
+descends the whole subtree and hands you every path. Reading is a *proxy* for traversing; the cost
+BP9 bounds is the traversal. The fix was `os.walk` with in-place `dirnames[:]` assignment, and a test
+that spies on `os.scandir` — the call that performs the work the requirement is about.
+
+**Why my own mutation testing did not catch it, which is the transferable half.** I ran a three-way
+mutation battery, including moving the filter from before the read to after it. Both arms still used
+`rglob`. **A mutation battery only explores the neighbourhood of the implementation you wrote** — it
+cannot see a defect invariant across every mutation you think to make. Mutation testing validates
+tests against *nearby* wrong code, not against the family of wrong code you are already inside.
+
+**Related:** [[a-stage-whose-worth-is-speed-needs-a-test-that-fails-when-it-stops-being-fast]] — this
+is the sharper form of it: not merely *a* test, but a test whose observable is the cost itself.
