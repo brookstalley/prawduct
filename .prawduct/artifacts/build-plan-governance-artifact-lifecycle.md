@@ -171,6 +171,21 @@ requirements v0.4 committed at `b681fab`. Ships as one PR — Chunk 05's cumulat
 **Chunk 01 shipped.** `views.py` became a re-export of `change_log.py` (tags) and `plan_index.py`
 (plans) per DECISION-3. Its three review rounds are closed with nothing outstanding.
 
+**Chunk 02 shipped and its review is closed.** `rev-20260808T170438Z-d90bf42a` (`cumulative`, 3
+reviewers) returned 2 blocking / 7 warning / 12 note — actually 3 blocking; all three were fixed at
+`8121f97` along with seven other findings, and twelve were accepted as recorded facts.
+`rev-20260808T172837Z-3a4c7133` (`verify-resolutions`) returned **0/0/0**, and
+`check-cumulative-critic` reports composed coverage spanning the branch with no unresolved blocking.
+
+**One of those blockers was a framework defect this chunk provoked rather than contained**, fixed in
+place per the fix-in-place norm: the chunk-ref check asserts existence for every backticked
+deliverable ref and had no notion of a deliverable declared as a REMOVAL, so a retirement chunk
+reported `missing-ref:` *because it succeeded* — at BLOCKING severity. Every future retirement chunk
+would have hit it, and the tempting workaround (reword the plan until the parser stops seeing the
+path) makes the plan describe its own deletion less clearly. `_BUILD_PLAN_GONE_QUALIFIER_RE` is the
+mirror of `new`: explicit and adjacent rather than a heuristic, and with no expiry, because a
+removal's delivery IS the absence.
+
 **Chunk 02 shipped.** `views.py` is deleted; chunk progress has ONE reading — the Status
 checkboxes, ticked by hand. `_git_aware_progress`, `degraded_progress_notice`,
 `DEGRADED_PROGRESS_TOKEN` and `ChunkProgress.git_derived` are gone; `_resolve_chunk_progress_from`

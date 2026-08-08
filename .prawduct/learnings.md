@@ -270,6 +270,10 @@ dropping them.
 
 ## Excising a subsystem silently kills the incidental work it happened to host — re-home the orphaned call, and test the positive
 
+## A deletion's SURVIVORS owe new coverage when their behaviour changed — the deleted thing's tests dying correctly is a different question
+
+When a change deletes a module and rewrites a command that used to live off it, ask separately what the SURVIVOR now promises: its old tests died with the deleted thing's test file, correctly, and nothing replaced the contract it kept. Retiring `regen-views`/`stamp-merged` to "callable, notice, no writes, exit 0" took ~20 tests down with `test_views.py` and left that new contract — advertised in `api-contract.md` to operator scripts — held by nothing, so a later edit restoring a non-zero exit would break a copied release script and stay green. Its sibling rule above asks what the deleted thing HOSTED; this asks what stayed and changed, which no amount of re-homing finds.
+
 ## A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
 
 ## An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form — enumerate the whole FORM-FAMILY, not one spelling
