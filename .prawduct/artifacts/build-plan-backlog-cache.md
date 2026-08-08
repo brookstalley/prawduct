@@ -119,12 +119,12 @@ W1 promises about double-picks.
 
 ## Status
 
-- [x] Chunk 01: Cache store — schema, rebuild, visible age, and the rebuild-equivalence invariant
-- [x] Chunk 02: Incremental sync — cursor watermark and conditional revalidation
-- [x] Chunk 03: The three new domain fields and their write path
-- [x] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
-- [x] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
-- [x] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
+- [ ] Chunk 01: Cache store — schema, rebuild, visible age, and the rebuild-equivalence invariant
+- [ ] Chunk 02: Incremental sync — cursor watermark and conditional revalidation
+- [ ] Chunk 03: The three new domain fields and their write path
+- [ ] Chunk 04: The consumer query surface — grouping, FTS, alias resolution
+- [ ] Chunk 05: Code consumers — the norm probes, `pick` off the cache, and the end of `claim`
+- [ ] Chunk 06: Prose consumers, retirements, and the end of the dormancy advisory
 
 Context: **All six chunks are built and green — the plan is complete.** Chunk 06 restored the three
 prose consumers onto the cache and deleted the dormancy machinery: `DORMANT_CHECKS` and

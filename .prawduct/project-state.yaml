@@ -614,9 +614,6 @@ scope_rollups:
   backlog-burndown:
     chunks: ["01", "02", "03", "04"]
     releases: ["v3.2.3"]
-  backlog-cache:
-    chunks: ["01", "02", "03", "04", "05", "06"]
-    releases: ["unreleased"]
   backlog-closed-by-handle:
     chunks: ["01"]
     releases: ["v2.1.7"]

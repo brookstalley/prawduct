@@ -5,16 +5,6 @@
      be overwritten on next regen. See change-log.md for full per-release
      bodies; this file is a digest. -->
 
-## unreleased
-
-**Entry:** 2026-08-07: the last dormant readers come back, and the advisory that announced them retires
-
-**Chunks shipped:** 01, 02, 03, 04, 05, 06
-
-**Scope:** backlog-cache
-
-See `.prawduct/change-log.md` for full details.
-
 ## v3.2.7
 
 ### backlog-title-enforcement
