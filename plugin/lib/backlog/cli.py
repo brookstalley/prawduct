@@ -162,13 +162,13 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
 
     try:
         if op == "file":
-            result = _run_file(rest, transport)
+            result = _run_file(rest, transport, project_dir)
         elif op in ("get", "show"):
             result = _run_get(rest, transport)
         elif op == "status":
-            result = _run_status(rest, transport)
+            result = _run_status(rest, transport, project_dir)
         elif op == "update":
-            result = _run_update(rest, transport)
+            result = _run_update(rest, transport, project_dir)
         elif op == "comment":
             result = _run_comment(rest, transport)
         elif op == "list":
@@ -188,7 +188,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         elif op == "reconcile-labels":
             result = _run_reconcile_labels(rest, transport)
         elif op in ("link", "unlink"):
-            result = _run_link(op, rest, transport)
+            result = _run_link(op, rest, transport, project_dir)
         elif op == "provision":
             result = _run_provision(rest, transport)
         elif op == "import":
@@ -198,7 +198,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         elif op == "export":
             result = _run_export(rest, transport)
         elif op == "merge":
-            result = _run_merge(rest, transport)
+            result = _run_merge(rest, transport, project_dir)
         else:
             return _emit(
                 core.error(
@@ -226,7 +226,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
 # --- op handlers -------------------------------------------------------------
 
 
-def _run_file(rest: list[str], transport):
+def _run_file(rest: list[str], transport, project_dir):
     flags, positionals, err = _parse_flags(
         rest,
         valued={"repo", "title", "body", "stage", "kind", "area", "effort", "impact", "source"},
@@ -251,15 +251,19 @@ def _run_file(rest: list[str], transport):
     # Unattended context (SEC-6): a background/Actions run stamps its creates
     # `automated: true` + a worker marker so a sweep is not misattributed.
     automated = context.is_unattended()
-    return core.file_item(
-        transport,
-        owner=owner,
-        repo=repo,
-        title=flags.get("title", ""),
-        body=flags.get("body", ""),
-        facets=facets,
-        automated=automated,
-        worker=context.worker_marker() if automated else None,
+    return _with_mirror(
+        project_dir,
+        lambda absorb: core.file_item(
+            transport,
+            owner=owner,
+            repo=repo,
+            title=flags.get("title", ""),
+            body=flags.get("body", ""),
+            facets=facets,
+            automated=automated,
+            worker=context.worker_marker() if automated else None,
+            absorb=absorb,
+        ),
     )
 
 
@@ -284,7 +288,7 @@ def _run_get(rest: list[str], transport):
     )
 
 
-def _run_status(rest: list[str], transport):
+def _run_status(rest: list[str], transport, project_dir):
     flags, positionals, err = _parse_flags(rest, valued={"repo", "to"})
     if err:
         return core.error("validation", err)
@@ -300,16 +304,20 @@ def _run_status(rest: list[str], transport):
     if err:
         return core.error("validation", err)
     transport = _resolve_transport(transport)
-    return core.set_status(
-        transport,
-        id_raw=positionals[0],
-        target=target,
-        default_owner=default_owner,
-        default_repo=default_repo,
+    return _with_mirror(
+        project_dir,
+        lambda absorb: core.set_status(
+            transport,
+            id_raw=positionals[0],
+            target=target,
+            default_owner=default_owner,
+            default_repo=default_repo,
+            absorb=absorb,
+        ),
     )
 
 
-def _run_update(rest: list[str], transport):
+def _run_update(rest: list[str], transport, project_dir):
     flags, positionals, err = _parse_flags(
         rest,
         valued={
@@ -337,13 +345,17 @@ def _run_update(rest: list[str], transport):
     if err:
         return core.error("validation", err)
     transport = _resolve_transport(transport)
-    return core.update_item(
-        transport,
-        id_raw=positionals[0],
-        fields=fields,
-        expected_updated_at=flags.get("if-updated-at"),
-        default_owner=default_owner,
-        default_repo=default_repo,
+    return _with_mirror(
+        project_dir,
+        lambda absorb: core.update_item(
+            transport,
+            id_raw=positionals[0],
+            fields=fields,
+            expected_updated_at=flags.get("if-updated-at"),
+            default_owner=default_owner,
+            default_repo=default_repo,
+            absorb=absorb,
+        ),
     )
 
 
@@ -699,7 +711,7 @@ def _run_reconcile_labels(rest: list[str], transport):
     return core.reconcile_labels(transport, owner=owner, repo=repo)
 
 
-def _run_link(op: str, rest: list[str], transport):
+def _run_link(op: str, rest: list[str], transport, project_dir):
     flags, positionals, err = _parse_flags(rest, valued={"repo", "edge", "to"})
     if err:
         return core.error("validation", err)
@@ -719,13 +731,17 @@ def _run_link(op: str, rest: list[str], transport):
         return core.error("validation", err)
     transport = _resolve_transport(transport)
     fn = core.link if op == "link" else core.unlink
-    return fn(
-        transport,
-        id_raw=positionals[0],
-        edge=edge,
-        target_raw=target,
-        default_owner=default_owner,
-        default_repo=default_repo,
+    return _with_mirror(
+        project_dir,
+        lambda absorb: fn(
+            transport,
+            id_raw=positionals[0],
+            edge=edge,
+            target_raw=target,
+            default_owner=default_owner,
+            default_repo=default_repo,
+            absorb=absorb,
+        ),
     )
 
 
@@ -918,7 +934,7 @@ def _run_export(rest: list[str], transport):
     return migrate.export_backlog(transport, owner=owner, repo=repo, dest=Path(flags["to"]))
 
 
-def _run_merge(rest: list[str], transport):
+def _run_merge(rest: list[str], transport, project_dir):
     from . import migrate  # noqa: PLC0415 — lazy
 
     flags, positionals, err = _parse_flags(rest, valued={"repo", "into"})
@@ -933,12 +949,16 @@ def _run_merge(rest: list[str], transport):
     if err:
         return core.error("validation", err)
     transport = _resolve_transport(transport)
-    return migrate.merge(
-        transport,
-        source_raw=positionals[0],
-        target_raw=target,
-        default_owner=default_owner,
-        default_repo=default_repo,
+    return _with_mirror(
+        project_dir,
+        lambda absorb: migrate.merge(
+            transport,
+            source_raw=positionals[0],
+            target_raw=target,
+            default_owner=default_owner,
+            default_repo=default_repo,
+            absorb=absorb,
+        ),
     )
 
 
@@ -965,6 +985,51 @@ def _is_write(op: str, rest: list[str]) -> bool:
     again the moment an op takes a mutating flag, and re-threading the argument at
     that point is how the check gets skipped instead."""
     return op in _WRITE_OPS
+
+
+def _with_mirror(project_dir, call):
+    """Run a write with the local mirror bound, folding a mirror failure into the
+    result's warnings rather than into its status.
+
+    **The write has already landed on the provider by the time the mirror runs**,
+    so a mirror failure can never become the command's failure — that would tell a
+    caller to retry a mutation that is already done. It rides out as a warning on
+    an otherwise-successful envelope.
+
+    Two outcomes are deliberately silent. A store that does not exist is not a
+    degraded mirror, it is a repo not using one, and every read already reports
+    that condition with the command that fixes it; restating it on each write
+    would be noise on a path where nothing is wrong and nothing is lost, since
+    the next sync picks the item up by watermark anyway. An item outside the
+    store's scope is likewise a correct write this cache was never meant to hold.
+    Both are tagged ``details["mirror"] = "absent"`` at the source, so this reads a
+    marker rather than matching on message text.
+    """
+    from pathlib import Path  # noqa: PLC0415 — only the store-backed ops need a path
+
+    warnings: list[str] = []
+
+    def absorb(issue, owner, repo):
+        from . import sync  # noqa: PLC0415 — lazy; no store import on other paths
+
+        outcome = sync.absorb_issue(
+            Path(project_dir), owner=owner, repo=repo, issue=issue
+        )
+        if outcome.get("status") == "ok":
+            return
+        failure = outcome.get("error") or {}
+        if (failure.get("details") or {}).get("mirror") == sync.MIRROR_ABSENT:
+            return
+        warnings.append(
+            "the write succeeded, but the local backlog cache was not updated "
+            f"({failure.get('message') or 'unknown reason'}); "
+            "cached reads stay stale until the next `prawduct-hook backlog sync`"
+        )
+
+    result = call(absorb)
+    if result.get("status") == "ok" and warnings:
+        result["warnings"] = list(result.get("warnings") or []) + warnings
+    return result
 
 
 def _resolve_transport(transport):

@@ -321,8 +321,15 @@ wrong about the item the caller just created.
   and answer `open-items` with it — an authoritative-looking answer that is wrong by 452 items,
   which is strictly worse than the gap it replaced.
 - **A failed mirror warns; it never fails the write.** The remote mutation has already succeeded.
-  A locked, missing, or corrupt store is a degraded local mirror, not a failed command, and
-  reporting it as one would tell the caller to retry a write that already landed.
+  A locked or corrupt store is a degraded local mirror, not a failed command, and reporting it as
+  one would tell the caller to retry a write that already landed.
+- **No store at all is silent, and that is a different case from a broken one.** A repo that has
+  never synced has no mirror to degrade, and the condition is already reported — loudly, with the
+  command that fixes it — at every read, which is where it matters. Warning again on every write
+  would restate a known condition on a path where nothing is wrong and nothing is lost: the next
+  sync picks the item up by watermark regardless. So an absent store, and an item outside the
+  store's scope, both pass without comment; an *unreadable* one warns, because a store that answers
+  reads and refuses writes is genuinely surprising.
 
 **Eligible ops, by whether they change cached state** — the point of enumerating is that most of
 the write surface does not:

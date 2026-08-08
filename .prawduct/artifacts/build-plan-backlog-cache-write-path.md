@@ -205,7 +205,7 @@ Tracking item **#627**. The requirement's home is `documentation/backlog-service
 than adding a new one. This lands before v3.2.8 cuts — `backlog-cache` is the release-pending
 scope the fix belongs to.
 
-**Chunk 01 shipped `3434305`**, suite 4223 passed / 7 skipped. Review
+**Chunk 01 shipped `3434305`** (fixes `9fa0a0d`), suite 4227 passed / 7 skipped at that point. Review
 `rev-20260808T062229Z-56ca858e` returned 1 blocking / 1 warning / 1 note, all three fixed in the
 chunk's own commit.
 
@@ -227,7 +227,7 @@ index re-derivation can raise, not only `sqlite3.Error`, so `absorb_issue`'s "ne
 literally true and the callback seam does not need its own wrapper for that. **That sentence is
 load-bearing for the next chunk, so it is tested rather than asserted** — the verify round's
 blocking finding was that I had written it while exercising only the `sqlite3` arm that already
-worked. `test_a_mirror_failure_comes_back_as_an_envelope` is now parametrized over all four.
+worked. `test_a_mirror_failure_comes_back_as_an_envelope` is now parametrized over all five arms of the catch.
 
 The verify round also left two things recorded rather than fixed, both cheap and both taken in the
 same commit: `cursor_scopes` distinguishes `None` (unreadable) from `[]` (never synced), because

@@ -69,6 +69,25 @@ def from_transport_error(exc: TransportError) -> dict:
     return error(exc.code, exc.message, retryable=exc.retryable, details=exc.details)
 
 
+def _mirror(absorb, issue: dict, owner: str, repo: str) -> None:
+    """Hand a just-written issue to the local mirror, if a caller bound one.
+
+    **This module stays provider-only and never imports the store.** The write
+    paths here are the only place an authoritative post-write issue exists — a
+    create response, or the ``get_issue`` a status/field write ends on — so the
+    mirror has to be *invoked* from here, but it does not have to be *known*
+    here. An injected callback keeps the dependency pointing the right way and
+    leaves every function below testable with no store on disk.
+
+    ``owner``/``repo`` travel as arguments rather than being read back out of the
+    issue JSON because the caller has already resolved them on ``nid``; deriving
+    them again from ``repository_url`` would be a second, weaker spelling of a
+    fact this module holds exactly."""
+    if absorb is None:
+        return
+    absorb(issue, owner, repo)
+
+
 def log_diag(message: str) -> None:
     print(f"backlog: {message}", file=sys.stderr)
 
@@ -89,6 +108,7 @@ def file_item(
     facets: dict[str, str] | None = None,
     automated: bool = False,
     worker: str | None = None,
+    absorb=None,
 ) -> dict:
     """Create one item (AG2): ``title`` + ``body`` suffice; every facet optional.
 
@@ -152,6 +172,7 @@ def file_item(
         log_diag(f"unexpected transport failure on file: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
+    _mirror(absorb, issue, owner, repo)
     canonical = f"{owner}/{repo}#{issue.get('number')}"
     item, decode_warnings = encode.decode_item(issue, canonical_id=canonical)
     warnings.extend(decode_warnings)
@@ -456,6 +477,7 @@ def set_status(
     target: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
+    absorb=None,
 ) -> dict:
     """Idempotent, crash-safe two-axis status transition (Data Model §4 B1, CC1/M5).
 
@@ -528,6 +550,7 @@ def set_status(
         log_diag(f"unexpected transport failure on status: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
+    _mirror(absorb, issue, nid.owner, nid.repo)
     item, decode_warnings = encode.decode_item(issue, canonical_id=nid.canonical)
     warnings.extend(decode_warnings)
     return ok(item, warnings)
@@ -630,6 +653,7 @@ def update_item(
     expected_updated_at: str | None = None,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
+    absorb=None,
 ) -> dict:
     """Field-wise edit with optimistic CAS (CC2) and a mass-assignment guard (SEC-2).
 
@@ -797,6 +821,7 @@ def update_item(
         log_diag(f"unexpected transport failure on update: {type(exc).__name__}")
         return error("unavailable", "the backend request failed unexpectedly")
 
+    _mirror(absorb, issue, nid.owner, nid.repo)
     item, decode_warnings = encode.decode_item(issue, canonical_id=nid.canonical)
     warnings.extend(decode_warnings)
 
@@ -881,12 +906,13 @@ def link(
     target_raw: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
+    absorb=None,
 ) -> dict:
     """Set a typed edge from an item to a target (idempotent). ``edge`` is one of
     ``blocks``/``blocked-by``/``parent``/``child``/``related``. Either endpoint may
     be a hand-minted ``PFX`` alias, resolved against ``default_repo`` (``--repo``)."""
     return _mutate_edge(
-        transport, id_raw, edge, target_raw, default_owner, default_repo, add=True
+        transport, id_raw, edge, target_raw, default_owner, default_repo, add=True, absorb=absorb
     )
 
 
@@ -898,10 +924,11 @@ def unlink(
     target_raw: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
+    absorb=None,
 ) -> dict:
     """Clear a typed edge from an item to a target (idempotent)."""
     return _mutate_edge(
-        transport, id_raw, edge, target_raw, default_owner, default_repo, add=False
+        transport, id_raw, edge, target_raw, default_owner, default_repo, add=False, absorb=absorb
     )
 
 
@@ -914,6 +941,7 @@ def _mutate_edge(
     default_repo: tuple[str, str] | None,
     *,
     add: bool,
+    absorb=None,
 ) -> dict:
     if edge not in _EDGE_TYPES:
         return error(
@@ -947,7 +975,14 @@ def _mutate_edge(
         elif edge == "child":
             _sub(transport, nid, tid, add=add)
         else:  # related — block-list machinery
-            _related(transport, nid, tid.canonical, add=add)
+            # The ONLY edge the cache holds anything for. `blocks`/`blocked-by`
+            # and `parent`/`child` are native GitHub edges with no column and no
+            # index here — `pick` reads dependencies live, permanently — so
+            # mirroring them would be mirroring nothing. `related` lives in the
+            # body block, which the store does hold and index.
+            written = _related(transport, nid, tid.canonical, add=add)
+            if written is not None:
+                _mirror(absorb, written, nid.owner, nid.repo)
     except TransportError as exc:
         return from_transport_error(exc)
     except (OSError, json.JSONDecodeError) as exc:  # ERR-6
@@ -986,8 +1021,12 @@ def _sub(transport: Transport, parent, child, *, add: bool) -> None:
     )
 
 
-def _related(transport: Transport, nid, target_canonical: str, *, add: bool) -> None:
-    """Add/remove a ``related`` ref in the item's block list (no native edge)."""
+def _related(transport: Transport, nid, target_canonical: str, *, add: bool) -> dict | None:
+    """Add/remove a ``related`` ref in the item's block list (no native edge).
+
+    Returns the **updated issue** when a write happened, else ``None`` — an
+    idempotent no-op has nothing for a caller to mirror, and returning the
+    unchanged issue would make one look like a write."""
     issue = transport.get_issue(nid.owner, nid.repo, nid.number)
     block = encode.parse_block(issue.get("body"))
     current = set(encode.parse_list(block.get("related")))
@@ -998,8 +1037,9 @@ def _related(transport: Transport, nid, target_canonical: str, *, add: bool) -> 
     value = encode.format_list(sorted(current)) if current else None
     old_body = issue.get("body") or ""
     new_body = encode.upsert_block_field(old_body, "related", value)
-    if new_body != old_body:
-        transport.update_issue(nid.owner, nid.repo, nid.number, fields={"body": new_body})
+    if new_body == old_body:
+        return None
+    return transport.update_issue(nid.owner, nid.repo, nid.number, fields={"body": new_body})
 
 
 # --- alias self-heal (id:PFX label ↔ block id_aliases drift) -----------------

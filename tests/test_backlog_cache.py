@@ -1079,8 +1079,9 @@ class TestMirrorOnWrite:
             ValueError("malformed alias block"),
             TypeError("affected column was not a string"),
             KeyError("id"),
+            AttributeError("block had no id_aliases"),
         ],
-        ids=["sqlite", "value", "type", "key"],
+        ids=["sqlite", "value", "type", "key", "attribute"],
     )
     def test_a_mirror_failure_comes_back_as_an_envelope(self, fake, repo_dir, failure):
         """A mirror runs after the provider write has already succeeded, so it may

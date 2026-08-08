@@ -47,6 +47,11 @@ from .transport import Transport, TransportError, Validator
 #: leaves a warm sync reading nothing on almost every run.
 CURSOR_OVERLAP = timedelta(minutes=2)
 
+#: ``details["mirror"]`` on the envelopes that mean *there is no local mirror to
+#: update here* — no store built, or one holding no scope yet. Distinct from a
+#: mirror that exists and failed, which is what a write-site warning is for.
+MIRROR_ABSENT = "absent"
+
 
 def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> tuple[list[dict], list[str]]:
     """Decode provider issues into cache rows, and name the ones that are not ours.
@@ -243,6 +248,19 @@ def absorb_issue(
     """
     stamp = (now or datetime.now(timezone.utc)).isoformat()
 
+    # Tagged so a caller can tell "there is no mirror here" from "the mirror is
+    # broken" without matching on message text. The first is silent at the write
+    # site — every read already reports it, with the command that fixes it — and
+    # the second is worth saying, because a store that answers reads and refuses
+    # writes is the surprising case.
+    absent = cache.cache_path(project_dir)
+    if absent is None or not absent.exists():
+        return error(
+            "unavailable",
+            "the backlog cache has not been built yet; run `prawduct-hook backlog sync`",
+            details={"mirror": MIRROR_ABSENT},
+        )
+
     try:
         rows, out_of_scope = _rows_from_issues([issue], owner, repo)
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -269,6 +287,7 @@ def absorb_issue(
                     "unavailable",
                     "the backlog cache has not been synced yet; "
                     "run `prawduct-hook backlog sync`",
+                    details={"mirror": MIRROR_ABSENT},
                 )
             # The store is fine and this item simply is not its business.
             return ok({"written": 0, "evicted": 0, "skipped": "out-of-scope"})
