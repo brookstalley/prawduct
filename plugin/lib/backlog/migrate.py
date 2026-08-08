@@ -1711,6 +1711,7 @@ def merge(
     target_raw: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
+    absorb: core.Absorb | None = None,
 ) -> dict:
     """Fold ``source`` into ``target`` (AU3/DM7): the minimal merge the scrub needs
     to dispose duplicates. **Canonical write order** — write the block
@@ -1744,7 +1745,13 @@ def merge(
             transport.update_issue(sid.owner, sid.repo, sid.number, fields={"body": new_body})
 
         # Step 2 — close the source as dropped (idempotent, crash-safe set-status).
-        close = core.set_status(transport, id_raw=sid.canonical, target="dropped")
+        # One mirror covers both halves of the merge: `set_status` ends on a
+        # `get_issue`, which reflects the `superseded_by` redirect written a step
+        # above as well as the close. The target is not edited, so it has nothing
+        # to mirror.
+        close = core.set_status(
+            transport, id_raw=sid.canonical, target="dropped", absorb=absorb
+        )
         if close.get("status") != "ok":
             return close
     except TransportError as exc:

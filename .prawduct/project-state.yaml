@@ -476,7 +476,20 @@ views_enabled: true
 # plan's chunks are all complete and shipped in v3.2.7 (tagged), which is the
 # release the plan-lifecycle rule waits for before repointing — so no plan is
 # orphaned and the stale-plan advisory this resolves was correct to fire.
-active_build_plan: artifacts/build-plan-backlog-cache.md
+#
+# REPOINTED 2026-08-08 → build-plan-backlog-cache-write-path.md, and this one is a
+# DEPARTURE from the wait-for-the-release rule above, recorded rather than quiet
+# (two reviewers raised it independently). It repoints off
+# build-plan-backlog-cache.md while that plan is still RELEASE-PENDING for v3.2.8.
+# The argument: both plans are `scope:`-tagged, and release bookkeeping keys on the
+# change-log `scope=` tag rather than on this pointer, so nothing about v3.2.8's
+# cut depends on where it points. What DOES depend on it is Critic mode inference,
+# which grades the plan under review — and this file's own comment above records
+# three separate incidents of a stale pointer misgrading a review. Leaving it on
+# the finished plan for the duration of this branch would have reproduced exactly
+# those. The rule exists to stop a plan being orphaned before its release ships;
+# the backlog-cache plan is not orphaned, it is finished and awaiting a tag.
+active_build_plan: artifacts/build-plan-backlog-cache-write-path.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

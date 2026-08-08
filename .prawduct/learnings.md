@@ -457,3 +457,5 @@ dropping them.
 ## A rule enforced only as a SIDE EFFECT of some other failure is unenforced for every change whose failure mode differs — when a rule has a real incident behind it, ask what actually caught that incident; if the answer is "something else broke loudly," the rule has no guard of its own. Tell: a mutation you expected to be caught is not, and the rule it violates has a documented past incident
 
 ## Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
+
+## A change-log `scope=` tag comes from the PLAN you are in, never the entry above it — `collect_shipped_chunks` matches it by exact string, so a neighbouring scope flips the wrong plan's checkboxes while yours regenerate to `[ ]`, and the coverage check stays quiet because that scope really does have those chunk ids. Tell: your branch narrows an existing scope

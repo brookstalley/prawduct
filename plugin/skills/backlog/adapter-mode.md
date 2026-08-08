@@ -210,16 +210,24 @@ the visible age exists to prevent.
 
 The store behind `pick` is also queryable directly, and it is what `find` and `dedup` run on.
 
-**`sync`** — `prawduct-hook backlog sync --repo <r> [--rebuild]` is the store's only writer.
-Incremental by default: it fetches what the provider reports changed since the stored watermark and
-takes a rate-free 304 when nothing has. `--rebuild` forces the full scan, which is the answer to a
-corrupt store or a schema bump; the incremental path already falls back to it when no watermark
-exists.
+**`sync`** — `prawduct-hook backlog sync --repo <r> [--rebuild]` is how the store learns what
+*other* people changed. Incremental by default: it fetches what the provider reports changed since
+the stored watermark and takes a rate-free 304 when nothing has. `--rebuild` forces the full scan,
+which is the answer to a corrupt store or a schema bump; the incremental path already falls back to
+it when no watermark exists.
+
+**Your own writes mostly do not wait for it.** `file`, `status`, `update`, `merge` and
+`link/unlink --edge related` mirror themselves into the store as they go, so there is no window in
+which the cache disagrees with one of those — which is what makes the dedup claim below true rather
+than merely intended. **The exceptions are real and worth knowing:** `comment`, `provision` and
+`reconcile-labels` change nothing the store holds; the native `blocks`/`parent` edges are not cached
+at all; and `import` refreshes by a sync after the run, skipped when no store exists yet. A sync is
+still what brings in edits made elsewhere.
 
 **You rarely need to run it by hand.** Session start fires it detached, beside the counts warm — the
 briefing never blocks on it, so a session opens with the store already warming. Run it explicitly
-after a burst of writes you are about to query, or when a reader reports the store unavailable or
-conspicuously old.
+when a reader reports the store unavailable or conspicuously old, or when a write warned that the
+cache was not updated.
 
 **`cache-query`** — `prawduct-hook backlog cache-query <query> [args] --repo <r> --json` reads that
 store and nothing else: no network, no writes. `find <query>` maps to `cache-query search <text>

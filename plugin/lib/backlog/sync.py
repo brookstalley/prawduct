@@ -47,6 +47,11 @@ from .transport import Transport, TransportError, Validator
 #: leaves a warm sync reading nothing on almost every run.
 CURSOR_OVERLAP = timedelta(minutes=2)
 
+#: ``details["mirror"]`` on the envelopes that mean *there is no local mirror to
+#: update here* — no store built, or one holding no scope yet. Distinct from a
+#: mirror that exists and failed, which is what a write-site warning is for.
+MIRROR_ABSENT = "absent"
+
 
 def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> tuple[list[dict], list[str]]:
     """Decode provider issues into cache rows, and name the ones that are not ours.
@@ -183,6 +188,117 @@ def full_rebuild(
     data.update({"fetched_at": stamp, "rebuilt": True, "not_modified": False})
     warnings = [] if data.get("fts") else ["text search is unavailable: SQLite has no FTS5"]
     return ok(data, warnings)
+
+
+def absorb_issue(
+    project_dir: Path,
+    *,
+    owner: str,
+    repo: str,
+    issue: dict,
+    now: datetime | None = None,
+) -> dict:
+    """Mirror one just-written provider issue into the store. Never raises.
+
+    Called by the adapter's write paths with the authoritative issue they already
+    hold — a create response, or the ``get_issue`` a status/field write ends on —
+    so mirroring spends **no additional provider request**.
+
+    **The issue is decoded by the same function a full fetch uses**, which is what
+    makes a mirrored row equal to the row a rebuild would write. The alternative
+    shape — patching the one column the caller knows changed — is wrong twice: it
+    silently skips every other column the provider moved (a status write also
+    moves ``updated_at``, and a body write moves the alias and path indexes), and
+    it makes the store an author rather than a mirror, which is the property
+    rebuild-equivalence exists to deny.
+
+    **An unsynced store stays unsynced, and the test is a cursor row rather than a
+    file.** A store conjured or half-filled by a write would hold exactly one item
+    and answer ``open-items`` with it — authoritative-looking and wrong by the size
+    of the backlog. ``create=False`` stops the first case but not the second:
+    ``_ensure_schema`` commits the schema in its own transaction, so a rebuild
+    whose ``replace_items`` step then fails leaves a **schema-only store** — file
+    present, ``item`` and ``cursor`` both empty. That store today reads as
+    never-synced because ``cachequery._freshness`` finds no coverage stamp and no
+    row stamps; one mirrored row into it would produce a payload of one item aged
+    seconds, which is the freshness lie this whole section exists to prevent.
+    Requiring a ``cursor`` row is what makes "the store was actually synced" the
+    condition, instead of "a file is there".
+
+    (``create=False`` governs *creation*, not write permission — an existing store
+    opens read-write either way — which is why a writer reaching for what
+    :func:`cache.open_store` calls the reader's door is deliberate.)
+
+    **The same row check answers a second question: whether this item belongs
+    here at all.** An id carries its own ``owner/repo`` and ``--repo`` is only a
+    default, so a single-id write can target a repo this store does not hold, and
+    mirroring it would write a row no rebuild would reproduce. The check is made
+    against the scope the **store** holds rather than against the caller's
+    ``--repo``, which a command run wholly against another backlog would satisfy
+    vacuously. A store that holds some other scope skips silently — that is a
+    correct write to an item this cache was never meant to hold, not a degraded
+    one — while a store that holds no scope at all is the unsynced case above and
+    says so.
+
+    An issue that no longer decodes as an item is evicted rather than upserted. It
+    is barely reachable through the write ops (none of them can strip the block or
+    the labels), which is exactly why it is handled here rather than assumed away:
+    the cost is one branch, and the failure it prevents is a row that answers the
+    open-item walk forever.
+    """
+    stamp = (now or datetime.now(timezone.utc)).isoformat()
+
+    # Tagged so a caller can tell "there is no mirror here" from "the mirror is
+    # broken" without matching on message text. The first is silent at the write
+    # site — every read already reports it, with the command that fixes it — and
+    # the second is worth saying, because a store that answers reads and refuses
+    # writes is the surprising case.
+    absent = cache.cache_path(project_dir)
+    if absent is None or not absent.exists():
+        return error(
+            "unavailable",
+            "the backlog cache has not been built yet; run `prawduct-hook backlog sync`",
+            details={"mirror": MIRROR_ABSENT},
+        )
+
+    try:
+        rows, out_of_scope = _rows_from_issues([issue], owner, repo)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        log_diag(
+            f"could not decode a written issue for the backlog cache: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return error("unavailable", "the backlog cache could not decode the written issue")
+
+    conn = cache.open_store(project_dir, create=False)
+    if isinstance(conn, dict):
+        return conn  # absent, unreadable, or schema-mismatched — say so, build nothing
+    try:
+        scope = f"{owner}/{repo}"
+        covered = cache.cursor_scopes(conn)
+        if covered is None:
+            # Readable enough to open, not readable enough to answer. Saying
+            # "run a sync" here would send an operator to repair a store whose
+            # problem a sync does not address.
+            return error("unavailable", "the backlog cache could not be read")
+        if scope not in covered:
+            if not covered:
+                return error(
+                    "unavailable",
+                    "the backlog cache has not been synced yet; "
+                    "run `prawduct-hook backlog sync`",
+                    details={"mirror": MIRROR_ABSENT},
+                )
+            # The store is fine and this item simply is not its business.
+            # Same key set as the mirror's other ok exits, plus the reason —
+            # a consumer reading `written` must not have to know which exit it got.
+            return ok(
+                {"written": 0, "evicted": 0, "fts": cache.has_fts(conn),
+                 "skipped": "out-of-scope"}
+            )
+        return cache.absorb_rows(conn, rows, fetched_at=stamp, evict=out_of_scope)
+    finally:
+        conn.close()
 
 
 def _watermark_from(issues: list[dict], *, floor: str | None) -> str | None:
@@ -376,7 +492,11 @@ def spawn_sync(
     popen=None,
     env: dict | None = None,
 ) -> bool:
-    """Warm the cache in a **detached** subprocess — the store's only trigger.
+    """Warm the cache in a **detached** subprocess — the only automatic SYNC trigger.
+
+    Not the store's only writer: every eligible backlog write mirrors itself into
+    the store as it goes (Cache Spec §6.1). This is what pulls in what someone
+    ELSE changed.
 
     Until this existed, the only writer reachable from outside a test was a human
     typing ``prawduct-hook backlog sync``: nothing scheduled it and no hook spawned

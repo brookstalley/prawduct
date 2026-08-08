@@ -129,11 +129,21 @@ def _freshness(conn: sqlite3.Connection, scope: str, *, now: datetime) -> tuple[
     would read the cache as abandoned at the moment it was most current.
 
     The rows stay as the **fallback**, for a store that holds rows but carries no
-    cursor row. Today's writers cannot produce one — every write path stamps the
-    cursor in the same transaction as the rows — so this is a reader declining to
-    claim *never synced* about a store whose rows are visibly there, rather than
-    a path with a known producer. ``None`` still means what it says: nothing has
-    ever been read into this scope.
+    cursor row — a reader declining to claim *never synced* about a store whose
+    rows are visibly there. ``None`` still means what it says: nothing has ever
+    been read into this scope.
+
+    **No writer produces that state, and the reason changed.** It used to be that
+    every writer stamped the cursor in the same transaction as the rows, so the
+    combination was unreachable by construction. ``cache.absorb_rows`` — the
+    local-write mirror — is the first writer that deliberately does *not* stamp
+    the cursor, because a mirror is not a fetch and has no coverage to claim. The
+    combination stays unreachable for a different reason: ``sync.absorb_issue``
+    refuses to mirror into a scope that has no cursor row at all. That refusal is
+    load-bearing for this function rather than merely tidy — without it, one
+    mirrored row into a schema-only store (a rebuild that created the schema and
+    then failed) would land here as a payload of one item aged seconds, which is
+    the precise freshness lie the paragraph above rejects.
 
     Neither stamp is the sync **cursor**. That is a *provider* timestamp
     recording how far into the provider's history the reads have covered, so a

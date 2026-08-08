@@ -822,6 +822,299 @@ class TestRebuildEquivalence:
         assert _domain_rows(repo_dir) != tampered
 
 
+class TestMirrorOnWrite:
+    """`sync.absorb_issue` — the write side of read-your-writes.
+
+    The store's other writer is a *fetch*, and every guarantee it carries is a
+    claim about a fetch: the watermark says what has been read, the coverage stamp
+    says when. A mirror establishes neither, so most of what follows is negative —
+    what a mirror must NOT move. Those negatives are the whole safety argument, and
+    each is asserted on its own rather than folded into one "cursor unchanged"
+    comparison, so a regression names the column it broke.
+    """
+
+    def test_a_mirrored_row_is_the_row_a_rebuild_would_write(self, fake, repo_dir):
+        """Rebuild-equivalence, applied to the mirror.
+
+        This is the argument for decoding one issue through the same path a full
+        fetch uses instead of patching the column the caller knows changed: a
+        status write also moves `updated_at`, and a body write moves the alias and
+        path indexes. Anything hand-patched drifts on the columns nobody thought
+        about."""
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        before = _rebuild_snapshot(repo_dir)
+
+        target = ids[0]
+        assert core.set_status(fake, id_raw=target, target="shipped")["status"] == "ok"
+        issue = fake.get_issue(OWNER, REPO, int(target.split("#")[1]))
+
+        absorbed = sync.absorb_issue(
+            repo_dir, owner=OWNER, repo=REPO, issue=issue, now=NOW + timedelta(hours=1)
+        )
+        assert absorbed["status"] == "ok", absorbed
+        mirrored = _rebuild_snapshot(repo_dir)
+
+        # The positive control. Without it this test passes when `absorb_issue`
+        # does nothing at all — the store would simply still equal the rebuild it
+        # was built from, and the comparison below would be about the fixture
+        # rather than about the subject.
+        assert mirrored != before, "the mirror wrote nothing, so equivalence is vacuous"
+
+        assert _rebuild(fake, repo_dir, now=NOW + timedelta(days=2))["status"] == "ok"
+        assert _rebuild_snapshot(repo_dir) == mirrored
+
+    def test_a_mirror_never_moves_the_watermark_or_the_coverage_stamp(self, fake, repo_dir):
+        """The cursor records what a FETCH established. A mirror saw one issue
+        because it just wrote it and learned nothing about any other, so advancing
+        `since` would skip everything edited in a window never read, and stamping
+        coverage would report an age the store has not earned."""
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+
+        conn = cache.open_store(repo_dir, create=False)
+        before_cursor = cache.get_cursor_state(conn, SCOPE)
+        before_coverage = cache.coverage_confirmed_at(conn, SCOPE)
+        conn.close()
+        assert before_coverage is not None, (
+            "the rebuild must leave a coverage stamp, or this test asserts None == None"
+        )
+
+        target = ids[1]
+        assert core.set_status(fake, id_raw=target, target="shipped")["status"] == "ok"
+        issue = fake.get_issue(OWNER, REPO, int(target.split("#")[1]))
+        # A clock far past the rebuild's: if the mirror stamped anything from its
+        # own `now`, this is the gap that makes it visible.
+        assert sync.absorb_issue(
+            repo_dir, owner=OWNER, repo=REPO, issue=issue, now=NOW + timedelta(days=30)
+        )["status"] == "ok"
+
+        conn = cache.open_store(repo_dir, create=False)
+        try:
+            assert cache.get_cursor_state(conn, SCOPE) == before_cursor
+            assert cache.coverage_confirmed_at(conn, SCOPE) == before_coverage
+        finally:
+            conn.close()
+
+    def test_a_mirror_never_creates_a_store(self, fake, repo_dir):
+        """A store conjured by a write would hold exactly one item and answer the
+        open-item walk with it — authoritative-looking and wrong by the size of the
+        backlog. "Not built yet" is the honest answer."""
+        _corpus(fake)
+        issue = fake.get_issue(OWNER, REPO, 1)
+
+        result = sync.absorb_issue(repo_dir, owner=OWNER, repo=REPO, issue=issue, now=NOW)
+
+        assert result["status"] == "error"
+        assert "has not been built yet" in result["error"]["message"]
+        assert not cache.cache_path(repo_dir).exists()
+
+    def test_a_mirror_declines_a_schema_only_store(self, fake, repo_dir):
+        """A file is not evidence of a sync. `_ensure_schema` commits the schema in
+        its own transaction, so a rebuild that then fails leaves the schema with
+        both tables empty — and one mirrored row into THAT is a payload of one item
+        aged seconds, which is the freshness lie the whole section rejects.
+
+        The store must still read as never-synced afterwards, which is the
+        assertion that would have caught this: the negatives about `since`,
+        `etag` and `coverage_confirmed_at` all held while the leak ran through the
+        row-stamp fallback instead."""
+        _corpus(fake)
+        # Exactly the state a half-failed rebuild leaves: schema present, no rows,
+        # no cursor row.
+        conn = cache.open_store(repo_dir, create=True)
+        assert not isinstance(conn, dict)
+        conn.close()
+        assert cache.cache_path(repo_dir).exists()
+        issue = fake.get_issue(OWNER, REPO, 1)
+
+        result = sync.absorb_issue(repo_dir, owner=OWNER, repo=REPO, issue=issue, now=NOW)
+
+        assert result["status"] == "error"
+        assert "has not been synced yet" in result["error"]["message"]
+        assert _domain_rows(repo_dir) == []
+        served = cachequery.open_items(repo_dir, scope=SCOPE, now=NOW)
+        assert served["status"] == "error", "a mirrored row made an unsynced store look current"
+
+    def test_a_mirror_skips_an_item_outside_the_stores_scope(self, fake, repo_dir):
+        """An id carries its own `owner/repo`, so a single-id write can name a repo
+        this store does not hold. Mirroring it would write a row no rebuild would
+        reproduce. Skipped silently — a correct write to an item this cache was
+        never meant to hold is not a degraded one."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        before = _rebuild_snapshot(repo_dir)
+        foreign = fake.create_issue(
+            "other-owner",
+            "other-repo",
+            title="cache: an item in a repo this store does not hold",
+            body=encode.compose_body("elsewhere", {}),
+            labels=[],
+        )
+
+        result = sync.absorb_issue(
+            repo_dir, owner="other-owner", repo="other-repo", issue=foreign, now=NOW
+        )
+
+        assert result["status"] == "ok", result
+        assert result["data"]["skipped"] == "out-of-scope"
+        assert result["data"]["written"] == 0
+        assert _rebuild_snapshot(repo_dir) == before
+
+    def test_an_unreadable_cursor_is_not_reported_as_an_unsynced_store(self, fake, repo_dir):
+        """Both decline the write; only one of them is honest about why. Telling an
+        operator to run a sync when the store is not answering sends them to repair
+        something a sync does not fix."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        issue = fake.get_issue(OWNER, REPO, 1)
+
+        # `cursor_scopes` reports the real failure: a genuinely absent table, not a
+        # mocked one, so the arm is exercised through sqlite rather than around it.
+        raw = sqlite3.connect(str(cache.cache_path(repo_dir)))
+        raw.execute("DROP TABLE cursor")
+        raw.commit()
+        raw.close()
+        conn = cache.open_store(repo_dir, create=False)
+        assert cache.cursor_scopes(conn) is None
+        conn.close()
+
+        # And the caller turns that into an honest message rather than the
+        # never-synced one, which is the half an operator actually reads.
+        with mock.patch.object(cache, "cursor_scopes", return_value=None):
+            result = sync.absorb_issue(repo_dir, owner=OWNER, repo=REPO, issue=issue, now=NOW)
+
+        assert result["status"] == "error"
+        assert "could not be read" in result["error"]["message"]
+        assert "backlog sync" not in result["error"]["message"]
+
+    def test_a_mirrored_create_carries_its_derived_indexes(self, fake, repo_dir):
+        """The row and its three indexes travel together, so a just-filed item is
+        findable every way an existing one is — by id, by changed file, by text."""
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+
+        created = fake.create_issue(
+            OWNER,
+            REPO,
+            title="cache: an item filed after the store was warmed",
+            body=encode.compose_body(
+                "mirrored on create",
+                {"affected": "[plugin/lib/backlog]", "id_aliases": "[BKL-9Z2X]"},
+            ),
+            labels=[],
+        )
+        canonical = f"{OWNER}/{REPO}#{created['number']}"
+        assert sync.absorb_issue(
+            repo_dir, owner=OWNER, repo=REPO, issue=created, now=NOW
+        )["status"] == "ok"
+
+        resolved = cachequery.resolve(
+            repo_dir, scope=SCOPE, now=NOW, id_raw=canonical, default_owner=OWNER
+        )
+        assert resolved["status"] == "ok"
+        assert resolved["data"]["resolved"] is True
+
+        # The alias index — the same lookup C-B4 makes against a historical id.
+        by_alias = cachequery.resolve(
+            repo_dir, scope=SCOPE, now=NOW, id_raw="BKL-9Z2X", default_owner=OWNER
+        )
+        assert by_alias["status"] == "ok"
+        assert by_alias["data"]["resolved"] is True
+
+        affecting = cachequery.items_affecting(
+            repo_dir,
+            scope=SCOPE,
+            now=NOW,
+            changed_paths=["plugin/lib/backlog/sync.py"],
+            open_only=True,
+        )
+        assert affecting["status"] == "ok"
+        assert canonical in [item["id"] for item in affecting["data"]["items"]]
+
+        # Gated on the STORE's capability, never on the search result: keying the
+        # assertion off the answer would let a search that returns nothing read as
+        # "this build has no FTS5" and pass on exactly the failure it is here for.
+        conn = cache.open_store(repo_dir, create=False)
+        indexed = cache.has_fts(conn)
+        conn.close()
+        if not indexed:
+            pytest.skip("this SQLite build has no FTS5, so there is no text index to mirror")
+        found = cachequery.search(repo_dir, scope=SCOPE, now=NOW, text="warmed")
+        assert found["status"] == "ok", found
+        assert canonical in [item["id"] for item in found["data"]["items"]]
+
+    def test_a_mirror_evicts_an_issue_that_left_scope(self, fake, repo_dir):
+        """Barely reachable through the write ops — none of them can strip the
+        block or the labels — and handled anyway, because the cost is one branch
+        and the failure it prevents is a row answering the open-item walk forever.
+        """
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        target = ids[0]
+        number = int(target.split("#")[1])
+        assert target in [row["id"] for row in _domain_rows(repo_dir)]
+
+        stripped = fake._repo(OWNER, REPO).issues[number]
+        stripped["body"] = "no block, no labels — this is not an item any more"
+        stripped["labels"] = []
+
+        assert sync.absorb_issue(
+            repo_dir, owner=OWNER, repo=REPO, issue=fake.get_issue(OWNER, REPO, number), now=NOW
+        )["status"] == "ok"
+
+        assert target not in [row["id"] for row in _domain_rows(repo_dir)]
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            sqlite3.OperationalError("disk I/O error"),
+            # The three non-database arms, which are the whole content of the
+            # widened catch: `_write_rows` re-derives the alias and path indexes
+            # through `parse_block` / `parse_list`, whose failures are value
+            # errors. Testing only the sqlite arm would exercise the half that
+            # already worked and leave the half that was added unproven — while
+            # the build plan tells the next chunk it may omit its own guard on
+            # the strength of exactly this behaviour.
+            ValueError("malformed alias block"),
+            TypeError("affected column was not a string"),
+            KeyError("id"),
+            AttributeError("block had no id_aliases"),
+        ],
+        ids=["sqlite", "value", "type", "key", "attribute"],
+    )
+    def test_a_mirror_failure_comes_back_as_an_envelope(self, fake, repo_dir, failure):
+        """A mirror runs after the provider write has already succeeded, so it may
+        never raise across the boundary and turn a landed write into a failure —
+        which would invite the caller to retry a mutation that is already done."""
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        issue = fake.get_issue(OWNER, REPO, int(ids[0].split("#")[1]))
+
+        with mock.patch.object(cache, "_write_rows", side_effect=failure):
+            result = sync.absorb_issue(repo_dir, owner=OWNER, repo=REPO, issue=issue, now=NOW)
+
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "unavailable"
+
+    def test_a_mirror_leaves_the_reported_age_alone(self, fake, repo_dir):
+        """The direction the error runs matters: a mirrored store is MORE current
+        than its reported age implies, never less. The age still measures the last
+        confirmed fetch, which is the claim a consumer acts on."""
+        ids, _closed = _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        later = NOW + timedelta(hours=6)
+        aged = cachequery.open_items(repo_dir, scope=SCOPE, now=later)["data"]["age_seconds"]
+
+        issue = fake.get_issue(OWNER, REPO, int(ids[0].split("#")[1]))
+        assert sync.absorb_issue(
+            repo_dir, owner=OWNER, repo=REPO, issue=issue, now=later
+        )["status"] == "ok"
+
+        after = cachequery.open_items(repo_dir, scope=SCOPE, now=later)
+        assert after["data"]["age_seconds"] == aged
+
+
 class TestNewDomainFields:
     """`affected` and `working-branch` in the store — and `tags` deliberately not.
 

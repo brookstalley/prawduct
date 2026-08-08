@@ -858,7 +858,8 @@ def _backlog_pending_line(
         # Read the snapshot first, then warm — the warm's outcome decides what the
         # no-snapshot line may honestly claim, so its result is never discarded.
         warmed = _spawn_snapshot_warm(project_dir, scope, popen=popen)
-        # The backlog cache's only trigger, fired beside the counts warm rather
+        # The backlog cache's only automatic SYNC trigger (writes mirror themselves
+        # into the store as they go), fired beside the counts warm rather
         # than folded into it: two ops, two stores, and `refresh-counts` deriving a
         # count is not the sync that fills the item rows the review-time consumers
         # read. See `_spawn_cache_warm` on why its result is not kept.
@@ -914,7 +915,9 @@ def _spawn_snapshot_warm(project_dir: Path, scope: str, *, popen=None) -> bool:
 def _spawn_cache_warm(project_dir: Path, scope: str, *, popen=None) -> bool:
     """Fire the detached backlog-cache sync. Never raises, never waits.
 
-    The cache's only trigger. It rides the same session-start moment as the counts
+    The cache's only automatic sync trigger — writes mirror themselves into the
+    store, so this is what brings in edits made elsewhere. It rides the same
+    session-start moment as the counts
     warm and for the same reason — the readers that consume it (the Critic's
     reconciliation walk, the PR reviewer's checks, the janitor's Backlog Health)
     run later in the session, so warming at the start is what makes their visible

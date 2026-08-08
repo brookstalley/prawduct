@@ -740,6 +740,91 @@ def apply_incremental(
     )
 
 
+def absorb_rows(
+    conn: sqlite3.Connection,
+    rows: list[dict],
+    *,
+    fetched_at: str,
+    evict: list[str] | None = None,
+) -> dict:
+    """Mirror locally-written rows into the store **without touching the cursor**.
+
+    The adapter's own writes are a staleness source the watermark cannot help
+    with: the interval between a write and the next read is a single agent's next
+    command, and the store would spend it answering questions about a state this
+    process already changed. This is the write side of read-your-writes — the
+    property the data model defines the cache by.
+
+    **Why this is a separate function from :func:`apply_incremental` rather than a
+    flag on it.** That one writes the watermark *because* it must: a sync window
+    and the cursor claiming to cover it are one atomic fact. A mirror is the
+    opposite kind of event — evidence about one item and about nothing else. The
+    cursor records what a FETCH established, and a mirror is not a fetch: it saw
+    one issue because it just wrote it, and learned nothing whatever about the
+    other four hundred. Advancing ``since`` would skip everything edited in the
+    window it never read; stamping ``coverage_confirmed_at`` would report an age
+    the store has not earned, and a store that lies about freshness is worse than
+    one that is visibly stale, because visible age is the only signal a consumer
+    has. A `write_cursor=False` parameter would put both of those failures one
+    typo away, so the safe path is the only path this function has.
+
+    The direction it errs is the safe one: a mirrored store is *more* current than
+    its reported age implies, never less.
+
+    ``evict`` drops ids that are no longer items, on the same terms
+    :func:`apply_incremental` does — a stale open row is a confident wrong answer
+    rather than a gap. Everything commits in one transaction so a reader never
+    observes a row without its derived index rows.
+    """
+    try:
+        # INSIDE the guard, and the placement is the point rather than tidiness:
+        # this is the first statement to touch the connection, so a store that is
+        # unreadable at this moment raises HERE and nowhere else. Left outside, the
+        # exception escapes every frame up to the CLI boundary and turns a provider
+        # write that has ALREADY LANDED into a reported failure — whereupon the
+        # caller retries into a duplicate. The siblings below can afford the same
+        # statement outside their `try`, because a raise there is attributed to a
+        # sync the caller chose to run; a mirror has no such caller to blame.
+        fts = has_fts(conn)
+        with conn:
+            _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
+            evicted = _delete_items(conn, evict or [], fts=fts)
+    # Wider than the `sqlite3.Error` its siblings catch, and deliberately so.
+    # `_write_rows` also re-derives the alias and path indexes, whose `parse_block`
+    # / `parse_list` work raises value errors rather than database ones. A sync can
+    # afford to let one escape — it is attributed to a sync command the caller
+    # chose to run. A mirror cannot: it runs after a provider write has ALREADY
+    # landed, so anything escaping here turns a successful write into a failed
+    # command and invites the caller to retry a mutation that is already done.
+    # The transaction rolls back either way, so the store is unharmed.
+    except (sqlite3.Error, ValueError, TypeError, KeyError, AttributeError) as exc:
+        log_diag(f"backlog cache mirror write failed: {type(exc).__name__}: {exc}")
+        return error("unavailable", f"the backlog cache write failed ({type(exc).__name__})")
+    return ok({"written": len(rows), "evicted": evicted, "fts": fts})
+
+
+def cursor_scopes(conn: sqlite3.Connection) -> list[str] | None:
+    """Every scope this store has a cursor row for — that is, every scope some
+    sync has actually covered. ``None`` when the question could not be asked.
+
+    The existence of the row is the signal, not its contents: ``since`` is legitimately
+    NULL after a rebuild that found no provider timestamp to take, so a caller
+    asking "has this scope ever been synced?" cannot ask :func:`get_cursor_state`
+    and read the answer off ``since``.
+
+    **``None`` and ``[]`` are different answers and collapsing them misdirects an
+    operator.** An empty list means the store is readable and nothing has been
+    synced into it — the fix is to run a sync. A read failure means the store is
+    not answering, and telling that operator to run a sync sends them to repair
+    something that is not broken. Both decline the write; only one of them is
+    honest about why."""
+    try:
+        return [row[0] for row in conn.execute("SELECT scope FROM cursor ORDER BY scope")]
+    except sqlite3.Error as exc:
+        log_diag(f"could not read the backlog cache cursor scopes: {type(exc).__name__}: {exc}")
+        return None
+
+
 def replace_items(
     conn: sqlite3.Connection,
     rows: list[dict],

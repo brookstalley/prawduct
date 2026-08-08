@@ -282,6 +282,110 @@ matters: a stored citation resolves through the table, never by being parsed as 
   incremental sync is its fix. Rate accounting lands on #331 (the REST-point meter under-counts
   paged reads).
 
+### 6.1 Local writes — the adapter mirrors its own mutations
+
+Everything above reasons about **provider-side** drift: someone else edited an issue, and the
+watermark finds it. The adapter's own writes are a second staleness source and a sharper one,
+because the interval between the write and the read is a single agent's next command. **A
+successful local write mirrors itself into the store.**
+
+**This restates a property the parent corpus already asserted rather than adding one.** Data Model
+§1 defines the cache as projecting "the same fields for the queries GitHub can't serve
+*read-your-writes*", and NFR §4 prices lexical/fulltext `search` at zero GitHub cost on the same
+stated grounds — "cache-served (read-your-writes; Data Model §6)". Read-your-writes is therefore
+load-bearing in two parents, and W1 shipped with **no write-path coupling at all**: the store was
+written by the `sync` op and the session-start warm, and by nothing else. #627 is that gap — the
+whole session between a write and the next sync was a window in which the store answered questions
+about a state the adapter itself had already changed.
+
+The dangerous shape is not a slow answer, it is a **confident wrong one**: `cache-query resolve`
+on an id filed ten seconds ago reports *no such item*, which the C-B4 dangling-id check reads as a
+citation to nothing. Visible age does not save this — the store is honestly seconds old and still
+wrong about the item the caller just created.
+
+- **It costs no additional request.** `file_item` holds the `create_issue` response; `set_status`
+  and `update_item` each close with `transport.get_issue(...)` before decoding. The authoritative
+  post-write issue is already in hand at the moment the mirror needs it. An op that does *not*
+  hold one does not go and fetch it (see the eligible set below).
+- **Absorbed rows go through the same decode as a rebuild.** One issue is decoded by the same
+  function a full fetch uses, so a mirrored row is what a rebuild would have written. This is what
+  keeps the rebuild-equivalence invariant true rather than approximately true; a bespoke
+  "just patch the status column" path would break it silently on every other column.
+- **A mirror never advances the watermark, the validator, or the coverage stamp.** Coverage is a
+  claim about the whole scope; one absorbed row is evidence about one item and about nothing else.
+  A store that stamped fresh coverage after a single-item write would report an age it has not
+  earned — and a store that *lies* about freshness is worse than one that is visibly stale, because
+  the visible age is the only signal a consumer has.
+- **A mirror never creates a store.** Absent store means absent, and the `unavailable` envelope
+  (exit 6, "run sync") is the right answer. A store conjured by a write would hold exactly one item
+  and answer `open-items` with it — an authoritative-looking answer that is wrong by 452 items,
+  which is strictly worse than the gap it replaced.
+- **A failed mirror warns; it never fails the write.** The remote mutation has already succeeded.
+  A locked or corrupt store is a degraded local mirror, not a failed command, and reporting it as
+  one would tell the caller to retry a write that already landed.
+- **No store at all is silent, and that is a different case from a broken one.** A repo that has
+  never synced has no mirror to degrade, and the condition is already reported — loudly, with the
+  command that fixes it — at every read, which is where it matters. Warning again on every write
+  would restate a known condition on a path where nothing is wrong and nothing is lost: the next
+  sync picks the item up by watermark regardless. So an absent store, and an item outside the
+  store's scope, both pass without comment; an *unreadable* one warns, because a store that answers
+  reads and refuses writes is genuinely surprising.
+
+**Eligible ops, by whether they change cached state** — the point of enumerating is that most of
+the write surface does not:
+
+| Op | Mirrors | Why |
+|---|---|---|
+| `file` | yes | creates the row |
+| `status` | yes | `status`; also carries `merge`, which closes its source through `set_status` |
+| `update` | yes | every writable column plus the derived `affected` and alias indexes |
+| `link`/`unlink` | `related` only | native `blocks`/`parent` edges are not cached at all; `related` is a body write |
+| `import` | via sync | a bulk create with no single issue in hand — an incremental sync after the run, when a store exists |
+| `reconcile-labels` | no | the alias index derives from the block body, not from the `id:PFX` labels this restores |
+| `provision` | no | repo label definitions, not items |
+| `comment` | no | the `comment` table was removed at schema v7 |
+
+**A write outside the store's scope is not mirrored, and the store is what decides.** An id
+carries its own `owner/repo` and `--repo` supplies only a default, so any single-id write can
+target an item in a repo this store does not hold. The store holds exactly the repo named in
+`backlog_service_repo` (§7, and the F4 disposition below rests on it), so mirroring a foreign item
+would put a row in it that no rebuild would reproduce — breaking rebuild-equivalence and
+un-vacuating the cross-boundary read F4 calls answered.
+
+The check is made **against the scope the store actually holds** (its `cursor` row), not against
+the invoking command's `--repo`. The two are usually the same and the difference is the whole
+point: `--repo` names what this *command* is operating on, so a command run wholly against another
+backlog would compare a foreign item to a foreign default, agree with itself, and write the row.
+Asking the store means a caller cannot get this wrong by passing the wrong thing. A mismatch skips
+silently — it is a correct write to an item this cache was never meant to hold, not a degraded
+one, so it is not a warning either.
+
+**The non-mirroring ops still drift one column, and it is the right trade.** `comment`,
+`reconcile-labels` and a native-edge `link` all move the issue's provider `updated_at` without
+changing anything the store projects, so the cached `updated_at` goes stale by that write. Two
+consumers read it — stale-items (>90d) and `stalled-transition`'s date floor — and both are
+staleness *nags* whose whole point is coarse age. Mirroring for a column no other query reads would
+spend the write path's simplicity on making a nag marginally less nagging; the next sync corrects it
+for free. Named here rather than left to be rediscovered as a bug.
+
+**What this does not cover, deliberately.** Foreign writes — the GitHub UI, another client, an
+agent on a different clone — are still served by the watermark sync and disclosed by visible age;
+nothing here changes that, and nothing here should, because the adapter cannot observe them at
+write time. Backend races stay deferred under §7.
+
+**No new security surface (Security Model F4/F5).** A mirrored issue is one this identity just
+wrote and read back, into the same one-repo store F4's disposition already calls vacuous — the
+fetching identity and the writing identity are the same actor in the same command, so nothing
+here widens the fetch-time access boundary. The store's F5 classification (as sensitive as the
+bodies it holds, uncommittable by location inside `<git-common-dir>`) is unchanged: a mirror
+writes the same body a sync would have written moments later.
+
+`[DECISION: mirror on write, rather than revalidate on every cache read | making `cache-query`
+revalidate the way `pick` does would also catch foreign writes, but it costs a request per read in
+a Critic walk that issues several, and it would put a network dependency inside the one module
+whose stated property is that it never touches the network. Our own writes are the dominant source
+and the only one fixable for free | user can veto/override]`
+
 ## 7. Concurrency — local, and a first-class requirement
 
 **Multiple agents across multiple worktrees of one repo is the normal case here, and collision is
