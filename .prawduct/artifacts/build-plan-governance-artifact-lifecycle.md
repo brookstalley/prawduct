@@ -225,7 +225,7 @@ only gate that reads tags.
   including the `release=unreleased` case by name; `plan_index` archive pruning (an archived namesake
   must not shadow its live sibling, and must not be parsed). **Characterization** (replacing the
   equivalence oracle, per DECISION-3) — `change_log.parse_change_log` over this repo's real
-  `change-log.md` and `plan_index.build_scope_to_plan_map` over its real `artifacts/` tree, asserting
+  `change-log.md` and `plan_index.build_scope_to_plan_map` over its real artifacts directory, asserting
   the properties Chunk 02 must not change: every scope the log declares resolves to the plan file that
   declares it, the tagged-entry count and the release-pending scope set are what the tree says, and no
   archived path appears. These pin behaviour against data, so they still discriminate after `views.py`
