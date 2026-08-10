@@ -3335,3 +3335,40 @@ red, `git stash pop`. It costs seconds and answers the only question a green err
 raises. This is the same family as the earlier "a report added at your call site is empty by
 construction" rule — both are cases where the *absence* of a signal is indistinguishable from
 health, and both are settled by making the thing fail on purpose once.
+
+## Release prep vs the cut, and the version tier a draft had already decided (2026-08-10)
+
+**Context.** Assessing `develop` for a release to `main`, then doing Phase 0 prep. Two rules came
+out of one session, and they compound: the second is *what* the prep got wrong, the first is *how
+far* the prep was allowed to go.
+
+**The tier.** A `## v3.2.8` CHANGELOG section had been drafted on the branch that finished
+`governance-artifact-lifecycle`, carrying a careful RELEASE-PREP comment listing what the release
+still owed — re-derive the pending scope set, widen the headline, restore the anchored heading,
+bump the version. The list was correct and I worked it. Writing the release plan's "Version
+decision" section sent me to `operational-spec.md`'s descriptive version tiers, where the observed
+minor tier is *"a substantial new capability or a subsystem going live"* — and the named instance
+is **v3.2.0, the backlog service shipping dormant**. This release is where that subsystem wakes
+up: Chunk 06 restores the Critic's reconciliation walk and hygiene checks, the PR reviewer's R-1
+and R-2, and the janitor's Backlog Health block, and retires the dormancy advisory. The draft's
+number predated two of the three scopes it would ship.
+
+The comment could not have flagged this. Its author saw the risk in front of them — a headline
+describing one scope while three were pending — and the tier question is only askable once you
+know what the other two scopes *are*. Nothing joins the two facts: `check-releasability` grades
+whether the partition is complete and is silent on whether the number matches what the partition
+contains, while printing that number in its own output.
+
+**The trigger.** I had offered the owner three prep items and scoped out the merge to `main`. When
+they said "don't actually release yet" my first reading was that nothing changed. Wrong: **two of
+the three were the trigger.** Bumping `version` is the auto-update cache key — the single fact the
+release process calls "the most important operational fact about deploying prawduct" — and
+stripping the ` — DRAFT` suffix is precisely what makes the section publishable, since the suffix
+exists to stop the draft reading as shipped. Had I done both and stopped, the repo would sit one
+promotion from shipping with every in-repo signal claiming it already had.
+
+**Resolution.** Wrote the classification artifact (it grades readiness; it causes nothing),
+renumbered and widened the prose, and left the version strings at 3.2.7 with the DRAFT suffix
+intact — recorded under "What this plan does NOT authorise" in the release plan itself, so a green
+gate cannot be misread as an armed release. The asymmetry is the general point: a *record* of
+readiness is free to write and free to discard, while the acts that arm a release are neither.
