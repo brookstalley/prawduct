@@ -159,6 +159,43 @@ class TestLifecycleRepairCommand:
         assert reviews[0]["chunks"] == ["Chunk 02: pending"]
 
 
+class TestUnreadableFilesChangeTheVerdict:
+    """The command must not grade a repo it could not fully read.
+
+    Exit 1 is "could not run", the same meaning every sibling repair gives it —
+    a check that declined must never be indistinguishable from one that passed.
+    """
+
+    def _repo_with_unreadable_plan(self, tmp_path: Path) -> Path:
+        project = _repo(tmp_path, state="project: demo\n")
+        (project / ".prawduct" / "artifacts" / "build-plan-demo.md").write_text(
+            "---\nartifact: build-plan\nscope: demo\n---\n\n## Status\n\n- [x] Chunk 01: done\n",
+            encoding="utf-8",
+        )
+        bad = project / ".prawduct" / "artifacts" / "build-plan-bad.md"
+        bad.write_bytes(b"---\nartifact: build-plan\nscope: bad\n---\n\xff\xfe\x00")
+        return project
+
+    def test_dry_run_says_not_checked_and_exits_one(self, tmp_path: Path) -> None:
+        proc = _run(self._repo_with_unreadable_plan(tmp_path), "lifecycle-repair")
+
+        assert proc.returncode == 1
+        assert "has NOT been checked" in proc.stdout
+        assert "already in the target state" not in proc.stdout
+        assert "could not read" in proc.stderr
+
+    def test_apply_also_exits_one(self, tmp_path: Path) -> None:
+        proc = _run(self._repo_with_unreadable_plan(tmp_path), "lifecycle-repair", "--apply")
+        assert proc.returncode == 1
+
+    def test_json_carries_the_unreadable_list(self, tmp_path: Path) -> None:
+        proc = _run(self._repo_with_unreadable_plan(tmp_path), "lifecycle-repair", "--json")
+        payload = json.loads(proc.stdout)
+
+        assert len(payload["unreadable"]) == 1
+        assert payload["unreadable"][0]["path"].endswith("build-plan-bad.md")
+
+
 class TestPlanBackfillCommand:
     def test_dry_run_moves_nothing(self, tmp_path: Path) -> None:
         project = _repo(tmp_path)
@@ -227,6 +264,39 @@ class TestPlanBackfillCommand:
         }
         assert payload["has_release_tags"] is True
         assert [item["scope"] for item in payload["shipped"]] == ["demo"]
+
+    def test_it_reports_a_pointer_left_naming_an_archived_plan(self, tmp_path: Path) -> None:
+        """A pointer at a moved plan reads to every gate as "no active build
+        plan" — the gates go quiet, which is this work's worst failure class, and
+        a sweep of dozens is where nobody is inspecting each move."""
+        project = _repo(tmp_path)
+        state = project / ".prawduct" / "project-state.yaml"
+        state.write_text(
+            STATE_WITH_FLAG + "active_build_plan: artifacts/build-plan-demo.md\n",
+            encoding="utf-8",
+        )
+        proc = _run(project, "plan-backfill", "--apply")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "active_build_plan still names a plan this run archived" in proc.stderr
+
+    def test_it_stays_quiet_when_the_pointer_names_a_live_plan(self, tmp_path: Path) -> None:
+        """Without this, the assertion above passes on a notice that always fires."""
+        project = _repo(tmp_path)
+        live = project / ".prawduct" / "artifacts" / "build-plan-live.md"
+        live.write_text(
+            "---\nartifact: build-plan\nscope: unreleased\n---\n\n## Status\n\n- [ ] Chunk 01: x\n",
+            encoding="utf-8",
+        )
+        state = project / ".prawduct" / "project-state.yaml"
+        state.write_text(
+            STATE_WITH_FLAG + "active_build_plan: artifacts/build-plan-live.md\n",
+            encoding="utf-8",
+        )
+        proc = _run(project, "plan-backfill", "--apply")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "active_build_plan still names" not in proc.stderr
 
     def test_running_twice_under_apply_stays_exit_zero(self, tmp_path: Path) -> None:
         """Idempotence at the CLI boundary — the second run finds nothing to do

@@ -268,6 +268,41 @@ class TestFreezeReleaseNotes:
         assert notes.read_bytes() == before
 
 
+class TestUnreadableFilesAreNotSilentlySkipped:
+    """A file that could not be read must never report as a file with nothing wrong.
+
+    Every finding this repair was built to fix has the same shape — a path that
+    cannot answer, reporting as one that answered — so the repair silently
+    skipping a plan it could not decode and then printing "already in the target
+    state" was the same defect one level up. An unreadable plan may hold the one
+    piece of residue that still changes behaviour.
+    """
+
+    def test_an_unreadable_plan_is_collected_not_skipped(self, tmp_path: Path) -> None:
+        repo = _make_repo(tmp_path, state="project: demo\n")
+        bad = repo / ".prawduct" / "artifacts" / "build-plan-bad.md"
+        bad.write_bytes(b"---\nartifact: build-plan\nscope: bad\n---\n\xff\xfe\x00")
+
+        plan = lifecycle_repair.plan_repair(repo)
+        assert [item["path"] for item in plan["unreadable"]] == [str(bad)]
+
+    def test_a_converged_repo_reports_no_unreadable_files(self, tmp_path: Path) -> None:
+        """The other half — without this, the assertion above passes on a list
+        that is never empty and the key would say nothing."""
+        repo = _make_repo(tmp_path, state="project: demo\n")
+        assert lifecycle_repair.plan_repair(repo)["unreadable"] == []
+
+    def test_an_unreadable_release_notes_is_collected(self, tmp_path: Path) -> None:
+        repo = _make_repo(tmp_path, state="project: demo\n")
+        notes = repo / ".prawduct" / "release-notes.md"
+        notes.write_bytes(b"\xff\xfe\x00not text")
+
+        plan = lifecycle_repair.plan_repair(repo)
+        assert [item["path"] for item in plan["unreadable"]] == [str(notes)]
+        # And no freeze edit is invented for a file whose content is unknown.
+        assert [e for e in plan["edits"] if e["kind"] == "freeze-notes"] == []
+
+
 class TestRetiredFlagGuard:
     """GD2 — the flag coming back, typically by copying an older state file."""
 

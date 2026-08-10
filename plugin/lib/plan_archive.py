@@ -329,7 +329,19 @@ def archive_plan(
     # and `archive-plan README.md` would otherwise stamp, move and unlink at
     # exit 0. Containment is the cheap half of the test and the half that cannot
     # be wrong — a file outside the artifacts tree is not this operation's to move.
-    if not plan_path.is_relative_to(artifacts_dir):
+    # `resolve()` on BOTH sides before comparing, because `is_relative_to` is a
+    # comparison of path PARTS and never collapses `..`. The first cut of this
+    # guard compared them lexically, so
+    # `archive-plan .prawduct/artifacts/../../README.md` satisfied it, took the
+    # matching lexical branch in `archive_destination`, wrote the stamped copy
+    # outside the tree and unlinked the original — at exit 0. A containment check
+    # that a single `..` walks through is not a containment check.
+    try:
+        resolved_plan = plan_path.resolve()
+        resolved_artifacts = artifacts_dir.resolve()
+    except OSError as exc:  # unresolvable symlink chain: refuse, never guess
+        return {"status": "refused", "reason": f"cannot resolve {plan_path}: {exc}"}
+    if not resolved_plan.is_relative_to(resolved_artifacts):
         return {
             "status": "refused",
             "reason": f"{plan_path} is not under {artifacts_dir} — archiving moves "

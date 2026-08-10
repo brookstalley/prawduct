@@ -435,6 +435,11 @@ def plan_repair(project_dir: str | Path) -> dict:
             )
 
     artifacts_dir = root / ARTIFACTS_REL
+    # Asked separately, because the plan scan swallows an undecodable file by
+    # design (one bad file must not blind the map). That is right for a map and
+    # wrong for a repair: such a plan never reaches the loop below, so without
+    # this the command reported a clean sweep over a file nothing had read.
+    unreadable.extend(plan_index.unreadable_candidates(artifacts_dir))
     for plan_path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir):
         try:
             content = plan_path.read_text(encoding="utf-8")

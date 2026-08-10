@@ -305,6 +305,33 @@ def _walk_for_scopes(
             yield plan_path, scope
 
 
+def unreadable_candidates(artifacts_dir: Path) -> list[dict]:
+    """Markdown files under ``artifacts_dir`` that cannot be read as utf-8 text.
+
+    :func:`iter_scoped_plan_candidates` deliberately swallows these — one
+    malformed file must not blind the scan to every other plan, and that is the
+    right call for a *map*. It is the wrong call for a *repair*: a plan the
+    repair cannot read may hold the residue it exists to remove, and silently
+    skipping it lets the command report "already in the target state" about a
+    file nothing looked at.
+
+    So the swallow stays where the map needs it and the fact is published here
+    instead. Cold path only — nothing on a session boundary calls this, which is
+    why it re-reads rather than being folded into the walk the gates pay for.
+    The archive is pruned for the same reason the map prunes it: an archived
+    plan is a record, and nothing is going to repair it.
+    """
+    found: list[dict] = []
+    if not artifacts_dir.is_dir():
+        return found
+    for path in _markdown_files(artifacts_dir, prune_archive=True):
+        try:
+            path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            found.append({"path": str(path), "reason": str(exc)})
+    return found
+
+
 def build_scope_to_plan_map(
     artifacts_dir: Path, *, include_archived: bool = False
 ) -> dict[str, Path]:

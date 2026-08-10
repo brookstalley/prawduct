@@ -362,6 +362,82 @@ class TestArchivePlan:
 # =============================================================================
 
 
+class TestArchiveRefusesWhatIsNotItsToMove:
+    """`archive_plan` moves a file and then UNLINKS the original.
+
+    So "is this mine to move?" has to be answered before the move, not assumed
+    from the caller's good intentions — and the caller is not always a keystroke:
+    the PR flow has an *agent* supply the path.
+    """
+
+    def test_a_path_outside_the_artifacts_tree_is_refused(self, tmp_path: Path):
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        outsider = tmp_path / "README.md"
+        outsider.write_text("not a plan\n", encoding="utf-8")
+
+        result = plan_archive.archive_plan(
+            outsider, artifacts, state="completed", date="2026-08-10"
+        )
+        assert result["status"] == "refused"
+        assert outsider.is_file(), "a refusal must leave the original alone"
+
+    def test_dot_dot_does_not_walk_through_the_guard(self, tmp_path: Path):
+        """The first cut of this guard was lexical, and one `..` defeated it.
+
+        ``Path.is_relative_to`` compares path parts and never collapses ``..``,
+        so ``artifacts/../../README.md`` satisfied the check, took the matching
+        lexical branch when computing the destination, wrote the stamped copy
+        outside the tree and unlinked the original — at exit 0. This is that
+        exact input.
+        """
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        outsider = tmp_path / "README.md"
+        outsider.write_text("not a plan\n", encoding="utf-8")
+        traversal = artifacts / ".." / ".." / "README.md"
+
+        result = plan_archive.archive_plan(
+            traversal, artifacts, state="completed", date="2026-08-10"
+        )
+        assert result["status"] == "refused", result
+        assert outsider.is_file(), "the traversal deleted a file outside the tree"
+
+    def test_an_already_archived_plan_is_not_restamped(self, tmp_path: Path):
+        """Re-stamping is how a `superseded` record silently becomes `completed`,
+        and the frontmatter is the whole content of the record."""
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        plan = artifacts / "build-plan-demo.md"
+        plan.write_text(
+            "---\nartifact: build-plan\nscope: demo\nlifecycle: superseded\n"
+            "archived: 2026-01-01\nsuperseded_by: something else\nmaintained: false\n---\n",
+            encoding="utf-8",
+        )
+
+        result = plan_archive.archive_plan(
+            plan, artifacts, state="completed", date="2026-08-10"
+        )
+        assert result["status"] == "refused"
+        assert "superseded" in result["reason"]
+        assert "lifecycle: superseded" in plan.read_text()
+
+    def test_a_normal_plan_under_artifacts_still_archives(self, tmp_path: Path):
+        """The guards must refuse the two bad shapes and nothing else — without
+        this, all three assertions above pass on a function that refuses
+        everything."""
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        plan = artifacts / "build-plan-demo.md"
+        plan.write_text("---\nartifact: build-plan\nscope: demo\n---\n", encoding="utf-8")
+
+        result = plan_archive.archive_plan(
+            plan, artifacts, state="completed", date="2026-08-10"
+        )
+        assert result["status"] == "archived", result
+        assert (artifacts / "archive" / "build-plan-demo.md").is_file()
+
+
 class TestArchivedPlansStayFindableButStopAsserting:
     def test_a_named_plan_still_resolves_after_archival(self, tmp_path: Path):
         """Archival must never change whether a document can be found by name —
