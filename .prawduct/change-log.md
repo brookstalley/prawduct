@@ -48,6 +48,19 @@ template omits, and a template flag nobody registered, both fail. The code defau
 state file that omits the key rather than written as a literal, so the test agrees with the code
 instead of with its author's belief.
 
+**Three review rounds, and the second is the one worth recording.** The `cumulative`
+(`rev-20260810T131213Z-c1b6f3f7`, 3 reviewers) returned 1 blocking / 14 warning / 12 note — all 27
+dispositioned, 12 fixed, 14 accepted, 1 filed as #631. Its blocker was that both new commands
+shipped with no CLI-level test, and the reason it mattered is that their `--json` key names are a
+contract doctor's health checks grade on. The first `verify-resolutions`
+(`rev-20260810T133906Z-8e3fb8a3`) then returned **two new blockers on those fixes**: the containment
+guard I had just added was lexical, so a single `..` walked through it and the destructive path ran
+to exit 0; and three of the fixes shipped untested. Writing those tests found that one fix did not
+work — the unreadable-file list was structurally always empty, because the plan scan swallows an
+undecodable file one layer below where the reporting was added. **The fix for "a path that cannot
+answer, reporting as one that answered" had reproduced it.** `rev-20260810T135801Z-d1b928b0` returned
+**0/0/0**, and `check-cumulative-critic` reports composed coverage spanning the branch.
+
 **Retirements were recorded, not performed silently.** `regen-views` and `stamp-merged` stay callable
 and inert with a stderr notice, removal deferred to a major, because the deprecation norm's own
 rationale forbids the silent removal; the `regen-views-is-advice` ruling was retired as a norm

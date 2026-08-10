@@ -422,6 +422,34 @@ class TestArchiveRefusesWhatIsNotItsToMove:
         assert "superseded" in result["reason"]
         assert "lifecycle: superseded" in plan.read_text()
 
+    def test_the_preview_refuses_exactly_what_the_write_refuses(self, tmp_path: Path):
+        """The preview and the write share one predicate, so they cannot disagree.
+
+        They did: `--dry-run` computed a destination and printed *would archive*
+        at exit 0 without consulting a single guard, so for the traversal input
+        the containment check exists to stop, the preview promised an operation
+        the real run refuses. A preview that overstates permission is worse than
+        no preview — it reports clean about something that is wrong.
+        """
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (tmp_path / "README.md").write_text("not a plan\n", encoding="utf-8")
+        good = artifacts / "build-plan-demo.md"
+        good.write_text("---\nartifact: build-plan\nscope: demo\n---\n", encoding="utf-8")
+
+        for target in (artifacts / ".." / ".." / "README.md", artifacts / "missing.md"):
+            preview = plan_archive.refusal_reason(target, artifacts, state="completed")
+            written = plan_archive.archive_plan(
+                target, artifacts, state="completed", date="2026-08-10"
+            )
+            assert preview is not None, f"preview allowed {target}"
+            assert written["status"] == "refused"
+            assert preview == written["reason"], "preview and write gave different reasons"
+
+        # And they agree on the allowed case too, or the test above passes on a
+        # predicate that refuses everything.
+        assert plan_archive.refusal_reason(good, artifacts, state="completed") is None
+
     def test_a_normal_plan_under_artifacts_still_archives(self, tmp_path: Path):
         """The guards must refuse the two bad shapes and nothing else — without
         this, all three assertions above pass on a function that refuses

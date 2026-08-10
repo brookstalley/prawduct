@@ -179,7 +179,7 @@ Chunk 05 starts.
 - [x] Chunk 02: One reading — retire the flag, the command, and the dual progress path
 - [x] Chunk 03: Trim the tag schema, the doc restatements, and the two norm decisions
 - [x] Chunk 04: Archival — completion frontmatter, five deletion sites, two terminal states
-- [ ] Chunk 05: Doctor repair, the archive backfill, and the guards that keep it converged
+- [x] Chunk 05: Doctor repair, the archive backfill, and the guards that keep it converged
 Context: Plan written 2026-08-08 on `feature/governance-artifact-lifecycle` (off `develop`),
 requirements v0.4 committed at `b681fab`. Ships as one PR — Chunk 05's cumulative review is the
 `/prawduct:pr create` gate. Suite state is read from the evidence store, not recorded here.

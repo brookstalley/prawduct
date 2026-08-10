@@ -3703,6 +3703,17 @@ def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
     artifacts_dir = project_dir / ".prawduct" / "artifacts"
 
     if dry_run:
+        # The SAME refusal predicate the real run uses, so the preview cannot
+        # promise an operation the write would refuse. It used to skip the guards
+        # entirely and print `would archive:` at exit 0 for a traversal path the
+        # real run rejects — a preview that overstates permission, which is the
+        # shape where a check reports clean about something that is wrong.
+        refusal = plan_archive.refusal_reason(
+            plan_path, artifacts_dir, state=state, superseded_by=superseded_by
+        )
+        if refusal is not None:
+            print(f"not-archived: {refusal}", file=sys.stderr)
+            return 1
         destination = plan_archive.archive_destination(plan_path, artifacts_dir)
         fields = plan_archive.completion_fields(
             state=state, date=date, release=release, superseded_by=superseded_by

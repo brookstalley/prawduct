@@ -478,3 +478,9 @@ dropping them.
 ## A structural guard that fires on your own justified change is answered, never re-floored — record why the population moved in the assertion's own docstring, and add a companion assertion pinning the part that must NOT move, so the next widening cannot ride the same exemption. Tell: you are about to relax a floor because your change legitimately shrank what it counts
 
 ## Export the ANSWER, not the walker — a caller needing "which chunks are unticked" gets a finished list, because exposing the traversal is what lets the next consumer re-derive the question privately and give it a third answer. Tell: you are about to make a private parsing helper public so one new caller can use it
+
+## When fixing a SILENT SWALLOW, find the frame that actually discards — it is usually one layer below where you noticed the symptom, so a report added at your call site is empty by construction and its test passes on a healthy repo. Tell: your new "problems found" list is structurally never populated
+
+## A guard written against the EXAMPLE IN THE FINDING holds for that example and nothing else — restate the threat in your own words before coding it (`is_relative_to` is lexical, so one `..` walks through a containment check that passes the reported case). Tell: your fix quotes the report's scenario back at it
+
+## Read a review's findings for the CLASS, not the list — when four findings share a shape, fixing four instances leaves the fifth to be found by the next round. Tell: several findings could be described by one sentence

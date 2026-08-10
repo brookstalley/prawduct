@@ -284,6 +284,73 @@ def archive_destination(plan_path: Path, artifacts_dir: Path) -> Path:
     return artifacts_dir / plan_index.ARCHIVE_DIR_NAME / plan_path.name
 
 
+def refusal_reason(
+    plan_path: Path,
+    artifacts_dir: Path,
+    *,
+    state: str,
+    superseded_by: str | None = None,
+) -> str | None:
+    """Why this archival would be refused, or ``None`` if it would proceed.
+
+    **Every refusal lives here so the preview and the write cannot disagree.**
+    They did: ``--dry-run`` computed a destination and printed *would archive* at
+    exit 0 without consulting a single guard, so for the one input the traversal
+    guard exists to stop, the preview promised an operation the real run refuses.
+    A preview that overstates permission is worse than none — it is the shape
+    where a check reports clean while the thing it checks is wrong.
+    """
+    if state not in TERMINAL_STATES:
+        return (
+            f"unknown terminal state {state!r} (expected one of "
+            f"{', '.join(TERMINAL_STATES)})"
+        )
+    if state == SUPERSEDED and not superseded_by:
+        return (
+            "a superseded plan must name what replaced it or why it stopped — an "
+            "unexplained dead plan is the thing archiving is supposed to stop producing"
+        )
+    if not plan_path.is_file():
+        return f"no such plan: {plan_path}"
+    # `resolve()` on BOTH sides before comparing, because `is_relative_to` is a
+    # comparison of path PARTS and never collapses `..`. The first cut of this
+    # guard compared them lexically, so
+    # `archive-plan .prawduct/artifacts/../../README.md` satisfied it, took the
+    # matching lexical branch in `archive_destination`, wrote the stamped copy
+    # outside the tree and unlinked the original — at exit 0. A containment check
+    # that a single `..` walks through is not a containment check.
+    try:
+        resolved_plan = plan_path.resolve()
+        resolved_artifacts = artifacts_dir.resolve()
+    except OSError as exc:  # unresolvable symlink chain: refuse, never guess
+        return f"cannot resolve {plan_path}: {exc}"
+    if not resolved_plan.is_relative_to(resolved_artifacts):
+        return (
+            f"{plan_path} is not under {artifacts_dir} — archiving moves and then "
+            "deletes the original, so it only ever acts inside the artifacts directory"
+        )
+    destination = archive_destination(plan_path, artifacts_dir)
+    if destination.exists():
+        return (
+            f"{destination} already exists — archiving would overwrite an earlier "
+            "plan of the same name; rename one of them first"
+        )
+    # A plan already carrying a terminal state is refused rather than re-stamped:
+    # re-archiving in place is how a `superseded` record silently becomes
+    # `completed`, and the frontmatter is the whole content of the record.
+    try:
+        existing = read_completion(plan_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
+        return f"cannot read {plan_path}: {exc}"
+    if existing:
+        return (
+            f"{plan_path} already records lifecycle "
+            f"{existing.get(LIFECYCLE_KEY)!r} (archived {existing.get(ARCHIVED_KEY)}) "
+            "— it has an end of life already; move it by hand if that record is wrong"
+        )
+    return None
+
+
 def archive_plan(
     plan_path: Path,
     artifacts_dir: Path,
@@ -308,68 +375,12 @@ def archive_plan(
     and what lets a backfill stamp a plan with the date it actually finished
     rather than the date someone got around to filing it.
     """
-    if state not in TERMINAL_STATES:
-        return {
-            "status": "refused",
-            "reason": f"unknown terminal state {state!r} (expected one of "
-            f"{', '.join(TERMINAL_STATES)})",
-        }
-    if state == SUPERSEDED and not superseded_by:
-        return {
-            "status": "refused",
-            "reason": "a superseded plan must name what replaced it or why it "
-            "stopped — an unexplained dead plan is the thing archiving is "
-            "supposed to stop producing",
-        }
-    if not plan_path.is_file():
-        return {"status": "refused", "reason": f"no such plan: {plan_path}"}
-    # This moves a file and then UNLINKS the original, so "is it a plan?" has to
-    # be asked before the move, not assumed from the caller's good intentions.
-    # The path is not always a keystroke: the PR flow has an *agent* supply it,
-    # and `archive-plan README.md` would otherwise stamp, move and unlink at
-    # exit 0. Containment is the cheap half of the test and the half that cannot
-    # be wrong — a file outside the artifacts tree is not this operation's to move.
-    # `resolve()` on BOTH sides before comparing, because `is_relative_to` is a
-    # comparison of path PARTS and never collapses `..`. The first cut of this
-    # guard compared them lexically, so
-    # `archive-plan .prawduct/artifacts/../../README.md` satisfied it, took the
-    # matching lexical branch in `archive_destination`, wrote the stamped copy
-    # outside the tree and unlinked the original — at exit 0. A containment check
-    # that a single `..` walks through is not a containment check.
-    try:
-        resolved_plan = plan_path.resolve()
-        resolved_artifacts = artifacts_dir.resolve()
-    except OSError as exc:  # unresolvable symlink chain: refuse, never guess
-        return {"status": "refused", "reason": f"cannot resolve {plan_path}: {exc}"}
-    if not resolved_plan.is_relative_to(resolved_artifacts):
-        return {
-            "status": "refused",
-            "reason": f"{plan_path} is not under {artifacts_dir} — archiving moves "
-            "and then deletes the original, so it only ever acts inside the "
-            "artifacts directory",
-        }
-    # A plan already carrying a terminal state is refused rather than re-stamped:
-    # re-archiving in place is how a `superseded` record silently becomes
-    # `completed`, and the frontmatter is the whole content of the record.
-    try:
-        existing = read_completion(plan_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError):
-        existing = None
-    if existing:
-        return {
-            "status": "refused",
-            "reason": f"{plan_path} already records lifecycle "
-            f"{existing.get(LIFECYCLE_KEY)!r} (archived {existing.get(ARCHIVED_KEY)}) "
-            "— it has an end of life already; move it by hand if that record is wrong",
-        }
-
+    refusal = refusal_reason(
+        plan_path, artifacts_dir, state=state, superseded_by=superseded_by
+    )
+    if refusal is not None:
+        return {"status": "refused", "reason": refusal}
     destination = archive_destination(plan_path, artifacts_dir)
-    if destination.exists():
-        return {
-            "status": "refused",
-            "reason": f"{destination} already exists — archiving would overwrite an "
-            "earlier plan of the same name; rename one of them first",
-        }
 
     try:
         content = plan_path.read_text(encoding="utf-8")
