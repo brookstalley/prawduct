@@ -432,12 +432,43 @@ class TestAgainstTheRealChangeLog:
         this repo ever showed one side empty, the gate would be answering from
         a degenerate set — which is exactly the shape the v3.2.8 placeholder
         incident produced.
+
+        **But an empty PENDING side is legitimate, and only sometimes.** Phase 1
+        step 3 of the release runbook stamps `release=` on every shipping entry,
+        so between that step and the next cycle's first change there is nothing
+        left to cut — the runbook working as designed, not a broken reader. An
+        earlier version asserted the pending side non-empty unconditionally and
+        went red mid-release, under pressure to relax it.
+
+        So the assertion says WHICH emptiness it rejects. The partition must be
+        total and disjoint (the property the gate actually acts on, at any
+        population size), `released` must be non-empty (a reader that stopped
+        seeing `release=` still fails), and an empty pending side must be
+        *explained* by the repo having just cut the release named in
+        `plugin/VERSION`. Entries stamped with a version the repo no longer
+        claims fail — which is the drift worth catching, and the shape the
+        v3.2.8 incident actually had.
         """
         entries = [e for e in self._entries() if e.tag_line_count > 0]
         released = [e for e in entries if e.tags.get("release")]
         pending = [e for e in entries if not e.tags.get("release")]
+
         assert released, "no released entries — release= is not being read"
-        assert pending, "no release-pending entries — the gate would see nothing to cut"
+        assert len(released) + len(pending) == len(entries), "partition is not total"
+        assert not (set(map(id, released)) & set(map(id, pending))), "sides overlap"
+
+        if pending:
+            return
+
+        version = (
+            Path(__file__).resolve().parents[1] / "plugin" / "VERSION"
+        ).read_text(encoding="utf-8").strip()
+        stamped = {str(e.tags["release"]).lstrip("v") for e in released}
+        assert version in stamped, (
+            f"nothing is release-pending, and no entry is stamped with the repo's "
+            f"own version (v{version}) — so the empty pending side is not explained "
+            f"by a just-cut release. Stamped versions: {sorted(stamped)}"
+        )
 
     def test_every_scope_tag_is_a_non_empty_string(self):
         for entry in self._entries():
@@ -458,13 +489,30 @@ class TestAgainstTheRealChangeLog:
         every one maps to a plan that declares that same scope in its
         frontmatter. That is the property the two modules must agree on, and it
         is the one the branch's join actually relies on.
+
+        The plan side is read WITH the archive, because that is the corpus the
+        log describes: a change-log entry outlives the branch that produced it,
+        and its plan is archived when the work ships. Joining against live plans
+        alone made this assert "some logged scope is still in flight", which a
+        release falsifies by archiving every shipped plan — and it shrank the
+        corpus from every plan the repo has ever written to whatever this branch
+        happens to be building.
+
+        **What turns this red** (measured, not assumed): losing the plan corpus
+        so the join goes empty — the half the archive read restores — and a
+        resolver that returns a plan other than the one declaring the scope,
+        which is the mis-attribution the join exists to catch. What it does not
+        catch is a scope whose *value* is wrong in both places at once: the map
+        keys through the same frontmatter parser this re-reads, so a consistent
+        lie agrees with itself. That is a known limit of a self-join, recorded
+        rather than papered over.
         """
         from lib import plan_index
 
         artifacts = Path(__file__).resolve().parents[1] / ".prawduct" / "artifacts"
         if not artifacts.is_dir():
             pytest.skip("no .prawduct/artifacts/ in this checkout")
-        mapping = plan_index.build_scope_to_plan_map(artifacts)
+        mapping = plan_index.build_scope_to_plan_map(artifacts, include_archived=True)
 
         log_scopes = {
             e.tags["scope"]
