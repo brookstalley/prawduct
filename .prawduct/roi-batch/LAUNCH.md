@@ -1,5 +1,13 @@
 # ROI batch — launch runbook (post-/clear)
 
+> **HISTORICAL — do not execute.** This work shipped in v2.0.5 and its plan is archived. The
+> document is kept as a record of how the batch was launched, not as a procedure. In particular,
+> **do not follow the `active_build_plan` step below**: it now names a path under
+> `artifacts/archive/`, and a pointer at an archived plan reads to every gate as "no active build
+> plan" — they go quiet rather than fail, which is the exact state this repo's own governance docs
+> warn about. That line is a mechanical consequence of the archive move, left visible rather than
+> silently rewritten, because rewriting it would make a dead runbook look live.
+
 Nine pre-triaged backlog ROI items, built by **two parallel background workflows**, then
 governed and shipped by this (launching) session. Plan: `.prawduct/artifacts/archive/build-plan-roi-batch.md`.
 
