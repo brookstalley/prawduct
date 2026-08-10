@@ -58,7 +58,13 @@ governed_by:
       - "updates arrive through the marketplace with zero repo diff → conforms, and it is why the deprecation above is sufficient: a skill and the CLI it calls ship from the same version-keyed cache, so the skill-at-N-meets-CLI-at-N+1 skew the additive-first norm protects against cannot occur between them. What CAN skew is a hand-written operator script or a copied runbook, which is exactly what the deprecation notice serves"
       - "the version bump is the release mechanism — a release that forgets the bump does not ship → conforms; Chunk 05 carries the bump with the attribution banner"
 last_validated: 2026-08-08
+lifecycle: completed
+archived: 2026-08-10
+released_in: v3.3.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

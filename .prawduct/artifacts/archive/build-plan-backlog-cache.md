@@ -55,7 +55,13 @@ governed_by:
       - "Backlog filing: fix, don't file — file only when orthogonal AND medium+ → conforms — the backlog corrections this plan implies (#550's reshaping, #564's disposition) are done in-chunk rather than filed as new items"
       - "Feature branch for medium+ work; PR creation and merge both wait_for_user; merge commit never squash → conforms — this is L-effort work on `feat/backlog-cache`"
 last_validated: 2026-08-07
+lifecycle: completed
+archived: 2026-08-10
+released_in: v3.3.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

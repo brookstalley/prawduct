@@ -43,7 +43,13 @@ governed_by:
       - "Backlog filing: fix, don't file — file only when orthogonal AND medium+ → conforms; #627 is this plan's tracking item and everything it names is fixed here"
       - "Feature branch for medium+ work; merge commit never squash → conforms — `fix/backlog-cache-write-path`"
 last_validated: 2026-08-08
+lifecycle: completed
+archived: 2026-08-10
+released_in: v3.3.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

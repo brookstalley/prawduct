@@ -10,32 +10,23 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.2.8 — DRAFT, completed at the release
+## v3.3.0
 
-<!-- RELEASE-PREP: this section is a draft written on `feature/governance-artifact-lifecycle`,
-     NOT a shipped release. The version strings in `plugin/VERSION`,
-     `plugin/.claude-plugin/plugin.json` and `pyproject.toml` still say 3.2.7 on purpose — the
-     bump IS the release trigger (`documentation/release-process.md`, release-checklist step 2),
-     and it belongs to the `release: prep` commit, not to a feature branch.
+**The backlog service is live.** The readers that went dark at the Issues cutover can see your backlog again — and a build plan's progress checkboxes now mean exactly what they say.
 
-     FIRST, RESTORE THE HEADING. It must read exactly `## v3.2.8` (or whatever version this
-     becomes) with NO suffix, because release-checklist step 6 extracts the notes with an
-     ANCHORED match — `awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f'` — so the ` — DRAFT…`
-     suffix above matches nothing and `gh release create --notes-file` would publish EMPTY
-     release notes. Nothing catches a forgotten suffix: `tests/test_plugin_version_banner.py`
-     parses with `^##\s+v(\d+\.\d+\.\d+)\b`, and `\b` matches the suffixed form too, so the
-     suite stays green either way. The suffix is deliberate — it is what stops this draft
-     reading as shipped — but it is load-bearing in the other direction at release time.
+### The backlog goes back on line
 
-     BEFORE PUBLISHING, the release must reconcile this headline against everything the cut
-     actually carries. At the time this draft was written `check-releasability` reported THREE
-     release-pending scopes for v3.2.8 — governance-artifact-lifecycle, backlog-cache-write-path
-     and backlog-cache — and the headline below describes only the first. Re-derive the set
-     (`prawduct-hook check-releasability --release vX.Y.Z`) rather than trusting this note, then
-     widen the headline or renumber the section. Shipping it as written would publish two scopes
-     under a headline that does not mention them — and the backlog-cache branch is the one
-     `release=unreleased` already hid from a release once. Delete this comment when the section
-     is completed. -->
+v3.2.0 shipped the backlog service *dormant*: the cutover moved the live backlog to GitHub Issues, and every governance surface that used to read `backlog.md` had to be switched off and announce itself as dormant rather than answer from frozen markdown. This release turns them back on, against a local cache rather than a network round-trip.
+
+The Critic's backlog reconciliation walk and its four hygiene checks, the PR reviewer's R-1 and R-2, and the janitor's Backlog Health block each lose their "the live backlog is frozen markdown, so skip and announce it" branch and gain a cache-backed query. The advisory that announced the dormancy **retires by itself** — a probe that stops producing a candidate resolves its own advisory, so nothing had to be removed by hand.
+
+**One capability is new rather than restored:** the changed-file intersection. Ask what backlog items touch the files this branch actually changed, and you get an answer that previously required reading every item's text. Against a real 453-item backlog it returns the tracking item and nothing else, naming the `affected:` entries that matched.
+
+The cache syncs incrementally and queries offline — a re-sync against a 451-item backlog costs about a second and touches the network only to ask what changed. Two checks stay dark and now say so where you meet them instead of in a session-start nag: the neglected-hygiene sweep (the `promoted` status has no Issues equivalent to query for) and norm-exception expiry (it waits on a write path). Two others are **scoped to the markdown backend** rather than retired, because deleting them would have taken a live control from every markdown-backend product to suit a cut-over one.
+
+**Your own writes are visible to your next read.** Every backlog write path now updates the cache, so filing or updating an item and then querying it in the same session returns what you just wrote rather than a pre-write snapshot. The gap that mattered was never provider-side drift — it was the second between an agent's write and its own next command.
+
+### Checkboxes that mean what they say
 
 A build plan's progress checkboxes now mean exactly what they say — `views_enabled` and `regen-views` are retired, and finished plans get an archive instead of sitting in `artifacts/` forever.
 

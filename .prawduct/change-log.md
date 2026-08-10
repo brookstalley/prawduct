@@ -5,7 +5,7 @@
 
 ## 2026-08-10: a checkbox that means one thing, and a plan that can finish
 
-<!-- prawduct: type=refactor | scope=governance-artifact-lifecycle -->
+<!-- prawduct: type=refactor | scope=governance-artifact-lifecycle | release=v3.3.0 -->
 
 **A build plan's `## Status` block had two meanings and one appearance.** With `views_enabled` on it
 was a derived view that only flipped at release, so ticking a box did nothing and an in-flight chunk
@@ -69,7 +69,7 @@ and `status=`, whose only readers lived inside the machinery that went.
 
 ## 2026-08-08: the cache never learned about our own writes
 
-<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-cache-write-path -->
+<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-cache-write-path | release=v3.3.0 -->
 
 **No backlog write path touched the read-through cache, so every local write left the shared store
 holding a pre-write snapshot for the rest of the session.** `core.py` held zero references to the
@@ -132,7 +132,7 @@ stamp still measures the last confirmed fetch — two separate claims, and the d
 
 ## 2026-08-07: a placeholder version tag hid a whole branch from the release
 
-<!-- prawduct: type=fix | scope=backlog-cache -->
+<!-- prawduct: type=fix | scope=backlog-cache | release=v3.3.0 -->
 
 **Six entries on this branch carried `release=unreleased | status=shipped`, and the release flow
 read that as already shipped.** The unreleased set is every entry tagged `scope=` with *no*
@@ -161,7 +161,7 @@ release flips them.
 
 ## 2026-08-07: the last dormant readers come back, and the advisory that announced them retires
 
-<!-- prawduct: chunks=06 | type=feat | scope=backlog-cache -->
+<!-- prawduct: chunks=06 | type=feat | scope=backlog-cache | release=v3.3.0 -->
 
 **The three prose readers that went dark at the Issues cutover read the backlog again.** The Critic's
 backlog reconciliation walk and its four hygiene checks, the PR reviewer's R-1 and R-2, and the
@@ -218,7 +218,7 @@ it.
 
 ## 2026-08-07: ready-work comes off the cache, and the claim mechanism retires
 
-<!-- prawduct: chunks=05 | type=feat | scope=backlog-cache -->
+<!-- prawduct: chunks=05 | type=feat | scope=backlog-cache | release=v3.3.0 -->
 
 **`pick` stopped scanning the backlog.** Its candidate set was a paginated walk of every open issue
 on every call, decoded in full to rank — ~12.4s against ~209 issues, about six times the latency
@@ -323,7 +323,7 @@ this for the whole period the probe returned `[]`.
 
 ## 2026-08-07: the backlog cache answers its consumers' questions
 
-<!-- prawduct: chunks=04 | type=feat | scope=backlog-cache -->
+<!-- prawduct: chunks=04 | type=feat | scope=backlog-cache | release=v3.3.0 -->
 
 **The query surface.** Eight functions covering the consumer union the cache spec enumerates —
 grouping and counting by area, creation-time filtering, text search scoped to an area, two date
@@ -377,7 +377,7 @@ syncs succeed. Nothing failed — the number just started lying.
 
 ## 2026-08-07: the backlog cache learns three domain fields
 
-<!-- prawduct: chunks=03 | type=feat | scope=backlog-cache -->
+<!-- prawduct: chunks=03 | type=feat | scope=backlog-cache | release=v3.3.0 -->
 
 **`affected`, `tags` and `working-branch`** — the one place this work extends the domain model
 rather than consuming it. With `affected` indexed, a reviewer asking "does this change touch any
@@ -416,7 +416,7 @@ affected || '%'` puts the variable on the side no index helps.
 
 ## 2026-08-07: the backlog cache learns to sync incrementally
 
-<!-- prawduct: chunks=02 | type=feat | scope=backlog-cache -->
+<!-- prawduct: chunks=02 | type=feat | scope=backlog-cache | release=v3.3.0 -->
 
 **The chunk's own verify-api step falsified the chunk's stated mechanism.** The plan said sync
 writes `item.etag`. Sync reads the *list* endpoint, and a list ETag replayed against
@@ -451,7 +451,7 @@ through `cursor.etag` instead — so the column had no producer and was dropped 
 
 ## 2026-08-07: the backlog cache store, and the invariant it rests on
 
-<!-- prawduct: chunks=01 | type=feat | scope=backlog-cache -->
+<!-- prawduct: chunks=01 | type=feat | scope=backlog-cache | release=v3.3.0 -->
 
 **Changes:** the per-clone SQLite read-through store — schema, `PRAGMA user_version` with
 discard-and-rebuild on any mismatch, WAL plus busy timeout for the concurrent-worktree case, visible
