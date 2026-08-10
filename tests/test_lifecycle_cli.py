@@ -258,12 +258,67 @@ class TestPlanBackfillCommand:
             "applied",
             "has_release_tags",
             "shipped",
+            "blocked",
             "kept_live",
             "archived",
             "refused",
         }
         assert payload["has_release_tags"] is True
         assert [item["scope"] for item in payload["shipped"]] == ["demo"]
+        assert payload["blocked"] == []
+
+    def _repo_with_a_blocked_plan(self, tmp_path: Path) -> Path:
+        """A plan the change log says shipped but whose archive name is taken."""
+        project = _repo(tmp_path)
+        archive = project / ".prawduct" / "artifacts" / "archive"
+        archive.mkdir(parents=True, exist_ok=True)
+        (archive / "build-plan-demo.md").write_text("an earlier plan\n", encoding="utf-8")
+        return project
+
+    def test_a_blocked_plan_is_named_in_json_and_on_stdout(self, tmp_path: Path) -> None:
+        """`blocked` is the preview's promise matching the write's behaviour.
+
+        Pinned at the CLI because that is the surface the operator approves
+        from: a plan counted under *would archive N* and then refused is consent
+        to a set that was never achievable.
+        """
+        project = self._repo_with_a_blocked_plan(tmp_path)
+        proc = _run(project, "plan-backfill", "--json")
+        payload = json.loads(proc.stdout)
+
+        assert payload["shipped"] == []
+        assert [item["scope"] for item in payload["blocked"]] == ["demo"]
+        assert "already exists" in payload["blocked"][0]["reason"]
+
+        human = _run(project, "plan-backfill")
+        assert "NOT moving 1 plan(s)" in human.stdout
+
+    def test_a_preview_with_blocked_plans_still_exits_zero(self, tmp_path: Path) -> None:
+        """Nothing was skipped because nothing was attempted — and a dry run
+        that exits 1 on every repo holding one already-archived namesake is
+        noise the release checklist would learn to ignore."""
+        proc = _run(self._repo_with_a_blocked_plan(tmp_path), "plan-backfill")
+        assert proc.returncode == 0, proc.stderr
+
+    def test_an_apply_that_could_not_move_everything_exits_one(self, tmp_path: Path) -> None:
+        """The signal `refused` used to carry, restored.
+
+        Before the preview consulted the refusal predicate this repo attempted
+        the collision, failed, and exited 1. Pre-filtering into `blocked` made
+        the same repo exit 0 — a run that skipped work reporting as one that had
+        none, which is the shape this whole change exists to end.
+        """
+        project = self._repo_with_a_blocked_plan(tmp_path)
+        before = _tree(project)
+        proc = _run(project, "plan-backfill", "--apply", "--date", "2026-08-10")
+
+        assert proc.returncode == 1, proc.stdout
+        assert [] == [p for p in _tree(project) if p not in before]
+        # The live plan and the namesake it collided with are both untouched.
+        assert (project / ".prawduct" / "artifacts" / "build-plan-demo.md").is_file()
+        assert (
+            project / ".prawduct" / "artifacts" / "archive" / "build-plan-demo.md"
+        ).read_text() == "an earlier plan\n"
 
     def test_the_active_plan_is_refused_rather_than_archived(self, tmp_path: Path) -> None:
         """The pointer's target is never this sweep's to move.

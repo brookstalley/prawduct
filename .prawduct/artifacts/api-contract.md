@@ -92,13 +92,22 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   a single file the operator named; `--dry-run` is the preview. Refuses (exit 1, nothing written)
   rather than half-completing: a plan stamped but not moved still reads as live to every directory
   scan, and one moved but not stamped answers "is this current?" only to a reader who noticed the
-  path. Status checkboxes are never touched.
+  path. The archived copy is written first and the source removed last, and a failure to remove the
+  source **rolls the copy back**, which is what makes "nothing written" true rather than aspirational.
+  **The one disclosed exception:** if that rollback ALSO fails, the stamped copy survives and the
+  reason says so by name — two failing filesystem operations cannot be undone by a third, and a
+  refusal that quietly left an orphan would be the worse answer. The live plan is intact either way.
+  Status checkboxes are never touched.
   `plan-backfill [--apply] [--json] [--date YYYY-MM-DD]` (mutating with `--apply`) is the
   repo-wide counterpart the sentence above points at: it archives every live plan whose `scope=`
   carries a `release=` tag in the change log, so it decides for itself which files to touch and
   therefore previews first. A product whose change log records no releases gets **nothing moved** —
   the set is proposed and the operator archives each with `archive-plan`. Checkbox state is neither
-  a precondition nor corrected on the way in.
+  a precondition nor corrected on the way in. `--json` adds `blocked[{path,scope,release,reason}]`:
+  plans the change log records as shipped that the archival predicate refuses, split out so the
+  preview cannot promise what the write declines. **Exit 1 on `--apply` when anything is `blocked`
+  or `refused`** — an apply that could not move work the change log says shipped is not a clean run;
+  a preview stays 0, having attempted nothing.
 - **Derived-view convergence** — `lifecycle-repair [--apply] [--json]` (mutating with `--apply`):
   removes the retired `views_enabled` key and `scope_rollups` block, labels a derived
   `release-notes.md` as history, and deletes `## Status` notes instructing readers not to hand-edit

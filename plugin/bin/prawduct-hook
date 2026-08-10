@@ -5022,7 +5022,20 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
 
-    return 1 if result["refused"] else 0
+    # An APPLY that could not move everything the change log says shipped exits
+    # non-zero. `refused` alone used to carry that: before the preview consulted
+    # the refusal predicate, a collision was attempted, failed, landed in
+    # `refused`, and exited 1. Pre-filtering into `blocked` made that same repo
+    # exit 0 — the signal was lost as a side effect of fixing the preview, which
+    # is the shape this whole change exists to stop (a run that skipped work
+    # reporting as one that had none). Restoring it here keeps the contract the
+    # pre-filter was never meant to alter.
+    #
+    # A PREVIEW stays 0: nothing was skipped because nothing was attempted, and
+    # a dry run that exits 1 on every repo holding one already-stamped plan is
+    # noise the release checklist would learn to ignore.
+    incomplete = result["refused"] or (apply and result["blocked"])
+    return 1 if incomplete else 0
 
 
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:

@@ -28,6 +28,7 @@ governed_by:
       - "a fact from a newer schema is a loud block, never silently dropped → inapplicable because no chunk introduces or reads a versioned fact schema"
       - "two stores, two lifetimes: committed answers vs gitignored nags and caches → conforms. Build plans (live and archived) are committed answers per BP4; release-notes.md is demoted to frozen archive, not promoted"
       - "backlog_service_repo selects the authoritative store; backlog.md is then frozen history → conforms; #629 was filed through the skill and backlog.md was not touched"
+      - "a governance document reaches a terminal state and is never deleted; archival records what became of it and a live document outranks an archived namesake → CONFORMS BY BEING ITS SUBJECT. This norm did not exist when the plan was written — it was ratified from this work in the post-review pass (R-20), because the lifecycle had shipped in code with no binding home while the analogous Critic-review and backlog rules both had one. Recorded here rather than left implicit: a norm authored out of a plan still owes that plan a disposition row, or the next record-lint reads the gap as an undisposed norm rather than as this one's own output"
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0; run-count and unit-cost are both levers; PR-boundary reviews run in parallel → conforms, favourably. Five chunks in one PR means one cumulative pass, not five finals; BP9 also removes a per-session cost that grows with the archive"
