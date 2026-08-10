@@ -84,7 +84,9 @@ runs still applies.
 Recorded because this release's two largest surfaces are a **fleet data migration** and a **new
 subsystem going live**, and neither is graded by the suite alone.
 
-- **Suite:** 4328 passed, 10 skipped. Clean.
+- **Suite:** clean at the tree this plan graded. The count is deliberately not copied here — the
+  evidence store records pass/fail per tree, a prose number drifts the moment anything lands, and
+  nothing reads it. Re-derive with `prawduct-hook test-status`.
 - **Fleet migration, dogfooded on a foreign repo.** The convergence flow was applied end-to-end
   to `scriob` — an unrelated product with a `v0.x` scheme, carrying all three repair legs. Result:
   `plan-backfill` archived 14 shipped plans (deriving each release mechanically) and left 8;
@@ -128,6 +130,35 @@ as a fact about how the work ended rather than a claim about whether it finished
 
 ## What this plan does NOT authorise
 
+**SUPERSEDED — read the status block below, not the paragraph it replaces.** What follows the
+rule was true when this file was written and was falsified by the very commit that added it
+(`8e3c7683`), which ran Phase 1 to completion. It is kept because an operator who has seen the
+old wording needs to find out here that it no longer holds; deleting it silently is how someone
+resumes on a remembered reading.
+
+### Current state (2026-08-10, after `8e3c7683`)
+
+**The trigger is ARMED. Phase 1 ran to completion and stopped before the push.**
+
+- `plugin/VERSION`, `plugin/.claude-plugin/plugin.json` and `pyproject.toml` all read **3.3.0**.
+- `plugin/CHANGELOG.md`'s heading is a bare `## v3.3.0` — the `— DRAFT` suffix and the RELEASE-PREP
+  comment are **gone**, so note extraction will find it. (That anchored match, `/^## vX.Y.Z$/`, is
+  why the suffix had to go: a forgotten one publishes empty release notes and no test catches it.)
+- All change-log entries in the shipping set carry `release=v3.3.0`; every shipped plan is archived.
+- **Nothing is pushed.** `origin` is untouched, and everything above is reversible with
+  `git reset --hard origin/develop`.
+
+**Resume at Phase 1 step 13 (push develop), then Phase 2 steps 14–21** — *not* at step 1. Phase 0
+is already answered by the table above: `K withheld = 0` → whole-develop promotion.
+
+One entry is release-pending and must be stamped by a re-run of step 3 before the push:
+`scope=phase-blind-real-data-guards`, the test-guard repair that made the suite green under the
+prep. It belongs to v3.3.0 — it is what makes v3.3.0 pushable.
+
+---
+
+<details><summary>Superseded pre-prep reading (2026-08-10, before <code>8e3c7683</code>)</summary>
+
 **The cut has not happened and is not authorised by this file.** At owner instruction
 (2026-08-10) the release trigger is deliberately left **unarmed**:
 
@@ -140,3 +171,5 @@ as a fact about how the work ended rather than a claim about whether it finished
   forgotten suffix publishes **empty** release notes and no test catches it.
 
 Resuming the cut means the release checklist from step 1, with this table as its Phase 0 answer.
+
+</details>

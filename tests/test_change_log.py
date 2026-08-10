@@ -440,22 +440,35 @@ class TestAgainstTheRealChangeLog:
         earlier version asserted the pending side non-empty unconditionally and
         went red mid-release, under pressure to relax it.
 
-        So the assertion says WHICH emptiness it rejects. The partition must be
-        total and disjoint (the property the gate actually acts on, at any
-        population size), `released` must be non-empty (a reader that stopped
-        seeing `release=` still fails), and an empty pending side must be
-        *explained* by the repo having just cut the release named in
-        `plugin/VERSION`. Entries stamped with a version the repo no longer
-        claims fail — which is the drift worth catching, and the shape the
-        v3.2.8 incident actually had.
+        So the assertion says WHICH emptiness it rejects. `released` must be
+        non-empty — a reader that stopped seeing `release=` still fails — and an
+        empty pending side must be *explained*: the NEWEST `release=` stamp has
+        to be the version `plugin/VERSION` claims. Equality, not membership: a
+        set containing one current stamp beside a stale or fabricated one passes
+        a membership check while being exactly the drift worth catching, and an
+        unparseable stamp sorts above every real version rather than hiding
+        under a larger neighbour. That is the shape the v3.2.8 placeholder
+        incident actually had.
+
+        **What this does not catch:** a log stamped entirely to a version BEHIND
+        `plugin/VERSION` while the pending side is non-empty — the early return
+        above skips the check, because a repo mid-cycle legitimately has its
+        newest stamp one release back. This guard is about the post-cut state
+        only; `check-releasability` grades the mid-cycle partition.
+
+        Deliberately NOT asserted: that the two sides partition the entries
+        totally and disjointly. They are built by complementary filters over one
+        list, so no input can falsify it — the statement would read like a
+        guarantee while measuring nothing, which is the failure this class
+        exists to avoid. The partition is a property of this test's own two
+        lines, not of the data; `check-releasability` does its own split and is
+        graded where it lives.
         """
         entries = [e for e in self._entries() if e.tag_line_count > 0]
         released = [e for e in entries if e.tags.get("release")]
         pending = [e for e in entries if not e.tags.get("release")]
 
         assert released, "no released entries — release= is not being read"
-        assert len(released) + len(pending) == len(entries), "partition is not total"
-        assert not (set(map(id, released)) & set(map(id, pending))), "sides overlap"
 
         if pending:
             return
@@ -463,11 +476,24 @@ class TestAgainstTheRealChangeLog:
         version = (
             Path(__file__).resolve().parents[1] / "plugin" / "VERSION"
         ).read_text(encoding="utf-8").strip()
-        stamped = {str(e.tags["release"]).lstrip("v") for e in released}
-        assert version in stamped, (
-            f"nothing is release-pending, and no entry is stamped with the repo's "
-            f"own version (v{version}) — so the empty pending side is not explained "
-            f"by a just-cut release. Stamped versions: {sorted(stamped)}"
+        stamped = {str(e.tags["release"]).removeprefix("v") for e in released}
+
+        def _key(v: str) -> tuple:
+            # Sorts real versions numerically; anything unparseable sorts ABOVE
+            # every real one so it cannot hide under a larger neighbour — a
+            # malformed stamp is the thing being looked for, not noise.
+            parts = v.split(".")
+            if not all(p.isdigit() for p in parts):
+                return (1, v)
+            return (0, tuple(int(p) for p in parts))
+
+        newest = max(stamped, key=_key)
+        assert newest == version, (
+            f"nothing is release-pending, so the newest release= stamp should be "
+            f"this repo's own version (v{version}) — but it is v{newest}. An empty "
+            f"pending side is only explained by a just-cut release; a stamp ahead "
+            f"of, or unparseable against, what the repo claims is drift. "
+            f"Stamped versions: {sorted(stamped, key=_key)}"
         )
 
     def test_every_scope_tag_is_a_non_empty_string(self):

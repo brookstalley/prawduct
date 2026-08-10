@@ -4,6 +4,23 @@ version: 2
 scope: phase-blind-real-data-guards
 depends_on:
   - artifact: operational-spec
+governed_by:
+  - artifact: data-model
+    dispositions:
+      - "a governance document reaches a terminal state, is never deleted, and a live document outranks an archived namesake → conforms, and this plan is largely ABOUT that norm's third clause. Chunk 01 makes live-wins testable for the first time by constructing the live/archived namesake the real tree never contains, and treats the archive as the durable corpus rather than as absence"
+      - "derived views are disposable and never authoritative; no gate reads a view to reach a verdict → inapplicable because nothing here reads or writes a derived view"
+      - "facts are immutable and append-only → inapplicable because this plan writes no facts"
+  - artifact: architecture
+    dispositions:
+      - "every fact has one home; every other mention is a reference to it → conforms, and applied twice in review: the suite-total count was removed from release-plan-v3.3.0.md rather than re-stated, and each rewritten guard's limits are recorded in its own docstring rather than summarised elsewhere"
+      - "goals and verification bind; prescribed method is advice → relied upon. Design §C prescribed a version cross-check; the Critic found the implementation weaker than the prescription, and the fix conformed to the stated goal rather than to the looser code"
+      - "prawduct guides and reviews, never implements → inapplicable because this changes prawduct's own test suite, not a governed product's code"
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "proportionality ratchets both ways; a control names the yield it expects → conforms. Each rewritten guard states in its docstring what turns it red, and where a limit survives it is written down rather than implied — a control that cannot be falsified could never be retired on evidence"
+  - artifact: operational-spec
+    dispositions:
+      - "Gitflow: features branch off develop and merge back; main only ever holds releases → conforms; this is a fix/ branch off develop, merging back before the promotion resumes"
 last_validated: 2026-08-10
 ---
 
@@ -21,10 +38,15 @@ release runbook that produced the state is checked in and readable.
 
 ## Status
 
-- [ ] Chunk 01: Make the six real-data guards phase-independent
-Context: Plan written 2026-08-10 on `fix/phase-blind-real-data-guards`, cut from
-`develop` at `cf97bf82` (which carries the unpushed v3.3.0 release prep). Nothing built
-yet. The six failures reproduce on this branch; that is the baseline.
+- [x] Chunk 01: Make the six real-data guards phase-independent
+Context: Complete 2026-08-10 on `fix/phase-blind-real-data-guards`, cut from `develop` at
+`cf97bf82` (which carries the unpushed v3.3.0 release prep). All six guards now grade a
+corpus that survives a release boundary; suite 4328 passed / 10 skipped, green in BOTH
+release phases (post-prep tree, and a worktree at pre-prep `50d99594`) plus a simulated
+re-run of runbook steps 3 and 11. Cumulative Critic `rev-20260810T203817Z-37a0f29b`:
+0 blocking, 3 warnings, 6 notes — all nine dispositioned, six fixed, three accepted.
+Next: merge to `develop`, then resume the release at Phase 1 step 13 (see
+`.prawduct/.handoff-notes.md` and `release-plan-v3.3.0.md`'s current-state block).
 
 ## Problem
 
@@ -73,8 +95,16 @@ having lost teeth.
   production module. The defect is in the tests' corpus selection, not in the resolvers.
 - The other ~30 `TestAgainstTheReal*`-style assertions elsewhere in the suite that
   happen to be phase-independent already.
-- Adding a lint or gate that detects phase-dependent tests generally. Worth considering;
-  belongs in the backlog, not here (Principle 12).
+- Adding a lint or gate that detects phase-dependent tests generally.
+  **Dispositioned 2026-08-10: not filed, deliberately.** The detector would have to
+  recognise "asserts non-emptiness against real repo state", which is a judgment call
+  about what a corpus means, not a pattern — the same assertion is correct when the
+  corpus cannot legitimately empty and wrong when it can, and nothing mechanical
+  separates those. That is Critic territory, and `nonfunctional-requirements`' Direction
+  norm says a control must name the yield it expects before it is added. The answer this
+  cycle shipped instead is the two `learnings.md` rules it earned (phase-pinning, and
+  fixtures derived from the mechanism under test) plus the "what turns this red"
+  paragraph now required of each rewritten guard. Revisit if a third repo hits this.
 
 ## Design
 

@@ -3372,3 +3372,57 @@ renumbered and widened the prose, and left the version strings at 3.2.7 with the
 intact — recorded under "What this plan does NOT authorise" in the release plan itself, so a green
 gate cannot be misread as an armed release. The asymmetry is the general point: a *record* of
 readiness is free to write and free to discard, while the acts that arm a release are neither.
+
+## Six guards that pinned the repo's release phase, and the two defects hiding in the repair (2026-08-10)
+
+**Context.** Six `TestAgainstTheReal*` guards went red the moment the v3.3.0 release prep ran, on a
+branch where nothing shipped to consumers had changed. The concise rule for the *cause* — a test
+asserting against its own repo's live state pins that repo's current phase — was filed by the
+session that hit it. These two rules come from the session that repaired it, and both are about the
+repair rather than the original defect.
+
+**What the repair was.** Not weaker assertions: the guards had been hardened by an earlier round
+precisely to stop vacuous passes, so relaxing the non-emptiness checks was the one move that could
+not be right. The fix was corpus selection. An archived plan is still a real plan with real
+frontmatter and the archive only ever grows (76 against 0 live mid-release), so the resolver tests
+and the change-log join read live + archived — strictly larger and more discriminating than what
+they replaced. Two tests genuinely needed a *live* plan to perturb; they now promote a real archived
+one into a `tmp_path` copy instead of borrowing whichever plan the branch happens to be building.
+The two whose subject really is work in flight say which emptiness they reject: the plan pointer
+skips with a named reason when `active_build_plan` is null, and the release partition accepts an
+empty pending side only when some entry is stamped with the version `plugin/VERSION` claims.
+
+**The first defect: a skip that should have been a failure.** The helper picked its victim plan as
+"in the archived map but not in the live one." That reads as obviously correct and is a trap — it
+asks the resolver under test to select the fixture for testing the resolver. Mutating
+`prune_archive=True` to `False`, which is exactly the defect
+`test_archiving_a_real_plan_removes_it_from_the_live_map` exists to catch, made that set difference
+empty; the helper skipped with "nothing to perturb" and pytest printed `s`. A skip is
+indistinguishable from a pass in a summary line, so a broken resolver would have shipped green
+through the very test written to stop it. The fix walks the archive directory — a filesystem fact,
+independent of what is being graded — and makes the precondition an `assert` naming the defect
+("the live walk is not pruning archive/") rather than a `skip`.
+
+**The second defect: a rewritten assertion that could no longer fail.** Replacing the hardcoded
+branch scope with a read of the `active_build_plan` pointer removed the per-branch edit and the
+death-on-archival — and silently removed the test's ability to catch a *wrong* scope value. The map
+is keyed from the same frontmatter the test re-reads, so mutating `scope:` to `WRONG-SCOPE` left
+both sides agreeing and the test green. The old hardcoded literal had been the independent source of
+truth; nothing replaces it. Two probes showed what *does* still bite — a stale pointer, and a second
+plan declaring the same scope and sorting earlier, which steals the key and sends review dispatch at
+the wrong file silently. The limit is now written into the docstring under "what turns this red"
+instead of being implied away by prose about cross-checking.
+
+**How both were found.** Nine mutations against an `rsync` copy of the real tree: shrink the
+archive, duplicate a scope, stale the pointer, walk the archive first, disable pruning, mistag the
+release version, key the map by filename, return the wrong plan for a scope. Seven bit immediately;
+two came back green and those two were the findings. Neither was visible by reading the diff — both
+tests looked careful, and one of them *was* careful about everything except whether it could fail.
+A filename↔scope cross-check was considered as a replacement source of truth and rejected on
+measurement: 74 of 77 plans follow `build-plan-<scope>.md`, but three genuinely do not, so asserting
+it would have been inventing a norm mid-build rather than enforcing one.
+
+**Verification that the phase problem is actually gone.** Green in both phases — the post-prep tree
+(0 live plans, 0 pending entries) and a worktree at pre-prep `50d99594` (3 live, 9 pending) — with
+no skips in either, plus a simulated re-run of runbook steps 3 and 11 against this cycle's own
+change-log entry and plan. One run can only ever prove the phase you are standing in.
