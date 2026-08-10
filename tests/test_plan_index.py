@@ -18,7 +18,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib import plan_index  # noqa: E402
+from lib import core, plan_index  # noqa: E402
 
 
 class TestParseBuildPlanFrontmatterScope:
@@ -418,6 +418,17 @@ class TestAgainstTheRealArtifactsDirectory:
 
     Skipped when `.prawduct/artifacts/` is absent so the plugin's own suite
     still runs from a checkout without product state.
+
+    **The corpus is live + archived, and that is load-bearing.** An earlier
+    version read the LIVE tree only, which made "this repo is mid-development"
+    an unnamed invariant of five assertions: the release runbook archives every
+    shipped plan, so a repo that has just cut a release has an empty live map
+    and all five went red at once — the release working exactly as designed.
+    The archive is the phase-independent corpus (it only ever grows, and an
+    archived plan is still a real plan with real frontmatter), so reading it is
+    not a relaxation but a strictly larger and more discriminating corpus. The
+    two assertions that genuinely need a LIVE plan construct one by perturbing
+    a copy rather than borrowing whichever plan the branch is building.
     """
 
     def _artifacts(self) -> Path:
@@ -426,34 +437,120 @@ class TestAgainstTheRealArtifactsDirectory:
             pytest.skip("no .prawduct/artifacts/ in this checkout")
         return artifacts
 
+    def _copy_with_a_live_plan(self, tmp_path: Path) -> tuple[Path, str, Path]:
+        """A tmp copy of the real tree with one archived plan promoted to live.
+
+        Returns ``(artifacts, scope, live_path)``. Two assertions below need a
+        live plan to perturb, and taking the repo's current one made them fail
+        the moment it was archived — which is a release, not a regression.
+        Promoting a real archived plan supplies one at any point in the release
+        cycle while keeping the corpus real: the plan's frontmatter, name and
+        scope are the repo's own, not a fixture author's guess.
+
+        **The candidate is chosen from the filesystem, never from the resolver
+        under test.** Deriving it as "in the archived map but not the live one"
+        reads plausibly and is a trap: when the live walk stops pruning
+        ``archive/`` — precisely the defect
+        ``test_archiving_a_real_plan_removes_it_from_the_live_map`` exists to
+        catch — that difference goes empty, the helper skips, and the test
+        reports "not applicable" for a repo whose resolver is broken. A skip is
+        indistinguishable from a pass in a summary, so the bug would ship green.
+        Walking the archive directory instead keeps the selection independent of
+        the thing being graded, and the live-map check below is an assertion
+        rather than a skip for the same reason.
+        """
+        real = self._artifacts()
+        artifacts = tmp_path / "artifacts"
+        shutil.copytree(real, artifacts)
+
+        archive = artifacts / plan_index.ARCHIVE_DIR_NAME
+        if not archive.is_dir():
+            pytest.skip("no archive/ in this checkout — nothing to promote")
+
+        scope = archived_path = None
+        for candidate in sorted(archive.rglob("*.md")):
+            present, declared = plan_index.parse_build_plan_frontmatter_scope(
+                candidate.read_text(encoding="utf-8")
+            )
+            if present and declared:
+                scope, archived_path = declared, candidate
+                break
+        if archived_path is None:
+            pytest.skip("no scope-declaring plan in archive/ — nothing to promote")
+
+        assert scope not in plan_index.build_scope_to_plan_map(artifacts), (
+            f"archived scope {scope!r} already resolves as LIVE before anything was "
+            f"promoted — the live walk is not pruning archive/"
+        )
+
+        live_path = artifacts / archived_path.name
+        shutil.copy2(archived_path, live_path)
+        return artifacts, scope, live_path
+
     def test_the_real_tree_resolves_many_scopes_and_no_duplicates(self):
         artifacts = self._artifacts()
-        mapping = plan_index.build_scope_to_plan_map(artifacts)
-        # A floor, and deliberately a low one. The assertion is "this resolver
-        # reaches the repo's real plans at all"; the number must survive Chunk
-        # 05's archive backfill, which moves most of this tree into `archive/`
-        # inside this same PR. A tighter bound would fail on a change that is
-        # the plan working as designed.
-        assert len(mapping) >= 2, mapping
+        mapping = plan_index.build_scope_to_plan_map(artifacts, include_archived=True)
+        # A floor over the live+archived corpus, which only grows: every plan
+        # this repo has ever finished stays in `archive/`. Reading the live
+        # tree alone made this assert "a plan is currently in flight", which is
+        # false for the whole of a release and is not a resolver failure.
+        assert len(mapping) >= 20, len(mapping)
+        # Duplicate detection stays on the LIVE tree, where it is the contract:
+        # `duplicate_scope_errors` reports plans that would make a live lookup a
+        # coin toss, and it is meaningful at any size including zero.
         assert plan_index.duplicate_scope_errors(artifacts) == []
 
-    def test_this_branchs_own_scope_resolves(self):
+    def test_the_active_build_plan_pointer_resolves(self):
         """The resolution three governance paths make every session, on real data.
 
-        Named rather than parameterised: if this stops resolving, review
-        dispatch grades the wrong plan and the Stop hook's gates read the wrong
-        Status — the failure mode is silent at both.
+        If this stops resolving, review dispatch grades the wrong plan and the
+        Stop hook's gates read the wrong Status — the failure mode is silent at
+        both. So it is graded through the same pointer those three paths read,
+        `active_build_plan`, rather than a hardcoded scope name: a literal has
+        to be edited every branch and goes red the day its plan is archived,
+        which is the plan succeeding.
 
-        Safe against Chunk 05's archive backfill, which archives plans whose
-        scope carries a `release=` tag: this one is in flight and has none, so
-        it stays live for exactly as long as this assertion is meaningful.
+        A null pointer means no plan is under active build — true between work
+        cycles and for the whole of a release. That is skipped with the reason
+        named, not asserted away.
+
+        **What turns this red**, stated because a guard nobody can falsify is a
+        guard that measured nothing: a pointer left at a plan that moved or was
+        archived (the recurring stale-pointer defect this file's own comments
+        record three times), a plan carrying no frontmatter `scope:`, and a
+        second plan declaring the same scope and sorting earlier — which steals
+        the key and sends dispatch at the wrong file, silently, which is the
+        whole failure mode. What it does **not** grade is whether the scope's
+        *value* is the right one: the map is keyed from the same frontmatter
+        this reads, so the two agree by construction. The old hardcoded literal
+        did grade that, at the cost of needing an edit every branch and going
+        red the day its plan was archived; nothing here replaces it, and the
+        change-log join in `test_change_log.py` is the assertion that pairs a
+        scope with an independent source.
         """
         artifacts = self._artifacts()
-        mapping = plan_index.build_scope_to_plan_map(artifacts)
-        assert "governance-artifact-lifecycle" in mapping
-        assert mapping["governance-artifact-lifecycle"].name == (
-            "build-plan-governance-artifact-lifecycle.md"
+        prawduct_dir = artifacts.parent
+        # The production reader, not a second parse of the same file: the point
+        # is to grade the resolution those three paths really make, and a
+        # private re-implementation here could agree with the YAML while
+        # disagreeing with them.
+        pointer = core.read_str_yaml_key(
+            prawduct_dir / "project-state.yaml", core.BUILD_PLAN_POINTER_KEY
         )
+        if not pointer:
+            pytest.skip("active_build_plan is null — no plan under active build")
+
+        plan_path = prawduct_dir / pointer.removeprefix(".prawduct/")
+        if not plan_path.is_file():
+            pytest.fail(f"active_build_plan points at a missing file: {pointer}")
+
+        present, scope = plan_index.parse_build_plan_frontmatter_scope(
+            plan_path.read_text(encoding="utf-8")
+        )
+        assert present and scope, f"{pointer} declares no frontmatter scope"
+        mapping = plan_index.build_scope_to_plan_map(artifacts)
+        assert scope in mapping, (scope, sorted(mapping))
+        assert mapping[scope] == plan_path
 
     def test_the_backfilled_archive_still_resolves_by_scope(self):
         """The backfill's 73 plans must stay findable, on the real archive.
@@ -485,16 +582,25 @@ class TestAgainstTheRealArtifactsDirectory:
         for scope in sorted(recovered):
             assert plan_index.ARCHIVE_DIR_NAME in with_archive[scope].parts, scope
 
-    def test_a_live_plan_still_beats_its_archived_namesake(self):
-        """Live-wins, on the real tree now that both halves are populated.
+    def test_a_live_plan_still_beats_its_archived_namesake(self, tmp_path: Path):
+        """Live-wins, with the namesake collision actually constructed.
 
         The rule is load-bearing and order-dependent: discovery is sorted and
         first-wins, and `archive/build-plan-foo.md` sorts BEFORE its live
         sibling, so only walking live-first keeps a live plan winning its scope.
+
+        Constructed rather than observed, and that is the substance of this
+        repair. The real tree holds no live/archived namesake — every plan is
+        in exactly one half — so asserting live-wins about a scope that merely
+        happens to be live passed without the collision ever existing, and it
+        died the moment that plan was archived. Promoting a real archived plan
+        into the live tree of a copy puts BOTH copies of one scope in the same
+        corpus, which is the only shape in which live-wins can fail.
         """
-        artifacts = self._artifacts()
+        artifacts, scope, live_path = self._copy_with_a_live_plan(tmp_path)
+
         with_archive = plan_index.build_scope_to_plan_map(artifacts, include_archived=True)
-        scope = "governance-artifact-lifecycle"
+        assert with_archive[scope] == live_path
         assert plan_index.ARCHIVE_DIR_NAME not in with_archive[scope].parts
 
     def test_archiving_a_real_plan_removes_it_from_the_live_map(self, tmp_path: Path):
@@ -510,14 +616,15 @@ class TestAgainstTheRealArtifactsDirectory:
         The other half is `TestArchivePruning`, whose fixtures can construct the
         shapes a real tree does not happen to contain. This one covers what a
         fixture author would not think to write.
+
+        The live plan it archives is one it promotes itself, not whichever plan
+        the branch is building: borrowing the branch's plan made this assert
+        "a plan is currently in flight", which a release legitimately falsifies.
         """
-        real = self._artifacts()
-        artifacts = tmp_path / "artifacts"
-        shutil.copytree(real, artifacts)
+        artifacts, scope, _live_path = self._copy_with_a_live_plan(tmp_path)
 
         before = plan_index.build_scope_to_plan_map(artifacts)
-        scope = "governance-artifact-lifecycle"
-        assert scope in before, "fixture assumption: this plan resolves before archival"
+        assert scope in before, "promoted plan must resolve as live before archival"
 
         archive = artifacts / plan_index.ARCHIVE_DIR_NAME
         archive.mkdir(exist_ok=True)

@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-10: six guards that pinned the repo's release phase, and now name which emptiness they reject
+
+<!-- prawduct: type=fix | scope=phase-blind-real-data-guards -->
+
+**Six `TestAgainstTheReal*` guards went red at the v3.3.0 cut, and every one of them was right.** They
+grade the repo's own live state — the correct instinct, because a fixture you wrote can only confirm
+the belief you wrote it with. What none of them said out loud is that they also encoded *"this repo
+is mid-development"* as an invariant. Release runbook step 3 stamps `release=` on every shipping
+entry, emptying the release-pending set; step 11 archives every shipped plan, emptying the live plan
+map. Both steps working exactly as designed falsified five non-emptiness assertions simultaneously,
+at the moment of maximum pressure to just relax them. The guards were hardened by an earlier review
+round precisely to stop vacuous passes, so relaxing them was the one repair that could not be right.
+
+**The fix is corpus selection, not weaker assertions.** An archived plan is still a real plan with
+real frontmatter, and the archive only ever grows — 76 entries against 0 live mid-release — so the
+two resolver tests and the change-log join now read live + archived. That is a strictly larger and
+more discriminating corpus than the one it replaces. The two tests that genuinely need a *live* plan
+to perturb promote a real archived one into a `tmp_path` copy instead of borrowing whichever plan the
+branch happens to be building; for live-wins that also makes the test capable of failing for the
+first time, because the real tree contains no live/archived namesake and the old assertion passed
+without the collision ever existing.
+
+**The two that are really about work in flight now say which emptiness they reject.** The hardcoded
+branch scope became a read of the `active_build_plan` pointer — the same resolution review dispatch
+and the Stop hook make — skipping with a named reason when it is null, which is the honest reading
+between work cycles and throughout a release. The release partition keeps `released` non-empty and
+asserts the partition is total and disjoint at any population size, then requires an empty *pending*
+side to be **explained**: some entry must be stamped with the version `plugin/VERSION` claims. A
+just-cut repo passes; entries stamped to a version the repo no longer claims fail, which is the drift
+the v3.2.8 placeholder incident actually had.
+
+**Each guard was shown capable of failing rather than asserted to be.** Nine mutations against a copy
+of the real tree — shrinking the archive, stealing a scope with an earlier-sorting duplicate, staling
+the pointer, walking the archive first, disabling archive pruning, mistagging the release version,
+returning the wrong plan for a scope. Two found real weakness in the repair itself: the helper had
+derived its candidate plan from the resolver under test, so breaking archive pruning made the test
+*skip* instead of fail — a skip being indistinguishable from a pass in a summary — and the pointer
+test cannot grade a scope's *value*, only its resolution, which is now recorded in its docstring
+rather than implied away. Both limits are written down where the next reader meets them.
+
+Verified in both release phases: green on the post-prep tree (0 live plans, 0 pending entries) and on
+a worktree at pre-prep `50d99594` (3 live, 9 pending), with no skips in either.
+
 ## 2026-08-10: a checkbox that means one thing, and a plan that can finish
 
 <!-- prawduct: type=refactor | scope=governance-artifact-lifecycle | release=v3.3.0 -->
