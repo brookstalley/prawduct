@@ -421,12 +421,23 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     this cannot archive withheld work on a pruned release.
 
     **If `--apply` exits 1:** it archived what it could and one or more plans the change
-    log says shipped did **not** move. They are listed under `NOT moving` with a reason
-    each. This is not a failed release step and nothing is half-done — but do not proceed
-    on the strength of "it printed a list": read the reasons, archive those plans by hand
-    (`prawduct-hook archive-plan <path> --state completed --release vX.Y.Z`), and re-run
-    until it exits 0. A preview always exits 0 even when it lists refusals, because it
-    attempted nothing.
+    log says shipped did **not** move. Nothing is half-done, and this is not a failed
+    release step — but do not proceed on the strength of "it printed a list".
+
+    Look in **two** places: plans it declined before trying are on stdout under
+    `NOT moving`; a plan that failed at write time prints to **stderr** as
+    `could not archive <scope>: …` and appears under neither heading.
+
+    > ⚠️ **Do not reach for `archive-plan` here, and do not loop on "re-run until 0".**
+    > `archive-plan` asks the *same* refusal predicate, so it declines every one of these
+    > for the same reason the sweep did. **Each reason names its own remedy, and they are
+    > all different:** *"already exists"* → rename one of the two, then re-run.
+    > *"already records lifecycle …"* → the plan already has an end of life and only needs
+    > moving; `git mv` it into `archive/` and it leaves the live scan. *"cannot read …"* →
+    > fix the file's encoding by hand first; nothing can converge a plan it cannot decode.
+
+    Once each named plan has had its own remedy, re-run and expect exit 0. A preview always
+    exits 0 even when it lists refusals, because it attempted nothing.
 
     > ⚠️ **Read the `NOT moving` list before `--apply`.** The preview separates plans it
     > will archive from plans the change log says shipped but which it refuses (a name

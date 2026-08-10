@@ -121,8 +121,12 @@ When `develop` is ready to release as `vX.Y.Z`:
    state, one it cannot read). Read that list before confirming: those need a person, and
    they are the ones that otherwise stay live silently. **`--apply` exits 1 when that list
    is non-empty** — it archived what it could, and the rest is named work that did not
-   move; archive those by hand and re-run until it exits 0. The preview exits 0 either
-   way, having attempted nothing.
+   move. Read each reason and apply *that* reason's remedy: `archive-plan` is the wrong
+   reflex here, because it asks the same refusal predicate and declines identically (a name
+   collision wants a rename, a plan already carrying a terminal state wants a `git mv` into
+   `archive/`, an undecodable file wants its encoding fixed). A write-time failure prints to
+   stderr rather than into that list, so check both. The preview exits 0 either way, having
+   attempted nothing.
    A plan whose work was **descoped** rather than shipped has no `release=` tag and is not
    swept; give it its end of life by hand, naming what replaced it:
    `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
