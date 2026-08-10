@@ -492,3 +492,9 @@ dropping them.
 ## A file's own header comment is not the first key's — bound any comment walk-back at start-of-file, because with no preceding content line there is nothing distinguishing a section banner from the document header, and deleting the latter is content loss in a hand-authored file. Tell: your walk-back is `while start > 0`
 
 ## Preserve line endings in any writer that edits a file it did not create (`newline=""` on BOTH the read and the write) — a CRLF repo otherwise gets every line rewritten by an operation that promised to touch two keys, and the real change hides inside a whole-file reformat. Tell: you used `read_text`/`write_text` in a repair
+
+## Moving a value into a NEW channel silently unwires whoever read the old one — when a fix relocates data (a refusal from `refused` into a pre-filtered `blocked`), grep for readers of the old key before committing, because the diff reads as "what this function returns" while it is also changing what the process EXITS with. Tell: your fix adds a return key and removes items from an existing one
+
+## A REMEDY named in a checklist must be tested against the predicate that produced the condition — advice that cannot terminate is obeyed, unlike advice that is merely stale, so "run X then re-run until it exits 0" is wrong whenever X consults the same refusal the sweep just did. Tell: your recovery step names a command rather than sending the reader to the reason's own remedy
+
+## Prove a new regression test DISCRIMINATES by running it against a stash of the pre-fix source — a fixture that fails one step early never reaches the subject and passes either way, which is indistinguishable from a working fix. Tell: you wrote a test for an error path and never saw it red

@@ -3312,3 +3312,26 @@ It would have excused a genuine deletion instruction written beside an archival 
 with a negator scoped to the 24 characters immediately before the verb is tight and testable, and
 the motivating case is now a fixture: *"Archive the plan at the release; on trunk, delete the plan
 file now."* must still be caught. **A negative test's exemption clause is where its teeth go.**
+
+## Prove a new regression test DISCRIMINATES by running it against a stash of the pre-fix source
+
+Written after the R-11 fix in the governance-artifact-lifecycle scrub (2026-08-10). The defect:
+`archive_plan`'s write and `unlink` shared one `except OSError`, so a failed unlink left the
+stamped copy in `archive/` AND the original live while reporting `refused`.
+
+The first test written for it **passed against the unfixed code.** Its fixture created
+`artifacts/` and the plan but not `artifacts/archive/`, then made `artifacts/` read-only to
+provoke the unlink failure. With the archive directory absent, `destination.parent.mkdir()` failed
+first — so the WRITE path errored, the function returned `refused`, no copy existed, and every
+assertion held. Green, while exercising nothing the finding was about.
+
+It surfaced only because a second, narrower test in the same class asserted on the failure
+*message* and could not pass on the write path. Pre-creating `archive/` is the whole fixture: a
+write into `artifacts/archive/` needs permission on `archive/`, an unlink of the plan needs it on
+`artifacts/`, and that asymmetry is what isolates the two operations.
+
+The cheap general check is one command: `git stash push <source file>`, run the new test, expect
+red, `git stash pop`. It costs seconds and answers the only question a green error-path test
+raises. This is the same family as the earlier "a report added at your call site is empty by
+construction" rule — both are cases where the *absence* of a signal is indistinguishable from
+health, and both are settled by making the thing fail on purpose once.
