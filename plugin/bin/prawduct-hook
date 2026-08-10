@@ -4966,8 +4966,9 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
             for item in result["shipped"]:
                 label = _plan_label(item["path"], prawduct_dir)
                 print(f"    {label}  (shipped in {item['release']})")
-            print(f"  leaving {len(result['unshipped'])} plan(s) in place — no "
-                  "release records them yet:")
+            print(f"  leaving {len(result['unshipped'])} plan(s) in place — either "
+                  "no release records them yet, newer work on the same name is "
+                  "still in flight, or it is the plan being built right now:")
             for item in result["unshipped"]:
                 print(f"    {_plan_label(item['path'], prawduct_dir)}")
             if not apply and result["shipped"]:
@@ -4978,23 +4979,26 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
             print(f"  could not archive {refusal['scope']}: {refusal['reason']}",
                   file=sys.stderr)
 
-    # The same dangling-pointer report `archive-plan` makes, for the same reason
-    # and with more need of it: a pointer naming a moved plan is read by every
-    # gate as "no active build plan" — the gates go quiet, which is the failure
-    # class this work treats as its worst. `archive-plan` has an operator
-    # watching one named file; a sweep of dozens has nobody inspecting each move,
-    # so dropping the notice here is where it would actually cost something.
+    # A dangling `active_build_plan` is read by every gate as "no active build
+    # plan" — they stop firing rather than fail, which is the failure class this
+    # work treats as its worst. The sweep now REFUSES to archive the plan the
+    # pointer names, so "this run archived it" is no longer reachable and a
+    # notice for it would be a report nothing can trigger. What is still
+    # reachable, and what actually hurts, is a pointer naming a plan that is not
+    # there for any reason — archived by hand, moved, renamed, or lost to an
+    # interrupted run. That is the condition reported.
+    #
     # Reports, never writes: the pointer is state a session owns.
     pointer = _read_str_yaml_key(
         project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
     )
     if pointer:
-        pointed_at = (project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")).resolve()
-        moved = {Path(item["source"]).resolve() for item in result["archived"]}
-        if pointed_at in moved:
+        pointed_at = project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")
+        if not pointed_at.is_file():
             print(
-                "NOTE: active_build_plan still names a plan this run archived "
-                f"({pointer}) — clear it, or point it at the plan that is now live.",
+                f"NOTE: active_build_plan names {pointer}, which is not there. "
+                "Every gate reads that as 'no active build plan' and goes quiet — "
+                "clear it, or point it at the plan that is now live.",
                 file=sys.stderr,
             )
 

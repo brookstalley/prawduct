@@ -486,3 +486,9 @@ dropping them.
 ## Read a review's findings for the CLASS, not the list — when four findings share a shape, fixing four instances leaves the fifth to be found by the next round. Tell: several findings could be described by one sentence
 
 ## Fix a defect at the LAYER IT WAS REPORTED AT — pinning the extracted predicate proves the predicate, not the wiring, so deleting the CLI branch leaves a lib-level test green while the reported defect returns. Tell: the finding says "at the CLI" and your new test imports the module
+
+## A mechanical "is it finished?" test keyed on a REUSED identifier archives live work — a work-stream name that shipped once makes its next round look finished, so require that no LATER entry for that name is unreleased, and decide by DATE rather than document position (half a 14-repo fleet had out-of-order change logs). Tell: your predicate says "has a release tag somewhere"
+
+## A file's own header comment is not the first key's — bound any comment walk-back at start-of-file, because with no preceding content line there is nothing distinguishing a section banner from the document header, and deleting the latter is content loss in a hand-authored file. Tell: your walk-back is `while start > 0`
+
+## Preserve line endings in any writer that edits a file it did not create (`newline=""` on BOTH the read and the write) — a CRLF repo otherwise gets every line rewritten by an operation that promised to touch two keys, and the real change hides inside a whole-file reformat. Tell: you used `read_text`/`write_text` in a repair

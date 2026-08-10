@@ -51,6 +51,24 @@ from pathlib import Path
 
 from . import buildplan_refs, core, plan_index
 
+
+def _read_preserving_newlines(path: Path) -> str:
+    """File text with its own line endings intact.
+
+    ``newline=""`` disables universal-newline translation. Without it a CRLF file
+    reads as ``\n``-only and every write puts it back that way — so an operation
+    that promises to remove two keys instead rewrites every line in a product's
+    authored file, and the diff hides the real change inside a whole-file
+    reformat. :mod:`lib.norm_index_scaffold` already treats this as load-bearing
+    for exactly the same reason; this module did not, and a CRLF fixture turned
+    nine CRLF lines into zero.
+
+    ``str.splitlines`` still splits on ``\r\n``, so every predicate here is
+    unaffected — the endings simply survive into the text that gets written back.
+    """
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
 STATE_REL = ".prawduct/project-state.yaml"
 RELEASE_NOTES_REL = ".prawduct/release-notes.md"
 ARTIFACTS_REL = ".prawduct/artifacts"
@@ -131,6 +149,16 @@ def _comment_header_start(lines: list[str], key_index: int) -> int:
     so removing a key removes the section that documents it rather than leaving
     a heading over a hole. It cannot run past a neighbouring key, because a key
     is content and stops the walk.
+
+    **Reaching the top of the file means the comment is the DOCUMENT's, not the
+    key's, and it is kept.** With no preceding content line there is nothing to
+    distinguish a section banner introducing this key from the file's own header,
+    and the two need opposite treatment. Unbounded, this deleted a real state
+    file's opening block — *"PROJECT STATE — the source of truth for this
+    product"* — because ``views_enabled`` happened to be its first key. Returning
+    ``key_index`` there removes the key alone, which is the recoverable error of
+    the two: a stale banner is a doc nit, a deleted document header is content
+    loss in a file the product hand-authored.
     """
     start = key_index
     while start > 0:
@@ -138,6 +166,8 @@ def _comment_header_start(lines: list[str], key_index: int) -> int:
         if prev and not prev.startswith("#"):
             break
         start -= 1
+    if start == 0:
+        return key_index
     return start
 
 
@@ -396,7 +426,7 @@ def plan_repair(project_dir: str | Path) -> dict:
     state_path = root / STATE_REL
     if state_path.is_file():
         try:
-            state_text = state_path.read_text(encoding="utf-8")
+            state_text = _read_preserving_newlines(state_path)
         except (OSError, UnicodeDecodeError):
             return {
                 "status": "refused",
@@ -418,7 +448,7 @@ def plan_repair(project_dir: str | Path) -> dict:
     notes_path = root / RELEASE_NOTES_REL
     if notes_path.is_file():
         try:
-            notes_text = notes_path.read_text(encoding="utf-8")
+            notes_text = _read_preserving_newlines(notes_path)
         except (OSError, UnicodeDecodeError) as exc:
             notes_text = FROZEN_MARKER  # no edit is computed for a file we cannot read
             unreadable.append({"path": str(notes_path), "reason": str(exc)})
@@ -442,7 +472,7 @@ def plan_repair(project_dir: str | Path) -> dict:
     unreadable.extend(plan_index.unreadable_candidates(artifacts_dir))
     for plan_path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir):
         try:
-            content = plan_path.read_text(encoding="utf-8")
+            content = _read_preserving_newlines(plan_path)
         except (OSError, UnicodeDecodeError) as exc:
             # NOT a silent skip. A plan this cannot read may hold the one piece of
             # residue that still changes behaviour, and "nothing to change" would
@@ -484,7 +514,7 @@ def apply_repair(project_dir: str | Path, plan: dict) -> dict:
     failed: list[dict] = []
     for path, edits in by_path.items():
         try:
-            text = path.read_text(encoding="utf-8")
+            text = _read_preserving_newlines(path)
         except (OSError, UnicodeDecodeError) as exc:
             failed.append({"path": str(path), "reason": str(exc)})
             continue
@@ -492,11 +522,18 @@ def apply_repair(project_dir: str | Path, plan: dict) -> dict:
             if edit["kind"] == "state-key":
                 text = apply_state_removals(text, [edit["removal"]])
             elif edit["kind"] == "freeze-notes":
-                text = FROZEN_BANNER + text
+                # Match the file's own endings. The banner is authored with
+                # `\n`, and prepending it verbatim to a CRLF document produces a
+                # file with two conventions in it — which is a worse outcome than
+                # either one, and invisible in a rendered diff.
+                banner = FROZEN_BANNER
+                if "\r\n" in text:
+                    banner = banner.replace("\n", "\r\n")
+                text = banner + text
             elif edit["kind"] == "plan-comment":
                 text = apply_comment_removals(text, edit["removals"])
         try:
-            core.atomic_write_text(path, text, encoding="utf-8")
+            core.atomic_write_text(path, text, encoding="utf-8", newline="")
         except OSError as exc:
             failed.append({"path": str(path), "reason": str(exc)})
             continue

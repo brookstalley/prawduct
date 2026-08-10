@@ -380,3 +380,76 @@ scope: demo
             "## Status\n\n- [ ] Chunk 01: in flight\n",
         )
         assert lifecycle_repair.stale_status_reports(repo / ".prawduct" / "artifacts") == []
+
+
+class TestTheFilesOwnBytesSurvive:
+    """A repair that promises to remove two keys must remove two keys.
+
+    Both defects here produced a whole-file diff in a product's *hand-authored*
+    governance state, and both were invisible to every fixture in this file
+    because the fixtures are LF and start with an ordinary key.
+    """
+
+    CRLF_STATE = (
+        "project: demo\r\n\r\n"
+        "# =============================================================================\r\n"
+        "# DERIVED VIEWS\r\n"
+        "# =============================================================================\r\n\r\n"
+        "views_enabled: true\r\n\r\n"
+        "coverage_required: false\r\n"
+    )
+
+    def test_crlf_line_endings_are_preserved(self, tmp_path: Path) -> None:
+        """Reading without ``newline=""`` turns a CRLF file into an LF one on the
+        way back out — nine CRLF lines became zero, and the real change hides
+        inside a whole-file reformat."""
+        repo = _make_repo(tmp_path, state=self.CRLF_STATE)
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        raw = (repo / ".prawduct" / "project-state.yaml").read_bytes()
+
+        assert raw == b"project: demo\r\n\r\ncoverage_required: false\r\n"
+        assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF file"
+
+    def test_the_frozen_banner_matches_the_files_endings(self, tmp_path: Path) -> None:
+        """Prepending LF text to a CRLF document produces a file with two
+        conventions in it, which is worse than either."""
+        repo = _make_repo(tmp_path, state=self.CRLF_STATE)
+        notes = repo / ".prawduct" / "release-notes.md"
+        notes.write_bytes(b"# Release Notes\r\n\r\n## v1.0.0\r\n\r\nshipped\r\n")
+
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        raw = notes.read_bytes()
+        assert lifecycle_repair.FROZEN_MARKER.encode() in raw
+        assert raw.count(b"\n") == raw.count(b"\r\n"), "banner mixed LF into a CRLF file"
+
+    def test_the_documents_own_header_is_not_taken_with_the_key(
+        self, tmp_path: Path
+    ) -> None:
+        """The comment walk-back had no upper bound, so when the retired key was
+        the FIRST key in the file it removed the document's opening block — the
+        sentence naming the file as the product's source of truth."""
+        header_first = (
+            "# =============================================================================\n"
+            "# PROJECT STATE — the source of truth for this product\n"
+            "# Hand-authored. Every key below is read by some gate.\n"
+            "# =============================================================================\n\n"
+            "views_enabled: true\n\n"
+            "project: demo\n"
+        )
+        repo = _make_repo(tmp_path, state=header_first)
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        text = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+        assert "views_enabled" not in text
+        assert "the source of truth for this product" in text, "ate the document header"
+        assert "project: demo" in text
+
+    def test_a_section_banner_IS_still_taken_with_its_key(self, tmp_path: Path) -> None:
+        """The control — bounding the walk must not stop it doing its job, or a
+        heading is left standing over a hole."""
+        repo = _make_repo(tmp_path)
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        text = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+        assert "DERIVED VIEWS" not in text
+        assert "SCOPE ROLLUPS" not in text

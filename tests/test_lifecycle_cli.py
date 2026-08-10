@@ -265,10 +265,13 @@ class TestPlanBackfillCommand:
         assert payload["has_release_tags"] is True
         assert [item["scope"] for item in payload["shipped"]] == ["demo"]
 
-    def test_it_reports_a_pointer_left_naming_an_archived_plan(self, tmp_path: Path) -> None:
-        """A pointer at a moved plan reads to every gate as "no active build
-        plan" — the gates go quiet, which is this work's worst failure class, and
-        a sweep of dozens is where nobody is inspecting each move."""
+    def test_the_active_plan_is_refused_rather_than_archived(self, tmp_path: Path) -> None:
+        """The pointer's target is never this sweep's to move.
+
+        Archiving it dangles the pointer, and a dangling pointer reads to every
+        gate as "no active build plan" — they go quiet rather than fail, which is
+        this work's worst failure class.
+        """
         project = _repo(tmp_path)
         state = project / ".prawduct" / "project-state.yaml"
         state.write_text(
@@ -278,7 +281,21 @@ class TestPlanBackfillCommand:
         proc = _run(project, "plan-backfill", "--apply")
 
         assert proc.returncode == 0, proc.stderr
-        assert "active_build_plan still names a plan this run archived" in proc.stderr
+        assert (project / ".prawduct" / "artifacts" / "build-plan-demo.md").is_file()
+
+    def test_it_reports_a_pointer_that_names_a_missing_plan(self, tmp_path: Path) -> None:
+        """Reachable for any reason — archived by hand, moved, renamed, lost to
+        an interrupted run — and silent gates are the cost every time."""
+        project = _repo(tmp_path)
+        state = project / ".prawduct" / "project-state.yaml"
+        state.write_text(
+            STATE_WITH_FLAG + "active_build_plan: artifacts/build-plan-gone.md\n",
+            encoding="utf-8",
+        )
+        proc = _run(project, "plan-backfill")
+
+        assert "which is not there" in proc.stderr
+        assert "goes quiet" in proc.stderr
 
     def test_it_stays_quiet_when_the_pointer_names_a_live_plan(self, tmp_path: Path) -> None:
         """Without this, the assertion above passes on a notice that always fires."""

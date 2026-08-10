@@ -183,3 +183,116 @@ class TestBackfill:
 
         assert result["archived"] == []
         assert (prawduct / "artifacts" / "build-plan-alpha.md").is_file()
+
+
+class TestAReusedScopeDoesNotArchiveLiveWork:
+    """The sweep's worst reachable outcome, and the two guards against it.
+
+    A work-stream name gets reused — a second round of `auth` — and the older
+    round's release tag makes the in-flight plan look finished. Archiving it
+    moves a live plan out from under an in-flight chunk, stamps it with a release
+    that did not carry it, and dangles `active_build_plan` so every gate reading
+    that pointer goes quiet. The release checklist runs this sweep unattended, so
+    the reuse only has to happen once.
+    """
+
+    REUSED = """\
+# Change Log
+
+## 2026-08-01: second round of auth, not released
+<!-- prawduct: scope=auth -->
+
+## 2026-01-01: first round of auth
+<!-- prawduct: scope=auth | release=v1.0.0 -->
+"""
+
+    def test_a_newer_untagged_entry_withholds_the_scope(self) -> None:
+        assert "auth" not in plan_backfill.shipped_scopes(self.REUSED)
+
+    def test_same_day_chunk_entries_do_not_withhold_it(self) -> None:
+        """The normal pattern must still ship: per-chunk entries are untagged by
+        convention and land the same day as the release entry. A rule that
+        withheld on *any* untagged entry would stop archiving almost everything.
+        """
+        same_day = (
+            "# Change Log\n\n"
+            "## 2026-05-23: v1.5.1 (release)\n<!-- prawduct: scope=v151 | release=v1.5.1 -->\n\n"
+            "## 2026-05-23: v1.5.1 Chunk 02\n<!-- prawduct: scope=v151 -->\n\n"
+            "## 2026-05-23: v1.5.1 Chunk 01\n<!-- prawduct: scope=v151 -->\n"
+        )
+        assert plan_backfill.shipped_scopes(same_day)["v151"] == "v1.5.1"
+
+    def test_the_decision_does_not_depend_on_document_order(self) -> None:
+        """Half the surveyed fleet has at least one out-of-order pair, so
+        first-entry-wins would be wrong on those repos. Same entries, reversed."""
+        reversed_log = (
+            "# Change Log\n\n"
+            "## 2026-01-01: first round of auth\n<!-- prawduct: scope=auth | release=v1.0.0 -->\n\n"
+            "## 2026-08-01: second round of auth, not released\n<!-- prawduct: scope=auth -->\n"
+        )
+        assert "auth" not in plan_backfill.shipped_scopes(reversed_log)
+
+    def test_the_live_plan_survives_the_sweep(self, tmp_path: Path) -> None:
+        prawduct = _make_repo(tmp_path, change_log=self.REUSED, plans=("auth",))
+        result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
+
+        assert result["archived"] == []
+        assert (prawduct / "artifacts" / "build-plan-auth.md").is_file()
+
+    def test_the_active_plan_is_never_swept_even_if_the_log_says_shipped(
+        self, tmp_path: Path
+    ) -> None:
+        """The second guard, tested with the first one defeated.
+
+        Here the change log offers no protection at all — one tagged entry, no
+        newer untagged one — so only the pointer stands between an in-flight plan
+        and the archive.
+        """
+        prawduct = _make_repo(tmp_path, plans=("alpha",))
+        (prawduct / "project-state.yaml").write_text(
+            "project: demo\nactive_build_plan: artifacts/build-plan-alpha.md\n",
+            encoding="utf-8",
+        )
+        result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
+
+        assert result["archived"] == []
+        assert (prawduct / "artifacts" / "build-plan-alpha.md").is_file()
+
+    def test_a_non_active_shipped_plan_still_archives_alongside_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The control: the pointer protects one plan, not the whole sweep."""
+        prawduct = _make_repo(tmp_path, plans=("alpha",))
+        (prawduct / "artifacts" / "build-plan-other.md").write_text(
+            _plan("alpha2"), encoding="utf-8"
+        )
+        (prawduct / "change-log.md").write_text(
+            CHANGE_LOG + "\n## 2026-08-02: alpha2\n<!-- prawduct: scope=alpha2 | release=v1.3.0 -->\n",
+            encoding="utf-8",
+        )
+        (prawduct / "project-state.yaml").write_text(
+            "project: demo\nactive_build_plan: artifacts/build-plan-alpha.md\n",
+            encoding="utf-8",
+        )
+        result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
+
+        assert [item["scope"] for item in result["archived"]] == ["alpha2"]
+        assert (prawduct / "artifacts" / "build-plan-alpha.md").is_file()
+
+
+class TestVersioningIsReportedIndependentlyOfTheShippedSet:
+    def test_a_repo_with_tags_but_no_qualifying_scope_still_reads_as_versioned(
+        self, tmp_path: Path
+    ) -> None:
+        """Deriving `has_release_tags` from the shipped set made a repo whose
+        every scope has newer work report "records no releases" — false, and it
+        sends the operator to fix the wrong thing."""
+        prawduct = _make_repo(
+            tmp_path,
+            change_log=TestAReusedScopeDoesNotArchiveLiveWork.REUSED,
+            plans=("auth",),
+        )
+        result = plan_backfill.survey(prawduct)
+
+        assert result["has_release_tags"] is True
+        assert result["shipped"] == []

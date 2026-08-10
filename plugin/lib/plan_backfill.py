@@ -35,6 +35,7 @@ one imports both.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from . import change_log, plan_archive, plan_index
@@ -42,20 +43,85 @@ from . import change_log, plan_archive, plan_index
 CHANGE_LOG_REL = "change-log.md"
 
 
-def shipped_scopes(change_log_text: str) -> dict[str, str]:
-    """``{scope: release}`` for every scope the change log records as shipped.
+#: A change-log entry opens ``## YYYY-MM-DD: title``. The date is compared as a
+#: string because ISO dates sort lexicographically, which is the whole reason
+#: this format was chosen.
+_ENTRY_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
 
-    A scope shipping more than once keeps its **latest** release by document
-    order — the change log is newest-first, so the first entry seen for a scope
-    is the most recent one, and that is the release worth stamping on the plan.
+
+def shipped_scopes(change_log_text: str) -> dict[str, str]:
+    """``{scope: release}`` for every scope whose work is **finished**.
+
+    **A scope is shipped only if no LATER entry for it is untagged.** The obvious
+    rule — "it has a release tag somewhere" — archives a live plan the moment a
+    work-stream name is reused, because an older round of `auth` shipping in
+    v1.0.0 makes the in-flight `auth` plan look finished. That plan is then moved
+    out of the live directory and stamped with a release that did not carry it,
+    the ``active_build_plan`` pointer dangles, and every gate reading that pointer
+    goes quiet — the failure class this whole change treats as its worst. It is
+    not hypothetical and it is not rare: the release checklist runs this sweep
+    unattended at every release, so the reuse only has to happen once.
+
+    **Decided by DATE, not by document position.** The obvious cheap version —
+    "the first entry for this scope wins, since the log is newest-first" — is
+    wrong on half this fleet: 7 of 14 surveyed change logs contain at least one
+    out-of-order pair. Every one of 1117 scoped entries surveyed carries a
+    parseable date, so the date is both available and reliable where the ordering
+    is not.
+
+    An entry whose date cannot be parsed is treated as **newer than anything**
+    when untagged, so it withholds the scope rather than releasing it. That is
+    the fail-safe direction for a mover: the cost of not archiving is a plan that
+    stays visible one release longer; the cost of archiving wrongly is a live
+    plan disappearing from under an in-flight chunk.
     """
-    shipped: dict[str, str] = {}
+    newest_tagged: dict[str, tuple[str, str]] = {}
+    newest_untagged: dict[str, str] = {}
     for entry in change_log.parse_change_log(change_log_text):
         scope = entry.tags.get("scope")
+        if not isinstance(scope, str) or not scope:
+            continue
+        match = _ENTRY_DATE_RE.match(entry.title)
         release = entry.tags.get("release")
-        if isinstance(scope, str) and isinstance(release, str) and scope and release:
-            shipped.setdefault(scope, release)
+        if isinstance(release, str) and release:
+            # An undated *tagged* entry is the weak one: treat it as oldest, so
+            # it cannot out-rank a dated untagged entry and release a live scope.
+            date = match.group(1) if match else ""
+            if scope not in newest_tagged or date > newest_tagged[scope][0]:
+                newest_tagged[scope] = (date, release)
+        else:
+            date = match.group(1) if match else "9999-99-99"
+            if date > newest_untagged.get(scope, ""):
+                newest_untagged[scope] = date
+
+    shipped: dict[str, str] = {}
+    for scope, (tagged_date, release) in newest_tagged.items():
+        pending = newest_untagged.get(scope)
+        if pending is not None and pending > tagged_date:
+            continue  # newer work in flight for this scope
+        shipped[scope] = release
     return shipped
+
+
+def _active_plan_path(prawduct_dir: Path) -> Path | None:
+    """The plan ``active_build_plan`` names, resolved, or ``None``.
+
+    Read here rather than passed in so the guard cannot be forgotten by a caller.
+    Any failure to read resolves to ``None``, which leaves the date rule as the
+    only protection — acceptable, because this is the second of two independent
+    guards and neither is load-bearing alone.
+    """
+    from . import core  # noqa: PLC0415 — local, keeps this module's imports flat
+
+    pointer = core.read_str_yaml_key(
+        prawduct_dir / "project-state.yaml", "active_build_plan"
+    )
+    if not pointer:
+        return None
+    try:
+        return (prawduct_dir / pointer.removeprefix(".prawduct/")).resolve()
+    except OSError:
+        return None
 
 
 def survey(prawduct_dir: Path) -> dict:
@@ -77,17 +143,33 @@ def survey(prawduct_dir: Path) -> dict:
     except (OSError, UnicodeDecodeError):
         text = ""
     shipped_map = shipped_scopes(text)
+    # Whether the product versions AT ALL, which is a different question from
+    # whether any scope currently qualifies. Deriving it from `shipped_map` made
+    # a repo whose every scope has newer work in flight report "this product's
+    # change log records no releases" — false, and it sends the operator to fix
+    # the wrong thing.
+    versions = any(
+        entry.tags.get("release") for entry in change_log.parse_change_log(text)
+    )
+
+    # A plan the session is actively building is never this sweep's to move, and
+    # no derived answer overrides that. Archiving it dangles the pointer, and a
+    # dangling pointer reads to every gate as "no active build plan" — they stop
+    # firing rather than fail, which is the failure mode this work exists to end.
+    # The date rule above should already withhold it; this is the guard that does
+    # not depend on the change log being written correctly.
+    active = _active_plan_path(prawduct_dir)
 
     shipped: list[dict] = []
     unshipped: list[dict] = []
     for plan_path, scope in plan_index.iter_scoped_plan_candidates(artifacts_dir):
         release = shipped_map.get(scope)
-        if release:
+        if release and plan_path.resolve() != active:
             shipped.append({"path": plan_path, "scope": scope, "release": release})
         else:
             unshipped.append({"path": plan_path, "scope": scope})
     return {
-        "has_release_tags": bool(shipped_map),
+        "has_release_tags": versions,
         "shipped": shipped,
         "unshipped": unshipped,
     }
