@@ -20,6 +20,44 @@ if str(_REPO_ROOT) not in sys.path:
 from lib import change_log  # noqa: E402
 
 
+def version_sort_key(version: str) -> tuple:
+    """Sort key for a bare version string (no leading ``v``).
+
+    Real versions sort numerically. Anything unparseable sorts ABOVE every real
+    one, so a malformed stamp cannot hide under a larger numeric neighbour — a
+    malformed stamp is the thing being looked for, not noise to be tolerated.
+    """
+    parts = version.split(".")
+    if not parts or not all(p.isdigit() for p in parts):
+        return (1, version)
+    return (0, tuple(int(p) for p in parts))
+
+
+def explain_empty_pending(stamped: set[str], version: str) -> str | None:
+    """``None`` when an empty release-pending side is explained, else why not.
+
+    Module level, and tested directly by :class:`TestExplainEmptyPending`,
+    because the caller that matters only reaches it when the repo has *just cut
+    a release* — a state the suite is in for a few commits every few weeks. Left
+    inline it would have been unreachable code between cuts, and the first run
+    that exercised it would be a release. That is the same shape as the defect
+    this whole change exists to repair, one level down: a guard whose only
+    exercise is the rare event it guards.
+    """
+    if not stamped:
+        return "nothing is release-pending and nothing is stamped — release= is unreadable"
+    newest = max(stamped, key=version_sort_key)
+    if newest == version:
+        return None
+    return (
+        f"nothing is release-pending, so the newest release= stamp should be this "
+        f"repo's own version (v{version}) — but it is v{newest}. An empty pending "
+        f"side is only explained by a just-cut release; a stamp ahead of, or "
+        f"unparseable against, what the repo claims is drift. "
+        f"Stamped versions: {sorted(stamped, key=version_sort_key)}"
+    )
+
+
 class TestParseTagLine:
     def test_simple_pairs(self):
         tags = change_log.parse_tag_line("release=v1.4.0 | status=shipped")
@@ -477,24 +515,8 @@ class TestAgainstTheRealChangeLog:
             Path(__file__).resolve().parents[1] / "plugin" / "VERSION"
         ).read_text(encoding="utf-8").strip()
         stamped = {str(e.tags["release"]).removeprefix("v") for e in released}
-
-        def _key(v: str) -> tuple:
-            # Sorts real versions numerically; anything unparseable sorts ABOVE
-            # every real one so it cannot hide under a larger neighbour — a
-            # malformed stamp is the thing being looked for, not noise.
-            parts = v.split(".")
-            if not all(p.isdigit() for p in parts):
-                return (1, v)
-            return (0, tuple(int(p) for p in parts))
-
-        newest = max(stamped, key=_key)
-        assert newest == version, (
-            f"nothing is release-pending, so the newest release= stamp should be "
-            f"this repo's own version (v{version}) — but it is v{newest}. An empty "
-            f"pending side is only explained by a just-cut release; a stamp ahead "
-            f"of, or unparseable against, what the repo claims is drift. "
-            f"Stamped versions: {sorted(stamped, key=_key)}"
-        )
+        complaint = explain_empty_pending(stamped, version)
+        assert complaint is None, complaint
 
     def test_every_scope_tag_is_a_non_empty_string(self):
         for entry in self._entries():
@@ -555,6 +577,56 @@ class TestAgainstTheRealChangeLog:
                 mapping[scope].read_text(encoding="utf-8")
             )
             assert present and declared == scope, (scope, mapping[scope])
+
+
+class TestExplainEmptyPending:
+    """The post-cut branch of the release partition, exercised on every run.
+
+    `test_release_tags_partition_into_released_and_pending` reaches this logic
+    only when the real change log has nothing release-pending — true for a few
+    commits after each cut and false the rest of the time. So the branch that
+    decides whether an empty pending side is legitimate would, left to the real
+    data alone, first execute during a release. These fixtures make it run every
+    time, which is what the rule this change earned actually asks for: prove a
+    guard can go red before believing it, rather than at the moment it matters.
+    """
+
+    def test_a_just_cut_release_is_explained(self):
+        assert explain_empty_pending({"3.2.7", "3.3.0"}, "3.3.0") is None
+
+    def test_a_stale_stamp_beside_a_current_one_is_not_explained(self):
+        """The case a membership check waved through.
+
+        `version in stamped` passes here — the repo's version IS present. Only
+        comparing the NEWEST stamp catches a log carrying a version the repo
+        does not claim, which is the drift the v3.2.8 placeholder incident had.
+        """
+        complaint = explain_empty_pending({"3.3.0", "9.9.9"}, "3.3.0")
+        assert complaint and "v9.9.9" in complaint
+
+    def test_a_log_stamped_entirely_behind_the_repo_is_not_explained(self):
+        complaint = explain_empty_pending({"3.2.6", "3.2.7"}, "3.3.0")
+        assert complaint and "v3.2.7" in complaint
+
+    def test_an_unparseable_stamp_cannot_hide_under_a_numeric_neighbour(self):
+        """`unreleased` sorts ABOVE 3.3.0, so it surfaces instead of being
+        shadowed — the placeholder value is exactly what went undetected."""
+        complaint = explain_empty_pending({"3.3.0", "unreleased"}, "3.3.0")
+        assert complaint and "unreleased" in complaint
+
+    def test_nothing_stamped_at_all_is_not_explained(self):
+        assert explain_empty_pending(set(), "3.3.0") is not None
+
+    def test_version_ordering_is_numeric_not_lexicographic(self):
+        """`3.10.0` is newer than `3.9.0`; string comparison says otherwise, and
+        this repo will reach a two-digit minor."""
+        assert version_sort_key("3.10.0") > version_sort_key("3.9.0")
+        assert explain_empty_pending({"3.9.0", "3.10.0"}, "3.10.0") is None
+        assert explain_empty_pending({"3.9.0", "3.10.0"}, "3.9.0") is not None
+
+    def test_differing_segment_counts_compare_without_error(self):
+        assert version_sort_key("3.3") < version_sort_key("3.3.1")
+        assert explain_empty_pending({"3.3", "3.3.1"}, "3.3.1") is None
 
 
 class TestSameLineDuplicateKeys:

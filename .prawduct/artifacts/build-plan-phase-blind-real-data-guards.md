@@ -12,7 +12,7 @@ governed_by:
       - "facts are immutable and append-only → inapplicable because this plan writes no facts"
   - artifact: architecture
     dispositions:
-      - "every fact has one home; every other mention is a reference to it → conforms, and applied twice in review: the suite-total count was removed from release-plan-v3.3.0.md rather than re-stated, and each rewritten guard's limits are recorded in its own docstring rather than summarised elsewhere"
+      - "every fact has one home; every other mention is a reference to it → conforms AFTER a correction the reviewer caught: the first fix removed the suite-total count from release-plan-v3.3.0.md and then wrote the same count into this plan's Status line, which moved the duplicate rather than retiring it. Both now cite `prawduct-hook test-status`, whose evidence store is the fact's home. Each rewritten guard's limits are likewise recorded in its own docstring rather than summarised elsewhere"
       - "goals and verification bind; prescribed method is advice → relied upon. Design §C prescribed a version cross-check; the Critic found the implementation weaker than the prescription, and the fix conformed to the stated goal rather than to the looser code"
       - "prawduct guides and reviews, never implements → inapplicable because this changes prawduct's own test suite, not a governed product's code"
   - artifact: nonfunctional-requirements
@@ -41,9 +41,9 @@ release runbook that produced the state is checked in and readable.
 - [x] Chunk 01: Make the six real-data guards phase-independent
 Context: Complete 2026-08-10 on `fix/phase-blind-real-data-guards`, cut from `develop` at
 `cf97bf82` (which carries the unpushed v3.3.0 release prep). All six guards now grade a
-corpus that survives a release boundary; suite 4328 passed / 10 skipped, green in BOTH
-release phases (post-prep tree, and a worktree at pre-prep `50d99594`) plus a simulated
-re-run of runbook steps 3 and 11. Cumulative Critic `rev-20260810T203817Z-37a0f29b`:
+corpus that survives a release boundary; suite green (counts live in the evidence store —
+`prawduct-hook test-status`) in BOTH release phases (post-prep tree, and a worktree at
+pre-prep `50d99594`) plus a simulated re-run of runbook steps 3 and 11. Cumulative Critic `rev-20260810T203817Z-37a0f29b`:
 0 blocking, 3 warnings, 6 notes — all nine dispositioned, six fixed, three accepted.
 Next: merge to `develop`, then resume the release at Phase 1 step 13 (see
 `.prawduct/.handoff-notes.md` and `release-plan-v3.3.0.md`'s current-state block).
