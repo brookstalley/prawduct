@@ -874,3 +874,43 @@ class TestArchivePlanCommand:
         proc = _run_hook(project, ".prawduct/artifacts/build-plan-demo.md")
         assert proc.returncode == 0, proc.stderr
         assert "active_build_plan" not in proc.stderr
+
+
+class TestArchivingPreservesTheFilesBytes:
+    """A plan is archived by MOVING it, and a move should read as a move.
+
+    Normalizing a CRLF plan to LF rewrites every line, which turns a rename git
+    can follow into a delete-plus-add that loses the file's history — multiplied
+    by an unattended fleet sweep of dozens of plans per repo.
+    """
+
+    def test_crlf_survives_the_stamp_and_the_move(self, tmp_path: Path):
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        plan = artifacts / "build-plan-demo.md"
+        plan.write_bytes(
+            b"---\r\nartifact: build-plan\r\nscope: demo\r\n---\r\n\r\n"
+            b"## Status\r\n\r\n- [x] Chunk 01: done\r\n"
+        )
+
+        result = plan_archive.archive_plan(
+            plan, artifacts, state="completed", date="2026-08-10", release="v1.0.0"
+        )
+        assert result["status"] == "archived", result
+        raw = (artifacts / "archive" / "build-plan-demo.md").read_bytes()
+
+        assert b"lifecycle: completed" in raw
+        assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF plan"
+
+    def test_an_lf_plan_stays_lf(self, tmp_path: Path):
+        """The control — restoring CRLF must not push CRLF onto everyone else."""
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        plan = artifacts / "build-plan-demo.md"
+        plan.write_bytes(b"---\nartifact: build-plan\nscope: demo\n---\n\n## Status\n")
+
+        plan_archive.archive_plan(
+            plan, artifacts, state="completed", date="2026-08-10"
+        )
+        raw = (artifacts / "archive" / "build-plan-demo.md").read_bytes()
+        assert b"\r\n" not in raw

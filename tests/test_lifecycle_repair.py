@@ -453,3 +453,25 @@ class TestTheFilesOwnBytesSurvive:
 
         assert "DERIVED VIEWS" not in text
         assert "SCOPE ROLLUPS" not in text
+
+
+class TestCrlfSurvivesTheCommentStripToo:
+    """The third edit kind. Structurally identical to the other two, but the
+    fixture that would have caught the original defect did not exist for it."""
+
+    def test_stripping_a_status_note_keeps_crlf(self, tmp_path: Path) -> None:
+        repo = _make_repo(tmp_path, state="project: demo\n")
+        plan = repo / ".prawduct" / "artifacts" / "build-plan-demo.md"
+        plan.write_bytes(
+            b"---\r\nartifact: build-plan\r\nscope: demo\r\n---\r\n\r\n"
+            b"## Status\r\n\r\n"
+            b"<!-- Derived view (`views_enabled: true`). Do not hand-edit. -->\r\n\r\n"
+            b"- [x] Chunk 01: done\r\n"
+        )
+
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        raw = plan.read_bytes()
+
+        assert b"views_enabled" not in raw
+        assert b"- [x] Chunk 01: done\r\n" in raw
+        assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF plan"

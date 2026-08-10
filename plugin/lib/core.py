@@ -146,9 +146,11 @@ def atomic_write_text(
     check what reads the file back.
 
     ``newline`` still defaults to ``None`` (universal-newline translation) and
-    is a separate concern: it exists for the one caller whose target is **not**
+    is a separate concern: it exists for callers whose target is **not**
     framework state, where a write into a product's authored file must not
-    re-line-end the bytes around its insertion.
+    re-line-end the bytes around its insertion. Pass ``newline=""`` from any
+    repair that edits a file the product wrote — an operation promising to touch
+    two keys otherwise hands back a whole-file reformat on a CRLF repo.
 
     The shared writer for ``.prawduct/`` state files (STH-8M3V; same pattern
     as the hook's ``.test-evidence.json`` writer). Their readers fail open on

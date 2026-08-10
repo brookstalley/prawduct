@@ -383,16 +383,35 @@ def archive_plan(
     destination = archive_destination(plan_path, artifacts_dir)
 
     try:
-        content = plan_path.read_text(encoding="utf-8")
+        # `newline=""` so the plan's own line endings are visible rather than
+        # translated away. A writer editing a file it did not create must give it
+        # back in its own convention: normalizing a CRLF plan to LF rewrites every
+        # line, which turns the archive move from a rename git can follow into a
+        # delete-plus-add that loses the file's history — multiplied by an
+        # unattended fleet sweep of dozens of plans per repo. This is the fifth
+        # instance of a class where four were fixed one commit earlier.
+        with plan_path.open("r", encoding="utf-8", newline="") as handle:
+            content = handle.read()
     except (OSError, UnicodeDecodeError) as exc:
         return {"status": "refused", "reason": f"cannot read {plan_path}: {exc}"}
 
+    # The stamping works in `\n` throughout (it splits and re-joins lines), so a
+    # CRLF document is normalized for the edit and restored on the way out. The
+    # test asserts the bytes, not the intent.
+    crlf = "\r\n" in content
     stamped = apply_completion_frontmatter(
-        content, state=state, date=date, release=release, superseded_by=superseded_by
+        content.replace("\r\n", "\n") if crlf else content,
+        state=state,
+        date=date,
+        release=release,
+        superseded_by=superseded_by,
     )
+    if crlf:
+        stamped = stamped.replace("\n", "\r\n")
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(stamped, encoding="utf-8")
+        with destination.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(stamped)
         plan_path.unlink()
     except OSError as exc:
         return {"status": "refused", "reason": f"cannot archive {plan_path}: {exc}"}
