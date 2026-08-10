@@ -194,6 +194,46 @@ scope: demo
         assert _comment_edits(repo) == []
         assert "strip `<!-- views_enabled: … -->` comments" in plan_path.read_text()
 
+    def test_an_unterminated_comment_removes_nothing(self, tmp_path: Path) -> None:
+        """The worst outcome this operation can produce, from likely input.
+
+        Treating an unopened-but-unclosed comment as running to end-of-document
+        is safe for a reader and catastrophic for a writer: the first cut deleted
+        from the ``<!--`` through the last line, taking the plan's checkboxes and
+        every chunk with it. A malformed plan is exactly what a fleet-wide repair
+        eventually meets, so the writer claims nothing it cannot delimit.
+        """
+        body = (
+            "---\nartifact: build-plan\nscope: demo\n---\n\n"
+            "## Status\n\n"
+            "<!-- Derived view (`views_enabled: true`). Do not hand-edit.\n\n"
+            "- [x] Chunk 01: done\n- [ ] Chunk 02: pending\n\n"
+            "## Build Chunks\n\nContent that must survive.\n"
+        )
+        repo = _make_repo(tmp_path)
+        plan_path = _write_plan(repo, "build-plan-demo.md", body)
+        before = plan_path.read_bytes()
+
+        assert _comment_edits(repo) == []
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        assert plan_path.read_bytes() == before
+
+    def test_no_repair_ever_removes_a_checkbox(self, tmp_path: Path) -> None:
+        """The invariant behind every case above, asserted once directly.
+
+        Checkbox lines are the only reading of chunk progress the session gates
+        have. Whatever this repair decides about a comment, the boxes are not
+        its business — so a future widening of the strip rule fails here rather
+        than in a consumer's repo.
+        """
+        repo = _make_repo(tmp_path)
+        plan_path = _write_plan(repo, "build-plan-demo.md", self.STATUS_INSTRUCTION)
+        before = [ln for ln in plan_path.read_text().splitlines() if ln.startswith("- [")]
+
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        after = [ln for ln in plan_path.read_text().splitlines() if ln.startswith("- [")]
+        assert after == before
+
     def test_archived_plans_are_not_touched(self, tmp_path: Path) -> None:
         """An archived plan is a record; editing it falsifies what it records."""
         repo = _make_repo(tmp_path)

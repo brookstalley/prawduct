@@ -696,9 +696,12 @@ class TestNewQualifierExpiry:
         #   * a uniform prefix-before-`current_id` names only 01, letting 03 —
         #     which is CHECKED, i.e. done under the reading in force — keep an
         #     exemption it has no claim to.
-        # So on this path the `checked` flags are read directly. The prefix rule
-        # applies to the GIT-derived path only, where the per-item predicate is
-        # not available; `test_git_derived_reading_drives_the_expiry…` covers it.
+        # So on this path the `checked` flags are read directly — which is now
+        # the ONLY path: the git-derived reading this sentence used to contrast
+        # against was retired with the derived-view model, and the test it named
+        # went with it. Kept as the reason the flags are read directly rather
+        # than rewritten away, because the alternative it rejects is the one a
+        # future reader would otherwise re-propose.
         project = tmp_path / "proj"
         prawduct = project / ".prawduct"
         (prawduct / "artifacts").mkdir(parents=True)

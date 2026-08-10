@@ -21,13 +21,20 @@ from pathlib import Path
 ARCHIVE_DIR_NAME = "archive"
 
 
-def _display_path(path: Path, artifacts_dir: Path) -> str:
+def display_path(path: Path, artifacts_dir: Path) -> str:
     """A plan path as written for a human, relative to the artifacts dir when possible.
 
     Bare ``path.name`` was adequate while discovery was flat. Recursive
     discovery makes ``build-plan.md`` a near-certain collision across
     ``plans/<id>/`` directories, so a duplicate-scope message naming two files
     called ``build-plan.md`` tells the operator nothing about which two.
+
+    Public because the lifecycle commands need it for the same reason and got it
+    wrong first: a backfill preview listing four plans as ``build-plan.md`` is
+    the list a single operation-level approval rests on, and consent to an
+    unidentifiable list is not informed consent. Found by running against a real
+    consumer repo that nests plans under ``plans/<id>/`` — every fixture here is
+    flat, so no fixture could have shown it.
     """
     try:
         return str(path.relative_to(artifacts_dir))
@@ -209,7 +216,7 @@ def iter_scoped_plan_candidates(
 
     Ordering is by sorted path so the first-wins tie-break in both consumers
     stays deterministic, which makes *directory depth* part of that tie-break.
-    Consumers report paths via :func:`_display_path` rather than ``Path.name`` —
+    Consumers report paths via :func:`display_path` rather than ``Path.name`` —
     see its docstring for why nesting makes that necessary.
     """
     if not artifacts_dir.is_dir():
@@ -350,8 +357,8 @@ def duplicate_scope_errors(artifacts_dir: Path) -> list[tuple[str, str]]:
                 (
                     scope,
                     f"duplicate scope={scope!r}: "
-                    f"{_display_path(plan_path, artifacts_dir)} also declares it "
-                    f"(keeping {_display_path(first_seen[scope], artifacts_dir)}); "
+                    f"{display_path(plan_path, artifacts_dir)} also declares it "
+                    f"(keeping {display_path(first_seen[scope], artifacts_dir)}); "
                     f"one plan is malformed.",
                 )
             )

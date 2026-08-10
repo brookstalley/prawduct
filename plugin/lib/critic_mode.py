@@ -658,8 +658,10 @@ def _commit_is_ancestor(project_dir: Path, sha: str) -> bool:
     return proc.returncode == 0
 
 
-# `_commits_ahead_of_base` / `_committed_chunk_ids` / `_git_aware_progress` moved
-# to lib/buildplan_refs.py — they answer "which chunk is current," which is
+# `_commits_ahead_of_base` / `_committed_chunk_ids` moved to lib/buildplan_refs.py
+# (a third mover, `_git_aware_progress`, was not moved but DELETED — the
+# git-derived second reading of chunk progress is retired, so a reader following
+# this pointer would grep for a function that exists nowhere) — they answer "which chunk is current," which is
 # build-plan Status parsing, and keeping the derivation here made it reachable
 # only by this module's consumer (the defect recurred at two others: BLD-7K3Q,
 # SCN-4H9T). This module now reaches it through `buildplan_refs.resolve_chunk_progress`

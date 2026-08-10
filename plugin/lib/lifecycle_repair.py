@@ -15,10 +15,15 @@ of chunk progress that the session gates have. A repo that keeps it converges
 its data and still behaves the old way.
 
 **Why this is preview-by-default with ``--apply``**, when its sibling
-:func:`lib.plan_archive.archive_plan` writes on invocation: ``api-contract.md``
-§ Direction splits on scope, not on danger. A command acting on one file the
-operator named writes; a repo-wide lifecycle command that decides for itself
-which files to touch previews first. This one walks the whole artifacts tree.
+:func:`lib.plan_archive.archive_plan` writes on invocation: the binding rule is
+``security-model.md`` § Direction — one informed confirmation at the *operation*
+level, naming the blast radius. The scope-vs-danger framing that decides which
+shape satisfies it (a command acting on one file the operator named may write; a
+repo-wide one that picks its own files previews first) is **descriptive** prose
+in ``api-contract.md`` § Operations, not a ratified norm — cited that way round
+because attributing a rule to a § Direction that does not contain it is how a
+norm acquires authority nobody granted it. This one walks the whole artifacts
+tree, so it previews.
 
 **And why the preview is not a second validation pass.** A dry run that
 re-validates exactly what the write path validates is where drift hides — it
@@ -210,6 +215,18 @@ def _comment_spans(lines: list[str]) -> list[tuple[int, int]]:
     ``<!-- views_enabled: … -->`` as inline code describing what to strip, and a
     scanner that did not know the difference would delete the sentence
     specifying its own behaviour.
+
+    **An UNTERMINATED comment yields no span at all**, and that asymmetry is
+    deliberate. A reader meeting ``<!--`` with no ``-->`` can afford to assume
+    the comment runs to the end of the document; a *writer* cannot, because the
+    assumption deletes everything after it. On a malformed plan the earlier
+    version removed the opening line through end-of-file — checkboxes, chunks and
+    all — which is the worst outcome this operation can produce, reached from
+    the input a fleet-wide repair is most likely to meet.
+
+    The cost is stated plainly rather than dressed up: a plan whose comment never
+    closes **keeps** a note it should have lost, and nothing announces that. It is
+    left exactly as found, which is the direction an error here should point.
     """
     spans: list[tuple[int, int]] = []
     index = 0
@@ -222,7 +239,9 @@ def _comment_spans(lines: list[str]) -> list[tuple[int, int]]:
         end = index
         while end < len(lines) and _COMMENT_CLOSE not in lines[end]:
             end += 1
-        spans.append((index, min(end + 1, len(lines))))
+        if end >= len(lines):
+            break  # unterminated — claim nothing rather than claim the rest
+        spans.append((index, end + 1))
         index = end + 1
     return spans
 
@@ -232,8 +251,8 @@ def _is_backticked(line: str, position: int) -> bool:
     return line.count("`", 0, position) % 2 == 1
 
 
-def plan_comment_findings(text: str) -> dict[str, list[dict]]:
-    """Split a plan's ``views_enabled`` comments into ``remove`` and ``report``.
+def plan_comment_findings(text: str) -> list[dict]:
+    """The ``views_enabled`` comments in ``text`` that this repair removes.
 
     **The rule is position, not prose.** A comment inside the ``## Status``
     section is an instruction about the checkboxes in that section, and the
@@ -252,19 +271,26 @@ def plan_comment_findings(text: str) -> dict[str, list[dict]]:
     tuned it against, which is the failure this plan already paid for once.
     Position is structural, and it is the same "explicit and adjacent" rule the
     removal-qualifier check settled on for the same reason.
+
+    A comment mentioning the flag *outside* the Status section is simply not
+    returned. An earlier cut collected those into a second "read these once"
+    list, which no caller ever consumed — a channel produced and never read is a
+    defect rather than an inefficiency, and the list was noise besides: what it
+    collected was plans narrating their own history, which is the one thing here
+    that needs no action at all.
     """
     lines = text.splitlines()
     status = _status_section_span(lines)
-    remove: list[dict] = []
-    report: list[dict] = []
+    if status is None:
+        return []
+    found: list[dict] = []
     for start, end in _comment_spans(lines):
-        body = "\n".join(lines[start:end])
-        if VIEWS_FLAG not in body:
+        if not (status[0] <= start < status[1]):
             continue
-        record = {"start": start, "end": end, "text": body}
-        inside = status is not None and status[0] <= start < status[1]
-        (remove if inside else report).append(record)
-    return {"remove": remove, "report": report}
+        body = "\n".join(lines[start:end])
+        if VIEWS_FLAG in body:
+            found.append({"start": start, "end": end, "text": body})
+    return found
 
 
 def apply_comment_removals(text: str, removals: list[dict]) -> str:
@@ -310,8 +336,7 @@ def stale_status_reports(artifacts_dir: Path) -> list[dict]:
             content = plan_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        findings = plan_comment_findings(content)
-        if not findings["remove"]:
+        if not plan_comment_findings(content):
             continue  # never carried a derived-Status instruction
         # The finished answer from the module that owns Status parsing — this
         # must not walk the section itself, because walking Status and testing
@@ -359,10 +384,14 @@ def plan_repair(project_dir: str | Path) -> dict:
 
     ``edits`` is ``[{path, kind, reason, detail}]``. An empty list means the repo
     is already converged, which is what makes the repair a no-op on a second run
-    rather than merely harmless on one.
+    rather than merely harmless on one — **provided ``unreadable`` is also
+    empty.** Files that could not be read are collected there rather than skipped
+    silently, because "no edits" and "no edits I could compute" are different
+    answers and only one of them means converged.
     """
     root = Path(project_dir)
     edits: list[dict] = []
+    unreadable: list[dict] = []
 
     state_path = root / STATE_REL
     if state_path.is_file():
@@ -390,8 +419,9 @@ def plan_repair(project_dir: str | Path) -> dict:
     if notes_path.is_file():
         try:
             notes_text = notes_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            notes_text = FROZEN_MARKER  # unreadable: leave it alone, claim nothing
+        except (OSError, UnicodeDecodeError) as exc:
+            notes_text = FROZEN_MARKER  # no edit is computed for a file we cannot read
+            unreadable.append({"path": str(notes_path), "reason": str(exc)})
         if FROZEN_MARKER not in notes_text:
             edits.append(
                 {
@@ -408,10 +438,15 @@ def plan_repair(project_dir: str | Path) -> dict:
     for plan_path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir):
         try:
             content = plan_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            # NOT a silent skip. A plan this cannot read may hold the one piece of
+            # residue that still changes behaviour, and "nothing to change" would
+            # report it as converged — a check that could not run is otherwise
+            # indistinguishable from one that ran and found nothing.
+            unreadable.append({"path": str(plan_path), "reason": str(exc)})
             continue
-        findings = plan_comment_findings(content)
-        if findings["remove"]:
+        removals = plan_comment_findings(content)
+        if removals:
             edits.append(
                 {
                     "path": plan_path,
@@ -420,11 +455,11 @@ def plan_repair(project_dir: str | Path) -> dict:
                     "generated and must not be edited by hand; both halves are now "
                     "wrong, and a reader who believes it will leave finished work "
                     "unmarked",
-                    "detail": f"{len(findings['remove'])} note(s) in the Status section",
-                    "removals": findings["remove"],
+                    "detail": f"{len(removals)} note(s) in the Status section",
+                    "removals": removals,
                 }
             )
-    return {"status": "ok", "edits": edits}
+    return {"status": "ok", "edits": edits, "unreadable": unreadable}
 
 
 def apply_repair(project_dir: str | Path, plan: dict) -> dict:

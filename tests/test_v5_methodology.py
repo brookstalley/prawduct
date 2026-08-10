@@ -85,7 +85,14 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
     "methodology/building.md": 4808,
-    "skills/critic/review-protocol.md": 3593,
+    # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
+    # resolves", which archival made false for the PATH form while leaving it true
+    # for the scope form — a reviewer applying the old sentence waves through the
+    # dangling citations that shipped. Paid for by stating only the distinction and
+    # dropping the worked example. The narration lives HERE rather than in the file's
+    # own budget comment: at 1 token of headroom the file cannot afford to carry one,
+    # which is itself the honest reading of how tight this ceiling now is.
+    "skills/critic/review-protocol.md": 3619,
     "skills/critic/goals-1-3.md": 1998,
     "skills/critic/review-cycle.md": 9588,
     "skills/critic/framework-checks.md": 1116,

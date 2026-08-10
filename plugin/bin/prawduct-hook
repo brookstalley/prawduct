@@ -4708,6 +4708,23 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
     return 1 if status == norm_index_scaffold.STATUS_UNREADABLE else 0
 
 
+def _plan_label(plan_path: Path, prawduct_dir: Path) -> str:
+    """A plan named so the operator can tell it from its siblings.
+
+    ``Path.name`` is ambiguous the moment a repo nests plans as
+    ``plans/<id>/build-plan.md`` — a real consumer layout, where four plans share
+    that one name. These lists are what a single operation-level approval is
+    given for, and an approval over items the reader cannot tell apart is not
+    informed. Degrades to the bare name if the plan somehow sits outside
+    ``artifacts/``, which is the same fallback the shared helper uses.
+    """
+    try:
+        from lib import plan_index  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        return plan_path.name
+    return plan_index.display_path(plan_path, prawduct_dir / "artifacts")
+
+
 def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
     """Converge a repo off the retired derived-view model (FL2, FL3, GD2).
 
@@ -4716,10 +4733,11 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
     telling a reader that Status checkboxes are generated and must not be
     hand-edited — the one piece of residue that still changes behaviour.
 
-    **Preview-by-default with ``--apply``**, on the repo-wide-lifecycle side of
-    the ``api-contract.md`` § Direction split: this walks the artifacts tree and
-    decides for itself which files to touch, unlike ``archive-plan``, which
-    writes on invocation because the operator named the file.
+    **Preview-by-default with ``--apply``**, because this walks the artifacts
+    tree and decides for itself which files to touch, unlike ``archive-plan``,
+    which writes on invocation because the operator named the file. The binding
+    rule is ``security-model.md`` § Direction; that scope split is descriptive
+    prose in ``api-contract.md`` § Operations.
 
     **One approval covers the whole act.** The preview names every file and
     every reason once; there is deliberately no per-file prompt, because
@@ -4777,6 +4795,7 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                          if k in ("path", "kind", "reason", "detail")}
                         for edit in plan["edits"]
                     ],
+                    "unreadable": plan["unreadable"],
                     "retired_flag": guard,
                     "plans_to_review": [
                         {"path": str(r["path"]), "chunks": r["chunks"]} for r in stale
@@ -4791,8 +4810,14 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
         # `--apply` on a converged repo writes nothing, and calling that run
         # "dry-run" invites the reader to conclude they forgot the flag.
         print(f"lifecycle-repair ({'apply' if apply else 'dry-run'}):")
-        if not plan["edits"]:
+        if not plan["edits"] and not plan["unreadable"]:
             print("  nothing to change — this repo is already in the target state")
+        elif not plan["edits"]:
+            # Never "already in the target state" here: a file that could not be
+            # read may hold the note that still changes behaviour, and reporting
+            # it as converged is the one wrong answer available.
+            print("  no changes could be worked out, because some files could "
+                  "not be read — this repo has NOT been checked")
         # Grouped by kind so the reason is stated ONCE per group rather than
         # repeated per file. On this repo the ungrouped form printed the same
         # sentence fourteen times, which is how a blast radius meant to be read
@@ -4818,17 +4843,22 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                   "changed for you: only someone who knows what actually shipped "
                   "can say.")
             for report in stale:
-                print(f"    {report['path'].name}")
+                print(f"    {_plan_label(report['path'], Path(project_dir) / '.prawduct')}")
                 for chunk in report["chunks"]:
                     print(f"      - {chunk}")
+        for item in plan["unreadable"]:
+            print(f"  could not read {item['path']} ({item['reason']}) — it was "
+                  f"left alone and not checked", file=sys.stderr)
         if outcome and outcome["failed"]:
             for failure in outcome["failed"]:
                 print(f"  could not write {failure['path']}: {failure['reason']}",
                       file=sys.stderr)
 
     if apply:
-        return 1 if outcome and outcome["failed"] else 0
-    return 1 if guard["status"] == "unreadable" else 0
+        return 1 if (outcome and outcome["failed"]) or plan["unreadable"] else 0
+    # "Could not run" is exit 1 for the same reason the sibling repairs use it:
+    # a check that declined must never be indistinguishable from one that passed.
+    return 1 if guard["status"] == "unreadable" or plan["unreadable"] else 0
 
 
 def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
@@ -4916,18 +4946,19 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                   "moved. Decide which of these are done and file them one at a "
                   "time:")
             for item in result["unshipped"]:
-                print(f"    {item['path'].name}")
+                print(f"    {_plan_label(item['path'], prawduct_dir)}")
         else:
             verb = "archived" if apply else "would archive"
             print(f"  {verb} {len(result['shipped'])} finished plan(s) — each one "
                   "shipped in a released version, so it records what was built "
                   "rather than what is being built:")
             for item in result["shipped"]:
-                print(f"    {item['path'].name}  (shipped in {item['release']})")
+                label = _plan_label(item["path"], prawduct_dir)
+                print(f"    {label}  (shipped in {item['release']})")
             print(f"  leaving {len(result['unshipped'])} plan(s) in place — no "
                   "release records them yet:")
             for item in result["unshipped"]:
-                print(f"    {item['path'].name}")
+                print(f"    {_plan_label(item['path'], prawduct_dir)}")
             if not apply and result["shipped"]:
                 print("  Re-run with --apply to move them. One confirmation covers "
                       "all of them; each file is moved, not deleted, and keeps "
@@ -4935,6 +4966,26 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
         for refusal in result["refused"]:
             print(f"  could not archive {refusal['scope']}: {refusal['reason']}",
                   file=sys.stderr)
+
+    # The same dangling-pointer report `archive-plan` makes, for the same reason
+    # and with more need of it: a pointer naming a moved plan is read by every
+    # gate as "no active build plan" — the gates go quiet, which is the failure
+    # class this work treats as its worst. `archive-plan` has an operator
+    # watching one named file; a sweep of dozens has nobody inspecting each move,
+    # so dropping the notice here is where it would actually cost something.
+    # Reports, never writes: the pointer is state a session owns.
+    pointer = _read_str_yaml_key(
+        project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
+    )
+    if pointer:
+        pointed_at = (project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")).resolve()
+        moved = {Path(item["source"]).resolve() for item in result["archived"]}
+        if pointed_at in moved:
+            print(
+                "NOTE: active_build_plan still names a plan this run archived "
+                f"({pointer}) — clear it, or point it at the plan that is now live.",
+                file=sys.stderr,
+            )
 
     return 1 if result["refused"] else 0
 

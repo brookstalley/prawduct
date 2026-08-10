@@ -150,6 +150,22 @@ flow runs `stamp-merged` (its own docstring says so), so no caller observes the 
 except as the notice | user can override → move `stamp_merged` into `change_log.py` and keep it
 writing, which then obliges Chunk 03 to keep `status=` in the schema for a writer with no reader]`
 
+`[DECISION-5: BP7's "a reference into an archived plan resolves" means by SCOPE or NAME, not by
+PATH — live citations were repointed; citations inside RECORDS were deliberately left | Archiving
+moves a file, so any hard-coded `artifacts/build-plan-<scope>.md` dangles at the moment the plan
+finishes. Two classes came out of the sweep and they take opposite treatment. **Live surfaces**
+(`nonfunctional-requirements.md`, two open-issue design docs, `work-model-delta.md`,
+`backlog-service-prd.md`, `roi-batch/LAUNCH.md`) were repointed at their `archive/` paths, because a
+reader following them today should land on the file. **Records** (`change-log.md`, `backlog.md`,
+`learnings-detail.md`, `operator-verification.md`, the release plans) were not: they state where a
+file was when the entry was written, and editing them to satisfy a resolver falsifies the record —
+the same rule that exempts them from the path-reference check. What makes this a decision rather
+than a gap is that the durable fix is neither: plans resolve **by scope**, which is how
+`check-releasability` finds them and how the archive stays searchable, so `review-protocol.md`'s
+drift rule now says to cite a plan by scope and warns that a durable artifact citing a path is
+citing something that moves | user can override → sweep the record files too, accepting that their
+paths then describe a tree that did not exist when they were written]`
+
 **Retroactivity: `migrate`, declared** — not `contain`. Every norm carries this field, and a fleet
 default cannot leave it implicit. Existing sites are swept: `views_enabled` keys and `scope_rollups`
 blocks across onboarded repos, and accumulated live build plans into the archive (FL6). The norm's
@@ -341,6 +357,23 @@ Tests carry most of this, but three things tests cannot see, each assigned to a 
 2. **A real repo converges.** After Chunk 05, run doctor's repair against an actual consumer checkout
    from each cohort — one key-absent, one inert-`true`, one live-`true` (the requirements doc names
    which repos are which) — on a scratch copy, and confirm idempotence by running it twice.
+
+   **DISCHARGED 2026-08-10, and by parsing the result rather than reading the output.** Scratch
+   copies of `discodon` (key-absent), `cordyceps` (`true`, never regenerated) and `hallucinote`
+   (`true`, with a real `release-notes.md`) each converged, and each reported *nothing to change* on
+   an immediate second `--apply` — idempotence measured at the boundary the operator actually
+   crosses, not asserted from the code. The third cohort is the only one that exercises the
+   release-notes freeze, which is why it had to be a repo that really ran the old command.
+
+   The assertion that makes this evidence rather than a line count: both changed state files were
+   parsed before and after, and in each **exactly two top-level keys were removed (`views_enabled`,
+   `scope_rollups`), none was added, and no surviving key's value changed.** A shorter file proves
+   nothing about which lines went. `hallucinote` also exercised the backfill on a layout no fixture
+   in this repo has — plans nested as `plans/<id>/build-plan.md`, four of them sharing that filename
+   — and that is what surfaced the preview naming them indistinguishably (fixed by routing both
+   commands' output through `plan_index.display_path`). A single operation-level approval over a
+   list whose items cannot be told apart is not informed consent, which is the norm this plan cites
+   for the approval shape in the first place.
 3. **An archived plan still reads right.** After Chunk 04, open an archived plan cold and confirm the
    frontmatter answers "is this current?" before any body text can mislead, and that `grep` hits from
    it carry `archive/` in the path.

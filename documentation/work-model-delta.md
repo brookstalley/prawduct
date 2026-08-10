@@ -59,7 +59,7 @@ is prose with an empty "## Contract Surfaces" (verified), so the floor would mat
   motivating case?).
 - Parent-map cap + `session-digest.md` budget (`test_token_budget` stays green after A1/A2).
 
-## Resulting build plan (→ `.prawduct/artifacts/build-plan-work-model.md`)
+## Resulting build plan (→ `.prawduct/artifacts/archive/build-plan-work-model.md`)
 
 - **Chunk 1 (keystone, Critic `final`):** B1 index (in `.prawduct/`) + B2 parent-map + B3 nudge +
   A1–A3 prose, gated on the **real-scriob-replay** + the budget test. Proves the catch end-to-end.

@@ -93,6 +93,19 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   rather than half-completing: a plan stamped but not moved still reads as live to every directory
   scan, and one moved but not stamped answers "is this current?" only to a reader who noticed the
   path. Status checkboxes are never touched.
+  `plan-backfill [--apply] [--json] [--date YYYY-MM-DD]` (mutating with `--apply`) is the
+  repo-wide counterpart the sentence above points at: it archives every live plan whose `scope=`
+  carries a `release=` tag in the change log, so it decides for itself which files to touch and
+  therefore previews first. A product whose change log records no releases gets **nothing moved** —
+  the set is proposed and the operator archives each with `archive-plan`. Checkbox state is neither
+  a precondition nor corrected on the way in.
+- **Derived-view convergence** — `lifecycle-repair [--apply] [--json]` (mutating with `--apply`):
+  removes the retired `views_enabled` key and `scope_rollups` block, labels a derived
+  `release-notes.md` as history, and deletes `## Status` notes instructing readers not to hand-edit
+  checkboxes. `--json` keys: `applied`, `edits[{path,kind,reason,detail}]`, `retired_flag{status,
+  path,line}`, `plans_to_review[{path,chunks}]`, `outcome`. **`retired_flag` and `plans_to_review`
+  have a live consumer** — `skills/doctor/SKILL.md` Health Checks #15 and #16 grade on them — so
+  renaming either is a consumer break, not an internal edit.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating).
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
@@ -102,8 +115,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
   to `unknown` rather than a reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
-  `learnings-obligation`, `norm-index-scaffold`, `repo-disable`, `bug-inbox` (all
-  dry-run-by-default where they mutate).
+  `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`, `plan-backfill`,
+  `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
@@ -114,9 +127,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
-`repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`) default to a
+`repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
+`lifecycle-repair`, `plan-backfill`) default to a
 **dry run** and require
-`--apply` to write.
+`--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
+named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which
+files to touch previews first. That framing is descriptive — the binding rule is
+`security-model.md` § Direction's operation-level approval.
 
 ## Inputs & Outputs
 

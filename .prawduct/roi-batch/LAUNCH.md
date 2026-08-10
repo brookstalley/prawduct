@@ -1,7 +1,7 @@
 # ROI batch — launch runbook (post-/clear)
 
 Nine pre-triaged backlog ROI items, built by **two parallel background workflows**, then
-governed and shipped by this (launching) session. Plan: `.prawduct/artifacts/build-plan-roi-batch.md`.
+governed and shipped by this (launching) session. Plan: `.prawduct/artifacts/archive/build-plan-roi-batch.md`.
 
 Items: **CRT-3M8Q, BLD-4Q9X, TST-2R7H, MIG-8C3V** (code lane) · **MET-4K8Z, MET-1T5W,
 MET-8N2C, MET-2D9K, DOC-2W9P** (docs lane).
@@ -19,7 +19,7 @@ git checkout -b fix/roi-batch
 ```
 
 Then point the stop-hook gate at the plan (so the Critic gate enforces correctly this session):
-set `active_build_plan: artifacts/build-plan-roi-batch.md` in `.prawduct/project-state.yaml`
+set `active_build_plan: artifacts/archive/build-plan-roi-batch.md` in `.prawduct/project-state.yaml`
 (the `active_build_plan:` key near the bottom — currently empty).
 
 ## Step 1 — launch BOTH workflows in parallel (one message, two tool calls)

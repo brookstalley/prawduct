@@ -57,7 +57,7 @@ second time, and belongs in the same requirements/design pass rather than a sepa
 
 **A documentation defect rides alongside, and needs no design work — only correction.** Two
 governing-artifact statements assert the opposite of what the code does:
-`.prawduct/artifacts/build-plan-session-boundary-events.md` Chunk 01's `[DECISION]` states *"An
+`.prawduct/artifacts/archive/build-plan-session-boundary-events.md` Chunk 01's `[DECISION]` states *"An
 absent anchor already has a documented degradation (**freshness gates fail closed**...)"*, and
 Success #5 states *"No gate semantics change except in the fail-closed direction."* Both are false
 against `gates.py:154-157` today, and the DECISION's stated rationale for `--brief-only` never
@@ -165,7 +165,7 @@ enough to build against.
 - Code: `plugin/lib/gates.py` (`tests_are_current`, `_test_evidence_tree_valid`,
   `_read_session_start`), `plugin/bin/prawduct-hook` (reflection archival + reflection gate),
   `plugin/lib/briefing.py` (reflection warning reader).
-- Governing artifact requiring correction: `.prawduct/artifacts/build-plan-session-boundary-events.md`
+- Governing artifact requiring correction: `.prawduct/artifacts/archive/build-plan-session-boundary-events.md`
   (Chunk 01 `[DECISION]`, Success #5).
 - Related backlog items: `SCN-5B8Q`, `SCN-4H9T` (session-boundary-events work that removed the
   accidental re-anchoring), `STH-7W9K` (marker written to the wrong directory in worktree/fork

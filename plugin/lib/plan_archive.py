@@ -241,6 +241,15 @@ def read_completion(content: str) -> dict[str, str] | None:
     predicate a reader uses to answer "is this current?" without inferring it
     from the file's location — a plan can be read from a link or a grep hit, and
     "it was under ``archive/``" is not information the reader has then.
+
+    **Its production consumer is :func:`archive_plan`'s re-archive refusal.** That
+    is worth naming because the function shipped without one: every other
+    archive-awareness decision in the tree is path-based, so for one chunk this
+    was a producer whose only caller was its own test — the produced-and-never-
+    consumed shape this codebase treats as a defect rather than an inefficiency.
+    The consumer that closed it is the one place the *content* of the stamp
+    matters rather than its location: a plan already recording ``superseded``
+    must not be silently re-stamped ``completed`` by a sweep.
     """
     fm = plan_index.frontmatter_lines(content)
     if fm is None:
@@ -314,6 +323,33 @@ def archive_plan(
         }
     if not plan_path.is_file():
         return {"status": "refused", "reason": f"no such plan: {plan_path}"}
+    # This moves a file and then UNLINKS the original, so "is it a plan?" has to
+    # be asked before the move, not assumed from the caller's good intentions.
+    # The path is not always a keystroke: the PR flow has an *agent* supply it,
+    # and `archive-plan README.md` would otherwise stamp, move and unlink at
+    # exit 0. Containment is the cheap half of the test and the half that cannot
+    # be wrong — a file outside the artifacts tree is not this operation's to move.
+    if not plan_path.is_relative_to(artifacts_dir):
+        return {
+            "status": "refused",
+            "reason": f"{plan_path} is not under {artifacts_dir} — archiving moves "
+            "and then deletes the original, so it only ever acts inside the "
+            "artifacts directory",
+        }
+    # A plan already carrying a terminal state is refused rather than re-stamped:
+    # re-archiving in place is how a `superseded` record silently becomes
+    # `completed`, and the frontmatter is the whole content of the record.
+    try:
+        existing = read_completion(plan_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        existing = None
+    if existing:
+        return {
+            "status": "refused",
+            "reason": f"{plan_path} already records lifecycle "
+            f"{existing.get(LIFECYCLE_KEY)!r} (archived {existing.get(ARCHIVED_KEY)}) "
+            "— it has an end of life already; move it by hand if that record is wrong",
+        }
 
     destination = archive_destination(plan_path, artifacts_dir)
     if destination.exists():

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib import plan_backfill
+from lib import plan_backfill, plan_index
 
 DATE = "2026-08-10"
 
@@ -78,6 +78,38 @@ class TestSurvey:
         assert result["has_release_tags"] is False
         assert result["shipped"] == []
         assert len(result["unshipped"]) == 2
+
+
+class TestNestedPlansAreDistinguishable:
+    """A real consumer layout every fixture in this file would otherwise miss.
+
+    Repos that organize plans as ``artifacts/plans/<id>/build-plan.md`` have
+    several plans sharing that one filename. The backfill's preview is the list a
+    single operation-level approval is given for, so a preview that shows four
+    identical ``build-plan.md`` lines cannot be consented to — and the flat
+    fixtures above can never surface it.
+    """
+
+    def test_survey_keeps_nested_plans_separate(self, tmp_path: Path) -> None:
+        prawduct = _make_repo(tmp_path, plans=())
+        for scope in ("alpha", "beta"):
+            nested = prawduct / "artifacts" / "plans" / scope.upper()
+            nested.mkdir(parents=True)
+            (nested / "build-plan.md").write_text(_plan(scope), encoding="utf-8")
+
+        result = plan_backfill.survey(prawduct)
+        assert [i["scope"] for i in result["shipped"]] == ["alpha"]
+        assert [i["scope"] for i in result["unshipped"]] == ["beta"]
+
+    def test_display_path_distinguishes_them(self, tmp_path: Path) -> None:
+        """The helper the preview uses, pinned on the shape that needs it."""
+        artifacts = tmp_path / "artifacts"
+        labels = {
+            plan_index.display_path(artifacts / "plans" / plan_id / "build-plan.md", artifacts)
+            for plan_id in ("ALPHA", "BETA")
+        }
+        assert labels == {"plans/ALPHA/build-plan.md", "plans/BETA/build-plan.md"}
+        assert len(labels) == 2, "two different plans must not render as one label"
 
 
 class TestBackfill:

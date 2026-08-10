@@ -98,13 +98,32 @@ When `develop` is ready to release as `vX.Y.Z`:
    and were ticked by the sessions that finished each chunk; a plan still showing `[ ]` at
    release means that chunk was never closed out, which is a question for its author, not
    something this step fixes.
-4. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
+
+4. **Archive the plans this release shipped.** On gitflow the closing PR deliberately
+   RETAINS the plan and its `active_build_plan` pointer — the work is not released yet — so
+   the release is where that retention ends, and without this step the live artifacts
+   directory re-accumulates exactly the pile the archive exists to prevent. Step 3 has just
+   made the mechanical answer available, so run the sweep rather than picking by hand:
+   ```
+   prawduct-hook plan-backfill            # preview: names each plan and the release
+   prawduct-hook plan-backfill --apply    # one confirmation covers the whole set
+   ```
+   It archives every live plan whose `scope=` now carries a `release=` tag, stamping each
+   with `lifecycle: completed` and `released_in:`. It is a **no-op for anything still
+   pending**, so running it on a pruned release cannot archive withheld work: an untagged
+   entry is exactly what step 3 left untagged. If it reports that `active_build_plan` names
+   a plan it just archived, clear the pointer — a pointer at a moved file reads to every
+   gate as "no active build plan", which is the right end state reached by accident.
+   A plan whose work was **descoped** rather than shipped has no `release=` tag and is not
+   swept; give it its end of life by hand, naming what replaced it:
+   `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
+5. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
    `## vX.Y.Z` section every release; `README.md`'s `## Recent Changes` gets refreshed on a
    **minor or major bump only**. Both are written at **Phase 1 step 10** of
    `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this checklist names them rather
    than restating them, because the README went eight releases stale precisely while no release
    document named it at all.
-5. **Publish the GitHub Release — the tag is not the release, and this one step creates both.**
+6. **Publish the GitHub Release — the tag is not the release, and this one step creates both.**
    A pushed tag lands on `/tags`; the Releases page is a separate surface and it stayed empty for
    every tag this repo had ever pushed, which is what consumers reported as "no tag on GitHub".
 
@@ -121,13 +140,13 @@ When `develop` is ready to release as `vX.Y.Z`:
    one call means no instant exists at which the tag is there without its Release, and it sharpens
    what a red tag-push run means: a tag that arrived by some route other than this step.
 
-6. **Verify what actually shipped:** `git fetch origin --tags` (the tag was created on the remote,
+7. **Verify what actually shipped:** `git fetch origin --tags` (the tag was created on the remote,
    so your clone does not have it yet), then `./plugin/bin/prawduct-hook check-released vX.Y.Z`.
    Exit **0** verified · **1** a check failed · **3** nothing failed but a check could not run.
    **A 3 is not a pass.**
 
-7. **Run the same check in CI:** `gh workflow run verify-release.yml -f tag=vX.Y.Z`, then read the
-   run. It runs step 6's command with a token and goes red on any non-zero, so it is the backstop
+8. **Run the same check in CI:** `gh workflow run verify-release.yml -f tag=vX.Y.Z`, then read the
+   run. It runs step 7's command with a token and goes red on any non-zero, so it is the backstop
    for the release nobody verified by hand. **Dispatch it by hand** — a tag created through the
    Releases API is expected to emit `create` and `release` events, not `push`, so nothing fires
    the workflow on this path. CI verifies; it never publishes.
@@ -137,7 +156,7 @@ When `develop` is ready to release as `vX.Y.Z`:
    > and a push-triggered run appearing alongside it is not an error. Confirm at the next release
    > and correct this — the same note sits at step 21 of
    > `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`, and both should be settled together.
-8. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
+9. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
    gate newly active in the range.
 
@@ -240,7 +259,7 @@ verify-release.yml -f tag=vX.Y.Z` runs the same check in CI with a token and is 
 release nobody verified by hand; it never publishes a Release, by owner ruling. The workflow also
 triggers on a tag push, but that route is not expected to fire for a release cut this way, since the
 tag now comes into being through the Releases API — so treat the dispatch as the run that counts
-(step 7 above carries the unverified half of that claim).
+(step 8 above carries the unverified half of that claim).
 
 **Pruned** — used for **v3.1.1 and v3.1.2**. The candidate is built as the previous release's tree
 plus `git diff <cut-point>..develop` applied with `--3way`, published by ref
