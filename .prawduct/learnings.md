@@ -484,3 +484,5 @@ dropping them.
 ## A guard written against the EXAMPLE IN THE FINDING holds for that example and nothing else — restate the threat in your own words before coding it (`is_relative_to` is lexical, so one `..` walks through a containment check that passes the reported case). Tell: your fix quotes the report's scenario back at it
 
 ## Read a review's findings for the CLASS, not the list — when four findings share a shape, fixing four instances leaves the fifth to be found by the next round. Tell: several findings could be described by one sentence
+
+## Fix a defect at the LAYER IT WAS REPORTED AT — pinning the extracted predicate proves the predicate, not the wiring, so deleting the CLI branch leaves a lib-level test green while the reported defect returns. Tell: the finding says "at the CLI" and your new test imports the module

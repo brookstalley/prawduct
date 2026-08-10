@@ -794,6 +794,35 @@ class TestArchivePlanCommand:
         assert (_artifacts(project) / "build-plan-demo.md").is_file()
         assert not (_artifacts(project) / "archive").exists()
 
+    def test_dry_run_refuses_a_traversal_path_at_the_cli(self, tmp_path: Path):
+        """The preview's refusal branch, pinned where the defect actually lived.
+
+        The reported defect was CLI-level: `--dry-run` printed `would archive:`
+        at exit 0 for an input the write refuses. Pinning `refusal_reason` proves
+        the predicate and not the wiring — delete the six lines in
+        `cmd_archive_plan` and a lib-level test stays green while the defect
+        returns. This drives the traversal input the guard exists for, through
+        the actual command.
+        """
+        project = _repo(tmp_path)
+        outsider = project / "README.md"
+        outsider.write_text("not a plan\n", encoding="utf-8")
+
+        proc = _run_hook(project, ".prawduct/artifacts/../../README.md", "--dry-run")
+
+        assert proc.returncode == 1, proc.stdout
+        assert "not-archived:" in proc.stderr
+        assert "would archive:" not in proc.stdout
+        assert outsider.is_file(), "the preview's own run touched a file outside the tree"
+
+    def test_dry_run_still_previews_an_archivable_plan(self, tmp_path: Path):
+        """The control: without it, the assertion above passes on a preview that
+        refuses everything, which would be a different defect of equal size."""
+        proc = _run_hook(_repo(tmp_path), ".prawduct/artifacts/build-plan-demo.md", "--dry-run")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "would archive:" in proc.stdout
+
     def test_a_refusal_is_exit_one_with_nothing_written(self, tmp_path: Path):
         project = _repo(tmp_path)
         proc = _run_hook(
