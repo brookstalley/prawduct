@@ -10,7 +10,23 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.2.8
+## v3.2.8 — DRAFT, completed at the release
+
+<!-- RELEASE-PREP: this section is a draft written on `feature/governance-artifact-lifecycle`,
+     NOT a shipped release. The version strings in `plugin/VERSION`,
+     `plugin/.claude-plugin/plugin.json` and `pyproject.toml` still say 3.2.7 on purpose — the
+     bump IS the release trigger (`documentation/release-process.md` Phase 1 step 2), and it
+     belongs to the `release: prep` commit, not to a feature branch.
+
+     BEFORE PUBLISHING, the release must reconcile this headline against everything the cut
+     actually carries. At the time this draft was written `check-releasability` reported THREE
+     release-pending scopes for v3.2.8 — governance-artifact-lifecycle, backlog-cache-write-path
+     and backlog-cache — and the headline below describes only the first. Re-derive the set
+     (`prawduct-hook check-releasability --release vX.Y.Z`) rather than trusting this note, then
+     widen the headline or renumber the section. Shipping it as written would publish two scopes
+     under a headline that does not mention them — and the backlog-cache branch is the one
+     `release=unreleased` already hid from a release once. Delete this comment when the section
+     is completed. -->
 
 A build plan's progress checkboxes now mean exactly what they say — `views_enabled` and `regen-views` are retired, and finished plans get an archive instead of sitting in `artifacts/` forever.
 
