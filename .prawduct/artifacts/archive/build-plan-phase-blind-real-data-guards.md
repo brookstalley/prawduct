@@ -22,7 +22,13 @@ governed_by:
     dispositions:
       - "Gitflow: features branch off develop and merge back; main only ever holds releases → conforms; this is a fix/ branch off develop, merging back before the promotion resumes"
 last_validated: 2026-08-10
+lifecycle: completed
+archived: 2026-08-10
+released_in: v3.3.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

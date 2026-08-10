@@ -5,7 +5,7 @@
 
 ## 2026-08-10: six guards that pinned the repo's release phase, and now name which emptiness they reject
 
-<!-- prawduct: type=fix | scope=phase-blind-real-data-guards -->
+<!-- prawduct: type=fix | scope=phase-blind-real-data-guards | release=v3.3.0 -->
 
 **Six `TestAgainstTheReal*` guards went red at the v3.3.0 cut, and every one of them was right.** They
 grade the repo's own live state — the correct instinct, because a fixture you wrote can only confirm
