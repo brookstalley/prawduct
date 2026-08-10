@@ -415,10 +415,18 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     prawduct-hook plan-backfill --apply    # one confirmation covers the whole set
     ```
 
-    **Expected:** every plan whose `scope=` you tagged in step 3 moves into `archive/`,
-    stamped `lifecycle: completed` and `released_in:`. It is a **no-op for anything still
-    pending** — an untagged entry is exactly what step 2 left untagged — so this cannot
-    archive withheld work on a pruned release.
+    **Expected:** exit 0, and every plan whose `scope=` you tagged in step 3 moves into
+    `archive/`, stamped `lifecycle: completed` and `released_in:`. It is a **no-op for
+    anything still pending** — an untagged entry is exactly what step 2 left untagged — so
+    this cannot archive withheld work on a pruned release.
+
+    **If `--apply` exits 1:** it archived what it could and one or more plans the change
+    log says shipped did **not** move. They are listed under `NOT moving` with a reason
+    each. This is not a failed release step and nothing is half-done — but do not proceed
+    on the strength of "it printed a list": read the reasons, archive those plans by hand
+    (`prawduct-hook archive-plan <path> --state completed --release vX.Y.Z`), and re-run
+    until it exits 0. A preview always exits 0 even when it lists refusals, because it
+    attempted nothing.
 
     > ⚠️ **Read the `NOT moving` list before `--apply`.** The preview separates plans it
     > will archive from plans the change log says shipped but which it refuses (a name

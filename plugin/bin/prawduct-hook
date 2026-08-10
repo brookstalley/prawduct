@@ -4884,8 +4884,16 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     and the operator confirms. That is why an empty sweep on such a repo is
     reported as "nobody but you can decide", never as a clean result.
 
-    Exit codes match the sibling repairs: dry run 0 when it ran, ``--apply`` 0
-    when it archived or had nothing to do, 1 when any plan was refused.
+    Exit codes match the sibling repairs, with one asymmetry that is the point
+    rather than an accident: a **dry run is 0 whenever it ran**, including when
+    it lists plans it would refuse — it attempted nothing, so it skipped nothing,
+    and a preview that exits 1 on every repo holding one already-archived
+    namesake is noise a release checklist learns to ignore. An ``--apply`` is 0
+    when it archived or had nothing to do, and **1 when any plan it should have
+    moved did not move** — whether pre-filtered into ``blocked`` by the survey's
+    refusal check or hit at write time as ``refused``. Those two were one code
+    path before the preview consulted the refusal predicate, and reading only
+    ``refused`` here is how the signal briefly went missing.
     """
     usage = "usage: prawduct-hook plan-backfill [--apply] [--json] [--date YYYY-MM-DD]"
     apply = False

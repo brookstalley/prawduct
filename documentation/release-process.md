@@ -119,7 +119,10 @@ When `develop` is ready to release as `vX.Y.Z`:
    The preview also lists, separately, plans the change log says shipped but which the
    sweep **refuses** (a name already in the archive, a plan already carrying a terminal
    state, one it cannot read). Read that list before confirming: those need a person, and
-   they are the ones that otherwise stay live silently.
+   they are the ones that otherwise stay live silently. **`--apply` exits 1 when that list
+   is non-empty** — it archived what it could, and the rest is named work that did not
+   move; archive those by hand and re-run until it exits 0. The preview exits 0 either
+   way, having attempted nothing.
    A plan whose work was **descoped** rather than shipped has no `release=` tag and is not
    swept; give it its end of life by hand, naming what replaced it:
    `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
