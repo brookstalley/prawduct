@@ -8,16 +8,19 @@ user-invocable: true
 # behind a prompt. An allow-list cannot fence an op when the skill legitimately
 # needs the interpreter, so the model-initiated path is closed here instead.
 #
-# `cache-query` is granted explicitly despite that interpreter grant, because the
-# interpreter grant does NOT cover it where it matters: `Bash(python3 *)` only
-# reaches `python3 plugin/bin/prawduct-hook` in THIS repo, where the plugin is in
-# the tree. In a governed product the plugin is installed elsewhere and the bare
-# `prawduct-hook` spelling is the only one that works. Without this, Step 2.5's
-# Backlog Health queries prompt — and a prompt a janitor declines looks to it
-# exactly like the unreadable store it is scripted to report, so the block would
-# render "unavailable" and never run. Read-only: no network, no writes.
+# `cache-query` and `archive-plan` are granted explicitly despite that interpreter
+# grant, because the interpreter grant does NOT cover them where it matters:
+# `Bash(python3 *)` only reaches `python3 plugin/bin/prawduct-hook` in THIS repo,
+# where the plugin is in the tree. In a governed product the plugin is installed
+# elsewhere and the bare `prawduct-hook` spelling is the only one that works.
+# Without `cache-query`, Step 2.5's Backlog Health queries prompt — and a prompt a
+# janitor declines looks to it exactly like the unreadable store it is scripted to
+# report, so the block would render "unavailable" and never run. Read-only: no
+# network, no writes. Without `archive-plan`, Past Work's stale-plan cleanup can
+# name the command it is told to run and not run it — and the failure is quiet in
+# the same way: an unarchived plan is indistinguishable from a repo that had none.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query *), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query *), Bash(prawduct-hook archive-plan *), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.
