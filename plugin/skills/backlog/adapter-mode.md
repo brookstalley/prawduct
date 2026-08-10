@@ -148,6 +148,13 @@ read-your-writes, so an item filed seconds ago is invisible to it, which is exac
 check is asked. If the cache exits 6, say the dedup check could not run; do **not** report "no
 duplicates found".
 
+**Never hand-author a ```` ```prawduct ```` block inside `--body`.** The serializer appends its own
+block after whatever you pass, and the reader takes the **last** block — so every field you wrote by
+hand is silently dropped, including edges like `related:`. This surfaces only as a `WARNING:` line
+(`issue body carries N prawduct blocks; using the last and ignoring the earlier one(s)` —
+`lib/backlog/encode.py`), so a caller who does not read the warnings believes the fields landed. Pass
+prose in `--body`, set fields with the documented flags, and set edges with `link` (below).
+
 ### update `<id>`
 Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =

@@ -23,14 +23,14 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Tests are contracts.** Fix the code, never weaken the test. Write tests alongside code, not after.
 - **There is no "pre-existing" exception.** If you find a problem — failing test, broad catch,
   stale artifact — fix it or explicitly flag why it can't be fixed now.
-- **Durable artifacts are self-contained.** A comment, docstring or long-lived spec must never
-  anchor its meaning to an ephemeral build id (a chunk, build-plan or work-cycle name) — those are
-  deleted when the work ships, so carry the *why* inline. Exception: bookkeeping that records the
-  work (change-log `chunks=`, backlog `closed-by:`, PR/commit text).
-- **Prefer an invariant to a tally in durable prose.** "Every fork launched after the fix" cannot
-  go stale; "three forks" went stale inside one branch. When a number is essential, compute it as
-  you write it — never copy one from an adjacent line or an earlier entry — and where a mechanism
-  can own the figure (a test, a lint), let it.
+- **Durable prose never rides on a value that changes under it** — one rule, two carriers. Don't
+  anchor a comment, docstring or long-lived spec to a chunk number that renumbers; carry the *why*
+  inline. (Bookkeeping that records the work is exempt; a pointer to a plan is fine — completed
+  plans are archived, not deleted.) Same decay for counts: "every fork launched after the fix"
+  cannot go stale, "three forks" did, inside one branch. Compute an essential number as you write
+  it, never copy one from an adjacent line, and let a mechanism own it where one can.
+- **The build plan's `## Status` boxes are yours to tick** — nothing derives them, and every
+  reader believes them. Tick after the chunk's review: the LAST tick disarms the Stop gates.
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
@@ -44,8 +44,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   trigger already landed them — never read a stale file).
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
-  (`prawduct:allow <scope>/<rule-id> -- reason` is the general intentional-waiver
-  pragma — see `docs/waivers.md`.)
+  (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
   `.session-reflected`, its backward-looking twin), and the session channel that carries your

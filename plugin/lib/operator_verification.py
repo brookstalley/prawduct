@@ -221,7 +221,7 @@ def is_operator_verification_required(state_path: Path) -> bool:
     """Read ``operator_verification_required`` from ``project-state.yaml``.
 
     Column-0 scanner mirroring the convention shared with
-    ``coverage_required`` and ``views_enabled`` (see
+    ``coverage_required`` (see
     ``core.read_bool_yaml_key``): only top-level keys count; commented-out
     and indented occurrences are ignored. Defaults to ``False`` when the file
     or key is absent — the explicit-opt-in posture for v1.4 enforcement features.

@@ -16,6 +16,7 @@ the package-level name to confirm the re-export works end-to-end.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -1532,32 +1533,39 @@ class TestMetadataPathClassification:
         assert "no build plan" in rationale
 
 
-def _setup_views_branch(
+def _setup_progressed_branch(
     tmp_path: Path,
     items: list[tuple[str, str]],
     *,
     chunk_modes: dict[str, str] | None = None,
     committed: list[str] | None = None,
-    views_enabled: bool = True,
     chunk_commit_subjects: bool = True,
     uncommitted: bool = True,
 ) -> None:
-    """Stand up a views-enabled feature branch where the Status checkboxes are
-    an unflipped derived view (all ``- [ ]``) and progress lives in git.
+    """Stand up a feature branch whose plan has its first ``committed`` chunks
+    TICKED and the rest open — the state CRT-7B4M is about, expressed in the
+    single reading.
 
-    Commits the plan (a non-chunk subject) then one commit per ``committed``
-    chunk id; ``chunk_commit_subjects`` controls whether those commits reference
-    ``(Chunk NN)``. Leaves uncommitted work when ``uncommitted`` (the chunk in
-    progress). Mirrors the real CRT-7B4M condition.
+    The chunks named in ``committed`` are both ticked in Status and given a
+    ``(Chunk NN)`` commit, because that is what a finished chunk looks like:
+    the box is the record, the commit is the work. Commits the plan (a non-chunk
+    subject) first; ``chunk_commit_subjects`` controls whether the chunk commits
+    reference ``(Chunk NN)``. Leaves uncommitted work when ``uncommitted`` (the
+    chunk in progress).
     """
     _init_repo(tmp_path, branch="main")
     _write(tmp_path, "README.md", "x\n")
     _commit(tmp_path, "initial")
     prawduct = tmp_path / ".prawduct"
     prawduct.mkdir(parents=True, exist_ok=True)
-    (prawduct / "project-state.yaml").write_text(
-        f"views_enabled: {'true' if views_enabled else 'false'}\n"
-    )
+    (prawduct / "project-state.yaml").write_text("base_branch: main\n")
+    ticked = {cid.lstrip("0") or "0" for cid in (committed or [])}
+    items = [
+        ("x", text)
+        if (m := re.search(r"Chunk\s+0*(\d+)", text)) and m.group(1).lstrip("0") in ticked
+        else (mark, text)
+        for mark, text in items
+    ]
     _write_build_plan_with_chunks(prawduct, items, chunk_modes)
     _checkout_new_branch(tmp_path, "feature/x")
     _commit(tmp_path, "plan: write the build plan")  # non-chunk subject
@@ -1577,15 +1585,22 @@ _FIVE_CHUNKS = [(" ", f"Chunk 0{i}: step {i}") for i in range(1, 6)]
 
 
 class TestBranchProgressCRT7B4M:
-    """On a views-enabled feature branch the Status checkboxes never flip
-    (derived view), so progress must come from git, not the first ``- [ ]``
-    (which is always Chunk 01). CRT-7B4M."""
+    """Mode inference must read the CURRENT chunk, not the first item.
+
+    CRT-7B4M was originally about Status checkboxes that never flipped because
+    they were a derived view, which made "first ``- [ ]``" mean Chunk 01 for a
+    whole branch and pinned every chunk's mode to Chunk 01's declaration. The
+    derived view is retired and the boxes are now ticked by hand, so the fixture
+    ticks them — but the property under test is unchanged and still worth
+    pinning: inference resolves the current chunk through the single owner, and
+    a plan whose early chunks are done must not be graded by its first chunk's
+    `**Critic mode:**` field."""
 
     def test_midchunk_no_override_infers_chunk_not_chunk01_final(self, tmp_path):
-        # Chunk 01 declares final; checkboxes all [ ]; chunks 01-02 committed.
+        # Chunk 01 declares final; chunks 01-02 done (ticked + committed).
         # Pre-fix: first-[ ]=Chunk 01 → override final on EVERY chunk.
         # Fixed: current chunk = 03 (first uncommitted), no mode → rule-4 chunk.
-        _setup_views_branch(
+        _setup_progressed_branch(
             tmp_path, _FIVE_CHUNKS, chunk_modes={"01": "final"}, committed=["01", "02"]
         )
         mode, rationale = infer_mode(tmp_path, None)
@@ -1593,17 +1608,17 @@ class TestBranchProgressCRT7B4M:
 
     def test_current_chunk_override_is_honored_on_branch(self, tmp_path):
         # The CURRENT chunk (03) declares final → override reads chunk 03, not 01.
-        _setup_views_branch(
+        _setup_progressed_branch(
             tmp_path, _FIVE_CHUNKS, chunk_modes={"03": "final"}, committed=["01", "02"]
         )
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "final"
         assert "plan-override" in rationale
 
-    def test_last_chunk_infers_final_via_git(self, tmp_path):
-        # 3-chunk plan, chunks 01-02 committed, last chunk in progress → rule-3.
+    def test_last_chunk_infers_final(self, tmp_path):
+        # 3-chunk plan, chunks 01-02 done, last chunk in progress → rule-3.
         three = [(" ", f"Chunk 0{i}: step {i}") for i in range(1, 4)]
-        _setup_views_branch(tmp_path, three, committed=["01", "02"])
+        _setup_progressed_branch(tmp_path, three, committed=["01", "02"])
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "final"
         assert "rule-3" in rationale
@@ -1611,45 +1626,50 @@ class TestBranchProgressCRT7B4M:
     def test_first_chunk_in_progress_no_override(self, tmp_path):
         # Nothing committed yet (current = chunk 01). Chunk 02 declares final, but
         # the current chunk is 01 (no mode) → chunk, not chunk-02's final.
-        _setup_views_branch(
+        _setup_progressed_branch(
             tmp_path, _FIVE_CHUNKS, chunk_modes={"02": "final"}, committed=[]
         )
         mode, _ = infer_mode(tmp_path, None)
         assert mode == "chunk"
 
-    def test_degrades_to_checkboxes_when_views_disabled(self, tmp_path):
-        # views_enabled false → git path off → first-[ ]=Chunk 01 → its final wins
-        # (the prior behavior; the fix never makes a non-views repo worse).
-        _setup_views_branch(
-            tmp_path,
-            _FIVE_CHUNKS,
-            chunk_modes={"01": "final"},
-            committed=["01", "02"],
-            views_enabled=False,
-        )
-        mode, _ = infer_mode(tmp_path, None)
-        assert mode == "final"
+    def test_commit_subjects_do_not_influence_the_mode(self, tmp_path):
+        """Two tests here once pinned DEGRADATION — what happened when the
+        git-derived reading was unavailable (flag off, or commits lacking
+        `(Chunk NN)`). There is no second reading to degrade from anymore, so
+        the property worth pinning is the stronger one: commit subjects are
+        irrelevant to which chunk is current.
 
-    def test_degrades_when_commits_dont_reference_chunks(self, tmp_path):
-        # views on, but commit subjects lack "Chunk NN" → no git signal →
-        # checkbox fallback (first-[ ]=Chunk 01 → its final).
-        _setup_views_branch(
-            tmp_path,
-            _FIVE_CHUNKS,
-            chunk_modes={"01": "final"},
-            committed=["01", "02"],
-            chunk_commit_subjects=False,
-        )
-        mode, _ = infer_mode(tmp_path, None)
-        assert mode == "final"
+        Asserted by DIFFERENCE, not by a single green: the same plan with and
+        without `(Chunk NN)` subjects must infer the same mode. A reintroduced
+        commit-derived reading would make these two disagree.
+        """
+        with_refs = tmp_path / "with-refs"
+        without_refs = tmp_path / "without-refs"
+        for path, refs in ((with_refs, True), (without_refs, False)):
+            path.mkdir()
+            _setup_progressed_branch(
+                path,
+                _FIVE_CHUNKS,
+                chunk_modes={"03": "final"},
+                committed=["01", "02"],
+                chunk_commit_subjects=refs,
+            )
+        assert infer_mode(with_refs, None) == infer_mode(without_refs, None)
+        # And the shared answer is the one the BOXES imply: 01/02 ticked, so the
+        # current chunk is 03 and its declared mode is the override in force.
+        assert infer_mode(with_refs, None)[0] == "final"
 
     def test_gitflow_base_excludes_develop_side_chunk_commits(self, tmp_path):
         # base_branch=develop; develop carries an unrelated (Chunk 03) commit
         # BEFORE the feature fork. The canonical resolver picks develop, so
-        # develop..HEAD excludes it and only chunk 01 counts → current=02 → chunk.
-        # The old main-first resolver would scan main..HEAD, count develop's
-        # Chunk 03, inflate complete to 2/3 → mis-fire rule-3 final. Guards the
-        # gitflow base-resolution fix (CRT-7B4M / the _resolve_base_branch class).
+        # develop..HEAD excludes it and that foreign chunk ref is never seen.
+        # The old main-first resolver would scan main..HEAD and pick it up.
+        #
+        # Mode inference no longer reads commits at all, so the subject moved:
+        # the base-resolution guard now belongs to the unticked-chunk tripwire,
+        # which is the remaining consumer of `base..HEAD` chunk refs. Asserted
+        # there, because asserting it through `infer_mode` would be vacuous —
+        # an all-unticked plan infers from box 01 whatever git says.
         _init_repo(tmp_path, branch="main")
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
@@ -1658,9 +1678,7 @@ class TestBranchProgressCRT7B4M:
         _commit(tmp_path, "feat: prior feature (Chunk 03)")  # develop-side chunk ref
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir(parents=True, exist_ok=True)
-        (prawduct / "project-state.yaml").write_text(
-            "views_enabled: true\nbase_branch: develop\n"
-        )
+        (prawduct / "project-state.yaml").write_text("base_branch: develop\n")
         three = [(" ", f"Chunk 0{i}: step {i}") for i in range(1, 4)]
         _write_build_plan_with_chunks(prawduct, three)
         _checkout_new_branch(tmp_path, "feature/x")
@@ -1668,8 +1686,13 @@ class TestBranchProgressCRT7B4M:
         _write(tmp_path, "src/c01.py", "# 1\n")
         _commit(tmp_path, "feat: do it (Chunk 01)")
         _write(tmp_path, "src/wip.py", "# wip\n")  # chunk 02 in progress
-        mode, rationale = infer_mode(tmp_path, None)
-        assert mode == "chunk", rationale
+
+        notice = buildplan_refs.unticked_committed_chunk_notice(tmp_path)
+        assert notice is not None and "Chunk 01" in notice
+        assert "Chunk 03" not in notice, (
+            "develop's pre-fork (Chunk 03) commit leaked past the base "
+            f"resolution into base..HEAD: {notice!r}"
+        )
 
 
 # (TestChainAnchorParity removed — kernel-v3 chunk 04 deleted the PR gate's

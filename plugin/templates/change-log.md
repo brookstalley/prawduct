@@ -4,46 +4,33 @@
      This file is separate from project-state.yaml to reduce merge conflicts
      when multiple branches add entries simultaneously.
 
-     # Tagged entries (enabled by default; set `views_enabled: false` in project-state.yaml to opt out)
+     # Tagged entries
 
-     With views enabled (the default), add a tag-line directly under each ##
-     header to mark which build-plan chunks the entry shipped and which
-     release it belongs to. `prawduct-hook regen-views` uses these tags to
-     regenerate three derived views:
-       * build-plan `## Status` block — checkboxes flip from `status=shipped`
-       * `.prawduct/release-notes.md` — sections grouped by `release=`
-       * `scope_rollups:` block in project-state.yaml — grouped by `scope=`
-     Untagged entries are ignored by all three views.
-
-     Format:
+     This file is PROSE. Its body is what a reader — and a release note —
+     actually gets. Two machine-read keys ride in a tag-line directly under
+     the ## header, and `check-releasability` is the only thing that reads
+     them:
 
          ## YYYY-MM-DD: title (vN.M.P)
 
-         <!-- prawduct: chunks=00,01,02 | release=v1.3.18 | status=shipped | scope=v1.4 -->
+         <!-- prawduct: scope=v1.4 | release=v1.3.18 -->
 
          **Why:** ...
 
      Recognized keys:
-       chunks   - comma-separated chunk IDs (zero-padded, must match
-                  build-plan.md ## Status headers exactly: `Chunk 00:`)
-       release  - version string (used by the release-notes view)
-       status   - shipped | merged (legacy). Write a new entry with NO
-                  status= on the feature branch: a statusless tagged entry
-                  is the release-pending state, and it becomes "merged" by
-                  construction when its PR lands — no stamp, no post-merge
-                  bookkeeping commit (protected branches take commits only
-                  by PR). Flip to `shipped` as part of release-prep when
-                  the integration branch is released (gitflow), or write
-                  `status=shipped` directly in the closing PR when the
-                  PR's base IS the release surface (trunk; include
-                  `release=vN.M.P` when the product tracks versions —
-                  release-notes groups by it) — either way the tag merges
-                  atomically with the work it describes.
-                  `merged` is a legacy stamp some logs carry; it is treated
-                  as statusless. Any other value (including a typo) is a
-                  fatal regen-views error — fix it, don't invent states.
-       scope    - rollup identifier (e.g., v1.4)
+       scope    - rollup identifier (e.g., v1.4), matching the `scope:`
+                  frontmatter of the build plan that governs the work.
+       release  - the version that carried this entry. Its ABSENCE is what
+                  marks the entry release-pending, so write NO release= on
+                  the feature branch and add it at release. Any value at all
+                  — including a placeholder naming the absence, e.g.
+                  `release=unreleased` — drops the whole scope out of the
+                  release-pending set and silently unships the work.
 
-     With `views_enabled: true`, the Status checkboxes in build-plan.md are a
-     derived view. Don't hand-edit them — add/update a tagged entry here and
-     run `prawduct-hook regen-views`. -->
+     Nothing else is read. `chunks=` and `status=` were retired along with the
+     derived views they fed; entries in older logs still carry them and are
+     parsed as inert — leave them. Which chunks an entry shipped belongs in
+     the entry BODY, where release notes and readers actually find it: a
+     deliverable omitted from the body ships invisibly, and no tag ever
+     caught that either. -->
+

@@ -10,6 +10,43 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.2.8 — DRAFT, completed at the release
+
+<!-- RELEASE-PREP: this section is a draft written on `feature/governance-artifact-lifecycle`,
+     NOT a shipped release. The version strings in `plugin/VERSION`,
+     `plugin/.claude-plugin/plugin.json` and `pyproject.toml` still say 3.2.7 on purpose — the
+     bump IS the release trigger (`documentation/release-process.md`, release-checklist step 2),
+     and it belongs to the `release: prep` commit, not to a feature branch.
+
+     FIRST, RESTORE THE HEADING. It must read exactly `## v3.2.8` (or whatever version this
+     becomes) with NO suffix, because release-checklist step 6 extracts the notes with an
+     ANCHORED match — `awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f'` — so the ` — DRAFT…`
+     suffix above matches nothing and `gh release create --notes-file` would publish EMPTY
+     release notes. Nothing catches a forgotten suffix: `tests/test_plugin_version_banner.py`
+     parses with `^##\s+v(\d+\.\d+\.\d+)\b`, and `\b` matches the suffixed form too, so the
+     suite stays green either way. The suffix is deliberate — it is what stops this draft
+     reading as shipped — but it is load-bearing in the other direction at release time.
+
+     BEFORE PUBLISHING, the release must reconcile this headline against everything the cut
+     actually carries. At the time this draft was written `check-releasability` reported THREE
+     release-pending scopes for v3.2.8 — governance-artifact-lifecycle, backlog-cache-write-path
+     and backlog-cache — and the headline below describes only the first. Re-derive the set
+     (`prawduct-hook check-releasability --release vX.Y.Z`) rather than trusting this note, then
+     widen the headline or renumber the section. Shipping it as written would publish two scopes
+     under a headline that does not mention them — and the backlog-cache branch is the one
+     `release=unreleased` already hid from a release once. Delete this comment when the section
+     is completed. -->
+
+A build plan's progress checkboxes now mean exactly what they say — `views_enabled` and `regen-views` are retired, and finished plans get an archive instead of sitting in `artifacts/` forever.
+
+Until now a plan's `## Status` block could be one of two different things depending on a setting most repos never knew they had. With `views_enabled` on, the boxes were a *generated view* that only flipped at release, so ticking one by hand did nothing and an in-flight chunk always read as unfinished; with it off, the boxes were the plan's own content. Two meanings, one appearance, and nothing on the page telling you which you were looking at. The setting is gone and only the second meaning remains: **tick a box when its chunk is done, and nothing will overwrite it.** The session gates read those boxes, so this is the reading that was already load-bearing.
+
+`regen-views` and `stamp-merged` still exist and still exit 0 — they print a notice and do nothing, and their removal waits for a major version, so a script or release checklist that calls them will not break mid-run. Release notes live in the change log, which is where they were derived from all along.
+
+Two `/prawduct:doctor` repairs land with it, both preview-first and both taking a single confirmation for the whole job rather than prompting per file. `prawduct-hook lifecycle-repair` removes the dead setting and its generated block, labels a derived `release-notes.md` as the history it is, and deletes the per-plan notes that told readers not to hand-edit checkboxes — that last one is the only piece that still changed behaviour, because a reader who believes it leaves finished work unmarked. `prawduct-hook plan-backfill` moves plans that already shipped into an `archive/` beside them, deciding "shipped" mechanically from the release recorded in your change log. A product that does not tag releases has nothing moved: the set is proposed and you confirm it.
+
+Archiving deliberately does **not** require or correct checkboxes. A plan whose work was descoped can never satisfy "all boxes ticked", and those are exactly the plans that pile up reading as active — so an archived plan may carry unticked boxes, and that is preserved as a fact about how the work ended.
+
 ## v3.2.7
 
 An excellent issue title stopped being a suggestion — and a bad row can no longer end a migration.

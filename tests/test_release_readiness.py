@@ -69,17 +69,17 @@ def _shipped_item(item_id: str) -> str:
 
 class TestReleasePendingScopes:
     def test_release_tagged_entries_are_not_pending(self):
-        from lib import views
+        from lib import change_log
 
         content = _entry("A", "alpha") + _entry("B", "beta", release="v3.1.2")
-        scopes = release_readiness.release_pending_scopes(views.parse_change_log(content))
+        scopes = release_readiness.release_pending_scopes(change_log.parse_change_log(content))
         assert scopes == ["alpha"], "a release= tag means the code already shipped"
 
     def test_untagged_entries_are_invisible(self):
-        from lib import views
+        from lib import change_log
 
         content = "## Historical entry\n\nNo tag line at all.\n\n" + _entry("A", "alpha")
-        scopes = release_readiness.release_pending_scopes(views.parse_change_log(content))
+        scopes = release_readiness.release_pending_scopes(change_log.parse_change_log(content))
         assert scopes == ["alpha"]
 
 
@@ -584,3 +584,197 @@ class TestPartitionIsExact:
             classification=classification,
         )
         assert release_readiness.check_releasability(project) == expected
+
+
+class TestChangeLogTagsAreRefusedHere:
+    """The rehomed tag checks — the guard that hid a branch from v3.2.8.
+
+    `release_pending_scopes` skips any entry carrying a `release=` value and
+    cannot tell a version from a placeholder, so `release=unreleased` removes
+    its whole scope from the pending set and this gate answers "nothing to cut"
+    while the work never ships. The check existed, but its only caller was the
+    derived-view regenerator — a command a release does not run. These tests
+    pin it to the gate that a release DOES run.
+    """
+
+    def test_placeholder_release_is_refused_and_named(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha").replace(
+                "| scope=alpha", "| scope=alpha | release=unreleased"
+            ),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "bad-change-log-tag" in err
+        assert "unreleased" in err
+        assert "delete the tag" in err
+
+    def test_the_placeholder_would_otherwise_read_as_nothing_to_cut(self, tmp_path, capsys):
+        """The failure this prevents, demonstrated rather than asserted.
+
+        Without the guard the same change log produces exit 0 and the words
+        "nothing to classify" — a green gate on a branch that never ships. The
+        test pins the *shape* of that failure by showing the pending set is
+        empty once the malformed tag is accepted.
+        """
+        from lib import change_log
+
+        content = _entry("A", "alpha").replace(
+            "| scope=alpha", "| scope=alpha | release=unreleased"
+        )
+        entries = change_log.parse_change_log(content)
+        assert release_readiness.release_pending_scopes(entries) == []
+        errors, _warnings = change_log.validate_change_log_tags(entries)
+        assert len(errors) == 1
+
+    def test_a_real_version_still_passes(self, tmp_path):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha") + _entry("B", "beta", release="v3.1.2"),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+
+    def test_this_repos_own_change_log_passes_the_guard(self):
+        """Sixty-plus entries of real history, so the guard cannot fail closed."""
+        from lib import change_log
+
+        log = Path(__file__).resolve().parents[1] / ".prawduct" / "change-log.md"
+        if not log.is_file():
+            pytest.skip("no .prawduct/change-log.md in this checkout")
+        entries = change_log.parse_change_log(log.read_text(encoding="utf-8"))
+        assert [e for e in entries if e.tags.get("release")], "no release tags parsed"
+        errors, _warnings = change_log.validate_change_log_tags(entries)
+        assert errors == [], errors
+
+
+class TestPlanCoverageIsReportedNotFatal:
+    """A release-pending scope with no build plan is a Principle 6 signal.
+
+    Rehomed from the same retiring caller. Reported rather than fatal: the gate
+    fails closed on state it cannot EVALUATE, and a missing build plan does not
+    make the release state unevaluable — the classification table still
+    classifies the scope. Escalating it here would be a new gate semantic.
+    """
+
+    def test_scope_with_no_plan_warns_but_passes(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+        err = capsys.readouterr().err
+        assert "no build-plan file" in err
+        assert "alpha" in err
+
+    def test_an_archived_plan_counts_as_coverage(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+        )
+        _write(
+            project / ".prawduct" / "artifacts" / "archive" / "build-plan-alpha.md",
+            "---\nartifact: build-plan\nscope: alpha\n---\n\n## Status\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert "no build-plan file" not in capsys.readouterr().err
+
+    def test_duplicate_scope_is_reported(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+        )
+        for name in ("build-plan-a.md", "build-plan-b.md"):
+            _write(
+                project / ".prawduct" / "artifacts" / name,
+                "---\nartifact: build-plan\nscope: alpha\n---\n\n## Status\n",
+            )
+        assert release_readiness.check_releasability(project) == 0
+        assert "duplicate scope" in capsys.readouterr().err
+
+    def test_a_duplicate_scope_is_reported_with_nothing_release_pending(
+        self, tmp_path, capsys
+    ):
+        """**The case that was silent.** Rehoming this check put it behind the
+        no-pending early return, so a repo between releases — the state most
+        repos are in most of the time, and the cheapest moment to fix a malformed
+        plan — never ran it. The question it asks is about repo *structure*, not
+        about the pending set, so it is not the early return's business.
+
+        Fixing it here is cheap; discovering it mid-release, when scope→plan
+        resolution has just become load-bearing, is the expensive order.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0"),
+            classification=None,
+        )
+        for name in ("build-plan-a.md", "build-plan-b.md"):
+            _write(
+                project / ".prawduct" / "artifacts" / name,
+                "---\nartifact: build-plan\nscope: alpha\n---\n\n## Status\n",
+            )
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr()
+        assert "no release-pending scopes" in out.out, (
+            "the fixture must exercise the no-pending path, or this tests nothing"
+        )
+        assert "duplicate scope" in out.err
+
+    def test_the_missing_plan_half_stays_scoped_to_the_pending_set(
+        self, tmp_path, capsys
+    ):
+        """Only the duplicate-scope half hoists. "A release-pending scope has no
+        plan" is a statement ABOUT the pending set, so on an empty one it has
+        nothing to say and must stay quiet rather than reach for a denominator
+        it does not have."""
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0"),
+            classification=None,
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert "no build-plan file" not in capsys.readouterr().err
+
+
+class TestReleasePlanSurvivesArchival:
+    """BP8: archiving a shipped release plan must not make this gate fail closed.
+
+    `_find_release_plan` globs one directory. Once release plans reach their end
+    of life and move, a re-run against an already-cut version would report
+    `no-release-plan` and refuse a release that demonstrably happened.
+    """
+
+    def test_an_archived_release_plan_is_found(self, tmp_path):
+        project = _make_project(
+            tmp_path, entries=_entry("A", "alpha"), classification=None
+        )
+        _write(
+            project / ".prawduct" / "artifacts" / "archive" / "release-plan-v3.2.0.md",
+            "# Release plan v3.2.0\n\n## Release classification\n\n"
+            "| Scope | Disposition | Blocker |\n|---|---|---|\n| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+
+    def test_a_live_release_plan_wins_over_an_archived_namesake(self, tmp_path, capsys):
+        # Ordering, not merely coverage: an archived plan for a version being
+        # re-cut must never shadow the live one that supersedes it.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha") + _entry("B", "beta"),
+            classification="| alpha | ships | |\n| beta | ships | |\n",
+        )
+        _write(
+            project / ".prawduct" / "artifacts" / "archive" / "release-plan-v3.2.0.md",
+            "# Stale\n\n## Release classification\n\n"
+            "| Scope | Disposition | Blocker |\n|---|---|---|\n| alpha | ships | |\n",
+        )
+        # The discriminator: the archived plan classifies only `alpha`, so if it
+        # won, `beta` would come back unclassified and the gate would exit 1.
+        assert release_readiness.check_releasability(project) == 0
+        assert "unclassified" not in capsys.readouterr().err

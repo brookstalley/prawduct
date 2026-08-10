@@ -26,7 +26,7 @@ blind to two readers that spelled it ``path`` — a limitation this file's own
 prose once *documented* while the sweep it called for went undone. So:
 
 1. **File-scoped and exhaustive** over the modules whose job IS the build plan
-   (``lib/buildplan_refs.py``, ``lib/views.py``). Every ``read_text`` in them,
+   (``lib/buildplan_refs.py``, ``lib/plan_index.py``). Every ``read_text`` in them,
    whatever the local is called. No naming convention to drift from.
 2. **Data-flow** for readers outside those modules: any read whose content is
    passed to a build-plan parser. Catches ``critic_mode`` and ``ledger``
@@ -45,20 +45,22 @@ from pathlib import Path
 PLUGIN = Path(__file__).resolve().parent.parent.parent / "plugin"
 
 # Modules that exist to read the build plan — swept exhaustively (mechanism 1).
-PLAN_MODULES = ("lib/buildplan_refs.py", "lib/views.py")
+PLAN_MODULES = (
+    "lib/buildplan_refs.py",
+    "lib/plan_index.py",  # the scope→plan resolver; every plan read now lands here
+)
 
 # Functions that consume build-plan text. A read feeding one of these IS a
 # build-plan read, whatever its local is called (mechanism 2).
 PLAN_PARSERS = frozenset(
     {
-        "_parse_build_plan_frontmatter_scope",
+        "parse_build_plan_frontmatter_scope",
+        "frontmatter_lines",
         "_iter_status_section_lines",
         "_iter_status_section_items",
         "_chunk_section_lines",
         "_resolve_chunk_progress_from",
         "_chunk_id_from_item_text",
-        "build_status_view",
-        "extract_status_section",
     }
 )
 
@@ -150,10 +152,23 @@ def _plan_reads() -> list[_Read]:
 
 
 def test_the_pin_has_something_to_check():
-    """Guard the guard: a refactor must not silently empty this file's coverage."""
+    """Guard the guard: a refactor must not silently empty this file's coverage.
+
+    The floor moved 12 -> 11 when the derived-view module was deleted, and the
+    membership assertion below is the reason that is a retune rather than a
+    weakening: it requires EVERY listed module to contribute a read, so a
+    module going silent fails here regardless of what the count says. The
+    count alone would have been satisfied by any eleven reads.
+
+    Three parser names left `PLAN_PARSERS` in the same change — the two Status
+    view builders and the pre-split private frontmatter alias — because the
+    functions no longer exist anywhere in `plugin/`. A name that can never match
+    inflates the vocabulary without widening the sweep, which is how this pin
+    reads as broader than it is.
+    """
     reads = _plan_reads()
     modules = {r.rel for r in reads}
-    assert len(reads) >= 12, f"only {len(reads)} build-plan reads matched: {reads}"
+    assert len(reads) >= 11, f"only {len(reads)} build-plan reads matched: {reads}"
     assert set(PLAN_MODULES) <= modules, f"a plan module contributed nothing: {modules}"
 
 

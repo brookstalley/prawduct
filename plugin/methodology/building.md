@@ -82,7 +82,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
 
-**Comments and durable specs are self-contained — explain *why*, never reference build scaffolding.** A comment, docstring, or long-lived spec must not name a chunk, build-plan, or work-cycle — those are deleted when work ships, leaving the reference dangling. Carry the reason inline: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, reflections, commit/PR text) — there the id is the record (Principle 13).
+**Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you.** A comment, docstring, or long-lived spec must not anchor itself to a chunk number — plans get renumbered, and the sentence stays wrong while reading as fact. Carry the reason inline: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: bookkeeping that records the work (backlog `closed-by:`, reflections, commit/PR text) — there the id is the record (Principle 13).
 
 **Same decay: a count nothing reads is not worth writing.** Ask what gets decided differently if it is wrong by two; if nothing, omit it, make it relational ("the table's rows"), or cite the command that regenerates it. Numbers something *relies* on stay exact.
 
@@ -107,7 +107,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Verify artifacts are current.** Confirm artifacts reflect the code — the Critic checks bidirectional freshness.
 
-**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section and update the Context block — the cross-session handoff. (When `views_enabled`, Status is a derived view — add a tagged change-log entry and run regen-views instead.)
+**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section and update the Context block — the cross-session handoff. Ticking the LAST box disarms the Stop hook's gates — review first, tick after.
 
 ## Session Scope Discipline
 

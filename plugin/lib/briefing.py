@@ -63,8 +63,12 @@ def _plan_work_possibly_unmerged(
 
     The build plan is session-local and gitignored, so it survives a branch
     switch: complete every chunk on a feature branch, check out the base branch,
-    and the staleness scan recommends deleting a plan whose work has not shipped.
-    Following that advice orphans live work — reported from the field.
+    and the staleness scan recommends retiring a plan whose work has not shipped.
+    Following that advice orphans live work — reported from the field, when the
+    advice was to *delete*. Archival makes the loss recoverable rather than
+    total, and changes nothing about the timing this predicate decides: a plan
+    that is still the live description of unshipped work belongs in the live
+    directory.
 
     Two independent sufficient signals, either one enough:
 
@@ -78,14 +82,14 @@ def _plan_work_possibly_unmerged(
     Signal 1 is checked first and does not need a resolvable branch, so on a
     detached HEAD every recorded WIP entry counts as foreign and the answer is
     "keep". That is deliberate — an unidentifiable HEAD is the *worst* moment to
-    recommend deleting a plan — but it means the fail-toward-``(False, "")``
+    recommend retiring a plan — but it means the fail-toward-``(False, "")``
     posture below describes signal 2 only.
 
     Signal 2 fails toward ``(False, "")`` on every uncertainty: no base resolves,
     git unavailable, any return code other than the "not an ancestor" 1. Both
     signals may only ADD a keep-recommendation on positive evidence; neither may
-    silently suppress a legitimate delete nudge, because a plan that really is
-    finished and merged should still be cleaned up.
+    silently suppress a legitimate end-of-life nudge, because a plan that really
+    is finished and merged should still be archived.
     """
     try:
         current_branch = gitstate.current_branch(project_dir)
@@ -244,13 +248,14 @@ def staleness_scan(project_dir: Path) -> list[str]:
                 if unmerged:
                     findings.append(
                         f"build plan: {build_plan_label} has all chunks complete but "
-                        f"{unmerged_reason} — keep the plan until it merges "
-                        "(deleting now would orphan unshipped work)"
+                        f"{unmerged_reason} — keep the plan live until it merges "
+                        "(archiving now would orphan unshipped work)"
                     )
                 else:
                     findings.append(
                         f"build plan: {build_plan_label} has all chunks complete — "
-                        "if work is done, delete the plan"
+                        "if work is done, archive the plan "
+                        "(`prawduct-hook archive-plan <path> --state completed`)"
                     )
             else:
                 # No Status items — check WIP as fallback for old-style repos
@@ -263,13 +268,15 @@ def staleness_scan(project_dir: Path) -> list[str]:
                     if unmerged:
                         findings.append(
                             f"build plan: {build_plan_label} exists but no active work, and "
-                            f"{unmerged_reason} — keep the plan until it merges "
-                            "(deleting now would orphan unshipped work)"
+                            f"{unmerged_reason} — keep the plan live until it merges "
+                            "(archiving now would orphan unshipped work)"
                         )
                     else:
                         findings.append(
                             f"build plan: {build_plan_label} exists but no active work — "
-                            "if work is complete, delete the plan"
+                            "if work is complete, archive the plan; if it stopped, archive "
+                            "it as superseded (`prawduct-hook archive-plan <path> "
+                            "--state superseded --superseded-by <what replaced it>`)"
                         )
         except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
@@ -476,8 +483,8 @@ def _get_work_in_progress(project_dir: Path, wip: dict[str, str] | None = None) 
     """Format work in progress as a one-line summary for the session briefing.
 
     ``wip`` lets a caller that has already resolved the active work pass it in;
-    resolution reads git on a ``views_enabled`` repo, and the briefing needs the
-    same answer twice.
+    resolution walks the artifacts tree, and the briefing needs the same answer
+    twice.
     """
     if wip is None:
         wip = _get_active_work(project_dir)
@@ -588,7 +595,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     lines = ["== SESSION BRIEFING =="]
 
     # Project identity + work in progress (branch-scoped). Resolved once and
-    # reused below — on a views_enabled repo this reads git.
+    # reused below — this walks the artifacts tree to resolve the branch's plan.
     project_name = _get_product_name(prawduct_dir)
     current_branch = _get_current_branch(project_dir)
     wip = _get_active_work(project_dir)

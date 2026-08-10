@@ -80,7 +80,7 @@ the launch-dir-vs-worktree mismatch, not general concurrent-session identity. Re
 **Location:** `<git-common-dir>/prawduct/worktree-sessions/<epoch>.json`, where `<epoch>` is the
 value from §1 with `:` replaced by `-` (filesystem-safe). Same subdirectory convention as the
 evidence store (`evidence.py:STORE_SUBDIR = "prawduct"`) and the same rationale (D1 in
-`.prawduct/artifacts/build-plan-kernel-evidence-store.md`): the one location every worktree of a
+`.prawduct/artifacts/archive/build-plan-kernel-evidence-store.md`): the one location every worktree of a
 clone already shares, never committed, no gitignore contract, isolated between unrelated repos by
 `git_common_dir()`'s existing equality test.
 
@@ -366,7 +366,7 @@ Added by this design pass:
 - `plugin/bin/prawduct-hook:5415-5445` (`_ephemeral_command_writes`), `:5490-5545`
   (`_check_ephemeral_worktree`), `:5561-5593` (`_check_binary_skew`), `:5599-5616` (`main`'s
   pre-dispatch guard site) — the precedent §3's guard is modeled on directly.
-- `.prawduct/artifacts/build-plan-ephemeral-worktrees.md` (Scope-out) — names "Issue #221's
+- `.prawduct/artifacts/archive/build-plan-ephemeral-worktrees.md` (Scope-out) — names "Issue #221's
   cross-worktree mismatch guard (WT1–WT6)" as "a different predicate needing a session-scoped
   marker. Explicitly not started here," and separately floats a `PostToolUse:Write` matcher for a
   sibling detection gap — corroborates both this item's marker approach and that `PostToolUse` is

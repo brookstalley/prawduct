@@ -3,6 +3,70 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-10: a checkbox that means one thing, and a plan that can finish
+
+<!-- prawduct: type=refactor | scope=governance-artifact-lifecycle -->
+
+**A build plan's `## Status` block had two meanings and one appearance.** With `views_enabled` on it
+was a derived view that only flipped at release, so ticking a box did nothing and an in-flight chunk
+always read as unfinished; with it off, the boxes were the plan's own content. Nothing on the page
+said which you were looking at, and the Stop hook's gates read those boxes either way. The flag is
+gone and only the second meaning remains. `views.py` is deleted, its two jobs rehomed to
+`change_log.py` (tags) and `plan_index.py` (plans) — a module that did both under a name describing
+neither is part of why the dual reading reached three consumers before anyone generalised it.
+
+**The single reading is only as good as the hand that ticks it, so it comes with a tripwire.**
+`unticked_committed_chunk_notice` reports a chunk with commits on the branch and an empty box. It
+reports and never writes and never decides — nothing feeds it back into progress resolution — so a
+wrong guess costs a line of stderr rather than a wrong gate. Its precondition is a commit-subject
+convention and its failure mode is silence, which is stated where it lives because silence here is
+indistinguishable from every box being correct.
+
+**Plans now have an end of life that is not deletion.** `archive-plan` stamps completion frontmatter
+and moves a plan into an `archive/` beside it; two terminal states, because *superseded* — work
+stopped, descoped, absorbed elsewhere — is the case that matters. A half-finished dead plan can never
+satisfy "all boxes ticked", so a lifecycle with only *completed* leaves exactly those plans sitting
+in live `artifacts/` forever, reading as active. Checkbox state is neither a precondition nor
+corrected on the way in: nothing reads an archived plan's boxes, and preserving how the work actually
+ended is the point.
+
+**The fleet converges by tooling, not by hand-editing repos.** `lifecycle-repair` removes the dead
+key and its generated block, labels a derived `release-notes.md` as history, and deletes the per-plan
+notes telling readers not to hand-edit checkboxes — three of those four are inert, and the fourth is
+the one that still changed behaviour, because a reader who believes it leaves finished work unmarked.
+`plan-backfill` archives plans the change log records as shipped, deciding *shipped* mechanically
+from a `release=` tag: a last use of the tag data before it goes inert, and no judgment enters. Both
+preview first and take one confirmation for the whole act — per-file prompting is forbidden here, not
+merely discouraged, because confirmation fatigue is itself a safety regression. **This repo is a
+subject and not an exception:** 73 of its 76 live plans were backfilled by the same code path, which
+is also the verification that the path works.
+
+**The root cause was three declarations with nothing comparing them,** so the guard is a test rather
+than a rule: `core.OPT_IN_FLAGS` names every boolean opt-in flag, and the test asserts each one's
+shipped-template value equals its measured code default, in both directions — a registered flag the
+template omits, and a template flag nobody registered, both fail. The code default is read from a
+state file that omits the key rather than written as a literal, so the test agrees with the code
+instead of with its author's belief.
+
+**Three review rounds, and the second is the one worth recording.** The `cumulative`
+(`rev-20260810T131213Z-c1b6f3f7`, 3 reviewers) returned 1 blocking / 14 warning / 12 note — all 27
+dispositioned, 12 fixed, 14 accepted, 1 filed as #631. Its blocker was that both new commands
+shipped with no CLI-level test, and the reason it mattered is that their `--json` key names are a
+contract doctor's health checks grade on. The first `verify-resolutions`
+(`rev-20260810T133906Z-8e3fb8a3`) then returned **two new blockers on those fixes**: the containment
+guard I had just added was lexical, so a single `..` walked through it and the destructive path ran
+to exit 0; and three of the fixes shipped untested. Writing those tests found that one fix did not
+work — the unreadable-file list was structurally always empty, because the plan scan swallows an
+undecodable file one layer below where the reporting was added. **The fix for "a path that cannot
+answer, reporting as one that answered" had reproduced it.** `rev-20260810T135801Z-d1b928b0` returned
+**0/0/0**, and `check-cumulative-critic` reports composed coverage spanning the branch.
+
+**Retirements were recorded, not performed silently.** `regen-views` and `stamp-merged` stay callable
+and inert with a stderr notice, removal deferred to a major, because the deprecation norm's own
+rationale forbids the silent removal; the `regen-views-is-advice` ruling was retired as a norm
+lifecycle event on both norms it annotated, not deleted as a doc-sync. The tag schema lost `chunks=`
+and `status=`, whose only readers lived inside the machinery that went.
+
 ## 2026-08-08: the cache never learned about our own writes
 
 <!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-cache-write-path -->

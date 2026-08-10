@@ -8,16 +8,19 @@ user-invocable: true
 # behind a prompt. An allow-list cannot fence an op when the skill legitimately
 # needs the interpreter, so the model-initiated path is closed here instead.
 #
-# `cache-query` is granted explicitly despite that interpreter grant, because the
-# interpreter grant does NOT cover it where it matters: `Bash(python3 *)` only
-# reaches `python3 plugin/bin/prawduct-hook` in THIS repo, where the plugin is in
-# the tree. In a governed product the plugin is installed elsewhere and the bare
-# `prawduct-hook` spelling is the only one that works. Without this, Step 2.5's
-# Backlog Health queries prompt — and a prompt a janitor declines looks to it
-# exactly like the unreadable store it is scripted to report, so the block would
-# render "unavailable" and never run. Read-only: no network, no writes.
+# `cache-query` and `archive-plan` are granted explicitly despite that interpreter
+# grant, because the interpreter grant does NOT cover them where it matters:
+# `Bash(python3 *)` only reaches `python3 plugin/bin/prawduct-hook` in THIS repo,
+# where the plugin is in the tree. In a governed product the plugin is installed
+# elsewhere and the bare `prawduct-hook` spelling is the only one that works.
+# Without `cache-query`, Step 2.5's Backlog Health queries prompt — and a prompt a
+# janitor declines looks to it exactly like the unreadable store it is scripted to
+# report, so the block would render "unavailable" and never run. Read-only: no
+# network, no writes. Without `archive-plan`, Past Work's stale-plan cleanup can
+# name the command it is told to run and not run it — and the failure is quiet in
+# the same way: an unarchived plan is indistinguishable from a repo that had none.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query *), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query *), Bash(prawduct-hook archive-plan *), Bash(prawduct-hook review-stats), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.
@@ -158,7 +161,7 @@ Has past work left behind artifacts that no longer serve a purpose?
 - Exhausted feature flags — flags for features that shipped or were abandoned
 - Unnecessary backwards compatibility — shims, fallbacks, or adapters for versions nobody runs
 - Resolved TODOs — comments marking work that was done but the marker wasn't removed
-- Stale build plans — `.prawduct/artifacts/build-plan.md` from completed work (all Status items checked). Clean up: delete plan file
+- Stale build plans — a plan in `.prawduct/artifacts/` whose work is over. Two shapes, and the second is the one that accumulates: **completed** (every Status item checked) and **superseded** (work stopped, was descoped, or was absorbed elsewhere — a half-finished plan can never satisfy "all boxes ticked", so nothing else ever sweeps it and it sits in the live directory reading as active). Clean up: **archive, never delete** — `prawduct-hook archive-plan <path> --state completed|superseded`, which stamps the plan with what became of it and moves it into `archive/`. Unticked boxes are left as they are; they record how the work ended and nothing reads them once the plan is out of the live directory. On gitflow, leave a merged-but-unreleased plan live until its release ships
 
 ### Norm Health
 

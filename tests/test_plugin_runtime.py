@@ -1983,7 +1983,7 @@ class TestTreeValidatedFreshness:
 
     def test_metadata_yaml_edit_is_current(self, tmp_path):
         repo = self._seed(tmp_path, "meta")
-        (repo / ".prawduct" / "project-state.yaml").write_text("views_enabled: true\n")
+        (repo / ".prawduct" / "project-state.yaml").write_text("coverage_required: false\n")
         assert _run_in(repo, "test-status").returncode == 0, \
             ".prawduct/*.yaml is not judgeable — must stay current"
 
@@ -2240,7 +2240,7 @@ class TestTestEvidenceKnobs:
 
     def test_absent_knobs_keep_default_behavior(self, tmp_path):
         """No knobs declared: the recorder behaves exactly as before."""
-        repo = self._repo(tmp_path, "views_enabled: false\n")
+        repo = self._repo(tmp_path, "coverage_required: false\n")
         res = _run_in(repo, "test-evidence", "record")
         assert res.returncode == 0, res.stderr
         ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())

@@ -4,10 +4,10 @@ The backlog is living triage markdown managed by the ``/prawduct:backlog`` skill
 Until now the only runtime reader was a textual line-count in :mod:`lib.briefing`;
 every richer use (claim-filtering, stale detection, dedup, stage-aware pick, the
 post-sync probes) needs to *parse* items, not regex the file. This module is that
-substrate — the backlog's analogue of :mod:`lib.views` for the change-log.
+substrate — the backlog's analogue of :mod:`lib.change_log` for the change log.
 
-Design mirrors ``lib/views.py``: a dataclass per item, a pure ``parse_backlog``
-function, and small pure query helpers. No I/O coupling — callers read the file and
+Design mirrors ``lib/change_log.py``: a dataclass per item, a pure
+``parse_backlog`` function, and small pure query helpers. No I/O coupling — callers read the file and
 pass the text in — so the parser is trivially testable and never blocks a session.
 
 Item shape (see ``documentation/backlog-system-requirements.md`` §4.1):

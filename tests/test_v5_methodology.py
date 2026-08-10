@@ -84,10 +84,17 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4807,
-    "skills/critic/review-protocol.md": 3612,
+    "methodology/building.md": 4808,
+    # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
+    # resolves", which archival made false for the PATH form while leaving it true
+    # for the scope form — a reviewer applying the old sentence waves through the
+    # dangling citations that shipped. Paid for by stating only the distinction and
+    # dropping the worked example. The narration lives HERE rather than in the file's
+    # own budget comment: at 1 token of headroom the file cannot afford to carry one,
+    # which is itself the honest reading of how tight this ceiling now is.
+    "skills/critic/review-protocol.md": 3619,
     "skills/critic/goals-1-3.md": 1998,
-    "skills/critic/review-cycle.md": 9592,
+    "skills/critic/review-cycle.md": 9588,
     "skills/critic/framework-checks.md": 1116,
 }
 
@@ -181,9 +188,12 @@ class TestBuildingMethodology:
 
         It sits beside the self-contained-comments rule because they are one
         failure with two carriers: a durable artifact holding something that
-        decays. A build id dangles when the plan is deleted; a count goes stale
-        on the next commit. Both cost a finding, a fix commit, and the round the
-        commit buys.
+        decays. A chunk number goes wrong when the plan is renumbered; a count
+        goes stale on the next commit. Both cost a finding, a fix commit, and
+        the round the commit buys. (The sibling rule used to say build ids
+        dangle because plans are DELETED -- retired 2026-08-08 with the
+        deletion; plans are archived, so the pointer resolves and only the id
+        inside it drifts.)
 
         The pinned content is the TEST, not the prohibition. "Avoid counts"
         would also forbid thresholds, versions and limits, which must stay
@@ -545,6 +555,14 @@ class TestBuildingMethodology:
         # real commit that deleted three test files under a message asserting no
         # test was deleted, and the HEAD-snapshot hazard put a subagent's
         # governing artifact in contradiction with its own prompt.
+        # Retiring the derived views (2026-08-08) had to land two changes here
+        # and cost +1 net against a 3-token headroom: the Status paragraph gained
+        # the tick-AFTER-review ordering, which is newly load-bearing now that
+        # ticking the last box is what disarms this hook's gates, and the
+        # self-contained rule was re-derived onto "an id that CHANGES" since
+        # plans are archived rather than deleted. Paid for by relocating both
+        # rationales to the digests, which are always-injected where this file is
+        # read on demand -- the same funding move the +146 above was taken on.
         tokens = estimate_tokens(self.content)
         assert tokens < 4810, f"building.md is ~{tokens} tokens, should be <4810"
 
@@ -801,6 +819,12 @@ class TestCriticSkill:
         # drafted 10 tokens heavier and trimmed to +1 rather than bumped: the
         # backend condition and the query list live in cache-reads.md, and this
         # file needs only the route and the exit-6 rule. 8 tokens of headroom.
+        # -19 on 2026-08-08: the derived-views bullet went with the views. No
+        # replacement Status check was written HERE on purpose -- "Done when"
+        # puts the Critic before the tick, so an unticked box during a chunk
+        # review is the correct state and a check for it would false-positive on
+        # every correctly-sequenced chunk. The PR reviewer's protocol carries it
+        # instead, where the sequencing is finished.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 

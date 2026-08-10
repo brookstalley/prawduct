@@ -1,7 +1,15 @@
 # ROI batch — launch runbook (post-/clear)
 
+> **HISTORICAL — do not execute.** This work shipped in v2.0.5 and its plan is archived. The
+> document is kept as a record of how the batch was launched, not as a procedure. In particular,
+> **do not follow the `active_build_plan` step below**: it now names a path under
+> `artifacts/archive/`, and a pointer at an archived plan reads to every gate as "no active build
+> plan" — they go quiet rather than fail, which is the exact state this repo's own governance docs
+> warn about. That line is a mechanical consequence of the archive move, left visible rather than
+> silently rewritten, because rewriting it would make a dead runbook look live.
+
 Nine pre-triaged backlog ROI items, built by **two parallel background workflows**, then
-governed and shipped by this (launching) session. Plan: `.prawduct/artifacts/build-plan-roi-batch.md`.
+governed and shipped by this (launching) session. Plan: `.prawduct/artifacts/archive/build-plan-roi-batch.md`.
 
 Items: **CRT-3M8Q, BLD-4Q9X, TST-2R7H, MIG-8C3V** (code lane) · **MET-4K8Z, MET-1T5W,
 MET-8N2C, MET-2D9K, DOC-2W9P** (docs lane).
@@ -19,7 +27,7 @@ git checkout -b fix/roi-batch
 ```
 
 Then point the stop-hook gate at the plan (so the Critic gate enforces correctly this session):
-set `active_build_plan: artifacts/build-plan-roi-batch.md` in `.prawduct/project-state.yaml`
+set `active_build_plan: artifacts/archive/build-plan-roi-batch.md` in `.prawduct/project-state.yaml`
 (the `active_build_plan:` key near the bottom — currently empty).
 
 ## Step 1 — launch BOTH workflows in parallel (one message, two tool calls)

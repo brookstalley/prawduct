@@ -75,64 +75,68 @@ When `develop` is ready to release as `vX.Y.Z`:
 1. **Merge `develop` → `main`.**
 2. **Bump the version** in `plugin/.claude-plugin/plugin.json` `version` **and** `plugin/VERSION` **and** `pyproject.toml`
    (they mirror each other). This is the release trigger — without it, nothing ships.
-3. **Flip the change-log entries** for the shipped work to `status=shipped` — **every
-   unreleased entry, statusless OR legacy `status=merged`**. Entries arrive at release-prep
-   **statusless by design**: a feature PR adds its entry with no `status=`, and that
-   statusless tagged entry IS the release-pending state (no post-merge stamp exists —
-   requiring one forced protected-branch repos into bookkeeping-only PRs). A statusless
-   entry silently skipped here never flips its checkboxes and never reaches release notes
-   (v2.0.14 shipped 8 of 10 entries that way — REL-2N8K).
-
-   > ⚠️ **"Above the boundary" is a search hint, not the set — and neither is any one `scope=`.**
-   > This selection rule is wrong in three ways at once: positional (an entry can merge *below* the
-   > boundary and still be unreleased), scope-narrowed (a release bundle spans several scopes), and
-   > under a **pruned** release it tags withheld work as shipped. It is **deliberately unfixed**
-   > pending the change-log-ledger decision; until then the shipping subset is tagged by hand, once,
-   > across every scope. Do not re-derive the set from this line — the sound per-candidate test, the
-   > scope enumeration command, and the hold all live on Phase 1 step 2 of
-   > `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`. Work from there (REL-7D4X).
-
-   Enumerate ALL tagged entries
-   above the prior `release=vX` boundary; also add the `release=vX.Y.Z` tag (the `scope=`
-   tag normally already exists from the build):
+3. **Tag the shipped entries `release=vX.Y.Z`.** This is the *only* change-log edit the
+   release makes. An entry arrives at release-prep with a `scope=` tag and **no
+   `release=`**, and that absence IS the release-pending state — `check-releasability`
+   enumerates what is pending by looking for it. Adding the tag is what ships the entry:
    ```
-   <!-- prawduct: chunks=01,02,… | release=vX.Y.Z | status=shipped | scope=<plan-scope> -->
+   <!-- prawduct: scope=<plan-scope> | release=vX.Y.Z -->
    ```
-4. **Regenerate derived views:** run `prawduct-hook regen-views`. There is no
-   pre-flight and no dry run — validation happens inside the single run, before any
-   write, so the old two-step `--check` then `regen-views` could not catch anything the
-   one command doesn't. **Read the exit code:** `0` = every view is current; `2` =
-   nothing written, fix the ERROR lines and re-run; `3` = PARTIAL — the named scopes'
-   `## Status` views were suppressed by their own validation errors while every other
-   view was written, so fix those and re-run to complete them. A `3` at release time is
-   a release blocker even though views were written. With `views_enabled`, the build
-   plans' `## Status` checkboxes, release notes, and `scope_rollups` are a *derived view* of
-   the change-log's `status=shipped` entries — they flip to `[x]` only at this release step.
-   Do **not** hand-edit the checkboxes; `regen-views` would revert the edit.
-   **Batched releases (multiple scopes in one version):** a single `regen-views` now regenerates
-   the `## Status` of **every** release-pending plan in one pass — it enumerates each distinct
-   `scope=` in the change-log (`status` ∈ {`shipped`, `merged`}) and resolves it to its build-plan
-   file via that plan's frontmatter `scope:` (REL-4T8N). Validation runs before any write, and
-   its granularity is the **view**, not the run (VWS-6R4T's *no silent partial flips*, preserved
-   by the 2026-08-01 regen-views-is-advice ruling). Two classes:
-   - **Global** — an unrecognized `status=` or conflicting tag lines. Either would leave a view
-     silently half-right rather than absent, so the whole regen aborts: **exit 2, nothing
-     written.**
-   - **Scope-local** — a `chunks=` ID missing from its plan's `## Status` roster, an unreleased
-     scope with no matching plan file, or a duplicate `scope:` across plan files. Each can only
-     make its own scope's `## Status` wrong, so that one view is withheld and every other view is
-     written: **exit 3.** A view is never written half-right either way.
+   Write a real version. Any other value — a placeholder naming the absence, most of all —
+   removes the entry's whole scope from the pending set while reading as deliberate;
+   `release=unreleased` on six entries hid an entire branch from v3.2.8.
 
-   Chunk-ID matching is tolerant (`chunks=1` flips `Chunk 01`; case and `-`/`_`
-   variants match).
+   > ⚠️ **Which entries shipped is the hard part, and it is not answered here.** "Everything
+   > above the prior `release=` boundary" is a search hint, not the set: an entry can merge
+   > *below* the boundary and still be unreleased, a release bundle spans several scopes, and
+   > under a **pruned** release the naive sweep tags withheld work as shipped. Do not re-derive
+   > the set from this document. The sound per-candidate test and the scope enumeration command
+   > live at Phase 1 step 2 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`. Work
+   > from there (REL-7D4X).
 
-   > **The release's consumer-facing narrative lives in two files, not one.**
-   > `plugin/CHANGELOG.md` gets a `## vX.Y.Z` section every release; `README.md`'s
-   > `## Recent Changes` gets refreshed on a **minor or major bump only**. Both are written
-   > at **Phase 1 step 10** of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this
-   > checklist names them rather than restating them, because the README went eight releases
-   > stale precisely while no release document named it at all.
-5. **Publish the GitHub Release — the tag is not the release, and this one step creates both.**
+   Nothing is regenerated from this tag. Build-plan `## Status` checkboxes are hand-authored
+   and were ticked by the sessions that finished each chunk; a plan still showing `[ ]` at
+   release means that chunk was never closed out, which is a question for its author, not
+   something this step fixes.
+
+4. **Archive the plans this release shipped.** On gitflow the closing PR deliberately
+   RETAINS the plan and its `active_build_plan` pointer — the work is not released yet — so
+   the release is where that retention ends, and without this step the live artifacts
+   directory re-accumulates exactly the pile the archive exists to prevent. Step 3 has just
+   made the mechanical answer available, so run the sweep rather than picking by hand:
+   ```
+   prawduct-hook plan-backfill            # preview: names each plan and the release
+   prawduct-hook plan-backfill --apply    # one confirmation covers the whole set
+   ```
+   It archives every live plan whose `scope=` now carries a `release=` tag, stamping each
+   with `lifecycle: completed` and `released_in:`. It is a **no-op for anything still
+   pending**, so running it on a pruned release cannot archive withheld work: an untagged
+   entry is exactly what step 3 left untagged. **Clear `active_build_plan` BEFORE the
+   sweep**, not after: the sweep refuses to archive the plan the pointer names — archiving
+   it would leave the pointer at a moved file, which every gate reads as "no active build
+   plan" and goes quiet rather than failing — so a pointer left set is a plan left live,
+   and the run reports it under the plans it kept rather than the ones it moved.
+   The preview also lists, separately, plans the change log says shipped but which the
+   sweep **refuses** (a name already in the archive, a plan already carrying a terminal
+   state, one it cannot read). Read that list before confirming: those need a person, and
+   they are the ones that otherwise stay live silently. **`--apply` exits 1 when that list
+   is non-empty** — it archived what it could, and the rest is named work that did not
+   move. Read each reason and apply *that* reason's remedy: `archive-plan` is the wrong
+   reflex here, because it asks the same refusal predicate and declines identically (a name
+   collision wants a rename, a plan already carrying a terminal state wants a `git mv` into
+   `archive/`, an undecodable file wants its encoding fixed). A write-time failure prints to
+   stderr rather than into that list, so check both. The preview exits 0 either way, having
+   attempted nothing.
+   A plan whose work was **descoped** rather than shipped has no `release=` tag and is not
+   swept; give it its end of life by hand, naming what replaced it:
+   `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
+5. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
+   `## vX.Y.Z` section every release; `README.md`'s `## Recent Changes` gets refreshed on a
+   **minor or major bump only**. Both are written at **Phase 1 step 10** of
+   `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this checklist names them rather
+   than restating them, because the README went eight releases stale precisely while no release
+   document named it at all.
+6. **Publish the GitHub Release — the tag is not the release, and this one step creates both.**
    A pushed tag lands on `/tags`; the Releases page is a separate surface and it stayed empty for
    every tag this repo had ever pushed, which is what consumers reported as "no tag on GitHub".
 
@@ -149,13 +153,13 @@ When `develop` is ready to release as `vX.Y.Z`:
    one call means no instant exists at which the tag is there without its Release, and it sharpens
    what a red tag-push run means: a tag that arrived by some route other than this step.
 
-6. **Verify what actually shipped:** `git fetch origin --tags` (the tag was created on the remote,
+7. **Verify what actually shipped:** `git fetch origin --tags` (the tag was created on the remote,
    so your clone does not have it yet), then `./plugin/bin/prawduct-hook check-released vX.Y.Z`.
    Exit **0** verified · **1** a check failed · **3** nothing failed but a check could not run.
    **A 3 is not a pass.**
 
-7. **Run the same check in CI:** `gh workflow run verify-release.yml -f tag=vX.Y.Z`, then read the
-   run. It runs step 6's command with a token and goes red on any non-zero, so it is the backstop
+8. **Run the same check in CI:** `gh workflow run verify-release.yml -f tag=vX.Y.Z`, then read the
+   run. It runs step 7's command with a token and goes red on any non-zero, so it is the backstop
    for the release nobody verified by hand. **Dispatch it by hand** — a tag created through the
    Releases API is expected to emit `create` and `release` events, not `push`, so nothing fires
    the workflow on this path. CI verifies; it never publishes.
@@ -165,33 +169,30 @@ When `develop` is ready to release as `vX.Y.Z`:
    > and a push-triggered run appearing alongside it is not an error. Confirm at the next release
    > and correct this — the same note sits at step 21 of
    > `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`, and both should be settled together.
-8. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
+9. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
    gate newly active in the range.
 
-### Change-log `status=` values
+### Two states, carried by the presence or absence of `release=`
 
-Three states are meaningful to the release flow:
+- **Release-pending** — tagged `scope=`, **no `release=`**. The entry merged to `develop`
+  inside its feature PR, and the entry's presence on the integration branch IS the proof of
+  merge: no stamp is needed and none is applied (the old post-merge `stamp-merged` chore
+  commit forced consumers with protected integration branches into a second,
+  bookkeeping-only PR, so it was retired). `check-releasability` enumerates the entry's
+  `scope=` as pending and advises when that scope resolves to no plan file — work shipping
+  with nothing describing it. The plan and the `active_build_plan` pointer are **retained**
+  until the release, because that pairing is what the gate reads; the `/prawduct:pr` merge
+  flow honors this (a feature→`develop` merge retains both — merge-flow step 7), while on a
+  trunk repo the closing PR itself carries the `release=`-tagged entry and the plan
+  retirement (create-flow Step 1d).
+- **Shipped** — `release=vX.Y.Z` present. Step 3 adds it, and adding it is the whole
+  transition.
 
-- **Statusless (tagged)** — the normal **release-pending** state: the entry merged to
-  `develop` inside its feature PR (the entry's presence on the integration branch IS the
-  proof of merge — no stamp needed, and none is applied; the old post-merge
-  `stamp-merged` chore commit forced consumers with protected integration branches into a
-  second, bookkeeping-only PR, so it was retired). Step 3 flips it to `shipped` at
-  release; `regen-views` enumerates its `scope=` as release-pending and fails loudly
-  (exit 3, that scope's `## Status` withheld, other views written) when that scope
-  resolves to no plan file. It does **not** flip checkboxes, so
-  the build plan's `## Status` stays `[ ]` and the plan + `active_build_plan` pointer are
-  retained until the release (see "KEEP the build plan" in `learnings.md`). The
-  `/prawduct:pr` merge flow honors this: a feature→`develop` merge **retains** the plan
-  and pointer (merge-flow step 7), while on a trunk repo the closing PR itself carries the
-  `status=shipped` entry and the plan retirement (create-flow Step 1d).
-- **`status=merged`** — **legacy** synonym of the statusless state, applied by the retired
-  merge-flow stamp step (`prawduct-hook stamp-merged`, now deprecated). Accepted
-  indefinitely — older logs carry it — and treated identically to statusless by step 3 and
-  by the regen diagnostics.
-- **`status=shipped`** — the work is in a tagged release. This is the **only** value that
-  `regen-views` flips to `[x]` (in `## Status`, release notes, and `scope_rollups`).
+**A legacy `status=` tag is inert.** Older logs carry `status=merged` and `status=shipped`
+from the retired derived-views mechanism. Nothing reads them, no value of them means
+anything, and they are neither rewritten nor removed — rewriting 21 repos' history is churn
+with no consumer. Read the `release=` tag, never the `status=` one.
 
 On a repo whose integration branch is **protected** (commits land only by PR), release-prep
 itself rides in a PR — that one release PR is the only bookkeeping vehicle the flow ever
@@ -205,20 +206,22 @@ absence (`release=unreleased`) reads as deliberate while removing that entry's w
 from the release-pending set. `check-releasability` then answers "no release-pending scopes
 — nothing to classify" and the work never ships, which is REL-2N8K's failure with a more
 convincing disguise (six entries hid a whole branch from v3.2.8 that way). A `release=`
-that is not `vMAJOR.MINOR.PATCH` (optionally `-suffix`) is therefore a **global validation
-error** on the same fail-closed terms as a `status=` typo. Release-pending is statusless
-with no `release=` tag; step 3 adds both at once.
+that is not `vMAJOR.MINOR.PATCH` (optionally `-suffix`) is therefore a **validation error**
+that fails closed — an unevaluable release state must never read as "fine". Release-pending
+is the tag's absence; step 3 adds it, and that is the only edit.
 
-Any other `status=` value (including a typo) is a **global validation error** (VWS-6R4T,
-promoting the VWS-3K7P typo-guard): `regen-views` exits 2 with an ERROR line and writes
-nothing — a typo'd `status=` means that entry never contributes its flip, which would leave
-a Status view silently half-right. The three *scope-local* errors — a `chunks=` ID missing
-from its plan's roster, an unreleased scope with no plan file, duplicate scopes — instead
-withhold that one scope's `## Status` and exit 3, having written every other view. Entries
-with multiple
-non-conflicting tag lines are still unioned with a stderr WARNING (VWS-4D8J) — fix the
-format, but the output is correct. Run `regen-views` before tagging; it must exit 0 — a `3`
-means some scope's `## Status` was suppressed and is not release-ready.
+**Where the refusal now happens.** `check-releasability` itself refuses it — exit 1 with a
+`bad-change-log-tag:` line naming the entry and its line number. It used to be checked only by
+the derived-views regenerator, which a release did not run — which is why the v3.2.8 placeholder
+reached a release at all: the guard existed and nothing on the release path called it. Rehoming
+it onto the gate that acts on the field is the durable fix, and it is the reason this validator
+survived the retirement of the five around it. The gate also
+reports two **advisories** that do not change its exit code — a release-pending scope with no
+build-plan file (work shipping with nothing describing it), and two plans declaring one scope.
+
+Entries with multiple non-conflicting tag lines are unioned with a stderr WARNING
+(VWS-4D8J) — fix the format, but the reading is correct. Run `check-releasability` before
+tagging and read its exit code; a `bad-change-log-tag:` refusal is the release blocker.
 
 ## Step 1 mechanics — promoting when `develop` and `main` have diverged
 
@@ -269,7 +272,7 @@ verify-release.yml -f tag=vX.Y.Z` runs the same check in CI with a token and is 
 release nobody verified by hand; it never publishes a Release, by owner ruling. The workflow also
 triggers on a tag push, but that route is not expected to fire for a release cut this way, since the
 tag now comes into being through the Releases API — so treat the dispatch as the run that counts
-(step 7 above carries the unverified half of that claim).
+(step 8 above carries the unverified half of that claim).
 
 **Pruned** — used for **v3.1.1 and v3.1.2**. The candidate is built as the previous release's tree
 plus `git diff <cut-point>..develop` applied with `--3way`, published by ref
@@ -285,20 +288,12 @@ each shipped Python file's imports against its `develop` counterpart.
 The executable procedure is `.prawduct/runbooks/promote-a-pruned-release.md`; the worked example is
 `.prawduct/artifacts/release-plan-v3.1.2-pruned.md`.
 
-Note on **step 2 ordering**: the version bump + change-log/CHANGELOG/release-notes updates +
+Note on **step 2 ordering**: the version bump + change-log/CHANGELOG updates +
 `active_build_plan` clear are done as a **release-prep commit on `develop`** *before* the promotion
 above, not as edits on `main` after the merge. That puts the release bookkeeping inside the promoted
 tree under **either** shape — the whole-develop tree-set inherits it, and the pruned candidate picks
-it up because the release-prep commit is the tip of the ship-set range. Since REL-4T8N, `regen-views` (step 4) resolves each
-scope-tagged plan from the change-log rather than the single `active_build_plan` pointer, so for a
-**scope-tagged** plan you may run `regen-views` either before or after clearing the pointer. The
-pointer's fallback still matters when **no** scope-tagged plan resolves — a single unscoped plan
-(the conventional `artifacts/build-plan.md`, or an off-convention pointer-named plan with no
-frontmatter `scope:`). In that unscoped case `regen-views` finds the plan only via the pointer, so
-run it **before** clearing the pointer (clearing first makes the fallback resolve to a missing
-`artifacts/build-plan.md` and raise). For a patch release with no
-`scope=`/`chunks=` tag (nothing for it to flip), `regen-views` still touches no plan; the
-`release-notes.md` digest self-heals on the next release's regen (or add the entry by hand).
+it up because the release-prep commit is the tip of the ship-set range. Nothing in the step reads a
+build plan, so the `active_build_plan` clear can happen anywhere in the prep commit.
 
 ## `/prawduct:pr` is not the release vehicle
 
@@ -313,9 +308,9 @@ check-cumulative-critic` by hand against the release-prep commit — a non-zero 
 benign**, not a gate to satisfy:
 
 - **Why it fires:** release-prep necessarily touches non-`.md` files (the `version` strings in
-  `plugin/.claude-plugin/plugin.json` + `plugin/VERSION` + `pyproject.toml`, and the `regen-views`-regenerated `scope_rollups` in
-  `project-state.yaml`). The CRT-7M2D coverage gate only excuses a doc-only (`.md`) delta since the
-  recorded review, so these version/derived-view edits read as "code changed since review" → exit 1.
+  `plugin/.claude-plugin/plugin.json` + `plugin/VERSION` + `pyproject.toml`). The CRT-7M2D coverage
+  gate only excuses a doc-only (`.md`) delta since the recorded review, so these version edits read
+  as "code changed since review" → exit 1.
 - **Why it's benign:** the operative pre-release reviews already happened — each feature had a clean
   cumulative Critic at its feature→`develop` merge, and the release-readiness PR reviewer ran on each
   feature PR. The release adds no new behavior, only version bookkeeping.
@@ -328,9 +323,14 @@ benign**, not a gate to satisfy:
   `git diff --stat origin/develop HEAD` for a whole-develop promotion, or the path partition for a
   pruned one.
 
-## Why the checkboxes stay `[ ]` during development
+## The checkboxes are ticked during development, not at release
 
-Because the Status checkboxes derive from `status=shipped` change-log entries, a chunk completed
-on a feature branch stays `[ ]` until the `develop` → `main` release flips its change-log entry
-to `shipped` and `regen-views` runs. During feature-branch development, the build plan's Context
-line and git history are the progress record — not the checkboxes.
+A chunk's box is ticked by the session that finished the chunk, right after its Critic review
+passes. The release does not touch them and no command regenerates them — the boxes, the Context
+line, and git history are one progress record, not a derived view and its source.
+
+This is the reverse of the rule that stood here until 2026-08-08, when Status was regenerated from
+`status=shipped` change-log entries at release. That mechanism is retired: it meant a plan spent
+its entire build reading as untouched, so the boxes were documented as untrustworthy and every
+reader was told to look elsewhere — which is a strange thing to keep a tool for. A plan still
+showing `[ ]` at release now means the chunk was never closed out.

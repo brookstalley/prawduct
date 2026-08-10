@@ -19,7 +19,7 @@ prawduct/
 │   ├── critic/                        # bundled Critic protocol (context:fork skill — review-protocol.md, review-cycle.md, framework-checks.md)
 │   └── pr/                            # bundled PR-reviewer protocol (review-protocol.md)
 ├── bin/prawduct-hook                  # plugin runtime governance (Python; writes the governed repo's own state + the files architecture.md § Direction's reconciled-files norm names)
-├── lib/                               # plugin governance + scaffolding/migration (init_product, migrate_plugin, core, views, critic_mode, advisory, …)
+├── lib/                               # plugin governance + scaffolding/migration (init_product, migrate_plugin, core, change_log, plan_index, critic_mode, advisory, …)
 ├── methodology/                       # Narrative guides (bundled; read via ${CLAUDE_PLUGIN_ROOT})
 │   ├── discovery.md                   # How to explore a problem space
 │   ├── planning.md                    # How to design artifacts and decompose into chunks
@@ -43,7 +43,6 @@ prawduct/
 │   ├── test_critic_mode_inference.py     # /critic mode inference
 │   ├── test_critic_skill_metadata.py     # Critic skill tool restrictions (no test execution)
 │   ├── test_build_plan_resolution.py     # active-build-plan resolver (lib ↔ hook parity)
-│   ├── test_views.py                     # derived views (regen-views)
 │   ├── test_operator_verification.py     # operator-verification queue + gate
 │   ├── test_advisory_store.py, test_advisory_cmd.py  # post-sync advisories
 │   ├── test_audit_learnings.py           # learnings-lifecycle audit
@@ -83,7 +82,9 @@ my-product/
 │   ├── change-log.md                  # change log
 │   ├── artifacts/                     # generated specifications
 │   │   ├── boundary-patterns.md       # contract surfaces between components
-│   │   └── project-preferences.md     # developer preferences (language, testing, style)
+│   │   ├── project-preferences.md     # developer preferences (language, testing, style)
+│   │   └── archive/                   # plans past their end of life (`prawduct-hook archive-plan`) — committed
+│   │                                  #   history, pruned at directory level by every scan on a hot path
 │   ├── .pr-reviews/                   # PR review evidence (gitignored)
 │   ├── .test-evidence.json            # test evidence for the Critic (gitignored)
 │   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file)

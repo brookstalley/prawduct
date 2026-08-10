@@ -26,7 +26,13 @@ not grading a plan:
 ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
 ```
 
-**Read the scope list, not the exit code.** Two outcomes matter:
+**Read the scope list, not the exit code.** Two outcomes matter — plus one that gives you no
+scope list to read at all:
+
+- **`bad-change-log-tag:` on stderr, exit 1, and NO scope list.** The gate refused a tag line before
+  it could compute the pending set, so there is nothing to read here yet. **Fix the tag and re-run**;
+  the reason-code table in Phase 0 step 0 says how. Do not read this as either outcome below — the
+  absence of a scope list is the tell.
 
 - **It names one or more release-pending scopes** — change-log entries tagged
   `scope=` with no `release=`. That set is the unreleased content. **Proceed.**
@@ -162,6 +168,21 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      **Fix or restore `.prawduct/project-state.yaml`**, then re-run. (This is not the cutover case —
      the message says so precisely because the two need different remedies.)
 
+   `bad-change-log-tag:`
+   - A change-log tag line the gate refuses to act on. **This is not a gate defect — fix the tag.**
+     The common case is a `release=` value that is not a version (`release=unreleased`,
+     `release=TBD`): *any* `release=` value marks the entry already-released, so its whole scope
+     drops out of the pending set and the gate would otherwise answer "nothing to cut" while the
+     work never ships. That is not hypothetical — it hid an entire branch from v3.2.8.
+     **Release-pending is statusless with NO `release=` tag: delete the tag.** The other case is one
+     entry carrying several `prawduct:` tag lines that disagree — merge them and resolve the
+     conflict. The message names the entry and its line number.
+
+   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=`
+   - **Advisory, not a stop.** The first says work is shipping with no plan describing it (worth a
+     look, not worth blocking a release); the second says two plans declare one scope, so
+     scope→plan resolution is decided by sort order. Neither changes the exit code.
+
    `no-release-plan:` · `no-change-log:` · `no-version:` · `unreadable-release-plan:` · `no-backlog:`
    - An input the gate needs is missing or unreadable. **The message names the path** — create or
      fix it, then re-run. (`no-version:` means neither `--release` nor `plugin/VERSION` resolved;
@@ -209,7 +230,10 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    the previous release.
 
    **Expected:** one line number and a version, like
-   `745:<!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->`.
+   `404:<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement | release=v3.2.7 | status=shipped -->`.
+   Entries written before 2026-08-08 carry `chunks=` and `status=` from the retired
+   derived-views mechanism. Those keys are **inert** — read `release=`, ignore the rest,
+   and do not rewrite them.
 
    > ⚠️ **The boundary narrows the search. It does NOT define the set — do not
    > flip "everything above it" (REL-7D4X).** An entry lands where it merged,
@@ -279,17 +303,26 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > hold survives and only its bound moved: it now runs until the ledger plan
    > is scheduled and shipped.** Until then, this release tags its shipping
    > subset **by hand across every scope, once**. `REL-7D4X` stays open with it.
+   >
+   > Retiring the derived views (2026-08-08) did **not** close this. It removed
+   > two of the three keys the sweep used to write, so the edit is smaller — but
+   > *which entries shipped* is the question the sweep was always wrong about,
+   > and `release=` is the surviving key that answers it. The hold is unchanged
+   > and the per-candidate code test above is still the sound rule.
 
-3. Append ` | release=vX.Y.Z | status=shipped` to every tag line that passed the
-   step-2 test, keeping the keys already there and the ` | ` separator:
+3. Append ` | release=vX.Y.Z` to every tag line that passed the step-2 test,
+   keeping the keys already there and the ` | ` separator. This is the only
+   change-log edit the release makes:
 
    ```diff
-   - <!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 -->
-   + <!-- prawduct: type=feature | scope=skills-cutover-awareness | chunks=04 | release=v3.2.0 | status=shipped -->
+   - <!-- prawduct: type=feature | scope=skills-cutover-awareness -->
+   + <!-- prawduct: type=feature | scope=skills-cutover-awareness | release=v3.2.0 -->
    ```
 
-   > *Why: a tag line left statusless ships nothing — no checkbox flip, no
-   > release-notes entry — and nothing downstream complains.*
+   > *Why: the tag's ABSENCE is the release-pending state, so an entry left
+   > untagged here stays pending forever and nothing downstream complains. Do
+   > not invent a placeholder for the other direction — any value at all,
+   > `release=unreleased` included, ships the entry's whole scope silently.*
 
 4. Re-run the enumeration and read down to the boundary:
 
@@ -298,46 +331,36 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    ```
 
    **Expected:** every line above the step 2 boundary now carries
-   `| release=vX.Y.Z | status=shipped`.
+   `| release=vX.Y.Z`.
 
-5. Regenerate the derived views. **There is no pre-flight and no dry run** —
-   validation runs inside this one command, before any write, so the separate
-   check step this runbook used to carry could never catch anything this does
-   not. Read the exit code; it is the whole signal:
+5. Validate the tags you just wrote:
 
    ```
-   prawduct-hook regen-views
+   prawduct-hook check-releasability
    ```
 
-   **Expected:** exit 0.
+   **Expected:** no `bad-change-log-tag:` line. That refusal names the entry and
+   its line number, and it is a release blocker — a `release=` value that is not
+   `vMAJOR.MINOR.PATCH` fails closed, because an unevaluable release state must
+   never read as "fine".
 
-   **If it exits 2:** nothing was written. A *global* tag error — an
-   unrecognized `status=`, or conflicting tag lines — is on stderr as `ERROR:`
-   lines. Fix those tags in `.prawduct/change-log.md` and re-run this step.
+   The gate also prints **advisories** that do not change its exit code. Read
+   them: *a release-pending scope with no build-plan file* means work is shipping
+   with nothing documenting it, and *two plans declaring one scope* means the
+   pairing this gate relies on is ambiguous. Neither blocks; both are worth
+   knowing before you tag.
 
-   **If it exits 3:** views **were** written, but at least one scope's
-   `## Status` was withheld because its own tags do not validate (a `chunks=`
-   ID matching no roster entry, an unreleased scope with no plan file, a
-   duplicate `scope:`). stderr names each. **This is a release blocker even
-   though views were written** — fix those tags and re-run until it exits 0.
+6. Confirm each shipping scope's build plan is actually closed out — every
+   `## Status` box ticked for the chunks this release carries.
 
-6. Confirm the views actually landed. Run `git status` and read step 5's stdout.
+   **Expected:** no unticked boxes on a plan whose scope you just tagged.
 
-   **Expected — all of:**
-   - one `Status (artifacts/<plan>.md): N chunk(s) flipped — shipped [...]`
-     line per release-pending plan
-   - `Release notes: write release-notes.md`
-   - a `Scope rollups: ...` line
-   - the corresponding files dirty in `git status`
-
-   **If not:** a `Status (...): up to date` line where you expected a flip means
-   that plan's `chunks=` tags matched nothing → back to step 3. **Check
-   `git status` first**: after a successful step 5 a re-run prints `up to date`
-   for everything because it genuinely is, and reading that as "the tags matched
-   nothing" sends you to re-edit correct tags.
-
-   > *Why: the build-plan checkboxes, release notes and scope rollups are all
-   > derived here — hand-edit them and the next regen reverts you.*
+   **If not:** a `[ ]` at release means that chunk was never closed out by the
+   session that built it. **Do not tick it here.** The boxes are hand-authored
+   state the Stop hook's gates read, only a session with the work in context can
+   say whether a chunk is done, and a release-prep tick is a claim made by
+   whoever happens to be cutting the release. Ask the chunk's author, or ship
+   knowing the plan says the work is incomplete.
 
 7. In `plugin/VERSION`, replace the old number with the new one, without the `v` — `3.2.0`
    for a `v3.2.0` release.
@@ -371,7 +394,59 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
     > and has something to say every time it does.*
 
-11. In `.prawduct/project-state.yaml`, set `active_build_plan:` to `null`.
+11. **Clear the pointer, then archive the plans this release shipped.** On gitflow the
+    closing PR deliberately RETAINS each plan and the `active_build_plan` pointer — the
+    work is not released yet — so this is where that retention ends. Skip it and the live
+    artifacts directory re-accumulates the pile the archive exists to prevent.
+
+    First set `active_build_plan:` to `null` in `.prawduct/project-state.yaml`.
+
+    > *Why this order, and it is the whole reason the step reads this way: the sweep
+    > **refuses** to archive the plan the pointer names — archiving it would leave the
+    > pointer at a moved file, which every gate reads as "no active build plan" and goes
+    > quiet rather than failing. So a pointer left set is a plan left live. Clear first and
+    > it is swept with the rest; clear after and you have to come back for it.*
+
+    Then sweep. Step 3 wrote the `release=` tags, which is the mechanical answer, so this
+    picks nothing by hand:
+
+    ```
+    prawduct-hook plan-backfill            # preview: names each plan and its release
+    prawduct-hook plan-backfill --apply    # one confirmation covers the whole set
+    ```
+
+    **Expected:** exit 0, and every plan whose `scope=` you tagged in step 3 moves into
+    `archive/`, stamped `lifecycle: completed` and `released_in:`. It is a **no-op for
+    anything still pending** — an untagged entry is exactly what step 2 left untagged — so
+    this cannot archive withheld work on a pruned release.
+
+    **If `--apply` exits 1:** it archived what it could and one or more plans the change
+    log says shipped did **not** move. Nothing is half-done, and this is not a failed
+    release step — but do not proceed on the strength of "it printed a list".
+
+    Look in **two** places: plans it declined before trying are on stdout under
+    `NOT moving`; a plan that failed at write time prints to **stderr** as
+    `could not archive <scope>: …` and appears under neither heading.
+
+    > ⚠️ **Do not reach for `archive-plan` here, and do not loop on "re-run until 0".**
+    > `archive-plan` asks the *same* refusal predicate, so it declines every one of these
+    > for the same reason the sweep did. **Each reason names its own remedy, and they are
+    > all different:** *"already exists"* → rename one of the two, then re-run.
+    > *"already records lifecycle …"* → the plan already has an end of life and only needs
+    > moving; `git mv` it into `archive/` and it leaves the live scan. *"cannot read …"* →
+    > fix the file's encoding by hand first; nothing can converge a plan it cannot decode.
+
+    Once each named plan has had its own remedy, re-run and expect exit 0. A preview always
+    exits 0 even when it lists refusals, because it attempted nothing.
+
+    > ⚠️ **Read the `NOT moving` list before `--apply`.** The preview separates plans it
+    > will archive from plans the change log says shipped but which it refuses (a name
+    > already in the archive, a plan already carrying a terminal state, one it cannot
+    > read). Those need a person, and they are the ones that quietly stay live otherwise.
+
+    A plan whose work was **descoped** rather than shipped carries no `release=` tag and is
+    not swept. Give it its end of life by hand, naming what replaced it:
+    `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
 
 12. Commit the prep:
 
@@ -394,8 +469,8 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 
 ### Checkpoint
 
-`origin/develop` now holds the whole release: bumped version, shipped
-change-log tags, regenerated views, cleared plan pointer — and, on a minor or major
+`origin/develop` now holds the whole release: bumped version, `release=`-tagged
+change-log entries, cleared plan pointer — and, on a minor or major
 bump, a `## Recent Changes` section that covers this line. Everything up to here
 is undone by an ordinary commit on `develop`, so this is a safe place to stop
 and come back.

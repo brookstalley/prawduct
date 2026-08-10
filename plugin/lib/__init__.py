@@ -2,7 +2,7 @@
 prawduct plugin lib — the dev-time governance library the runtime hook uses.
 
 The plugin ships only *governance* modules `bin/prawduct-hook` needs —
-critic-mode inference, operator-verification, derived views, the advisory
+critic-mode inference, operator-verification, the advisory
 CLI/store, the learnings-lifecycle audit — plus the plugin-native onboarding
 (`init_product`) and file-sync→plugin migration (`migrate_plugin`). The plugin
 is dev-time governance, not a sync engine (design §2, §7).
@@ -23,12 +23,12 @@ first accessed, then caches it in this module's globals. The payoff is on the
 hook's hot path: `bin/prawduct-hook` is deliberately lib-independent at its top
 level and imports lib lazily inside functions, "robust even on an incomplete
 plugin install." Before this change, `from lib import <anything>` dragged in
-every heavy module (advisory_store, views, operator_verification, …) via eager
+every heavy module (advisory_store, critic_mode, operator_verification, …) via eager
 re-exports (~34ms, and any one heavy module's import error broke them all).
 Now `from lib import gitstate` (or any leaf) loads only that submodule —
 isolated and ~1ms — so session start never couples to unrelated modules.
 
-Submodule access is unaffected: `from lib import views`, `from lib import
+Submodule access is unaffected: `from lib import plan_index`, `from lib import
 gitstate`, and `from lib.advisory_store import run_sync_advisories` all resolve
 natively through the import system (Python imports the submodule when the
 attribute is absent), so they need no entry below.
@@ -43,7 +43,7 @@ from typing import Any
 # asserts every listed name still resolves AND that importing a leaf submodule
 # does not drag in a heavy one.
 _FLATTENED_EXPORTS: dict[str, str] = {
-    # Core utilities and constants (governance dependency — critic_mode/views import it)
+    # Core utilities and constants (governance dependency — critic_mode/change_log import it)
     "BLOCK_BEGIN": "core",
     "BLOCK_END": "core",
     "BUILD_PLAN_POINTER_KEY": "core",
@@ -101,10 +101,19 @@ _FLATTENED_EXPORTS: dict[str, str] = {
     "run_verify_entry": "operator_verification",
 }
 
-# Submodules historically re-exported as attributes (`from . import views`).
-# `from lib import views` resolves natively, but bare `lib.views` attribute
-# access (no prior submodule import) needs this so the behavior is unchanged.
-_SUBMODULE_EXPORTS: frozenset[str] = frozenset({"views", "waivers"})
+# Submodules that must resolve under BARE attribute access (`lib.waivers` with
+# no prior `import lib.waivers`). `from lib import waivers` resolves natively
+# through the import system and needs no entry; this set is only for the
+# attribute form.
+#
+# `views` was a member until the derived-view machinery was retired. Its two
+# successors both take its place rather than one of them: a consumer reaching
+# for `lib.views` was reaching for either the change-log parser or the plan
+# resolver, and they now live in `change_log` and `plan_index` respectively, so
+# leaving one out would make the attribute form work for half of what the
+# retired name covered. That is the whole membership rule — no module is here
+# for historical reasons alone.
+_SUBMODULE_EXPORTS: frozenset[str] = frozenset({"change_log", "plan_index", "waivers"})
 
 
 def __getattr__(name: str) -> Any:

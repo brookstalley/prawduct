@@ -54,7 +54,7 @@ def get_project_dir() -> Path:
     Bootstrap-resilient: this runs before command dispatch, so a broken/absent
     plugin ``lib/`` must not crash here — fall back to the env/cwd behavior and
     let the command that actually needs ``lib`` surface the import error with its
-    own handling (e.g. ``regen-views``)."""
+    own handling (e.g. ``coverage-scaffold``)."""
     try:
         gitstate = _gitstate()
     except ImportError:
@@ -161,6 +161,18 @@ def _coverage_algebra():
     from lib import coverage_algebra  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
 
     return coverage_algebra
+
+
+def _plan_archive():
+    """Lazy-import the build-plan end-of-life operation (lib/plan_archive).
+    Same lazy idiom as _release_readiness() — seeds sys.path so the hook's top
+    level stays lib-free."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import plan_archive  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return plan_archive
 
 
 def _release_readiness():
@@ -643,6 +655,24 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     OVER, so none of it may run on a continuation (SCN-5B8Q) — a new boundary
     statement belongs inside this function, which is the point of extracting it.
     """
+    # Announce a finished-but-unticked chunk BEFORE the handoff is generated, and
+    # to STDOUT. Both halves are deliberate. Before, because the handoff's Resume
+    # line IS the checkbox reading, so an unticked finished chunk makes the thing
+    # being written wrong — and a handoff is how a false progress signal
+    # propagates to the next session as testimony. Stdout, because this boundary's
+    # documented audience split sends continuity facts to the incoming agent
+    # (stdout is what SessionStart shows the model) and housekeeping the operator
+    # must fix to stderr; the remedy here — tick the box — is the agent's. That is
+    # why it differs from the two operator-invoked commands that print it to
+    # stderr. Its own guard, not the handoff's: a diagnostic that failed must not
+    # print "could not generate the session handoff", which would be false.
+    try:
+        notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir)
+        if notice:
+            print(notice)
+    except Exception:  # prawduct:allow prawduct/broad-except -- a diagnostic must never block /clear, and it has no remedy to narrate
+        pass
+
     # Generate handoff BEFORE archiving/deleting session files, then consume the
     # notes it carried. Both live under one guard because both need lib.briefing,
     # which an incomplete install may not have — and neither may ever block /clear.
@@ -3130,9 +3160,10 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
 
     With no ``chunk_id``, resolves the current chunk via
     ``buildplan_refs._current_chunk_id_from_status`` — the first unchecked
-    ``- [ ]`` item normally, and the git-derived chunk on a ``views_enabled``
-    branch, where the checkboxes only flip at release and "first unchecked"
-    would grade Chunk 01 for the whole branch (BLD-7K3Q). If there is no current
+    ``- [ ]`` item. That reading is only as good as the ticking, so this path
+    first reports any chunk whose box is empty while commits on the branch name
+    it: grading Chunk 01 for a whole branch is the BLD-7K3Q failure, and an
+    unticked finished chunk is now the way back into it. If there is no current
     chunk (all complete or no Status section), exits 0 — nothing to verify.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
@@ -3142,11 +3173,11 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # One canonical current-chunk resolution (shared with the stop hook and
         # the Critic helper); handles both the "### Chunk NN:" and
         # "## Chunk N (ID) — Name" Status-item forms.
-        # #327: announce a KNOWN-degraded reading before acting on it. Only on
-        # the inference path — an explicit chunk_id does not consume the
-        # progress reading, so warning there would be noise about something the
-        # caller already overrode.
-        notice = _buildplan_refs().degraded_progress_notice(project_dir)
+        # Announce a chunk that looks finished-but-unticked BEFORE grading on
+        # the checkbox reading. Only on the inference path — an explicit
+        # chunk_id does not consume that reading, so warning there would be
+        # noise about something the caller already overrode.
+        notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir)
         if notice:
             print(notice, file=sys.stderr)
         chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
@@ -3354,219 +3385,42 @@ def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
 
 
 def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
-    """Regenerate derived views from the change-log canonical store.
+    """DEPRECATED and inert — derived views are retired. Prints a notice, writes
+    nothing, exits 0.
 
-    Three views are produced in one pass when `views_enabled: true`:
+    This once regenerated three views from change-log tags: a build plan's
+    ``## Status`` checkboxes, a release-notes file, and a scope-rollup block in
+    ``project-state.yaml``. All three are gone. A build plan's checkboxes are now
+    the plan's own content, ticked by hand when a chunk finishes, so there is
+    nothing to regenerate them FROM and nothing that would be more authoritative
+    if there were.
 
-      1. Build-plan `## Status` block — checkbox flips from `status=shipped` tags
-      2. Release-notes view — `.prawduct/release-notes.md` from `release=` tags
-      3. Scope-rollup view — `scope_rollups:` block in `project-state.yaml`
-         from `scope=` tags
+    **Why it is still callable.** ``api-contract.md``'s deprecation norm requires
+    a retired subcommand to be signalled rather than removed: kept working,
+    announced on stderr, removal deferred to a major. The skew that norm protects
+    against cannot arise between a prawduct skill and this CLI — they ship from
+    one version-keyed cache — but it absolutely can in a hand-written operator
+    script or a copied runbook, and prawduct's own release runbook called this
+    command. Those callers get a notice telling them what to do instead, not a
+    non-zero exit that breaks a pipeline mid-release.
 
-    No-op when `views_enabled: true` is absent (enabled by default in v1.4;
-    sync auto-enables for existing repos and `false` is the explicit opt-out).
-
-    **There is ONE mode: views always regenerate.** Validation still runs before
-    any write, but its granularity is the VIEW, not the run (the
-    regen-views-is-advice ruling, 2026-08-01 — `.prawduct/learnings.md`, with
-    precedence recorded on `architecture.md`'s authority-fails-closed norm and
-    `data-model.md`'s derived-views norm). Two error classes:
-
-    * **Scope-attributed** (`views.ScopedError`, from
-      `diagnose_scope_plan_coverage` and `validate_chunk_roster`) — can only make
-      ONE scope's `## Status` view wrong, so that view is suppressed and every
-      other view is still written. This is the coupling VWS-6R4T introduced: one
-      unresolvable scope used to stop release-notes and scope-rollups too, which
-      have no plan-roster dependency at all. One consumer lost whole
-      release-notes sections to it; the repos carrying the most nested plans
-      were merely LATENT, safe only because `views_enabled` was unset.
-    * **Global** (unrecognized `status=`, conflicting tag lines) — an entry that
-      cannot be interpreted leaves a view silently HALF-RIGHT rather than absent,
-      which is precisely the bug class VWS-6R4T names. Still fail-closed: exit 2,
-      nothing written.
-
-    Mere tag-line multiplicity (union repair is correct) stays a WARNING.
-
-    `--check` is **deprecated**: it prints a notice and performs the full regen.
-    A dry run that validated identically to the real run never caught anything
-    the real run didn't, and because it exits 0 while writes are *pending*, a
-    clean check meant "the tags parse", not "the views are correct" — which is
-    how one consumer lost six whole release-notes sections while the check read
-    clean. Removal defers to the next major, per `api-contract.md`'s
-    deprecation-is-signalled-not-silent norm.
-
-    Exit codes:
-      0 - every view is current (written, created, or already up to date)
-      1 - the plugin lib/ could not be imported (incomplete install) — a
-          state-mutating command must not report success on a broken install
-          (mirrors accept/verify-operator-verification's ImportError handling)
-      2 - nothing written: I/O or schema error (missing change-log or
-          build-plan), a global validation error, or a usage error
-      3 - PARTIAL: scope-attributed errors suppressed their own `## Status`
-          views; every other view WAS written and each suppression is named on
-          stderr. A documented per-command sentinel in the established style of
-          `critic-begin` 2 (scope-widened) and `backlog verify-migration` 4, so
-          neither 1 nor 2 changes meaning.
+    Exit 0 unconditionally, including for unknown flags: a command that does
+    nothing cannot be misused, and a usage error here would be the pipeline break
+    the deprecation exists to avoid. ``--check`` was already deprecated and is
+    accepted silently for the same reason.
     """
-    # `api-contract.md`: "unknown flags rejected with a usage error (exit 2)".
-    # The previous `"--check" in args` membership test silently ignored every
-    # other argument, so a typo'd flag ran a full regen while its author believed
-    # they were dry-running.
-    deprecated_check = False
-    for arg in args or []:
-        if arg == "--check":
-            deprecated_check = True
-            continue
-        print(
-            f"error: regen-views: unknown flag {arg!r} — regen-views takes no "
-            f"arguments (`--check` is deprecated and performs a full regen).",
-            file=sys.stderr,
-        )
-        return 2
-    if deprecated_check:
-        print(
-            "WARNING: `regen-views --check` is deprecated and now performs a FULL "
-            "regeneration — views always regenerate, there is no dry-run mode. "
-            "Drop the flag; it is removed in the next major.",
-            file=sys.stderr,
-        )
-    # Ensure the plugin root is on sys.path so `from lib import views` resolves
-    # both when invoked as a script and when imported via SourceFileLoader in tests.
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
-    except ImportError:
-        # Honest failure: regen-views mutates state (build-plan checkboxes,
-        # release-notes, scope_rollups), so it must not claim success when its
-        # machinery is absent (an incomplete plugin install). Matches
-        # accept/verify-operator-verification — exit 1, not a silent exit 0.
-        print(
-            "error: regen-views could not import the plugin lib/ from "
-            "${CLAUDE_PLUGIN_ROOT}; Status not auto-regenerated.",
-            file=sys.stderr,
-        )
-        return 1
-
-    prawduct_dir = get_prawduct_dir(project_dir)
-    try:
-        enabled, results = views.plan_regen(prawduct_dir)
-    except FileNotFoundError as e:
-        msg = str(e)
-        if "change-log" in msg:
-            print(f"ERROR: {msg}", file=sys.stderr)
-        elif "build-plan" in msg:
-            print(f"ERROR: {msg}", file=sys.stderr)
-        else:
-            print(f"ERROR: {msg}", file=sys.stderr)
-        return 2
-    except OSError as e:
-        print(f"ERROR reading view inputs: {e}", file=sys.stderr)
-        return 2
-
-    if not enabled:
-        print("Views disabled (set views_enabled: true in project-state.yaml).")
-        return 0
-
-    # Validate BEFORE any write (VWS-6R4T, fail closed). The validators are
-    # pure lib functions; severity policy lives here: a tag that would produce
-    # a wrong or silently-partial view is an ERROR that aborts the regen with
-    # nothing written; a tag whose union repair still yields correct output
-    # (mere multiplicity) is a WARNING. The read is load-bearing now — a
-    # change-log read failure fails the command rather than skipping checks.
-    try:
-        change_log_text = (prawduct_dir / "change-log.md").read_text(encoding="utf-8")
-    except OSError as e:
-        print(f"ERROR reading change-log for validation: {e}", file=sys.stderr)
-        return 2
-    parsed_entries = views.parse_change_log(change_log_text)
-    artifacts_dir = prawduct_dir / "artifacts"
-
-    # GLOBAL errors — no single view owns them, and each one would leave a view
-    # silently half-right rather than absent. Fail closed (VWS-6R4T's actual
-    # content, which the advice ruling preserves).
-    global_errors: list[str] = []
-    # Unrecognized status= (typo) — the entry would silently never flip.
-    global_errors.extend(views.validate_status_values(parsed_entries))
-    # A release= that isn't a version — the entry counts as already released, so
-    # its scope drops out of the release-pending set and never ships.
-    global_errors.extend(views.validate_release_values(parsed_entries))
-    # Conflicting scalar values across tag lines — first-wins may be wrong.
-    global_errors.extend(views.validate_tag_conflicts(parsed_entries))
-
-    # SCOPE-ATTRIBUTED errors — each can only make its own scope's `## Status`
-    # view wrong. Unreleased scope with no plan file, duplicate scope across
-    # plan files, and chunks= IDs matching nothing in their plan's roster.
-    scoped_errors: list[views.ScopedError] = []
-    scoped_errors.extend(views.diagnose_scope_plan_coverage(change_log_text, artifacts_dir))
-    scoped_errors.extend(views.validate_chunk_roster(change_log_text, artifacts_dir))
-    # A scope-attributed error that carries no scope has nothing to suppress, so
-    # suppressing "the scope it names" would silently suppress nothing and the
-    # bad input would ride into a written view. Treat it as global — fail closed
-    # is the safe direction when attribution is missing.
-    global_errors.extend(e for e in scoped_errors if e.scope is None)
-    scoped_errors = [e for e in scoped_errors if e.scope is not None]
-
-    for warning in views.validate_tag_line_multiplicity(parsed_entries):
-        print(f"WARNING: {warning}", file=sys.stderr)
-
-    if global_errors:
-        for err in global_errors:
-            print(f"ERROR: {err}", file=sys.stderr)
-        print(
-            f"{len(global_errors)} validation error(s) affecting every view — no "
-            f"views written. Fix the change-log tags and re-run.",
-            file=sys.stderr,
-        )
-        return 2
-
-    suppressed_scopes = {e.scope for e in scoped_errors}
-    for err in scoped_errors:
-        print(f"ERROR: {err}", file=sys.stderr)
-
-    kept = [
-        r
-        for r in results
-        if not (r.name == "status" and r.scope in suppressed_scopes)
-    ]
-    if suppressed_scopes:
-        # Report what was actually withheld, not what was matched. The
-        # no-plan-file case names a scope that HAS no Status view — there was
-        # nothing to suppress, and claiming otherwise tells an operator to go
-        # look for a view that was never going to be written.
-        withheld = sorted(
-            {r.scope for r in results if r.name == "status" and r.scope in suppressed_scopes}
-        )
-        unresolvable = sorted(suppressed_scopes - set(withheld))
-        parts = []
-        if withheld:
-            parts.append(
-                "withheld the ## Status view for "
-                + ", ".join(f"scope={s!r}" for s in withheld)
-            )
-        if unresolvable:
-            parts.append(
-                "no ## Status view exists to write for "
-                + ", ".join(f"scope={s!r}" for s in unresolvable)
-            )
-        print(
-            f"{len(scoped_errors)} scope-local validation error(s) — "
-            + "; ".join(parts)
-            + ". Every other view was regenerated; fix these and re-run to "
-            "complete them.",
-            file=sys.stderr,
-        )
-
-    try:
-        views.apply_regen(prawduct_dir, kept)
-    except OSError as e:
-        print(f"ERROR writing view output: {e}", file=sys.stderr)
-        return 2
-
-    for r in kept:
-        print(r.summary)
-    return 3 if suppressed_scopes else 0
+    # Both parameters are kept so the dispatcher's call site is unchanged — a
+    # deprecated command that still accepts its old invocation is the point.
+    del project_dir, args
+    print(
+        "WARNING: regen-views no longer does anything and will be removed in a "
+        "future major version. A build plan's Status checkboxes are now written "
+        "by hand — tick a box when its chunk is finished, and nothing will "
+        "overwrite it. Release notes are kept in the change log itself. If a "
+        "script or checklist still calls this command, drop the call.",
+        file=sys.stderr,
+    )
+    return 0
 
 
 def cmd_check_operator_verification(project_dir: Path) -> int:
@@ -3754,6 +3608,155 @@ def cmd_check_releasability(project_dir: Path, args: list[str] | None = None) ->
     return _release_readiness().check_releasability(project_dir, release)
 
 
+def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
+    """Give a build plan its end of life: stamp it, then move it into `archive/`.
+
+    A state-mutating writer, so it follows that row of the error-model table:
+    0 written (or an idempotent no-op), 1 refused with nothing written, 2 usage
+    error. It writes on invocation rather than defaulting to a dry run — the
+    dry-run default belongs to the repo-wide lifecycle commands, and this one
+    acts on a single file the operator named. `--dry-run` is available for the
+    preview.
+
+    Thin wrapper; the body lives in ``lib.plan_archive``, reached lazily so the
+    hook's top level stays lib-free."""
+    usage = (
+        "usage: prawduct-hook archive-plan <path> [--state completed|superseded] "
+        "[--date YYYY-MM-DD] [--release vX.Y.Z] [--superseded-by <text>] [--dry-run]"
+    )
+    plan_arg: str | None = None
+    state = "completed"
+    date: str | None = None
+    release: str | None = None
+    superseded_by: str | None = None
+    dry_run = False
+    argv = list(args or [])
+    # Explicit scan for the same reason `check-releasability` uses one: a
+    # swallowed token would archive under a DIFFERENT terminal state than the
+    # operator named, and the state is the whole content of the record. Unknown
+    # tokens are usage errors, never ignored.
+    valued = {
+        "--state": "state",
+        "--date": "date",
+        "--release": "release",
+        "--superseded-by": "superseded_by",
+    }
+    parsed: dict[str, str] = {}
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--dry-run":
+            dry_run = True
+            i += 1
+            continue
+        key = None
+        value = None
+        if token in valued:
+            if i + 1 >= len(argv):
+                print(f"{usage}\n{token} requires an argument", file=sys.stderr)
+                return 2
+            key, value, i = valued[token], argv[i + 1], i + 2
+        else:
+            for flag, name in valued.items():
+                if token.startswith(f"{flag}="):
+                    key, value, i = name, token.split("=", 1)[1], i + 1
+                    break
+        if key is not None:
+            if not value:
+                print(f"{usage}\n{token} requires a non-empty argument", file=sys.stderr)
+                return 2
+            parsed[key] = value
+            continue
+        if token.startswith("-"):
+            print(f"unknown argument: {token}\n{usage}", file=sys.stderr)
+            return 2
+        if plan_arg is not None:
+            print(f"unexpected second path: {token}\n{usage}", file=sys.stderr)
+            return 2
+        plan_arg, i = token, i + 1
+
+    if plan_arg is None:
+        print(f"{usage}\nname the plan to archive", file=sys.stderr)
+        return 2
+    state = parsed.get("state", state)
+    date = parsed.get("date")
+    release = parsed.get("release")
+    superseded_by = parsed.get("superseded_by")
+
+    plan_archive = _plan_archive()
+    if state not in plan_archive.TERMINAL_STATES:
+        # A usage error, not a refusal: the operator mistyped an enumerated
+        # value, which the CLI can tell them without reading a single file.
+        print(
+            f"unknown --state {state!r} (expected one of "
+            f"{', '.join(plan_archive.TERMINAL_STATES)})\n{usage}",
+            file=sys.stderr,
+        )
+        return 2
+
+    if date is None:
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    plan_path = Path(plan_arg)
+    if not plan_path.is_absolute():
+        plan_path = project_dir / plan_path
+    artifacts_dir = project_dir / ".prawduct" / "artifacts"
+
+    if dry_run:
+        # The SAME refusal predicate the real run uses, so the preview cannot
+        # promise an operation the write would refuse. It used to skip the guards
+        # entirely and print `would archive:` at exit 0 for a traversal path the
+        # real run rejects — a preview that overstates permission, which is the
+        # shape where a check reports clean about something that is wrong.
+        refusal = plan_archive.refusal_reason(
+            plan_path, artifacts_dir, state=state, superseded_by=superseded_by
+        )
+        if refusal is not None:
+            print(f"not-archived: {refusal}", file=sys.stderr)
+            return 1
+        destination = plan_archive.archive_destination(plan_path, artifacts_dir)
+        fields = plan_archive.completion_fields(
+            state=state, date=date, release=release, superseded_by=superseded_by
+        )
+        print(f"would archive: {plan_path} -> {destination}")
+        for key, value in fields.items():
+            print(f"  {key}: {value}")
+        return 0
+
+    result = plan_archive.archive_plan(
+        plan_path,
+        artifacts_dir,
+        state=state,
+        date=date,
+        release=release,
+        superseded_by=superseded_by,
+    )
+    if result["status"] != "archived":
+        print(f"not-archived: {result['reason']}", file=sys.stderr)
+        return 1
+
+    print(f"archived: {result['source']} -> {result['destination']}")
+    for key, value in result["fields"].items():
+        print(f"  {key}: {value}")
+
+    # The pointer is state a session owns, so this reports rather than writes —
+    # but it must report, because a pointer left naming a moved file is read by
+    # every gate as "no active build plan", which is the right end state reached
+    # by an accident nobody recorded.
+    pointer = _read_str_yaml_key(
+        project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
+    )
+    if pointer:
+        pointed_at = (project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")).resolve()
+        if pointed_at == Path(result["source"]).resolve():
+            print(
+                "NOTE: active_build_plan still names the plan just archived "
+                f"({pointer}) — clear it, or point it at the plan that is now live.",
+                file=sys.stderr,
+            )
+    return 0
+
+
 def cmd_check_released(project_dir: Path, args: list[str] | None = None) -> int:
     """Post-release verification: did the whole release actually arrive?
 
@@ -3900,12 +3903,13 @@ def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
-    # #327: the preview's Resume line is derived from the chunk reading, so a
-    # known-degraded reading makes the thing being previewed wrong. Emitted here
-    # rather than inside `briefing.py` — the notice belongs to the deliberately
-    # invoked command, and the same renderer also serves the SessionStart hot
-    # path, where this must NOT fire.
-    notice = _buildplan_refs().degraded_progress_notice(project_dir)
+    # The preview's Resume line is the chunk reading, so an unticked finished
+    # chunk makes the thing being previewed wrong — and this preview is what a
+    # session hands the next one, which is precisely how a false progress signal
+    # propagates as testimony. Emitted here rather than inside `briefing.py`: the
+    # notice belongs to the deliberately invoked command, and the same renderer
+    # also serves the SessionStart hot path, where this must NOT fire.
+    notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir)
     if notice:
         print(notice, file=sys.stderr)
 
@@ -4282,7 +4286,7 @@ def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
 
     Exit 0 on dry run or successful ``--apply``; exit 1 if the plugin ``lib/`` is
     not importable (a state-mutating command must not claim success on a broken
-    install — mirrors ``regen-views``)."""
+    install — mirrors ``accept-operator-verification``)."""
     apply = "--apply" in argv
     want_json = "--json" in argv
     lib_root = _plugin_root()
@@ -4468,105 +4472,37 @@ def cmd_print_install_reference() -> int:
 
 
 def cmd_stamp_merged(project_dir: Path) -> int:
-    """Stamp ``status=merged`` onto statusless tagged change-log entries.
+    """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
 
-    DEPRECATED — no flow runs this anymore (single-pr-bookkeeping). A
-    statusless tagged entry is first-class release-pending state: the entry
-    rides in the feature PR, so its presence on the integration branch
-    already proves the work is merged. The post-merge stamp commit this
-    command fed forced consumers with protected integration branches into a
-    second, bookkeeping-only PR. The command stays callable (stamping is
-    harmless, convergent, and idempotent) and announces its deprecation on
-    stderr; removal is deferred to a future major.
+    This stamped ``status=merged`` onto tagged change-log entries. It had already
+    been removed from every flow before being emptied here: a statusless tagged
+    entry IS the release-pending state, since the entry rides in the feature PR
+    and its presence on the integration branch already proves the work merged.
+    The post-merge stamp commit it fed forced consumers with protected
+    integration branches into a second, bookkeeping-only PR.
 
-    Branch guard: stamping asserts "this work is integrated," which is only
-    true ON the integration branch — running on a feature branch would lie.
-    The current branch must equal the configured ``base_branch:`` (or ``main``
-    when the knob is unset). Fails closed when the branch cannot be determined.
+    **Why the body went and not just the flow.** ``status=`` had exactly one
+    reader — the derived-view regeneration — and that reader is retired. A
+    command whose sole effect is writing a key nothing reads is not harmless
+    bookkeeping; it is a channel produced and never consumed, and the next reader
+    of a stamped entry would reasonably infer a consumer exists. Kept callable
+    and signalled, per ``api-contract.md``'s deprecation norm, on the same
+    reasoning as ``regen-views``: removal defers to a major.
 
-    Exit codes:
-      0 - stamped (titles printed) or nothing to stamp
-      1 - refused (not on the integration branch / branch undeterminable) or
-          the plugin lib/ could not be imported (state-mutating command must
-          not claim success on a broken install — mirrors regen-views)
-      2 - I/O error (missing/unreadable change-log)
+    The branch guard went with the body. It existed because stamping asserted
+    "this work is integrated", which is only true on the integration branch —
+    an assertion nothing makes anymore. Exits 0 everywhere, so a checklist that
+    still calls this does not break.
     """
+    del project_dir  # kept so the dispatcher's call site is unchanged
     print(
-        "deprecated: stamp-merged is no longer part of any flow — a "
-        "statusless tagged entry IS the release-pending state, and the "
-        "release checklist flips statusless and merged entries alike. "
-        "Stamping remains harmless; the command may be removed in a future "
-        "major version.",
+        "WARNING: stamp-merged no longer does anything and will be removed in a "
+        "future major version. A tagged change-log entry with no release marker "
+        "is already the record that work is merged and not yet shipped, so there "
+        "is nothing to stamp. If a checklist still calls this command, drop the "
+        "call.",
         file=sys.stderr,
     )
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import views  # noqa: PLC0415 — lazy import keeps top-level cheap
-        from lib.core import read_str_yaml_key  # noqa: PLC0415
-    except ImportError:
-        print(
-            "error: stamp-merged could not import the plugin lib/ from "
-            "${CLAUDE_PLUGIN_ROOT}; change-log not stamped.",
-            file=sys.stderr,
-        )
-        return 1
-
-    prawduct_dir = get_prawduct_dir(project_dir)
-    configured = read_str_yaml_key(
-        prawduct_dir / "project-state.yaml", "base_branch"
-    )
-    integration_branch = configured or "main"
-    # REL-7P3X: project-state.yaml's own comment calls `origin/develop`
-    # "preferred", but this guard compares against the LOCAL branch name from
-    # `git rev-parse --abbrev-ref HEAD` (a deliberate divergence from
-    # `_resolve_base_branch`, on record in the 2026-06-10 ch.02 Critic
-    # findings). Strip a single leading `origin/` so an origin-prefixed config
-    # normalizes to the local branch instead of refusing permanently.
-    if integration_branch.startswith("origin/"):
-        integration_branch = integration_branch[len("origin/"):]
-    proc = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    current = proc.stdout.strip() if proc.returncode == 0 else ""
-    if not current or current == "HEAD":
-        print(
-            "refusing: current branch could not be determined (detached HEAD "
-            "or not a git repo) — stamp-merged runs on the integration branch.",
-            file=sys.stderr,
-        )
-        return 1
-    if current != integration_branch:
-        print(
-            f"refusing: current branch {current!r} is not the integration "
-            f"base {integration_branch!r} — status=merged asserts the work is "
-            f"integrated; run stamp-merged after the merge, on the base branch.",
-            file=sys.stderr,
-        )
-        return 1
-
-    change_log_path = prawduct_dir / "change-log.md"
-    try:
-        content = change_log_path.read_text(encoding="utf-8")
-    except OSError as e:
-        print(f"ERROR reading change-log: {e}", file=sys.stderr)
-        return 2
-    new_content, stamped = views.stamp_merged(content)
-    if not stamped:
-        print("nothing to stamp: no statusless tagged entries.")
-        return 0
-    try:
-        change_log_path.write_text(new_content, encoding="utf-8")
-    except OSError as e:
-        print(f"ERROR writing change-log: {e}", file=sys.stderr)
-        return 2
-    for title in stamped:
-        print(f"stamped status=merged: {title}")
     return 0
 
 
@@ -4783,6 +4719,333 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
     return 1 if status == norm_index_scaffold.STATUS_UNREADABLE else 0
 
 
+def _plan_label(plan_path: Path, prawduct_dir: Path) -> str:
+    """A plan named so the operator can tell it from its siblings.
+
+    ``Path.name`` is ambiguous the moment a repo nests plans as
+    ``plans/<id>/build-plan.md`` — a real consumer layout, where four plans share
+    that one name. These lists are what a single operation-level approval is
+    given for, and an approval over items the reader cannot tell apart is not
+    informed. Degrades to the bare name if the plan somehow sits outside
+    ``artifacts/``, which is the same fallback the shared helper uses.
+    """
+    try:
+        from lib import plan_index  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError:
+        return plan_path.name
+    return plan_index.display_path(plan_path, prawduct_dir / "artifacts")
+
+
+def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
+    """Converge a repo off the retired derived-view model (FL2, FL3, GD2).
+
+    Removes the inert ``views_enabled`` key and ``scope_rollups`` block, labels
+    ``release-notes.md`` as the history it is, and deletes the per-plan notes
+    telling a reader that Status checkboxes are generated and must not be
+    hand-edited — the one piece of residue that still changes behaviour.
+
+    **Preview-by-default with ``--apply``**, because this walks the artifacts
+    tree and decides for itself which files to touch, unlike ``archive-plan``,
+    which writes on invocation because the operator named the file. The binding
+    rule is ``security-model.md`` § Direction; that scope split is descriptive
+    prose in ``api-contract.md`` § Operations.
+
+    **One approval covers the whole act.** The preview names every file and
+    every reason once; there is deliberately no per-file prompt, because
+    ``security-model.md`` § Direction forbids one here in those terms —
+    confirmation fatigue is itself a safety regression.
+
+    Exit codes follow ``artifacts/api-contract.md`` § Error Model, matching every
+    sibling repair. **Dry run is an advisory report:** 0 when it ran — a finding
+    is not a failure — and 1 only when it could not run. **``--apply`` is a
+    state-mutating writer:** 0 when it wrote or was an idempotent no-op, 1 when
+    any edit failed. Unknown flags are 2.
+
+    The GD2 guard (the retired flag reappearing, typically by someone copying an
+    older state file) is reported here rather than given its own non-zero exit:
+    doctor's health check grades it **degraded**, which is doctor's failure
+    vocabulary, and an advisory that exited non-zero on a finding would break the
+    convention every sibling check follows and make ``--apply``'s exit ambiguous.
+    """
+    rejected = _reject_unknown_args("lifecycle-repair", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import lifecycle_repair  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(
+            f"error: lifecycle-repair could not import the plugin lib/ ({exc})",
+            file=sys.stderr,
+        )
+        return 1
+
+    plan = lifecycle_repair.plan_repair(project_dir)
+    if plan["status"] != "ok":
+        print(f"error: {plan['reason']}", file=sys.stderr)
+        return 1
+
+    guard = lifecycle_repair.views_flag_present(project_dir)
+    stale = lifecycle_repair.stale_status_reports(
+        Path(project_dir) / lifecycle_repair.ARTIFACTS_REL
+    )
+    outcome = lifecycle_repair.apply_repair(project_dir, plan) if apply else None
+
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "applied": bool(apply),
+                    "edits": [
+                        {k: str(v) if k == "path" else v for k, v in edit.items()
+                         if k in ("path", "kind", "reason", "detail")}
+                        for edit in plan["edits"]
+                    ],
+                    "unreadable": plan["unreadable"],
+                    "retired_flag": guard,
+                    "plans_to_review": [
+                        {"path": str(r["path"]), "chunks": r["chunks"]} for r in stale
+                    ],
+                    "outcome": outcome,
+                },
+                indent=2,
+            )
+        )
+    else:
+        # Labelled from the MODE asked for, not from whether a write happened —
+        # `--apply` on a converged repo writes nothing, and calling that run
+        # "dry-run" invites the reader to conclude they forgot the flag.
+        print(f"lifecycle-repair ({'apply' if apply else 'dry-run'}):")
+        if not plan["edits"] and not plan["unreadable"]:
+            print("  nothing to change — this repo is already in the target state")
+        elif not plan["edits"]:
+            # Never "already in the target state" here: a file that could not be
+            # read may hold the note that still changes behaviour, and reporting
+            # it as converged is the one wrong answer available.
+            print("  no changes could be worked out, because some files could "
+                  "not be read — this repo has NOT been checked")
+        # Grouped by kind so the reason is stated ONCE per group rather than
+        # repeated per file. On this repo the ungrouped form printed the same
+        # sentence fourteen times, which is how a blast radius meant to be read
+        # becomes a wall that is scrolled past — and the whole value of the
+        # preview is that the operator actually reads it before the one approval.
+        verb = "changed" if apply else "would change"
+        for kind in ("state-key", "freeze-notes", "plan-comment"):
+            group = [edit for edit in plan["edits"] if edit["kind"] == kind]
+            if not group:
+                continue
+            # Every emitted line carries the plain-language reason and names no
+            # internal identifier — `observability-strategy.md` § Direction.
+            print(f"  why: {group[0]['reason']}")
+            for edit in group:
+                print(f"    {verb} {edit['path']}: {edit['detail']}")
+        if plan["edits"] and not apply:
+            print("  Re-run with --apply to make these changes. One confirmation "
+                  "covers all of them; they are ordinary file edits your version "
+                  "control can undo.")
+        if stale:
+            print("  Read these once — their progress checkboxes were generated, so "
+                  "an unfinished chunk may be marked wrongly. Nothing here is "
+                  "changed for you: only someone who knows what actually shipped "
+                  "can say.")
+            for report in stale:
+                print(f"    {_plan_label(report['path'], Path(project_dir) / '.prawduct')}")
+                for chunk in report["chunks"]:
+                    print(f"      - {chunk}")
+        for item in plan["unreadable"]:
+            print(f"  could not read {item['path']} ({item['reason']}) — it was "
+                  f"left alone and not checked", file=sys.stderr)
+        if outcome and outcome["failed"]:
+            for failure in outcome["failed"]:
+                print(f"  could not write {failure['path']}: {failure['reason']}",
+                      file=sys.stderr)
+
+    if apply:
+        return 1 if (outcome and outcome["failed"]) or plan["unreadable"] else 0
+    # "Could not run" is exit 1 for the same reason the sibling repairs use it:
+    # a check that declined must never be indistinguishable from one that passed.
+    return 1 if guard["status"] == "unreadable" or plan["unreadable"] else 0
+
+
+def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
+    """Archive every build plan the change log records as already shipped (FL6).
+
+    The one-time sweep that gives accumulated plans the end of life
+    ``archive-plan`` gives a single one. Shipped is decided mechanically — a
+    plan whose ``scope=`` carries a ``release=`` tag — so no judgment enters,
+    and checkbox state is neither a precondition nor corrected on the way in.
+
+    A product with **no** release tags gets nothing moved: the set is proposed
+    and the operator confirms. That is why an empty sweep on such a repo is
+    reported as "nobody but you can decide", never as a clean result.
+
+    Exit codes match the sibling repairs, with one asymmetry that is the point
+    rather than an accident: a **dry run is 0 whenever it ran**, including when
+    it lists plans it would refuse — it attempted nothing, so it skipped nothing,
+    and a preview that exits 1 on every repo holding one already-archived
+    namesake is noise a release checklist learns to ignore. An ``--apply`` is 0
+    when it archived or had nothing to do, and **1 when any plan it should have
+    moved did not move** — whether pre-filtered into ``blocked`` by the survey's
+    refusal check or hit at write time as ``refused``. Those two were one code
+    path before the preview consulted the refusal predicate, and reading only
+    ``refused`` here is how the signal briefly went missing.
+    """
+    usage = "usage: prawduct-hook plan-backfill [--apply] [--json] [--date YYYY-MM-DD]"
+    apply = False
+    as_json = False
+    date = None
+    # Explicit scan rather than `_reject_unknown_args`, which is flag-only and
+    # would reject `--date`'s value as an unknown positional. Unknown tokens are
+    # still usage errors, never ignored: a swallowed token here would archive
+    # under a date the operator did not give, and the date is the record.
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "--apply":
+            apply, index = True, index + 1
+        elif token == "--json":
+            as_json, index = True, index + 1
+        elif token == "--date":
+            if index + 1 >= len(argv) or not argv[index + 1]:
+                print(f"{usage}\n--date requires a YYYY-MM-DD argument", file=sys.stderr)
+                return 2
+            date, index = argv[index + 1], index + 2
+        elif token.startswith("--date="):
+            date = token.split("=", 1)[1]
+            if not date:
+                print(f"{usage}\n--date requires a YYYY-MM-DD argument", file=sys.stderr)
+                return 2
+            index += 1
+        else:
+            print(f"plan-backfill: unknown argument {token!r}\n{usage}", file=sys.stderr)
+            return 2
+    if date is None:
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import plan_backfill  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(f"error: plan-backfill could not import the plugin lib/ ({exc})",
+              file=sys.stderr)
+        return 1
+
+    prawduct_dir = _gitstate().get_prawduct_dir(project_dir)
+    result = plan_backfill.backfill(prawduct_dir, date=date, apply=apply)
+
+    if as_json:
+        print(json.dumps(
+            {
+                "applied": bool(apply),
+                "has_release_tags": result["has_release_tags"],
+                "shipped": [
+                    {"path": str(i["path"]), "scope": i["scope"], "release": i["release"]}
+                    for i in result["shipped"]
+                ],
+                "blocked": [
+                    {
+                        "path": str(i["path"]),
+                        "scope": i["scope"],
+                        "release": i["release"],
+                        "reason": i["reason"],
+                    }
+                    for i in result["blocked"]
+                ],
+                "kept_live": [
+                    {"path": str(i["path"]), "scope": i["scope"]} for i in result["unshipped"]
+                ],
+                "archived": result["archived"],
+                "refused": result["refused"],
+            },
+            indent=2,
+        ))
+    else:
+        print(f"plan-backfill ({'apply' if apply else 'dry-run'}):")
+        if not result["has_release_tags"]:
+            print("  This product's change log records no releases, so there is no "
+                  "mechanical way to tell which plans are finished. Nothing was "
+                  "moved. Decide which of these are done and file them one at a "
+                  "time:")
+            for item in result["unshipped"]:
+                print(f"    {_plan_label(item['path'], prawduct_dir)}")
+        else:
+            verb = "archived" if apply else "would archive"
+            print(f"  {verb} {len(result['shipped'])} finished plan(s) — each one "
+                  "shipped in a released version, so it records what was built "
+                  "rather than what is being built:")
+            for item in result["shipped"]:
+                label = _plan_label(item["path"], prawduct_dir)
+                print(f"    {label}  (shipped in {item['release']})")
+            print(f"  leaving {len(result['unshipped'])} plan(s) in place — either "
+                  "no release records them yet, newer work on the same name is "
+                  "still in flight, or it is the plan being built right now:")
+            for item in result["unshipped"]:
+                print(f"    {_plan_label(item['path'], prawduct_dir)}")
+            # Named in the SAME breath as the count, not left to stderr: this
+            # list is the difference between what the operator is approving and
+            # what the change log says qualifies, and a preview that reports the
+            # second as the first is the divergence this list exists to close.
+            if result["blocked"]:
+                print(f"  NOT moving {len(result['blocked'])} plan(s) the change "
+                      "log records as shipped — each one qualifies, and each is "
+                      "refused for a reason that needs a person:")
+                for item in result["blocked"]:
+                    label = _plan_label(item["path"], prawduct_dir)
+                    print(f"    {label}  ({item['reason']})")
+            if not apply and result["shipped"]:
+                print("  Re-run with --apply to move them. One confirmation covers "
+                      "all of them; each file is moved, not deleted, and keeps "
+                      "everything it says.")
+        for refusal in result["refused"]:
+            print(f"  could not archive {refusal['scope']}: {refusal['reason']}",
+                  file=sys.stderr)
+
+    # A dangling `active_build_plan` is read by every gate as "no active build
+    # plan" — they stop firing rather than fail, which is the failure class this
+    # work treats as its worst. The sweep now REFUSES to archive the plan the
+    # pointer names, so "this run archived it" is no longer reachable and a
+    # notice for it would be a report nothing can trigger. What is still
+    # reachable, and what actually hurts, is a pointer naming a plan that is not
+    # there for any reason — archived by hand, moved, renamed, or lost to an
+    # interrupted run. That is the condition reported.
+    #
+    # Reports, never writes: the pointer is state a session owns.
+    pointer = _read_str_yaml_key(
+        project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
+    )
+    if pointer:
+        pointed_at = project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")
+        if not pointed_at.is_file():
+            print(
+                f"NOTE: active_build_plan names {pointer}, which is not there. "
+                "Every gate reads that as 'no active build plan' and goes quiet — "
+                "clear it, or point it at the plan that is now live.",
+                file=sys.stderr,
+            )
+
+    # An APPLY that could not move everything the change log says shipped exits
+    # non-zero. `refused` alone used to carry that: before the preview consulted
+    # the refusal predicate, a collision was attempted, failed, landed in
+    # `refused`, and exited 1. Pre-filtering into `blocked` made that same repo
+    # exit 0 — the signal was lost as a side effect of fixing the preview, which
+    # is the shape this whole change exists to stop (a run that skipped work
+    # reporting as one that had none). Restoring it here keeps the contract the
+    # pre-filter was never meant to alter.
+    #
+    # A PREVIEW stays 0: nothing was skipped because nothing was attempted, and
+    # a dry run that exits 1 on every repo holding one already-stamped plan is
+    # noise the release checklist would learn to ignore.
+    incomplete = result["refused"] or (apply and result["blocked"])
+    return 1 if incomplete else 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -4955,8 +5218,10 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
+    "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
+    "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
-    "regen-views [--check, deprecated]|stamp-merged|"
+    "regen-views [deprecated, inert]|stamp-merged [deprecated, inert]|"
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
@@ -4967,6 +5232,8 @@ _USAGE = (
     "update-gitignore|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
     "norm-index-scaffold [--apply] [--json]|"
+    "lifecycle-repair [--apply] [--json]|"
+    "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
     "repo-disable [--local] [--apply] [--json]}"
 )
 
@@ -5379,7 +5646,9 @@ _EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
     "audit-learnings",
     "coverage-scaffold",
     "learnings-obligation",
+    "lifecycle-repair",
     "norm-index-scaffold",
+    "plan-backfill",
 })
 
 # Commands whose first positional argument selects a read or a write.
@@ -5710,6 +5979,8 @@ def main() -> int:
         return cmd_check_change_log_entry(project_dir)
     elif command == "check-releasability":
         return cmd_check_releasability(project_dir, sys.argv[2:])
+    elif command == "archive-plan":
+        return cmd_archive_plan(project_dir, sys.argv[2:])
     elif command == "check-released":
         return cmd_check_released(project_dir, sys.argv[2:])
     elif command == "check-pr-doc-only":
@@ -5755,6 +6026,10 @@ def main() -> int:
         return cmd_norm_index_scaffold(project_dir, sys.argv[2:])
     elif command == "learnings-obligation":
         return cmd_learnings_obligation(project_dir, sys.argv[2:])
+    elif command == "lifecycle-repair":
+        return cmd_lifecycle_repair(project_dir, sys.argv[2:])
+    elif command == "plan-backfill":
+        return cmd_plan_backfill(project_dir, sys.argv[2:])
     elif command == "repo-disable":
         return cmd_repo_disable(project_dir, sys.argv[2:])
     else:

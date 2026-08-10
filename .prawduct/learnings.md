@@ -21,8 +21,11 @@ dropping them.
 
 ---
 
-## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
+## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
+
+## When you retire a MECHANISM, sort its rules into three piles before deleting any — died / rewritten / **INVERTED**. "The tool is gone" reads like a licence to drop the lot, and the lesson usually outlived the tool. The third pile is the one nobody looks for and the only one that leaves a harmful rule standing. Tell: the rule is a prohibition whose reason was the tool — [learnings-detail.md]
+<!-- anchor: the-derived-views-retirement -->
 
 ## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite — and it reads as deliberate, so review cannot see it. `release=unreleased` hid a finished branch from its own release. Ask the CONSUMER, not the reader: run the probe that acts on the field. Guard by BLAST RADIUS — `status=` was guarded, `release=` (drops a whole scope) was not — [learnings-detail.md]
 
@@ -142,7 +145,7 @@ dropping them.
 
 ## When a test injects a fixed clock, EVERY actor in the scenario must share that clock domain — one real-clock participant (a CLI front, an un-injected default) turns fixed-timestamp + TTL into a scheduled deterministic failure at stamp+TTL wall time
 
-## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version) — `regen-views` resolves plans by it and a version there silently skips Status flipping at release
+## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version) — `check-releasability` pairs a change-log `scope=` tag to its plan by exact string, and a version there means the release-pending scope resolves to no plan and reports as work shipping with nothing describing it
 
 ## When serially merging several stale feature branches into develop for one batched release, expect additive bookkeeping conflicts every time — and watch for a duplicate `active_build_plan:` key the auto-merge creates
 
@@ -166,15 +169,13 @@ dropping them.
 
 ## After a clean cumulative (0 blocking/0 warning), NOTEs are advisory — don't chase cosmetic ones; fixing them reopens the coverage gate on judgeable governance files and forces a no-value review pass
 
-## A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
+## Hand-tick a build plan's `## Status` box the moment its chunk's review passes — nothing derives the boxes, so an unticked one claims the work is open and every reader believes it. Review first, tick after: the LAST tick disarms the Stop gates. **Inverted 2026-08-08** ([[the-derived-views-retirement]]) — prose calling the boxes untrustworthy is the old rule still running — [learnings-detail.md]
 
-## New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
+## A change-log entry's BODY must cover every chunk the entry shipped — the body IS the release note, so a deliverable the prose omits ships invisibly. Losing `chunks=` ([[the-derived-views-retirement]]) removed the *illusion* of a check: the tag counted chunks, never read the prose. Tell, now the only one: a multi-chunk narrative with ONE throughline — the last chunk's mechanism goes missing
 
-## A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
+## When a requirement is about a COST, assert the operation that costs — not a proxy that usually accompanies it. Tell: your test names a side effect ("was the file read") where the requirement names work ("was the directory walked"); the two come apart in exactly the implementation the requirement forbids
 
 ## When a feature's logic lives in a `context:fork` skill (no Bash), `lib/` holds the DATA, not the LOGIC — logic helpers nothing imports are dead code
-
-## At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
 
 ## "I'm just codifying their guidance" is not an exemption from the research trigger — and volatility is a separate axis from knowledge-confidence
 
@@ -190,7 +191,7 @@ dropping them.
 
 ## Single-repo plugin+marketplace: the marketplace entry's plugin `source` must be a RELATIVE PATH, not `{source:github,ref}` — and that path is a curated subdirectory, not the repo root
 
-## Release-bound work merged feature→develop under gitflow: KEEP the build plan — it's a live release artifact, not spent
+## Release-bound work merged feature→develop under gitflow: KEEP the build plan and the `active_build_plan` pointer until the release — `check-releasability` pairs each release-pending `scope=` against the plan declaring it, so deleting early turns your own shipped work into "work with no documented parent"
 
 ## A `--plugin-dir` read-block is a dev-flag artifact, not a self-containment bug — pair it with `--add-dir`
 
@@ -239,7 +240,7 @@ dropping them.
 
 ## Build-plan fields use `**Title Case:**`, not snake_case
 
-## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but `regen-views`/`chunks=` still key on the colon Status form
+## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but number your chunks, because the unticked-committed-chunk advisory matches `Chunk <n>` with a NUMERIC id in a commit subject and a plan using `Chunk A` gets permanent silence from it, indistinguishable from every box being right
 
 ## Submodule and same-name function in __init__ shadow each other
 
@@ -263,6 +264,8 @@ dropping them.
 ## A review's "inert / harmless" verdict on a latent bug is conditional on the current call graph
 
 ## Excising a subsystem silently kills the incidental work it happened to host — re-home the orphaned call, and test the positive
+
+## A deletion's SURVIVORS owe new coverage when their behaviour changed — the deleted thing's tests dying correctly is a different question
 
 ## A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
 
@@ -458,4 +461,40 @@ dropping them.
 
 ## Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
 
-## A change-log `scope=` tag comes from the PLAN you are in, never the entry above it — `collect_shipped_chunks` matches it by exact string, so a neighbouring scope flips the wrong plan's checkboxes while yours regenerate to `[ ]`, and the coverage check stays quiet because that scope really does have those chunk ids. Tell: your branch narrows an existing scope
+## A change-log `scope=` tag comes from the PLAN you are in, never the entry above it — `check-releasability` matches it to plan frontmatter by exact string, so a copied neighbouring scope attributes your work to someone else's plan and BOTH readings stay quiet: that scope does resolve to a plan, and yours reports as pending with nothing describing it. Tell: your branch narrows an existing scope
+
+## A pattern narrowed to kill a false positive is validated against the case that PROVOKED it — which is the one case already known — so re-run it over the whole corpus before installing it, counting what it stops matching as well as what it starts. Tell: the narrowing was "verified against this branch's real subjects"
+
+## A new key in a shared namespace needs a collision check against real DATA before it needs a test — grep the live corpus for the name and ask what already means something by it, because a writer that strips "its own" keys silently deletes a homonym and every test you wrote for your own semantics still passes. Tell: you picked the obvious short name for a frontmatter/config/tag key
+
+## An assert-absent guard passes when the instruction is simply DROPPED — silence satisfies it by construction — so any retired-behaviour sweep needs a positive pin on each surface that must now carry the replacement, scoped to the BRANCH rather than the file, because which branch carries it is usually the whole rule. Tell: your only coverage of a governance surface is a negative grep
+
+## A parser shared between a READER and a WRITER inverts its safety on malformed input — "assume it runs to EOF" is tolerant for a reader and "delete to EOF" for a writer, so a writer must claim nothing it cannot delimit. Tell: you reused a reporting scanner inside something that edits files
+
+## When defending a design with "we shouldn't lose the record", check whether the real reason is REVERSIBILITY — they take different fixes and the preservation framing gives the worse one. History earns its keep only by helping going forward; reversibility is answered by a preview plus version control, not by refusing to act. Tell: a second "report but don't touch" bucket appeared to protect prose
+
+## A list an operation-level approval is given for must IDENTIFY its items — consent to four indistinguishable `build-plan.md` lines is not informed consent, and the repo's display helper usually already solves it one module over. Tell: your preview prints bare filenames and every fixture you wrote is flat
+
+## A structural guard that fires on your own justified change is answered, never re-floored — record why the population moved in the assertion's own docstring, and add a companion assertion pinning the part that must NOT move, so the next widening cannot ride the same exemption. Tell: you are about to relax a floor because your change legitimately shrank what it counts
+
+## Export the ANSWER, not the walker — a caller needing "which chunks are unticked" gets a finished list, because exposing the traversal is what lets the next consumer re-derive the question privately and give it a third answer. Tell: you are about to make a private parsing helper public so one new caller can use it
+
+## When fixing a SILENT SWALLOW, find the frame that actually discards — it is usually one layer below where you noticed the symptom, so a report added at your call site is empty by construction and its test passes on a healthy repo. Tell: your new "problems found" list is structurally never populated
+
+## A guard written against the EXAMPLE IN THE FINDING holds for that example and nothing else — restate the threat in your own words before coding it (`is_relative_to` is lexical, so one `..` walks through a containment check that passes the reported case). Tell: your fix quotes the report's scenario back at it
+
+## Read a review's findings for the CLASS, not the list — when four findings share a shape, fixing four instances leaves the fifth to be found by the next round. Tell: several findings could be described by one sentence
+
+## Fix a defect at the LAYER IT WAS REPORTED AT — pinning the extracted predicate proves the predicate, not the wiring, so deleting the CLI branch leaves a lib-level test green while the reported defect returns. Tell: the finding says "at the CLI" and your new test imports the module
+
+## A mechanical "is it finished?" test keyed on a REUSED identifier archives live work — a work-stream name that shipped once makes its next round look finished, so require that no LATER entry for that name is unreleased, and decide by DATE rather than document position (half a 14-repo fleet had out-of-order change logs). Tell: your predicate says "has a release tag somewhere"
+
+## A file's own header comment is not the first key's — bound any comment walk-back at start-of-file, because with no preceding content line there is nothing distinguishing a section banner from the document header, and deleting the latter is content loss in a hand-authored file. Tell: your walk-back is `while start > 0`
+
+## Preserve line endings in any writer that edits a file it did not create (`newline=""` on BOTH the read and the write) — a CRLF repo otherwise gets every line rewritten by an operation that promised to touch two keys, and the real change hides inside a whole-file reformat. Tell: you used `read_text`/`write_text` in a repair
+
+## Moving a value into a NEW channel silently unwires whoever read the old one — when a fix relocates data (a refusal from `refused` into a pre-filtered `blocked`), grep for readers of the old key before committing, because the diff reads as "what this function returns" while it is also changing what the process EXITS with. Tell: your fix adds a return key and removes items from an existing one
+
+## A REMEDY named in a checklist must be tested against the predicate that produced the condition — advice that cannot terminate is obeyed, unlike advice that is merely stale, so "run X then re-run until it exits 0" is wrong whenever X consults the same refusal the sweep just did. Tell: your recovery step names a command rather than sending the reader to the reason's own remedy
+
+## Prove a new regression test DISCRIMINATES by running it against a stash of the pre-fix source — a fixture that fails one step early never reaches the subject and passes either way, which is indistinguishable from a working fix. Tell: you wrote a test for an error path and never saw it red

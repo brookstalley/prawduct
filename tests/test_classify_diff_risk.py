@@ -196,7 +196,7 @@ class TestRiskSurfacesYamlList:
     def test_block_list_with_comments_and_quotes(self, tmp_path):
         state = tmp_path / "project-state.yaml"
         state.write_text(
-            "views_enabled: true\n"
+            "coverage_required: false\n"
             "risk_surfaces:  # governance hot spots\n"
             "  - 'src/core/'\n"
             "  - src/api/contract.py  # the shared shape\n"
