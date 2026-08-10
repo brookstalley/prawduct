@@ -111,9 +111,15 @@ When `develop` is ready to release as `vX.Y.Z`:
    It archives every live plan whose `scope=` now carries a `release=` tag, stamping each
    with `lifecycle: completed` and `released_in:`. It is a **no-op for anything still
    pending**, so running it on a pruned release cannot archive withheld work: an untagged
-   entry is exactly what step 3 left untagged. If it reports that `active_build_plan` names
-   a plan it just archived, clear the pointer — a pointer at a moved file reads to every
-   gate as "no active build plan", which is the right end state reached by accident.
+   entry is exactly what step 3 left untagged. **Clear `active_build_plan` BEFORE the
+   sweep**, not after: the sweep refuses to archive the plan the pointer names — archiving
+   it would leave the pointer at a moved file, which every gate reads as "no active build
+   plan" and goes quiet rather than failing — so a pointer left set is a plan left live,
+   and the run reports it under the plans it kept rather than the ones it moved.
+   The preview also lists, separately, plans the change log says shipped but which the
+   sweep **refuses** (a name already in the archive, a plan already carrying a terminal
+   state, one it cannot read). Read that list before confirming: those need a person, and
+   they are the ones that otherwise stay live silently.
    A plan whose work was **descoped** rather than shipped has no `release=` tag and is not
    swept; give it its end of life by hand, naming what replaced it:
    `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.

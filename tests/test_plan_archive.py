@@ -914,3 +914,77 @@ class TestArchivingPreservesTheFilesBytes:
         )
         raw = (artifacts / "archive" / "build-plan-demo.md").read_bytes()
         assert b"\r\n" not in raw
+
+
+class TestTheWriteAndTheUnlinkAreSeparate:
+    """`archive_plan` must not half-complete while reporting `refused`.
+
+    The write and the `unlink` shared one `except OSError`, so a failure to
+    remove the source left the stamped copy in `archive/` AND the original live
+    — two files, one scope — under a result saying nothing happened. Both this
+    function's docstring ("refuses rather than half-completing") and
+    `api-contract.md`'s exit-1 row ("nothing written") promised otherwise.
+
+    It is reachable, not theoretical: a read-only `artifacts/` reproduces it,
+    and it is the same shape this work keeps meeting — a path that could not
+    finish, answering as one that never started.
+    """
+
+    @staticmethod
+    def _repo(tmp_path: Path) -> tuple[Path, Path]:
+        """`archive/` is created UP FRONT, and that is the whole fixture.
+
+        Writing into `artifacts/archive/` needs write permission on `archive/`;
+        unlinking the plan needs it on `artifacts/`. Pre-creating the archive is
+        what splits the two, so a read-only `artifacts/` fails the unlink with
+        the write already done. Without it `destination.parent.mkdir()` fails
+        first and the test passes on the WRITE path — green while exercising
+        nothing, which is how this test would have shipped believing itself.
+        """
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        (artifacts / plan_index.ARCHIVE_DIR_NAME).mkdir()
+        plan = artifacts / "build-plan-demo.md"
+        plan.write_text(PLAN, encoding="utf-8")
+        return artifacts, plan
+
+    def test_an_unremovable_source_rolls_the_archived_copy_back(self, tmp_path):
+        import os
+        import stat
+
+        if os.geteuid() == 0:
+            pytest.skip("root ignores directory write permissions")
+        artifacts, plan = self._repo(tmp_path)
+        destination = plan_archive.archive_destination(plan, artifacts)
+        os.chmod(artifacts, stat.S_IRUSR | stat.S_IXUSR)  # unlink(plan) will fail
+        try:
+            result = plan_archive.archive_plan(
+                plan, artifacts, state=plan_archive.COMPLETED, date="2026-08-10"
+            )
+        finally:
+            os.chmod(artifacts, 0o755)
+
+        assert result["status"] == "refused"
+        # "Refused" has to mean it: no orphan in the archive, source untouched.
+        assert not destination.exists(), "a stamped copy survived a refused archive"
+        assert plan.is_file()
+        assert plan.read_text(encoding="utf-8") == PLAN
+
+    def test_the_reason_names_the_unlink_not_the_write(self, tmp_path):
+        """The two failures need different fixes — a full disk on the archive
+        side, a permission problem on the source side — so one message for both
+        sends the operator to the wrong one."""
+        import os
+        import stat
+
+        if os.geteuid() == 0:
+            pytest.skip("root ignores directory write permissions")
+        artifacts, plan = self._repo(tmp_path)
+        os.chmod(artifacts, stat.S_IRUSR | stat.S_IXUSR)
+        try:
+            result = plan_archive.archive_plan(
+                plan, artifacts, state=plan_archive.COMPLETED, date="2026-08-10"
+            )
+        finally:
+            os.chmod(artifacts, 0o755)
+        assert "after writing the archived copy" in result["reason"]

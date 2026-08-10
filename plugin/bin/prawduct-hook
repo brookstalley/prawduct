@@ -4941,6 +4941,15 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                     {"path": str(i["path"]), "scope": i["scope"], "release": i["release"]}
                     for i in result["shipped"]
                 ],
+                "blocked": [
+                    {
+                        "path": str(i["path"]),
+                        "scope": i["scope"],
+                        "release": i["release"],
+                        "reason": i["reason"],
+                    }
+                    for i in result["blocked"]
+                ],
                 "kept_live": [
                     {"path": str(i["path"]), "scope": i["scope"]} for i in result["unshipped"]
                 ],
@@ -4971,6 +4980,17 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                   "still in flight, or it is the plan being built right now:")
             for item in result["unshipped"]:
                 print(f"    {_plan_label(item['path'], prawduct_dir)}")
+            # Named in the SAME breath as the count, not left to stderr: this
+            # list is the difference between what the operator is approving and
+            # what the change log says qualifies, and a preview that reports the
+            # second as the first is the divergence this list exists to close.
+            if result["blocked"]:
+                print(f"  NOT moving {len(result['blocked'])} plan(s) the change "
+                      "log records as shipped — each one qualifies, and each is "
+                      "refused for a reason that needs a person:")
+                for item in result["blocked"]:
+                    label = _plan_label(item["path"], prawduct_dir)
+                    print(f"    {label}  ({item['reason']})")
             if not apply and result["shipped"]:
                 print("  Re-run with --apply to move them. One confirmation covers "
                       "all of them; each file is moved, not deleted, and keeps "

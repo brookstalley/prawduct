@@ -163,19 +163,38 @@ class TestBackfill:
         assert second["archived"] == []
         assert second["refused"] == []
 
-    def test_a_name_collision_is_refused_not_fatal(self, tmp_path: Path) -> None:
-        """One collision must not abandon a 73-plan sweep with no report."""
+    def test_a_name_collision_is_reported_not_fatal(self, tmp_path: Path) -> None:
+        """One collision must not abandon a 73-plan sweep with no report.
+
+        **The report now lands in ``blocked``, and it lands on the PREVIEW too.**
+        The survey asks ``plan_archive.refusal_reason`` before counting a plan as
+        one it would archive, so a collision is caught before the attempt rather
+        than at it. That is the point of the change: the previous version
+        promised this plan under *would archive N finished plan(s)* and then
+        refused it at ``--apply``, so the operator approved a set that was never
+        achievable. ``refused`` therefore stays EMPTY here — it now carries only
+        a refusal that appears between the survey and the write, not one the
+        survey could see.
+        """
         prawduct = _make_repo(tmp_path)
         archive = prawduct / "artifacts" / "archive"
         archive.mkdir()
         (archive / "build-plan-alpha.md").write_text("an earlier plan\n", encoding="utf-8")
 
+        preview = plan_backfill.backfill(prawduct, date=DATE, apply=False)
+        assert [item["scope"] for item in preview["shipped"]] == []
+        assert [item["scope"] for item in preview["blocked"]] == ["alpha"]
+        assert "already exists" in preview["blocked"][0]["reason"]
+
         result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
         assert result["archived"] == []
-        assert [item["scope"] for item in result["refused"]] == ["alpha"]
-        # The live plan is still there — refused means nothing happened, not
+        assert [item["scope"] for item in result["blocked"]] == ["alpha"]
+        assert result["refused"] == []
+        # The live plan is still there — reported means nothing happened, not
         # half-happened.
         assert (prawduct / "artifacts" / "build-plan-alpha.md").is_file()
+        # And the archived namesake it collided with is untouched.
+        assert (archive / "build-plan-alpha.md").read_text() == "an earlier plan\n"
 
     def test_no_release_tags_moves_nothing_even_on_apply(self, tmp_path: Path) -> None:
         prawduct = _make_repo(tmp_path, change_log="# Change Log\n\n## 2026-01-01: a thing\n")

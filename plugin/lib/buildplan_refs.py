@@ -70,28 +70,61 @@ from .coverage import _resolve_base_branch
 # binds is the structural test, not the numbers.
 
 
+def status_section_bounds(lines: list[str]) -> "tuple[int, int] | None":
+    """0-based ``[start, end)`` line indices of the ``## Status`` section BODY.
+
+    ``None`` when the plan has no Status section. The section opens after a line
+    that is exactly ``## Status`` and runs to the next ``## `` heading (a ``###``
+    chunk heading does NOT close it) or to end of document.
+
+    **Public, and the single home for the section's BOUNDS** — which is the part
+    two readers genuinely share. :func:`_iter_status_section_lines` wants the
+    body with comments skipped; ``lifecycle_repair`` wants the comment spans
+    themselves, by index, because it deletes them. Neither can reuse the other's
+    body handling, and a private bounds rule copied into both is how BLD-6Q1N's
+    five divergent Status readers started. The two agreed when the second was
+    written; that is the moment to merge them, not evidence that they will stay
+    agreed.
+    """
+    start = None
+    for index, line in enumerate(lines):
+        if line.strip() == "## Status":
+            start = index + 1
+            break
+    if start is None:
+        return None
+    end = start
+    while end < len(lines):
+        stripped = lines[end].strip()
+        if stripped.startswith("## ") and stripped != "## Status":
+            break
+        end += 1
+    return (start, end)
+
+
 def _iter_status_section_lines(content: str):
     """Yield stripped lines inside the build plan's ``## Status`` section.
 
-    The one canonical Status-section walk (BLD-6Q1N): starts after a line that
-    is exactly ``## Status``, stops at the next ``## `` heading, and skips
-    HTML-comment spans (``<!-- ... -->``, multi-line). This skeleton was
-    previously copied in five readers across ``buildplan_refs`` / ``gates`` /
-    ``critic_mode``; all of them now fold onto this generator, which is now the
-    only Status-section reader in the tree — the index-based Status *rewriter*
-    that once stood beside it went with the derived view it regenerated.
+    The one canonical Status-section walk (BLD-6Q1N): bounded by
+    :func:`status_section_bounds`, skipping HTML-comment spans (``<!-- ... -->``,
+    multi-line). This skeleton was previously copied in five readers across
+    ``buildplan_refs`` / ``gates`` / ``critic_mode``; all of them now fold onto
+    this generator, which is now the only Status-section *content* reader in the
+    tree — the index-based Status *rewriter* that once stood beside it went with
+    the derived view it regenerated.
     """
-    in_status = False
+    lines = content.splitlines()
+    bounds = status_section_bounds(lines)
+    if bounds is None:
+        return
     in_comment = False
-    for line in content.splitlines():
+    for line in lines[bounds[0] : bounds[1]]:
         stripped = line.strip()
+        # A repeated `## Status` does not close the section (see the bounds
+        # walk) and is not content either — it was skipped before this function
+        # was bounded elsewhere, and it stays skipped.
         if stripped == "## Status":
-            in_status = True
             continue
-        if not in_status:
-            continue
-        if stripped.startswith("## ") and stripped != "## Status":
-            break
         if "<!--" in stripped:
             in_comment = True
         if "-->" in stripped:

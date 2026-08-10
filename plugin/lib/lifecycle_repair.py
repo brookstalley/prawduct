@@ -104,8 +104,6 @@ FROZEN_BANNER = """# Release Notes — FROZEN ARCHIVE
 
 """
 
-_STATUS_HEADING_RE = re.compile(r"^##\s+Status\s*$")
-_NEXT_H2_RE = re.compile(r"^##\s+\S")
 _COMMENT_OPEN = "<!--"
 _COMMENT_CLOSE = "-->"
 
@@ -223,14 +221,15 @@ def apply_state_removals(text: str, removals: list[dict]) -> str:
 
 
 def _status_section_span(lines: list[str]) -> tuple[int, int] | None:
-    """0-based ``(start, end)`` of the ``## Status`` section body, or None."""
-    for index, line in enumerate(lines):
-        if _STATUS_HEADING_RE.match(line.strip()):
-            end = index + 1
-            while end < len(lines) and not _NEXT_H2_RE.match(lines[end].strip()):
-                end += 1
-            return index + 1, end
-    return None
+    """0-based ``(start, end)`` of the ``## Status`` section body, or None.
+
+    Delegates to :func:`buildplan_refs.status_section_bounds` rather than
+    walking again. This was a second Status-section walker against the one
+    BLD-6Q1N established as canonical after five copies diverged; the two agreed
+    on every plan in the corpus, which is exactly the state the previous five
+    were in before they did not.
+    """
+    return buildplan_refs.status_section_bounds(lines)
 
 
 def _comment_spans(lines: list[str]) -> list[tuple[int, int]]:

@@ -361,7 +361,7 @@ build_state:
   source_root: "."
 
 # Active build plan (optional). Names the in-progress plan file relative to
-# `.prawduct/` so the build-plan tooling (regen-views, infer-critic-mode, the
+# `.prawduct/` so the build-plan tooling (infer-critic-mode, record-lint, the
 # stop-hook gate) finds a scope-named plan instead of the conventional
 # artifacts/build-plan.md. Unset → falls back to artifacts/build-plan.md.
 #
@@ -371,9 +371,9 @@ build_state:
 
 # Repoint this whenever the plan under active build changes. The slot is
 # single-valued and nothing checks that it agrees with the plan actually being
-# built, so a stale pointer sends record-lint, the stop-hook gate, regen-views
-# and Critic mode inference at the wrong plan — silently, since each of them
-# reports confidently about whichever plan it was handed.
+# built, so a stale pointer sends record-lint, the stop-hook gate, the session
+# briefing and Critic mode inference at the wrong plan — silently, since each of
+# them reports confidently about whichever plan it was handed.
 #
 # It has now gone stale twice on consecutive branches: once pointing at
 # record-mechanization while the golive plan was being built (record-lint graded

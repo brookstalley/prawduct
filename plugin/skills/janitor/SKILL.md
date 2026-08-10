@@ -20,7 +20,7 @@ user-invocable: true
 # name the command it is told to run and not run it — and the failure is quiet in
 # the same way: an unarchived plan is indistinguishable from a repo that had none.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query *), Bash(prawduct-hook archive-plan *), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query *), Bash(prawduct-hook archive-plan *), Bash(prawduct-hook review-stats), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.

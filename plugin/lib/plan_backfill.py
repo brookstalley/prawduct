@@ -127,9 +127,22 @@ def _active_plan_path(prawduct_dir: Path) -> Path | None:
 def survey(prawduct_dir: Path) -> dict:
     """What the backfill would do, without doing any of it.
 
-    Returns ``{has_release_tags, shipped, unshipped}`` where ``shipped`` is
-    ``[{path, scope, release}]`` — the plans a run would archive — and
-    ``unshipped`` is ``[{path, scope}]``, the live plans it would leave alone.
+    Returns ``{has_release_tags, shipped, blocked, unshipped}``. ``shipped`` is
+    ``[{path, scope, release}]`` — the plans a run would actually archive.
+    ``blocked`` is ``[{path, scope, release, reason}]``: plans the change log
+    says shipped but which :func:`plan_archive.refusal_reason` would refuse.
+    ``unshipped`` is ``[{path, scope}]``, the live plans it leaves alone.
+
+    **The preview asks the refusal predicate, because a preview that overstates
+    permission is worse than none.** Without this the survey answered "would
+    archive N finished plan(s)" from the change log alone, so a plan already
+    carrying a terminal state, one colliding with an archived namesake, or one
+    that cannot be read counted toward N and then refused at ``--apply`` —
+    the operator having approved a set on the strength of a number that was
+    never achievable. That divergence was already found and closed one layer
+    down, in ``archive-plan --dry-run``; this is the same defect one frame up,
+    and the fix is the same one: there is a single predicate and both the
+    preview and the write ask it.
 
     ``has_release_tags`` is the fork the operator needs: ``False`` means this
     product does not tag releases, so the mechanical test cannot answer and
@@ -161,16 +174,25 @@ def survey(prawduct_dir: Path) -> dict:
     active = _active_plan_path(prawduct_dir)
 
     shipped: list[dict] = []
+    blocked: list[dict] = []
     unshipped: list[dict] = []
     for plan_path, scope in plan_index.iter_scoped_plan_candidates(artifacts_dir):
         release = shipped_map.get(scope)
-        if release and plan_path.resolve() != active:
-            shipped.append({"path": plan_path, "scope": scope, "release": release})
-        else:
+        if not release or plan_path.resolve() == active:
             unshipped.append({"path": plan_path, "scope": scope})
+            continue
+        candidate = {"path": plan_path, "scope": scope, "release": release}
+        reason = plan_archive.refusal_reason(
+            plan_path, artifacts_dir, state=plan_archive.COMPLETED
+        )
+        if reason is None:
+            shipped.append(candidate)
+        else:
+            blocked.append({**candidate, "reason": reason})
     return {
         "has_release_tags": versions,
         "shipped": shipped,
+        "blocked": blocked,
         "unshipped": unshipped,
     }
 

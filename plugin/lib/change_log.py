@@ -61,8 +61,10 @@ class ChangeLogEntry:
     # format is exactly one; >1 means the tags above are a union and
     # `validate_change_log_tags` will warn.
     tag_line_count: int = 0
-    # Scalar keys that appeared on a later tag line with a DIFFERENT value than
-    # an earlier one — first-wins, the losing value recorded here for the error.
+    # Keys set twice to DIFFERENT values — first-wins, the losing value recorded
+    # here for the error. Both halves of that shape land here: a repeat WITHIN
+    # one tag line (`parse_tag_line_with_conflicts`) and a repeat ACROSS two
+    # (`_merge_tag_line`). They were not always both caught; see the former.
     tag_conflicts: list[str] = field(default_factory=list)
 
     # A `shipped_chunks` property stood here, composing `status=shipped` with
@@ -80,8 +82,45 @@ def parse_tag_line(tag_body: str) -> dict[str, object]:
     Pipe-delimited ``key=value`` pairs. ``chunks`` is split on commas into a
     list; other keys are kept as plain strings. Unknown keys are preserved as-is
     so a future reader can pick them up without a schema bump.
+
+    Kept as the dict-returning form because eight call sites want only the
+    pairs. :func:`parse_tag_line_with_conflicts` is the same parse with the
+    duplicate report, and the parser uses that one.
+    """
+    tags, _conflicts = parse_tag_line_with_conflicts(tag_body)
+    return tags
+
+
+def parse_tag_line_with_conflicts(
+    tag_body: str,
+) -> tuple[dict[str, object], list[str]]:
+    """:func:`parse_tag_line` plus the keys this line set more than once.
+
+    **A key repeated WITHIN one tag line is the same defect as one repeated
+    ACROSS two, and it was the unguarded half.** Cross-line duplicates have been
+    caught since :func:`_merge_tag_line` existed; a same-line repeat was assigned
+    last-wins into a bare dict with nothing recorded, so
+    ``release=unreleased | release=v3.2.8`` parsed clean and
+    ``scope=alpha | scope=beta`` silently re-attributed an entry to a scope its
+    author never named. That is precisely the shape the single validator is
+    required to cover — malformed value, duplicate key, duplicate tag line — and
+    the incident behind it (``release=unreleased`` on six entries hiding a whole
+    branch from a release) is a duplicate-key failure, not a malformed-value one.
+
+    **First-wins, matching :func:`_merge_tag_line`.** The two halves of "this key
+    was set twice" now resolve the same way, so the resolved value does not
+    depend on which side of a line break the repeat fell on. The resolution is
+    close to moot in practice — a recorded conflict is a hard error from
+    :func:`validate_change_log_tags`, so nothing downstream consumes the value —
+    but a parser that resolves one way here and the other way there is the
+    inconsistency that makes a repair unpredictable.
+
+    ``chunks`` is a retired key and gets no union treatment: a same-line repeat
+    of it is reported like any other rather than concatenated, because unlike the
+    cross-line case there is no historical corpus of split rosters to preserve.
     """
     tags: dict[str, object] = {}
+    conflicts: list[str] = []
     for part in tag_body.split("|"):
         part = part.strip()
         if "=" not in part:
@@ -91,11 +130,15 @@ def parse_tag_line(tag_body: str) -> dict[str, object]:
         v = v.strip()
         if not k:
             continue
-        if k == "chunks":
-            tags[k] = [c.strip() for c in v.split(",") if c.strip()]
-        else:
-            tags[k] = v
-    return tags
+        value: object = (
+            [c.strip() for c in v.split(",") if c.strip()] if k == "chunks" else v
+        )
+        if k in tags:
+            if tags[k] != value:
+                conflicts.append(f"{k}: kept {tags[k]!r}, ignored {value!r}")
+            continue  # first-wins, as across lines
+        tags[k] = value
+    return tags, conflicts
 
 
 def _merge_tag_line(entry: ChangeLogEntry, new_tags: dict[str, object]) -> None:
@@ -153,7 +196,10 @@ def parse_change_log(content: str) -> list[ChangeLogEntry]:
             if not tag_match:
                 # First non-blank non-tag line ends the tag block.
                 break
-            new_tags = parse_tag_line(tag_match.group(1))
+            new_tags, same_line_conflicts = parse_tag_line_with_conflicts(
+                tag_match.group(1)
+            )
+            entry.tag_conflicts.extend(same_line_conflicts)
             entry.tag_line_count += 1
             if entry.tag_line_count == 1:
                 entry.tags = new_tags
@@ -225,12 +271,20 @@ def validate_change_log_tags(
             )
 
         if entry.tag_conflicts:
+            # The remedy differs by shape, so the message must not assume the
+            # cross-line one: a single tag line setting `scope=` twice has
+            # nothing to merge, and telling its author to merge tag lines sends
+            # them looking for a second line that is not there.
+            span = (
+                f"across its {entry.tag_line_count} prawduct tag lines"
+                if entry.tag_line_count > 1
+                else "on its prawduct tag line"
+            )
             errors.append(
-                f"{where} has conflicting values across its "
-                f"{entry.tag_line_count} prawduct tag lines (kept first-wins: "
-                + "; ".join(entry.tag_conflicts)
-                + ") — the wrong value may have won. Merge the tag lines and "
-                f"resolve the conflict."
+                f"{where} sets the same key twice to different values {span} "
+                f"(kept first-wins: " + "; ".join(entry.tag_conflicts) + ") — the "
+                f"wrong value may have won. Resolve the conflict so each key is "
+                f"set exactly once."
             )
 
         if entry.tag_line_count > 1:

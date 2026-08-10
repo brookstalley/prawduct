@@ -408,13 +408,44 @@ def archive_plan(
     )
     if crlf:
         stamped = stamped.replace("\n", "\r\n")
+    # The write and the unlink are SEPARATE, and the unlink failure rolls the
+    # write back. Sharing one `except OSError` made a failed unlink report
+    # `refused` — "nothing written", per this function's own docstring and
+    # `api-contract.md`'s exit-1 row — while the stamped copy sat in `archive/`
+    # and the original sat live: two files, one scope, and a report saying the
+    # operation did not happen. It is the reachable case, not a theoretical one
+    # (a read-only `artifacts/` reproduces it), and it is exactly the shape this
+    # branch keeps finding: a path that could not finish, answering as one that
+    # never started.
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
         with destination.open("w", encoding="utf-8", newline="") as handle:
             handle.write(stamped)
-        plan_path.unlink()
     except OSError as exc:
         return {"status": "refused", "reason": f"cannot archive {plan_path}: {exc}"}
+
+    try:
+        plan_path.unlink()
+    except OSError as exc:
+        # Undo the half. A leftover stamped copy is worse than no archive at
+        # all: it reads as a completed archival to every path-based check while
+        # the live plan it duplicates is still the one the gates resolve.
+        try:
+            destination.unlink()
+            rollback = ""
+        except OSError as cleanup_exc:  # both halves failed — say so, guess nothing
+            rollback = (
+                f" WARNING: the stamped copy at {destination} is orphaned and could "
+                f"not be cleaned up either ({cleanup_exc}) — clear it by hand. The "
+                f"live plan is intact."
+            )
+        return {
+            "status": "refused",
+            "reason": (
+                f"cannot remove {plan_path} after writing the archived copy: {exc}."
+                f"{rollback}"
+            ),
+        }
 
     return {
         "status": "archived",

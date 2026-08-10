@@ -394,7 +394,40 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
     > and has something to say every time it does.*
 
-11. In `.prawduct/project-state.yaml`, set `active_build_plan:` to `null`.
+11. **Clear the pointer, then archive the plans this release shipped.** On gitflow the
+    closing PR deliberately RETAINS each plan and the `active_build_plan` pointer — the
+    work is not released yet — so this is where that retention ends. Skip it and the live
+    artifacts directory re-accumulates the pile the archive exists to prevent.
+
+    First set `active_build_plan:` to `null` in `.prawduct/project-state.yaml`.
+
+    > *Why this order, and it is the whole reason the step reads this way: the sweep
+    > **refuses** to archive the plan the pointer names — archiving it would leave the
+    > pointer at a moved file, which every gate reads as "no active build plan" and goes
+    > quiet rather than failing. So a pointer left set is a plan left live. Clear first and
+    > it is swept with the rest; clear after and you have to come back for it.*
+
+    Then sweep. Step 3 wrote the `release=` tags, which is the mechanical answer, so this
+    picks nothing by hand:
+
+    ```
+    prawduct-hook plan-backfill            # preview: names each plan and its release
+    prawduct-hook plan-backfill --apply    # one confirmation covers the whole set
+    ```
+
+    **Expected:** every plan whose `scope=` you tagged in step 3 moves into `archive/`,
+    stamped `lifecycle: completed` and `released_in:`. It is a **no-op for anything still
+    pending** — an untagged entry is exactly what step 2 left untagged — so this cannot
+    archive withheld work on a pruned release.
+
+    > ⚠️ **Read the `NOT moving` list before `--apply`.** The preview separates plans it
+    > will archive from plans the change log says shipped but which it refuses (a name
+    > already in the archive, a plan already carrying a terminal state, one it cannot
+    > read). Those need a person, and they are the ones that quietly stay live otherwise.
+
+    A plan whose work was **descoped** rather than shipped carries no `release=` tag and is
+    not swept. Give it its end of life by hand, naming what replaced it:
+    `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
 
 12. Commit the prep:
 

@@ -481,3 +481,81 @@ class TestAgainstTheRealChangeLog:
                 mapping[scope].read_text(encoding="utf-8")
             )
             assert present and declared == scope, (scope, mapping[scope])
+
+
+class TestSameLineDuplicateKeys:
+    """A key repeated WITHIN one tag line — the unguarded half of "set twice".
+
+    Cross-line duplicates have been caught since `_merge_tag_line` existed. The
+    same-line repeat was assigned last-wins into a bare dict with nothing
+    recorded, so it reached `validate_change_log_tags` as a clean entry. CL6
+    names duplicate-key as one of the three shapes the single validator must
+    cover, and the incident behind that requirement — `release=unreleased` on
+    six entries hiding a whole branch from a release — is a duplicate-key
+    failure, so the gap sat directly under the requirement that closed it.
+    """
+
+    @staticmethod
+    def _entry(tag_body: str):
+        text = f"## 2026-08-10: a thing\n\n<!-- prawduct: {tag_body} -->\n\nbody\n"
+        return change_log.parse_change_log(text)
+
+    def test_a_repeated_scope_is_an_error_not_a_silent_reattribution(self):
+        entries = self._entry("type=fix | scope=alpha | scope=beta")
+        errors, _warnings = change_log.validate_change_log_tags(entries)
+        assert errors, "scope= set twice on one line passed validation"
+        assert "same key twice" in errors[0]
+        # First-wins, matching the cross-line rule, so the resolution does not
+        # depend on which side of a line break the repeat fell on.
+        assert entries[0].tags["scope"] == "alpha"
+
+    def test_a_repeated_release_cannot_launder_a_bad_value(self):
+        """The exact CL6 shape: a placeholder followed by a real version.
+
+        Under last-wins this parsed to `v3.2.8` and passed every check, so the
+        malformed value that drops a scope out of the release-pending set was
+        invisible. Both errors now fire — the duplicate and the placeholder.
+        """
+        entries = self._entry("scope=a | release=unreleased | release=v3.2.8")
+        errors, _warnings = change_log.validate_change_log_tags(entries)
+        assert len(errors) == 2, errors
+        assert any("same key twice" in e for e in errors)
+        assert any("not a version" in e for e in errors)
+
+    def test_an_identical_repeat_is_tolerated(self):
+        """Set twice to the SAME value is noise, not a conflict — nothing was
+        lost and no reading is ambiguous. Matches `_merge_tag_line`, which
+        records a conflict only on `existing != v`."""
+        entries = self._entry("type=fix | scope=a | scope=a")
+        errors, warnings = change_log.validate_change_log_tags(entries)
+        assert errors == [] and warnings == []
+        assert entries[0].tags["scope"] == "a"
+
+    def test_the_message_does_not_tell_a_one_line_author_to_merge_lines(self):
+        """The remedy differs by shape. A single tag line has nothing to merge,
+        and the cross-line wording sends its author looking for a second line
+        that is not there."""
+        one_line = self._entry("scope=a | scope=b")
+        errors, _ = change_log.validate_change_log_tags(one_line)
+        assert "on its prawduct tag line" in errors[0]
+        assert "tag lines" not in errors[0].split("(kept")[0].replace(
+            "prawduct tag line", ""
+        )
+
+        two_lines = change_log.parse_change_log(
+            "## 2026-08-10: t\n\n<!-- prawduct: scope=a -->\n"
+            "<!-- prawduct: scope=b -->\n\nbody\n"
+        )
+        errors, _ = change_log.validate_change_log_tags(two_lines)
+        assert "across its 2 prawduct tag lines" in errors[0]
+
+    def test_the_real_change_log_has_no_same_line_duplicates(self):
+        """Measured before shipping the error: zero across all 21 checkouts, so
+        this turns nothing red that was green. Pinned here because the fleet is
+        the thing the fixtures cannot represent."""
+        log = Path(__file__).resolve().parents[1] / ".prawduct" / "change-log.md"
+        if not log.is_file():
+            pytest.skip("no .prawduct/change-log.md in this checkout")
+        entries = change_log.parse_change_log(log.read_text(encoding="utf-8"))
+        offenders = [e.title for e in entries if e.tag_conflicts]
+        assert offenders == [], offenders

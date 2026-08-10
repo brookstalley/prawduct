@@ -378,3 +378,51 @@ class TestUncommittedCodeFilesPorcelainEdges:
         _write(tmp_path, "src/app.py", "# code\n")
         files = critic_mode._get_uncommitted_code_files(tmp_path)
         assert files == {"src/app.py"}
+
+
+class TestStatusSectionBoundsStaySingular:
+    """The Status-section BOUNDS rule has one home (BLD-6Q1N, extended).
+
+    `lifecycle_repair` grew a second walker with its own heading regex and its
+    own next-heading regex. It agreed with the canonical one on every plan in
+    the corpus — which is the state the previous FIVE copies were in before they
+    diverged, so agreement today is the reason to merge them, not evidence that
+    merging is unnecessary. The bounds are what the two readers genuinely share:
+    one wants the body with comments skipped, the other wants the comment spans
+    by index, and neither can reuse the other's body handling.
+    """
+
+    def test_lifecycle_repair_declares_no_status_heading_pattern_of_its_own(self):
+        source = (LIB_DIR / "lifecycle_repair.py").read_text(encoding="utf-8")
+        for anchor in ("_STATUS_HEADING_RE", "_NEXT_H2_RE"):
+            assert anchor not in source, (
+                f"lifecycle_repair defines {anchor} again — the Status-section "
+                "bounds rule belongs to buildplan_refs.status_section_bounds"
+            )
+
+    def test_lifecycle_repair_delegates_to_the_canonical_bounds(self):
+        from lib import lifecycle_repair
+
+        assert (
+            lifecycle_repair._status_section_span.__module__
+            == "lib.lifecycle_repair"
+        )
+        plan = (
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: a\n- [ ] Chunk 02: b\n\n"
+            "## Chunks\n\n### Chunk 01: a\n"
+        )
+        lines = plan.splitlines()
+        assert lifecycle_repair._status_section_span(
+            lines
+        ) == buildplan_refs.status_section_bounds(lines)
+
+    def test_a_h3_chunk_heading_does_not_close_the_status_section(self):
+        """Both readers relied on this and neither stated it: `### Chunk 01` is
+        not a `## ` heading, so a plan whose Status block is followed by chunk
+        H3s keeps its whole roster."""
+        lines = "## Status\n- [ ] a\n### Chunk 01: x\n- [ ] b\n## Next\n- [ ] c".splitlines()
+        start, end = buildplan_refs.status_section_bounds(lines)
+        assert lines[start:end] == ["- [ ] a", "### Chunk 01: x", "- [ ] b"]
+
+    def test_no_status_section_reads_as_absent_not_as_the_whole_document(self):
+        assert buildplan_refs.status_section_bounds("# Plan\n- [ ] x".splitlines()) is None
