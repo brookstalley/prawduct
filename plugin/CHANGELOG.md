@@ -15,8 +15,17 @@ release process keeps the two in sync (one headline per shipped release).
 <!-- RELEASE-PREP: this section is a draft written on `feature/governance-artifact-lifecycle`,
      NOT a shipped release. The version strings in `plugin/VERSION`,
      `plugin/.claude-plugin/plugin.json` and `pyproject.toml` still say 3.2.7 on purpose — the
-     bump IS the release trigger (`documentation/release-process.md` Phase 1 step 2), and it
-     belongs to the `release: prep` commit, not to a feature branch.
+     bump IS the release trigger (`documentation/release-process.md`, release-checklist step 2),
+     and it belongs to the `release: prep` commit, not to a feature branch.
+
+     FIRST, RESTORE THE HEADING. It must read exactly `## v3.2.8` (or whatever version this
+     becomes) with NO suffix, because release-checklist step 6 extracts the notes with an
+     ANCHORED match — `awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f'` — so the ` — DRAFT…`
+     suffix above matches nothing and `gh release create --notes-file` would publish EMPTY
+     release notes. Nothing catches a forgotten suffix: `tests/test_plugin_version_banner.py`
+     parses with `^##\s+v(\d+\.\d+\.\d+)\b`, and `\b` matches the suffixed form too, so the
+     suite stays green either way. The suffix is deliberate — it is what stops this draft
+     reading as shipped — but it is load-bearing in the other direction at release time.
 
      BEFORE PUBLISHING, the release must reconcile this headline against everything the cut
      actually carries. At the time this draft was written `check-releasability` reported THREE
