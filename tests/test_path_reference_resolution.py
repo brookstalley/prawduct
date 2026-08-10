@@ -96,6 +96,18 @@ _RECORD_FILES = frozenset(
     }
 )
 _RECORD_PREFIXES = (".prawduct/archive/",)
+# An archived build plan is a record of what was built, and its instructions were
+# true when written — `tools/product-hook` really was the entry point before the
+# plugin distribution. Grading one as a live instruction file demands editing
+# history to keep a suite green, which is the opposite of what an archive is for.
+#
+# Matched as an `archive/` path COMPONENT rather than a fixed prefix, because a
+# plan is archived *beside itself*: a repo organizing plans as
+# `artifacts/plans/<id>/build-plan.md` archives to `artifacts/plans/<id>/archive/`,
+# and a top-level-only rule would exempt the flat layout while grading the nested
+# one. That is the same "any depth" rule the plan scanners prune on, and the two
+# must agree or a plan can be invisible to one and live to the other.
+_ARCHIVE_COMPONENT = re.compile(r"^\.prawduct/(?:.*/)?archive/")
 # ``v1``/``v2``-named artifacts are the PRE-V3 plan convention, retired when plans became
 # ``build-plan-<scope>.md``. The naming convention itself marks them as shipped-era, so no status
 # lookup is needed.
@@ -112,6 +124,7 @@ def _is_record(rel: str) -> bool:
     return (
         rel in _RECORD_FILES
         or rel.startswith(_RECORD_PREFIXES)
+        or bool(_ARCHIVE_COMPONENT.match(rel))
         or bool(_HISTORICAL_ARTIFACT.match(rel))
     )
 
@@ -344,15 +357,40 @@ def test_the_scan_is_not_vacuous():
     extracted references would not notice, because a skipped reference is still an extracted one.
 
     Precedent for the shape: ``assert len(scanned) > 50`` in ``test_plugin_packaging.py``.
+
+    **The floor moved once, and this is the record of why.** It was ``> 90`` until the
+    archive backfill moved 73 shipped build plans under ``artifacts/archive/`` and
+    ``_is_record`` grew ``_ARCHIVE_COMPONENT`` to match, which is the record predicate
+    widening — precisely what the sentence above warns is the cheapest door to a quiet
+    green. It is allowed here because the widening is *by construction* rather than by
+    enumeration: it exempts a container whose whole meaning is "this is history", the
+    same rule ``.prawduct/archive/`` already carried, and every file it newly exempts is
+    one that stopped being an instruction the moment it was archived. Both floors here are reset
+    to the population that remains rather than to the number observed, and the companion
+    assertion below is what stops the next widening from passing unremarked: it requires
+    the LIVE artifacts tree to keep contributing, so exempting the archive cannot shade
+    into exempting artifacts.
     """
     files = [p for p in _TRACKED if p.endswith(".md")]
     _, checked = _scan()
     assert len(files) > 150, f"expected to scan the tracked markdown tree, got {len(files)} files"
-    assert len(checked) > 90, (
+    assert len(checked) > 65, (
         f"only {len(checked)} path references are actually being checked — either the extractor "
         "stopped matching a form, or the record predicate has widened until the check is dark"
     )
-    assert len({rel for rel, _, _ in checked}) > 30, (
+    live_artifacts = {
+        rel
+        for rel, _, _ in checked
+        if rel.startswith(".prawduct/artifacts/") and "/archive/" not in rel
+    }
+    assert live_artifacts, (
+        "no LIVE .prawduct/artifacts/ file contributes a checked reference — the archive "
+        "exemption has widened past the archive and is now darkening the artifacts tree "
+        "itself, which is the failure the record-predicate warning names"
+    )
+    # Reset with the reference floor above and for the same reason — 73 of the files
+    # that used to contribute are now archived records.
+    assert len({rel for rel, _, _ in checked}) > 25, (
         f"only {len({rel for rel, _, _ in checked})} files contribute a checked reference"
     )
     forms = {form for _, form, _ in checked}

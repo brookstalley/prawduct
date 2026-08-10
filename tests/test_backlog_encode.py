@@ -14,11 +14,20 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import pytest  # noqa: E402
+
 from lib.backlog import encode  # noqa: E402
 
 
 class TestSoftEnumTolerance:
     """ENC-1 — unknown soft value flagged, never rejected; unknown status rejected."""
+
+    def test_the_buildable_stage_is_one_of_the_stages(self):
+        """`READY_STAGE` is written out rather than derived from the ladder, so a
+        rung added past `ready` cannot silently become the buildable one. That
+        deliberate non-derivation is what needs a test: nothing else would notice
+        the constant drifting off the vocabulary it names a member of."""
+        assert encode.READY_STAGE in encode.STAGE_VALUES
 
     def test_unknown_stage_is_warned_not_rejected(self):
         result = encode.check_enum("stage", "brainstorming")
@@ -240,3 +249,192 @@ class TestDecodeItem:
         assert item["area"] == "backlog"
         assert item["id_aliases"] == ["BKL-0007"]
         assert item["number"] == 7
+
+
+class TestAffected:
+    """The structured path list — read tolerantly, written strictly.
+
+    `affected` exists because `refs` mixes governance artifacts, code paths and
+    prose annotations, which is exactly why `refs` can never be matched against a
+    changed-file set. Every test here is about keeping that boundary sharp.
+    """
+
+    def test_a_path_list_round_trips_through_the_block(self):
+        body = "text\n```prawduct\nv: 1\naffected: [plugin/lib/backlog/sync.py, tests]\n```\n"
+
+        block = encode.parse_block(body)
+
+        assert block.affected() == ["plugin/lib/backlog/sync.py", "tests"]
+
+    def test_natural_spellings_of_one_path_collapse_to_one_entry(self):
+        """A trailing slash, a leading `./`, and backticks are three ways of
+        writing the same path — tolerating them is the difference between a
+        matcher and a spelling test."""
+        assert encode.normalize_affected(
+            ["plugin/lib/", "./plugin/lib", "`plugin/lib`", "/plugin/lib"]
+        ) == ["plugin/lib"]
+
+    def test_prose_is_rejected_at_the_write_and_told_where_to_go(self):
+        entries, message = encode.validate_affected(["the sync path and its tests"])
+
+        assert message is not None
+        assert "body" in message, "a refusal must say where the annotation belongs"
+        assert entries == ["the sync path and its tests"], "normalization still ran"
+
+    def test_a_hand_edited_prose_body_still_decodes_rather_than_failing(self):
+        """Decode is tolerant even where the write path refuses: an item someone
+        edited in the GitHub UI must stay readable, not become undecodable."""
+        body = "```prawduct\nv: 1\naffected: [the sync path]\n```\n"
+
+        assert encode.parse_block(body).affected() == ["the sync path"]
+
+    def test_a_glob_is_refused_and_the_working_form_is_named(self):
+        """A glob is not a broader match — it is a literal that matches nothing
+        forever: a silent NEGATIVE in the one query this field serves, and the
+        mirror of the stale positive the index's delete prevents."""
+        _entries, message = encode.validate_affected(["plugin/lib/backlog/**"])
+
+        assert message is not None
+        assert "not patterns" in message
+        assert "plugin/lib/backlog`" in message, "name the directory form that works"
+
+    def test_a_bare_path_list_validates_clean(self):
+        entries, message = encode.validate_affected(["plugin/lib/backlog/", "docs/x.md"])
+
+        assert message is None
+        assert entries == ["plugin/lib/backlog", "docs/x.md"]
+
+
+class TestAffectedIntersection:
+    """Consumers 1 and 4: a set intersection instead of a reviewer inferring."""
+
+    def test_a_directory_entry_covers_the_files_under_it(self):
+        touched = encode.affected_matches(
+            ["plugin/lib/backlog"], ["plugin/lib/backlog/sync.py", "README.md"]
+        )
+
+        assert touched == ["plugin/lib/backlog"]
+
+    def test_an_exact_file_entry_matches_only_that_file(self):
+        assert encode.affected_matches(["docs/a.md"], ["docs/a.md"]) == ["docs/a.md"]
+        assert encode.affected_matches(["docs/a.md"], ["docs/ab.md"]) == []
+
+    def test_a_sibling_prefix_is_not_a_match(self):
+        """`plugin/lib` must not swallow `plugin/libexec` — the failure a naive
+        string-prefix comparison makes, and one that reads as a confident hit."""
+        assert encode.affected_matches(["plugin/lib"], ["plugin/libexec/x.py"]) == []
+
+    def test_no_overlap_and_no_paths_recorded_are_different_answers(self):
+        assert encode.affected_matches(["docs"], ["src/x.py"]) == []
+        assert encode.affected_matches([], ["src/x.py"]) == []
+
+    def test_ancestors_are_the_keys_a_changed_file_answers_to(self):
+        assert encode.path_ancestors("a/b/c.py") == ["a/b/c.py", "a/b", "a"]
+
+
+class TestTags:
+    def test_tags_decode_from_labels_sorted_and_deduplicated(self):
+        issue = {
+            "number": 3,
+            "title": "t",
+            "state": "open",
+            "labels": [{"name": "tag:perf"}, {"name": "area:cli"}, {"name": "tag:api"}],
+        }
+
+        item, _warns = encode.decode_item(issue, canonical_id="octo/repo#3")
+
+        assert item["tags"] == ["api", "perf"]
+
+    def test_a_tag_label_alone_makes_an_issue_ours(self):
+        """`tag:` is namespaced prawduct metadata, so an item someone tagged and
+        never faceted is an item — not a plain repo issue to be ignored."""
+        assert encode.is_prawduct_issue({"labels": [{"name": "tag:perf"}], "body": ""})
+
+    def test_a_comma_is_refused_because_it_separates_tags(self):
+        _tags, message = encode.validate_tags(["a,b"])
+
+        assert message is not None and "comma" in message
+
+    def test_a_tag_too_long_to_become_a_label_is_refused_at_the_seam(self):
+        _tags, message = encode.validate_tags(["x" * 60])
+
+        assert message is not None
+
+    def test_there_is_no_vocabulary_to_be_unknown_against(self):
+        """An open folksonomy has no closed set — the binding rule that nothing
+        gates on tags is what makes that safe."""
+        tags, message = encode.validate_tags(["whatever-someone-wants"])
+
+        assert message is None and tags == ["whatever-someone-wants"]
+
+
+class TestWorkingBranch:
+    def test_a_repo_qualified_ref_parses(self):
+        assert encode.parse_working_branch("octo/repo@feat/x") == ("octo", "repo", "feat/x")
+
+    def test_a_bare_branch_name_names_nothing_and_is_refused(self):
+        """The backlog repo and the code repo are not necessarily the same one,
+        so an unqualified branch cannot be looked up by anyone else."""
+        assert encode.parse_working_branch("feat/x") is None
+
+    def test_a_slash_bearing_branch_survives_the_split(self):
+        assert encode.parse_working_branch("o/r@feat/a/b") == ("o", "r", "feat/a/b")
+
+    def test_an_at_sign_inside_the_branch_name_is_kept(self):
+        assert encode.parse_working_branch("o/r@feat@2") == ("o", "r", "feat@2")
+
+    def test_a_three_segment_repo_is_refused(self):
+        assert encode.parse_working_branch("a/b/c@main") is None
+
+    def test_a_traversal_sequence_is_refused_before_it_reaches_a_url_path(self):
+        """`owner/repo@../../../user` would otherwise resolve a DIFFERENT endpoint
+        and be stored as a verified working branch — the pushed-ref control
+        failing open, which is the invisible claim it exists to prevent."""
+        assert encode.parse_working_branch("o/r@../../../user") is None
+        assert encode.parse_working_branch("o/..@main") is None
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "o/r@feat~1", "o/r@feat^", "o/r@feat:x", "o/r@feat?x", "o/r@feat*",
+            "o/r@feat[x]", "o/r@feat\\x", "o/r@feat@{0}", "o/r@a//b", "o/r@-feat",
+            "o/r@feat.", "o/r@feat.lock", "o/r@.hidden", "o/r@a/.b", "o/r@a/b.lock",
+            "o/r@@", "o/r@feat\x01x",
+        ],
+    )
+    def test_names_git_itself_would_refuse_are_refused_here(self, bad):
+        """A name git could never create cannot be a pushed ref, so accepting one
+        can only ever mean the check passed against something else."""
+        assert encode.parse_working_branch(bad) is None
+
+    @pytest.mark.parametrize(
+        "good",
+        ["o/r@main", "o/r@feat/a/b", "o/r@feat@2", "o/r@release-1.2", "o/docs.github.com@main"],
+    )
+    def test_ordinary_names_still_parse(self, good):
+        """The refusal must not be incidental strictness — a dot is legal in a
+        repo name (`docs.github.com`) and mid-name in a branch."""
+        assert encode.parse_working_branch(good) is not None
+
+    def test_it_round_trips_through_the_block_under_its_snake_key(self):
+        body = "```prawduct\nv: 1\nworking_branch: octo/repo@feat/x\n```\n"
+
+        assert encode.parse_block(body).working_branch() == "octo/repo@feat/x"
+
+    def test_decode_surfaces_all_three_fields_on_the_item(self):
+        issue = {
+            "number": 9,
+            "title": "t",
+            "state": "open",
+            "labels": [{"name": "tag:perf"}],
+            "body": (
+                "```prawduct\nv: 1\naffected: [plugin/lib]\n"
+                "working_branch: octo/repo@feat/x\n```\n"
+            ),
+        }
+
+        item, _warns = encode.decode_item(issue, canonical_id="octo/repo#9")
+
+        assert item["affected"] == ["plugin/lib"]
+        assert item["tags"] == ["perf"]
+        assert item["working_branch"] == "octo/repo@feat/x"

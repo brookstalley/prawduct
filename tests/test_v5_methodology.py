@@ -84,10 +84,17 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4807,
-    "skills/critic/review-protocol.md": 3611,
+    "methodology/building.md": 4808,
+    # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
+    # resolves", which archival made false for the PATH form while leaving it true
+    # for the scope form — a reviewer applying the old sentence waves through the
+    # dangling citations that shipped. Paid for by stating only the distinction and
+    # dropping the worked example. The narration lives HERE rather than in the file's
+    # own budget comment: at 1 token of headroom the file cannot afford to carry one,
+    # which is itself the honest reading of how tight this ceiling now is.
+    "skills/critic/review-protocol.md": 3619,
     "skills/critic/goals-1-3.md": 1998,
-    "skills/critic/review-cycle.md": 9596,
+    "skills/critic/review-cycle.md": 9588,
     "skills/critic/framework-checks.md": 1116,
 }
 
@@ -181,9 +188,12 @@ class TestBuildingMethodology:
 
         It sits beside the self-contained-comments rule because they are one
         failure with two carriers: a durable artifact holding something that
-        decays. A build id dangles when the plan is deleted; a count goes stale
-        on the next commit. Both cost a finding, a fix commit, and the round the
-        commit buys.
+        decays. A chunk number goes wrong when the plan is renumbered; a count
+        goes stale on the next commit. Both cost a finding, a fix commit, and
+        the round the commit buys. (The sibling rule used to say build ids
+        dangle because plans are DELETED -- retired 2026-08-08 with the
+        deletion; plans are archived, so the pointer resolves and only the id
+        inside it drifts.)
 
         The pinned content is the TEST, not the prohibition. "Avoid counts"
         would also forbid thresholds, versions and limits, which must stay
@@ -545,6 +555,14 @@ class TestBuildingMethodology:
         # real commit that deleted three test files under a message asserting no
         # test was deleted, and the HEAD-snapshot hazard put a subagent's
         # governing artifact in contradiction with its own prompt.
+        # Retiring the derived views (2026-08-08) had to land two changes here
+        # and cost +1 net against a 3-token headroom: the Status paragraph gained
+        # the tick-AFTER-review ordering, which is newly load-bearing now that
+        # ticking the last box is what disarms this hook's gates, and the
+        # self-contained rule was re-derived onto "an id that CHANGES" since
+        # plans are archived rather than deleted. Paid for by relocating both
+        # rationales to the digests, which are always-injected where this file is
+        # read on demand -- the same funding move the +146 above was taken on.
         tokens = estimate_tokens(self.content)
         assert tokens < 4810, f"building.md is ~{tokens} tokens, should be <4810"
 
@@ -789,6 +807,24 @@ class TestCriticSkill:
         # tokens by thinning a safety instruction is the wrong trade at any
         # exchange rate. 9 tokens of headroom remain, which is the intended
         # state, not an oversight: the next addition trims or relocates.
+        #
+        # 3611 -> 3612 (2026-08-07) -- the dormancy-era backlog gate here said
+        # "when set, skip the walk", which the read-through cache made false: it
+        # is the file every coordinator reviewer reads, so a sustainability
+        # reviewer stopping here would skip the restored walk on every cut-over
+        # product. Caught by the cumulative review, NOT by the suite -- the
+        # tripwire asserted a substring of the old sentence that stayed true
+        # while the clause around it inverted, so that assertion now pins the
+        # direction of the gate instead of a prefix of it. The replacement was
+        # drafted 10 tokens heavier and trimmed to +1 rather than bumped: the
+        # backend condition and the query list live in cache-reads.md, and this
+        # file needs only the route and the exit-6 rule. 8 tokens of headroom.
+        # -19 on 2026-08-08: the derived-views bullet went with the views. No
+        # replacement Status check was written HERE on purpose -- "Done when"
+        # puts the Critic before the tick, so an unticked box during a chunk
+        # review is the correct state and a check for it would false-positive on
+        # every correctly-sequenced chunk. The PR reviewer's protocol carries it
+        # instead, where the sequencing is finished.
         tokens = estimate_tokens(self.content)
         assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
 
@@ -1351,6 +1387,28 @@ class TestReviewCycle:
         # deliverable for. Moved to the post-fix `verify-resolutions` decision,
         # where free deltas genuinely occur, and the correction itself now rides
         # the existing "if it passes" sentence rather than adding one. +10.
+        #
+        # 9596 -> 9578 (2026-08-07) -- Backlog Reconciliation came off the frozen
+        # markdown file and onto the backlog cache, and the restored walk is
+        # SMALLER than the dormancy notice it replaced. What paid for it was a
+        # RELOCATION, not a trim: the query mechanics the walk needs are the same
+        # ones the PR reviewer and the janitor need, so stating them here would
+        # have been the first of three copies -- and drift between exactly those
+        # three copies is what `tests/test_cutover_prose_coherence.py` exists to
+        # catch. They live in `skills/backlog/cache-reads.md` and this file routes
+        # to it, keeping only what is specific to this walk: which queries it
+        # asks, and the NOTE it emits when the store cannot answer. The addition
+        # that did land is the per-check yield line the proportionality norm
+        # requires of a re-added control. Net -18.
+        #
+        # +14 (2026-08-07): C-B1's trigger was WRONG, not merely terse -- it read
+        # "a new item in the diff", and post-cutover a new item is an Issue that
+        # never appears in a diff, so the check could not fire on the backend the
+        # walk was restored for. `created-since` was already built and listed in
+        # the walk's query set with nothing reaching it. Paid for by stating the
+        # reason in one clause rather than the paragraph the first draft carried:
+        # a correction to an instruction that cannot fire is not spending the
+        # ceiling, but the explanation of it would have been.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"

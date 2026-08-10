@@ -166,6 +166,7 @@ my-product/
 │   ├── backlog.md              # Deferred work items (out-of-scope captures)
 │   ├── change-log.md           # Change log (separate for merge-friendliness)
 │   ├── artifacts/              # Generated specifications (project-preferences, boundary-patterns, …)
+│   │   └── archive/            # plans past their end of life — history, never deleted, never a live assertion
 │   ├── .pr-reviews/            # PR review evidence (gitignored)
 │   └── .critic-findings.json   # derived view of the latest review fact (gitignored; gates read the evidence store, not this)
 ├── .claude/

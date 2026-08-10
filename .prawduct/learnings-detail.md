@@ -6,6 +6,39 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite, not its synonym — and it reads as deliberate, so review cannot see it
+
+Six change-log entries on `feat/backlog-cache` carried `release=unreleased | status=shipped`. The
+release flow defines its unreleased set as every entry tagged `scope=` with **no** `release=`, so a
+placeholder naming the absence removes the entry's whole scope from that set. Run at PR time,
+`check-releasability --release v3.2.8` answered *"releasable: no release-pending scopes — nothing to
+classify"*, exit 0 — the runbook's literal "there is nothing to cut. Stop." A finished branch, six
+chunks and five resolved review rounds, was invisible to the release meant to ship it.
+
+This is REL-2N8K (v2.0.14 shipped 8 of 10 entries unflipped) in a better disguise. **A typo looks
+wrong; a placeholder looks deliberate.** `unreleased` is honest, readable and self-describing — you
+read it, agree with what it says, and never think to ask whether the *machine* agrees. That is why
+sixteen reviewers across five rounds walked past it: nothing about it looks like a defect. Three
+consequences rode along unnoticed for the same reason — a literal `## unreleased` section in
+release-notes.md, `releases: ["unreleased"]` in project-state's rollups, and, quietest of all,
+`diagnose_scope_plan_coverage` skipping `status=shipped`, so the no-plan-file integrity check that
+exists *specifically* to guard release-pending scopes never applied to the entries that needed it.
+
+**The test that would have caught it costs one command:** ask the consumer, not the reader. Don't
+inspect the value and judge whether it looks right — run the probe that will act on the field and
+read its answer. The defect is invisible to inspection and obvious to execution.
+
+**Where guards go — pick by blast radius, not by resemblance to a neighbour.** `status=` has had a
+typo-guard since VWS-3K7P because a bad value silently fails to flip one checkbox. `release=` had no
+guard at all, though it fails in the same direction and harder: the entry does not merely skip its
+own checkbox, it takes its whole scope out of the release. The weaker failure was guarded; the
+stronger one was trusted, because the guarded field was the one that *looked* typo-prone.
+`validate_release_values` closes it, joining the global fail-closed set.
+
+One methodology note worth keeping: this was caught by `/prawduct:pr`'s Step 1d — a human reading a
+tag as bookkeeping ceremony between a finished branch and its PR. The step that felt like a checkbox
+was the only thing standing between the branch and a release that would have skipped it silently.
+
 ## A background agent's liveness is answered by ITS OWN completion signal, never by reading the files it is midway through writing — a death verdict from a directory listing is how a re-dispatch clobbers a live review. And the grep that "confirms" it may be matching the failure mode's own DOCUMENTATION, which feels exactly like verification
 
 Observed twice. `critic_consolidate._archive_leftovers` exists because on **2026-08-02** "a premature
@@ -195,7 +228,64 @@ Same family as [[the fix for a review finding needs the same adversarial pass as
 concrete instance of the test-evidence prompt's standing warning that a fixture which never reaches
 the subject passes forever.
 
-## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
+## A deletion's SURVIVORS owe new coverage when their behaviour changed — the deleted thing's tests dying correctly is a different question
+
+When a change deletes a module and rewrites a command that used to live off it, ask separately what the SURVIVOR now promises: its old tests died with the deleted thing's test file, correctly, and nothing replaced the contract it kept. Retiring `regen-views`/`stamp-merged` to "callable, notice, no writes, exit 0" took ~20 tests down with `test_views.py` and left that new contract — advertised in `api-contract.md` to operator scripts — held by nothing, so a later edit restoring a non-zero exit would break a copied release script and stay green. Its sibling rule above asks what the deleted thing HOSTED; this asks what stayed and changed, which no amount of re-homing finds.
+
+## When you retire a MECHANISM, sort its rules into three piles before deleting any
+
+Retiring the derived views touched **eleven** learnings, and the interesting result is that only
+five of them actually died. The piles:
+
+**Died (5)** — pure format rules for a tag schema that no longer exists: zero-padded `chunks=`
+matching, `status=in-progress` tripping the typo-guard, flip-statusless-at-release, `scope: null`
+inheriting another scope's flips, and the `regen-views-is-advice` ruling. Nothing generalises out of
+these; each was a fact about how one parser read one field. Their narratives stay in this file with
+a RETIRED banner rather than being deleted — the incidents were real, and the record of *why* a
+format rule existed is what stops the next schema inventing the same trap.
+
+**Rewritten (5)** — the rule was real and only its named mechanism changed: `scope:` must be the
+scope-NAME not a version; a `scope=` tag comes from the plan you are in; KEEP the build plan until
+the release; number your chunks; a change-log entry's body must cover every chunk it shipped. Each
+had been written with its enforcing mechanism inline, so each *read* as dead when the mechanism
+went. The test that separates this pile from the first: strike the mechanism's name out of the
+sentence and see whether a rule is left. For all five, one was.
+
+**Inverted (1)** — *never hand-check the Status boxes* became *always hand-tick them*. This is the
+pile nobody looks for, and it is the only one where missing an entry leaves an **actively harmful**
+rule standing rather than a merely useless one: a reader following the old form would now
+deliberately avoid doing the thing the framework requires, and would be able to cite this file for
+it.
+
+**The tell for the third pile:** the rule's imperative is a *prohibition*, and its stated reason is
+that some tool exists. Prohibitions justified by a tool's existence do not decay into silence when
+the tool goes — they decay into an instruction to avoid something that is now correct. Grep the
+retirement's vocabulary for imperatives, not just for the tool's name.
+
+**Why this is worth a rule at all.** The temptation at retirement is a single sweep: grep the dead
+token, delete every hit. That is right for the first pile, loses real knowledge in the second, and is
+actively wrong in the third — and all three look identical to a grep, because the dead token appears
+in all of them.
+
+## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned
+
+**Retired 2026-08-08 with the derived views (GD4).** The ruling below was correct and is kept
+verbatim as the record of a collision that was genuinely decided; what changed is that the command
+it decided about no longer exists. `regen-views` was the only writer whose sole product was a view,
+so there is nothing left for the precedence to apply to.
+
+**What survives, and where it went.** The category-level sentence — *a command's failure posture
+follows what it produces* — was promoted out of the ruling and onto `architecture.md`'s norm itself,
+because it never depended on `regen-views`: it falls out of that norm's own why (a verdict must not
+be satisfiable by feeding it garbage, which reaches a command only where a verdict exists to
+corrupt). A future view writer therefore inherits the answer and needs no new ruling. Both norms'
+`Rulings:` lines now record the retirement rather than pointing at a live ruling, and this heading
+is kept rather than deleted so the `[[regen-views-is-advice]]` links still land somewhere.
+
+**The original ruling, as decided.** When two norms reach one command, its OUTPUT decides the
+posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no
+gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still
+fails closed. Skip-and-report a bad view, never write it half-right.
 
 **Collision ruling, owner decision 2026-08-01**, raised by #201's fourth leg. Two `## Direction`
 norms both reached `regen-views` and pointed opposite ways: `architecture.md`'s *authority fails
@@ -608,7 +698,13 @@ Relates to Bring Expertise (#7), Honest Confidence (#5), Verify-don't-guess, Pro
 (#11).
 
 When a framework brands itself language/platform-agnostic, a core ingest surface must not be gated on one ecosystem's interchange format. test-evidence `record` accepted results ONLY as JUnit XML (default pytest, `test_command:` requiring `{junit_xml}`, `--from-junit`) — fine for the many stacks that emit JUnit, but it left embedded/HIL/bespoke toolchains with no paved on-ramp (hand-write the JSON, or fake a JUnit file). The fix is to expose the MINIMAL primitive the gate actually needs — for test results, pass/fail/skip counts (`--from-counts`) — so any toolchain participates without writing an adapter. It surfaced only because the user asked "are we breaking non-Python/embedded users?"; so when adding an ingest path, ask up front which real toolchains CAN'T produce its format. Corollary (same cycle): an upstream bug report's stated root cause is a HYPOTHESIS — the scriob report blamed a `git diff base...HEAD` membership shift the producers don't do (they diff base→worktree, commit-invariant); verify against source before designing, because the real fix was docs + this on-ramp, not the report's suggested content-hash (which a deliberate prior decision had rejected). Relates to Bring Expertise (#7), Honest Confidence (#5), Proportional Effort (#11), Verify-don't-guess, and [[backlog]] COV-4M2J (the Python-only coverage-floor residual).
-## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version) — `regen-views` resolves plans by it and a version there silently skips Status flipping at release
+## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version)
+
+**Mechanism renamed 2026-08-08 ([[the-derived-views-retirement]]), rule unchanged.** The field is still
+the join between a change-log `scope=` tag and the plan describing that work; the reader is now
+`check-releasability` rather than the retired regenerator, and the symptom is now a
+*release-pending scope with no build-plan file* advisory instead of unflipped checkboxes. The 2026-06
+narrative below is preserved as the incident record and names the old reader.
 
 **Pattern**: v2.1.8 batch release (2026-06-22). The `hook-cli-robustness` branch was built
 targeting v2.1.7, then batched into the v2.1.8 release alongside three other branches. Its
@@ -894,15 +990,21 @@ So the post-fix cost is ONE light pass, not a full re-review — but that is bes
 
 <!-- Narratives moved from learnings.md 2026-06-10 (MET-6W3J compaction) -->
 
-## A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
+## RETIRED — A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
 
 When creating a build plan, set the frontmatter `scope:` to a unique slug immediately (matching the change-log entry's `scope=` tag) — do NOT leave it `scope: null`. With `views_enabled: true`, `regen-views` derives each plan's `## Status` checkboxes from `status=shipped` change-log entries; `collect_shipped_chunks` filters by the plan's detected scope, but a `scope: null` plan falls into "legacy unfiltered" mode where EVERY shipped entry contributes its chunk IDs. So a brand-new single-chunk plan whose chunk is "Chunk 1" gets flipped to `[x]` by an unrelated shipped entry like `chunks=1,2,3 | status=shipped | scope=work-model` — a spurious "shipped" on work that's only on a feature branch. (Discovered building CRT-3X9D: my `scope: null` plan's Chunk 1 flipped from the work-model v2.0.13 entry.) The build-plan template's `scope:` comment warns about this, but the warning lives in a template comment that from-scratch plan authors don't see, so it keeps recurring. Fix-shape: every build plan declares a unique `scope:` slug up front; verify by running `regen-views` after adding the change-log entry and reading the plan back (a statusless branch entry must leave the chunk `[ ]`) — `--check` is gone, views always regenerate. Discovered CRT-3X9D (2026-06-07, branch). Relates to Coherent Artifacts (#13), [[new change-log entries on a feature branch are statusless]] (the sibling regen-views trap), and Validate Before Propagating (#15).
 
-## New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
+## RETIRED — New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
 
 When adding a `.prawduct/change-log.md` entry for work on a feature branch (before it reaches develop), leave the `status=` tag OFF entirely — do NOT use `status=in-progress`. `lib/views.py` recognizes only `{shipped, merged}` (`VALID_STATUS_VALUES`), and `warn_unrecognized_status_tags` flags any *present-but-unrecognized* `status=` as "Likely a typo" on every `regen-views` run; `in-progress` is a deprecated legacy value (`docs/release-process.md` "Change-log `status=` values" documents the current model). The documented lifecycle (updated by single-pr-bookkeeping, 2026-07-10): the entry stays **statusless** through the feature→develop merge — a statusless tagged entry IS the release-pending state, and the old post-merge `status=merged` stamp step was retired because it required a commit on the integration branch, forcing protected-branch consumers into bookkeeping-only PRs (`merged` in older logs is an accepted legacy synonym, treated as statusless). Flip to `status=shipped` + `release=vX.Y.Z` at the develop→main release (gitflow), or write `status=shipped` (+ `release=` when the product versions) in the closing PR when its base is the release surface (trunk). A statusless entry triggers no warning (the guard only fires when `status=` is *present*) and flips no checkbox (that needs `status=shipped` + `chunks=`), which is exactly correct for branch-state and release-pending work. The work-model entry (v2.0.13, the immediately prior session) used `status=in-progress` on its branch and it slipped through only because `regen-views` wasn't run during that window — REL-8K3M's cumulative Critic caught the same value as a WARNING. Fix-shape: branch entries carry only `type=`/`scope=`; statuses change only inside a PR (release-prep or a trunk closing PR), never as a post-merge commit. Discovered REL-8K3M (2026-06-06, develop). Relates to Coherent Artifacts (#13), Escape hatches create silent failures (#22), Honest Confidence (#5), and Living Documentation (#3).
 
-## A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
+## RETIRED — A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
 
 When tagging a multi-chunk change-log entry, the `chunks=` list must use the **same numbering format** as the plan's `## Status` headings — if the plan reads `Chunk 01 … Chunk 10`, the tag must be `chunks=01,02,…,10`, not `chunks=1,2,…,10`. `lib/views.py`'s `regenerate_status_section` matches chunk IDs as **literal strings** (`CHUNK_LINE_RE` captures `01` from `Chunk 01:`), so `chunks=1` does not match `Chunk 01` — and the failure is *partial and silent*: at v2.0.15 release-prep, `chunks=1,2,…,10` against `Chunk 01..10` headings flipped **only chunk 10** (the one token that happened to match), leaving 01–09 stuck `[ ]` with no error. The tell is `regen-views`' own output — `"1 chunk(s) flipped — shipped [10]"` when you expected 10. The work-model release (v2.0.13) dodged this by using single-digit `Chunk 1/2/3` headings to match `chunks=1,2,3` (noted inline in its prep commit), but a plan written with zero-padded headings needs zero-padded tags. Fix-shape: after `regen-views` at release, read its flipped-count and confirm it equals the chunk count; if fewer flipped, the `chunks=` numbering doesn't match the headings — align the tag to the headings (don't renumber the plan). Discovered v2.0.15 backlog-rework release (2026-06-08, release). Relates to Coherent Artifacts (#13), Validate Before Propagating (#15), and [[At release, flip statusless unreleased change-log entries]].
 
@@ -910,7 +1012,9 @@ When tagging a multi-chunk change-log entry, the `chunks=` list must use the **s
 
 A `context:fork` skill (e.g. `/prawduct:backlog`, `allowed-tools: Read, Edit, Write, Grep, Glob` — no Bash) is LLM-interpreted prose: it cannot import or call a `lib/` module. So its filtering/routing/dedup/ranking *logic* is the agent reasoning over the file it reads — there is no Python call site. The runtime (`bin/prawduct-hook` and the hooks it runs) is the only consumer of `lib/`. Consequence: when planning such a feature, `lib/` should carry the **data layer** (a parser + pure query accessors — like `lib/backlog.py` mirroring `lib/views.py`) that the *runtime* needs (briefing counts, probes), and the **logic** belongs in the skill prose. A planned `lib/` "logic helper" the skill would supposedly use (`is_implementable`, a dedup-candidate scorer, an archive-split function) is **dead code** — nothing imports it — and the Critic flags it (Goal 7) or it sits untested-by-a-real-consumer. The backlog-rework plan listed four such helpers; each was correctly descoped, but the descope must be **recorded** (Principle 2) — the Critic flagged the first one left silent (ch.03). Fix-shape: when a plan assigns logic to a fork-skill feature, put data in `lib/` (+ tests) and logic in the SKILL.md; if a plan line says "add `lib/` helper X for the skill," ask "does any *Python* path call X?" — if no, it's skill prose, descope the helper and record it. Discovered backlog-rework v0.3 (2026-06-08, branch). Relates to The Design Is Sound (#7 — no dead code), Complete Delivery (#2 — record descopes), Scope Discipline (#12), and [[fine-grained tool restriction needs a fork-skill, not a named subagent]].
 
-## At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
+## RETIRED — At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
 
 `docs/release-process.md` step 3 says to flip entries "from `status=merged` to `status=shipped`," but in practice most unreleased entries reach release-prep **statusless**, not `status=merged`. The documented two-state lifecycle (add `status=merged` at the feature→develop merge — see [[new change-log entries on a feature branch are statusless]]) is manual, and the `/prawduct:pr` merge flow does NOT apply it, so a branch entry stays statusless from branch through develop into release-prep. A release author who follows step 3 literally flips only the `status=merged` entries and **silently drops every statusless one** — and because `regen-views` acts only on entries with `status ∈ {shipped, merged}`, a dropped statusless entry's build-plan `## Status` checkboxes never flip, and it never appears in `release-notes.md` or `scope_rollups`. The omission is invisible (no warning — a statusless entry trips no typo-guard), so the release ships looking complete while quietly missing scopes. At v2.0.14 (batched: hook-decomp ch.1–7 + critic-session-guard) **8 of 10** unreleased entries were statusless; only the two bugfixes carried `status=merged`. Fix-shape: at release-prep, enumerate ALL change-log entries above the prior `release=vX` boundary and flip each (statusless OR `status=merged`) to `status=shipped` + `release=vX.Y.Z`; then run `regen-views` (exit 0, not 3 — a 3 means some scope's `## Status` was suppressed) and confirm every shipped scope's plan flipped to `[x]` and appears in `scope_rollups`. Deeper fix is filed ([[backlog]] REL-2N8K): either make the feature→develop merge reliably set `status=merged`, or reword release-process.md step 3 to say "statusless or `status=merged`." Discovered v2.0.14 release (2026-06-08, release). Relates to Complete Delivery (#2), Living Documentation (#3), [[new change-log entries on a feature branch are statusless]], and Validate Before Propagating (#15).
 
@@ -942,7 +1046,13 @@ When changing a framework-level *default behavior* that every product (any vinta
 
 When a plugin and its `.claude-plugin/marketplace.json` live in the SAME repo (prawduct's topology), the marketplace entry's plugin `source` must be the relative `"./"`, NOT a `{ "source": "github", "repo": …, "ref": … }` object. The github-source form makes Claude Code **re-clone the repo over SSH** (`git@github.com:…`) to fetch the plugin — which fails with "Permission denied (publickey)" on any machine without SSH keys (most HTTPS/`gh`-auth users), **even for a public repo**. The `"./"` form reuses the marketplace's own HTTPS checkout (one clone, no SSH) and inherits the marketplace's pinned `ref`. Don't confuse the two source surfaces: the *consumer's* `extraKnownMarketplaces` source IS `{source:github,repo,ref:main}` (that's the marketplace clone — HTTPS, fine); the *plugin* source inside `marketplace.json` is `"./"`. Empirically proven in the v2.0.0 Chunk-2 spike (throwaway public repo) and confirmed on prawduct's real marketplace install (`claude plugin install prawduct@prawduct` → v2.0.0, no SSH). Related operational gotchas from the same release: `claude plugin marketplace remove <name>` **cascades** — it disables dependent plugins and wipes their `enabledPlugins`/`extraKnownMarketplaces` from settings (don't use it as "cleanup" if you want the plugin to stay enabled); and `git merge -F -` does **not** read stdin like `git commit` (use `-m` or a real file). Full spike results in `docs/release-process.md`. Relates to Validate Before Propagating (#15) and Visible Costs (#9).
 
-## Release-bound work merged feature→develop under gitflow: KEEP the build plan — it's a live release artifact, not spent
+## Release-bound work merged feature→develop under gitflow: KEEP the build plan and the `active_build_plan` pointer until the release
+
+**Mechanism renamed 2026-08-08 ([[the-derived-views-retirement]]), rule unchanged.** The reason to keep
+the plan used to be that the release's regeneration pass needed something to regenerate. It is now
+that `check-releasability` pairs each release-pending `scope=` against the plan declaring it, so an
+early deletion turns your own shipped work into "work with no documented parent" (Principle 6). The
+conclusion is identical and the narrative below is preserved with its original mechanism named.
 
 When you merge a feature branch whose work ships at a *later* `develop→main` release (gitflow batched-release, not the old develop-merge=release model), do NOT delete the build plan at merge time. The PR skill's merge-flow **step 7** ("delete `artifacts/build-plan.md` after merge; git preserves history") assumes the older model where the develop-merge *is* the release. Under gitflow the build plan stays a *live release artifact* in the window between the develop-merge and the develop→main release: release-checklist **step 4** runs `regen-views` *on the build plan* to flip its `## Status` checkboxes `[ ]`→`[x]` from the change-log's `status=shipped` entries (`docs/release-process.md`). Delete it at merge and the release step has nothing to regenerate — and the `active_build_plan` pointer in `project-state.yaml` must likewise survive until the release. Retention loses nothing: the release-pending state is already fully captured in the change-log's `status=merged` entry plus its "Deferred" note, and git preserves the plan regardless. So the deletion is both premature and lossy. Fix-shape: the skill's step 7 should be *conditioned on whether the merge is itself the release* (develop-merge that ships now → delete; develop-merge ahead of a batched develop→main release → retain). Discovered v2.0.0 PR #49 merge to develop (release deferred to develop→main per `docs/release-process.md`). Relates to Coherent Artifacts (#13), Living Documentation (#3), and Proportional Effort (#11).
 
@@ -994,7 +1104,19 @@ When deprecating or removing a mechanism, grep for the mechanism's **name** in a
 
 When adding a new build-plan field, format the label as `**Title Case:**` (bold, words-with-spaces, colon) — matching `**Type:**`, `**Critic mode:**`, `**Requirements Confidence:**`, `**Acceptance criteria:**`, `**Done when:**`. Snake_case (`foreign_api:`, `coverage_required:`) is the YAML-key namespace in `project-state.yaml`, a different surface. The methodology's prose form must be string-identical to the template's label except for the `**...**` bolding — so the Critic's substring-match finds real plans. Wave 1's F8 conflated the two namespaces (`foreign_api:` in prose, `**Foreign API:**` in template) and the Critic-check substring never matched a real plan. Relates to Coherent Artifacts (#13).
 
-## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but `regen-views`/`chunks=` still key on the colon Status form
+## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but number your chunks
+
+**The residual colon dependency is GONE as of 2026-08-08** ([[the-derived-views-retirement]]):
+`regen-views` and its separate `CHUNK_LINE_RE` Status-line parser were deleted with the views, and
+the follow-up VWS-2F9K they were tracked under is closed by removal. Both heading forms now parse
+through the one shared primitive, with leading-zero tolerance, everywhere.
+
+**A different constraint replaced it, and it is narrower than the old one.** The
+unticked-committed-chunk advisory (`buildplan_refs.unticked_committed_chunk_notice`) matches
+`Chunk <n>` against COMMIT SUBJECTS via `_CHUNK_COMMIT_RE`, which captures `\d+` only. A plan using
+non-numeric chunk ids (`Chunk A`) can never be matched by any commit subject, so it gets permanent
+silence from the only backstop the hand-ticked boxes have — and silence there is indistinguishable
+from every box being correct. Number your chunks.
 
 **Superseded 2026-07-18 (BLD-5J8N / PDT-C6R4).** The `verify-chunk-refs` chunk-id/section parsers were historically hardwired to the colon form: they isolated the id via `rest.split(":",1)[0]`, so an em-dash separator (`### Chunk N — Name`) or the research-plan form (`## Chunk N (ID) — Name`) made the *whole string* the "id", matched no heading, and — worse — surfaced as a generic exit-1 "chunk not found" indistinguishable from a real missing deliverable, so reviewers learned to hand-wave the exit (false-negative habituation) and a real dropped-deliverable BLOCKING could hide behind it. Now the shared `lib/buildplan_refs.py` primitives (`_chunk_section_lines`, `_chunk_id_from_item_text`, `_current_chunk_id_from_status`) match both H2/H3 headings with a `:`, `—`, `–`, `-`, or `(` after the id via `_CHUNK_HEADING_RE`/`_CHUNK_ITEM_RE` — the id MUST be followed by a separator/paren/EOL, so a notes sub-heading like `### Chunk 2 build-session decisions` (no separator) is NOT mistaken for a chunk boundary. This fixes `verify-chunk-refs` (Goal-2) AND `infer-critic-mode`'s chunk-type/current-chunk lookup (they share these primitives — the GOV-8N4V facet), and `cmd_verify_chunk_refs` now emits a distinct `cannot-verify:` (gate could not run) message vs `missing-ref:` (a named deliverable is absent), so the two are never conflated. Leading-zero tolerance is preserved (`1` matches `### Chunk 01:`). Guard tests: `tests/test_buildplan_walkers.py::TestH2ChunkHeadingForm`/`::TestChunkIdFromItemText`.
 
@@ -2782,3 +2904,525 @@ named test is passing for the wrong reason. Instance 2 was found exactly that wa
 
 **Ties to**: the free-edge/judgeable work in `gate-as-dispatcher-requirements.md` (instances 2-3) and
 `.prawduct/change-log.md`'s 2026-08-06 entry (instance 1).
+
+
+## A measurement with no POSITIVE CONTROL cannot support a claim — before believing "X costs nothing", confirm the instrument MOVES when it should, because a dead instrument reads zero for the treatment and the control alike, and zero is the answer you were hoping for. Tell: the confirming result arrived first try and the null case was never run
+
+Chunk 02 needed to know whether a conditional request against GitHub's issues list is free. Polling
+the `rate_limit` endpoint before and after three 304s showed `used` unchanged, which is exactly the
+hoped-for answer, and it went into `cache-spec.md` §6 and two docstrings as "measured".
+
+The positive control was run only because the number looked too clean: five *unconditional* 200s
+also moved it by zero, and so did a 452-item rebuild. That is impossible, so the instrument was
+dead — `rate_limit` was not reflecting these calls at all. Each response's own `X-RateLimit-Used`
+header gave 134 → 135 → 136 across three 200s and a flat 136 across three 304s. Same conclusion,
+but the first version of the evidence supported nothing.
+
+The general shape: a null result is only informative if the measurement can produce a non-null one.
+When the claim is "X costs nothing" / "Y never fires" / "Z is not called", the control is not
+optional politeness, it is the whole experiment.
+
+**Ties to**: `documentation/backlog-service-cache-spec.md` §6, which now records the *method* and
+the dead instrument alongside the result.
+
+
+## For every value you plan to PERSIST from a provider, verify the exact request that will later REPLAY it, not just the one that produced it — a verify-api step scoped to the plan's own mechanism confirms that mechanism and misses the one the plan got wrong
+
+Chunk 02's build plan scheduled a `verify-api` step as step 0, specifically so the fakes could not
+be built from recall. It asked four questions — what `since` filters on, whether it interacts with
+`state`, whether closed items return, and the etag/304 behaviour — and all four came back clean.
+
+The finding that mattered was not among them. The plan said sync would write `item.etag`; sync reads
+the *list* endpoint. Asking "which endpoint will replay this stored value?" showed a list etag
+returns 200 against `GET /issues/{n}` where that item's own returns 304, and the list body carries
+no per-item validator at all. Chunk 05's revalidation would have missed on every read, spent a full
+request each time, and looked like it was working.
+
+The step was scoped to the plan's stated mechanism, so it could only ever confirm that mechanism.
+The question that broke it came from the *persistence* direction: every value crossing from a
+provider into a store is later replayed into some request, and that request is the one to verify.
+
+**Ties to**: the DECISION block in Chunk 02 of `build-plan-backlog-cache.md`, and the two-validator
+split now recorded in `backlog-service-data-model.md` §6.
+
+
+## A test written RELATIVE to the constant it polices can never detect that constant being wrong — pin the absolute value when the value is a historical fact (a version a real store was stamped with, a format that shipped), because `CONST - 1` moves with CONST and passes at every setting of it. Tell: the mutation you expected to go red stayed green
+
+`cursor.fetched_at` was added to the v2 cache schema without bumping past v2. A store written by the
+earlier v2 code matches on version, is never discarded, and then fails every `_write_cursor` on the
+missing column — `unavailable` on every sync, permanently, because the self-heal is gated behind the
+version check that just approved the store. It happened on this machine and read as an empty result,
+not as an error.
+
+The fix was a bump to 3. The first test written for it seeded the store with
+`PRAGMA user_version = cache.SCHEMA_VERSION - 1` — which looks careful, and is inert: mutate
+SCHEMA_VERSION back to 2 and the fixture obediently writes 1, still behind, still discarded, still
+green. The test could not fail for the reason it existed.
+
+The seed had to be the literal `2`, because 2 is a fact about a format that existed, not a
+expression over the current constant. Rewritten that way the mutation fails with the real
+production error (`table cursor has no column named fetched_at`).
+
+Generalises past versions: any fixture derived from the code under test inherits that code's bug.
+Thresholds, limits, schema numbers, retry counts — if the test computes its input from the constant,
+it is asserting internal consistency, which the defect also satisfies.
+
+**Ties to**: `tests/test_backlog_cache.py::TestSchemaMismatch::test_the_v2_shaped_store_that_actually_shipped_is_discarded`,
+whose docstring carries the do-not-relativise warning at the seed itself.
+
+## A build plan can name a CODE IDENTIFIER it never opened
+
+Two of one chunk's stated deliverables were wrong on mechanism, and both read as bookkeeping until
+the named symbol was opened.
+
+"Name all three fields in `_UPDATE_FACETS`" — `_UPDATE_FACETS` is the label *swap* loop: add the new
+value, strip every other label sharing the prefix. Correct for `area` (exactly-one, wired to the
+title); wrong twice over here. It would have written `affected:` labels for a field the spec puts in
+the body block, and made setting a second tag silently remove the first, since `tags` is the one
+deliberately multi-valued facet.
+
+"The three cache columns and the `affected` index" — unimplementable as written. The intersection
+runs *entry-contains-changed-file* (`plugin/lib` matches `plugin/lib/sync.py`), so the natural SQL is
+`WHERE ? LIKE affected || '%'`, whose variable is on the side no index can help. It had to become a
+normalised table (`item_affected(item_id, path)`) matched by equality after expanding each changed
+file into its ancestor directories.
+
+Why this is narrower than "plans go stale": a plan written at design altitude is usually right about
+*intent* and is checked against reality when its prose is read. A named code identifier skips that
+check — the sentence looks like an instruction rather than a claim, so it is followed instead of
+verified. Both errors here were caught by the same move (open the symbol before editing it), and
+neither would have been caught by re-reading the plan.
+
+**Ties to**: `plugin/lib/backlog/core.py` (`_UPDATE_MULTI_FACETS` / `_UPDATE_BLOCK_FIELDS`, the
+SEC-2 allowlist's third and fourth categories); `plugin/lib/backlog/cache.py` (`item_affected` and
+the comment stating the query direction).
+
+## A VALIDATOR that only refuses the malformed can still let a control fail OPEN
+
+`working-branch`'s one job is to make a claim visible to other agents, so the write path verifies the
+branch is actually pushed — `GET /repos/{owner}/{repo}/branches/{branch}`. The parser guarding that
+value checked whitespace, the `owner/repo@branch` shape, and leading/trailing slashes. All
+well-formedness questions.
+
+`owner/repo@../../../user` passes every one of them, and is then interpolated into the REST path. The
+request resolves a *different* endpoint, succeeds, and the value is stored as a **verified** working
+branch pointing at a branch nobody can find — the exact invisible claim the check exists to prevent.
+
+What it is not: injection (the call is list-form with no shell), or a privilege crossing (same
+token, GET, one bit returned). Which is why it reads as low-severity on a first pass and is not. The
+harm is that a control **reports success about something other than the thing it was asked about**,
+and a control that can do that is worse than no control, because its output is trusted.
+
+The same seam produced the mirror image on the other new field. `validate_affected` refused prose and
+accepted globs, which the docs say are unsupported: `plugin/lib/**` is written happily and then
+matches nothing forever — a silent *negative* where the branch case was a silent *positive*.
+
+The fix in both cases was to add rejections of a second kind. Branch names are now held to git's own
+`check-ref-format` rules (a name git could never create cannot be a pushed ref, so accepting one can
+only mean the check passed against something else); `affected` refuses glob metacharacters at the
+same seam that refuses prose, with the directory-prefix form named in the message.
+
+**Ties to**: `plugin/lib/backlog/encode.py` (`_is_valid_branch_name`, `parse_working_branch`,
+`validate_affected`); `tests/test_backlog_encode.py::TestWorkingBranch` (17 refused spellings, 5
+accepted — including `docs.github.com`, since a dot is legal in a repo name).
+
+## Changing HOW data ARRIVES silently re-scopes every aggregate over it
+
+**Origin:** W1 backlog cache, Chunk 04 (2026-08-07), carried in as a finding from Chunk 03's review.
+
+`cachequery._freshness` answered the cache's visible age with `MIN(item.fetched_at)`, and its
+docstring argued the case well: *an age is a promise about the whole payload, and the honest promise
+is the worst row in it.* That was exactly right while the cache was rebuild-only — every sync
+rewrote every row, so the oldest row stamp *was* the age of the payload.
+
+Chunk 02 made sync incremental. It changed no line of `_freshness`, and it did not need to: from
+that commit on, only the fetched window gets restamped, so `MIN(item.fetched_at)` became the fetch
+time of the **least-recently-edited** item. It grows without bound precisely while syncs keep
+succeeding. A store synced ten seconds ago could honestly report an age of weeks, and a consumer
+reading that age would treat the cache as abandoned at the moment it was most current. The 304 path
+was worse still: it returned before touching the store at all, so the cheapest and most common
+successful sync left no trace whatsoever.
+
+**Why no test could have caught it.** Every test still passed. The value was still a well-formed
+timestamp, still monotonic, still derived from real data by correct code. Nothing was broken in any
+sense a suite can assert — the *inputs* changed meaning, and the aggregate over them inherited the
+new meaning silently. The rebuild-era fixtures in particular could never have shown it, because in a
+rebuild every row shares one stamp and the two readings coincide.
+
+**What caught it** was a reviewer asking what the number *means* now, rather than whether it is
+computed correctly. That is the transferable move: after a change to how data arrives — full scan to
+incremental, batch to streaming, snapshot to event log, single-writer to many — walk every aggregate,
+watermark, MIN/MAX, count and age over that data and ask what each one now denotes. The ones that
+broke will not announce themselves, because computing correctly is exactly what they still do.
+
+**The fix, and why it is two facts rather than one.** Row provenance (`item.fetched_at`: when this
+machine last read *this row*) and coverage (`cursor.coverage_confirmed_at`: when a sync last
+established that the store is level with the provider) are different questions, and the age wants the
+second. Every successful sync advances it, **including a 304** — which establishes something
+positive, that the provider has nothing newer, not merely that nothing was written. Row provenance
+stays as the reader's fallback for a store that holds rows but carries no cursor row.
+
+**Related:** the sibling failure is [[a-behaviour-change-falsifies-surfaces-a-chunk-never-edits]] —
+there the stale thing is a docstring that now lies; here it is a *value* that now lies, which is
+harder, because prose can be read and disagreed with while a plausible number cannot.
+
+
+## A retirement is one act PER SUBSTRATE the thing lives on
+
+The `claim` retirement's case was entirely about the Issues adapter: a release-current op, its
+replacement (`working-branch`) shipping in the same release, and three coupled mechanisms — an
+assignee take, a `claimed_at` stamp, a staleness TTL — collapsing into one field. Executed, it also
+stripped the **markdown** backend's `accepted-by:`, which has none of those three mechanisms and
+cannot supply what replaces them: `working-branch` must name a *pushed* ref and a repo, which a
+local-only repo or a shared-trunk team has not got. `accepted-by:` cost those products nothing.
+
+The same session made the identical mistake a second time, one file over. `probe_revisit_due` was
+retired on the argument that exception clocks *"had already migrated to prose on the norm"* — true of
+this repo's single live exception and of no other product. For every markdown-backend product the
+probe was live and working; `docs/norms.md` § Exceptions expire states the two-path split
+normatively, and the janitor's Norm Health sweep declines dated clocks **because** this probe fires
+them. Removing it took a working control from a whole class of products and left four active surfaces
+promising a mechanism that no longer existed.
+
+Two instances in one changeset is what makes it a rule rather than a slip. The tell is cheap and was
+available both times: **the argument names a substrate and the diff does not.** Where a rationale is
+stated in terms of one op, one release, one provider or one backend, the edit has to be bounded by
+that substrate — otherwise the next question is which other substrate it just governed by accident.
+Found by the Critic (`rev-20260807T202943Z-a483337f`, R-4/R-10/R-16/R-23), from two independent
+goals; the fix was to scope the retirement to the adapter, and the requirements' CC3 now records the
+supersession rather than quietly changing meaning.
+
+## A rule enforced only as a SIDE EFFECT of some other failure is unenforced for changes whose failure mode differs
+
+`cache.py`'s `SCHEMA_VERSION` comment is emphatic and has a real incident behind it: a `cursor` column
+was once added under an unchanged version, and because the version check is the same mechanism that
+would have rebuilt the store, it approved the store and every sync failed permanently with no
+self-heal. So the rule reads *bump on any column change, including one made before release*.
+
+Chunk 05 dropped the `relationship` table and bumped to v6 — then mutation testing left
+`SCHEMA_VERSION` at 5 and the whole suite stayed green. An old v5 store simply carries an extra table
+nobody reads, so nothing breaks. Looking at why the earlier incident *was* caught: a query broke
+loudly against the stale store. That is not the rule being enforced; that is a different failure
+happening to be noisy. A **removal** is quiet by construction, so the rule had no guard for half the
+changes it governs, and the bump was silently optional whenever the failure mode was silence.
+
+Fixed by pinning `SCHEMA_VERSION` to a fingerprint of `_SCHEMA_STATEMENTS` in a test, mutated both
+ways (bump missed → red; schema edited under an unchanged version → red). The generalizable move:
+when a rule cites a past incident, ask what *actually* caught that incident before assuming the rule
+is enforced.
+
+## Sweeping for the IDENTIFIER is not sweeping for the CLAIM
+
+Three instances on one branch (`feat/backlog-cache`, 2026-08-07), each caught by review rather than
+by the sweep that was supposed to catch it:
+
+1. **Chunk 05 — the `claim` retirement.** Done-when named `data-model.md` and `api-contract.md`; both
+   were reconciled carefully, and `-test-specifications.md`, `-nfr.md` and `-requirements.md` were
+   left specifying a mechanism that no longer existed. A Done-when list is a floor, not a scope.
+2. **Chunk 06 — janitor checks 6 and 7.** Retired on "meaningless once Issues is system of record",
+   an argument true of one backend, applied to both. (This one also has its own rule — *a retirement
+   is one act per substrate* — and recurring anyway is the point: recognizing a pattern in a review
+   finding is not the same as recognizing it in a task list.)
+3. **Chunk 06 verify — `adapter-mode.md`.** One section routed `find`/`dedup` through the new cache
+   while two others in the *same file* said they were unavailable: the action menu printed on every
+   invocation ("present `find`/`dedup` as **not available on this backend yet**") and the `add` flow
+   ("**Dedup-on-create is degraded** … say full dedup is not available"). The preceding fix commit
+   had addressed the tool-grant half of the very finding that named this file, and never re-read it.
+
+**Why grep does not catch this.** The falsifying prose contains none of the identifiers. "Not
+available on this backend yet", "is degraded", "meaningless once X", "remains dormant" — no `find`,
+no `dedup`, no `cache-query`. Searching for the dormancy-notice text I had written came back clean,
+because **I was searching a string I wrote, not a claim I had falsified** — which is the tell, and
+the clause the rule heading had to shed to fit its budget.
+
+**The check that would have worked** is a question, not a pattern: *what did this change make true or
+false, and who asserts the opposite in words?* For a restoration the query is "what still says this
+is unavailable"; for a retirement, "what still says this works". Both are read-and-judge over the
+files that describe the capability, and neither is a `grep` for a symbol.
+
+A fifth instance closed the loop on the *fix* rather than the defect. The tripwire written for #3
+**enumerated two files**; `migration-scrub.md` carried the same claim ("full-text `find` is
+unavailable for *every* item post-cutover") and was edited by Chunk 06's own commit. Enumeration was
+what missed #4 as well. The tripwire now **globs every `.md` under `skills/`**, so a surface added
+later is covered the day it lands — scoped to `skills/` because that is agent-executed prose, where a
+build plan or change-log is a record of what was once true and may say so. It was validated against
+all three historical blobs (3 hits, 1 hit, 1 hit) and the fixed tree (0).
+
+Related: *a retirement is one act per substrate the thing lives on* (the scoping half of the same
+family) and *a rule about second homes does not stop at the homes someone remembered to enumerate*.
+
+
+## A change-log `scope=` tag borrowed from the neighbouring entry
+
+Tagged `scope=backlog-cache` on a branch whose plan scope is `backlog-cache-write-path`, caught by the Chunk 02 cumulative reviewer. Under `views_enabled`, `views.collect_shipped_chunks` filters entries by exact `scope=` equality, so at release these chunks would have flipped `build-plan-backlog-cache.md`'s boxes — already covered by its own entries — while `build-plan-backlog-cache-write-path.md`'s chunks collected nothing and regenerated to `[ ]`. The integrity check does not catch it: `diagnose_scope_plan_coverage` complains only when a `chunks=` id matches no line in the mapped plan's roster, and `backlog-cache` genuinely has chunks 01 and 02.
+
+**This is the same failure class as `807cd75` on the parent branch** — the `release=unreleased` placeholder that made a finished branch invisible to its release — recurring three weeks later inside the change-log entry describing the fix for it. Cause both times: the tag was copied from the surrounding entries rather than derived from the artifact it points at. A neighbouring entry is the most available model and the least reliable one, because it was written for a different scope.
+
+**Related:** [[observable-beats-stored]] shares the shape — a field whose value must be remembered rather than derived is a field that will eventually be wrong.
+
+
+## Hand-tick a build plan's `## Status` box the moment its chunk's review passes
+
+**This entry is the inversion of the rule that stood here until 2026-08-08, and the history is the
+useful part** — a rule this file once stated as a prohibition is now stated as an obligation, so
+anything still repeating the old form is running on a mechanism that no longer exists.
+
+**What the old rule was, and why it was right at the time.** The boxes were a derived view:
+`views.build_status_view` counted `status=shipped` change-log entries and regenerated the `## Status`
+block at release. Hand-ticking therefore survived right up to the moment anyone would consult it,
+then silently disappeared. It was caught by the PR reviewer on `fix/backlog-cache-write-path`
+(`8551e26`), where three boxes were `[x]` against a deliberately statusless entry on a `develop`
+base, and the sibling plan that kept `[ ]` and recorded completion in prose was the documented
+convention.
+
+**What the convention cost, and why it lost.** With the boxes correctly `[ ]`, the session briefing
+announced `Resume: Chunk 01` for that plan *after all three chunks had shipped and merged* (PR #628),
+and the handoff notes repeated it as fact. That is the shape of the whole defect: completion had two
+readings, neither was authoritative, and the framework's own answer was to tell every reader not to
+trust the one printed in the artifact. A governance file whose most-read field is documented as
+untrustworthy is not a file with a caveat, it is a file with a bug — and the bug was the tool that
+overwrote it, not the people ticking boxes.
+
+**The rule now.** Tick `[x]` by hand when a chunk's "Done when" steps are all satisfied, and in that
+order — the Critic review comes before the tick, because ticking the LAST box disarms the Stop hook's
+Critic and reflection gates. Nothing derives the boxes, nothing reverts them, and everything reads
+them: the briefing's `Resume:` line, the handoff, review-mode inference, chunk-ref grading, and both
+Stop gates. The opposite error is now the live one — a chunk built, committed, and left unticked —
+and its only backstop is `buildplan_refs.unticked_committed_chunk_notice`, an advisory that fires
+solely on a `Chunk <n>` commit subject with a numeric id. A repo without that commit habit gets
+silence from it, indistinguishable from every box being right.
+
+**Tell that the old rule is still running somewhere:** any prose telling a reader the boxes are
+untrustworthy, that they "only flip at release", or to consult git history or the Context line
+instead of the checkboxes.
+
+**Related:** [[the-derived-views-retirement]] — the sorting rule this inversion produced;
+[[a-change-log-scope-tag-borrowed-from-the-neighbouring-entry]] — same branch, same
+release-bookkeeping surface, both found by review rather than by a check.
+
+
+## When a requirement is about a COST, assert the operation that costs
+
+Requirement BP9 said a growing archive must not be walked twice per session. I implemented
+`sorted(root.rglob("*.md"))` followed by `if <archived>: continue`, wrote "pruned at directory level,
+not filtered per file" into three docstrings, and wrote a test asserting **no archived file was
+opened** — which the defective shape satisfies perfectly. `Path.rglob` has no pruning hook: it
+descends the whole subtree and hands you every path. Reading is a *proxy* for traversing; the cost
+BP9 bounds is the traversal. The fix was `os.walk` with in-place `dirnames[:]` assignment, and a test
+that spies on `os.scandir` — the call that performs the work the requirement is about.
+
+**Why my own mutation testing did not catch it, which is the transferable half.** I ran a three-way
+mutation battery, including moving the filter from before the read to after it. Both arms still used
+`rglob`. **A mutation battery only explores the neighbourhood of the implementation you wrote** — it
+cannot see a defect invariant across every mutation you think to make. Mutation testing validates
+tests against *nearby* wrong code, not against the family of wrong code you are already inside.
+
+**Related:** [[a-stage-whose-worth-is-speed-needs-a-test-that-fails-when-it-stops-being-fast]] — this
+is the sharper form of it: not merely *a* test, but a test whose observable is the cost itself.
+
+---
+
+## A pattern narrowed to kill a false positive is validated against the case that PROVOKED it
+
+**Context.** The unticked-committed-chunk tripwire (DV7) shipped with `_CHUNK_COMMIT_RE =
+Chunk\s+(\d+)`, which matched a chunk id anywhere in a commit subject. Minutes later it fired on
+`plan(...): carry R-9's tail to Chunk 03` — a commit that merely *mentions* a later chunk. The build
+plan recorded a fix: `\(Chunk\s+(\d+)\)|:\s*Chunk\s+(\d+)\b`, described as "a narrowing verified
+against this branch's real subjects."
+
+**What the full corpus said.** Over the repo's last 800 commit subjects the proposed narrowing
+disagreed with the old pattern on 22 subjects — all in the direction of matching less, as intended.
+But grouping by conventional-commit scope showed it removed *all* chunk coverage from two entire
+plans: `drift-burndown` (chunks 1–4) and `critic-burndown` (chunks 1, 3). Those plans named their
+chunks only in a third idiom the sample never contained — `docs(scope): close Chunk 01 — the census`.
+A control that is silent for a whole plan is indistinguishable from one that found nothing, which is
+the failure mode this control's own docstring names.
+
+**Why the sample was the defect.** The branch that provoked the false positive contains, by
+construction, the conventions that branch happens to use. It cannot contain a convention used by a
+plan written six months earlier. The check that changed the decision was one `git log --format=%s
+-800 | python3 -` comparing old-vs-new match sets grouped by scope, and it took under a minute.
+
+**What shipped.** Three anchored arms — parenthesised, immediately after the conventional-commit
+colon, and the `clos(e|es|ed) Chunk NN` idiom — pinned positively for all three forms, negatively
+for three real prose mentions from the log, and by a property test asserting the pattern *strictly
+narrows*: over the real history it matches nothing the old pattern missed. That property is the one
+no positive test can replace, because the risk in a rewrite is not "it stops matching" but "it starts
+matching something else."
+
+**The general shape.** Narrowing a matcher is a two-sided change and it is nearly always evaluated on
+one side. Ask both: what does it stop matching that it should, and what does it stop matching that it
+shouldn't? The second question needs a corpus, not a case.
+
+---
+
+## A new key in a shared namespace needs a collision check against real DATA before it needs a test
+
+**Context.** Build-plan archival records "the release that carried this work" in the archived plan's
+frontmatter. The obvious key was `release:`. The writer also has to be idempotent — re-archiving must
+replace its own keys rather than append a second contradicting copy — so it strips every key it
+considers its own before rewriting them.
+
+**The collision.** `.prawduct/artifacts/release-plan-v3.2.7.md` already carries `release: v3.2.7`,
+meaning *the release this plan governs* — a different fact from *the release that carried this plan*.
+And release plans are among the artifacts most likely to be archived, because the gate that reads
+them (`check-releasability._find_release_plan`) searches the archive by design, specifically so
+archiving a shipped release plan does not make the gate fail closed. So the one artifact type whose
+archival was explicitly designed for was the one whose data the writer would silently delete.
+
+**Why every test passed.** The unit tests were written against the writer's own semantics: stamp,
+read back, assert the keys. A test suite validates the contract you thought you had. It has no
+opinion about what else in the repo already means something by the name you chose.
+
+**The check that found it.** A loop over `.prawduct/artifacts/*.md` printing any top-level
+frontmatter key matching the set the writer claims. One hit, and it was the decisive one. Renaming to
+`released_in` removed the ambiguity permanently and reads better besides; a regression test now pins
+that a release plan's own `release:` survives both a first and a second stamp.
+
+**The general shape.** Any writer that owns a subset of a shared namespace — frontmatter keys, config
+keys, tag fields, env-var prefixes, label names — is defining what it will overwrite. Enumerate the
+existing occupants from real data before choosing the name, not from memory and not from the schema
+you are about to write.
+
+---
+
+## An assert-absent guard passes when the instruction is simply DROPPED
+
+**Context.** Retiring "delete the build plan" across five instruction surfaces, the coverage shipped
+as a property-matched sweep asserting that no shipped surface instructs deleting a plan — matched on
+the instruction rather than on the sentences that were removed, and verified red against rewordings
+that never shipped.
+
+**What it could not see.** An edit that removes the *archive* instruction from `pr/SKILL.md`'s trunk
+branch leaves the sweep green, because nothing then instructs deletion either. Silence satisfies a
+negative guard by construction. This is the same never-armed failure the same branch had just closed
+for the DV7 tripwire — a control nothing reaches reads as a control that found nothing — reproduced
+one file over, by the author who had written the argument.
+
+**What was added.** A positive pin per surface, scoped to the *branch* rather than the file: the
+trunk path must name `archive-plan`; the gitflow path must say RETAIN and must NOT name
+`archive-plan`, because gitflow decides *when* a plan is archived, never *whether*, and that
+distinction is the entire rule. A whole-file grep passes when the instruction is present but sitting
+in the wrong branch, which is the likeliest way this actually breaks. The locator asserts it found
+exactly one matching line, so a rename makes the pin go red rather than silently match nothing.
+
+**A second trap in the same guard.** The sweep's first exemption clause skipped any match whose
+±90-character window contained "archive" — which, after the change, is every line on those surfaces.
+It would have excused a genuine deletion instruction written beside an archival one. Replacing it
+with a negator scoped to the 24 characters immediately before the verb is tight and testable, and
+the motivating case is now a fixture: *"Archive the plan at the release; on trunk, delete the plan
+file now."* must still be caught. **A negative test's exemption clause is where its teeth go.**
+
+## Prove a new regression test DISCRIMINATES by running it against a stash of the pre-fix source
+
+Written after the R-11 fix in the governance-artifact-lifecycle scrub (2026-08-10). The defect:
+`archive_plan`'s write and `unlink` shared one `except OSError`, so a failed unlink left the
+stamped copy in `archive/` AND the original live while reporting `refused`.
+
+The first test written for it **passed against the unfixed code.** Its fixture created
+`artifacts/` and the plan but not `artifacts/archive/`, then made `artifacts/` read-only to
+provoke the unlink failure. With the archive directory absent, `destination.parent.mkdir()` failed
+first — so the WRITE path errored, the function returned `refused`, no copy existed, and every
+assertion held. Green, while exercising nothing the finding was about.
+
+It surfaced only because a second, narrower test in the same class asserted on the failure
+*message* and could not pass on the write path. Pre-creating `archive/` is the whole fixture: a
+write into `artifacts/archive/` needs permission on `archive/`, an unlink of the plan needs it on
+`artifacts/`, and that asymmetry is what isolates the two operations.
+
+The cheap general check is one command: `git stash push <source file>`, run the new test, expect
+red, `git stash pop`. It costs seconds and answers the only question a green error-path test
+raises. This is the same family as the earlier "a report added at your call site is empty by
+construction" rule — both are cases where the *absence* of a signal is indistinguishable from
+health, and both are settled by making the thing fail on purpose once.
+
+## Release prep vs the cut, and the version tier a draft had already decided (2026-08-10)
+
+**Context.** Assessing `develop` for a release to `main`, then doing Phase 0 prep. Two rules came
+out of one session, and they compound: the second is *what* the prep got wrong, the first is *how
+far* the prep was allowed to go.
+
+**The tier.** A `## v3.2.8` CHANGELOG section had been drafted on the branch that finished
+`governance-artifact-lifecycle`, carrying a careful RELEASE-PREP comment listing what the release
+still owed — re-derive the pending scope set, widen the headline, restore the anchored heading,
+bump the version. The list was correct and I worked it. Writing the release plan's "Version
+decision" section sent me to `operational-spec.md`'s descriptive version tiers, where the observed
+minor tier is *"a substantial new capability or a subsystem going live"* — and the named instance
+is **v3.2.0, the backlog service shipping dormant**. This release is where that subsystem wakes
+up: Chunk 06 restores the Critic's reconciliation walk and hygiene checks, the PR reviewer's R-1
+and R-2, and the janitor's Backlog Health block, and retires the dormancy advisory. The draft's
+number predated two of the three scopes it would ship.
+
+The comment could not have flagged this. Its author saw the risk in front of them — a headline
+describing one scope while three were pending — and the tier question is only askable once you
+know what the other two scopes *are*. Nothing joins the two facts: `check-releasability` grades
+whether the partition is complete and is silent on whether the number matches what the partition
+contains, while printing that number in its own output.
+
+**The trigger.** I had offered the owner three prep items and scoped out the merge to `main`. When
+they said "don't actually release yet" my first reading was that nothing changed. Wrong: **two of
+the three were the trigger.** Bumping `version` is the auto-update cache key — the single fact the
+release process calls "the most important operational fact about deploying prawduct" — and
+stripping the ` — DRAFT` suffix is precisely what makes the section publishable, since the suffix
+exists to stop the draft reading as shipped. Had I done both and stopped, the repo would sit one
+promotion from shipping with every in-repo signal claiming it already had.
+
+**Resolution.** Wrote the classification artifact (it grades readiness; it causes nothing),
+renumbered and widened the prose, and left the version strings at 3.2.7 with the DRAFT suffix
+intact — recorded under "What this plan does NOT authorise" in the release plan itself, so a green
+gate cannot be misread as an armed release. The asymmetry is the general point: a *record* of
+readiness is free to write and free to discard, while the acts that arm a release are neither.
+
+## Six guards that pinned the repo's release phase, and the two defects hiding in the repair (2026-08-10)
+
+**Context.** Six `TestAgainstTheReal*` guards went red the moment the v3.3.0 release prep ran, on a
+branch where nothing shipped to consumers had changed. The concise rule for the *cause* — a test
+asserting against its own repo's live state pins that repo's current phase — was filed by the
+session that hit it. These two rules come from the session that repaired it, and both are about the
+repair rather than the original defect.
+
+**What the repair was.** Not weaker assertions: the guards had been hardened by an earlier round
+precisely to stop vacuous passes, so relaxing the non-emptiness checks was the one move that could
+not be right. The fix was corpus selection. An archived plan is still a real plan with real
+frontmatter and the archive only ever grows (76 against 0 live mid-release), so the resolver tests
+and the change-log join read live + archived — strictly larger and more discriminating than what
+they replaced. Two tests genuinely needed a *live* plan to perturb; they now promote a real archived
+one into a `tmp_path` copy instead of borrowing whichever plan the branch happens to be building.
+The two whose subject really is work in flight say which emptiness they reject: the plan pointer
+skips with a named reason when `active_build_plan` is null, and the release partition accepts an
+empty pending side only when some entry is stamped with the version `plugin/VERSION` claims.
+
+**The first defect: a skip that should have been a failure.** The helper picked its victim plan as
+"in the archived map but not in the live one." That reads as obviously correct and is a trap — it
+asks the resolver under test to select the fixture for testing the resolver. Mutating
+`prune_archive=True` to `False`, which is exactly the defect
+`test_archiving_a_real_plan_removes_it_from_the_live_map` exists to catch, made that set difference
+empty; the helper skipped with "nothing to perturb" and pytest printed `s`. A skip is
+indistinguishable from a pass in a summary line, so a broken resolver would have shipped green
+through the very test written to stop it. The fix walks the archive directory — a filesystem fact,
+independent of what is being graded — and makes the precondition an `assert` naming the defect
+("the live walk is not pruning archive/") rather than a `skip`.
+
+**The second defect: a rewritten assertion that could no longer fail.** Replacing the hardcoded
+branch scope with a read of the `active_build_plan` pointer removed the per-branch edit and the
+death-on-archival — and silently removed the test's ability to catch a *wrong* scope value. The map
+is keyed from the same frontmatter the test re-reads, so mutating `scope:` to `WRONG-SCOPE` left
+both sides agreeing and the test green. The old hardcoded literal had been the independent source of
+truth; nothing replaces it. Two probes showed what *does* still bite — a stale pointer, and a second
+plan declaring the same scope and sorting earlier, which steals the key and sends review dispatch at
+the wrong file silently. The limit is now written into the docstring under "what turns this red"
+instead of being implied away by prose about cross-checking.
+
+**How both were found.** Nine mutations against an `rsync` copy of the real tree: shrink the
+archive, duplicate a scope, stale the pointer, walk the archive first, disable pruning, mistag the
+release version, key the map by filename, return the wrong plan for a scope. Seven bit immediately;
+two came back green and those two were the findings. Neither was visible by reading the diff — both
+tests looked careful, and one of them *was* careful about everything except whether it could fail.
+A filename↔scope cross-check was considered as a replacement source of truth and rejected on
+measurement: 74 of 77 plans follow `build-plan-<scope>.md`, but three genuinely do not, so asserting
+it would have been inventing a norm mid-build rather than enforcing one.
+
+**Verification that the phase problem is actually gone.** Green in both phases — the post-prep tree
+(0 live plans, 0 pending entries) and a worktree at pre-prep `50d99594` (3 live, 9 pending) — with
+no skips in either, plus a simulated re-run of runbook steps 3 and 11 against this cycle's own
+change-log entry and plan. One run can only ever prove the phase you are standing in.

@@ -3,6 +3,509 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-10: six guards that pinned the repo's release phase, and now name which emptiness they reject
+
+<!-- prawduct: type=fix | scope=phase-blind-real-data-guards | release=v3.3.0 -->
+
+**Six `TestAgainstTheReal*` guards went red at the v3.3.0 cut, and every one of them was right.** They
+grade the repo's own live state — the correct instinct, because a fixture you wrote can only confirm
+the belief you wrote it with. What none of them said out loud is that they also encoded *"this repo
+is mid-development"* as an invariant. Release runbook step 3 stamps `release=` on every shipping
+entry, emptying the release-pending set; step 11 archives every shipped plan, emptying the live plan
+map. Both steps working exactly as designed falsified five non-emptiness assertions simultaneously,
+at the moment of maximum pressure to just relax them. The guards were hardened by an earlier review
+round precisely to stop vacuous passes, so relaxing them was the one repair that could not be right.
+
+**The fix is corpus selection, not weaker assertions.** An archived plan is still a real plan with
+real frontmatter, and the archive only ever grows — 76 entries against 0 live mid-release — so the
+two resolver tests and the change-log join now read live + archived. That is a strictly larger and
+more discriminating corpus than the one it replaces. The two tests that genuinely need a *live* plan
+to perturb promote a real archived one into a `tmp_path` copy instead of borrowing whichever plan the
+branch happens to be building; for live-wins that also makes the test capable of failing for the
+first time, because the real tree contains no live/archived namesake and the old assertion passed
+without the collision ever existing.
+
+**The two that are really about work in flight now say which emptiness they reject.** The hardcoded
+branch scope became a read of the `active_build_plan` pointer — the same resolution review dispatch
+and the Stop hook make — skipping with a named reason when it is null, which is the honest reading
+between work cycles and throughout a release. The release partition keeps `released` non-empty and
+asserts the partition is total and disjoint at any population size, then requires an empty *pending*
+side to be **explained**: some entry must be stamped with the version `plugin/VERSION` claims. A
+just-cut repo passes; entries stamped to a version the repo no longer claims fail, which is the drift
+the v3.2.8 placeholder incident actually had.
+
+**Each guard was shown capable of failing rather than asserted to be.** Nine mutations against a copy
+of the real tree — shrinking the archive, stealing a scope with an earlier-sorting duplicate, staling
+the pointer, walking the archive first, disabling archive pruning, mistagging the release version,
+returning the wrong plan for a scope. Two found real weakness in the repair itself: the helper had
+derived its candidate plan from the resolver under test, so breaking archive pruning made the test
+*skip* instead of fail — a skip being indistinguishable from a pass in a summary — and the pointer
+test cannot grade a scope's *value*, only its resolution, which is now recorded in its docstring
+rather than implied away. Both limits are written down where the next reader meets them.
+
+Verified in both release phases: green on the post-prep tree (0 live plans, 0 pending entries) and on
+a worktree at pre-prep `50d99594` (3 live, 9 pending), with no skips in either.
+
+## 2026-08-10: a checkbox that means one thing, and a plan that can finish
+
+<!-- prawduct: type=refactor | scope=governance-artifact-lifecycle | release=v3.3.0 -->
+
+**A build plan's `## Status` block had two meanings and one appearance.** With `views_enabled` on it
+was a derived view that only flipped at release, so ticking a box did nothing and an in-flight chunk
+always read as unfinished; with it off, the boxes were the plan's own content. Nothing on the page
+said which you were looking at, and the Stop hook's gates read those boxes either way. The flag is
+gone and only the second meaning remains. `views.py` is deleted, its two jobs rehomed to
+`change_log.py` (tags) and `plan_index.py` (plans) — a module that did both under a name describing
+neither is part of why the dual reading reached three consumers before anyone generalised it.
+
+**The single reading is only as good as the hand that ticks it, so it comes with a tripwire.**
+`unticked_committed_chunk_notice` reports a chunk with commits on the branch and an empty box. It
+reports and never writes and never decides — nothing feeds it back into progress resolution — so a
+wrong guess costs a line of stderr rather than a wrong gate. Its precondition is a commit-subject
+convention and its failure mode is silence, which is stated where it lives because silence here is
+indistinguishable from every box being correct.
+
+**Plans now have an end of life that is not deletion.** `archive-plan` stamps completion frontmatter
+and moves a plan into an `archive/` beside it; two terminal states, because *superseded* — work
+stopped, descoped, absorbed elsewhere — is the case that matters. A half-finished dead plan can never
+satisfy "all boxes ticked", so a lifecycle with only *completed* leaves exactly those plans sitting
+in live `artifacts/` forever, reading as active. Checkbox state is neither a precondition nor
+corrected on the way in: nothing reads an archived plan's boxes, and preserving how the work actually
+ended is the point.
+
+**The fleet converges by tooling, not by hand-editing repos.** `lifecycle-repair` removes the dead
+key and its generated block, labels a derived `release-notes.md` as history, and deletes the per-plan
+notes telling readers not to hand-edit checkboxes — three of those four are inert, and the fourth is
+the one that still changed behaviour, because a reader who believes it leaves finished work unmarked.
+`plan-backfill` archives plans the change log records as shipped, deciding *shipped* mechanically
+from a `release=` tag: a last use of the tag data before it goes inert, and no judgment enters. Both
+preview first and take one confirmation for the whole act — per-file prompting is forbidden here, not
+merely discouraged, because confirmation fatigue is itself a safety regression. **This repo is a
+subject and not an exception:** 73 of its 76 live plans were backfilled by the same code path, which
+is also the verification that the path works.
+
+**The root cause was three declarations with nothing comparing them,** so the guard is a test rather
+than a rule: `core.OPT_IN_FLAGS` names every boolean opt-in flag, and the test asserts each one's
+shipped-template value equals its measured code default, in both directions — a registered flag the
+template omits, and a template flag nobody registered, both fail. The code default is read from a
+state file that omits the key rather than written as a literal, so the test agrees with the code
+instead of with its author's belief.
+
+**Three review rounds, and the second is the one worth recording.** The `cumulative`
+(`rev-20260810T131213Z-c1b6f3f7`, 3 reviewers) returned 1 blocking / 14 warning / 12 note — all 27
+dispositioned, 12 fixed, 14 accepted, 1 filed as #631. Its blocker was that both new commands
+shipped with no CLI-level test, and the reason it mattered is that their `--json` key names are a
+contract doctor's health checks grade on. The first `verify-resolutions`
+(`rev-20260810T133906Z-8e3fb8a3`) then returned **two new blockers on those fixes**: the containment
+guard I had just added was lexical, so a single `..` walked through it and the destructive path ran
+to exit 0; and three of the fixes shipped untested. Writing those tests found that one fix did not
+work — the unreadable-file list was structurally always empty, because the plan scan swallows an
+undecodable file one layer below where the reporting was added. **The fix for "a path that cannot
+answer, reporting as one that answered" had reproduced it.** `rev-20260810T135801Z-d1b928b0` returned
+**0/0/0**, and `check-cumulative-critic` reports composed coverage spanning the branch.
+
+**Retirements were recorded, not performed silently.** `regen-views` and `stamp-merged` stay callable
+and inert with a stderr notice, removal deferred to a major, because the deprecation norm's own
+rationale forbids the silent removal; the `regen-views-is-advice` ruling was retired as a norm
+lifecycle event on both norms it annotated, not deleted as a doc-sync. The tag schema lost `chunks=`
+and `status=`, whose only readers lived inside the machinery that went.
+
+## 2026-08-08: the cache never learned about our own writes
+
+<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-cache-write-path | release=v3.3.0 -->
+
+**No backlog write path touched the read-through cache, so every local write left the shared store
+holding a pre-write snapshot for the rest of the session.** `core.py` held zero references to the
+store, `migrate.py` imported none, and in `cli.py` the only `sync` import sat inside `_run_sync` —
+the store was written by exactly two callers, the `sync` op and the detached session-start warm.
+W1's design reasoned entirely about *provider-side* drift, where the watermark helps; the adapter's
+own writes are the sharper source, because the gap between a write and the next read is one agent's
+next command. The sharpest case is the C-B4 dangling-id check resolving an id filed seconds earlier
+and reporting *no such item* — a false blocking finding, and precisely the failure the cache existed
+to end. `pick` was the one reader already safe: it runs a revalidating sync before reading.
+
+**This restated a property two parent documents already asserted rather than adding one.** Data
+Model §1 defines the cache as serving "the queries GitHub can't serve *read-your-writes*", and NFR
+§4 prices lexical search at zero GitHub cost on those same stated grounds. W1 shipped the assertion
+without the coupling that makes it true. Cache Spec §6.1 is the requirement's home (#627).
+
+**A write now mirrors itself into the store, at no additional provider cost.** `file_item` holds the
+create response; `set_status` and `update_item` each close on a `get_issue` before decoding — the
+authoritative post-write issue is already in hand. `core` takes an injected callback and still
+imports neither `cache` nor `sync`, which a test pins by reading the source. Mirrored issues decode
+through the same path a full fetch uses, so a mirrored row is the row a rebuild would write; a
+bespoke column patch would have made the store a second author and broken rebuild-equivalence
+silently on every column nobody thought about.
+
+**The mirror refuses three stores, and the middle one is the finding this work nearly shipped
+without.** It creates no store; it declines a **schema-only** store — schema committed, both tables
+empty, which is what a rebuild whose `replace_items` step failed leaves behind — and it skips an
+item outside the store's scope. The schema-only case was found in review: `create=False` proves a
+*file* exists, not that a sync ever ran, and one mirrored row into that store serves, through
+`_freshness`'s row-stamp fallback, **one item aged 0.0 seconds** (measured, not reasoned about).
+That is the freshness lie §6.1 forbids twice. Requiring a `cursor` row for the scope closes it, and
+the same check *is* the cross-repo scope guard — asked of the store rather than of the caller's
+`--repo`, which a command run wholly against another backlog would satisfy vacuously.
+
+**A mirror never moves the watermark, the validator, or the coverage stamp**, because those record
+what a *fetch* established and a mirror saw one issue only because it just wrote it. The error runs
+the safe way: a mirrored store is more current than its reported age implies, never less. A mirror
+failure warns on an otherwise-`ok` envelope and never fails the write — the provider mutation has
+already landed, and failing would invite a retry of a completed write. An *absent* store is silent,
+since every read already reports that with the command that fixes it.
+
+**`import` is the one write the mirror cannot serve, so it refreshes by sync instead.** A bulk
+create holds no single authoritative issue to hand the mirror — the importer creates through the
+transport directly, hundreds of times — and re-fetching each one to feed it would spend a request
+per item to save one. A successful import now runs a single `incremental_sync` on the import's own
+transport (a fresh one would drop the injected fake under test and open a second `gh` session in
+production): every created issue has an `updated_at` past the watermark, so one pass catches them
+all. This is a new provider round-trip on a command that previously made none. It is skipped, with
+a diagnostic rather than a warning, when no store exists — `import` is the command most likely to
+run *before* a first sync, and building a store here would be the store-creation §6.1 forbids. A
+sync failure warns on the otherwise-`ok` import envelope and never fails the import.
+
+`merge` needed the callback threaded rather than inherited (`migrate.merge` calls `core.set_status`
+itself); only `related` mirrors among the edges, since the native `blocks`/`parent` edges have no
+column here. A partition test over `_WRITE_OPS` makes a future op fail something until someone
+decides whether it changes cached state. The two reader-facing prose surfaces
+(`plugin/skills/backlog/cache-reads.md`, `plugin/skills/backlog/adapter-mode.md`) gained the
+write-reflection contract: a cached read reflects this session's own writes, while the coverage
+stamp still measures the last confirmed fetch — two separate claims, and the docs now say so.
+
+## 2026-08-07: a placeholder version tag hid a whole branch from the release
+
+<!-- prawduct: type=fix | scope=backlog-cache | release=v3.3.0 -->
+
+**Six entries on this branch carried `release=unreleased | status=shipped`, and the release flow
+read that as already shipped.** The unreleased set is every entry tagged `scope=` with *no*
+`release=`, so a placeholder naming the absence removes the entry's whole scope from it. Run against
+the branch at PR time, `check-releasability --release v3.2.8` reported `releasable: no
+release-pending scopes — nothing to classify` — the runbook's explicit "nothing to cut. Stop." Three
+consequences rode along: release-notes.md grew a literal `## unreleased` section above v3.2.7,
+`project-state.yaml` recorded `releases: ["unreleased"]`, and because
+`diagnose_scope_plan_coverage` skips `status=shipped`, the no-plan-file integrity check that exists
+to guard release-pending scopes never applied to them. This is REL-2N8K — v2.0.14 shipping 8 of 10
+entries unflipped — in a better disguise: a typo looks wrong, a placeholder looks deliberate.
+
+**The tags are corrected, and `release=` is now validated rather than trusted.** `status=` has had a
+typo-guard since VWS-3K7P precisely because a bad value silently fails to flip a checkbox; `release=`
+had none, though it fails in the same direction and harder — the entry does not merely skip its own
+checkbox, it takes its scope out of the release entirely. `validate_release_values` requires
+`vMAJOR.MINOR.PATCH` (optional `-suffix`) and joins the global fail-closed set: `regen-views` exits 2
+and writes nothing. Absent stays legal — that IS the release-pending state.
+
+The guard was run against the failure before being trusted: 6 errors on the defective blob
+(`f17dbd5`), 0 on the fixed tree, and 0 across all 62 `release=` tags of real history, which a
+too-strict pattern would have failed closed on. After the correction the probe names `backlog-cache`
+as the one release-pending scope, and the Status checkboxes return to `[ ]` — the documented
+development state, the plan's Context line and git history being the progress record until the
+release flips them.
+
+## 2026-08-07: the last dormant readers come back, and the advisory that announced them retires
+
+<!-- prawduct: chunks=06 | type=feat | scope=backlog-cache | release=v3.3.0 -->
+
+**The three prose readers that went dark at the Issues cutover read the backlog again.** The Critic's
+backlog reconciliation walk and its four hygiene checks, the PR reviewer's R-1 and R-2, and the
+janitor's Backlog Health block each lost their "the live backlog is frozen markdown, so skip and
+announce it" branch and gained a cache-backed query. Against the real 453-item backlog the answers
+are ones a reader would act on: the changed-file intersection over this branch's own diff returns the
+tracking item and nothing else, naming the three `affected:` entries that matched — an inference that
+previously required reading every item's text, and the one capability this work adds rather than
+restores.
+
+**The machinery that announced the dormancy is deleted rather than reworded.** `DORMANT_CHECKS` and
+the `backlog-checks-dormant` probe are gone, and the advisory retires through the ordinary reconcile
+path — a probe that stops producing a candidate resolves its own advisory, so no removal step was
+needed. It shrank as each reader landed, which was always the intended shape. Two checks stay dark
+and each now says so where a reader meets it rather than in a session-start nag: the neglected-hygiene
+sweep, because the `promoted` status value has no Issues equivalent for a query to ask for, and
+norm-exception expiry, which waits on a write path rather than a read path. Two others — counting
+unstructured legacy items, and proposing an archive split — are **scoped to the markdown backend**
+rather than retired: post-cutover there is nothing to migrate and closed issues are the archive, but
+on markdown the split proposal is the only surface that makes one, so deleting them would have taken
+a live control from every markdown-backend product to suit a cut-over one.
+
+**Reading the cache needed a door, and the door needed a grant.** Every consumer bound before this
+one was in-process Python; these are agents, so `prawduct-hook backlog cache-query` is new — eight
+read-only queries, no network, no writes. The blocker was the Critic: the walk belongs to the
+sustainability reviewer, whose narrow tool list *is* the no-execution enforcement. It is granted the
+one op, and the sentence in its own prose claiming it could run nothing was corrected in the same
+edit — shipping the grant while leaving that standing would have been a document lying about its own
+enforcement. Two alternatives are recorded in the plan with why each lost; the deciding fact was that
+a dangling-id check resolves ids discovered while reading the diff, which no pre-computed payload can
+enumerate.
+
+**A miss and an unreachable store must never look alike, and that is what the exit code is for.**
+Every query exits 6 with a reason and the command that fixes it when the store cannot be read, and
+each restored surface states that rule in its own words — reporting an empty set instead would have
+rebuilt the silent-reader failure these checks were built to announce, in a new costume. The query
+mechanics themselves live in one file the three surfaces route to, because stating them three times
+is precisely the drift the coherence tripwire exists to catch; routed rather than copied, the
+restored walk came in smaller than the notice it replaced.
+
+**The cache had no trigger until now.** Its only writer reachable from outside a test was a human
+typing the command — while several of the consumers added here are restricted-tool agents that cannot
+run one. It now warms detached at session start beside the counts snapshot, incremental so the steady
+state is a rate-free conditional request. Driven end to end, store age went from 43 minutes to 12
+seconds after one warm.
+
+**A citation spelled `#621` did not resolve, and nearly shipped that way.** The resolver needed a
+repo it could not infer, so bare refs came back as "no such item" — and bare is how they are written:
+this repo's change-log carries 259 of them against 5 qualified. The two checks that read `closes:`
+lines would have matched almost nothing while reporting confidently. Fixed in the query layer rather
+than at the CLI, so the norm probes bound in the previous chunk get it too; it is sound only because
+the store holds exactly one repo by design, and that condition is written where the code depends on
+it.
+
+## 2026-08-07: ready-work comes off the cache, and the claim mechanism retires
+
+<!-- prawduct: chunks=05 | type=feat | scope=backlog-cache | release=v3.3.0 -->
+
+**`pick` stopped scanning the backlog.** Its candidate set was a paginated walk of every open issue
+on every call, decoded in full to rank — ~12.4s against ~209 issues, about six times the latency
+floor. It is now one indexed read of the local store behind a revalidating conditional request, and
+the blocker fan-out is the only provider traffic left. Measured against the real 453-item backlog:
+~0.9s at `--limit 1`, ~2.0s at `--limit 3`.
+
+**The blocker predicate deliberately did NOT move, and the store lost the table that tempted it to.**
+A blocker can live in a repo this single-repo cache does not hold, so a cached edge could record only
+that a dependency existed, never whether it is still open. `pick` reads dependencies live,
+permanently — which means a stale store cannot let a blocked item through, because it is never asked.
+The empty `relationship` table that had stood since the first chunk is gone: it could never gain the
+consumer it was shaped for, and an empty table shaped like the answer is what a later builder wires
+the fan-out to.
+
+**Taking an item on the Issues backend is now a pushed branch, not a claim.** `claim`, `unclaim`, the
+staleness TTL, the reap tier in the ranking, the `claimed_at` stamp and `pick --claim` are all retired
+together — three mechanisms answering *is someone on this?* replaced by one that also answers the
+follow-up the TTL was guessing at, *is that work still alive?*, from the branch's own commits. Nothing
+expires and nothing is reaped; a merge makes the marker inert rather than clearing it, since the
+branch that shipped an item is the record of what did. `assignee` returns to native/protected:
+GitHub's UI still assigns, and prawduct stops reading assignment as meaning. Exit code 4 is
+unchanged — it means `conflict`, and `update`'s CAS path still produces it.
+
+**The retirement is scoped to the adapter, and the review is why.** A first pass took `accepted-by:`
+out of the markdown backend too. But the argument for retiring was entirely about the Issues op — a
+release-current surface, `working-branch` shipping in the same release, three coupled mechanisms
+collapsing into one — and none of it holds for a line in a markdown file: `accepted-by:` has no TTL,
+no reap and no assignee coupling, and `working-branch` demands a *pushed* ref and a named repo that a
+local-only repo or a shared-trunk team cannot supply. Removing it would have taken a working control
+from a whole class of products on borrowed reasoning. One field per backend now, each native to its
+substrate, and CC3 in the requirements records the supersession rather than the requirement quietly
+changing meaning.
+
+**`revisit-due` came back for the same reason.** It was retired outright on the argument that
+exception clocks had already migrated to prose on the norm — true of this repo and of no other. For
+every markdown-backend product the probe was live and working, and `docs/norms.md` states the
+two-path split normatively, with the janitor's Norm Health sweep declining dated clocks *because*
+this probe fires them. It keeps its cutover early return: post-cutover it is dark, and unlike its two
+siblings the cache cannot change that — `revisit:` records intent, which no age-based query
+reconstructs, so what it waits on is a *write* path for the field, not a read path. That is also why
+it is not in `DORMANT_CHECKS`, whose advisory promises its members return when the cache lands.
+
+**Two dormant norm probes came back.** `dead-why` and `stalled-transition` resolve their citations
+through the cache now, on both backends and through aliases, so a norm citing a pre-migration `PFX`
+id still finds the issue carrying it. A store that cannot answer raises one shared advisory rather
+than silence — the two probes report the same outage under one id, and it names both repairs rather
+than picking one from the error code, because the deduplication that gives them one id would
+otherwise let registration order decide which repair the operator saw.
+
+**Pointing `dead-why` at real data for the first time since the cutover found a defect in it.** It
+fired three times on this repo's own observability strategy, every hit a `Status: steady-state …
+transitioned when <item> closed` line — the transition's own record, reported as rotting rationale.
+The `Status:` arm now counts only while the status still reads `in-transition`. Dormancy had hidden
+this for the whole period the probe returned `[]`.
+
+**Changes:**
+- `plugin/lib/backlog/query.py` — `pick` sources candidates from `cachequery.ready_items` after a
+  revalidating sync, ranks oldest-first, and surfaces the store's confirmed-at stamp and age in
+  `warnings` on every answer (and the revalidation's failure when it failed). `_claim_eligibility`,
+  the reap tier and the claim clauses in `_why` are gone.
+- `plugin/lib/backlog/cachequery.py` — `ready_items`, the one function here whose consumer the cache
+  spec does not enumerate, because `pick` never went dormant. It reads bodies, unlike the other
+  listings, so an open-but-redirected item is dropped rather than offered as buildable.
+- `plugin/lib/backlog/cache.py` — schema **v6**: `relationship` dropped. `comment` stays, with the
+  trigger written at the table. **Superseded later on this branch — the shipped schema is v7:** the
+  trigger written at that table fired when the query surface settled with no comment-reading
+  consumer, so `comment` went too, and `item.etag` with it (its producer was retired by the same
+  work). The tree's tables are `cursor`, `item`, `item_affected`, `item_alias`, `item_fts`; a pre-v7
+  store reports the mismatch and rebuilds. A reader assembling the release story from this entry
+  alone would state the wrong persisted-format version, which is why the correction lives here
+  rather than only in the entry that made it. A new test pins `SCHEMA_VERSION` to a fingerprint of the schema
+  statements, because mutation testing found the bump had no guard at all: the one earlier case was
+  caught only because a query broke against the stale store, and a change that *removes* something no
+  query reads leaves the old store working and the bump silently optional — which is how a rule with
+  a real incident behind it erodes into a judgement call made freshly each time.
+- `plugin/lib/backlog/core.py`, `cli.py`, `encode.py` — `claim`/`unclaim`, `DEFAULT_CLAIM_TTL_SECONDS`,
+  the CLI ops and flags, and `Block.claimed_at` removed. `claimed_at` keys already written into issue
+  bodies stay readable as unknown block fields forever, and are asserted inert rather than assumed so.
+- `plugin/lib/norm_probes.py` — the two restorations, the issue-ref citation spelling, the narrowed
+  `Status:` arm, and one shared scan skeleton so the backend selection has a single home.
+- `plugin/lib/backlog_probes.py` — the two restored rows leave `DORMANT_CHECKS`; the advisory shrinks
+  rather than being reworded, and `post_cutover`'s docstring now distinguishes the callers that
+  retire on the switch from the two that use it to choose a backend.
+- `documentation/backlog-service-test-specifications.md`, `-nfr.md`, `-requirements.md` — CRASH-6,
+  the `claim_conflict` coverage row, QRY-2's setup, the rate and latency budgets, and CC3/GV1
+  reconciled. The first sweep stopped at the two documents the plan's Done-when named; a retired
+  operation still specified is a second home for a decision that no longer holds, and that rule does
+  not stop at the two documents someone remembered to list.
+- `tests/test_backlog_smoke_live.py`, `tests/spikes/s2_migration.py` — both call `pick` and both are
+  invisible to the default suite (one env-gated, one an uncollected `__main__` script), so both were
+  broken by the new signature with everything green. A new guard binds every spike `pick` call
+  against the live signature.
+- `plugin/skills/backlog/adapter-mode.md` — `accepted-by:` becomes `working-branch:`,
+  `--include-claimed` becomes `--include-working`. `plugin/skills/backlog/SKILL.md` keeps **both**,
+  one per backend, and loses only the claim grants from `allowed-tools`. A
+  grep test now fails if a retired op or flag reappears in the prose: the code and the prose retiring
+  in one commit is what stops a CLI that exits "unknown op" while the skill still says to run it.
+- `documentation/backlog-service-data-model.md`, `backlog-service-api-contract.md` — the Claim entity,
+  the `claim`/`unclaim` row, `claim_conflict`, and the `relationship` table row reconciled to what
+  now exists.
+
+## 2026-08-07: the backlog cache answers its consumers' questions
+
+<!-- prawduct: chunks=04 | type=feat | scope=backlog-cache | release=v3.3.0 -->
+
+**The query surface.** Eight functions covering the consumer union the cache spec enumerates —
+grouping and counting by area, creation-time filtering, text search scoped to an area, two date
+predicates, the changed-file intersection, and id resolution through aliases including dead items.
+Verified against the real 453-item backlog rather than only against fixtures: every query run and
+its answers read, and the intersection matched against this branch's own 529 changed files.
+
+**A latent defect this release would otherwise have shipped.** `sqlite_master` lists an FTS5 virtual
+table *after* its own shadow tables, so the rebuild's drop loop deleted `item_fts_config` and then
+could not construct `item_fts` to drop it. A bare `except … continue` swallowed the failure, the
+next step reported it as "SQLite built without FTS5", and what survived was an index that `has_fts()`
+called present and every query raised on — so text search would have broken permanently at any
+schema bump, including this one.
+
+**The visible age had been over-reporting since sync went incremental.** It answered
+`MIN(item.fetched_at)`, honest while every sync rewrote every row; once only the fetched window is
+restamped it becomes the fetch time of the least-recently-*edited* item and grows without bound while
+syncs succeed. Nothing failed — the number just started lying.
+
+**Changes:**
+- `plugin/lib/backlog/cachequery.py` grows the query union. The two invariants every payload
+  inherits — unavailable is never empty, every payload carries a visible age — are enforced in one
+  place and asserted across the whole surface, so a query added later without going through it fails
+  rather than quietly opting out.
+- Cache **schema v5**. `cursor.fetched_at` → `coverage_confirmed_at`, renamed *and widened*: every
+  successful sync advances it, **including the 304**, which previously returned before touching the
+  store and so left the cheapest and most common successful sync with no trace at all. Row stamps
+  stay as the reader's fallback.
+- **`item.tags` removed.** It shipped in v4 with its justification stated as explicitly *not* a
+  consumer query, and named its own removal trigger: the first release of the query surface that
+  ships no cache-served tag query. This is that release — `list --tag` is served live off the
+  provider's label filter. Re-adding a column to a rebuildable store costs a version bump and a
+  re-fetch, so the usual lock-in argument for keeping a persisted column runs the other way here.
+- **`item_alias(alias, ref, item_id)`** — the alias table the spec's "all resolution goes through
+  the alias table" rule requires, derived from the stored body in the same transaction. `ref` holds
+  a tagged alias's untagged canonical id, because a citation in a change-log is written untagged
+  while the record stores it tagged, and matching across that gap otherwise takes a leading-wildcard
+  `LIKE` no index can serve. No `UNIQUE`: uniqueness is an integrity constraint, and a store that
+  refused to hold a violation could not report it as `alias_collision`.
+- `plugin/lib/backlog/ids.py` gains the provider-alias grammar. The ref half is re-normalized rather
+  than trusted — an alias arrives from issue-body text and its canonical id reaches a REST path, so
+  the question is not *is this well-formed* but *what else could this successfully resolve*.
+- Three seams fixed around the FTS drop: virtual tables drop first, survivors are refused rather
+  than swallowed, and only a genuine `no such module` counts as missing FTS5.
+- One `optimize` + `VACUUM` after a rebuild, best-effort — a `DELETE`-based rebuild leaves its pages
+  and FTS segments behind, and a rebuild is the one moment nobody is waiting on a query.
+- Date predicates compare **instants, not strings**: the provider stamps `...Z` and Python writes
+  `...+00:00`, so one moment has two spellings whose lexicographic order is not chronological.
+
+**Classification:** structural
+
+## 2026-08-07: the backlog cache learns three domain fields
+
+<!-- prawduct: chunks=03 | type=feat | scope=backlog-cache | release=v3.3.0 -->
+
+**`affected`, `tags` and `working-branch`** — the one place this work extends the domain model
+rather than consuming it. With `affected` indexed, a reviewer asking "does this change touch any
+open item?" runs a set intersection instead of reading item text and inferring.
+
+**Two of the chunk's own stated deliverables were wrong on mechanism.** "Name all three in
+`_UPDATE_FACETS`" would have written `affected:` labels for a body-block field and made setting a
+second tag remove the first, because that loop is a label *swap*. And the "`affected` index" cannot
+be an index on a column: the intersection runs entry-contains-changed-file, and `WHERE ? LIKE
+affected || '%'` puts the variable on the side no index helps.
+
+**Changes:**
+- `tags` → `tag:` labels, the one multi-valued facet, namespaced like every other prawduct label so
+  it cannot collide with a repo's own. Binding rule stated at the constant: **nothing ever gates on
+  tags** — that is what makes synonym drift harmless rather than corrosive.
+- `affected` and `working_branch` → the `prawduct:` block. `affected` takes repo-relative paths
+  only: prose and globs are refused at the write, because a glob is not a broader match here, it is
+  a literal that matches nothing forever.
+- `working-branch` is `owner/repo@branch` and must be a **pushed** ref, checked through the new
+  `transport.branch_exists`. Endpoint verified live, not recalled. The branch is held to git's
+  `check-ref-format` rules first, because it is interpolated into a REST path and
+  `owner/repo@../../../user` would otherwise resolve some other endpoint and be stored as verified —
+  the check failing open, which is the invisible claim it exists to prevent.
+- The SEC-2 mass-assignment allowlist gains `_UPDATE_MULTI_FACETS` and `_UPDATE_BLOCK_FIELDS`
+  beside `_UPDATE_FACETS` — a deliberate widening, three names, each with its own writer.
+- Cache **schema v4**: `item` gains `affected`/`tags`/`working_branch`, and `item_affected(item_id,
+  path)` + its index is the changed-file intersection, derived from the column in the same
+  transaction exactly as `item_fts` is.
+- Incremental sync now **evicts** an item that leaves prawduct scope. Upsert-only had no way to
+  learn that a stripped item stopped being one, so the row sat in the store as open forever —
+  a stale positive reaching the consumers that walk the open set.
+- `--tags` / `--affected` / `--working-branch` on `update`; `--tag` on `list`. A populated
+  working-branch shows in the default human view, since visibility is that field's only job.
+
+**Classification:** feature
+
+## 2026-08-07: the backlog cache learns to sync incrementally
+
+<!-- prawduct: chunks=02 | type=feat | scope=backlog-cache | release=v3.3.0 -->
+
+**The chunk's own verify-api step falsified the chunk's stated mechanism.** The plan said sync
+writes `item.etag`. Sync reads the *list* endpoint, and a list ETag replayed against
+`GET /issues/{n}` returns 200 where that item's own returns 304 — the list body carries no per-item
+validator at all. Storing it would have made the Chunk 05 revalidation miss on every read, spend a
+full request, and look like it was working. The two validators are now separate: `cursor` carries
+the list-query validator, `item.etag` stays NULL until a decision-path read populates it.
+**Superseded later on this branch:** that decision-path read was never built — `pick` revalidates
+through `cursor.etag` instead — so the column had no producer and was dropped in the v7 schema.
+`cursor.etag` is unaffected and remains the live list validator described above.
+
+**Changes:**
+- `cursor(scope, since, etag, fetched_at)`; `apply_incremental` writes rows and watermark in one
+  transaction, verified by a test that cuts exactly at the row write (and by mutation).
+- The watermark is a **provider** timestamp, rewound by a 2-minute overlap. It was the local clock,
+  which the next sync hands back to the provider as `since` — a fast machine would have skipped
+  everything stamped in the gap, silently and permanently.
+- `cachequery._freshness` ages the **rows**, not the cursor. Reading the watermark as an age was a
+  provider timestamp answering a local-clock question; an empty-but-synced scope now ages off the
+  cursor's own stamp, so "empty" and "never synced" stop being the same report.
+- `state="all"` on the sync query: `since` and `state` are independent filters, so the `open`
+  default would drop exactly the closes that the no-deletion-sweep decision depends on `since`
+  catching.
+- A validator is stored only for the window it validates — when the watermark moves, the old one is
+  dropped rather than kept to miss.
+- `prawduct-hook backlog sync [--rebuild]` — the writer's entry point, which three `unavailable`
+  messages already told operators to run.
+- `gh` exits 1 on a 304; `_run_conditional` reads the status line from stdout rather than matching
+  stderr text.
+
+**Classification:** feature
+
+## 2026-08-07: the backlog cache store, and the invariant it rests on
+
+<!-- prawduct: chunks=01 | type=feat | scope=backlog-cache | release=v3.3.0 -->
+
+**Changes:** the per-clone SQLite read-through store — schema, `PRAGMA user_version` with
+discard-and-rebuild on any mismatch, WAL plus busy timeout for the concurrent-worktree case, visible
+age on every served payload, and unavailable-is-never-empty on every read path. The load-bearing
+test is rebuild-equivalence: drop the store, rebuild from the provider, compare — a difference means
+a field lives only in the cache, which is both data loss on rebuild and a second home for a fact.
+`assignee` and `reviewed` were dropped from the schema when the claim retirement removed their only
+consumers.
+
+**Classification:** feature
+
 ## 2026-08-07: an excellent issue title stopped being a suggestion
 
 <!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement | release=v3.2.7 | status=shipped -->
@@ -140,13 +643,16 @@ after a fix commit; dispatch answers in under a second.
 
 <!-- prawduct: type=fix | scope=backlog-import-title-boundary | release=v3.2.7 | status=shipped -->
 
-<!-- Deliberately NO `scope=` tag. A scope-tagged entry is release-pending and
-     `regen-views` looks for a matching build-plan file to regenerate a `## Status`
-     from; this work went requirements → fix with no build plan, so a scope here
-     names a view that cannot be written and fails the real-artifacts scope check.
-     The discovery artifact declares `artifact: discovery`, so it is correctly
-     excluded from that search rather than mistaken for a plan. When the enforcement
-     work is planned, that plan carries the scope. -->
+<!-- PLANLESS SCOPE — read before "correcting" the tag above. This entry carries
+     `scope=` even though the work went requirements → fix with NO build plan: it
+     had to, or the release record could not answer "what did v3.2.7 carry?" (the
+     REL-2N8K shape that shipped 8 of 10 entries unrecorded at v2.0.14). The
+     trade-off is that `regen-views` looks for a matching build-plan file to
+     regenerate a `## Status` from and finds none here — the only artifact declares
+     `artifact: discovery`, so it is correctly excluded from that search rather than
+     mistaken for a plan. Tracked as #310 (support legitimately planless scopes in
+     regen-views). Do NOT strip the scope to quiet regen-views; that trades a
+     complete release record for a clean exit code. -->
 
 **A 396-item migration was permanently pinned at 7%, and the loud failure was not the defect.**
 One GitHub 422 killed the whole run at item 28, and resuming made zero further progress because

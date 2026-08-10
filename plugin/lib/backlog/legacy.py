@@ -4,10 +4,10 @@ The backlog is living triage markdown managed by the ``/prawduct:backlog`` skill
 Until now the only runtime reader was a textual line-count in :mod:`lib.briefing`;
 every richer use (claim-filtering, stale detection, dedup, stage-aware pick, the
 post-sync probes) needs to *parse* items, not regex the file. This module is that
-substrate — the backlog's analogue of :mod:`lib.views` for the change-log.
+substrate — the backlog's analogue of :mod:`lib.change_log` for the change log.
 
-Design mirrors ``lib/views.py``: a dataclass per item, a pure ``parse_backlog``
-function, and small pure query helpers. No I/O coupling — callers read the file and
+Design mirrors ``lib/change_log.py``: a dataclass per item, a pure
+``parse_backlog`` function, and small pure query helpers. No I/O coupling — callers read the file and
 pass the text in — so the parser is trivially testable and never blocks a session.
 
 Item shape (see ``documentation/backlog-system-requirements.md`` §4.1):
@@ -145,7 +145,14 @@ class BacklogItem:
 
     @property
     def accepted_by(self) -> str | None:
-        """The claim holder (``accepted-by``), or ``None`` if unclaimed.
+        """The ``accepted-by`` holder, or ``None``.
+
+        **The markdown backend's live way of taking an item**, and not the same
+        thing as the Issues backend's `working-branch` — which needs a *pushed*
+        ref and a named repo, so a local-only repo or a shared-trunk team could
+        not supply one. The retirement of the adapter's `claim` op is scoped to
+        the adapter for exactly that reason; the skill's markdown rules still read
+        and write this.
 
         An optional trailing ``(timestamp)`` is informational only — claims do
         NOT auto-expire (requirements §3 D10), so the timestamp never drives

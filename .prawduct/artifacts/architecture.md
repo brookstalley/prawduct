@@ -62,7 +62,7 @@ what we want to be true.
 - **Authority fails closed; advice fails soft.**
   Why: anything that produces or consumes a governance *verdict* blocks on incomplete, malformed, or ambiguous state (so governance means something), while anything that merely *informs* degrades to a note (so governance stays bearable) — the split is also an abuse-resistance property: you cannot make a gate pass by feeding it garbage, garbage makes it block.
   Status: steady-state.
-  Rulings: [[regen-views-is-advice]] — collides with `data-model.md`'s *derived views are never authoritative*. **Precedence: the derived-views norm wins where a command's only output is a view.** This norm's why is that a verdict must not be satisfiable by feeding it garbage, which reaches a command only where a verdict exists to corrupt; a view writer emits none, so the fail-closed half never attaches. Category-level: **a command's failure posture follows what it produces.**
+  Rulings: none live. **[[regen-views-is-advice]] retired 2026-08-08 — subject removed, recorded here rather than deleted (GD4).** That ruling reconciled this norm against `data-model.md`'s *derived views are never authoritative* for exactly one command, `regen-views`, by giving a view *writer* the fail-soft posture. The derived views are gone and so is the command, so the collision has no case to decide. **The category-level generalisation it produced is kept and promoted out of the ruling, because it never depended on that command:** *a command's failure posture follows what it produces* — this norm's why is that a verdict must not be satisfiable by feeding it garbage, which reaches a command only where a verdict exists to corrupt. Nothing that emits no verdict can attach the fail-closed half. A future view writer needs no new ruling; it inherits that sentence.
 - **Local-first: *governance* coordination is process-spawn + atomically-written files + the git object database — no network, no daemon, and the governance runtime carries no third-party dependencies (dev/test tooling excepted). An opt-in backlog backend may take a network surface, provided it stays off by default, degrades to the markdown backend, and carries no governance verdict.**
   Why: a governance layer that *required* infrastructure would not survive contact with "I just want to code," and a zero-dependency stdlib runtime shrinks the supply-chain surface to prawduct's own code plus git. Both rationales survive this amendment intact, because the network surface is opt-in per product (`backlog_service_repo` unset ⇒ the markdown backend) and confined to backlog storage: a product that never opts in runs exactly the substrate this norm has always described, and no gate, evidence fact, or review verdict crosses the network.
   Status: steady-state.
@@ -199,8 +199,17 @@ the plugin no longer places them.
 
 ## Concurrency Model
 
-- **Races are avoided by construction, not locks.** Parallel reviewers each write a distinct partial
-  file; a deterministic merge unions them. There is no shared mutable file two writers contend on.
+- **Races are avoided by construction wherever a design choice can avoid them.** Parallel reviewers
+  each write a distinct partial file; a deterministic merge unions them. No *governance* state is a
+  shared mutable file two writers contend on.
+- **The one exception is the backlog cache, and it is a lock-based design on purpose.** The optional
+  SQLite read-through store (`<git-common-dir>/prawduct/backlog-cache.sqlite3`) *is* a shared
+  mutable file that several agents across several worktrees write concurrently, resolved by WAL plus
+  a busy timeout rather than by partitioning. Construction cannot avoid it here: the store's value
+  is that every worktree of a clone shares one cache, and a per-writer file would be a per-writer
+  cache. It is safe to make the exception precisely because it holds **no governance verdict** — it
+  is derived, gitignored, and rebuildable from the provider, so the worst outcome of a lost race is
+  a re-fetch. A shared-mutable *authority* store would still be forbidden.
 - **Idempotency absorbs the multi-trigger race.** The review's identity is fixed at dispatch, and
   every append is existence-guarded, so the three consolidation triggers collapse to exactly one
   fact — every repeat is a clean no-op.
@@ -217,6 +226,7 @@ the plugin no longer places them.
 | Tier | Where | Holds | Sharing |
 |------|-------|-------|---------|
 | Ledger (source of truth) | `<git-common-dir>/prawduct/` (inside `.git`) | evidence facts | shared by all worktrees of a clone; never committed |
+| Derived cache (never truth) | `<git-common-dir>/prawduct/` (inside `.git`) | the optional backlog read-through store and the briefing-counts snapshot — **the same directory as the ledger above, and a different tier**: the provider is the home of every fact here, nothing originates, and a drop-and-rebuild is the mechanical proof of it. Discarded on any schema mismatch rather than migrated | shared by all worktrees of a clone; never committed |
 | Session/gate state | `.prawduct/.*` (gitignored) | markers, partials, caches, session baselines, advisories | per-worktree |
 | Committed product state | `.prawduct/` (tracked) | project-state, learnings, artifacts, change log, build plan — **and `backlog.md` only while a product is pre-cutover** | shared via git, owned by the product |
 | Backlog, post-cutover | GitHub Issues on `backlog_service_repo` | the live backlog, reached through the `gh` CLI (channel 5) | owned by the target repo; `.prawduct/backlog.md` becomes **frozen history** and is no longer read as live state |

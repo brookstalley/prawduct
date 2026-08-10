@@ -14,11 +14,14 @@ and require a ``default_owner`` (the target repo's owner). Absent one they are a
 ``validation`` error rather than a silent guess.
 
 This module is a **pure, function-level seam** (Test Specs §2.1): no transport,
-no I/O. It also holds the **PFX-alias & redirect machinery** the importer uses
-(D4/DM4/§5): the pure label helpers (``alias_label``/``pfx_from_alias_label``)
-and the redirect-follow (``resolve_redirect``) whose GitHub lookup is **injected**
-as a callback — so the module stays transport-free while still owning the
-resolution *logic*. The spelling→canonical normalization (ID-1) is above.
+no I/O. It also holds the **alias & redirect machinery** the importer and the
+cache use (D4/DM4/§5): the pure label helpers
+(``alias_label``/``pfx_from_alias_label``), the **provider-alias grammar**
+(``provider_alias``/``parse_provider_alias`` — Cache Spec §4's tagged spelling,
+which is what keeps a historical citation resolving across a provider migration),
+and the redirect-follow (``resolve_redirect``) whose lookup is **injected** as a
+callback — so the module stays transport-free while still owning the resolution
+*logic*. The spelling→canonical normalization (ID-1) is above.
 """
 
 from __future__ import annotations
@@ -195,8 +198,96 @@ def is_pfx(token: str | None) -> bool:
 
 
 def alias_label(pfx: str) -> str:
-    """The permanent ``id:PFX-XXXX`` alias label for a migrated id (Data Model §5)."""
+    """The permanent ``id:PFX-XXXX`` alias label for a migrated id (Data Model §5).
+
+    **Labels index PFX aliases only**, and that asymmetry is deliberate rather
+    than an omission. A label is the *live* path's index — it is what lets
+    ``core.resolve_ref`` find an item by alias with one search against the
+    provider — and a hand-minted ``PFX`` has no other coordinates, so without a
+    label it is unfindable. A **provider** alias (:func:`provider_alias`) does
+    have coordinates: it is a real ``owner/repo#number`` that the cache's
+    ``item_alias`` table resolves without asking the provider anything. Minting
+    labels for it would add a write path, a self-heal obligation and a 50-char
+    label budget to buy a second index over a set that is already indexed."""
     return f"{ALIAS_FACET}:{pfx.strip()}"
+
+
+# --- provider aliases (the cross-migration half of Cache Spec §4) -------------
+#
+# A migration mints no new id: the new record carries the OLD one as an alias, so
+# every historical citation — `(#614)` in a commit message, `#249` in the
+# change-log — keeps resolving. Cache Spec §4 makes the two spellings asymmetric
+# on purpose:
+#
+#   live ref  — untagged (`owner/repo#249`): it inherits the product's
+#               configured backend, so per-item tagging would be noise.
+#   alias     — tagged (`github:owner/repo#249`): after a migration a
+#               foreign-era id sits beside a live one, and `owner/repo#number` is
+#               NOT GitHub-unique — GitLab uses `group/project#123` and Gitea is
+#               GitHub-shaped by design, which are precisely the self-hosted
+#               options motivating provider neutrality.
+#
+# The tag is what stops resolution degrading into shape-parsing, which §4's rule 3
+# forbids: an untagged `owner/repo#number` is a live coordinate, a tagged one is a
+# historical record, and nothing has to guess which by looking at its shape.
+
+#: A provider tag: lowercase alphanumeric, e.g. ``github``, ``gitlab``, ``gitea``.
+#: Deliberately open rather than a closed set — the alias spellings this has to
+#: *read* are written by whatever backend a product migrated away from, and a
+#: closed set here would make a tag minted by a future adapter unreadable by the
+#: reader whose whole job is reading old spellings.
+_PROVIDER_TAG = re.compile(r"^[a-z][a-z0-9]*$")
+
+
+def provider_alias(canonical: str, *, provider: str = "github") -> str | None:
+    """The tagged alias spelling for a provider id, or ``None`` if either half is
+    malformed.
+
+    ``canonical`` must already be a full ``owner/repo#number`` — a short spelling
+    has no owner, and an alias that resolved differently depending on who read it
+    would be worse than no alias."""
+    if not _PROVIDER_TAG.match(provider or ""):
+        return None
+    nid = normalize_id(canonical)
+    if not nid.ok:
+        return None
+    return f"{provider}:{nid.canonical}"
+
+
+def parse_provider_alias(token: str | None) -> tuple[str, str] | None:
+    """``(provider, canonical)`` for a tagged alias, or ``None``.
+
+    **The ref half is re-normalized rather than trusted**, and that is the point
+    of routing it through :func:`normalize_id` instead of splitting on ``#``. An
+    alias arrives from an issue body — attacker-writable text — and the canonical
+    id it yields is handed to callers that interpolate ``owner`` and ``repo`` into
+    ``repos/{owner}/{repo}/…`` at the transport. The question at this seam is not
+    *is this well-formed* but *what else could this successfully resolve*:
+    ``github:../../x#1`` parses fine as three tokens and points somewhere else
+    entirely. ``normalize_id``'s segment gate is the one place that judgment
+    lives, so this defers to it rather than repeating it."""
+    if not token:
+        return None
+    provider, sep, ref = token.strip().partition(":")
+    if not sep or not _PROVIDER_TAG.match(provider):
+        return None
+    nid = normalize_id(ref)
+    if not nid.ok or nid.canonical != ref.strip():
+        # Only the canonical spelling is an alias. A short form (`repo#7`) would
+        # need a default owner to mean anything, so accepting one here would make
+        # the same stored string resolve to different items in different repos.
+        return None
+    return provider, nid.canonical
+
+
+def is_alias_token(token: str | None) -> bool:
+    """Whether ``token`` is a well-formed alias in either accepted spelling — a
+    hand-minted ``PFX`` or a tagged provider id.
+
+    The filter on what goes into the cache's alias index: an ``id_aliases`` entry
+    that is neither is a human artifact (a hand-edited body), and indexing it
+    would let a typo claim a resolution."""
+    return is_pfx(token) or parse_provider_alias(token) is not None
 
 
 def pfx_from_alias_label(name: str) -> str | None:

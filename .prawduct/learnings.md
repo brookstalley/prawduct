@@ -21,8 +21,13 @@ dropping them.
 
 ---
 
-## RULING (regen-views-is-advice) — when two norms reach one command, its OUTPUT decides the posture: a writer whose only product is a DERIVED VIEW fails soft one view at a time, because no gate reads a view to reach a verdict. Soft is not blanket — input it cannot interpret at all still fails closed. Skip-and-report a bad view, never write it half-right
+## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
+
+## When you retire a MECHANISM, sort its rules into three piles before deleting any — died / rewritten / **INVERTED**. "The tool is gone" reads like a licence to drop the lot, and the lesson usually outlived the tool. The third pile is the one nobody looks for and the only one that leaves a harmful rule standing. Tell: the rule is a prohibition whose reason was the tool — [learnings-detail.md]
+<!-- anchor: the-derived-views-retirement -->
+
+## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite — and it reads as deliberate, so review cannot see it. `release=unreleased` hid a finished branch from its own release. Ask the CONSUMER, not the reader: run the probe that acts on the field. Guard by BLAST RADIUS — `status=` was guarded, `release=` (drops a whole scope) was not — [learnings-detail.md]
 
 ## `grep -rn <new symbol> tests/` before calling a behaviour change done — a guard with no test is one a regression deletes silently. Three rounds running found that, the last two in code written to FIX the previous instance: applying a rule to the finding in front of you is not applying it to the code you write while applying it
 
@@ -140,7 +145,7 @@ dropping them.
 
 ## When a test injects a fixed clock, EVERY actor in the scenario must share that clock domain — one real-clock participant (a CLI front, an un-injected default) turns fixed-timestamp + TTL into a scheduled deterministic failure at stamp+TTL wall time
 
-## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version) — `regen-views` resolves plans by it and a version there silently skips Status flipping at release
+## When a build plan ships in a different release than it targeted, its frontmatter `scope:` must be the scope-NAME (not a version) — `check-releasability` pairs a change-log `scope=` tag to its plan by exact string, and a version there means the release-pending scope resolves to no plan and reports as work shipping with nothing describing it
 
 ## When serially merging several stale feature branches into develop for one batched release, expect additive bookkeeping conflicts every time — and watch for a duplicate `active_build_plan:` key the auto-merge creates
 
@@ -164,15 +169,13 @@ dropping them.
 
 ## After a clean cumulative (0 blocking/0 warning), NOTEs are advisory — don't chase cosmetic ones; fixing them reopens the coverage gate on judgeable governance files and forces a no-value review pass
 
-## A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
+## Hand-tick a build plan's `## Status` box the moment its chunk's review passes — nothing derives the boxes, so an unticked one claims the work is open and every reader believes it. Review first, tick after: the LAST tick disarms the Stop gates. **Inverted 2026-08-08** ([[the-derived-views-retirement]]) — prose calling the boxes untrustworthy is the old rule still running — [learnings-detail.md]
 
-## New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
+## A change-log entry's BODY must cover every chunk the entry shipped — the body IS the release note, so a deliverable the prose omits ships invisibly. Losing `chunks=` ([[the-derived-views-retirement]]) removed the *illusion* of a check: the tag counted chunks, never read the prose. Tell, now the only one: a multi-chunk narrative with ONE throughline — the last chunk's mechanism goes missing
 
-## A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
+## When a requirement is about a COST, assert the operation that costs — not a proxy that usually accompanies it. Tell: your test names a side effect ("was the file read") where the requirement names work ("was the directory walked"); the two come apart in exactly the implementation the requirement forbids
 
 ## When a feature's logic lives in a `context:fork` skill (no Bash), `lib/` holds the DATA, not the LOGIC — logic helpers nothing imports are dead code
-
-## At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
 
 ## "I'm just codifying their guidance" is not an exemption from the research trigger — and volatility is a separate axis from knowledge-confidence
 
@@ -188,7 +191,7 @@ dropping them.
 
 ## Single-repo plugin+marketplace: the marketplace entry's plugin `source` must be a RELATIVE PATH, not `{source:github,ref}` — and that path is a curated subdirectory, not the repo root
 
-## Release-bound work merged feature→develop under gitflow: KEEP the build plan — it's a live release artifact, not spent
+## Release-bound work merged feature→develop under gitflow: KEEP the build plan and the `active_build_plan` pointer until the release — `check-releasability` pairs each release-pending `scope=` against the plan declaring it, so deleting early turns your own shipped work into "work with no documented parent"
 
 ## A `--plugin-dir` read-block is a dev-flag artifact, not a self-containment bug — pair it with `--add-dir`
 
@@ -237,7 +240,7 @@ dropping them.
 
 ## Build-plan fields use `**Title Case:**`, not snake_case
 
-## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but `regen-views`/`chunks=` still key on the colon Status form
+## Build-plan chunk parsers accept `### Chunk N:` AND `## Chunk N (ID) — Name` (BLD-5J8N) — but number your chunks, because the unticked-committed-chunk advisory matches `Chunk <n>` with a NUMERIC id in a commit subject and a plan using `Chunk A` gets permanent silence from it, indistinguishable from every box being right
 
 ## Submodule and same-name function in __init__ shadow each other
 
@@ -261,6 +264,8 @@ dropping them.
 ## A review's "inert / harmless" verdict on a latent bug is conditional on the current call graph
 
 ## Excising a subsystem silently kills the incidental work it happened to host — re-home the orphaned call, and test the positive
+
+## A deletion's SURVIVORS owe new coverage when their behaviour changed — the deleted thing's tests dying correctly is a different question
 
 ## A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
 
@@ -419,3 +424,87 @@ dropping them.
 ## Promoting an advisory check to blocking changes what its false positives COST, so audit them as part of the wiring — a placeholder lint matched "fix it" inside "pre-FIX IT-em" harmlessly for years, then became a false refusal on an irreversible migration. Fix the classification, never the budget
 
 ## A gate on a value that nearly every fixture supplies will touch nearly every fixture — estimate that blast radius in the plan, because it changes the chunk's real size. Enforcing a title rule broke 126 tests across 8 modules, none of which asserted anything about titles; fixing fixture DATA (never assertions) is correct, but discovering the number at build time is a planning miss
+
+## Derive what an instrument can OBSERVE before deciding what it is worth — recommendation formed first makes verification a correction instead of an input. Two over-claims in one session from this: a per-file coverage gate sold as catching branch-level gaps, and branch coverage sold as the lever when line coverage already catches an untested arm (its body never executes). Tell: you can name the gate's benefit but not the field it reads
+
+## Search the backlog before proposing to ADD to it — the existing item is often not just a duplicate but a better-framed one, and adopting its framing beats re-deriving a worse one. A repo-local "install coverage here" proposal was already filed as a consumer-first, language-agnostic item six weeks earlier, found only because the owner asked a question that forced the search
+
+## "Has this repo already decided it?" is the cheapest check that could change a design — run it BEFORE deriving, not after, and run it against **every document the thing you are planning from names as a parent**, not only the governing artifacts' `## Direction` sections. A derived answer arrives without its constraints attached: the socket architecture was ratified in `architecture.md` a week earlier and my reasoned-out version was missing the no-third-party-dependencies implication. **Refined 2026-08-07 after the narrow reading failed:** every Direction norm in `.prawduct/artifacts/` was dispositioned and a W1 build plan still invented a table schema and proposed AMENDING a norm to settle a question `documentation/backlog-service-data-model.md` §7 answered in one sentence — because the decisions for that subsystem lived in `documentation/`, not in the directory I had internalized as "where decisions live." Tell: you are pleased with an architecture you have not yet traced to a parent — or you are planning from a spec whose header says `**Parent:**` and you have not opened them
+
+## A spec that deltas a parent corpus reads COMPLETE, and its omissions are deliberate — so treat "this document seems to cover everything" as evidence it is a delta, not evidence there is nothing else. The W1 cache spec was a well-written delta on a reviewed corpus (schema, schema-versioning, two security findings about that exact cache, NFR staleness rows, a test catalogue); planning from it alone produced a plan that re-derived the schema and missed both security findings, one of which was in live tension with a decision the spec itself made. Tell: a design document that answers every question you thought to ask, on a subsystem old enough to have been reviewed before
+
+## Run the mechanical seeder BEFORE drafting, not after — used as an audit it finds the gap too late to be cheap. `prawduct-hook jurisdiction` ranks candidate governing artifacts by vocabulary overlap, and it surfaced a security model whose findings reshaped a build plan already written; run first, it would have been an input instead of a rewrite. Generalizes beyond this command: when a design feels finished, the cheapest reopener is a mechanical one, because unlike a careful re-read it is not subject to your having already decided. Tell: you are about to write up a design you are satisfied with
+
+## Observable beats stored — when a signal can be derived from what git or the provider already maintains, do not add a field for it: a stored field can be forgotten, can lie, and needs a write path nobody has built. A branch's last commit beat a claim timestamp with an expiry policy; the provider's `updated_at` beat a `reviewed:` field that is currently unwritable, dissolving a "hard prerequisite" in the process. Tell: you are designing an expiry or freshness policy for a field you also have to remember to update
+
+## A docstring stating a guarantee is an ASSERTION, not a verification — when you write a rule you know into a docstring, check the API can actually express it before believing the sentence. I wrote "the cursor is written in the same transaction as the rows it covers" *because* the learnings pass had handed me the rule, then shipped two functions each opening their own transaction; no test failed, because the chunk that had the bug degraded harmlessly and the chunk whose correctness argument depended on it was not written yet. Tell: a docstring that states a rule you were pleased to have remembered, on a guarantee no current caller exercises
+
+## A retirement ruling also retires whatever existed only to serve the retired thing, and those consequences never announce themselves — after deciding to remove a mechanism, sweep for what it was the ONLY reader of. Retiring the claim machinery silently killed the `assignee` column's only consumer, so a schema specified by a reviewed artifact would have shipped a dead field; found only by walking all fifteen consumer queries against the column list before writing the DDL. Tell: you have just accepted a removal and are moving straight to the thing that replaces it
+
+## A number that disagrees with another number is a bug report, and "that source is stale" is the explanation that stops you reading it — chase two-digit discrepancies before explaining them away. The cache said 178 open and the session briefing said 182 pending; the snapshot genuinely WAS 27 minutes old, which made the wrong explanation available and correct-sounding. The real cause was a consumer query filtering `status = 'open'` literally and dropping `submitted`/`in-progress` — invisible to every fixture (which had no such items) and to live verification (ditto). Tell: you can name a plausible reason two counts differ without having checked that it is the actual reason
+
+## A test written RELATIVE to the constant it polices can never detect that constant being wrong — pin the absolute value when the value is a historical fact (a version a real store was stamped with, a format that shipped), because `CONST - 1` moves with CONST and passes at every setting of it. Tell: the mutation you expected to go red stayed green
+
+## A measurement with no POSITIVE CONTROL cannot support a claim — before believing "X costs nothing", confirm the instrument MOVES when it should, because a dead instrument reads zero for the treatment and the control alike, and zero is the answer you were hoping for. Tell: the confirming result arrived first try and the null case was never run
+
+## For every value you plan to PERSIST from a provider, verify the exact request that will later REPLAY it, not just the one that produced it — a verify-api step scoped to the plan's own mechanism confirms that mechanism and misses the one the plan got wrong
+
+## A build plan can name a CODE IDENTIFIER it never opened, and that is where a plan is most confidently wrong — before implementing a deliverable phrased as "add X to `Y`", open `Y` and check it does what the sentence assumes. Tell: the plan names a symbol and you are about to edit it without having read it
+
+## A VALIDATOR that only refuses the malformed can still let a control fail OPEN — when a validated value is interpolated into a URL path, a filesystem path, or any other resolver, ask what ELSE the value could successfully resolve, not just whether it parses. Tell: your validator's rejections are all shaped like "this is not well-formed" and none like "this is not the thing"
+
+## Changing HOW data ARRIVES silently re-scopes every aggregate over it — the code still computes, the value still looks plausible, and nothing fails, so no test catches it. After a switch from full scan to incremental (or batch to streaming, snapshot to log), walk every aggregate, watermark and age over that data and ask what each one MEANS now, not whether it still computes
+
+## A retirement is one act PER SUBSTRATE the thing lives on — read your own rationale back before executing it, and bound the edit to the backends each clause is actually about. Tell: the rationale names a backend, a release or a provider, and the diff names none
+
+## A rule enforced only as a SIDE EFFECT of some other failure is unenforced for every change whose failure mode differs — when a rule has a real incident behind it, ask what actually caught that incident; if the answer is "something else broke loudly," the rule has no guard of its own. Tell: a mutation you expected to be caught is not, and the rule it violates has a documented past incident
+
+## Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
+
+## A change-log `scope=` tag comes from the PLAN you are in, never the entry above it — `check-releasability` matches it to plan frontmatter by exact string, so a copied neighbouring scope attributes your work to someone else's plan and BOTH readings stay quiet: that scope does resolve to a plan, and yours reports as pending with nothing describing it. Tell: your branch narrows an existing scope
+
+## A pattern narrowed to kill a false positive is validated against the case that PROVOKED it — which is the one case already known — so re-run it over the whole corpus before installing it, counting what it stops matching as well as what it starts. Tell: the narrowing was "verified against this branch's real subjects"
+
+## A new key in a shared namespace needs a collision check against real DATA before it needs a test — grep the live corpus for the name and ask what already means something by it, because a writer that strips "its own" keys silently deletes a homonym and every test you wrote for your own semantics still passes. Tell: you picked the obvious short name for a frontmatter/config/tag key
+
+## An assert-absent guard passes when the instruction is simply DROPPED — silence satisfies it by construction — so any retired-behaviour sweep needs a positive pin on each surface that must now carry the replacement, scoped to the BRANCH rather than the file, because which branch carries it is usually the whole rule. Tell: your only coverage of a governance surface is a negative grep
+
+## A parser shared between a READER and a WRITER inverts its safety on malformed input — "assume it runs to EOF" is tolerant for a reader and "delete to EOF" for a writer, so a writer must claim nothing it cannot delimit. Tell: you reused a reporting scanner inside something that edits files
+
+## When defending a design with "we shouldn't lose the record", check whether the real reason is REVERSIBILITY — they take different fixes and the preservation framing gives the worse one. History earns its keep only by helping going forward; reversibility is answered by a preview plus version control, not by refusing to act. Tell: a second "report but don't touch" bucket appeared to protect prose
+
+## A list an operation-level approval is given for must IDENTIFY its items — consent to four indistinguishable `build-plan.md` lines is not informed consent, and the repo's display helper usually already solves it one module over. Tell: your preview prints bare filenames and every fixture you wrote is flat
+
+## A structural guard that fires on your own justified change is answered, never re-floored — record why the population moved in the assertion's own docstring, and add a companion assertion pinning the part that must NOT move, so the next widening cannot ride the same exemption. Tell: you are about to relax a floor because your change legitimately shrank what it counts
+
+## Export the ANSWER, not the walker — a caller needing "which chunks are unticked" gets a finished list, because exposing the traversal is what lets the next consumer re-derive the question privately and give it a third answer. Tell: you are about to make a private parsing helper public so one new caller can use it
+
+## When fixing a SILENT SWALLOW, find the frame that actually discards — it is usually one layer below where you noticed the symptom, so a report added at your call site is empty by construction and its test passes on a healthy repo. Tell: your new "problems found" list is structurally never populated
+
+## A guard written against the EXAMPLE IN THE FINDING holds for that example and nothing else — restate the threat in your own words before coding it (`is_relative_to` is lexical, so one `..` walks through a containment check that passes the reported case). Tell: your fix quotes the report's scenario back at it
+
+## Read a review's findings for the CLASS, not the list — when four findings share a shape, fixing four instances leaves the fifth to be found by the next round. Tell: several findings could be described by one sentence
+
+## Fix a defect at the LAYER IT WAS REPORTED AT — pinning the extracted predicate proves the predicate, not the wiring, so deleting the CLI branch leaves a lib-level test green while the reported defect returns. Tell: the finding says "at the CLI" and your new test imports the module
+
+## A mechanical "is it finished?" test keyed on a REUSED identifier archives live work — a work-stream name that shipped once makes its next round look finished, so require that no LATER entry for that name is unreleased, and decide by DATE rather than document position (half a 14-repo fleet had out-of-order change logs). Tell: your predicate says "has a release tag somewhere"
+
+## A file's own header comment is not the first key's — bound any comment walk-back at start-of-file, because with no preceding content line there is nothing distinguishing a section banner from the document header, and deleting the latter is content loss in a hand-authored file. Tell: your walk-back is `while start > 0`
+
+## Preserve line endings in any writer that edits a file it did not create (`newline=""` on BOTH the read and the write) — a CRLF repo otherwise gets every line rewritten by an operation that promised to touch two keys, and the real change hides inside a whole-file reformat. Tell: you used `read_text`/`write_text` in a repair
+
+## Moving a value into a NEW channel silently unwires whoever read the old one — when a fix relocates data (a refusal from `refused` into a pre-filtered `blocked`), grep for readers of the old key before committing, because the diff reads as "what this function returns" while it is also changing what the process EXITS with. Tell: your fix adds a return key and removes items from an existing one
+
+## A REMEDY named in a checklist must be tested against the predicate that produced the condition — advice that cannot terminate is obeyed, unlike advice that is merely stale, so "run X then re-run until it exits 0" is wrong whenever X consults the same refusal the sweep just did. Tell: your recovery step names a command rather than sending the reader to the reason's own remedy
+
+## Prove a new regression test DISCRIMINATES by running it against a stash of the pre-fix source — a fixture that fails one step early never reaches the subject and passes either way, which is indistinguishable from a working fix. Tell: you wrote a test for an error path and never saw it red
+
+## A step is release-PREP only if undoing it costs nothing — if the step is what MAKES the release happen it belongs to the cut, whatever phase the checklist files it under. "Bump the version" sits under prep and is the trigger (`version` is the auto-update cache key); stripping a `— DRAFT` suffix is what makes a section publishable. Doing both while "not releasing" leaves the repo one promotion from shipping with every in-repo signal saying it already did. Tell: you are about to do a prep step you could not reverse by deleting a file — [learnings-detail.md]
+
+## A test asserting against its OWN repo's live state pins the repo's current PHASE as an invariant — and a release is the event that ends that phase, so the suite goes red at the worst possible moment, under pressure to relax the assertion. Six `TestAgainstTheReal*` guards died together at v3.3.0 because tagging every change-log entry emptied the release-pending set and archiving every shipped plan emptied the live plan map — both steps working as designed. The guards were RIGHT (an earlier round added them to stop vacuous passes) and the release was RIGHT; they were still incompatible. Make such a test say WHICH emptiness it rejects, or it cannot tell "we just shipped" from "the join is broken". Tell: your test reads the real tree/log instead of a fixture and asserts something is non-empty — [learnings-detail.md]
+
+## A test that derives its own fixture from the mechanism under test converts that mechanism's failure into a SKIP, and a skip is indistinguishable from a pass in a summary — so the bug ships green. The helper for `test_archiving_a_real_plan_removes_it_from_the_live_map` picked its victim plan as "in the archived map but not the live one", which reads as obviously correct; disabling archive pruning — the exact defect the test exists to catch — made that difference empty, and the test reported "nothing to perturb" instead of failing. Select fixtures from a source INDEPENDENT of what you are grading (walk the directory, don't ask the resolver), and make the precondition an `assert` with the defect named, not a `pytest.skip`. Tell: your setup calls the same function the assertions call, or a skip condition could be *caused by* the bug — [learnings-detail.md]
+
+## Prove a guard can go red before believing it — mutate the real corpus and watch each assertion fail, because a guard nobody has falsified has measured nothing and its docstring will claim more than it does. Nine mutations against a copy of the real tree found two defects in a repair that was already green: a helper that skipped instead of failing, and a rewritten "this scope resolves" test that could no longer catch a WRONG scope value at all (the map is keyed from the same frontmatter the test re-reads, so a consistent lie agrees with itself). Neither was visible by reading. Where a limit survives, write it into the docstring under "what turns this red" rather than letting the prose imply coverage that is not there. Tell: you rewrote an assertion and ran only the passing case — [learnings-detail.md]
+
+## A release-prep note enumerates the obligations ITS AUTHOR FORESAW, so re-derive the version TIER from the final scope set rather than inheriting the draft's number — a number chosen when the bundle held one scope is a guess about a release that now holds three, and `check-releasability` grades the partition while printing the version it never grades. A subsystem going live was about to ship as a patch because the draft predated the two scopes that made it a minor. Tell: your version number came from a document rather than from the scope set — [learnings-detail.md]

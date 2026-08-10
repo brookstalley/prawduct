@@ -29,6 +29,21 @@ grooming (TF2/TF3) plus a one-time pre-migration scrub, not by centralization al
 
 ## 2. Users & personas
 
+> **SUPERSEDED THROUGHOUT — the claim primitive (W1, 2026-08-07).** This PRD specifies *claim* as a
+> first-class capability in the places listed below, and it is retired on the Issues backend:
+> `claim` / `unclaim`, `pick --claim`, the stored `claimed_at`, the staleness TTL and the reap tier
+> are all gone, replaced by `working-branch: owner/repo@branch` — a pushed branch says someone is on
+> the item, and its own last commit answers what the TTL was guessing at. No timestamp is stored, no
+> expiry is configured, nothing is reaped. Strong consistency is **not** claimed and never was: this
+> makes a double-take *visible* rather than impossible. The retirement is scoped to the **Issues
+> adapter**; the markdown backend keeps `accepted-by:`, which has none of the three mechanisms.
+> `backlog-service-requirements.md` CC3 carries the reasoning in full. Affected here: the actor table
+> (§actors), capabilities 2–3, the field-mapping table (**claim / assignee**), the ready-work
+> definition, the P0/P1 scope lines, the M11 risk fold, and the §13 scope-out note. They are left
+> in place rather than rewritten — this is the parent document and its record of what was specified
+> is what makes the supersession legible — but nothing below marked *claim* is the shipped design.
+
+
 | Persona | Who | Needs from the system |
 |---|---|---|
 | **Project agent** | a Claude session working a repo | file / query / pick / update / claim / comment in one non-interactive call, zero model tokens, never blocked by the network |
@@ -329,6 +344,6 @@ cites these (CC5→§8.2, PV4→§8.4, GV6→§8.7, MG4→§8.9).
 3. **Security Model** — auth per D8 **+ the O5 slice-auth/transport decision** (inherit session auth; `gh` portable transport; App as optional upgrade; credential-resolution keyed by target owner), token scope/revocation, provenance trust, **public-submission abuse (PV4)**. → **drafted (2026-07-16):** `documentation/backlog-service-security-model.md`.
 4. **API contract** — CLI/MCP surface: operations, return-value error model, versioning/compat. → **drafted (2026-07-16):** `documentation/backlog-service-api-contract.md` (records `api_error_model_approach` + `api_versioning_approach`).
 5. **Test Specifications** — incl. migration guard-sweep + offline/never-block behaviors. → **drafted (2026-07-16):** `documentation/backlog-service-test-specifications.md` (five test layers — deterministic L1 / verify-api shape-contract L2 / build-measurement L3 / one-time spike L4 / live-smoke+behavioral L5; the transport-seam-fake isolation decision; a coverage matrix over every catalogued obligation; records `test_isolation_approach`).
-6. **Build plan** — thin vertical slice first (core lib → CLI → one GitHub round-trip → **prawduct-first scrub + importer dry-run**, §8.9/MG4), architecture proven before widening. → **drafted + promoted (2026-07-16):** `.prawduct/artifacts/build-plan-backlog-service.md` (v2 — draft v1 → two-reviewer fold → v2 + 3-debt coherence sweep; 6-chunk thin slice + W1–Wg roadmap; `active_build_plan` set, gate armed; pending owner sign-off before Chunk 01).
+6. **Build plan** — thin vertical slice first (core lib → CLI → one GitHub round-trip → **prawduct-first scrub + importer dry-run**, §8.9/MG4), architecture proven before widening. → **drafted + promoted (2026-07-16):** `.prawduct/artifacts/archive/build-plan-backlog-service.md` (v2 — draft v1 → two-reviewer fold → v2 + 3-debt coherence sweep; 6-chunk thin slice + W1–Wg roadmap; `active_build_plan` set, gate armed; pending owner sign-off before Chunk 01).
 
 Two §11 spikes gate the core — **S1** (now narrowed by O5: confirm ETag + the M6 number-non-reuse fact + the cloud-proxy *optimization* test — the core transport, required-`gh`, is decided) and **S2** (the migration dry-run — the slice's first increment, run **prawduct-first** and after the scrub). **O5** (P0-slice auth/transport) is **resolved** (`gh` required, inherit session auth, App optional). **S3** carries one load-bearing constant (the ~500/hr write cap that paces migration); **S4/S5** settle with their layer/feature. Until this level is agreed, no build plan and no field-level schema.

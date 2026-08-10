@@ -805,16 +805,25 @@ def _has_active_build_plan_file(
     A completed plan (all [x]) or a missing file both return False — only an
     in-progress plan with remaining work triggers governance gates.
 
-    Deliberately the **checkbox** reading, not the git-derived current chunk.
-    The two answer different questions: git answers "which chunk is in flight,"
-    which is right for reporting and for ``verify-chunk-refs``; this gate asks
-    "is there still governed work," and a chunk's last commit lands BEFORE its
-    Critic pass and its reflection. Routing this through the git signal made the
-    blocking reflection and Critic gates switch themselves off on a
-    ``views_enabled`` branch the moment the final chunk was committed — through
-    the whole complete-but-unmerged window, which is exactly when the PR-fix and
-    finding-resolution sessions happen. Under ``views_enabled`` a flipped box
-    means *shipped*, so "unflipped" is the right reading of "still governed."
+    Deliberately the **checkbox** reading, and never a commit-derived one.
+    The two answer different questions: commits answer "which chunk is in
+    flight", which is right for reporting; this gate asks "is there still
+    governed work", and **a chunk's last commit lands BEFORE its Critic pass and
+    its reflection.** Routing this through a git signal once made the blocking
+    reflection and Critic gates switch themselves off the moment the final chunk
+    was committed — through the whole complete-but-unmerged window, which is
+    exactly when the PR-fix and finding-resolution sessions happen. It failed
+    silently, because a gate that stops firing looks identical to a gate with
+    nothing to say.
+
+    The git-derived progress reading that caused it is gone, so that exact route
+    back in is closed. **The rule is not.** A commit-derived chunk signal still
+    exists for reporting — ``buildplan_refs.unticked_committed_chunk_notice``,
+    which flags a finished-but-unticked chunk — and it is the obvious thing for a
+    future editor to reach for here. It must not be: it reports precisely the
+    state (work committed, box not yet ticked) in which this gate must still say
+    "governed", and consuming it here would reproduce the incident with a
+    different callee.
     """
     total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
     return total > 0 and complete < total

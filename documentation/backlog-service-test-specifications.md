@@ -174,14 +174,14 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
 - Expected: the first adds an entry; the same-(actor,date) re-stamp is a **no-op** (append-with-dedup);
   the different-date stamp adds a second entry. Idempotency is keyed, not blind.
 
-**CRASH-6 — `claim` atomic take-and-verify → `claim_conflict`** (→ CC3/M11, API §2.1)
-- Level: unit
-- Setup: an unassigned item; simulate two claimants via the fake's ordering.
-- Action: claimant A takes; claimant B takes; then A's take-and-verify read.
-- Expected: exactly one holds the claim; the loser gets a **non-fatal** `claim_conflict`; the claim
-  carries actor + timestamp; a claim past its TTL is surfaced as reap-eligible (auto-unclaim/flag) so
-  `pick` cannot starve. (The residual double-take race is accepted by design — this test asserts the
-  take-and-verify surfaces it, not that it is eliminated.)
+**~~CRASH-6 — `claim` atomic take-and-verify → `claim_conflict`~~** — **RETIRED with the mechanism
+(W1, 2026-08-07), not owed.** The `claim`/`unclaim` ops, the staleness TTL, the reap tier and the
+`claim_conflict` code are all gone; taking an item is `update <id> --working-branch owner/repo@branch`,
+a body-block write with no take-and-verify to be atomic about and no expiry to reap. The row is struck
+rather than deleted so a reader who remembers CC3 finds out what happened to it instead of concluding
+the coverage was dropped. **The residual race it accepted is unchanged and now visible rather than
+raced for**: two actors can set a working branch on the same item, which the field makes *visible*
+rather than impossible (Data Model §1.4).
 
 ### 3.3 Freshness & never-silently-stale (G3)
 
@@ -317,7 +317,7 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
 - Level: unit (core builder) + integration (CLI exit code)
 - Setup: conditions that trigger each code.
 - Action: provoke each of: `validation`, `not_found`, `ambiguous_id`, `alias_collision`, `conflict`,
-  `claim_conflict`, `auth` (incl. `gh` exit-4 → `auth`, C10), `unavailable`, `rate_limited` (80/min or
+  `auth` (incl. `gh` exit-4 → `auth`, C10), `unavailable`, `rate_limited` (80/min or
   ~500/hr content, or the 900-pts/min burst), `unsupported` (fulltext without a cache; `--semantic`
   where the capability is genuinely absent — see QRY-3).
 - Expected: each yields its code in the envelope and a **stable non-zero exit class** at the CLI aligned
@@ -411,14 +411,16 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
 
 **QRY-2 — `pick` list-then-fan-out correctness** (→ GV1/DM3/CC3, Data Model §4, API §2.2)
 - Level: unit
-- Setup: candidates `open ∧ stage:ready ∧ unassigned`; some with open blockers (via the native
-  dependencies API — REST `blocked_by` / `blocking`, GA 2025-08-21), some with a claim past TTL,
-  including a **cross-repo** blocker.
+- Setup: candidates `open ∧ stage:ready`; some with open blockers (via the native
+  dependencies API — REST `blocked_by` / `blocking`, GA 2025-08-21), some carrying a
+  `working-branch`, including a **cross-repo** blocker.
 - Action: `pick`.
-- Expected: only candidates with **all blockers closed** and **no live claim** are returned, ranked, with
-  a *why*; a candidate whose blocker is cross-repo is judged from a **live** read (a per-clone cache can
-  misjudge it — negative-asserted: a stale cache must not let a blocked item be picked). `--claim` may
-  return `claim_conflict` → re-pick. (Fan-out **latency** is L3/S2, not here — this proves correctness.)
+- Expected: only candidates with **all blockers closed** and **no working branch** are returned, ranked,
+  with a *why*; `--include-working` adds the excluded ones back, each naming its branch. A candidate
+  whose blocker is cross-repo is judged from a **live** read (a per-clone cache can
+  misjudge it — negative-asserted: a stale cache must not let a blocked item be picked; as built in W1
+  the cache is never *asked* about a blocker, so the negative holds structurally). `pick` mutates
+  nothing. (Fan-out **latency** is L3/S2, not here — this proves correctness.)
 
 **QRY-3 — `search` cache-served; `--semantic` capability-probed** (→ Q1-fulltext/Q3, API §2.2)
 - Level: unit
@@ -453,6 +455,30 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
   cursor, and warms exactly those items; the repeat `sync` is a **no-op** (idempotent); with the cache
   off, `sync` is a no-op (cheap-polling baseline; webhooks are an optional AU1 enhancement, not tested
   here).
+
+**QRY-6 — the local-write mirror: read-your-writes, and the three stores it must refuse**
+(→ Data Model §1 read-your-writes, Cache Spec §6.1, NFR §4/§5)
+- Level: integration (the write half through the CLI, the invariants at the store)
+- Setup: a warmed cache; a fake provider; and three degenerate stores — one absent, one
+  **schema-only** (schema committed, `item` and `cursor` both empty, which is what a rebuild whose
+  `replace_items` step failed leaves behind), one holding a different scope.
+- Action: each op that changes cached state, driven the way a caller drives it — `file`, `status`,
+  `update`, `link --edge related`, `merge` — then a cache read; plus a mirror attempted against
+  each degenerate store.
+- Expected: the write is visible to the next cache read with **no additional provider request**
+  (asserted against a control run with the mirror absent, not against a fixed count). The mirrored
+  row equals what a rebuild would write, indexes included. The mirror moves **neither** `since`,
+  `etag`, **nor** `coverage_confirmed_at` — a mirror is not a fetch and has no coverage to claim.
+  It creates no store, declines the schema-only one (which would otherwise serve one item aged ~0s
+  through the row-stamp fallback — the freshness lie §6.1 forbids), and silently skips an item
+  outside the store's scope. A mirror failure warns on an otherwise-`ok` envelope and never fails
+  the write, because the provider mutation has already landed; an *absent* store is silent, since
+  every read already reports that condition. Native `blocks`/`parent` edges mirror nothing — the
+  store holds no column for them.
+- Anti-test: do **not** assert the mirror against `cachequery.resolve` for a merged source or for
+  body content — `resolve` follows the `superseded_by` redirect to the survivor and returns a
+  resolution payload with no `body`, so such an assertion silently examines the wrong item and
+  passes regardless of whether the mirror ran.
 
 ### 3.9 Security-negative (Security Model F1–F7)
 
@@ -523,15 +549,23 @@ decoder / re-runs the op and asserts a valid state + idempotent completion. No r
   self-promote out of `submitted` or forge a `source:`/`id:` label), and **no mutation runs under the
   filer's identity**.
 
-**SEC-8 — Cache stays gitignored; `doctor` catches an un-ignored cache (content-borne-secret defense)** (→ F5, Security §3, NFR §8)
-- Level: integration
-- Setup: a repo where the cache path is **not** effectively ignored — variant (a) the pattern is missing
-  from `.gitignore`; variant (b) a differing global ignore or an `add -f` has staged it.
-- Action: run `/prawduct:doctor`'s cache-ignore check.
-- Expected: `doctor` **flags** the un-ignored/committed cache in both variants (gitignore is **not**
-  enforcement — this is the check that makes it one); the defense targets the content-borne-secret threat
-  (a pasted `.env`/log in an issue body would otherwise reach a committed cache). Negative variant: a
-  correctly-ignored cache passes clean.
+**SEC-8 — The cache cannot be committed (content-borne-secret defense)** (→ F5, Security §3, NFR §8)
+- Level: unit
+- **The mechanism changed in W1; the threat did not.** This row originally specified a
+  `/prawduct:doctor` check that the cache path is gitignored, on the premise that the cache is a
+  working-tree file where gitignore is the only defense and "gitignore is not enforcement." W1 puts
+  the store **inside `.git`** (`<git-common-dir>/prawduct/backlog-cache.sqlite3`, beside the evidence
+  store and the counts snapshot), where it cannot be committed at all — `add -f` and a differing
+  global ignore both stop being reachable. The defense became **structural**, so the doctor check has
+  nothing left to catch and would be a control with no expected yield, which the proportionality norm
+  removes by default.
+- Setup: a repo with a built cache.
+- Action: resolve the cache path.
+- Expected: the path lies inside the git common dir, so no `.gitignore` contract exists to get wrong.
+  Asserted by `tests/test_backlog_cache.py::TestCachePath`.
+- **F5's other half is untouched and still binds:** the cache is as sensitive as its most-sensitive
+  stored body, it has no access control at rest, and an export carries the same sensitivity as its
+  source repo.
 
 ### 3.10 Migration guard-sweep (MG1–MG6)
 
@@ -660,6 +694,15 @@ Data Model §2)
 These discharge the NFR §2/§8 rows explicitly folded into the "Test Specs (§16(5))" bundle by NFR §9
 ("every design-guaranteed row in §2/§8"). They are cheap proof-of-delegation assertions, not load tests.
 
+**Scope note (W1).** **OPS-2 is discharged** — the cache is the local artifact that row is about, and
+`tests/test_backlog_cache.py::TestCachePath` asserts it is a file inside `<git-common-dir>`, never a
+paid or recurring resource. **OPS-1 and OPS-3 are not a store module's to discharge**: OPS-1 onboards
+an Nth project and asserts a portfolio-wide cost surface, and OPS-3 exercises the *full* CRUD + query
++ `pick` surface with no daemon running. Both are assertions about the deployed adapter as a whole,
+so they land with the surface rather than with any one module — writing a cache-shaped stand-in
+under their names would be a catalogue row describing a check nobody built, which is the exact defect
+SEC-8's own history above records.
+
 **OPS-1 — Cost is O(1) in project count** (→ NF1/G4, NFR §2)
 - Level: integration
 - Setup: an onboarded portfolio; onboard an **Nth** project.
@@ -671,7 +714,8 @@ These discharge the NFR §2/§8 rows explicitly folded into the "Test Specs (§1
 - Level: integration
 - Setup: a warmed cache + a `briefing_counts` file.
 - Action: enumerate the local artifacts.
-- Expected: the only local artifacts are **files** (cache, counts) — **gitignored** (SEC-8) and
+- Expected: the only local artifacts are **files** (cache, counts) — **uncommittable**, inside
+  `<git-common-dir>` rather than the working tree (SEC-8), and
   **rebuildable** (MIG-4); no artifact is a recurring paid resource.
 
 **OPS-3 — No server required for correctness** (→ NF2, NFR §8)
@@ -779,7 +823,7 @@ duplicates (the same behavior stated in 4–5 docs) collapse to one row.
 | AU3 split recover-by-cleanup, keyed | **CRASH-3** (full no-duplicate — `split-op:` key pinned in API §2.3) |
 | MG1/M6 import resumable/idempotent | **CRASH-4**, MIG-1 |
 | TF2 verify keyed idempotent | **CRASH-5** |
-| CC3/M11 claim take-and-verify / TTL reap | **CRASH-6** |
+| ~~CC3/M11 claim take-and-verify / TTL reap~~ | ~~CRASH-6~~ — retired with the mechanism (W1); taking an item is a `working-branch` write, covered by QRY-2 |
 | G3/D5 cacheless staleness=0 | **FRESH-1** |
 | G3 cached read visible age | **FRESH-2** |
 | G3/M2 decision read revalidates (304, REST) | **FRESH-3** |
@@ -810,6 +854,7 @@ duplicates (the same behavior stated in 4–5 docs) collapse to one row.
 | Q1-fulltext/Q3 search cache-served; semantic capability-probed | **QRY-3** |
 | Q5/Q4 counts-on-read; rollup fan-out | **QRY-4** |
 | Q2/AU1 sync changed-since cursor | **QRY-5** |
+| Read-your-writes (Data Model §1) — the local-write mirror | **QRY-6** |
 | F2/N4 no token in output; scrub patterns | **SEC-1** |
 | Security §2 mass-assignment guard | **SEC-2** |
 | CC4/N3 attribution off API identity, once/process | **SEC-3** |

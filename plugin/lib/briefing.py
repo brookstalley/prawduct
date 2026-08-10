@@ -63,8 +63,12 @@ def _plan_work_possibly_unmerged(
 
     The build plan is session-local and gitignored, so it survives a branch
     switch: complete every chunk on a feature branch, check out the base branch,
-    and the staleness scan recommends deleting a plan whose work has not shipped.
-    Following that advice orphans live work — reported from the field.
+    and the staleness scan recommends retiring a plan whose work has not shipped.
+    Following that advice orphans live work — reported from the field, when the
+    advice was to *delete*. Archival makes the loss recoverable rather than
+    total, and changes nothing about the timing this predicate decides: a plan
+    that is still the live description of unshipped work belongs in the live
+    directory.
 
     Two independent sufficient signals, either one enough:
 
@@ -78,14 +82,14 @@ def _plan_work_possibly_unmerged(
     Signal 1 is checked first and does not need a resolvable branch, so on a
     detached HEAD every recorded WIP entry counts as foreign and the answer is
     "keep". That is deliberate — an unidentifiable HEAD is the *worst* moment to
-    recommend deleting a plan — but it means the fail-toward-``(False, "")``
+    recommend retiring a plan — but it means the fail-toward-``(False, "")``
     posture below describes signal 2 only.
 
     Signal 2 fails toward ``(False, "")`` on every uncertainty: no base resolves,
     git unavailable, any return code other than the "not an ancestor" 1. Both
     signals may only ADD a keep-recommendation on positive evidence; neither may
-    silently suppress a legitimate delete nudge, because a plan that really is
-    finished and merged should still be cleaned up.
+    silently suppress a legitimate end-of-life nudge, because a plan that really
+    is finished and merged should still be archived.
     """
     try:
         current_branch = gitstate.current_branch(project_dir)
@@ -244,13 +248,14 @@ def staleness_scan(project_dir: Path) -> list[str]:
                 if unmerged:
                     findings.append(
                         f"build plan: {build_plan_label} has all chunks complete but "
-                        f"{unmerged_reason} — keep the plan until it merges "
-                        "(deleting now would orphan unshipped work)"
+                        f"{unmerged_reason} — keep the plan live until it merges "
+                        "(archiving now would orphan unshipped work)"
                     )
                 else:
                     findings.append(
                         f"build plan: {build_plan_label} has all chunks complete — "
-                        "if work is done, delete the plan"
+                        "if work is done, archive the plan "
+                        "(`prawduct-hook archive-plan <path> --state completed`)"
                     )
             else:
                 # No Status items — check WIP as fallback for old-style repos
@@ -263,13 +268,15 @@ def staleness_scan(project_dir: Path) -> list[str]:
                     if unmerged:
                         findings.append(
                             f"build plan: {build_plan_label} exists but no active work, and "
-                            f"{unmerged_reason} — keep the plan until it merges "
-                            "(deleting now would orphan unshipped work)"
+                            f"{unmerged_reason} — keep the plan live until it merges "
+                            "(archiving now would orphan unshipped work)"
                         )
                     else:
                         findings.append(
                             f"build plan: {build_plan_label} exists but no active work — "
-                            "if work is complete, delete the plan"
+                            "if work is complete, archive the plan; if it stopped, archive "
+                            "it as superseded (`prawduct-hook archive-plan <path> "
+                            "--state superseded --superseded-by <what replaced it>`)"
                         )
         except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
@@ -476,8 +483,8 @@ def _get_work_in_progress(project_dir: Path, wip: dict[str, str] | None = None) 
     """Format work in progress as a one-line summary for the session briefing.
 
     ``wip`` lets a caller that has already resolved the active work pass it in;
-    resolution reads git on a ``views_enabled`` repo, and the briefing needs the
-    same answer twice.
+    resolution walks the artifacts tree, and the briefing needs the same answer
+    twice.
     """
     if wip is None:
         wip = _get_active_work(project_dir)
@@ -588,7 +595,7 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     lines = ["== SESSION BRIEFING =="]
 
     # Project identity + work in progress (branch-scoped). Resolved once and
-    # reused below — on a views_enabled repo this reads git.
+    # reused below — this walks the artifacts tree to resolve the branch's plan.
     project_name = _get_product_name(prawduct_dir)
     current_branch = _get_current_branch(project_dir)
     wip = _get_active_work(project_dir)
@@ -858,6 +865,12 @@ def _backlog_pending_line(
         # Read the snapshot first, then warm — the warm's outcome decides what the
         # no-snapshot line may honestly claim, so its result is never discarded.
         warmed = _spawn_snapshot_warm(project_dir, scope, popen=popen)
+        # The backlog cache's only automatic SYNC trigger (writes mirror themselves
+        # into the store as they go), fired beside the counts warm rather
+        # than folded into it: two ops, two stores, and `refresh-counts` deriving a
+        # count is not the sync that fills the item rows the review-time consumers
+        # read. See `_spawn_cache_warm` on why its result is not kept.
+        _spawn_cache_warm(project_dir, scope, popen=popen)
         line = None
         if snap and isinstance(snap.get("counts"), dict):
             by_status = snap["counts"].get("by_status") or {}
@@ -900,12 +913,46 @@ def _spawn_snapshot_warm(project_dir: Path, scope: str, *, popen=None) -> bool:
     """Fire the detached snapshot refresh (D6). Never raises, never waits."""
     from .backlog import snapshot  # noqa: PLC0415 — lazy
 
-    hook = Path(__file__).resolve().parent.parent / "bin" / "prawduct-hook"
-    if not hook.is_file():
+    hook = _hook_argv()
+    if hook is None:
         return False
-    return snapshot.spawn_refresh(
-        [sys.executable, str(hook)], project_dir, scope, popen=popen
-    )
+    return snapshot.spawn_refresh(hook, project_dir, scope, popen=popen)
+
+
+def _spawn_cache_warm(project_dir: Path, scope: str, *, popen=None) -> bool:
+    """Fire the detached backlog-cache sync. Never raises, never waits.
+
+    The cache's only automatic sync trigger — writes mirror themselves into the
+    store, so this is what brings in edits made elsewhere. It rides the same
+    session-start moment as the counts
+    warm and for the same reason — the readers that consume it (the Critic's
+    reconciliation walk, the PR reviewer's checks, the janitor's Backlog Health)
+    run later in the session, so warming at the start is what makes their visible
+    age small instead of merely honest.
+
+    **Its outcome is deliberately discarded, where the snapshot warm's is not.**
+    The snapshot warm decides what the briefing line may claim, because a
+    "warming" line with no warm behind it is a standing falsehood. This one
+    decides nothing a reader sees: every cache consumer reports the store's own
+    age and reports ``unavailable`` when it cannot read it, so a failed warm is
+    already visible at the point of use rather than needing a briefing line to
+    pre-announce it. Adding one would be a second home for the same fact, and the
+    worse-sited of the two — session start cannot know whether anything will ask
+    the cache a question this session."""
+    from .backlog import sync  # noqa: PLC0415 — lazy; pre-cutover repos never pay it
+
+    hook = _hook_argv()
+    if hook is None:
+        return False
+    return sync.spawn_sync(hook, project_dir, scope, popen=popen)
+
+
+def _hook_argv() -> list[str] | None:
+    """The argv prefix that reaches ``prawduct-hook``, or ``None`` if it is not
+    there. One home, because two detached warms resolve the same interpreter and
+    the same script, and a copy is how they would come to disagree about which."""
+    hook = Path(__file__).resolve().parent.parent / "bin" / "prawduct-hook"
+    return [sys.executable, str(hook)] if hook.is_file() else None
 
 
 def _humanize_age(age_seconds) -> str:

@@ -10,6 +10,34 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.3.0
+
+**The backlog service is live.** The readers that went dark at the Issues cutover can see your backlog again — and a build plan's progress checkboxes now mean exactly what they say.
+
+### The backlog goes back on line
+
+v3.2.0 shipped the backlog service *dormant*: the cutover moved the live backlog to GitHub Issues, and every governance surface that used to read `backlog.md` had to be switched off and announce itself as dormant rather than answer from frozen markdown. This release turns them back on, against a local cache rather than a network round-trip.
+
+The Critic's backlog reconciliation walk and its four hygiene checks, the PR reviewer's R-1 and R-2, and the janitor's Backlog Health block each lose their "the live backlog is frozen markdown, so skip and announce it" branch and gain a cache-backed query. The advisory that announced the dormancy **retires by itself** — a probe that stops producing a candidate resolves its own advisory, so nothing had to be removed by hand.
+
+**One capability is new rather than restored:** the changed-file intersection. Ask what backlog items touch the files this branch actually changed, and you get an answer that previously required reading every item's text. Against a real 453-item backlog it returns the tracking item and nothing else, naming the `affected:` entries that matched.
+
+The cache syncs incrementally and queries offline — a re-sync against a 451-item backlog costs about a second and touches the network only to ask what changed. Two checks stay dark and now say so where you meet them instead of in a session-start nag: the neglected-hygiene sweep (the `promoted` status has no Issues equivalent to query for) and norm-exception expiry (it waits on a write path). Two others are **scoped to the markdown backend** rather than retired, because deleting them would have taken a live control from every markdown-backend product to suit a cut-over one.
+
+**Your own writes are visible to your next read.** Every backlog write path now updates the cache, so filing or updating an item and then querying it in the same session returns what you just wrote rather than a pre-write snapshot. The gap that mattered was never provider-side drift — it was the second between an agent's write and its own next command.
+
+### Checkboxes that mean what they say
+
+A build plan's progress checkboxes now mean exactly what they say — `views_enabled` and `regen-views` are retired, and finished plans get an archive instead of sitting in `artifacts/` forever.
+
+Until now a plan's `## Status` block could be one of two different things depending on a setting most repos never knew they had. With `views_enabled` on, the boxes were a *generated view* that only flipped at release, so ticking one by hand did nothing and an in-flight chunk always read as unfinished; with it off, the boxes were the plan's own content. Two meanings, one appearance, and nothing on the page telling you which you were looking at. The setting is gone and only the second meaning remains: **tick a box when its chunk is done, and nothing will overwrite it.** The session gates read those boxes, so this is the reading that was already load-bearing.
+
+`regen-views` and `stamp-merged` still exist and still exit 0 — they print a notice and do nothing, and their removal waits for a major version, so a script or release checklist that calls them will not break mid-run. Release notes live in the change log, which is where they were derived from all along.
+
+Two `/prawduct:doctor` repairs land with it, both preview-first and both taking a single confirmation for the whole job rather than prompting per file. `prawduct-hook lifecycle-repair` removes the dead setting and its generated block, labels a derived `release-notes.md` as the history it is, and deletes the per-plan notes that told readers not to hand-edit checkboxes — that last one is the only piece that still changed behaviour, because a reader who believes it leaves finished work unmarked. `prawduct-hook plan-backfill` moves plans that already shipped into an `archive/` beside them, deciding "shipped" mechanically from the release recorded in your change log. A product that does not tag releases has nothing moved: the set is proposed and you confirm it.
+
+Archiving deliberately does **not** require or correct checkboxes. A plan whose work was descoped can never satisfy "all boxes ticked", and those are exactly the plans that pile up reading as active — so an archived plan may carry unticked boxes, and that is preserved as a fact about how the work ended.
+
 ## v3.2.7
 
 An excellent issue title stopped being a suggestion — and a bad row can no longer end a migration.

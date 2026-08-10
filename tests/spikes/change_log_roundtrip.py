@@ -13,8 +13,9 @@ What it answers, in one pass:
   * Can a per-change fact (YAML frontmatter + prose body) round-trip every real
     change-log entry, both structurally (what consumer queries Q1-Q7 read) and
     byte-for-byte (what a cutover gate would assert — note the `regen-views
-    --check` this was written against no longer exists; views always
-    regenerate, so the cutover needs a purpose-made comparison)?
+    --check` this was written against no longer exists: `regen-views` is inert
+    and derived views are retired, so the cutover needs a purpose-made
+    comparison)?
   * How large is the one-time normalization that byte-identity requires, and is
     the key-order set disjoint from the blank-layout set?
   * Do release records reconstruct from the existing tags without partition
@@ -35,7 +36,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "plugin"))
 
-from lib import views  # noqa: E402
+from lib import change_log  # noqa: E402
 
 # Canonical rendering order. Not the only order in the corpus — measuring how far
 # the corpus departs from it is half this script's job.
@@ -69,7 +70,7 @@ def yaml_scalar(v: str) -> str:
 def split_entries(content: str):
     """Yield (entry, raw_block) for every H2 entry, trailing blanks stripped."""
     lines = content.splitlines()
-    entries = views.parse_change_log(content)
+    entries = change_log.parse_change_log(content)
     starts = sorted(e.line_number - 1 for e in entries)
     for e in entries:
         start = e.line_number - 1
@@ -108,7 +109,7 @@ def convert(block: list[str]):
             k = pair.split("=")[0].strip()
             if k and k not in order:
                 order.append(k)
-        tags.update(views.parse_tag_line(tm.group(1)))
+        tags.update(change_log.parse_tag_line(tm.group(1)))
         n_tag_lines += 1
         j += 1
 
@@ -231,8 +232,8 @@ def main() -> int:
             while r and not r[-1].strip():
                 r.pop()
 
-        pa = views.parse_change_log("\n".join(block) + "\n")[0]
-        pb = views.parse_change_log("\n".join(r_pres) + "\n")[0]
+        pa = change_log.parse_change_log("\n".join(block) + "\n")[0]
+        pb = change_log.parse_change_log("\n".join(r_pres) + "\n")[0]
         struct_ok += (pa.title, pa.tags) == (pb.title, pb.tags)
         pres_ok += r_pres == block
         canon_ok += r_canon == block

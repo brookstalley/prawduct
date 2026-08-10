@@ -238,9 +238,10 @@ issues, and name the tradeoff:
      absent from a default `list` and from add-time dedup under **either** scope (see
      `all` below), so a duplicate of a previously-dropped item can be re-filed with no
      signal either way. The lever decides whether the record is *recoverable through
-     the tracker*, not whether dedup sees it. (State it as `list`, not `find`:
-     full-text `find` is unavailable for *every* item post-cutover, so it is not what
-     this lever costs.)
+     the tracker*, not whether dedup sees it. (State it as `list`, not `find`: an item
+     never imported is outside the tracker entirely, so no cache-served op reaches it
+     either — `find` runs post-cutover, but only over what the cache holds, and what
+     this lever skips was never synced.)
    - **`all`** — import the full archive as closed issues (every disposed/shipped
      item becomes a closed issue). Complete history *in the tracker* — but
      **reachable, not visible by default**: `list` defaults to `state=open`
@@ -508,13 +509,15 @@ This single key (API §2.4) repoints the session briefing to the GV2 snapshot
 (`snapshot.read`, file-only, visible age + detached refresh warm — never a
 synchronous network call) and retires every markdown-premise advisory probe
 (the backlog trio `legacy-backlog-format` / `legacy-section-schema` /
-`backlog-overdue-grooming` AND the norm trio `revisit-due` / `dead-why` /
-`stalled-transition` — the frozen file must not generate nudges). Retirement is
-not silence: one probe starts firing at the same switch —
-`backlog-checks-dormant`, an `info` advisory naming every backlog check that has
-no Issues-backend path yet, so the operator running this scrub learns what goes
-dark rather than discovering it as an unexplained absence (full retirement
-table: post-sync-advisory-spec §8.2). **Do not set
+`backlog-overdue-grooming` AND the norm probe `revisit-due` — the frozen file
+must not generate nudges). **Two former members of that list now switch backends
+rather than retiring**: `dead-why` and `stalled-transition` resolve their
+citations against the backlog cache on the far side, so cutover changes where
+they read, not whether. Retirement is
+not silence, and it no longer needs an advisory to say so: the readers outside
+this skill query the local backlog cache on the far side, and one that cannot
+reach it reports that at the point of use rather than returning nothing (full
+retirement table: post-sync-advisory-spec §8.2). **Do not set
 it before the import has been verified** (the gate at the head of this step) —
 once set, the briefing stops counting the markdown file. From here the markdown
 backlog is frozen history for *this* repo.

@@ -74,7 +74,7 @@ def _state_yaml(*specs: tuple[str, str, str | None]) -> str:
         lines += [f"  - path: {path}", f"    format: {fmt}"]
         if key:
             lines.append(f"    key: {key}")
-    lines += ["", "views_enabled: true"]
+    lines += ["", "coverage_required: false"]
     return "\n".join(lines) + "\n"
 
 

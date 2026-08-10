@@ -18,6 +18,9 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
   to `## Archive`, never strikethrough; Issues backend: closes the issue). An early-`stage:`
   item is an undocumented requirement — `pick` routes it to discovery.
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
+- **The build plan's `## Status` boxes are yours to tick** — the ONLY reading of chunk progress;
+  nothing derives them, and the briefing, the handoff and the Stop gates all believe them. Tick
+  after the review, never before: ticking the LAST box disarms those gates.
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
   `.session-reflected`), at chunk close ("nothing beyond the plan" if true, but write the line, not no file).
   **Never ask whether to prepare one — prepare it, then signal.**

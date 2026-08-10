@@ -321,33 +321,37 @@ class TestContext:
 
 class TestSec5Withhold:
     @pytest.fixture(autouse=True)
-    def _untrusted_actions(self, monkeypatch):
+    def _untrusted_actions(self, monkeypatch, tmp_path):
         monkeypatch.setenv("GITHUB_ACTIONS", "true")
         monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request_target")
         monkeypatch.delenv("PRAWDUCT_ACTOR_AUTHORIZED", raising=False)
+        # A work tree of its own. `pick` reaches the clone-shared backlog store,
+        # so a test passing "." would sync a fake provider's issues into the
+        # developer's own cache — a test with a side effect outside its tmpdir.
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        self._dir = str(tmp_path)
 
     def test_write_path_refuses(self, fake):
-        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
+        rc = cli.run(self._dir, ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
         assert rc == 5  # auth exit class
         # Nothing was created — the refusal is before dispatch (no half-write).
         assert fake.calls == []
 
-    def test_claim_via_pick_refuses(self, fake):
-        rc = cli.run(".", ["pick", "--repo", SCOPE, "--claim", "--json"], transport=fake)
-        assert rc == 5
-        assert fake.calls == []
-
     def test_read_report_allowed(self, fake):
-        rc = cli.run(".", ["counts", "--repo", SCOPE, "--json"], transport=fake)
+        rc = cli.run(self._dir, ["counts", "--repo", SCOPE, "--json"], transport=fake)
         assert rc == 0  # read-only reporting is fine under an untrusted trigger
 
-    def test_bare_pick_read_allowed(self, fake):
-        rc = cli.run(".", ["pick", "--repo", SCOPE, "--json"], transport=fake)
-        assert rc == 0  # pick without --claim is a read
+    def test_pick_read_allowed(self, fake):
+        """`pick` is a read on every path now. It once had a `--claim` arm that
+        made it the one mutating read, and that arm is retired with the claim op;
+        what it writes today is the local cache, which is not a GitHub mutation
+        and is not what the withhold is about."""
+        rc = cli.run(self._dir, ["pick", "--repo", SCOPE, "--json"], transport=fake)
+        assert rc == 0
 
     def test_authorized_actor_write_proceeds(self, fake, monkeypatch):
         monkeypatch.setenv("PRAWDUCT_ACTOR_AUTHORIZED", "1")
-        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
+        rc = cli.run(self._dir, ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
         assert rc == 0  # the explicit authz check cleared the withhold
 
 

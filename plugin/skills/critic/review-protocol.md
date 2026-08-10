@@ -1,5 +1,6 @@
 # Build Governance (The Critic)
 
+
 The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning. This file is the Critic's complete instruction set.
 
 ## When You Are Activated
@@ -85,9 +86,8 @@ downgrade.
 - **Norms**: `project-preferences.md` rows and Direction statements bind — unrecorded departure → **BLOCKING** via Goal 3; never fix divergence by artifact edit.
 - **Infrastructure coherence**: `infrastructure_dependencies` declared but code uses in-memory only → **WARNING**. Mocks must be documented, not silently substituted.
 - **README and top-level docs**: read the project's README and `docs/` when features change. Removed/renamed features or wrong setup → **WARNING**. Actively misleading instructions (wrong commands, deleted config refs) → **BLOCKING**.
-- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact rides its meaning on an ephemeral build id (chunk number, build-plan, work-cycle name), which dangles once the plan is deleted → **WARNING**; build-cycle bookkeeping that records the work (e.g. change-log `chunks=`, backlog `closed-by:`, operator-verification) is exempt.
+- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING**. Same defect when a *product* durable artifact rides its meaning on an ephemeral build id (chunk number, build-plan, work-cycle name), which dangles once the id *changes* (a count, a chunk number that renumbers) → **WARNING**. Plans are archived, not deleted — so a pointer *to a plan* resolves **by scope, not by path**: archiving moves the file, so a hard-coded `artifacts/build-plan-<scope>.md` dangles the moment the plan finishes. Bookkeeping that records the work (backlog `closed-by:`, operator-verification) is exempt.
 - **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
-- **Derived views**: `views_enabled` ⇒ Status, `release-notes.md`, and `scope_rollups:` derive from change-log tags via `regen-views`. Tag is canonical; view↔tag mismatch → **WARNING** ("run regen-views"). Flag tags, not derived files.
 - **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`. Applies to the current changeset.
 - For framework changes: concept ripple check — renamed/removed terms still referenced in *active* files (not changelogs or archives) → **WARNING**.
 
@@ -121,7 +121,7 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
-**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then reconcile the backlog (read `backlog_service_repo` first; when set, skip the walk for its "unavailable" NOTE), emitting **NOTE** findings for items resolved.
+**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then reconcile the backlog (cache-backed — `skills/backlog/cache-reads.md`; skip the walk only on exit 6, its "unavailable" NOTE), emitting **NOTE** findings for items resolved.
 
 ## Severity Levels
 

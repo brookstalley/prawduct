@@ -84,7 +84,43 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`,
-  `regen-views` (mutating), `stamp-merged` (deprecated, mutating).
+  `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
+- **Build-plan lifecycle** — `archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD]
+  [--release vX.Y.Z] [--superseded-by <text>] [--dry-run]` (mutating): stamps a plan with its
+  terminal state and moves it into `archive/`. Writes on invocation rather than defaulting to a dry
+  run — the `--apply` default belongs to the repo-wide lifecycle commands below, and this one acts on
+  a single file the operator named; `--dry-run` is the preview. Refuses (exit 1, nothing written)
+  rather than half-completing: a plan stamped but not moved still reads as live to every directory
+  scan, and one moved but not stamped answers "is this current?" only to a reader who noticed the
+  path. The archived copy is written first and the source removed last, and a failure to remove the
+  source **rolls the copy back**, which is what makes "nothing written" true rather than aspirational.
+  **The one disclosed exception:** if that rollback ALSO fails, the stamped copy survives and the
+  reason says so by name — two failing filesystem operations cannot be undone by a third, and a
+  refusal that quietly left an orphan would be the worse answer. The live plan is intact either way.
+  Status checkboxes are never touched.
+  `plan-backfill [--apply] [--json] [--date YYYY-MM-DD]` (mutating with `--apply`) is the
+  repo-wide counterpart the sentence above points at: it archives every live plan whose `scope=`
+  carries a `release=` tag in the change log, so it decides for itself which files to touch and
+  therefore previews first. A product whose change log records no releases gets **nothing moved** —
+  the set is proposed and the operator archives each with `archive-plan`. Checkbox state is neither
+  a precondition nor corrected on the way in. `--json` adds `blocked[{path,scope,release,reason}]`:
+  plans the change log records as shipped that the archival predicate refuses, split out so the
+  preview cannot promise what the write declines. **Exit 1 on `--apply` when anything is `blocked`
+  or `refused`** — an apply that could not move work the change log says shipped is not a clean run;
+  a preview stays 0, having attempted nothing.
+- **Derived-view convergence** — `lifecycle-repair [--apply] [--json]` (mutating with `--apply`):
+  removes the retired `views_enabled` key and `scope_rollups` block, labels a derived
+  `release-notes.md` as history, and deletes `## Status` notes instructing readers not to hand-edit
+  checkboxes. `--json` keys: `applied`, `edits[{path,kind,reason,detail}]`, `unreadable[{path,
+  reason}]`, `retired_flag{status,path,line}`, `plans_to_review[{path,chunks}]`, `outcome`.
+  **`unreadable`, `retired_flag` and `plans_to_review` all have a live consumer** —
+  `skills/doctor/SKILL.md` Health Checks #15 and #16 grade on them — so renaming any of them is a
+  consumer break, not an internal edit. `unreadable` is the plans under `artifacts/` that could not
+  be decoded as text: the walk that builds `edits` deliberately swallows them (one malformed file
+  must not blind the scan), so a non-empty `unreadable` means the repair reports on a set it did not
+  fully read. It was emitted before it was documented or graded, which is how a repo with an unread
+  plan could be reported converged — the "path that cannot answer, reporting as one that answered"
+  shape this command was written to end.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating).
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
@@ -94,8 +130,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
   to `unknown` rather than a reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
-  `learnings-obligation`, `norm-index-scaffold`, `repo-disable`, `bug-inbox` (all
-  dry-run-by-default where they mutate).
+  `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`, `plan-backfill`,
+  `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
@@ -106,9 +142,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
-`repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`) default to a
+`repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
+`lifecycle-repair`, `plan-backfill`) default to a
 **dry run** and require
-`--apply` to write.
+`--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
+named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which
+files to touch previews first. That framing is descriptive — the binding rule is
+`security-model.md` § Direction's operation-level approval.
 
 ## Inputs & Outputs
 
@@ -205,8 +245,9 @@ Fail-direction is deliberate and per-purpose:
 - **Unevaluable *advisory* gate** (an optional lib path failed to import) → **fail-open, exit 0**: an
   ungradeable gate must never false-block (`classify-diff-risk`, `check-operator-verification`).
 - **Unevaluable *writer*** (a state-mutating command whose lib failed to import) → **fail-closed,
-  exit 1**: never report a false success. `regen-views` escalates to **2** for
-  validation/IO errors (nothing written).
+  exit 1**: never report a false success. (`regen-views` used to be the worked example, escalating
+  to **2** for validation/IO errors; it writes nothing at all now, so the rule's subjects are the
+  operator-verification and coverage writers.)
 - **Advisory report** (`verify-records`) → **exit 0 even with findings**, because it advises the
   builder and gates nothing; **exit 1 only when it could not run.** Findings are not a failure
   state, but an unrun check must never read as a clean one — inside a single run, the same rule
@@ -214,10 +255,11 @@ Fail-direction is deliberate and per-purpose:
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `critic-begin` **3** = no review needed (added 2026-08-06);
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
-  `backlog verify-migration` **4** = completeness failure (a source item with no target issue);
-  `regen-views` **3** = partial — one or more scopes' `## Status` views were withheld by their own
-  validation errors while every other view WAS written (the regen-views-is-advice ruling; 2 still
-  means nothing was written).
+  `backlog verify-migration` **4** = completeness failure (a source item with no target issue).
+  (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
+  unconditionally, so those two meanings were removed rather than given new ones. Retiring a
+  meaning is what the additive-first norm permits; the thing it forbids is a new meaning wearing
+  an old number.)
 
   **`critic-begin` 3 — no review needed.** The dispatch interval holds no judgeable file
   (`coverage_algebra.is_judgeable_path`) and no finding this mode could resolve, so the coverage gate
@@ -288,7 +330,8 @@ Evolution rules we want to hold, so new versions stay rare:
   rather than hard-failing (evidence torn-tail repair; advisory corrupt-file quarantine).
 - **Deprecation is signalled, not silent.** The established pattern: mark the subcommand deprecated
   in its help, print a deprecation notice to stderr on use, keep it working, and defer removal to a
-  future **major** version (the current `stamp-merged` deprecation is the reference example).
+  future **major** version. `stamp-merged` and `regen-views` are both in this state: each stays
+  callable, prints its notice, does nothing, and exits 0.
 - **Backward-compatibility commitment by tier:** *stable* surface changes only additively within a
   major; *internal* surface may change with its plugin version but must not silently break a
   skill shipped in the same version.
@@ -317,12 +360,18 @@ Evolution rules we want to hold, so new versions stay rare:
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`, `build-index`.
-- **Deprecated:** `stamp-merged` (removal deferred to a major); `regen-views --check` (removal
-  deferred to a major — **and note it is a repurposing, not a clean deprecation**: the flag now
-  performs a full regen where it documented "writes nothing", so unlike `stamp-merged` it does not
-  still do what it said. Recorded as a departure from the flag-repurposing clause above, not as
-  conformance; the norm's why is about consumers pinned at version N, and no hook, skill or gate
-  ever invoked it — every consumer was prose).
+- **Deprecated and inert** (callable, notice on stderr, writes nothing, exits 0; removal deferred
+  to a major): `stamp-merged` and `regen-views`. Both lost their bodies when derived views were
+  retired — `regen-views` had no views left to regenerate, and `stamp-merged`'s only output
+  (`status=`) had no reader left. **Prawduct's own release runbook no longer calls either**, so the
+  remaining reason to keep them callable is the one that cannot be audited from here: a consumer's
+  copied operator script, where a non-zero exit would break a pipeline mid-release. The notice
+  tells such a caller to drop the call.
+
+  The `--check` flag's earlier state is worth keeping on the record: it was a *repurposing* rather
+  than a clean deprecation — it performed a full regen where it documented "writes nothing" — and
+  was recorded as a departure from the flag-repurposing clause above rather than as conformance.
+  That departure is now closed by construction: nothing writes, so no flag can surprise anyone.
 
 *Current state (honest):* the stable/internal split above is the intended inventory and is reflected
 in how skills allowlist commands, but there is **no formal stability-tier table in the code and no

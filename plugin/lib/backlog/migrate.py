@@ -18,8 +18,16 @@ INV-1), all **return-value** enveloped (project preference):
 
 2. **`export`** (``export_backlog``) — a cheap, full-fidelity **dump** to plain
    files: the body block **plus the native graph** (dependencies, sub-issues,
-   timeline, assignees). Not a lossless one-liner re-import into a non-GitHub
-   backend (out of scope, Data Model §8) — a *backup/inspection* dump (MG2/G5).
+   timeline, assignees). A *backup/inspection* dump (MG2/G5), not a lossless
+   one-liner re-import into a second provider.
+
+   The scope of that caveat has narrowed and the old wording overstated it. Data
+   Model §8 put re-import into a non-GitHub **backend** out of scope, and it still
+   is; what the read-through cache added is a provider-neutral **domain schema**
+   stated in prawduct's vocabulary rather than the provider's (Cache Spec §§3, 8),
+   which is the piece a future adapter would bind to. So the honest statement is
+   that no second adapter exists and none is planned here — not that the model
+   forecloses one.
 
 3. **`merge`** (``merge``) — the minimal fold A→B the migration scrub needs: a
    **redirect-before-close** so a crash leaves the source open-but-redirected (a
@@ -397,8 +405,9 @@ class _PacingTransport:
     ``__getattr__`` requires that the wrapped methods be absent here. That is also
     what makes the metering **non-fragile**: a call is metered by classifying its
     *name* (``get_``/``list_`` = read, ``create_``/``update_``/``add_``/``remove_`` =
-    write), and any transport method that fits neither prefix raises rather than
-    silently escaping the budget — closing the "only paced call" gap (BKL-6X5D b).
+    write, plus the exact-named predicate reads in ``_READ_METHODS``), and any
+    transport method that fits none of those raises rather than silently escaping
+    the budget — closing the "only paced call" gap (BKL-6X5D b).
 
     Because the migration passes *this* wrapper into ``core.set_status`` (the shared
     close/reconcile path), that path's reads and the close write are metered too,
@@ -406,13 +415,19 @@ class _PacingTransport:
 
     _READ_PREFIXES = ("get_", "list_")
     _WRITE_PREFIXES = ("create_", "update_", "add_", "remove_")
+    #: Reads whose name is a predicate rather than a ``get_``/``list_`` verb, so
+    #: the prefix rule cannot see them. Named exactly rather than by widening the
+    #: prefixes, because a rule like "``*_exists`` is a read" would classify by
+    #: accident of naming — and the guard test below is what keeps this set in
+    #: step, having refused the first such method the moment it appeared.
+    _READ_METHODS = frozenset({"branch_exists"})
 
     def __init__(self, transport: Transport, pacer: "Pacer") -> None:
         self._transport = transport
         self._pacer = pacer
 
     def _cost(self, name: str) -> int:
-        if name.startswith(self._READ_PREFIXES):
+        if name.startswith(self._READ_PREFIXES) or name in self._READ_METHODS:
             return _REST_READ_POINTS
         if name.startswith(self._WRITE_PREFIXES):
             return _REST_WRITE_POINTS
@@ -1696,6 +1711,7 @@ def merge(
     target_raw: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
+    absorb: core.Absorb | None = None,
 ) -> dict:
     """Fold ``source`` into ``target`` (AU3/DM7): the minimal merge the scrub needs
     to dispose duplicates. **Canonical write order** — write the block
@@ -1729,7 +1745,13 @@ def merge(
             transport.update_issue(sid.owner, sid.repo, sid.number, fields={"body": new_body})
 
         # Step 2 — close the source as dropped (idempotent, crash-safe set-status).
-        close = core.set_status(transport, id_raw=sid.canonical, target="dropped")
+        # One mirror covers both halves of the merge: `set_status` ends on a
+        # `get_issue`, which reflects the `superseded_by` redirect written a step
+        # above as well as the close. The target is not edited, so it has nothing
+        # to mirror.
+        close = core.set_status(
+            transport, id_raw=sid.canonical, target="dropped", absorb=absorb
+        )
         if close.get("status") != "ok":
             return close
     except TransportError as exc:

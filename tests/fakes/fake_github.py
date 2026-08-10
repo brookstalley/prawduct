@@ -26,6 +26,7 @@ deterministic.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -33,9 +34,46 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.backlog.transport import Transport, TransportError  # noqa: E402
+from lib.backlog.encode import parse_iso  # noqa: E402
+from lib.backlog.transport import (  # noqa: E402
+    PROBE_PAGE_SIZE,
+    Transport,
+    TransportError,
+    Validator,
+)
 
 _DEFAULT_USER = {"login": "octocat", "id": 1, "node_id": "U_octocat"}
+
+
+def _before(stamp: str | None, since: str) -> bool:
+    """Is ``stamp`` strictly earlier than ``since``?
+
+    Compared as instants, never as strings. The two spellings this fake produces
+    — ``...T00:00:00Z`` and ``...T00:00:00.000001Z`` — sort the wrong way round
+    lexicographically, so a string comparison here would filter by an ordering
+    the real API does not use, and a sync could pass against that fiction. An
+    unparseable stamp is kept rather than dropped: ``since`` is a *narrowing*
+    filter, and the safe direction for an unreadable value is to over-return."""
+    parsed = parse_iso(stamp) if stamp else None
+    floor = parse_iso(since)
+    if parsed is None or floor is None:
+        return False
+    return parsed < floor
+
+
+#: Sorts every issue list this fake returns. Ordering by the parsed instant
+#: rather than the raw string for the same reason :func:`_before` compares that
+#: way: this fake stamps mutations `...T00:00:00.000123Z` against a baseline
+#: `...T00:00:00Z`, and those two sort backwards as text. Incremental sync leans
+#: on `sort=updated` ordering being real — it is what keeps a write landing
+#: mid-scan from being skipped — so a fake that ordered them wrongly would
+#: certify that argument without testing it. `datetime.min` for an unparseable
+#: stamp keeps the sort total; the issue number breaks ties, as it does live.
+def _order(issue: dict, key: str) -> tuple:
+    from datetime import datetime, timezone  # noqa: PLC0415 — local to this helper
+
+    parsed = parse_iso(issue.get(key)) if issue.get(key) else None
+    return (parsed or datetime.min.replace(tzinfo=timezone.utc), issue["number"])
 
 
 class _RepoState:
@@ -60,6 +98,9 @@ class _RepoState:
         # Replication window (QRY-1): number → remaining reads to hide it for,
         # modelling GitHub's observed brief 404-after-create window.
         self.hidden: dict[int, int] = {}
+        # Published branch names (`push_branch`). Empty by default, which is the
+        # honest default: a branch is invisible to everyone else until pushed.
+        self.branches: set[str] = set()
 
 
 class FakeGitHub(Transport):
@@ -290,16 +331,45 @@ class FakeGitHub(Transport):
         direction: str = "asc",
         per_page: int = 100,
         page: int = 1,
+        since: str | None = None,
     ) -> list[dict]:
         self._maybe_unreachable()
         self.calls.append(
-            ("list_issues", owner, repo, state, tuple(labels or ()), assignee)
+            ("list_issues", owner, repo, state, tuple(labels or ()), assignee, since)
         )
+        matched = self._matching_issues(
+            owner, repo, state=state, labels=labels, assignee=assignee, since=since
+        )
+        key = "updated_at" if sort == "updated" else "created_at"
+        matched.sort(key=lambda i: _order(i, key), reverse=(direction == "desc"))
+        start = max(0, (page - 1) * per_page)
+        return [dict(issue) for issue in matched[start : start + per_page]]
+
+    def _matching_issues(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str,
+        labels: list[str] | None,
+        assignee: str | None,
+        since: str | None,
+    ) -> list[dict]:
+        """The provider's filters, in the provider's semantics.
+
+        ``since`` is an **inclusive** filter on ``updated_at`` and an
+        **independent AND** with ``state`` — both verified against the live API
+        (Cache Spec §6) before this fake was written, precisely so that a sync
+        cannot pass here against a fiction. The independence is what makes a
+        ``state="open"`` sync unable to see closes, which is a real defect this
+        fake must be able to reproduce rather than paper over."""
         repo_state = self._repo(owner, repo)
         want_labels = set(labels or ())
         matched: list[dict] = []
         for issue in repo_state.issues.values():
             if state != "all" and (issue.get("state") or "open").lower() != state:
+                continue
+            if since is not None and _before(issue.get("updated_at"), since):
                 continue
             names = {label["name"] for label in issue.get("labels", [])}
             if want_labels and not want_labels.issubset(names):
@@ -309,13 +379,60 @@ class FakeGitHub(Transport):
             if self._replication_hidden(repo_state, issue["number"]):
                 continue  # still inside its post-create window
             matched.append(issue)
-        key = "updated_at" if sort == "updated" else "created_at"
-        matched.sort(
-            key=lambda i: (i.get(key) or "", i["number"]),
-            reverse=(direction == "desc"),
+        return matched
+
+    def get_issues_validator(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str,
+        since: str,
+        etag: str | None,
+    ):
+        """Model the conditional request the way the API answers it.
+
+        The validator is derived from the window's content rather than stored, so
+        it changes exactly when a real ``ETag`` would: the probe orders by
+        ``updated_at`` descending and any touched item surfaces at the top with a
+        newer stamp. Deriving it also means the fake cannot drift out of sync
+        with its own repo state, which a hand-maintained etag counter would.
+
+        Subject to ``set_unreachable`` like any other read: the probe is a
+        network call, and a fake that answered it from local state while the
+        network was down would let a sync report success on an unreachable
+        provider."""
+        self._maybe_unreachable()
+        matched = self._matching_issues(
+            owner, repo, state=state, labels=None, assignee=None, since=since
         )
-        start = max(0, (page - 1) * per_page)
-        return [dict(issue) for issue in matched[start : start + per_page]]
+        matched.sort(key=lambda i: _order(i, "updated_at"), reverse=True)
+        top = matched[:PROBE_PAGE_SIZE]
+        self.calls.append(("get_issues_validator", owner, repo, state, since, etag))
+        current = "W/" + json.dumps(
+            [(i["number"], i.get("updated_at"), i.get("state")) for i in top],
+            sort_keys=True,
+        )
+        if etag is not None and etag == current:
+            return Validator(changed=False, etag=etag)
+        return Validator(changed=True, etag=current)
+
+    def push_branch(self, owner: str, repo: str, branch: str) -> None:
+        """Publish a branch on the fake remote — the setup half of
+        ``branch_exists``. A branch nobody pushed is simply absent, which is the
+        state ``working-branch`` has to refuse."""
+        self._repo(owner, repo).branches.add(branch)
+
+    def branch_exists(self, owner: str, repo: str, branch: str) -> bool:
+        """Whether ``branch`` is published on ``owner/repo``.
+
+        A read like any other, so ``set_unreachable`` / ``set_rate_limited``
+        reach it: the real check is a network call, and a fake that answered it
+        from local state with the network down would let a write claim it
+        verified something it could not have."""
+        self._maybe_unreachable()
+        self.calls.append(("branch_exists", owner, repo, branch))
+        return branch in self._repo(owner, repo).branches
 
     @staticmethod
     def _assignee_matches(issue: dict, assignee: str | None) -> bool:

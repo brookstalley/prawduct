@@ -254,7 +254,7 @@ _BATCH_FIX_DIRECTIVE = (
     " cycle per finding multiplies whole review rounds, and each round reviews the"
     " prose the previous fix wrote. Free to write at any time (they do not move"
     " coverage): everything under `.prawduct/` — change-log, backlog,"
-    " project-state, build plans, regen-views output — plus"
+    " project-state and build plans — plus"
     " `.claude/settings.json` and `.md` files OUTSIDE `skills/`,"
     " `methodology/`, `templates/` and a root `CLAUDE.md`. Everything else"
     " moves the tree and must land BEFORE the verify pass: code, config, data,"

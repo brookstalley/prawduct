@@ -146,9 +146,11 @@ def atomic_write_text(
     check what reads the file back.
 
     ``newline`` still defaults to ``None`` (universal-newline translation) and
-    is a separate concern: it exists for the one caller whose target is **not**
+    is a separate concern: it exists for callers whose target is **not**
     framework state, where a write into a product's authored file must not
-    re-line-end the bytes around its insertion.
+    re-line-end the bytes around its insertion. Pass ``newline=""`` from any
+    repair that edits a file the product wrote — an operation promising to touch
+    two keys otherwise hands back a whole-file reformat on a CRLF repo.
 
     The shared writer for ``.prawduct/`` state files (STH-8M3V; same pattern
     as the hook's ``.test-evidence.json`` writer). Their readers fail open on
@@ -180,12 +182,12 @@ DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """Value of a top-level (column-0) ``key: value`` scalar, or None.
 
-    Mirrors the column-0 idiom used by ``is_views_enabled`` and bin/prawduct-hook's
-    ``_read_bool_yaml_key`` — no PyYAML dependency, fail-soft to None on a
+    Mirrors the column-0 idiom used by :func:`read_bool_yaml_key` and
+    bin/prawduct-hook's ``_read_bool_yaml_key`` — no PyYAML dependency, fail-soft to None on a
     missing/unreadable file or absent key. Surrounding quotes and inline ``#``
     comments are stripped; an empty value, or the YAML null literal (``null`` /
     ``~``, case-insensitive), reads as None — so ``active_build_plan: null`` means
-    "unset", the same opt-out :func:`lib.views._parse_build_plan_frontmatter_scope`
+    "unset", the same opt-out :func:`lib.plan_index.parse_build_plan_frontmatter_scope`
     already honors for ``scope:`` (VWS-7N3K). Without this, a literal ``null``
     survived as the truthy string ``"null"`` and resolved to ``.prawduct/null``.
     """
@@ -207,6 +209,26 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+#: Every boolean opt-in flag a product may set in ``project-state.yaml``.
+#:
+#: **This exists because "three declarations with nothing comparing them" is a
+#: root cause, not a tidiness complaint.** A flag is declared in the template a
+#: product is scaffolded from, in the code that reads it, and in the prose that
+#: explains it — and when the template shipped one default while the reader
+#: assumed another, the disagreement was invisible for four minor versions and
+#: cost a whole subsystem's retirement to unwind. Naming the set here gives the
+#: comparison something to iterate, so the next flag whose template value and
+#: code default diverge fails a test instead of shipping.
+#:
+#: Opt-in is the whole contract: :func:`read_bool_yaml_key` fails soft to False
+#: on a missing file, an absent key, or a malformed line, so **False is the code
+#: default for every member** and the template must say so too.
+OPT_IN_FLAGS: tuple[str, ...] = (
+    "coverage_required",
+    "operator_verification_required",
+)
+
+
 def read_bool_yaml_key(path: Path, key: str) -> bool:
     """True if ``path`` has a top-level (column-0) ``key: true`` scalar.
 
@@ -216,10 +238,11 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
     reads as False). Fail-soft to False on a missing/unreadable file, an absent
     key, or a malformed/indented line — opt-in by design.
 
-    Factors out the scan shared by ``is_views_enabled`` (``views_enabled``) and
-    bin/prawduct-hook's ``_read_bool_yaml_key`` (``coverage_required``); the
-    latter stays an inline mirror (import-light hot path), pinned by a parity
-    test.
+    Reads the repo's opt-in flags — ``coverage_required`` today. It once also
+    read ``views_enabled``, which was retired along with derived views; the
+    function is general and outlived its second caller. bin/prawduct-hook's
+    ``_read_bool_yaml_key`` stays an inline mirror (import-light hot path),
+    pinned by a parity test.
     """
     if not path.exists():
         return False

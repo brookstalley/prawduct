@@ -359,7 +359,6 @@ These are the probes the two features expect this infrastructure to support. The
 | `external-backlog-detected` | A `TODO.md`, `BACKLOG.md`, `ROADMAP.md`, or `IDEAS.md` detected at repo root or `.github/` | `/backlog import <path>` |
 | `legacy-section-schema` | `## Active — next up` / `## Queue` headings present in `.prawduct/backlog.md` (older section schema) | `/backlog migrate --sections` |
 | `backlog-overdue-grooming` | No `/backlog` command run in >90 days AND backlog has >20 open items | `/backlog list` |
-| `backlog-checks-dormant` | `backlog_service_repo` **is set** — the post-cutover mirror of GV7 (GV8): names every backlog check with no Issues-mode path yet. The roster and the count both derive from `lib/backlog_probes.DORMANT_CHECKS` — **do not restate either here**; a second hand-maintained copy is how the advisory ends up confidently naming a stale set. `info` priority, dismissible | none — the checks return with the backlog read-through cache |
 
 See `documentation/backlog-system-requirements.md` §8.2 for resolution conditions and threshold rationale.
 
@@ -368,17 +367,30 @@ See `documentation/backlog-system-requirements.md` §8.2 for resolution conditio
 backlog-service API §2.4), every probe whose premise is "the markdown file IS the live backlog"
 returns no candidates: the four markdown probes above (`legacy-backlog-format`,
 `backlog-service-migration-required`, `legacy-section-schema`, `backlog-overdue-grooming`) and the
-norm-probe trio that judges item liveness from the same file (`revisit-due`, `dead-why`,
-`stalled-transition`). `external-backlog-detected` keeps firing — its premise (stray TODO.md files)
-is independent of where the real backlog lives. The shared predicate is
-`backlog_probes.post_cutover`.
+norm probe `revisit-due`, which reads exception clocks from the same file. `external-backlog-detected`
+keeps firing — its premise (stray TODO.md files) is independent of where the real backlog lives. The
+shared predicate is `backlog_probes.post_cutover`.
 
-**Retirement is not silence (GV8).** Cutover retires those probes' *premises*, not the checks they
-stood for — the norm-probe trio in particular carries norm-exception expiry, and a norm exception
-that stops expiring visibly is a silent norm departure. So exactly one probe runs on the far side of
-the line: `backlog-checks-dormant` fires **when `post_cutover` is true**, naming what is dormant and
-why. Read the two together — the retirement list above says which probes stop, and that probe says
-so out loud rather than leaving the reader a clean bill of health that no longer means anything.
+**Amended (W1, 2026-08-07): two probes now use that predicate to CHOOSE a backend, not to retire.**
+`dead-why` and `stalled-transition` were on the retirement list above until the backlog read-through
+cache gave them a live store to resolve citations against; they read the markdown file before the
+cutover and the cache after it. Anyone adding a guard on `post_cutover` should decide which of the
+two shapes they are writing. **`revisit-due` stays retired on the far side and the cache does not
+change that** — `revisit:` records intent (*granted until date X*), which no age-based query can
+reconstruct, so what it waits on is a *write* path for the field, not a read path.
+
+**Retirement is not silence (GV8), and the advisory that enforced that has now retired itself.**
+Cutover retires those probes' *premises*, not the checks they stood for, so from 2026-07-19 one
+probe ran on the far side of the line — `backlog-checks-dormant`, which fired when `post_cutover`
+was true and named every backlog check with no Issues-mode path. It shrank as each reader landed
+and was **removed with the last of them (W1, 2026-08-07)**: the readers it enumerated now query the
+backlog cache and each reports an unreadable store *at the point of use*, which says the same thing
+closer to the reader who needs it. Removal rather than rewording was the intended end state.
+
+Two checks stay dark, and neither is something an advisory could restore. **`revisit-due`** waits on
+a *write* path for the field (above). The **janitor's neglected-hygiene sweep** waits on the
+`promoted` status value having no Issues equivalent, so the query has nothing to ask for; it states
+that in its own block rather than reporting clean.
 
 ---
 

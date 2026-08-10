@@ -47,6 +47,15 @@ def fake():
     return FakeGitHub(user={"login": "agent-a", "id": 1})
 
 
+@pytest.fixture
+def repo_dir(tmp_path):
+    """A real work tree: `pick` reads its candidates from the clone-shared store."""
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    return tmp_path
+
+
 def _issue_with_alias(fake, pfx: str, *, title: str) -> int:
     fake.seed_labels(OWNER, REPO, [f"id:{pfx}", "stage:ready", "area:cli"])
     issue = fake.create_issue(
@@ -164,10 +173,10 @@ class TestPrInterleaving:
         result = query.counts(fake, owner=OWNER, repo=REPO)
         assert result["data"]["total"] == 3
 
-    def test_pick_excludes_a_stage_ready_labeled_pr(self, fake):
+    def test_pick_excludes_a_stage_ready_labeled_pr(self, fake, repo_dir):
         fake.seed_pull_requests(OWNER, REPO, 1, state="open", labels=["stage:ready"])
         _issue_with_alias(fake, "DIS-0001", title="real ready work")
-        result = query.pick(fake, owner=OWNER, repo=REPO)
+        result = query.pick(fake, project_dir=repo_dir, owner=OWNER, repo=REPO)
         refs = [c["id"] for c in result["data"]["candidates"]]
         assert len(refs) == 1
         assert refs[0].endswith("#2")  # the issue, not the PR (#1)
@@ -288,7 +297,7 @@ class TestRedirectFollow:
         assert result["status"] == "ok"
         assert "resolves_to" not in result["data"]
 
-    def test_pick_excludes_open_but_redirected_item(self, fake):
+    def test_pick_excludes_open_but_redirected_item(self, fake, repo_dir):
         # The CRASH-2 window: redirect written, close crashed. Reopen a merged
         # source to model it; pick must not surface merged-away work.
         fake.seed_labels(OWNER, REPO, ["stage:ready"])
@@ -301,7 +310,7 @@ class TestRedirectFollow:
         assert migrate.merge(fake, source_raw=a_id, target_raw=b_id)["status"] == "ok"
         number = int(a_id.rsplit("#", 1)[1])
         fake.update_issue(OWNER, REPO, number, fields={"state": "open"})  # crash-window model
-        result = query.pick(fake, owner=OWNER, repo=REPO)
+        result = query.pick(fake, project_dir=repo_dir, owner=OWNER, repo=REPO)
         refs = [c["id"] for c in result["data"]["candidates"]]
         assert a_id not in refs
 
