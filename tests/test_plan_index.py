@@ -455,6 +455,48 @@ class TestAgainstTheRealArtifactsDirectory:
             "build-plan-governance-artifact-lifecycle.md"
         )
 
+    def test_the_backfilled_archive_still_resolves_by_scope(self):
+        """The backfill's 73 plans must stay findable, on the real archive.
+
+        This assertion could not be written before the backfill existed — the
+        repo had no populated archive to run it against — and it guards the
+        failure the backfill could plausibly have caused: `check-releasability`
+        resolves a release's plan with `include_archived=True`, so if archiving
+        had made those plans unresolvable, every release-readiness check on a
+        past scope would have started answering "no plan" instead of failing.
+        Silent, and only at release time.
+
+        A floor rather than an exact count: the archive grows every time a plan
+        finishes, and a test that has to be edited on each archival is a test
+        people learn to edit rather than read.
+        """
+        artifacts = self._artifacts()
+        live = plan_index.build_scope_to_plan_map(artifacts)
+        with_archive = plan_index.build_scope_to_plan_map(artifacts, include_archived=True)
+
+        recovered = set(with_archive) - set(live)
+        assert len(recovered) >= 20, (
+            f"only {len(recovered)} archived scope(s) resolve; the backfill moved "
+            f"dozens of shipped plans into archive/ and release readiness reads "
+            f"them from there"
+        )
+        # Every recovered plan really is under an archive/ directory — otherwise
+        # this passes on a live plan that merely failed to appear in `live`.
+        for scope in sorted(recovered):
+            assert plan_index.ARCHIVE_DIR_NAME in with_archive[scope].parts, scope
+
+    def test_a_live_plan_still_beats_its_archived_namesake(self):
+        """Live-wins, on the real tree now that both halves are populated.
+
+        The rule is load-bearing and order-dependent: discovery is sorted and
+        first-wins, and `archive/build-plan-foo.md` sorts BEFORE its live
+        sibling, so only walking live-first keeps a live plan winning its scope.
+        """
+        artifacts = self._artifacts()
+        with_archive = plan_index.build_scope_to_plan_map(artifacts, include_archived=True)
+        scope = "governance-artifact-lifecycle"
+        assert plan_index.ARCHIVE_DIR_NAME not in with_archive[scope].parts
+
     def test_archiving_a_real_plan_removes_it_from_the_live_map(self, tmp_path: Path):
         """Archival, exercised on the real corpus rather than asserted about it.
 

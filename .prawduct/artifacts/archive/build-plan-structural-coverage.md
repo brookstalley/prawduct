@@ -1,0 +1,324 @@
+---
+artifact: build-plan
+version: 2
+scope: structural-coverage
+depends_on: []
+# governed_by: omitted — prawduct has declared no ratified norms yet (that absence is
+# precisely what this plan makes detectable). This plan will, ironically, be governed by
+# the very Direction norms it helps surface once ratification runs.
+last_validated: 2026-07-16
+lifecycle: completed
+archived: 2026-08-10
+released_in: v3.1.0
+maintained: false
+---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
+
+## Requirements Confidence
+
+**Level:** Medium
+
+**Why:** The problem is crisp and confirmed with the owner (full-chain choice): the framework
+has no forcing function that keys off what a product *is* to require what it should therefore
+*have* — every mechanism is reactive, so a never-created artifact/characteristic/norm is
+invisible (`[[reactive systems can't detect missing things]]`). Success is observable: the
+detector fires correctly against this repo's empty state (the live fixture) across all three
+layers, and clears as each layer is filled. The design rests on strong existing scaffolding
+(the `classification.structural` schema, the probe/advisory pattern, and `api_versioning_probes`
+as a working precedent for "characteristic set → required thing absent"). Medium, not High,
+because several field-shape and staging decisions are inferred, not confirmed — listed below.
+
+**Open assumptions / decisions (vetoable):**
+- [DECISION: Coverage model is *universal-expected + structurally-triggered*, per planning.md — 5 artifacts expected of every product (data-model, security-model, nonfunctional-requirements, operational-spec, observability-strategy), 2 gated on a characteristic (api-contract ← `exposes_programmatic_interface`; architecture ← `multi_process_distributed`). | why: matches the methodology's own Universal-vs-Structurally-triggered split; a flat "all 7 always" would false-fire architecture on a single-process CLI | user can override the mapping]
+- [DECISION: The three layers *stage* — one actionable nudge at a time. Layer 1 (artifacts) fires only when `classification.structural` IS recorded (else layer 0 owns it); layer 2 (`norm-registry-unratified`) keeps its existing "artifacts exist" gate (else layer 1 owns it). | why: proportionality / rare-and-high-signal bar — three simultaneous nags on a fresh product is noise; staging gives a fix sequence. This RE-VALIDATES the Chunk-3 narrowing: gating layer 2 on artifact existence is correct staging once layer 1 exists. | user can veto staging in favor of all-at-once]
+- [DECISION: GOV-EXI2 is resolved by the upstream layer-1 owner, not by ungating `norm-registry-unratified`. | why: the prawduct blind spot (no strategy artifacts → layer-2 silent) is now owned by layer 1 flagging the missing artifacts; layer 2's gate becomes proper staging. Close GOV-EXI2 as resolved-by-this-plan. | user can override — keep GOV-EXI2's ungate-arm-(b) approach instead]
+- [DECISION: Coverage is satisfied by the artifact *existing* — a deliberate `(not relevant — <reason>)` stub is valid content. No separate decline/suppression scalar: one mechanism (does the file exist?), and the decision lives in the artifact where a reader finds it. The probe owns *existence*; the Critic / risk calibration own *decision quality*. | why: proportionality for tiny repos without a rubber-stampable exclusion list; consistent with "the repo should have the artifacts even if not relevant"; self-documenting vs. an inert scalar (owner decision, 2026-07-16, replacing the earlier coverage_declined_* scalar design) | a bare `(not relevant)` passes the probe — whether to require a reason is the Critic's call, not the probe's (vetoable) |]
+- [ASSUMPTION: The dogfood stops at *recording prawduct's structural characteristics* (proving the layer 0→1 transition); actually authoring the 7 artifacts is deferred to a filed follow-up — consistent with the owner's "test the fix while the artifacts still don't exist." | HIGH impact | user can override and author in-scope]
+
+**What would raise confidence:** owner ruling on the three [DECISION] lines above (I've recorded
+my picks as vetoable); Chunk 01's keystone confirms the declined-answer schema and the exact
+`classification.structural` field enumeration against `templates/project-state.yaml`.
+
+## Status
+
+- [x] Chunk 01: Coverage keystone — expectation model + existence-based probe (one artifact end-to-end)
+- [x] Chunk 02: Full layer-1 table — all 7 strategy-class artifacts (universal + structurally-triggered)
+- [x] Chunk 03: Layer 0 + staging — sharpen DISCOVERY-NOT-CAPTURED; stage the three advisories; resolve GOV-EXI2
+- [x] Chunk 04: Doctor / onboarding / methodology / propagation
+- [x] Chunk 05: Dogfood against the empty fixture + close (cumulative-final) — recorded prawduct's six reconciled structural characteristics; live chain advanced layer 0 → layer 1 (all 7 artifacts); before/after transition pinned by a decoupled fixture test; GOV-5K3M filed to author them
+Context: Chunks 01-05 complete on `feature/structural-coverage` (feature done, pending cumulative Critic + PR). The three-layer chain now
+STAGES on one shared boundary predicate — `coverage_probes.structural_characteristics_recorded`
+(≥1 of the six structural characteristics recorded present; ≥1-not-all-six because template
+`null` doubles as "not applicable", making all-six-answered unreachable). Layer 0
+(DISCOVERY-NOT-CAPTURED, `bin/prawduct-hook`) fires on its negation; layer 1 (the
+strategy-artifact probe) returns [] until its truth — exact complements, zero double-fire. So
+the WHOLE layer-1 probe (universal arms included) now gates on characteristics being recorded:
+"every product needs a data model" means every product that has recorded what it is. This
+CHANGED Chunk 02's behavior — universal arms no longer fire on an unrecorded repo — per the
+staging DECISION and the Chunk 05 narrative ("layer 0 clears, the layer-1 universal arms …
+fire"). Layer 0 sharpened: fires whenever `classification.structural` is absent/empty/all-null
++ product work (the gap that let prawduct's own domain-filled-but-characteristic-less state pass
+silently); `_discovery_uncaptured` now only selects the never-ran vs structural-specific message
+variant. docs/norms.md § Enforcement carries the three-layer staging table. GOV-EXI2 resolved-
+by-design (Open→Archive, closed-by=structural-coverage): the chain closes the blind spot
+upstream (layer 1 nudges stub/artifact creation → layer 2's existence gate then fires
+ratification), so arm (b) is deliberately NOT ungated. Against this repo (dogfooded non-mutating):
+layer 0 fires (structural-not-recorded variant), layers 1 & 2 silent — exactly one layer, the
+pre-capture state Chunk 05 advances.
+
+Chunk 04 complete: the doctor / methodology / propagation half plus the carried GOV-5D2W fix.
+(a) Two new `bin/prawduct-hook` subcommands — `coverage-status` (reports the three-layer chain,
+naming the one staged layer that owns the nudge + its fix; `--json` for the doctor skill) and
+`coverage-scaffold` (dry-run by default, `--apply` drops neutral placeholder stubs for the
+missing expected artifacts, never overwriting, never auto-deciding relevance). Both read the SAME
+expectation table via a new public `coverage_probes.missing_expected_artifacts` (single-homed —
+the probe, the status check, and the scaffold share it; no transcription). (b) Doctor SKILL gains
+Health Check #11 (coverage) + a routing row + `coverage-status`/`coverage-scaffold` in
+allowed-tools. (c) discovery.md operationalizes "recording characteristics is load-bearing → the
+artifacts they imply"; planning.md Proportionality cross-references the coverage tracking + stub
+mechanism; guard tests added (test_v5_methodology). (d) cross-cutting-concerns.md gains the
+Strategy-class-artifact-coverage row + a Known-Gaps note. GOV-5D2W closed (shipped): new
+`lib/probe_families.register_all()` is the shared roster both `cmd_clear` and
+`advisory_cmd.show_advisory` register through, so `advisory show` reconstruction no longer scans
+an empty registry (regression test test_show_self_registers_probe_roster_for_reconstruction).
+Filed GOV-2T6K: `templates/architecture.md` missing (additive authoring-template gap; coverage
+still works via the scaffold stub). Also fixed a pre-existing baseline flake in a separate commit
+(test_kernel_v3_upgrade.py + test_coverage_probes.py lacked the sys.path root-insert idiom).
+
+Chunk 05 complete (cumulative-final): dogfooded against this repo. Observed layer 0 fire
+(read-only `coverage-status`, pre-capture), then RECORDED prawduct's six reconciled structural
+characteristics in `classification.structural` (a discovery/reconcile act, NOT authoring
+artifacts — four present with provenance: has_human_interface, runs_unattended,
+exposes_programmatic_interface, multi_process_distributed; two absent: has_multiple_party_types,
+handles_sensitive_data). The live chain advanced exactly as designed: layer 0 cleared, layer 1
+now names all seven strategy-class artifacts (five universal + api-contract ←
+exposes_programmatic_interface + architecture ← multi_process_distributed). No artifact was
+authored — the fixture stays empty; authoring is the filed follow-up GOV-5K3M (blocked on
+GOV-2T6K for `templates/architecture.md`). The before/after transition is pinned by a fixture
+test on prawduct's own profile, DECOUPLED from live state (retired the earlier repo-coupled
+zero-fire assertion — `[[repo-coupled zero-fire test]]` fragility), so the proof re-runs whatever
+the live repo records. Operator check VRF-003 queued (briefing advisory advances next session). Cumulative Critic +
+verify-resolutions both clean (0/0/0 after resolving 3 warnings — honest 0↔1-vs-1↔2 staging docs +
+a fail-soft wrap on the layer-0 nudge, commit 256003c; R-2 NOTE → GOV-4M7K). Branch PR-ready —
+merge stays with the owner (`/prawduct:pr create` when you ask).
+
+**Chunk 01 deferred NOTES — status:** all resolved. citation precision ✓; dedup ✓
+(`STRATEGY_CLASS_ARTIFACTS` single-homed); staging-caveat docstring ✓; dogfood strengthened ✓;
+GOV-5D2W registration gap ✓ (fixed this chunk via `lib/probe_families`).
+
+## Scaffolding
+
+### Project Initialization
+
+None — lands inside the existing plugin repo. No new runtime dependencies: Python stdlib only,
+consistent with the repo's no-third-party-HTTP posture. New probe logic follows the existing
+`lib/*_probes.py` family pattern.
+
+### Dependencies
+
+Runtime: Python stdlib (existing `lib/` modules — `norm_probes`, `api_versioning_probes`,
+`briefing`, `gates`, `core`). Dev: existing pytest stack (pytest, pytest-xdist, pytest-timeout).
+No `pyproject.toml` changes.
+
+### Scaffold Verification
+
+`bin/prawduct-hook clear` runs the advisory roster at session start; the repo-local
+`./bin/prawduct-hook` is the verification entry point (`[[when verifying a framework-repo change
+by running the hook use the repo-local bin/prawduct-hook]]`). `uv run pytest -q` is green
+(current baseline recorded via `test-evidence`).
+
+### Verification Strategy
+
+Beyond unit tests, each chunk is exercised by running `./bin/prawduct-hook clear` against
+**synthetic fixtures** (a tmp product tree with a chosen `classification.structural` +
+artifact set) to confirm each probe arm fires/suppresses correctly, AND observed against
+**this repo's own empty state** as the end-to-end dogfood. Both are required — a test scoped
+only to prawduct's own state is false coverage for onboarded repos
+(`[[A test asserting the framework repo's OWN state instead of the propagated contract gives
+false coverage]]`), and a test scoped only to synthetic fixtures misses the live-fixture proof
+the owner asked for.
+
+## Project Structure
+
+```
+lib/
+├── coverage_probes.py     # NEW — layer-0/1 probes (FEATURE = "structural-coverage")
+├── norm_probes.py         # layer-2 (norm-registry-unratified) — staging reconciliation only
+├── briefing.py            # DISCOVERY-NOT-CAPTURED sharpening (layer 0)
+└── core.py                # GITIGNORE/contract carriers if a nag-state file is added
+bin/prawduct-hook          # DISCOVERY-NOT-CAPTURED emit site; probe-family registration
+skills/doctor/SKILL.md     # coverage check (onboarding/doctor integration)
+methodology/discovery.md   # operationalize the coverage expectation
+methodology/planning.md    # cross-reference the expectation table
+.prawduct/cross-cutting-concerns.md   # registry row
+tests/test_coverage_probes.py         # NEW
+# (no templates/project-state.yaml change — coverage keys off file existence, not a
+#  persisted scalar; the expectation model ships in coverage_probes.py with the plugin)
+```
+
+### Module Boundaries
+
+Probes read the consumer's own `.prawduct/` (state + artifacts dir), never execute anything,
+and are fail-soft (a faulty probe never blocks startup — existing `run_sync_advisories`
+contract). The expectation table (which artifact is universal vs. characteristic-gated, and the
+characteristic→artifact map) lives in ONE place in `coverage_probes.py` and is imported by the
+doctor check — never transcribed (`[[transcription across surfaces flattens quantifiers]]`).
+
+## Build Chunks
+
+### Chunk 01: Coverage keystone — expectation model + declined-answer schema + one artifact end-to-end
+
+- **Description:** Thin vertical slice through the whole architecture. Establish (a) the
+  artifact-expectation set — the universal strategy-class artifacts, extension point for the
+  characteristic-triggered ones; and (b) a layer-1 probe that, for ONE universal artifact
+  (data-model), fires when the file is absent and suppresses when it exists — content-agnostic, so
+  a `(not relevant — <reason>)` stub satisfies coverage exactly as a full spec does (one
+  mechanism, no decline/suppression scalar). Wire it through registration → advisory surface →
+  both test planes. Validates the path before widening to all 7 artifacts and all 3 layers.
+- **Depends on:** none
+- **Artifacts consumed:** `lib/api_versioning_probes.py` (probe precedent), `lib/advisory_store.py` (`Codebase.root`, `AdvisoryCandidate`, `compute_id`, `register_probe`), `docs/norms.md` (§ Where Norms Live — the strategy-class set)
+- **Deliverables:** new `lib/coverage_probes.py` (`UNIVERSAL_ARTIFACTS` + `probe_strategy_artifact_missing`, existence-only), family registration in `bin/prawduct-hook`, new `tests/test_coverage_probes.py`
+- **Design note (no persisted format):** coverage keys off file *existence*, so this chunk adds
+  NO project-state schema/field — the earlier `coverage_declined_*` scalar was dropped (owner
+  decision), removing the lock-in it would have carried. The stable-`evidence` /
+  volatile-`trigger_summary` split is the one contract to get right (advisory-id stability under
+  a shrinking missing set — `compute_id` hashes evidence).
+- **Tests:** unit — probe fires when absent, suppresses when present (full spec AND a bare
+  `(not relevant)` stub AND an empty file — existence is the whole predicate); advisory-id
+  stability; runs through the registered roster. dogfood — observe the probe fire against this
+  repo (data-model absent).
+- **Acceptance criteria:** the probe emits the advisory on a synthetic empty fixture and is
+  silent once the file exists (any content); composed with all probe families it fires exactly
+  once against this repo (data-model missing).
+- **Critic mode:** final
+  <!-- Override: architectural keystone — the expectation model, the persisted declined-answer
+       schema, and the probe primitive all get their coherence locked before later chunks build on them. -->
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 02: Full layer-1 table — all 7 strategy-class artifacts (universal + structurally-triggered)
+
+- **Description:** Widen the keystone to the full expectation table: the 5 universal artifacts
+  (fire if absent+undeclined regardless), and the 2 structurally-triggered (api-contract fires
+  only when `exposes_programmatic_interface`; architecture only when `multi_process_distributed`),
+  keyed off recorded `classification.structural`. Generalize the single probe to the table without
+  duplicating the api-versioning precedent's logic — reuse the shape.
+- **Depends on:** Chunk 01
+- **Artifacts consumed:** `methodology/planning.md` (Universal vs Structurally-triggered lists), `methodology/discovery.md` (the six characteristics)
+- **Deliverables:** complete expectation table in `lib/coverage_probes.py`; per-arm advisory
+  evidence/trigger text; the triggered arms read only recorded characteristics (never filesystem
+  heuristics — `[[detection of structural characteristics should not rely on mechanistic surface markers]]`)
+- **Tests:** unit — each universal arm and each triggered arm fires/suppresses per its condition;
+  a triggered artifact stays silent when its characteristic is unset/unrecorded (that case belongs
+  to layer 0); breadth check — all 7 covered, none narrowed to the common case (`[[the COMMON /
+  AVAILABLE instance silently narrows the requirement to itself]]`)
+- **Acceptance criteria:** synthetic fixtures across characteristic combinations produce exactly
+  the expected fire set; against this repo (characteristics unrecorded), only the 5 universal arms fire.
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 03: Layer 0 + staging — sharpen DISCOVERY-NOT-CAPTURED; stage the advisories; resolve GOV-EXI2
+
+- **Description:** Close the upstream layer and make the chain present one nudge at a time.
+  (a) **Layer 0:** sharpen the `DISCOVERY NOT CAPTURED` detection (`bin/prawduct-hook` +
+  `briefing._discovery_uncaptured`) so it fires when `classification.structural` is absent or
+  incomplete on a repo with product-definition work — not only on template-default nulls (the gap
+  that lets prawduct's rich-but-characteristic-less state pass silently). (b) **Staging:** layer-1
+  triggered arms already require recorded characteristics; confirm layer 0 owns the unrecorded
+  case and layer 2 owns the artifacts-exist case, so exactly one layer speaks. (c) **GOV-EXI2:**
+  record that layer-2's artifact-existence gate is now correct staging (the no-artifacts case is
+  owned upstream); resolve GOV-EXI2 as resolved-by-this-plan via `/prawduct:backlog`.
+- **Depends on:** Chunk 02
+- **Artifacts consumed:** `bin/prawduct-hook` (emit site ~L662), `lib/briefing.py` (`_discovery_uncaptured`, `_has_product_definition_work`)
+- **Deliverables:** sharpened layer-0 detection + tests; a staging note in `docs/norms.md` §
+  Enforcement (the three-layer sequence); GOV-EXI2 closed with `closed-by=structural-coverage`
+- **Tests:** unit — layer 0 fires on incomplete `classification.structural` + product work,
+  suppresses when complete; staging — a fixture at each layer emits only that layer's advisory
+- **Acceptance criteria:** the three layers never double-fire on one fixture; against this repo,
+  layer 0 (characteristics unrecorded) fires and the layer-1 triggered arms stay silent.
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 04: Doctor / onboarding / methodology / propagation
+
+- **Description:** The onboarding/doctor half of the owner's choice, plus the methodology and
+  propagation surfaces. (a) A doctor coverage check (sibling of the norm registry-integrity check)
+  that reports the full three-layer status and points at the fix path — reading the SAME expectation
+  table, not a transcription. (b) Operationalize the expectation in `methodology/discovery.md`
+  (record structural characteristics → the artifacts they imply) and cross-reference in
+  `planning.md`. (c) A `.prawduct/cross-cutting-concerns.md` row so the concern is carried across
+  Discovery → Artifact → Builder → Critic (`[[a cross-cutting concern can be UNCOVERED even when
+  discovery names it once]]`). (d) Provide a scaffold helper (a `prawduct-hook`/doctor step) that
+  drops the stub artifacts for a product in one act — so resolving several missing artifacts is a
+  30-second confirm-and-fill, not a chore, keeping a recurring nudge un-annoying. The human
+  confirms/fills; the framework never silently auto-stubs (that would decide relevance on the
+  owner's behalf). The coverage MODEL itself ships in `coverage_probes.py` with the plugin — no
+  per-repo schema legend to propagate.
+- **Depends on:** Chunk 03
+- **Surfaces (project-wide concept — enumerated per planning.md):** `skills/doctor/SKILL.md`,
+  `methodology/discovery.md`, `methodology/planning.md`, `.prawduct/cross-cutting-concerns.md`,
+  and their guarding tests (`test_v5_methodology.py`, doctor/coverage tests). If this exceeds one
+  Critic pass, split doctor from methodology.
+- **Deliverables:** doctor coverage check + skill write-policy consistency; discovery/planning
+  edits; cross-cutting row; stub-scaffold helper; tests
+- **Tests:** doctor check output on synthetic fixtures; methodology guard tests pass; propagation
+  test — the legend reaches a fresh product state, not just this repo's copy
+- **Acceptance criteria:** `/prawduct:doctor` reports coverage status accurately on fixtures and
+  on this repo; methodology reads coherently; onboarded-repo propagation asserted
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 05: Dogfood against the empty fixture + close
+
+- **Description:** The acceptance the owner asked for — prove the fix on the live empty fixture,
+  then demonstrate the first staged transition. Run the full chain against this repo: observe
+  layer 0 fire (characteristics unrecorded). Then **record prawduct's own six structural
+  characteristics** in `classification.structural` (a discovery act — reconcile from the codebase
+  per discovery.md; does NOT create artifacts) and observe the chain advance: layer 0 clears, the
+  layer-1 universal arms (and any now-lit triggered arms) fire "artifacts missing." **Stop there** —
+  authoring the 7 strategy-class artifacts is deferred to a filed follow-up, keeping faith with
+  "test the fix while the artifacts still don't exist." Cumulative review makes the branch PR-ready.
+- **Depends on:** Chunk 04
+- **Artifacts consumed:** the whole chain; `methodology/discovery.md` § Reconciling an Existing Product (backfill procedure)
+- **Deliverables:** `classification.structural` recorded for prawduct (reconciled, each flag with
+  provenance); a filed `/prawduct:backlog` follow-up to author the missing strategy-class artifacts
+  (the deferred symptom-fix, now correctly downstream of the system-fix); build-plan Status closed
+- **Type:** cumulative-final
+- **Visual change:** yes — the advisory/doctor output is operator-facing text; append an
+  operator-verification entry describing the observed layer transitions
+- **Tests:** the dogfood observations are captured as an end-to-end test over a fixture mirroring
+  prawduct's before/after states (not a live-repo-coupled assertion — `[[repo-coupled zero-fire
+  test]]` fragility)
+- **Acceptance criteria:** the recorded before/after fixture shows layer 0 → layer 1 advancing
+  exactly as designed; full suite green; cumulative Critic clean
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
+  3. Chunk marked `[x]` in Status
+
+## Early Feedback Milestone
+
+**Milestone chunk:** 01
+**What the owner can see:** running `./bin/prawduct-hook clear` against this repo surfaces the
+first coverage advisory — the reference repo's blind spot, finally visible.
+
+## Governance Checkpoints
+
+**Commit & PR cadence:** commit per chunk after its Critic passes; Chunk 05's cumulative review
+makes the branch PR-ready (`/prawduct:pr create` when the owner asks — merge stays with the owner
+per preferences).
+
+- After Chunk 01: confirm the expectation model + declined-answer schema before widening (the
+  keystone the rest builds on).
+- After Chunk 03: confirm the staging reads as one-nudge-at-a-time and GOV-EXI2's resolution holds.
+- After Chunk 05 (cumulative): full-bundle review; verify the dogfood proves the chain end-to-end
+  and no strategy artifact was silently authored (the fixture must stay empty).

@@ -207,6 +207,26 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+#: Every boolean opt-in flag a product may set in ``project-state.yaml``.
+#:
+#: **This exists because "three declarations with nothing comparing them" is a
+#: root cause, not a tidiness complaint.** A flag is declared in the template a
+#: product is scaffolded from, in the code that reads it, and in the prose that
+#: explains it — and when the template shipped one default while the reader
+#: assumed another, the disagreement was invisible for four minor versions and
+#: cost a whole subsystem's retirement to unwind. Naming the set here gives the
+#: comparison something to iterate, so the next flag whose template value and
+#: code default diverge fails a test instead of shipping.
+#:
+#: Opt-in is the whole contract: :func:`read_bool_yaml_key` fails soft to False
+#: on a missing file, an absent key, or a malformed line, so **False is the code
+#: default for every member** and the template must say so too.
+OPT_IN_FLAGS: tuple[str, ...] = (
+    "coverage_required",
+    "operator_verification_required",
+)
+
+
 def read_bool_yaml_key(path: Path, key: str) -> bool:
     """True if ``path`` has a top-level (column-0) ``key: true`` scalar.
 

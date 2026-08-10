@@ -139,6 +139,24 @@ _CHUNK_HEADING_RE = re.compile(r"^#{2,3}\s+" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + 
 _CHUNK_ITEM_RE = re.compile(r"^" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + _CHUNK_ID_SEP)
 
 
+def unticked_chunk_items(content: str) -> list[str]:
+    """The text of every unticked ``## Status`` item in ``content``.
+
+    **The answer, exported — not the walker.** A caller outside this module that
+    needs "which chunks are unmarked" must not reach for the Status walkers
+    themselves: walking Status and testing checkboxes IS re-deriving currency,
+    and a module that does it privately is how one question came to have three
+    answers (BLD-7K3Q). Handing back the finished list keeps the derivation here
+    while giving the caller what it actually wanted, so the structural guard
+    against direct walkers stays without exception.
+
+    Reports item text verbatim, so a caller can print what the plan says rather
+    than a reconstruction of it. Returns ``[]`` for a plan with no Status
+    roster — the same silence every other reader of an absent roster produces.
+    """
+    return [text for checked, text in _iter_status_section_items(content) if not checked]
+
+
 def _chunk_id_from_item_text(text: str) -> str | None:
     """``"Chunk 02: name"`` / ``"Chunk 2 (ID) — name"`` → ``"02"`` / ``"2"``;
     ``None`` for non-chunk items. Accepts the colon (``### Chunk N:``) and the

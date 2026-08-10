@@ -4708,6 +4708,237 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
     return 1 if status == norm_index_scaffold.STATUS_UNREADABLE else 0
 
 
+def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
+    """Converge a repo off the retired derived-view model (FL2, FL3, GD2).
+
+    Removes the inert ``views_enabled`` key and ``scope_rollups`` block, labels
+    ``release-notes.md`` as the history it is, and deletes the per-plan notes
+    telling a reader that Status checkboxes are generated and must not be
+    hand-edited — the one piece of residue that still changes behaviour.
+
+    **Preview-by-default with ``--apply``**, on the repo-wide-lifecycle side of
+    the ``api-contract.md`` § Direction split: this walks the artifacts tree and
+    decides for itself which files to touch, unlike ``archive-plan``, which
+    writes on invocation because the operator named the file.
+
+    **One approval covers the whole act.** The preview names every file and
+    every reason once; there is deliberately no per-file prompt, because
+    ``security-model.md`` § Direction forbids one here in those terms —
+    confirmation fatigue is itself a safety regression.
+
+    Exit codes follow ``artifacts/api-contract.md`` § Error Model, matching every
+    sibling repair. **Dry run is an advisory report:** 0 when it ran — a finding
+    is not a failure — and 1 only when it could not run. **``--apply`` is a
+    state-mutating writer:** 0 when it wrote or was an idempotent no-op, 1 when
+    any edit failed. Unknown flags are 2.
+
+    The GD2 guard (the retired flag reappearing, typically by someone copying an
+    older state file) is reported here rather than given its own non-zero exit:
+    doctor's health check grades it **degraded**, which is doctor's failure
+    vocabulary, and an advisory that exited non-zero on a finding would break the
+    convention every sibling check follows and make ``--apply``'s exit ambiguous.
+    """
+    rejected = _reject_unknown_args("lifecycle-repair", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import lifecycle_repair  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(
+            f"error: lifecycle-repair could not import the plugin lib/ ({exc})",
+            file=sys.stderr,
+        )
+        return 1
+
+    plan = lifecycle_repair.plan_repair(project_dir)
+    if plan["status"] != "ok":
+        print(f"error: {plan['reason']}", file=sys.stderr)
+        return 1
+
+    guard = lifecycle_repair.views_flag_present(project_dir)
+    stale = lifecycle_repair.stale_status_reports(
+        Path(project_dir) / lifecycle_repair.ARTIFACTS_REL
+    )
+    outcome = lifecycle_repair.apply_repair(project_dir, plan) if apply else None
+
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "applied": bool(apply),
+                    "edits": [
+                        {k: str(v) if k == "path" else v for k, v in edit.items()
+                         if k in ("path", "kind", "reason", "detail")}
+                        for edit in plan["edits"]
+                    ],
+                    "retired_flag": guard,
+                    "plans_to_review": [
+                        {"path": str(r["path"]), "chunks": r["chunks"]} for r in stale
+                    ],
+                    "outcome": outcome,
+                },
+                indent=2,
+            )
+        )
+    else:
+        # Labelled from the MODE asked for, not from whether a write happened —
+        # `--apply` on a converged repo writes nothing, and calling that run
+        # "dry-run" invites the reader to conclude they forgot the flag.
+        print(f"lifecycle-repair ({'apply' if apply else 'dry-run'}):")
+        if not plan["edits"]:
+            print("  nothing to change — this repo is already in the target state")
+        # Grouped by kind so the reason is stated ONCE per group rather than
+        # repeated per file. On this repo the ungrouped form printed the same
+        # sentence fourteen times, which is how a blast radius meant to be read
+        # becomes a wall that is scrolled past — and the whole value of the
+        # preview is that the operator actually reads it before the one approval.
+        verb = "changed" if apply else "would change"
+        for kind in ("state-key", "freeze-notes", "plan-comment"):
+            group = [edit for edit in plan["edits"] if edit["kind"] == kind]
+            if not group:
+                continue
+            # Every emitted line carries the plain-language reason and names no
+            # internal identifier — `observability-strategy.md` § Direction.
+            print(f"  why: {group[0]['reason']}")
+            for edit in group:
+                print(f"    {verb} {edit['path']}: {edit['detail']}")
+        if plan["edits"] and not apply:
+            print("  Re-run with --apply to make these changes. One confirmation "
+                  "covers all of them; they are ordinary file edits your version "
+                  "control can undo.")
+        if stale:
+            print("  Read these once — their progress checkboxes were generated, so "
+                  "an unfinished chunk may be marked wrongly. Nothing here is "
+                  "changed for you: only someone who knows what actually shipped "
+                  "can say.")
+            for report in stale:
+                print(f"    {report['path'].name}")
+                for chunk in report["chunks"]:
+                    print(f"      - {chunk}")
+        if outcome and outcome["failed"]:
+            for failure in outcome["failed"]:
+                print(f"  could not write {failure['path']}: {failure['reason']}",
+                      file=sys.stderr)
+
+    if apply:
+        return 1 if outcome and outcome["failed"] else 0
+    return 1 if guard["status"] == "unreadable" else 0
+
+
+def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
+    """Archive every build plan the change log records as already shipped (FL6).
+
+    The one-time sweep that gives accumulated plans the end of life
+    ``archive-plan`` gives a single one. Shipped is decided mechanically — a
+    plan whose ``scope=`` carries a ``release=`` tag — so no judgment enters,
+    and checkbox state is neither a precondition nor corrected on the way in.
+
+    A product with **no** release tags gets nothing moved: the set is proposed
+    and the operator confirms. That is why an empty sweep on such a repo is
+    reported as "nobody but you can decide", never as a clean result.
+
+    Exit codes match the sibling repairs: dry run 0 when it ran, ``--apply`` 0
+    when it archived or had nothing to do, 1 when any plan was refused.
+    """
+    usage = "usage: prawduct-hook plan-backfill [--apply] [--json] [--date YYYY-MM-DD]"
+    apply = False
+    as_json = False
+    date = None
+    # Explicit scan rather than `_reject_unknown_args`, which is flag-only and
+    # would reject `--date`'s value as an unknown positional. Unknown tokens are
+    # still usage errors, never ignored: a swallowed token here would archive
+    # under a date the operator did not give, and the date is the record.
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "--apply":
+            apply, index = True, index + 1
+        elif token == "--json":
+            as_json, index = True, index + 1
+        elif token == "--date":
+            if index + 1 >= len(argv) or not argv[index + 1]:
+                print(f"{usage}\n--date requires a YYYY-MM-DD argument", file=sys.stderr)
+                return 2
+            date, index = argv[index + 1], index + 2
+        elif token.startswith("--date="):
+            date = token.split("=", 1)[1]
+            if not date:
+                print(f"{usage}\n--date requires a YYYY-MM-DD argument", file=sys.stderr)
+                return 2
+            index += 1
+        else:
+            print(f"plan-backfill: unknown argument {token!r}\n{usage}", file=sys.stderr)
+            return 2
+    if date is None:
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import plan_backfill  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(f"error: plan-backfill could not import the plugin lib/ ({exc})",
+              file=sys.stderr)
+        return 1
+
+    prawduct_dir = _gitstate().get_prawduct_dir(project_dir)
+    result = plan_backfill.backfill(prawduct_dir, date=date, apply=apply)
+
+    if as_json:
+        print(json.dumps(
+            {
+                "applied": bool(apply),
+                "has_release_tags": result["has_release_tags"],
+                "shipped": [
+                    {"path": str(i["path"]), "scope": i["scope"], "release": i["release"]}
+                    for i in result["shipped"]
+                ],
+                "kept_live": [
+                    {"path": str(i["path"]), "scope": i["scope"]} for i in result["unshipped"]
+                ],
+                "archived": result["archived"],
+                "refused": result["refused"],
+            },
+            indent=2,
+        ))
+    else:
+        print(f"plan-backfill ({'apply' if apply else 'dry-run'}):")
+        if not result["has_release_tags"]:
+            print("  This product's change log records no releases, so there is no "
+                  "mechanical way to tell which plans are finished. Nothing was "
+                  "moved. Decide which of these are done and file them one at a "
+                  "time:")
+            for item in result["unshipped"]:
+                print(f"    {item['path'].name}")
+        else:
+            verb = "archived" if apply else "would archive"
+            print(f"  {verb} {len(result['shipped'])} finished plan(s) — each one "
+                  "shipped in a released version, so it records what was built "
+                  "rather than what is being built:")
+            for item in result["shipped"]:
+                print(f"    {item['path'].name}  (shipped in {item['release']})")
+            print(f"  leaving {len(result['unshipped'])} plan(s) in place — no "
+                  "release records them yet:")
+            for item in result["unshipped"]:
+                print(f"    {item['path'].name}")
+            if not apply and result["shipped"]:
+                print("  Re-run with --apply to move them. One confirmation covers "
+                      "all of them; each file is moved, not deleted, and keeps "
+                      "everything it says.")
+        for refusal in result["refused"]:
+            print(f"  could not archive {refusal['scope']}: {refusal['reason']}",
+                  file=sys.stderr)
+
+    return 1 if result["refused"] else 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -4894,6 +5125,8 @@ _USAGE = (
     "update-gitignore|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
     "norm-index-scaffold [--apply] [--json]|"
+    "lifecycle-repair [--apply] [--json]|"
+    "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
     "repo-disable [--local] [--apply] [--json]}"
 )
 
@@ -5306,7 +5539,9 @@ _EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
     "audit-learnings",
     "coverage-scaffold",
     "learnings-obligation",
+    "lifecycle-repair",
     "norm-index-scaffold",
+    "plan-backfill",
 })
 
 # Commands whose first positional argument selects a read or a write.
@@ -5684,6 +5919,10 @@ def main() -> int:
         return cmd_norm_index_scaffold(project_dir, sys.argv[2:])
     elif command == "learnings-obligation":
         return cmd_learnings_obligation(project_dir, sys.argv[2:])
+    elif command == "lifecycle-repair":
+        return cmd_lifecycle_repair(project_dir, sys.argv[2:])
+    elif command == "plan-backfill":
+        return cmd_plan_backfill(project_dir, sys.argv[2:])
     elif command == "repo-disable":
         return cmd_repo_disable(project_dir, sys.argv[2:])
     else:
