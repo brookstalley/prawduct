@@ -123,6 +123,16 @@ siblings whose subjects cite a PR-review finding as their reason to exist.
 
 ## Status
 
-- [ ] Chunk 01 — the instruction, in both cross-check owners
+- [x] Chunk 01: the instruction, where every reviewer role reads it — built 2026-08-11
 
-**Context:** Next is Chunk 01. Nothing built yet.
+**Context:** Chunk 01 is complete and reviewed (cumulative + three verify-resolutions passes, the
+last returning 0 findings). The plan is a one-chunk plan, so this closes it.
+
+What the reviews changed, recorded because the plan's own reasoning was wrong twice:
+1. The instruction first landed in `review-cycle.md`'s Learnings Cross-Check, which
+   `agents/critic-reviewer.md` routes only to *sustainability* — while the class it targets is
+   filed under correctness and design. Canonical statement moved to the agent definition.
+2. Relocating opened a narrower gap: a single-pass fork reads `review-cycle.md`, not the agent
+   definition, and `SKILL.md` never routes it there. The pointer now routes it, and is pinned.
+3. The instruction emitted nothing observable — a rule declining a lint for want of measured
+   evidence while producing none about itself. Hence the `rule-unenforced:` prefix.
