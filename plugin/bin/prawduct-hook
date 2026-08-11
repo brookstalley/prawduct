@@ -5274,14 +5274,21 @@ def _work_model_load_lib():
 
 
 def _work_model_corpus_paths(project_dir: Path, prawduct_dir: Path) -> list[Path]:
-    """The governing corpus the vocabulary index is built from: every markdown
+    """The governing corpus ``jurisdiction`` matches against: every markdown
     artifact under ``.prawduct/artifacts/``, plus the repo's CLAUDE.md and all
     ``docs/`` / ``methodology/`` markdown, recursively (gate-noise: product
     repos keep governing vocabulary in doc subdirectories, and the earlier
-    top-level-only globs made those words read as orphans). Widening is safe in
-    one direction only — extra corpus vocabulary can only suppress the nudge,
-    never fire it. Missing directories simply contribute nothing — product
-    repos rarely have all of them."""
+    top-level-only globs missed it). Missing directories simply contribute
+    nothing — product repos rarely have all of them.
+
+    Widening this set is safe in one direction only, though the direction
+    changed with the caller. For the deleted tripwire, extra vocabulary could
+    only *suppress* a nudge. For ``jurisdiction`` it can only *add* candidates,
+    never remove one — so the failure mode of over-widening is a longer
+    ``governed_by:`` seed list for the author to prune, not a missing artifact.
+    Narrowing is the direction that loses answers silently, which is what
+    ``test_jurisdiction_corpus_covers_claude_md_docs_subdirs_and_methodology``
+    exists to catch."""
     paths = sorted((prawduct_dir / "artifacts").glob("*.md"))
     claude_md = project_dir / "CLAUDE.md"
     if claude_md.is_file():

@@ -59,8 +59,10 @@ in `docs/governance-telemetry.md`.
 - **Additive-first evolution: new subcommands and flags are added; existing flag names, exit-code meanings, and `--json` keys are never repurposed, and `--json` readers tolerate unknown keys.**
   Why: additive-first plus tolerant readers is what keeps new versions rare and keeps a skill shipped at version N from breaking when the CLI grows at N+1; deprecation is signalled (stderr notice, kept working, removal deferred to a major), never silent.
   Status: steady-state.
-  Rulings: **Owner exception, 2026-08-11 (v3.3.2) — the major-deferral clause governs the
-  *externally-callable* surface, not the harness-only one.** `build-index` and `user-prompt-submit`
+  Rulings: [[harness-only-removal-is-not-a-major]] — **owner exception, 2026-08-11 (v3.3.2): the
+  major-deferral clause governs the *externally-callable* surface, not the harness-only one.**
+  (Taken in session on a direct question about THIS clause — distinct from the 2026-07-12 #257
+  ruling, which authorized the deletion itself and says nothing about the deprecation posture.) `build-index` and `user-prompt-submit`
   were removed outright in a patch. The clause's Why is protecting *callers* across versions, and
   these two had exactly one caller — `hooks.json`, which ships inside the same plugin at the same
   version and was updated in the same commit, so no caller could observe the gap. This artifact

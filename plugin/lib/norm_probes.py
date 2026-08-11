@@ -204,9 +204,13 @@ _FIELD_OR_ITEM_RE = re.compile(r"^\s*(?:[-*]\s|(?:\*{1,2}|_{1,2})?[A-Z][A-Za-z-]
 # one field over), and would leave the soft-wrap joiner still folding a `>`
 # into the middle of the prose the citation scans read.
 #
-# One strip point also keeps `_FIELD_MARKER_RE` byte-identical, which is what
-# `record_lint._norm_field_re` imports — the shared definition of a norm entry
-# stays shared without record_lint needing to know blockquotes exist.
+# One strip point also keeps `_FIELD_MARKER_RE` byte-identical for
+# `record_lint._norm_field_re`, which imports it. That is NOT sufficient on its
+# own and the first cut of this comment wrongly said it was: record_lint walks
+# raw text rather than `_direction_lines`, so an identical regex answered
+# differently on identical input until it imported this prefix too. Sharing the
+# matcher shares syntax; sharing the matcher AND the reader that feeds it is
+# what shares the definition.
 _BLOCKQUOTE_PREFIX_RE = re.compile(r"^\s*(?:>\s?)+")
 
 # Norm-entry field markers (docs/norms.md § Anatomy). Case-sensitive to the

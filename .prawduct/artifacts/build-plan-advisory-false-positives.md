@@ -1,3 +1,25 @@
+---
+artifact: build-plan
+version: 1
+scope: advisory-false-positives
+governed_by:
+  - artifact: api-contract.md   # § Direction — additive-first evolution; the deprecation clause Chunk 02 departs from
+    dispositions:
+      - "DEPARTED, with a recorded owner exception (2026-08-11) rather than an amendment. The clause
+         defers subcommand removal to a major; `build-index` and `user-prompt-submit` were removed in
+         a patch. Its why protects CALLERS across versions, and these two had exactly one caller —
+         hooks.json, shipped in the same plugin at the same version and updated in the same commit —
+         so no caller could observe the gap. Recorded as a Rulings line on the entry itself; the
+         Statement and Why are untouched, because editing a norm to permit one's own change is the
+         amend tell. Scope: harness-only subcommands. Deprecate-then-remove still governs everything
+         a human or a skill can call."
+  - artifact: architecture.md   # § Direction — every fact has one home
+    dispositions:
+      - "CONFORMED, after first breaking it. Chunk 01 shared `_FIELD_MARKER_RE` between norm_probes
+         and record_lint but not the reader that feeds it, so one definition of a norm entry gave two
+         answers. `_norm_field_re` now shares both halves."
+---
+
 # Build Plan — advisory false positives
 
 **Scope:** `advisory-false-positives`
