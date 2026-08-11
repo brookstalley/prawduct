@@ -20,7 +20,8 @@ governed_by:
          definition of a norm entry gave two answers — the norm was FOLLOWED and still produced a drift,
          which is what makes this an amendment rather than a conformance. `_norm_field_re` now shares both
          halves, and the norm now states predicate-level granularity with this case as its counter-example.
-         Ruling homed at [[one-home-is-the-predicate-not-the-token]]."
+         Case homed at [[one-home-is-the-predicate-not-the-token]]; the amendment itself is a
+         second dated `Decision:` line on the norm, per docs/norms.md's amend-vs-ruling split."
 ---
 
 # Build Plan — advisory false positives

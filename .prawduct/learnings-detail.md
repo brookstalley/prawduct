@@ -3446,7 +3446,7 @@ Recorded as a `Rulings:` line on the entry rather than as an edit to its Stateme
 a norm to permit your own change is the amend tell. `stamp-merged` and `regen-views` stay
 inert-and-deferred, which is the contrast that keeps the exception narrow rather than a loophole.
 
-## Sharing a matcher shares syntax, not the definition — 2026-08-11
+## (one-home-is-the-predicate-not-the-token) Sharing a matcher shares syntax, not the definition — 2026-08-11
 
 `record_lint._norm_field_re` imports `norm_probes._FIELD_MARKER_RE` *specifically* so that one
 definition of a norm entry cannot drift; its docstring said the two "cannot drift apart on an edit."

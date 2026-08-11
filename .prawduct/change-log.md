@@ -37,8 +37,10 @@ tests pin it. Caught by two independent reviewers in the cumulative review, not 
 still produced two answers, because the norm was stated at a granularity that lets a caller share a token
 and believe the fact is shared. It now says the fact is the whole predicate, and carries this case as its
 counter-example: importing a symbol LOOKS like compliance, which is what makes the failure worse than two
-frank copies — nobody re-checks a fact with one home. Ruling homed at
-`[[one-home-is-the-predicate-not-the-token]]`.
+frank copies — nobody re-checks a fact with one home. **It forbids something previously permitted** — sharing a constant while leaving its input unshared
+satisfied the norm as written and does not now — so it is recorded as an amendment with its own dated
+`Decision:` line, and Retroactivity gains a third violation kind (*shared symbol, unshared reader*)
+that no duplicate-text sweep can see. Case homed at `[[one-home-is-the-predicate-not-the-token]]`.
 
 The strip runs before *heading* detection too, so `> ## Direction` opens a section and a quoted
 sibling heading closes one. Deliberate and wider than the field lines it was aimed at: stripping for
