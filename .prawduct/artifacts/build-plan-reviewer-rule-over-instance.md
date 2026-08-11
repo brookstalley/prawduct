@@ -74,13 +74,22 @@ severity, but reports the rule's unmechanized state once rather than each occurr
 
 ## Chunks
 
-- **Chunk 01 — the instruction, in both cross-check owners.** Add R1/R2 to the Critic's Learnings
-  Cross-Check (`plugin/skills/critic/review-cycle.md`, the `final`/`cumulative` owner) and to the PR
-  reviewer's Learnings Cross-Check (`plugin/skills/pr/review-protocol.md`), which currently says a
-  reintroduced pattern is "a WARNING at minimum" and gives no route to the rule.
+### Chunk 01: the instruction, where every reviewer role reads it
 
-  *Done when:* both protocols carry the instruction; the two files agree on who reports what; the
-  change-log entry is written; `/prawduct:critic` passes with no unresolved blocking findings.
+Add R1/R2 to the surfaces that produce the class. The canonical statement lives in
+`plugin/agents/critic-reviewer.md` — the one Critic surface all three coordinator roles read —
+because the first cut put it in `plugin/skills/critic/review-cycle.md`'s Learnings Cross-Check,
+which the agent definition routes only to *sustainability*, while stale counts and citation drift
+are filed under correctness and design. `plugin/skills/critic/review-cycle.md` keeps a pointer that
+also routes the single-pass reviewer. `plugin/skills/pr/review-protocol.md` carries the PR-side copy,
+whose Learnings Cross-Check previously said a reintroduced pattern is "a WARNING at minimum" and gave
+no route to the rule. `tests/test_control_yield_tokens.py` pins all of it.
+
+**Critic mode:** final
+
+*Done when:* those surfaces carry the instruction and agree on who reports what; the
+`rule-unenforced:` token is pinned by test; the change-log entry is written; `/prawduct:critic`
+passes with no unresolved blocking findings.
 
 ## Appendix — reproducing the audit
 

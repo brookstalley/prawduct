@@ -103,7 +103,13 @@ LAST_MEASURED_TOKENS = {
     # statement moved to agents/critic-reviewer.md, which is unbudgeted and which
     # all three roles read; what stays here is a pointer. So the file ends BELOW
     # where it started: the compression is kept, the prose it funded is not.
-    "skills/critic/review-cycle.md": 9579,
+    #
+    # +18 on the verify pass: the relocation traded one reach gap for a narrower
+    # one — a SINGLE-PASS final/cumulative fork reads this file, not the agent
+    # definition, and SKILL.md never routes it there. The pointer now instructs
+    # that fork to open it. Paid from the headroom the relocation itself freed,
+    # which is why the ceiling still holds; 3 tokens remain.
+    "skills/critic/review-cycle.md": 9597,
     "skills/critic/framework-checks.md": 1116,
 }
 

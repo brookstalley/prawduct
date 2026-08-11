@@ -341,7 +341,7 @@ Scan your findings against active learnings. If a change reintroduces a pattern 
 
 Two outputs, kept apart. Against the *change*: no finding. Against the *learnings file*, when the supersession is implicit rather than stated: a **NOTE** naming both entries, because the stale rule reads as live to the next reviewer and to every product inheriting it — the only finding the supersession check produces.
 
-**When a written rule has no enforcer, the finding is the rule — once.** This is not the cross-check owner's alone: it binds every reviewer role, and its canonical statement — the two conditions, and the `rule-unenforced:` summary prefix that makes the yield countable — lives in `agents/critic-reviewer.md`, which all three roles read.
+**When a written rule has no enforcer, the finding is the rule — once.** This is not the cross-check owner's alone: it binds every reviewer role, and its canonical statement — the two conditions, and the `rule-unenforced:` summary prefix that makes the yield countable — lives in `agents/critic-reviewer.md`. Coordinator roles get it as their brief; **single-pass, open it from here** — no `SKILL.md` protocol file carries it.
 
 ### Backlog Reconciliation
 
