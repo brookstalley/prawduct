@@ -22,7 +22,7 @@ Prawduct exposes **two related programmatic surfaces**, both local:
 - **A CLI** — `prawduct-hook <subcommand>`: flags, stdin JSON, exit codes, and stdout/stderr format
   are the contract.
 - **A platform↔app hook interface** — the Claude Code harness invokes a fixed set of subcommands on
-  lifecycle events (SessionStart, UserPromptSubmit, Stop, SubagentStop), passing event payloads as
+  lifecycle events (SessionStart, Stop, SubagentStop), passing event payloads as
   JSON on stdin and consuming the exit code and stdout.
 
 **Consumers: both.** The **harness** (external) calls the hook subcommands via the repo's
@@ -59,13 +59,31 @@ in `docs/governance-telemetry.md`.
 - **Additive-first evolution: new subcommands and flags are added; existing flag names, exit-code meanings, and `--json` keys are never repurposed, and `--json` readers tolerate unknown keys.**
   Why: additive-first plus tolerant readers is what keeps new versions rare and keeps a skill shipped at version N from breaking when the CLI grows at N+1; deprecation is signalled (stderr notice, kept working, removal deferred to a major), never silent.
   Status: steady-state.
+  Rulings: [[harness-only-removal-is-not-a-major]] — **owner exception, 2026-08-11 (v3.3.2): the
+  major-deferral clause governs the *externally-callable* surface, not the harness-only one.**
+  (Taken in session on a direct question about THIS clause — distinct from the 2026-07-12 #257
+  ruling, which authorized the deletion itself and says nothing about the deprecation posture.) `build-index` and `user-prompt-submit`
+  were removed outright in a patch. The clause's Why is protecting *callers* across versions, and
+  these two had exactly one caller — `hooks.json`, which ships inside the same plugin at the same
+  version and was updated in the same commit, so no caller could observe the gap. This artifact
+  already classes them "called by the harness, not by humans" (§ Operations) and already records,
+  as a dated decision, that there is **no supported external consumer** of the subcommand surface
+  (§ Versioning). Honouring the letter would have spent a major version number on a change that
+  breaks nothing for anyone, and would set the precedent that harness-internal cleanup is a major.
+  **Scope of the exception:** removal without deprecation is in-bounds at any tier *only* for
+  subcommands the harness alone invokes. The deprecate-then-remove path still governs everything a
+  human or a skill can call — `stamp-merged` and `regen-views` remain inert-and-deferred exactly
+  as before, which is the contrast that keeps this exception narrow rather than a loophole.
+  Recorded rather than amended deliberately: editing the norm's own text to permit this change is
+  the shape `docs/norms.md` warns against, and the departure is better carried as a ruling the next
+  reader meets beside the rule.
 
 ## Operations
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.
 
-- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary — `--brief-only` skips it, mutating), `build-index`,
-  `user-prompt-submit`, `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
+- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary — `--brief-only` skips it, mutating),
+  `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force]` (write dispatch manifest, mutating; `--force`
   overrides the exit-3 no-review-needed refusal — see § Error Model), `critic-consolidate`
@@ -154,8 +172,7 @@ files to touch previews first. That framing is descriptive — the binding rule 
 
 - **Inputs:** subcommand argv (each subcommand parses its own flags; unknown flags are rejected),
   and — for the hook subcommands — a JSON event payload on **stdin** (e.g. `stop` reads
-  `background_tasks`; `subagent-stop` reads `cwd`/`agent_type`; `user-prompt-submit` reads
-  `prompt`).
+  `background_tasks`; `subagent-stop` reads `cwd`/`agent_type`).
 - **Human-readable output:** most subcommands print prefixed text (see Error Model). Skills consume
   their **exit codes**, not parsed text.
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
@@ -207,7 +224,7 @@ files to touch previews first. That framing is descriptive — the binding rule 
     and `summary` (`findings`, `by_severity`, `by_state`, `undispositioned`, `owner_ruled`,
     `conflicts`). Each row: `fid`, `severity`, `goal`, `title`, `state`, `reason`, `backlog_id`,
     `owner_ruling`, `conflict`.
-  - **Hook context channel:** SessionStart digest and UserPromptSubmit emit the Claude Code
+  - **Hook context channel:** the SessionStart digest emits the Claude Code
     `{"hookSpecificOutput":{"hookEventName":…,"additionalContext":…}}` injection shape.
 
 ## Error Model   <!-- recorded decision → api_error_model_approach -->
@@ -359,7 +376,7 @@ Evolution rules we want to hold, so new versions stay rare:
   of the real one. Its `counts` follow the same rule as the manifest's: an integer when a check ran,
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
-  contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`, `build-index`.
+  contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`.
 - **Deprecated and inert** (callable, notice on stderr, writes nothing, exits 0; removal deferred
   to a major): `stamp-merged` and `regen-views`. Both lost their bodies when derived views were
   retired — `regen-views` had no views left to regenerate, and `stamp-merged`'s only output

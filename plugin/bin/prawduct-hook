@@ -1590,7 +1590,7 @@ def _read_stop_stdin() -> dict:
     interactive TTY, empty stdin, or malformed JSON yields ``{}`` so the gate
     degrades to its no-signal behavior (block as before). Never raises — a read
     error must not crash the session-end gate. Uses the same stdin-read pattern
-    as ``cmd_user_prompt_submit`` but stays SILENT on failure (no stderr note):
+    as the other stdin-reading hooks but stays SILENT on failure (no stderr note):
     a routine Stop with no/empty/garbage payload is the common case, and the safe
     fallback (``{}`` → block exactly as before) is the correct outcome, so there
     is nothing worth surfacing."""
@@ -5212,7 +5212,7 @@ _USAGE = (
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--force]|critic-end|critic-discard|"
     "critic-restore <review-id>|critic-consolidate|"
     "subagent-stop|"
-    "stop|build-index|user-prompt-submit|"
+    "stop|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
     "test-status|validate-evidence|"
     "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
@@ -5246,25 +5246,27 @@ _USAGE = (
 )
 
 
-# --- Work model: undocumented-requirement catch (build plan: work-model) -----
-# The external enforcement surface for the work model (documentation/work-model.md,
-# prawduct-internal -- not shipped with the plugin). A
-# UserPromptSubmit hook surfaces, pre-turn, salient terms a user introduces that
-# NO governing artifact covers — the signal a new requirement may be entering
-# undocumented. The catch logic is the pure lib/work_model_index.py (Chunk 1);
-# these are the thin runtime wrappers (Chunk 2). Per the plugin invariant, the
-# derived index is per-repo state in ``.prawduct/.work-model-index.json`` (NOT
-# plugin-bundled state), rebuilt from the repo's governing corpus (artifacts,
-# CLAUDE.md, docs/, methodology/ — review-fixes Chunk 2). Both
-# commands gate on ``.prawduct/`` (the user-scoped plugin fires in every repo)
-# and are fail-soft — a hook error must never break session start or, above all,
-# prompt submission.
+# --- Work model: jurisdiction matching --------------------------------------
+# Which governing artifacts already cover a plan's vocabulary — the input that
+# seeds a plan's ``governed_by:`` field. The matching logic is the pure
+# lib/work_model_index.py; this is the thin runtime wrapper that assembles the
+# corpus (artifacts, CLAUDE.md, docs/, methodology/).
+#
+# The pre-turn orphan-term tripwire that these wrappers were originally built
+# for was DELETED 2026-08-11 (owner ruling 2026-07-12, #257: its resolution was
+# deletion, not a further precision fix; requirements-precede-code enforcement
+# moved to the review-time ``scope-trace:`` check, CRT-5M9J). Its derived index
+# cache went with it — ``jurisdiction`` reads the corpus directly and never used
+# the cache, which is what made the deletion separable.
+#
+# ``jurisdiction`` is on-demand and NEVER a gate, so every path returns 0.
 
-_WORK_MODEL_INDEX_RELPATH = ".work-model-index.json"
 
 
 def _work_model_load_lib():
-    """Import the pure catch logic, seeding sys.path like the other lib readers."""
+    """Import the jurisdiction-matching logic, seeding sys.path like the other
+    lib readers. (It was the tripwire's catch logic until v3.3.2 removed that;
+    `jurisdiction_candidates` is what the module is for now.)"""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -5274,14 +5276,21 @@ def _work_model_load_lib():
 
 
 def _work_model_corpus_paths(project_dir: Path, prawduct_dir: Path) -> list[Path]:
-    """The governing corpus the vocabulary index is built from: every markdown
+    """The governing corpus ``jurisdiction`` matches against: every markdown
     artifact under ``.prawduct/artifacts/``, plus the repo's CLAUDE.md and all
     ``docs/`` / ``methodology/`` markdown, recursively (gate-noise: product
     repos keep governing vocabulary in doc subdirectories, and the earlier
-    top-level-only globs made those words read as orphans). Widening is safe in
-    one direction only — extra corpus vocabulary can only suppress the nudge,
-    never fire it. Missing directories simply contribute nothing — product
-    repos rarely have all of them."""
+    top-level-only globs missed it). Missing directories simply contribute
+    nothing — product repos rarely have all of them.
+
+    Widening this set is safe in one direction only, though the direction
+    changed with the caller. For the deleted tripwire, extra vocabulary could
+    only *suppress* a nudge. For ``jurisdiction`` it can only *add* candidates,
+    never remove one — so the failure mode of over-widening is a longer
+    ``governed_by:`` seed list for the author to prune, not a missing artifact.
+    Narrowing is the direction that loses answers silently, which is what
+    ``test_jurisdiction_corpus_covers_claude_md_docs_subdirs_and_methodology``
+    exists to catch."""
     paths = sorted((prawduct_dir / "artifacts").glob("*.md"))
     claude_md = project_dir / "CLAUDE.md"
     if claude_md.is_file():
@@ -5291,97 +5300,10 @@ def _work_model_corpus_paths(project_dir: Path, prawduct_dir: Path) -> list[Path
     return paths
 
 
-def _work_model_corpus_texts(project_dir: Path, prawduct_dir: Path) -> list[str]:
-    texts: list[str] = []
-    for path in _work_model_corpus_paths(project_dir, prawduct_dir):
-        try:
-            texts.append(path.read_text(encoding="utf-8", errors="replace"))
-        except OSError:
-            continue
-    return texts
-
-
-def _work_model_ensure_index(
-    project_dir: Path, prawduct_dir: Path, wmi, *, force: bool = False
-) -> dict:
-    """Return the vocabulary index, rebuilding from the corpus when missing,
-    stale (a corpus file is newer than the index), corrupt, or ``force``."""
-    index_path = prawduct_dir / _WORK_MODEL_INDEX_RELPATH
-    corpus = _work_model_corpus_paths(project_dir, prawduct_dir)
-
-    if not force and index_path.exists():
-        idx_mtime = index_path.stat().st_mtime
-        if all(p.stat().st_mtime <= idx_mtime for p in corpus):
-            try:
-                return json.loads(index_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                pass  # corrupt -> rebuild below
-
-    index = wmi.build_index(_work_model_corpus_texts(project_dir, prawduct_dir))
-    try:
-        index_path.write_text(json.dumps(index), encoding="utf-8")
-    except OSError:
-        pass  # best-effort write; detection still works from the in-memory index
-    return index
-
-
-def cmd_build_index(project_dir: Path) -> int:
-    """Rebuild the work-model vocabulary index from the repo's governing
-    corpus (wired on SessionStart to warm the index). Best-effort: a build
-    failure must never break session start."""
-    prawduct_dir = get_prawduct_dir(project_dir)
-    if not prawduct_dir.is_dir():
-        return 0  # not a Prawduct-governed repo — stay silent (mirrors digest.py)
-    try:
-        wmi = _work_model_load_lib()
-        _work_model_ensure_index(project_dir, prawduct_dir, wmi, force=True)
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- index build is best-effort; must never break session start
-        print(f"NOTE: Prawduct could not build the work-model index: {exc}", file=sys.stderr)
-        return 0
-    return 0
-
-
-def cmd_user_prompt_submit(project_dir: Path) -> int:
-    """UserPromptSubmit hook: inject a pre-turn nudge naming salient terms in the
-    user's prompt that no governing artifact covers (tripwire #1). Silent when
-    clean. Fail-soft above all else — a hook error must NEVER block the user's
-    prompt, so every path returns 0 and nothing is printed on error."""
-    prawduct_dir = get_prawduct_dir(project_dir)
-    if not prawduct_dir.is_dir():
-        return 0  # not a Prawduct-governed repo — stay silent
-    try:
-        raw = sys.stdin.read()
-        prompt = json.loads(raw).get("prompt", "") if raw.strip() else ""
-        if not prompt.strip():
-            return 0
-        wmi = _work_model_load_lib()
-        index = _work_model_ensure_index(project_dir, prawduct_dir, wmi)
-        nudge = wmi.nudge_for(prompt, index)
-        if nudge:
-            print(
-                json.dumps(
-                    {
-                        "hookSpecificOutput": {
-                            "hookEventName": "UserPromptSubmit",
-                            "additionalContext": nudge,
-                        }
-                    }
-                )
-            )
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a hook error must never block prompt submission
-        # Log to stderr only — stdout is the additionalContext channel and must
-        # stay clean; the user's prompt proceeds regardless.
-        print(f"NOTE: Prawduct work-model nudge skipped (hook error): {exc}", file=sys.stderr)
-        return 0
-    return 0
-
-
 def cmd_jurisdiction(project_dir: Path, argv: list[str]) -> int:
     """On-demand authoring aid: given plan/prompt text, list the governing
-    artifacts whose vocabulary the text's salient terms fall under — the
-    INVERSION of the orphan tripwire (orphans = terms NO artifact covers;
-    jurisdiction = which artifacts cover this text's terms). It seeds a plan's
-    ``governed_by:`` field with mechanical candidates for the planner's
+    artifacts whose vocabulary the text's salient terms fall under. It seeds a
+    plan's ``governed_by:`` field with mechanical candidates for the planner's
     judgment; it is NEVER a gate, so every path returns 0.
 
     Input, first match wins: ``--file <path>`` reads the text from a file;
@@ -5396,7 +5318,7 @@ def cmd_jurisdiction(project_dir: Path, argv: list[str]) -> int:
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
-        return 0  # not a Prawduct-governed repo — stay silent (mirrors build-index)
+        return 0  # not a Prawduct-governed repo — stay silent
 
     # Manual argv parse (no argparse — matches the other subcommands' style).
     artifacts_only = False
@@ -5497,8 +5419,6 @@ _HARNESS_INVOKED_COMMANDS = frozenset({
     "clear",
     "subagent-stop",
     "stop",
-    "user-prompt-submit",
-    "build-index",
 })
 
 # Agent-invoked, state-mutating governance writes. A wrong-version write here
@@ -5942,10 +5862,6 @@ def main() -> int:
         return cmd_critic_consolidate(project_dir)
     elif command == "subagent-stop":
         return cmd_subagent_stop(project_dir, _read_stop_stdin())
-    elif command == "build-index":
-        return cmd_build_index(project_dir)
-    elif command == "user-prompt-submit":
-        return cmd_user_prompt_submit(project_dir)
     elif command == "jurisdiction":
         return cmd_jurisdiction(project_dir, sys.argv[2:])
     elif command == "stop":

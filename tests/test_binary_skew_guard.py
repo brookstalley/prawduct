@@ -243,7 +243,7 @@ class TestHarnessInvokedHooksNeverRefuse:
     """The over-fire that would have broken every framework checkout.
 
     `hooks/hooks.json` invokes `${CLAUDE_PLUGIN_ROOT}/bin/prawduct-hook` for
-    SessionStart/Stop/SubagentStop/UserPromptSubmit — the install cache, which
+    SessionStart/Stop/SubagentStop — the install cache, which
     inside a framework checkout is foreign BY DESIGN. Refusing there returns 1
     from every SessionStart in every such repo (no briefing, no session reset,
     no marker sweep) and is unactionable besides: a hook cannot be told to run

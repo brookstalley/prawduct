@@ -289,7 +289,6 @@ audit sees them.
 
 | Moment | Organ | What it catches |
 |---|---|---|
-| Prompt time | work-model tripwires | a norm-shaped requirement entering undocumented |
 | Planning | `governed_by:` reconciliation, seeded by `prawduct-hook jurisdiction` | jurisdiction + the per-norm disposition lines (incl. *inapplicable because X*); departures surfaced as decisions before code |
 | Review (event-domain) | Critic Goals 3/4 + Learnings Cross-Check; PR reviewer | departure without a recorded decision (Critic: BLOCKING, all forms, where ratified norms exist; NOTE in a norm-less product — see Severity above; PR reviewer: WARNING at its layer); the amend tell incl. doc-only; flip follow-ups present; norm-staleness signals (→ NOTE recommending `/prawduct:doctor`). The Critic considers jurisdiction independently — `governed_by:` is an input, not a boundary. |
 | Session sync (time-domain, cheap) | advisory probes | the mechanical hooks, canonically: **dated `revisit:` expiries; backlog-id literals in Status/Why lines whose items are shipped/archived (dead why); in-transition tracking items unedited past the window (stall); structural presence** (strategy artifacts with no Direction *entry* anywhere — a bare heading is not one — or missing Enforcement columns → unratified; Norm Health sweep overdue while norms exist under *either* homing) |

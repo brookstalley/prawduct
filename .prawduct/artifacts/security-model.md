@@ -53,8 +53,8 @@ access to partition. If this ever changes (a shared or multi-party governance su
 
 ## Supply-Chain & Plugin Trust (the primary concern)
 
-Prawduct executes on the user's machine — Python hooks fire on SessionStart/Stop/UserPromptSubmit/
-SubagentStop, and skills invoke the `prawduct-hook` CLI. Running someone else's plugin is a trust
+Prawduct executes on the user's machine — Python hooks fire on SessionStart/Stop/SubagentStop,
+and skills invoke the `prawduct-hook` CLI. Running someone else's plugin is a trust
 decision, and prawduct's job is to be worthy of it. The posture we hold:
 
 - **Least authority over the machine.** The plugin writes nothing into a governed repo beyond what

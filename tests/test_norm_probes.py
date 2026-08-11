@@ -1293,3 +1293,202 @@ class TestEmphasisAcrossEveryNormField:
             body = f"## Direction\n\n- **X.**\n  {m} value.\n\n- **Y.**\n  {m} value.\n\nTail.\n"
             assert record_lint.direction_norm_count(body) == 2, f"record_lint: {m}"
             assert np._has_direction_entry(body) is True, f"norm_probes: {m}"
+
+
+class TestBlockquotedNormFields:
+    """A `Why:` inside a markdown blockquote is still a `Why:`.
+
+    Found in the wild 2026-08-11: a product wrote every norm's rationale as
+    `> **Why:** ...` and the norm-registry advisory told it, for a week and
+    across several syncs, that "no `## Direction` section is ratified in any
+    artifact" — while five ratified sections sat in its artifacts directory. An
+    advisory that makes a claim the reader disproves by opening a file is a
+    defect in the advisory.
+
+    The blind spot was `^\\s*` in every field matcher: `>` is not whitespace.
+    The fix strips blockquote markers in `_direction_lines`, the single point
+    all four matchers read through, so entry detection and the soft-wrap joiner
+    are fixed by one change rather than four regexes drifting apart later.
+
+    The direct sibling of #569 (emphasis tolerance): same shape, same reason —
+    `docs/norms.md` § Anatomy shows the canonical form; these read what authors
+    actually write.
+    """
+
+    # The real shape from the affected repo: a BOLD STATEMENT PARAGRAPH (no
+    # bullet) with a blockquoted Why. Both halves depart from the documented
+    # anatomy, and it is the blockquote — not the missing bullet — that
+    # `_has_direction_entry` trips on, since that function has never required a
+    # bullet. Reproduced from the file rather than imagined, so a future edit
+    # that "simplifies" this fixture into a bulleted one stops testing the bug.
+    _WILD = (
+        "# Architecture\n\n## Direction\n\n"
+        "<!-- Ratified by the owner 2026-07-20. -->\n\n"
+        "**The theme manifest file is the only channel from curation to display.** The\n"
+        "display plane reads the manifest and the image tree.\n\n"
+        "> **Why:** The availability norm says the display plane never requires the\n"
+        "> curation plane to be reachable. A single file-shaped channel makes that\n"
+        "> structurally true rather than carefully maintained.\n"
+    )
+
+    def test_the_wild_shape_is_an_entry(self):
+        assert np._has_direction_entry(self._WILD) is True, (
+            "a bold statement plus a blockquoted Why is a ratified norm entry"
+        )
+
+    def test_every_emphasis_form_survives_blockquoting(self):
+        for marker in TestEmphasisAcrossEveryNormField.MARKERS:
+            body = _direction_artifact(f"- **X.**\n\n> {marker} because.\n")
+            assert np._has_direction_entry(body) is True, f"> {marker} must be an entry"
+
+    def test_every_status_emphasis_form_survives_blockquoting(self):
+        for marker in TestEmphasisAcrossEveryNormField.STATUS:
+            body = _direction_artifact(f"- **X.**\n\n> {marker} steady-state.\n")
+            assert np._has_direction_entry(body) is True, f"> {marker} must be an entry"
+
+    def test_nested_blockquotes_are_stripped_too(self):
+        body = _direction_artifact("- **X.**\n\n>> **Why:** quoted inside a quote.\n")
+        assert np._has_direction_entry(body) is True
+
+    def test_a_blockquote_marker_never_folds_into_the_prose(self):
+        """The soft-wrap joiner's half of the same defect.
+
+        A wrapped blockquoted field used to join as `"... says the > display
+        plane ..."` — the marker landing mid-sentence in the text the citation
+        scans read. Asserted on the joined line's CONTENT rather than on
+        `_direction_lines`' length, because the bug was corruption, not count.
+        """
+        lines = np._direction_lines(self._WILD)
+        why = [line for line in lines if "Why:" in line]
+        assert why, "the blockquoted Why must survive as a logical line"
+        assert ">" not in why[0], f"blockquote marker folded into prose: {why[0]!r}"
+        assert "never requires the curation plane" in why[0], (
+            "the wrapped continuation must still join onto the Why line"
+        )
+
+    def test_dead_why_reads_a_blockquoted_status(self, tmp_path):
+        """Drives a PROBE end-to-end, not a regex.
+
+        Following the #569 precedent: asserting the matcher directly stays green
+        if the constant widens while the probe stops reaching it. `dead-why`
+        scans lines that only exist if `_direction_lines` handed them over
+        de-quoted, so this fails unless the whole path works.
+        """
+        _write_backlog(tmp_path, _item("OBS-1A2B", section="Archive", status="dead"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **All telemetry rides OTel.**\n\n> **Why:** blocked on OBS-1A2B.\n"
+            ),
+        )
+        found = np.probe_dead_why(ProjectState({}), _cb(tmp_path))
+        assert found, "a dead citation inside a blockquoted Why must still be found"
+
+    def test_a_blockquoted_roadmap_is_still_not_a_registry(self):
+        """Loosening must not reopen the false-pass this detector exists for.
+
+        #567: a `## Direction` section holding a prioritised list of undone work
+        certified as a ratified registry. Blockquoting the roadmap must not buy
+        it what plain formatting could not — the discriminator is the FIELD, and
+        stripping `>` does not mint one.
+        """
+        body = (
+            "# Architecture\n\n## Direction\n\n"
+            "> - **Ship the importer.** Targeted for Q3.\n"
+            "> - **Then the exporter.** Q4.\n"
+        )
+        assert np._has_direction_entry(body) is False
+
+    def test_a_heading_only_direction_section_is_still_not_a_registry(self):
+        body = "# Architecture\n\n## Direction\n\n> Nothing normative here.\n"
+        assert np._has_direction_entry(body) is False
+
+
+class TestBlockquotedEntriesCountTheSameInBothModules:
+    """#568's invariant, re-asserted for the blockquote case.
+
+    `record_lint.direction_norm_count` and `norm_probes._has_direction_entry`
+    are one definition of a norm entry. When blockquote tolerance first landed
+    it went into `_direction_lines` only — so the probes saw a blockquoted
+    registry and record_lint saw an empty one, and `governed_by`'s
+    `if not norms: continue` silently skipped exactly the products the
+    tolerance was added for. Sharing the field regex was not enough; the
+    blockquote prefix is part of the definition too.
+    """
+
+    _QUOTED = (
+        "# Architecture\n\n## Direction\n\n"
+        "- **The manifest is the only channel.**\n\n"
+        "> **Why:** a single file-shaped channel makes the availability norm\n"
+        "> structurally true rather than carefully maintained.\n"
+    )
+    _PLAIN = (
+        "# Architecture\n\n## Direction\n\n"
+        "- **The manifest is the only channel.**\n"
+        "  Why: a single file-shaped channel makes it structurally true.\n"
+    )
+
+    def test_a_blockquoted_entry_counts_in_both(self):
+        from lib import record_lint
+
+        assert np._has_direction_entry(self._QUOTED) is True
+        assert record_lint.direction_norm_count(self._QUOTED) == 1
+
+    def test_quoting_an_entry_does_not_change_either_answer(self):
+        """The two formats are the same registry, so both readers must agree
+        across both of them — not merely agree with each other on one."""
+        from lib import record_lint
+
+        assert record_lint.direction_norm_count(self._QUOTED) == record_lint.direction_norm_count(
+            self._PLAIN
+        )
+        assert np._has_direction_entry(self._QUOTED) == np._has_direction_entry(self._PLAIN)
+
+    def test_a_blockquoted_roadmap_still_counts_zero_in_both(self):
+        """The widening must not mint entries: the discriminator is the FIELD."""
+        from lib import record_lint
+
+        roadmap = (
+            "# Architecture\n\n## Direction\n\n"
+            "> - **Ship the importer.** Targeted for Q3.\n"
+            "> - **Then the exporter.** Q4.\n"
+        )
+        assert record_lint.direction_norm_count(roadmap) == 0
+        assert np._has_direction_entry(roadmap) is False
+
+
+class TestBlockquotedHeadingsOpenASection:
+    """The strip lands before heading detection, so `> ## Direction` opens a
+    section. That is a widening beyond the field lines the fix was aimed at, and
+    it is pinned here rather than left as an undocumented side effect.
+
+    It is the correct reading — a heading inside a blockquote is still a heading
+    of the quoted document, and the alternative (strip for fields but not for
+    headings) would mean a wholly-quoted artifact had field lines belonging to
+    no section, which is the inconsistency that produces a silent zero.
+    """
+
+    def test_a_quoted_direction_heading_opens_the_section(self):
+        body = (
+            "# Architecture\n\n> ## Direction\n\n"
+            "> - **The manifest is the only channel.**\n"
+            ">   Why: structurally true rather than carefully maintained.\n"
+        )
+        assert np._has_direction_entry(body) is True
+
+    def test_a_quoted_heading_still_CLOSES_the_section(self):
+        """The closing half must widen with the opening half. If `>` were
+        stripped when opening but not when closing, a quoted sibling heading
+        would leave the section open and swallow the rest of the document.
+        """
+        body = (
+            "# Architecture\n\n> ## Direction\n\n"
+            "> - **X.**\n>   Why: because.\n\n"
+            "> ## Glossary\n\n"
+            "> - **Y.**\n>   Why: this one is NOT in Direction.\n"
+        )
+        lines = np._direction_lines(body)
+        joined = "\n".join(lines)
+        assert "because" in joined
+        assert "NOT in Direction" not in joined, "a quoted sibling heading must close the section"

@@ -103,7 +103,7 @@ classification:
     has_human_interface:
       modality: terminal
       platform: cross-platform
-    # Present — SessionStart/Stop/UserPromptSubmit/SubagentStop hooks fire on
+    # Present — SessionStart/Stop/SubagentStop hooks fire on
     # Claude Code lifecycle events, not by human invocation; the pervasive
     # fail-soft design (a probe never blocks session start) is the "design
     # against silent failure" this characteristic implies.
