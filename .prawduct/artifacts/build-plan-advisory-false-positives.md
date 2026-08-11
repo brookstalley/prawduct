@@ -15,9 +15,12 @@ governed_by:
          a human or a skill can call."
   - artifact: architecture.md   # § Direction — every fact has one home
     dispositions:
-      - "CONFORMED, after first breaking it. Chunk 01 shared `_FIELD_MARKER_RE` between norm_probes
-         and record_lint but not the reader that feeds it, so one definition of a norm entry gave two
-         answers. `_norm_field_re` now shares both halves."
+      - "AMENDED, by owner decision 2026-08-11 (#643), after first breaking it. Chunk 01 shared
+         `_FIELD_MARKER_RE` between norm_probes and record_lint but not the reader that feeds it, so one
+         definition of a norm entry gave two answers — the norm was FOLLOWED and still produced a drift,
+         which is what makes this an amendment rather than a conformance. `_norm_field_re` now shares both
+         halves, and the norm now states predicate-level granularity with this case as its counter-example.
+         Ruling homed at [[one-home-is-the-predicate-not-the-token]]."
 ---
 
 # Build Plan — advisory false positives

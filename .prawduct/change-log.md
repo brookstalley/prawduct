@@ -32,6 +32,14 @@ exactly the products the strip was added for. That is #568 reopening in a new ca
 docstring's "cannot drift apart on an edit" true rather than merely intended. Three cross-module
 tests pin it. Caught by two independent reviewers in the cumulative review, not by the author.
 
+**The norm it broke is amended, not just conformed to (#643, owner decision 2026-08-11).**
+`architecture.md` § Direction *every fact has one home* was FOLLOWED here — one home, imported symbol — and
+still produced two answers, because the norm was stated at a granularity that lets a caller share a token
+and believe the fact is shared. It now says the fact is the whole predicate, and carries this case as its
+counter-example: importing a symbol LOOKS like compliance, which is what makes the failure worse than two
+frank copies — nobody re-checks a fact with one home. Ruling homed at
+`[[one-home-is-the-predicate-not-the-token]]`.
+
 The strip runs before *heading* detection too, so `> ## Direction` opens a section and a quoted
 sibling heading closes one. Deliberate and wider than the field lines it was aimed at: stripping for
 fields but not headings would leave a wholly-quoted artifact with field lines belonging to no
