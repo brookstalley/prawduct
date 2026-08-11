@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-11: a rule that nothing enforces is the finding — reviewers stop filing the Nth instance
+
+<!-- prawduct: type=fix | scope=reviewer-rule-over-instance -->
+
+**An audit of 141 PR-review records across seven repos found that 19% of the PR reviewer's warnings
+were stale counts and stale citations — and that the rule against writing them already existed in
+three places before the findings were filed.** `methodology/building.md` says a count nothing reads
+is not worth writing; `learnings.md:358` (2026-07-31) says the fix is moving the count out of prose
+entirely, not counting more carefully; `learnings.md:400` (2026-08-02) says prefer a relational
+statement. Warnings pinning the same class were filed on 08-03 and 08-06 regardless, and the 08-06
+one **cites that learning while filing the instance anyway**. Every one of those bought a review
+round, and the next branch would have bought another, because nothing in either reviewer's protocol
+said what to do when the rule is already written and simply unenforced.
+
+Both Learnings Cross-Check owners now say it: when a finding is the Nth occurrence of a written rule
+that no deterministic check covers, report **the rule's unmechanized state, once**, at the severity
+the instance would have carried — naming the rule and where it lives. Substitution, not suppression;
+the report still happens and still carries its weight, it just names the enforceable cause instead of
+one member of the class. Two conditions are required and both are checkable — the rule is written
+down (`learnings.md`, a methodology guide, a `## Direction` norm), and no check owns it
+(`record_lint`'s `CHECKS`, a hook, a gate). First-time defects and covered classes stay ordinary
+findings. This is the run-count lever of the ratified wall-clock norm
+(`nonfunctional-requirements.md` § Direction: cost is unit-cost × run-count, and *both* are levers)
+applied to the one cost that recurs forever by construction.
+
+**What this deliberately does not do: add the lint.** The audit's first recommendation was a
+pinned-figure and citation lint. Most of it already exists — `record_lint`'s `suite-total-claim` has
+covered pinned suite totals since it shipped. The citation half (`dangling-ref`) was built, measured
+at 3 findings and 0 true positives, and removed under "a control that fires and catches nothing is
+removed by default", with the standing condition that re-adding it needs evidence the class costs
+review rounds. **The audit does not clear that bar** — of its two citation-drift warnings, one sits
+in `backlog-archive.md`, which every check excludes by design, and the other is a wrong symbol name,
+which path resolution would not catch. Widening `suite-total-claim` to two-digit counts was also
+declined: its regex comment argues the exclusion on false-positive grounds, and one stale "(27
+tests)" does not outweigh it. The removals stay removed; the reasoning is in
+`build-plan-reviewer-rule-over-instance.md` so the next audit inherits it rather than re-deriving it.
+
 ## 2026-08-10: six guards that pinned the repo's release phase, and now name which emptiness they reject
 
 <!-- prawduct: type=fix | scope=phase-blind-real-data-guards | release=v3.3.0 -->

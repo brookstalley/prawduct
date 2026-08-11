@@ -86,6 +86,18 @@ Your goals, in priority order — the release-specific concerns no Critic layer 
 
 The `final`/`cumulative` Critic owns this scan (`skills/critic/review-cycle.md` "Final-Mode Cross-Checks") — do **not** re-scan the diff against `.prawduct/learnings.md`; the same diff shouldn't be scanned twice. You read the learnings for context (step 6), and a reintroduced pattern you notice anyway while reading for your own goals is a WARNING at minimum.
 
+**One exception to that severity, and it applies to your own goals too: when the rule exists and
+nothing enforces it, the finding is the rule — once.** If what you are about to file is the Nth
+occurrence of something already written down (`learnings.md`, a methodology guide, a `## Direction`
+norm) that no deterministic check owns (`record_lint`'s `CHECKS`, a hook, a gate), file one finding
+naming the rule and its unmechanized state, at the severity the instance would have carried — not
+one finding per occurrence. This is the cheapest thing you can do about run-count
+(`nonfunctional-requirements.md` § Direction: review cost is unit-cost × run-count, and *both* are
+levers): a class that is re-filed per instance buys a round every branch, forever. **Substitution,
+not suppression** — the report still happens, it just names the enforceable cause. Stale pinned
+counts and stale line-number citations are the live example; both have rules and neither has a check.
+A first-time defect, or one a check already covers, is an ordinary finding — file it normally.
+
 ## Severity Levels
 
 - **BLOCKING**: Must fix before creating PR. Release blockers — secrets or credentials in the diff, an incoherent changeset that doesn't match what the PR claims to ship.
