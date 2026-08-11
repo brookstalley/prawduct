@@ -52,7 +52,10 @@ end-to-end. Requirements-precede-code enforcement moved; it did not lapse.
 
 Gone: the `UserPromptSubmit` and SessionStart `build-index` hooks and their wiring, the derived index
 cache, and the orphan-detection surface (`build_index`, `find_orphan_terms`, `should_fire`,
-`format_nudge`, `nudge_for`, the requirement/maintenance verb sets). The bundle is net negative; `git diff --stat origin/develop...HEAD` gives the figure, which is not restated here because a line count in a durable record goes stale the next time anything touches those files — as this one already had by the time the PR reviewer measured it.
+`format_nudge`, `nudge_for`, the requirement/maintenance verb sets). The bundle is net negative;
+`git diff --stat origin/develop...HEAD` gives the figure, which is not restated here because a
+line count in a durable record goes stale the next time anything touches those files — as this
+one already had by the time the PR reviewer measured it.
 
 **`prawduct-hook jurisdiction` is unaffected and deliberately kept.** It is built on the same
 salience machinery but reads the corpus directly and never touched the cache, which is what made the
