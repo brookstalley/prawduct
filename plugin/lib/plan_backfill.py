@@ -38,7 +38,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import change_log, plan_archive, plan_index
+from . import buildplan_refs, change_log, plan_archive, plan_index
 
 CHANGE_LOG_REL = "change-log.md"
 
@@ -124,6 +124,32 @@ def _active_plan_path(prawduct_dir: Path) -> Path | None:
         return None
 
 
+def _incompleteness_refusal(plan_path: Path) -> "str | None":
+    """The sweep's extra caution: this plan's own Status forbids archiving it.
+
+    **Deliberately here and not in :func:`plan_archive.refusal_reason`**, even
+    though that function is otherwise the single home for refusals. The two
+    callers are asking different questions. An explicit ``archive-plan <path>``
+    is a human asserting the plan is done, and ``plan_archive``'s own module
+    docstring records that an archived plan may legitimately carry unticked
+    boxes — nothing reads them again. The *sweep* has no such assertion behind
+    it: it selects by a ``release=`` tag on a scope, and a scope can ship while
+    chunks of its plan remain unbuilt. Moving this check down would break
+    deliberate archiving to fix the automatic kind.
+
+    The preview/write invariant the survey docstring states is unaffected:
+    :func:`backfill` archives ``survey()["shipped"]``, so both paths ask this.
+
+    Read failure is a refusal, not a pass — the same direction every other
+    guard here takes.
+    """
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return f"cannot read the plan to check completeness: {exc}"
+    return buildplan_refs.incompleteness_reason(content)
+
+
 def survey(prawduct_dir: Path) -> dict:
     """What the backfill would do, without doing any of it.
 
@@ -184,7 +210,7 @@ def survey(prawduct_dir: Path) -> dict:
         candidate = {"path": plan_path, "scope": scope, "release": release}
         reason = plan_archive.refusal_reason(
             plan_path, artifacts_dir, state=plan_archive.COMPLETED
-        )
+        ) or _incompleteness_refusal(plan_path)
         if reason is None:
             shipped.append(candidate)
         else:
