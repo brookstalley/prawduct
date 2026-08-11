@@ -10,6 +10,30 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.3.1
+
+**The plan sweep stops recording unbuilt chunks as shipped.** `plan-backfill` now declines a plan whose own progress boxes do not say it finished — and tells you which chunk stopped it.
+
+### What was wrong
+
+The sweep chose plans by one test: does this plan's `scope=` carry a `release=` tag in the change log. That answers *did the scope ship*, and it was read as *did the plan finish*. Those are the same thing right up until a scope ships partially — and then the sweep files a plan away as `lifecycle: completed`, stamped with a release that did not carry all of it, while chunks of it are still live work.
+
+That is not hypothetical. A product on v3.3.0 had `scope=tour` released, two of its seven chunks unbuilt, and the sweep proposed archiving the plan at three consecutive release cuts. The first two were declined by hand, with the reason written down both times. The third went through.
+
+### What changed
+
+Three outcomes now, where there were two:
+
+- every box ticked → archived, as before;
+- **some boxes unticked → declined, naming the chunks** — the operator can see what the tool could not decide;
+- **no readable `## Status` roster → declined.** A plan with no roster reads as "nothing unticked", exactly like a finished one. Absence is not completion, and two such plans were live in the affected repo.
+
+**`archive-plan <path>` is unchanged and asks no completeness question.** That is deliberate, and it is what keeps this from stranding anything: when *you* archive a plan you are asserting it is done, and a plan whose work stopped rather than shipped was always meant to end as `--state superseded --superseded-by "…"`, which only a person can give a reason for. So a plan the sweep declines is one command from its correct end of life.
+
+### If you are mid-release when you update
+
+You may see a shorter list of plans to archive than v3.3.0 showed you, with the rest under the refusals heading and a reason each. That is the change working. Read the reason: tick the chunks if they shipped, or archive the plan explicitly if the work stopped. Nothing needs migrating, and rolling back only restores the more permissive behaviour.
+
 ## v3.3.0
 
 **The backlog service is live.** The readers that went dark at the Issues cutover can see your backlog again — and a build plan's progress checkboxes now mean exactly what they say.

@@ -4878,7 +4878,15 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     The one-time sweep that gives accumulated plans the end of life
     ``archive-plan`` gives a single one. Shipped is decided mechanically — a
     plan whose ``scope=`` carries a ``release=`` tag — so no judgment enters,
-    and checkbox state is neither a precondition nor corrected on the way in.
+    and checkbox state is never corrected on the way in.
+
+    Since #634 that tag is **necessary but not sufficient**: it says the scope
+    shipped, not that the plan finished, and a plan whose own ``## Status`` does
+    not evidence completion is refused into ``blocked`` with the chunk named
+    rather than proposed. Still no judgment — the predicate is a deterministic
+    count, and the refusal hands the call to a human instead of taking it.
+    ``archive-plan`` asks no completeness question, so it remains the route for a
+    plan the operator has decided is done.
 
     A product with **no** release tags gets nothing moved: the set is proposed
     and the operator confirms. That is why an empty sweep on such a repo is
