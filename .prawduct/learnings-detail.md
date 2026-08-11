@@ -3426,3 +3426,41 @@ it would have been inventing a norm mid-build rather than enforcing one.
 (0 live plans, 0 pending entries) and a worktree at pre-prep `50d99594` (3 live, 9 pending) — with
 no skips in either, plus a simulated re-run of runbook steps 3 and 11 against this cycle's own
 change-log entry and plan. One run can only ever prove the phase you are standing in.
+
+
+## RULING (harness-only-removal-is-not-a-major), 2026-08-11
+
+`api-contract.md` § Direction: "deprecation is signalled (stderr notice, kept working, removal
+deferred to a major), never silent." v3.3.2 removed `build-index` and `user-prompt-submit` in a
+patch, silently, as part of deleting the work-model tripwire.
+
+The clause's why protects CALLERS across versions. These two had exactly one caller — `hooks.json`,
+shipped inside the same plugin at the same version and updated in the same commit — so no caller
+could observe a gap. The same artifact already classes them "called by the harness, not by humans"
+(§ Operations) and already records, as a dated decision, that there is no supported external
+consumer of the subcommand surface (§ Versioning). Honouring the letter would have spent a major
+version number on a change that breaks nothing for anyone, and would have set the precedent that
+harness-internal cleanup is a major.
+
+Recorded as a `Rulings:` line on the entry rather than as an edit to its Statement or Why — editing
+a norm to permit your own change is the amend tell. `stamp-merged` and `regen-views` stay
+inert-and-deferred, which is the contrast that keeps the exception narrow rather than a loophole.
+
+## (one-home-is-the-predicate-not-the-token) Sharing a matcher shares syntax, not the definition — 2026-08-11
+
+`record_lint._norm_field_re` imports `norm_probes._FIELD_MARKER_RE` *specifically* so that one
+definition of a norm entry cannot drift; its docstring said the two "cannot drift apart on an edit."
+Adding blockquote tolerance to `_direction_lines` alone left the regex byte-identical and made them
+answer differently on identical input: `record_lint` walks raw text and never goes through
+`_direction_lines`, so a `> **Why:**` registry became N entries to the probes and 0 to the
+`governed_by` lint, whose `if not norms: continue` then silently skipped exactly the products the
+fix was written for.
+
+Two things make this worth keeping. First, the direction: the fix INTRODUCED the divergence — before
+it, both readers agreed on zero. Second, the reasoning error. The sibling module was opened
+deliberately, the shared import was seen, and the conclusion drawn was "one home, so widening
+propagates." What was shared was the pattern, not the input it is matched against. So the tell is not
+"did I check the consumers" — that check was made — but "does the shared thing include the INPUT."
+
+Found by two independent reviewers in the same cumulative round, neither by the author, against a
+commit message that asserted the opposite.

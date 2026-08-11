@@ -414,9 +414,14 @@ class TestMatcherPartition:
         )
 
     def test_orientation_only_hooks_cover_every_source(self):
-        """banner / digest / build-index carry no boundary reset, so they should
-        fire on every source. A forked session that receives no banner and no
-        digest is the same defect one level down."""
+        """banner / digest carry no boundary reset, so they should fire on every
+        source. A forked session that receives no banner and no digest is the same
+        defect one level down.
+
+        `build-index` was the third such entry until v3.3.2 deleted it with the
+        work-model tripwire; the rule is unchanged and the assertion below reads
+        the file rather than a list, so it covers whatever orientation-only
+        entries exist."""
         data = json.loads(HOOKS_JSON.read_text())
         for entry in data["hooks"]["SessionStart"]:
             cmds = [h["command"] for h in entry["hooks"]]

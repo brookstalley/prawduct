@@ -3,6 +3,86 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-11: two advisories that reported things that were not true
+
+<!-- prawduct: type=fix | scope=advisory-false-positives | chunks=01,02 -->
+
+**A blockquoted `Why:` is still a `Why:`.** The norm-registry advisory told a product that
+"no `## Direction` section is ratified in any artifact" while five ratified sections sat in its
+artifacts directory — for a week, across several syncs. That product writes every norm's rationale as
+`> **Why:** …`, and every field matcher anchors at `^\s*`, where `>` is not whitespace. So
+`_has_direction_entry` returned False, arm (a) of `probe_norm_registry_unratified` fired, and the
+reader could disprove it by opening any one of the five files.
+
+The strip happens in `_direction_lines` rather than in the four matchers, because that is the one
+point `_FIELD_MARKER_RE`, `_WHY_RE`, `_STATUS_RE` and `_FIELD_OR_ITEM_RE` all read through. One
+change therefore fixes entry detection *and* the soft-wrap joiner, which had been folding the marker
+into the middle of the prose the citation scans read (`"says the > display plane never requires…"`,
+degrading `dead-why` and `stalled-transition`).
+
+**That was not sufficient, and the first version of this entry said the opposite.** It claimed
+`record_lint` "needs to know nothing about blockquotes" because `_FIELD_MARKER_RE` stayed
+byte-identical for its imported copy. True of the regex bytes; false of the *definition*.
+`direction_norm_count` walks the raw text and never goes through `_direction_lines`, so the
+identical regex answered differently on identical input: a blockquoted registry became N entries to
+the probes and 0 to the `governed_by` lint, whose `if not norms: continue` then silently skipped
+exactly the products the strip was added for. That is #568 reopening in a new case — and it was
+*introduced* by the fix, since before it both readers agreed on zero. `_norm_field_re` now shares
+**both** halves of the definition, the marker and the blockquote prefix, which is what makes its own
+docstring's "cannot drift apart on an edit" true rather than merely intended. Three cross-module
+tests pin it. Caught by two independent reviewers in the cumulative review, not by the author.
+
+**The norm it broke is amended, not just conformed to (#643, owner decision 2026-08-11).**
+`architecture.md` § Direction *every fact has one home* was FOLLOWED here — one home, imported symbol — and
+still produced two answers, because the norm was stated at a granularity that lets a caller share a token
+and believe the fact is shared. It now says the fact is the whole predicate, and carries this case as its
+counter-example: importing a symbol LOOKS like compliance, which is what makes the failure worse than two
+frank copies — nobody re-checks a fact with one home. **It forbids something previously permitted** — sharing a constant while leaving its input unshared
+satisfied the norm as written and does not now — so it is recorded as an amendment with its own dated
+`Decision:` line, and Retroactivity gains a third violation kind (*shared symbol, unshared reader*)
+whose distinguishing property is not invisibility to grep — GOV-2R8K's copied-derivation kind shares that —
+but that a shared symbol *reads as proof of agreement*, so nobody re-checks it. Case homed at `[[one-home-is-the-predicate-not-the-token]]`.
+
+The strip runs before *heading* detection too, so `> ## Direction` opens a section and a quoted
+sibling heading closes one. Deliberate and wider than the field lines it was aimed at: stripping for
+fields but not headings would leave a wholly-quoted artifact with field lines belonging to no
+section — a silent zero rather than a visible error. Both directions are pinned.
+
+Measured rather than asserted: across all seven sibling repos carrying Direction sections, the
+affected repo flips and every other one is unchanged. The direct sibling of #569, which widened the
+same matcher for *emphasis* and never covered the *container* prefix. (#637)
+
+**The work-model term tripwire is deleted.** The pre-turn nudge that named "terms not found in any
+governing artifact" reported ordinary contractions (`you'd`, `i'll`, `they've`) and mis-stemmed
+non-words (`enriches` → `enriche`) as undocumented domain vocabulary, which is how a tripwire trains
+its reader to skim past it. **This is the owner's 2026-07-12 ruling (#257) being executed, not a new
+decision**: the resolution for this surface was deletion rather than a further precision fix, and its
+replacement is live — the `scope-trace:` question CRT-5M9J (#293) added to both the Critic and PR
+review protocols, which asks whether a capability traces to a documented requirement and is reachable
+end-to-end. Requirements-precede-code enforcement moved; it did not lapse.
+
+Gone: the `UserPromptSubmit` and SessionStart `build-index` hooks and their wiring, the derived index
+cache, and the orphan-detection surface (`build_index`, `find_orphan_terms`, `should_fire`,
+`format_nudge`, `nudge_for`, the requirement/maintenance verb sets). The bundle is net negative;
+`git diff --stat origin/develop...HEAD` gives the figure, which is not restated here because a
+line count in a durable record goes stale the next time anything touches those files — as this
+one already had by the time the PR reviewer measured it.
+
+**`prawduct-hook jurisdiction` is unaffected and deliberately kept.** It is built on the same
+salience machinery but reads the corpus directly and never touched the cache, which is what made the
+deletion separable. Everything it needs survives, including `lib/common_words.py` — the frequency
+floor now stops common words *producing* a false jurisdiction match rather than *becoming* a false
+orphan.
+
+Two consequences recorded so they are not rediscovered as bugs. The index's **gitignore entries stay**
+even though nothing writes the file: every repo that ran a pre-3.3.2 session still has that cache on
+disk, and dropping the entries would resurface all of them as untracked noise — the exact defect the
+entries were added to fix. And **#638 is not closed by this**: its mis-stemming lives in `_normalize`,
+which `jurisdiction_candidates` shares, so the bug survives as a slightly worse *ranking* rather than
+a visible false claim. It is re-scoped to jurisdiction match quality, and note the inversion — with
+the tripwire gone, `_normalize` is no longer code slated for deletion, so the 2026-07-12 ruling stops
+covering it. (#638, #257, #293)
+
 ## 2026-08-11: the plan sweep stops recording unbuilt chunks as shipped
 
 <!-- prawduct: type=fix | scope=plan-backfill-completeness | chunks=01 | release=v3.3.1 -->

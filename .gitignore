@@ -24,8 +24,10 @@ uv.lock
 .prawduct/.test-evidence.json
 .prawduct/.gates-waived
 
-# Work-model vocabulary index — derived per-repo state, rebuilt from artifacts
-# each session (hooks build-index / user-prompt-submit). Ephemeral, gitignored.
+# Work-model vocabulary index — RETIRED in v3.3.2 with the tripwire that wrote it
+# (owner ruling 2026-07-12, #257). Nothing generates this file any more; the entry
+# stays so the copies left on disk by pre-3.3.2 sessions remain invisible rather
+# than resurfacing as untracked noise in every governed repo.
 .prawduct/.work-model-index.json
 
 # Prawduct session files
