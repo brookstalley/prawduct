@@ -17,7 +17,13 @@ governed_by:
          for: a live incident (hallucinote TOUR, 2026-08-11) plus two recorded declines at earlier
          cuts. The refusal names the chunks, so its yield is readable rather than asserted."
 last_validated: 2026-08-11
+lifecycle: completed
+archived: 2026-08-11
+released_in: v3.3.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — the plan sweep stops recording unbuilt chunks as shipped
 
