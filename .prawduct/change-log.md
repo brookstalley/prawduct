@@ -5,7 +5,7 @@
 
 ## 2026-08-11: two subcommands v3.3.2 retired are callable again
 
-<!-- prawduct: type=fix | scope=retired-hook-subcommands -->
+<!-- prawduct: type=fix | scope=retired-hook-subcommands | release=v3.3.3 -->
 
 **v3.3.2 deleted `build-index` and `user-prompt-submit` from the binary and from `hooks.json` in
 one commit, and the second half is what broke.** Deleting the registrations was right; deleting the

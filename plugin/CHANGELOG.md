@@ -10,6 +10,31 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.3.3
+
+**The `SessionStart:clear hook error` v3.3.2 introduced is fixed. If your sessions started printing a usage dump at startup and once per prompt, update and it stops.**
+
+### What you were seeing
+
+```
+SessionStart:clear hook error
+Failed with non-blocking status code: Usage: prawduct-hook {clear …
+```
+
+v3.3.2 removed two hooks — `build-index` and `user-prompt-submit` — and deleted the subcommands behind them in the same commit. Within one plugin install that is consistent. Across installs it is not: **Claude Code pins a plugin version per project and updates those pins lazily**, then resolves the binary independently of the registration. So for one update cycle your repo ran the *old* hook registrations against the *new* binary, which no longer had those commands.
+
+`build-index` runs at session start; `user-prompt-submit` ran on every prompt. Hence one error at startup and one per turn.
+
+**Nothing was actually broken.** Both hooks were deliberately retired in v3.3.2 and have no work left to do — the error was the only symptom, and no governance check was skipped because of it. Both subcommands are restored as silent no-ops so a stale registration exits cleanly, and they stay unregistered in `hooks.json`.
+
+### If you are still on v3.3.2 or earlier
+
+Update the plugin (`/plugin` → update prawduct) and the errors stop at your next session. There is nothing to clean up and no state to repair.
+
+### Also
+
+`regen-views` and `stamp-merged` — the two other inert commands — were refused with exit 1 inside worktree-isolated subagents, because the disposable-worktree guard treated them as state writes. All four inert commands are now correctly classified read-only, so an isolated agent no longer sees a spurious refusal.
+
 ## v3.3.2
 
 **Two advisories that reported things that were not true — and the pre-turn "undocumented requirement" nudge is gone.**
