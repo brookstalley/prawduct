@@ -368,21 +368,26 @@ Evolution rules we want to hold, so new versions stay rare:
   meanings, and `--json` keys are not repurposed. `--json` consumers should tolerate unknown keys.
 - **Tolerant readers.** State/format readers self-heal or skip malformed input with attribution
   rather than hard-failing (evidence torn-tail repair; advisory corrupt-file quarantine).
-- **Deprecation is signalled, not silent — where a signal has a reader.** The established pattern:
-  mark the subcommand deprecated in its help, keep it working, and defer removal to a future
-  **major** version. Four subcommands are in this state, and *how* they signal splits on who calls
-  them (full definition and rationale in § Operations, "Deprecated and inert"):
-  - `stamp-merged`, `regen-views` — notice on stderr. A human or a copied operator script reads it
-    and can drop the call.
-  - `build-index`, `user-prompt-submit` — **no output on either stream.** Their only caller is a
-    pre-3.3.2 `hooks.json` registration, which has no reader to address, and a hook's stdout is
-    injected into the model's context on exit 0. Here "signalled" is discharged by the help text
-    and this artifact, not by runtime output — printing would be the defect, not the signal.
+- **Deprecation is signalled, not silent.** The established pattern: mark the subcommand deprecated
+  in its help, print a deprecation notice to stderr on use, keep it working, and defer removal to a
+  future **major** version. `stamp-merged` and `regen-views` are both in this state: each stays
+  callable, prints its notice, does nothing, and exits 0.
 
-  The deferral's own reach was clarified the hard way at v3.3.3: it governs anything a **shipped
-  artifact** can invoke, hook registrations included, because those resolve a binary version
-  independently of when they were registered. See `[[harness-only-removal-is-not-a-major]]` in
-  § Direction for the falsified premise and the open scope question.
+  **DEPARTURE, recorded not amended — 2026-08-11 (v3.3.3), pending owner ratification.**
+  `build-index` and `user-prompt-submit` join the inert tier printing **nothing on either stream**,
+  which the clause above forbids as written. Recorded here rather than by softening the clause: the
+  rule was stated for callers that can act on a notice, and rewriting it to fit the first two
+  members that cannot is the amend-to-match-own-code shape `docs/norms.md` names — the more so on
+  this branch, which declines to settle the adjacent retention-window scope for exactly that reason.
+  **Why the departure:** their only caller is a pre-3.3.2 `hooks.json` registration, which has no
+  reader who can drop the call, and a hook that exits 0 has its **stdout injected into the model's
+  context** — so the notice would be read as instruction every turn rather than seen by anyone.
+  Signalling is discharged by the help text and this artifact instead of by runtime output.
+  **What the owner is being asked:** whether the norm should gain a *silent-when-the-caller-is-a-
+  registration* clause (making this conformance), or whether these two stay a bounded exception. If
+  neither, the remedy is to make them warn on stderr — never stdout. Full behavior in § Operations,
+  "Deprecated and inert"; the deferral's reach and its falsified premise in § Direction under
+  `[[harness-only-removal-is-not-a-major]]`.
 - **Backward-compatibility commitment by tier:** *stable* surface changes only additively within a
   major; *internal* surface may change with its plugin version but must not silently break a
   skill shipped in the same version.
@@ -429,8 +434,9 @@ Evolution rules we want to hold, so new versions stay rare:
     ahead of every turn), so a deprecation notice printed the ordinary way would be read as
     instruction.
 
-  The rule the split encodes, and the reusable half of this tier: **announce when a human reads the
-  output; stay silent when the caller is a registration.** All four are members of
+  The split is a **recorded departure pending owner ratification**, not a settled rule — see
+  § Deprecation & Compatibility, where the norm it departs from still stands unamended and the
+  proposed *silent-when-the-caller-is-a-registration* clause is the question put to the owner. All four are members of
   `_EPHEMERAL_SAFE_COMMANDS` — without it the fail-closed disposable-worktree guard treats an
   unlisted command as a write and exits 1, which would falsify "exits 0" exactly where a hook
   invokes it. Pinned in `tests/test_retired_hook_subcommands.py`.
