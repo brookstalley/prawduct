@@ -34,10 +34,12 @@ rank above it.
 (typo, lint, repo, …) plus git-workflow vocabulary (commit, merge, rebase):
 session mechanics, not product requirements.
 
-Accepted recall trade (documented, deliberate): a requirement phrased entirely
-in floor words ("add payment support" — payment #538) yields no orphans and
-stays silent. The probe is an unfamiliar-token tripwire, not a parser; the
-deferred LLM-in-hook classifier remains the upgrade path for that gap.
+This floor was built for the orphan-term tripwire, which was deleted in v3.3.2
+(owner ruling 2026-07-12, #257). It survives because `jurisdiction_candidates`
+applies it in the opposite direction: a floor word can never PRODUCE a
+jurisdiction match, so two documents sharing only "quality" and "performance"
+are correctly reported as unrelated. The word list is unchanged by the deletion —
+what changed is which question it answers.
 """
 from __future__ import annotations
 
