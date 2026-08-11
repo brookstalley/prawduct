@@ -22,7 +22,13 @@ governed_by:
          halves, and the norm now states predicate-level granularity with this case as its counter-example.
          Case homed at [[one-home-is-the-predicate-not-the-token]]; the amendment itself is a
          second dated `Decision:` line on the norm, per docs/norms.md's amend-vs-ruling split."
+lifecycle: completed
+archived: 2026-08-11
+released_in: v3.3.2
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan — advisory false positives
 

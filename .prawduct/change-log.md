@@ -5,7 +5,7 @@
 
 ## 2026-08-11: two advisories that reported things that were not true
 
-<!-- prawduct: type=fix | scope=advisory-false-positives | chunks=01,02 -->
+<!-- prawduct: type=fix | scope=advisory-false-positives | chunks=01,02 | release=v3.3.2 -->
 
 **A blockquoted `Why:` is still a `Why:`.** The norm-registry advisory told a product that
 "no `## Direction` section is ratified in any artifact" while five ratified sections sat in its

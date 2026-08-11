@@ -10,6 +10,34 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.3.2
+
+**Two advisories that reported things that were not true — and the pre-turn "undocumented requirement" nudge is gone.**
+
+### A blockquoted `Why:` is still a `Why:`
+
+If your norms write their rationale as `> **Why:** …`, prawduct could not see them. Every field matcher anchored at the start of the line, and a blockquote marker is not whitespace — so a product with five ratified `## Direction` sections was told, for a week and across several syncs, that *"no `## Direction` section is ratified in any artifact."*
+
+Fixed at the one point all four matchers read through, so entry detection and the line-joining are fixed together. That second half mattered more than it sounds: a wrapped blockquoted `Why:` used to fold its `>` into the middle of the sentence, which is the text the decay scans (`dead-why`, `stalled-transition`) actually read.
+
+**If you were affected, the advisory clears itself** at your next session — nothing to dismiss, nothing to re-ratify.
+
+### The work-model term tripwire is deleted
+
+The pre-turn nudge that named "terms not found in any governing artifact" is removed, along with its `UserPromptSubmit` and `build-index` hooks and the vocabulary index they maintained. **You will notice two things: one fewer hook at session start, and no more prompt-time nudge.**
+
+It was deleted rather than tuned because it had stopped carrying signal — it reported ordinary contractions (`you'd`, `i'll`) and mis-stemmed non-words (`enriches` → `enriche`) as undocumented domain vocabulary, which is how a tripwire teaches its reader to skim past it.
+
+**The enforcement did not lapse; it moved.** Both the Critic and PR review protocols now carry a `scope-trace:` question — does this capability trace to a documented requirement, and is it reachable end-to-end — which asks the same thing where it can actually be answered against the work rather than against a prompt.
+
+`prawduct-hook jurisdiction` is unaffected and keeps working. Leftover `.prawduct/.work-model-index.json` files are harmless; their ignore entries deliberately stay so they remain invisible rather than resurfacing as untracked noise.
+
+### One norm gained a clause
+
+`architecture.md` § Direction's *every fact has one home* now says a fact is the **whole predicate**, not a token inside it: sharing a constant shares syntax, while sharing the constant *and* the reader that feeds it shares the definition.
+
+This does forbid something it previously permitted, so it is worth a moment if you follow that norm. Nothing mechanical enforces it — the row is Critic-judgment-only — so no gate changes behaviour on upgrade; what changes is what a reviewer asks. It was added because prawduct followed its own norm correctly, sharing one imported constant between two modules, and still got two different answers, because only one of them normalized its input first.
+
 ## v3.3.1
 
 **The plan sweep stops recording unbuilt chunks as shipped.** `plan-backfill` now declines a plan whose own progress boxes do not say it finished — and tells you which chunk stopped it.
