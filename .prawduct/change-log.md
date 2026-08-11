@@ -40,7 +40,8 @@ counter-example: importing a symbol LOOKS like compliance, which is what makes t
 frank copies — nobody re-checks a fact with one home. **It forbids something previously permitted** — sharing a constant while leaving its input unshared
 satisfied the norm as written and does not now — so it is recorded as an amendment with its own dated
 `Decision:` line, and Retroactivity gains a third violation kind (*shared symbol, unshared reader*)
-that no duplicate-text sweep can see. Case homed at `[[one-home-is-the-predicate-not-the-token]]`.
+whose distinguishing property is not invisibility to grep — GOV-2R8K's copied-derivation kind shares that —
+but that a shared symbol *reads as proof of agreement*, so nobody re-checks it. Case homed at `[[one-home-is-the-predicate-not-the-token]]`.
 
 The strip runs before *heading* detection too, so `> ## Direction` opens a section and a quoted
 sibling heading closes one. Deliberate and wider than the field lines it was aimed at: stripping for
