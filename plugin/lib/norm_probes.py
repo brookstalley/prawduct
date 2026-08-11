@@ -192,6 +192,23 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 # followed immediately by a colon, and a bold statement has neither.
 _FIELD_OR_ITEM_RE = re.compile(r"^\s*(?:[-*]\s|(?:\*{1,2}|_{1,2})?[A-Z][A-Za-z-]*:)")
 
+# A leading markdown blockquote prefix: one or more `>` (nesting is ordinary
+# markdown), each optionally followed by a space, at the head of a line.
+#
+# Stripped in `_direction_lines` rather than tolerated in each matcher, because
+# EVERY field matcher below anchors at `^\s*` and `>` is not whitespace — so a
+# product writing `> **Why:** ...` lost entry detection, the ratification
+# signal, dead-why and stalled-transition together. Widening the four regexes
+# instead would put the same concession in four places for the next edit to
+# desynchronize (`_STATUS_RE`'s prefix/closer split is exactly that failure,
+# one field over), and would leave the soft-wrap joiner still folding a `>`
+# into the middle of the prose the citation scans read.
+#
+# One strip point also keeps `_FIELD_MARKER_RE` byte-identical, which is what
+# `record_lint._norm_field_re` imports — the shared definition of a norm entry
+# stays shared without record_lint needing to know blockquotes exist.
+_BLOCKQUOTE_PREFIX_RE = re.compile(r"^\s*(?:>\s?)+")
+
 # Norm-entry field markers (docs/norms.md § Anatomy). Case-sensitive to the
 # canonical capitalization — these are machine-readable markers, not prose —
 # but tolerant of markdown emphasis around them.
@@ -370,11 +387,19 @@ def _direction_lines(text: str) -> list[str]:
     ``Why:`` across physical lines, and a backlog id cited after the wrap point
     must still be seen by the mechanical scans (dead-why, stalled-transition).
     A paragraph after a blank line stands alone: detached descriptive
-    surroundings never merge into a field line."""
+    surroundings never merge into a field line.
+
+    Leading blockquote markers are stripped (:data:`_BLOCKQUOTE_PREFIX_RE`)
+    before any of that, so `> **Why:** ...` behaves exactly as the unquoted form
+    does — as a line start for the soft-wrap rule and as a field marker
+    downstream. A line that is only a marker (`>`) becomes blank, which is the
+    correct reading: an empty quoted line separates logical units just as an
+    empty plain one does."""
     out: list[str] = []
     in_section = False
     section_level = 0
-    for line in text.splitlines():
+    for raw in text.splitlines():
+        line = _BLOCKQUOTE_PREFIX_RE.sub("", raw)
         heading = _HEADING_RE.match(line)
         if heading:
             level = len(heading.group(1))
