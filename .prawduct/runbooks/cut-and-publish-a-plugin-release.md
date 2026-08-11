@@ -2,8 +2,8 @@
 runbook: cut-and-publish-a-plugin-release
 tier: 3
 owner: prawduct maintainer
-last_verified: null
-verified_by: null
+last_verified: 2026-08-11   # executed end-to-end for the v3.3.4 cut; every step matched
+verified_by: brookstalley
 ---
 
 # Cut and publish a Prawduct plugin release
@@ -753,6 +753,15 @@ mean the withheld work shipped.*
      the session you cut the release from began before the release existed. Start a new session
      and re-check; do nothing else. *(Measured at v3.2.5: installed `3.2.4`, no `3.2.5` cache
      directory, shas differ, release verified 3 of 3.)*
+
+     > **First clean run of the corrected test, v3.3.4.** Installed `3.3.3`, no `3.3.4` cache
+     > directory, `Done when` pair differs (`abafac96` released vs `e123dd1a` installed) — and the
+     > triage below printed **case 1**, because `c7a3ebf2:plugin` and `v3.3.3:plugin` are both
+     > `e123dd1a`. The cache held the v3.3.3 plugin exactly. This is the measurement #646 was
+     > written for: the removed `merge-base --is-ancestor` form would have called this same correct
+     > install a NON-release tree and sent the operator to delete the cache. The v3.2.5 note above
+     > was taken *with* the broken test, which is why it could only report "shas differ" and never
+     > reach a case.
   2. **`version` is the new release, and the sha is the *prep* commit** — the failure this bullet
      was written for. The cache was filled during the Phase 1–2 gap, and it will not refresh on
      its own because the version key never changed between prep and promotion. Fix it before you

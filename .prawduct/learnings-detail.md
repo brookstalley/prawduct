@@ -726,6 +726,44 @@ for the frontmatter line — verify it against the sibling-plan convention, beca
 frontmatter `scope:` is not. Relates to Coherent Artifacts (#13), Validate Before Propagating (#15),
 Independent Review (#14 — the reviewer surfaced it but mis-severitied it; the audit caught the real impact).
 
+**Second instance, v3.3.4 (2026-08-11) — and the rule as written could not have prevented it.**
+`build-plan-v3.3.4-batch.md` declared `scope: v3.3.4-batch` while the change log tagged five
+scopes (`deprecation-retention-window`, `release-runbook-tree-identity`,
+`jurisdiction-term-normalization`, `archive-unbuilt-stamp`, `claude-md-trim`). Two consequences at
+the cut, one of them new:
+
+- `check-releasability` printed **five** `no build-plan file` advisories — one per shipping scope.
+  Advisory only, so the release proceeded correctly; the release plan and the change-log bodies
+  documented all five, so nothing actually shipped undescribed. The advisories were *true about the
+  join and false about reality*, which is the shape that teaches an operator to skim them.
+- **`plan-backfill` swept nothing** — the consumer the 2026-06 rule never named. The sweep pairs
+  plan→release through the same `scope=` join, so it left the plan live and reported it as work
+  still in flight. Runbook step 11 assumes the sweep is the mechanical answer and offers no branch
+  for "the join cannot resolve", so the plan needed an explicit
+  `archive-plan --state completed --release v3.3.4`. That route worked cleanly and stamped no
+  `unbuilt_at_archive:` (correctly — every box was ticked), which incidentally exercised this
+  release's own #636 on itself.
+
+**Root cause, and why the first fix did not hold.** The 2026-06 rule reads as "don't put a version
+there," so `v3.3.4-batch` looks like a *scope name that happens to contain a version* and slips the
+letter of it. The real constraint is arity: **the field is a single string and the join is exact
+equality, so a plan covering N scopes has no legal value for N > 1.** Both recorded instances are
+batch releases, which is not a coincidence — batching is the only thing that produces the
+many-to-one shape.
+
+**Why it survives review.** The field is written by the builder and read only by the releaser, so
+the feedback loop is a whole release cycle long and the person who pays is never the person who
+wrote it. The batch plan built, reviewed and merged cleanly for its entire life; nothing was wrong
+with it until a release tried to pair it.
+
+**The rule**: a batch plan must not try to satisfy the join. Either give each shipped scope its own
+plan (which is also what makes `## Status` boxes readable per-scope), or accept the plan is
+unpaired, expect the advisories, and archive it by hand at the cut. Do not invent a composite value
+— exact equality means a list, a slash-joined string and a batch label all resolve to nothing,
+identically. Structural fix, if this recurs a third time: the advisory fires at release time, which
+is the wrong end of the loop — the same join is checkable at PR time, when the plan's author is
+still holding the context.
+
 ## When serially merging several stale feature branches into develop for one batched release, expect additive bookkeeping conflicts every time — and watch for a duplicate `active_build_plan:` key the auto-merge creates
 
 **Pattern**: v2.1.8 batch release (2026-06-22). Four completed-but-stale feature branches
