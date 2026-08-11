@@ -340,12 +340,18 @@ amended 2026-07-29). Step 10 is that test.
   human-read warning precisely because no automation touches the Release text. **A red run is a
   fact about the release, not a suspect workflow** — this job has been exercised both ways at
   v3.2.4, green against a real tag and red with a `not-released` verdict against a bogus one.
-- Your own install holds the released tree — these two print the **same** 40-character sha:
+- Your own install holds the released **tree** — these two print the **same** 40-character sha:
 
   ```
-  echo "released:  $(git rev-parse vX.Y.Z^{commit})"
-  echo "installed: $(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")"
+  echo "released:  $(git rev-parse vX.Y.Z^{tree})"
+  echo "installed: $(git rev-parse "$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")^{tree}")"
   ```
+
+  **Trees, not commits.** `main`'s history is disjoint from `develop`'s by construction — doubly so
+  here, where step 6 builds the candidate tree by classified `--3way` apply — so a release tag never
+  shares a commit identity with anything a `directory:` install resolved from `develop`. A commit-sha
+  comparison cannot pass on any release. *(Fixed at v3.3.4, #646, alongside the identical defect in
+  the sibling runbook.)*
 
   *(Differing shas: see the same bullet in `cut-and-publish-a-plugin-release.md` §"If this doesn't work".)*
 - `git diff --stat origin/main origin/develop` is **non-empty**, and what it lists is the withheld
