@@ -368,10 +368,21 @@ Evolution rules we want to hold, so new versions stay rare:
   meanings, and `--json` keys are not repurposed. `--json` consumers should tolerate unknown keys.
 - **Tolerant readers.** State/format readers self-heal or skip malformed input with attribution
   rather than hard-failing (evidence torn-tail repair; advisory corrupt-file quarantine).
-- **Deprecation is signalled, not silent.** The established pattern: mark the subcommand deprecated
-  in its help, print a deprecation notice to stderr on use, keep it working, and defer removal to a
-  future **major** version. `stamp-merged` and `regen-views` are both in this state: each stays
-  callable, prints its notice, does nothing, and exits 0.
+- **Deprecation is signalled, not silent — where a signal has a reader.** The established pattern:
+  mark the subcommand deprecated in its help, keep it working, and defer removal to a future
+  **major** version. Four subcommands are in this state, and *how* they signal splits on who calls
+  them (full definition and rationale in § Operations, "Deprecated and inert"):
+  - `stamp-merged`, `regen-views` — notice on stderr. A human or a copied operator script reads it
+    and can drop the call.
+  - `build-index`, `user-prompt-submit` — **no output on either stream.** Their only caller is a
+    pre-3.3.2 `hooks.json` registration, which has no reader to address, and a hook's stdout is
+    injected into the model's context on exit 0. Here "signalled" is discharged by the help text
+    and this artifact, not by runtime output — printing would be the defect, not the signal.
+
+  The deferral's own reach was clarified the hard way at v3.3.3: it governs anything a **shipped
+  artifact** can invoke, hook registrations included, because those resolve a binary version
+  independently of when they were registered. See `[[harness-only-removal-is-not-a-major]]` in
+  § Direction for the falsified premise and the open scope question.
 - **Backward-compatibility commitment by tier:** *stable* surface changes only additively within a
   major; *internal* surface may change with its plugin version but must not silently break a
   skill shipped in the same version.
