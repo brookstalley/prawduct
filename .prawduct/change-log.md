@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-11: two subcommands v3.3.2 retired are callable again
+
+<!-- prawduct: type=fix | scope=retired-hook-subcommands -->
+
+**v3.3.2 deleted `build-index` and `user-prompt-submit` from the binary and from `hooks.json` in
+one commit, and the second half is what broke.** Deleting the registrations was right; deleting the
+subcommands was not. The harness pins a plugin version **per project** and updates those pins
+lazily, so for one update cycle a repo runs a pre-3.3.2 `hooks.json` against a 3.3.2 binary — and
+that pairing invoked names the dispatcher no longer had. The unknown-command branch prints the usage
+string and exits 1, which every product repo saw as `SessionStart:clear hook error` at session start
+and, via `UserPromptSubmit`, once per prompt. Reported from `../samsung-frame-art-loader` (pinned
+3.3.0 with a user-scope 3.3.2 install beside it); reproduced exactly by running the 3.3.2 binary
+with each name.
+
+Both are inert again — exit 0, no writes, unknown flags and stdin payloads tolerated — per the
+deprecation norm that already keeps `regen-views` and `stamp-merged` callable: signalled, not
+removed, with removal deferred to a major. `hooks.json` still does **not** register them, which was
+the correct half of v3.3.2 and is pinned so that keeping them callable cannot resurrect the hooks.
+
+**They are silent, where the other two deprecated commands warn.** That asymmetry is the point, not
+an oversight. `regen-views` warns because a person reads its output and can drop the call; nobody
+reads these — the caller is a stale registration the next plugin update replaces on its own, so a
+notice has no audience and would be the same session-start noise one severity quieter. Stronger
+still on stdout, where silence is a correctness requirement rather than a courtesy: a hook that
+exits 0 has its **stdout injected into the model's context** — SessionStart into the session,
+UserPromptSubmit ahead of every turn — so a deprecation notice printed the ordinary way would be
+read as instruction on every turn. Pinned on both streams.
+
+**The reasoning that let the deletion through is corrected at its source.** `cmd_regen_views`'s
+docstring asserted that this skew "cannot arise between a prawduct skill and this CLI — they ship
+from one version-keyed cache." True of a skill. False of a **hook registration**, which ships from
+that same cache but is invoked by the *harness*, against whichever version that project's pin
+resolves to. Left standing, that sentence reads as blanket permission to delete any hook-registered
+subcommand outright. It now names this case as its counter-example and states the norm's actual
+reach: anything a shipped artifact can invoke, hooks included.
+
+The forward-looking guard is a test that reads the commands out of the shipped `hooks.json` and
+asserts each one still dispatches, so the next retirement of a hook-registered subcommand fails in
+CI rather than in the field. Its parse is itself asserted non-empty — a regex that matched nothing
+would make it vacuously green. The retired set is frozen in the test file rather than re-derived
+from `hooks.json`, which no longer mentions either name. 12 of the 17 new tests fail against the
+pre-fix binary; the 5 that pass are the ones that should.
+
 ## 2026-08-11: two advisories that reported things that were not true
 
 <!-- prawduct: type=fix | scope=advisory-false-positives | chunks=01,02 | release=v3.3.2 -->

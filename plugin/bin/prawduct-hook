@@ -3397,12 +3397,21 @@ def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
 
     **Why it is still callable.** ``api-contract.md``'s deprecation norm requires
     a retired subcommand to be signalled rather than removed: kept working,
-    announced on stderr, removal deferred to a major. The skew that norm protects
-    against cannot arise between a prawduct skill and this CLI — they ship from
-    one version-keyed cache — but it absolutely can in a hand-written operator
-    script or a copied runbook, and prawduct's own release runbook called this
-    command. Those callers get a notice telling them what to do instead, not a
-    non-zero exit that breaks a pipeline mid-release.
+    announced on stderr, removal deferred to a major. The caller this protects is
+    a hand-written operator script or a copied runbook — prawduct's own release
+    runbook called this command — which gets a notice telling it what to do
+    instead, not a non-zero exit that breaks a pipeline mid-release.
+
+    **One category of caller this docstring used to rule out, wrongly.** It said
+    the skew "cannot arise between a prawduct skill and this CLI — they ship from
+    one version-keyed cache." True of a skill; **false of a hook registration**,
+    which is also shipped-in-cache but is invoked by the *harness*, and the
+    harness pins a plugin version per project and updates those pins lazily. So
+    an old ``hooks.json`` routinely calls a new binary. v3.3.2 read that sentence
+    as covering hooks too and deleted ``build-index`` and ``user-prompt-submit``
+    outright; every product repo mid-update then hit usage text and exit 1 on
+    session start and on every prompt. Both are inert commands again below — the
+    norm applies to anything a shipped artifact can invoke, hooks included.
 
     Exit 0 unconditionally, including for unknown flags: a command that does
     nothing cannot be misused, and a usage error here would be the pipeline break
@@ -4506,6 +4515,70 @@ def cmd_stamp_merged(project_dir: Path) -> int:
     return 0
 
 
+def cmd_build_index(project_dir: Path, argv: list[str] | None = None) -> int:
+    """DEPRECATED and inert — writes nothing, prints nothing to stdout, exits 0.
+
+    This warmed the work-model vocabulary index on SessionStart. The index and
+    the undocumented-term tripwire it fed were deleted at v3.3.2; enforcement
+    moved to the review-time ``scope-trace:`` question. There is nothing left to
+    build.
+
+    **Why it is still callable, when v3.3.2 deleted it outright.** Its caller is
+    not a person — it is the ``hooks.json`` that shipped with every version up to
+    3.3.1, and the harness pins a plugin version **per project** and updates
+    those pins lazily. So a repo routinely runs an old registration against a new
+    binary, and for one update cycle after v3.3.2 that pairing invoked a
+    subcommand the binary no longer had: usage text on stderr, exit 1, surfaced
+    to the user as ``SessionStart:clear hook error`` on every session start of
+    every product repo. ``regen-views``'s docstring argues this skew "cannot
+    arise … they ship from one version-keyed cache", which is true of a skill and
+    a CLI and **false of a hook registration** — that reasoning is what let the
+    deletion through, and it is corrected there now.
+
+    **Silent, unlike the other two deprecated commands, and that is deliberate.**
+    ``regen-views`` and ``stamp-merged`` warn because a human reads their output
+    and can drop the call. Nobody reads this one: the caller is a stale
+    registration that the next plugin update replaces on its own, so a warning
+    has no audience and would simply be the session-start noise this fix removes,
+    one severity quieter. **Nothing may reach stdout** — a SessionStart hook's
+    stdout is injected into the model's context, so a notice here would land in
+    the transcript of every session.
+
+    Exit 0 unconditionally, including for unknown flags: a command that does
+    nothing cannot be misused, and a usage error here is precisely the failure
+    being fixed.
+    """
+    del project_dir, argv  # kept so the dispatcher's call site is unchanged
+    return 0
+
+
+def cmd_user_prompt_submit(project_dir: Path, argv: list[str] | None = None) -> int:
+    """DEPRECATED and inert — writes nothing, prints nothing to stdout, exits 0.
+
+    This was the UserPromptSubmit tripwire that named salient terms in a prompt
+    which no governing artifact covered. It was deleted at v3.3.2 for reporting
+    contractions and mis-stemmed non-words as domain vocabulary; the owner's
+    ruling (#257) was deletion, not another precision fix.
+
+    Kept callable for the reason given in :func:`cmd_build_index` — a pre-3.3.2
+    ``hooks.json`` registers it, and version pins update per project rather than
+    all at once. This one is the sharper case of the two: UserPromptSubmit fires
+    on **every turn**, so the skew produced an error line per prompt rather than
+    one per session.
+
+    **Silence here is a correctness requirement, not just courtesy.** A
+    UserPromptSubmit hook that exits 0 has its stdout injected into the model's
+    context ahead of the user's prompt, so anything printed there would be read
+    as instruction on every single turn. stderr stays empty too, for the
+    no-audience reason in :func:`cmd_build_index`.
+
+    Does not read stdin: the payload is the prompt itself and there is nothing to
+    do with it. Exits 0 for any argv.
+    """
+    del project_dir, argv  # kept so the dispatcher's call site is unchanged
+    return 0
+
+
 def cmd_migrate_plugin(project_dir: Path, argv: list[str]) -> int:
     """Dispatch the file-sync → plugin cutover (``/prawduct:migrate``, Chunk 9).
 
@@ -5230,6 +5303,7 @@ _USAGE = (
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
     "regen-views [deprecated, inert]|stamp-merged [deprecated, inert]|"
+    "build-index [deprecated, inert]|user-prompt-submit [deprecated, inert]|"
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
@@ -5911,6 +5985,13 @@ def main() -> int:
         return cmd_check_pr_doc_only(project_dir)
     elif command == "stamp-merged":
         return cmd_stamp_merged(project_dir)
+    # Retired at v3.3.2, kept dispatchable: a pre-3.3.2 hooks.json still
+    # registers both, and plugin version pins update per project rather than
+    # all at once.
+    elif command == "build-index":
+        return cmd_build_index(project_dir, sys.argv[2:])
+    elif command == "user-prompt-submit":
+        return cmd_user_prompt_submit(project_dir, sys.argv[2:])
     elif command == "regen-views":
         return cmd_regen_views(project_dir, sys.argv[2:])
     elif command == "infer-critic-mode":
