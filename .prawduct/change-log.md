@@ -39,12 +39,32 @@ resolves to. Left standing, that sentence reads as blanket permission to delete 
 subcommand outright. It now names this case as its counter-example and states the norm's actual
 reach: anything a shipped artifact can invoke, hooks included.
 
-The forward-looking guard is a test that reads the commands out of the shipped `hooks.json` and
-asserts each one still dispatches, so the next retirement of a hook-registered subcommand fails in
-CI rather than in the field. Its parse is itself asserted non-empty — a regex that matched nothing
-would make it vacuously green. The retired set is frozen in the test file rather than re-derived
-from `hooks.json`, which no longer mentions either name. 12 of the 17 new tests fail against the
-pre-fix binary; the 5 that pass are the ones that should.
+**Both were also refused inside a disposable worktree, which the first version of this fix missed.**
+`main()` runs `_check_ephemeral_worktree` *before* dispatch and it is fail-closed — anything not
+positively known to be read-only counts as a write — and v3.3.2 had removed both names from
+`_HARNESS_INVOKED_COMMANDS` along with everything else. So in a `.claude/worktrees/agent-*` tree a
+stale registration got `BLOCKED: refusing …` and **exit 1**: the same symptom this entry is about,
+surviving in the one environment prawduct itself creates, and falsifying the new docstrings' "exits
+0 unconditionally". Both are now in `_EPHEMERAL_SAFE_COMMANDS` — and so are `regen-views` and
+`stamp-merged`, which carried the identical gap behind the identical false claim since they were
+emptied. One classification, not four decisions. Measured both ways in a real ephemeral worktree:
+exit 1 before, exit 0 after, with the refusal path proved live in the same fixture by a command that
+is *not* on the list. Caught by the Critic, not the author.
+
+The forward-looking guard keys on an append-only `EVER_REGISTERED_HOOK_COMMANDS` set and derives the
+retired set by **subtraction**, because the obvious version does not work: a guard built from the
+*current* `hooks.json` fires only when a command is deleted from the binary while still registered,
+which is not what happened — v3.3.2 dropped the registration and the dispatcher branch in one
+commit, leaving nothing to assert against. Subtracting means un-registering moves a name from one
+checked bucket to the other instead of out of the check, and registering a new hook command without
+recording it fails its own test. The parse is asserted non-empty and the retired set asserted
+non-empty, so neither can go vacuously green.
+
+**Release timing, stated rather than left implicit:** v3.3.2 is tagged and live, so every affected
+repo hits this at session start and once per prompt until a release carries the fix. That is why
+this ships as an expedited v3.3.3 rather than riding the next scheduled promotion. A repo stranded
+in the meantime loses nothing — the two hooks that fail are hooks with no work left to do — and
+updating the plugin clears it.
 
 ## 2026-08-11: two advisories that reported things that were not true
 

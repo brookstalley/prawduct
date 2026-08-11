@@ -3446,6 +3446,39 @@ Recorded as a `Rulings:` line on the entry rather than as an edit to its Stateme
 a norm to permit your own change is the amend tell. `stamp-merged` and `regen-views` stay
 inert-and-deferred, which is the contrast that keeps the exception narrow rather than a loophole.
 
+### Premise falsified the same day — 2026-08-11 (v3.3.3)
+
+The paragraph above contains one false sentence: *"so no caller could observe a gap."* Every
+product repo did. Within hours of v3.3.2 publishing, `../samsung-frame-art-loader` and its siblings
+were printing `SessionStart:clear hook error` with the CLI usage string at every session start, and
+the same failure once per prompt through `UserPromptSubmit`.
+
+**Where the reasoning went wrong.** "Shipped inside the same plugin at the same version and updated
+in the same commit" is a fact about the *repository*, and it was read as a fact about *installs*.
+It is not one. Claude Code caches the plugin per version under
+`plugins/cache/prawduct/prawduct/<version>/` and records a pin **per project** in
+`installed_plugins.json`; those pins move lazily and independently of each other. At the moment of
+the report, four sibling repos sat at 3.3.0 or 3.3.1 with a user-scope 3.3.2 install beside them.
+The harness then resolves which binary runs — so a `hooks.json` registration is not a caller that
+updates in lockstep with the binary. It is the caller that *most reliably does not*, because it is
+invoked by the harness rather than by anything that ships with it.
+
+Co-shipping is real, but it only proves atomicity **within one cache directory**, and the decision
+lands across directories. That is the transferable error: a compatibility argument that names a
+version or a commit, rather than naming who invokes the caller and when that invoker updates.
+
+**What this does and does not overturn.** The tier question the owner actually ruled on — that
+harness-only removal need not spend a major — is untouched; nothing here argues a major was owed.
+What is withdrawn is the *warrant*, the claim that no gap is observable. The consequence follows
+from the norm's own why (protecting callers across versions) rather than from the tier: unregistering
+a hook is free and takes effect at the next session start, but **deleting its subcommand is not
+free until no supported install still registers it**. v3.3.3 restores both as inert on that reading.
+
+Left open for the owner rather than settled here, because scope is normative content and an
+amendment carries it: whether the exception should state that inert-retention window explicitly.
+Recorded the same shape as `[[install-reference-is-published]]` — a premise falsified without the
+decision necessarily becoming wrong.
+
 ## (one-home-is-the-predicate-not-the-token) Sharing a matcher shares syntax, not the definition — 2026-08-11
 
 `record_lint._norm_field_re` imports `norm_probes._FIELD_MARKER_RE` *specifically* so that one

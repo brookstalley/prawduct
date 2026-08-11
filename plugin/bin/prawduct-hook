@@ -4524,29 +4524,22 @@ def cmd_build_index(project_dir: Path, argv: list[str] | None = None) -> int:
     build.
 
     **Why it is still callable, when v3.3.2 deleted it outright.** Its caller is
-    not a person — it is the ``hooks.json`` that shipped with every version up to
-    3.3.1, and the harness pins a plugin version **per project** and updates
-    those pins lazily. So a repo routinely runs an old registration against a new
-    binary, and for one update cycle after v3.3.2 that pairing invoked a
-    subcommand the binary no longer had: usage text on stderr, exit 1, surfaced
-    to the user as ``SessionStart:clear hook error`` on every session start of
-    every product repo. ``regen-views``'s docstring argues this skew "cannot
-    arise … they ship from one version-keyed cache", which is true of a skill and
-    a CLI and **false of a hook registration** — that reasoning is what let the
-    deletion through, and it is corrected there now.
+    a pre-3.3.2 ``hooks.json``, and the harness pins a plugin version per project
+    and updates those pins lazily — so a repo routinely runs an old registration
+    against a new binary. The deprecation norm, its falsified warrant and the
+    retention rule all live at ``.prawduct/artifacts/api-contract.md`` § Direction
+    (additive-first evolution); this docstring cites it rather than restating it,
+    because the last copy of that reasoning to live in a docstring is the one
+    that went wrong.
 
-    **Silent, unlike the other two deprecated commands, and that is deliberate.**
-    ``regen-views`` and ``stamp-merged`` warn because a human reads their output
-    and can drop the call. Nobody reads this one: the caller is a stale
-    registration that the next plugin update replaces on its own, so a warning
-    has no audience and would simply be the session-start noise this fix removes,
-    one severity quieter. **Nothing may reach stdout** — a SessionStart hook's
-    stdout is injected into the model's context, so a notice here would land in
-    the transcript of every session.
+    **Silent, unlike ``regen-views`` and ``stamp-merged``.** They warn because a
+    human reads their output and can drop the call; nobody reads this one, so a
+    notice has no audience. **Nothing may reach stdout** — a SessionStart hook's
+    stdout is injected into the model's context.
 
-    Exit 0 unconditionally, including for unknown flags: a command that does
-    nothing cannot be misused, and a usage error here is precisely the failure
-    being fixed.
+    Exit 0 unconditionally, including for unknown flags. Membership in
+    ``_EPHEMERAL_SAFE_COMMANDS`` is what makes that true inside a disposable
+    worktree, where the fail-closed guard would otherwise refuse it.
     """
     del project_dir, argv  # kept so the dispatcher's call site is unchanged
     return 0
@@ -4560,20 +4553,21 @@ def cmd_user_prompt_submit(project_dir: Path, argv: list[str] | None = None) -> 
     contractions and mis-stemmed non-words as domain vocabulary; the owner's
     ruling (#257) was deletion, not another precision fix.
 
-    Kept callable for the reason given in :func:`cmd_build_index` — a pre-3.3.2
-    ``hooks.json`` registers it, and version pins update per project rather than
-    all at once. This one is the sharper case of the two: UserPromptSubmit fires
-    on **every turn**, so the skew produced an error line per prompt rather than
-    one per session.
+    Kept callable for the reason given in :func:`cmd_build_index`, which cites
+    the governing norm. This one is the sharper case of the two: UserPromptSubmit
+    fires on **every turn**, so the skew produced an error line per prompt rather
+    than one per session.
 
-    **Silence here is a correctness requirement, not just courtesy.** A
+    **Silence here is a correctness requirement, not courtesy.** A
     UserPromptSubmit hook that exits 0 has its stdout injected into the model's
     context ahead of the user's prompt, so anything printed there would be read
-    as instruction on every single turn. stderr stays empty too, for the
-    no-audience reason in :func:`cmd_build_index`.
+    as instruction on every single turn.
 
     Does not read stdin: the payload is the prompt itself and there is nothing to
-    do with it. Exits 0 for any argv.
+    do with it. The harness tolerated an unread stdin here before this change too
+    — the pre-fix usage branch also exited without reading — but if a report ever
+    shows a writer-side EPIPE on a large prompt, one guarded ``sys.stdin.read()``
+    is the fix and this sentence is where to revisit it. Exits 0 for any argv.
     """
     del project_dir, argv  # kept so the dispatcher's call site is unchanged
     return 0
@@ -5616,6 +5610,19 @@ _EPHEMERAL_OVERRIDE_ENV = "PRAWDUCT_ALLOW_EPHEMERAL_WRITES"
 # read-only; `verify-operator-verification` reads as a check and mutates the
 # verification queue.
 _EPHEMERAL_SAFE_COMMANDS = frozenset({
+    # The deprecated-and-inert tier. Provably read-only — every one of these
+    # bodies is a print-and-return-0 or a bare return 0 — and membership here is
+    # what makes their docstrings' "exits 0 everywhere" true. Without it the
+    # fail-closed guard above treats an unlisted command as a write and refuses
+    # with exit 1 inside a disposable worktree, which for the two hook-invoked
+    # members is the very session-start hook error they were restored to remove
+    # (v3.3.3). `regen-views` and `stamp-merged` carried the same gap and the
+    # same false claim since they were emptied; this is one classification, not
+    # four decisions. Pinned in tests/test_retired_hook_subcommands.py.
+    "build-index",
+    "user-prompt-submit",
+    "regen-views",
+    "stamp-merged",
     "bug-inbox",
     "check-change-log-entry",
     "check-cumulative-critic",

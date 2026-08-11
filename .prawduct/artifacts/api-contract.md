@@ -77,6 +77,24 @@ in `docs/governance-telemetry.md`.
   Recorded rather than amended deliberately: editing the norm's own text to permit this change is
   the shape `docs/norms.md` warns against, and the departure is better carried as a ruling the next
   reader meets beside the rule.
+  **Premise falsified 2026-08-11 (v3.3.3), same day — this is a fact, not a re-decision.** The
+  sentence "no caller could observe the gap" is false, and the field disproved it within hours: every
+  product repo running a pre-3.3.2 `hooks.json` against the 3.3.2 binary printed usage text and
+  exited 1 at session start and on every prompt. The error is in treating "ships in the same plugin
+  at the same version, updated in the same commit" as implying the caller updates atomically. It does
+  not: the **harness pins a plugin version per project and updates those pins lazily**, then resolves
+  the binary independently of the registration — so a hooks.json caller is the one caller that
+  *routinely* observes a version gap, rather than the one that cannot. Same shape as
+  [[install-reference-is-published]] above: a premise falsified without the decision necessarily
+  becoming wrong.
+  **What survives, and what needs the owner.** Untouched: that harness-only removal need not spend a
+  major (the tier question the owner actually ruled on), and the narrowness that keeps
+  `stamp-merged`/`regen-views` deferred. Open, and **not** settled here because scope is normative
+  content an amendment must carry: whether the exception should require an inert-retention window —
+  *unregistering a hook is free and immediate; deleting its subcommand waits until no supported
+  install still registers it.* v3.3.3 restores both commands as inert on that reading, but the code
+  is the repair, not the ratification. Until the owner rules, treat the tier permission as live and
+  the atomic-update warrant as withdrawn.
 
 ## Operations
 
@@ -103,6 +121,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`,
   `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
+- **Retired hook subcommands** — `build-index`, `user-prompt-submit` (deprecated, inert since
+  v3.3.3). No longer registered in `hooks.json`; kept dispatchable because a pre-3.3.2 registration
+  still invokes them and plugin version pins update per project. Silent on **both** streams, unlike
+  the two inert commands above: a hook's stdout is injected into the model's context on exit 0, and
+  their caller is a stale registration with no reader to address.
 - **Build-plan lifecycle** — `archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD]
   [--release vX.Y.Z] [--superseded-by <text>] [--dry-run]` (mutating): stamps a plan with its
   terminal state and moves it into `archive/`. Writes on invocation rather than defaulting to a dry
@@ -377,13 +400,29 @@ Evolution rules we want to hold, so new versions stay rare:
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`.
-- **Deprecated and inert** (callable, notice on stderr, writes nothing, exits 0; removal deferred
-  to a major): `stamp-merged` and `regen-views`. Both lost their bodies when derived views were
-  retired — `regen-views` had no views left to regenerate, and `stamp-merged`'s only output
-  (`status=`) had no reader left. **Prawduct's own release runbook no longer calls either**, so the
-  remaining reason to keep them callable is the one that cannot be audited from here: a consumer's
-  copied operator script, where a non-zero exit would break a pipeline mid-release. The notice
-  tells such a caller to drop the call.
+- **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). Four
+  members in two sub-shapes, split by **who calls them** — which decides whether they announce
+  themselves:
+
+  - *Announcing* — `stamp-merged`, `regen-views`. Notice on stderr. Both lost their bodies when
+    derived views were retired: `regen-views` had no views left to regenerate, and `stamp-merged`'s
+    only output (`status=`) had no reader left. **Prawduct's own release runbook no longer calls
+    either**, so the remaining reason to keep them callable is the one that cannot be audited from
+    here: a consumer's copied operator script, where a non-zero exit would break a pipeline
+    mid-release. The notice tells such a caller to drop the call.
+  - *Silent* — `build-index`, `user-prompt-submit` (inert since v3.3.3). **No output on either
+    stream.** Their caller is a pre-3.3.2 `hooks.json` registration, not a person: a notice has no
+    reader who can act on it, and the next plugin update replaces the registration anyway. On
+    stdout silence is a correctness requirement rather than a preference — a hook exiting 0 has its
+    stdout **injected into the model's context** (SessionStart into the session, UserPromptSubmit
+    ahead of every turn), so a deprecation notice printed the ordinary way would be read as
+    instruction.
+
+  The rule the split encodes, and the reusable half of this tier: **announce when a human reads the
+  output; stay silent when the caller is a registration.** All four are members of
+  `_EPHEMERAL_SAFE_COMMANDS` — without it the fail-closed disposable-worktree guard treats an
+  unlisted command as a write and exits 1, which would falsify "exits 0" exactly where a hook
+  invokes it. Pinned in `tests/test_retired_hook_subcommands.py`.
 
   The `--check` flag's earlier state is worth keeping on the record: it was a *repurposing* rather
   than a clean deprecation — it performed a full regen where it documented "writes nothing" — and
