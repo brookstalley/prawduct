@@ -190,6 +190,49 @@ def unticked_chunk_items(content: str) -> list[str]:
     return [text for checked, text in _iter_status_section_items(content) if not checked]
 
 
+def incompleteness_reason(content: str) -> "str | None":
+    """Why this plan's own ``## Status`` says it is not finished, or ``None``.
+
+    **The answer, exported — not the walker**, on the same rule as
+    :func:`unticked_chunk_items` above. The caller that needs this is deciding
+    whether an AUTOMATIC sweep may archive a plan, and it needs prose it can put
+    in front of an operator, so the derivation stays here and the sentence comes
+    back finished.
+
+    Three states, and the middle one is why this is not
+    ``if unticked_chunk_items(content)``:
+
+    - Items, all ticked → ``None``. Finished.
+    - Items, some unticked → the count and the chunks, named. A scope can ship
+      partially: the change log records the release, while chunks of the plan
+      that carries that scope were never built.
+    - **No items at all → refused, not passed.** ``unticked_chunk_items``
+      returns ``[]`` here, identically to a fully-ticked plan, because an absent
+      roster produces the same silence every other reader produces. For *this*
+      question that silence is the dangerous answer: a plan predating the Status
+      convention, or one whose roster failed to parse, would read as complete
+      and be filed away as done. Same rule as
+      :func:`_has_unfinished_chunk` — an unparseable plan is not evidence of
+      completion — and the same rule the Critic applies when it rates
+      ``chunk-ref-missing unchecked`` at BLOCKING: a check that could not run is
+      indistinguishable from one that passed, so it must not read as a pass.
+    """
+    items = list(_iter_status_section_items(content))
+    if not items:
+        return (
+            "no readable `## Status` roster — completeness cannot be read, and an "
+            "unreadable plan is not evidence of completion"
+        )
+    unticked = [text for checked, text in items if not checked]
+    if not unticked:
+        return None
+    shown = ", ".join(unticked[:3]) + (", …" if len(unticked) > 3 else "")
+    return (
+        f"{len(unticked)} of {len(items)} Status items still unticked ({shown}) — "
+        "the scope shipped, but this plan did not finish with it"
+    )
+
+
 def _chunk_id_from_item_text(text: str) -> str | None:
     """``"Chunk 02: name"`` / ``"Chunk 2 (ID) — name"`` → ``"02"`` / ``"2"``;
     ``None`` for non-chunk items. Accepts the colon (``### Chunk N:``) and the

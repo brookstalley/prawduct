@@ -3,6 +3,50 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-11: the plan sweep stops recording unbuilt chunks as shipped
+
+<!-- prawduct: type=fix | scope=plan-backfill-completeness | chunks=01 | release=v3.3.1 -->
+
+**`plan-backfill` archived a plan with two unbuilt chunks as `lifecycle: completed`,
+`released_in: v1.8.0`, in a real product, today.** It selects by the change log's `release=` tag on
+a *scope* and never consults the plan's checkboxes — `backfill()`'s own docstring said so
+deliberately. The premise fails wherever a scope ships partially: hallucinote's `scope=tour`
+released in v1.8.0 while chunks C1 and D1 stayed live work. That product declined the proposal at
+two consecutive cuts, recorded the decline in its release plan both times, and accepted it at the
+third — which is what a judgement call the tooling re-asks every release eventually costs. Filed as
+#634.
+
+`survey()` now asks a completeness predicate alongside `plan_archive.refusal_reason`, and
+`backfill()` archives `survey()["shipped"]`, so preview and write stay in agreement. Three states,
+because the obvious one-line version has a hole:
+
+- items, all ticked → archive;
+- items, some unticked → **blocked, naming the chunks** — an operator who cannot see which chunk is
+  unbuilt cannot make the call the block hands them;
+- **no readable `## Status` roster → blocked, not passed.** `unticked_chunk_items` returns `[]`
+  there, identically to a finished plan, because an absent roster produces the same silence every
+  other reader produces. Two such plans were live in hallucinote when this was found. It is the rule
+  the Critic already applies rating `chunk-ref-missing unchecked` at BLOCKING: a check that could
+  not run must not read as a pass.
+
+**The inverted assertion, and why it is not a weakened test.** `test_unticked_boxes_do_not_block_archiving`
+pinned the opposite contract for a real reason — *"requiring all boxes ticked is what left
+half-finished dead plans in live artifacts forever."* That failure mode still stands, and the fix
+must not reintroduce it. What the old contract missed is that the sweep cannot distinguish a **dead**
+plan with unbuilt chunks from **live work whose scope shipped partially**. So the sweep surfaces
+rather than decides, and the escape hatch is explicit: `archive-plan <path>` still archives a dead
+plan in one command, deliberately unchanged, because there a human is asserting the plan is done.
+That is why the completeness check lives in `plan_backfill` and **not** in
+`plan_archive.refusal_reason`, which both callers share — moving it down would break deliberate
+archiving to fix the automatic kind. `test_the_explicit_route_still_archives_an_unfinished_plan`
+pins the hatch, because without it the block is a trap and this fix is worse than the defect.
+
+Also: `buildplan_refs` gained `incompleteness_reason()`, handing back the finished sentence rather
+than exporting the Status walker — the rule that module already states, so one question keeps one
+answer. The `test_lifecycle_cli.py` fixture split in two: `lifecycle-repair` reports unticked chunks
+so its fixture must have one, `plan-backfill` refuses them so its fixture must not; ticking the
+shared one had silently left `test_json_plans_to_review_names_the_unticked_chunk` nothing to find.
+
 ## 2026-08-10: six guards that pinned the repo's release phase, and now name which emptiness they reject
 
 <!-- prawduct: type=fix | scope=phase-blind-real-data-guards | release=v3.3.0 -->
