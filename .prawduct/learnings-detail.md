@@ -3477,7 +3477,42 @@ free until no supported install still registers it**. v3.3.3 restores both as in
 Left open for the owner rather than settled here, because scope is normative content and an
 amendment carries it: whether the exception should state that inert-retention window explicitly.
 Recorded the same shape as `[[install-reference-is-published]]` — a premise falsified without the
-decision necessarily becoming wrong.
+decision necessarily becoming wrong. **Ruled 2026-08-11 (v3.3.4):
+`[[deprecation-requires-an-inert-retention-window]]`, below.**
+
+## RULING (deprecation-requires-an-inert-retention-window), 2026-08-11
+
+Owner decision, put directly during the v3.3.4 release review and answered: **the harness-only
+removal exception requires an inert-retention window.** Unregistering a hook is free and immediate;
+deleting its subcommand waits until no supported install still registers it.
+
+This is the question `[[harness-only-removal-is-not-a-major]]` left open one paragraph above, and it
+is settled at the norm rather than in a release plan because scope is normative content. Homed as a
+further dated paragraph on the existing `Rulings:` line in `api-contract.md` § Direction — the
+Statement and Why are untouched, which is the split `docs/norms.md` draws between amending a norm
+and recording case law at its edge.
+
+**Why the window, and not simply "don't remove".** The two halves of a retirement are separable and
+their costs are wildly unequal. Dropping the `hooks.json` registration costs one line and takes
+effect at the consumer's next resolve; dropping the dispatch branch breaks every pin that has not
+yet caught up. A rule that treated them alike would either forbid the free half or permit the
+expensive one. The window is what lets the cheap half proceed at any tier while the expensive half
+waits for the thing that actually makes it safe.
+
+**And it is the replacement for the falsified warrant, not an addition to it.** What made v3.3.2's
+deletion look safe was the belief that the caller updates atomically with the binary. That belief
+was false. The retention window delivers, mechanically, the safety that belief was assuming — which
+is why the tier permission survives unchanged while the warrant stays withdrawn.
+
+**Where the window closes.** When no version a consumer could still be pinned to registers the
+command. Under a `directory:` marketplace that bound is set by how lazily pins update, so the honest
+floor is *at least one release after the registration is dropped*, and longer wherever evidence says
+a pin is older. The cost of holding it is a `return 0` and a docstring; the cost of getting it wrong
+is every product repo erroring at session start and once per prompt, which is what v3.3.2 measured.
+
+**What it unblocks.** #644's conformance leg was at `stage: requirements` on exactly this ground —
+its own Scope-out said the rule it checks against was not fully written until this was ruled. It is
+written now.
 
 ## (one-home-is-the-predicate-not-the-token) Sharing a matcher shares syntax, not the definition — 2026-08-11
 
@@ -3550,3 +3585,71 @@ The repair: restore the clause verbatim, record the two silent commands beneath 
 departure pending owner ratification, naming why, what the owner is being asked, and the remedy if
 the answer is no (warn on stderr — never stdout).
 
+
+## Re-measure against the question, not the last test's conclusion — 2026-08-11 (v3.3.4, #646)
+
+The release runbook's case-(3) triage carried one "live instance": a plugin cache under version key
+`3.2.4` at commit `a0c2468`, diagnosed as holding non-release content.
+
+Three tests, three verdicts, and only the last one asked the right question.
+
+1. **`git merge-base --is-ancestor a0c2468 v3.2.4`** → not an ancestor → "non-release tree." This is
+   the test #646 removed: `main` is built by `read-tree` plus a fresh commit, so it returns false for
+   *every* install. The instance was born from an instrument that cannot return true.
+2. **`a0c2468^{tree}` vs `v3.2.4^{tree}`** → `165e315f` vs `fa827756`, different → "still real,
+   confirmed under the corrected test." This is where the fix stopped, and it is the interesting
+   failure: the release plan had explicitly instructed *do not carry the case forward on evidence
+   produced by the broken test*, and that instruction was obeyed — with a second wrong instrument.
+3. **`a0c2468:plugin` vs `v3.2.4:plugin`** → both `ba3e8581` → **phantom.** The cache held the
+   v3.2.4 plugin byte-for-byte. Only `.prawduct/` had moved on, which it does every session.
+
+**The unit was the whole question and nobody asked what the check was a fact *about*.**
+`marketplace.json` declares `source: ./plugin`; the cache holds that subtree and nothing else. A
+whole-repo tree comparison grades content the consumer never receives, so it over-fires on ordinary
+governance commits. Step 3 arrived only because a reviewer asked "what is actually installed?" —
+which is the question step 2 should have started from.
+
+The transferable shape: a correction inherits the framing of the thing it corrects. "Is this test
+right?" keeps you inside the old test's terms. "What is this check a fact about, and what unit
+carries that fact?" is what leaves them.
+
+## Copying a fix into a sibling procedure is a new change — 2026-08-11 (v3.3.4, #646)
+
+`#646` named one runbook. The same install-sha check lived in `promote-a-pruned-release.md`, so the
+fix was copied there in the same pass, under the *fix-not-file* preference. That looked like
+diligence and was a defect.
+
+The whole-develop runbook's problem was commit identity: `main` shares `develop`'s tree but not its
+commit, so a tree comparison is the repair. The pruned runbook's `main` is **deliberately unlike**
+`develop`'s — its own next bullet requires `git diff --stat origin/main origin/develop` to be
+non-empty — and the marketplace resolves from the primary worktree, which that procedure never
+checks `main` out in. So a *correct* install differs from the release there by construction, in
+exactly the withheld work. The copied check reintroduced next door the false-remedy loop the fix had
+just removed: mismatch → sibling's triage → case (2)/(3) → delete the cache of a healthy install.
+
+The right answer was not a better comparison but *no* comparison: the pruned runbook now states the
+check has no equivalent on its path, explains why, and offers the one that does apply — is my cache
+current with my own checkout, which is a fact about the machine and not about the release.
+
+**Tell:** you fixed one file, grepped for the same lines, and found them. That grep found *text*.
+Whether it found the same *defect* depends on invariants the grep cannot see.
+
+## A feature's own subject is a blind spot in its tests — 2026-08-11 (v3.3.4, #636)
+
+`archive-plan` learned to stamp `unbuilt_at_archive:` from a plan's `## Status` roster. Eight unit
+tests, all green: unticked chunks stamp, complete plans don't, an unparseable roster stamps rather
+than filing clean, the write is idempotent.
+
+Every one of those fixtures is a **build plan**, because that is what the feature is about. But
+`archive-plan` archives whatever it is pointed at, and release plans, discovery notes and design
+docs have no `## Status` roster **by design**. `incompleteness_reason` correctly refuses-not-passes
+for an unreadable roster — and applied to a document that never had one, that refusal became "no
+readable `## Status` roster" stamped onto every release plan at every cut, forever.
+
+Found in about ten seconds by running `archive-plan --dry-run` against this repo's own artifacts
+directory and reading the output. No test could have found it: writing one requires already having
+had the thought that the subject was wider than the feature.
+
+**The bound is a test-design fact, not a diligence fact.** A test suite explores the space its
+author already conceived. Running the real command against real inputs samples a space someone else
+populated — which is the only cheap way to discover that your subject widened without you noticing.

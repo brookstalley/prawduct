@@ -197,6 +197,21 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    satisfy "everything I listed is real" while still letting an unlisted scope ship unexamined,
    which is the v3.1.2 shape.
 
+   > **A deferred *issue* is not a withheld *scope*, and the table has room only for the second.**
+   > `withheld` means: this work is **built and sitting on `develop`**, and it must not reach `main`.
+   > An open issue you decided not to build this cycle has no change-log entry, so it has nothing
+   > release-pending behind it — put it in the release plan's **prose**, where the reasoning belongs,
+   > and never in this table. A row for one lands as `nothing release-pending behind them` and stops
+   > the release.
+   >
+   > This matters twice, because `K withheld` also chooses the promotion path at Phase 2. Counting
+   > deferred issues inflates it and routes a perfectly ordinary release to
+   > `promote-a-pruned-release.md`, whose whole reason for existing — a `main` tree deliberately
+   > unlike `develop`'s — does not apply. **Take `K` from the gate's own output, never from the
+   > release plan's narrative.** *(Written after the v3.3.4 plan's first draft carried six such rows
+   > and read `K = 6`. Both errors, one confusion: "six things aren't shipping" is true in English
+   > and false in this table's vocabulary.)*
+
    ```markdown
    ## Release classification
 
@@ -692,13 +707,29 @@ mean the withheld work shipped.*
   this job has been exercised both ways — green against the real v3.2.4 tag with output identical
   to the local command, red with a `not-released` verdict against a deliberately bogus one. There
   is no longer any reading of red that lets you carry on.
-- Your own install holds the released tree, not the prep tree — these two print the
+- Your own install holds the released **`plugin/` subtree**, not the prep one — these two print the
   **same** 40-character sha:
 
   ```
-  echo "released:  $(git rev-parse vX.Y.Z^{commit})"
-  echo "installed: $(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")"
+  echo "released:  $(git rev-parse vX.Y.Z:plugin)"
+  echo "installed: $(git rev-parse "$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])"):plugin")"
   ```
+
+  > **Trees, not commits — and that is the whole check, not a nicety.** `main` is built by
+  > `git read-tree --reset -u origin/develop` plus a fresh commit (steps 15–16), so a release tag
+  > shares `develop`'s tree and **never** its commit identity. A commit-sha comparison here is
+  > therefore not a strict check that occasionally annoys you; it is a check that **cannot pass**,
+  > on any release, for any correct install resolved from `develop`.
+  > *(Fixed at v3.3.4, #646. Measured at v3.3.3: installed `gitCommitSha` `f7394808`, released
+  > `v3.3.2^{commit}` `1f65e231`, and both whole trees `09791bd1` — identical.)*
+  >
+  > **And the `plugin/` subtree rather than the whole tree, because that is what installs.**
+  > `.claude-plugin/marketplace.json` declares `source: ./plugin`, so the cache holds that subtree
+  > and nothing else. Comparing whole trees would report a mismatch for any commit after the release
+  > that touched only `.prawduct/` — which is nearly every session, since governance state is
+  > committed constantly — while the installed content is byte-identical to what shipped. `:plugin`
+  > compares exactly the content under test. *(#646 shipped the whole-tree form; the subtree
+  > narrowing landed in the same cycle, from the Critic's R-12.)*
 
   > **This is the one `Done when` item that is not a fact about the release.** The other four
   > grade what you published; this one grades **your machine**, and a mismatch is compatible
@@ -726,20 +757,40 @@ mean the withheld work shipped.*
      was written for. The cache was filled during the Phase 1–2 gap, and it will not refresh on
      its own because the version key never changed between prep and promotion. Fix it before you
      test anything against "the release."
-  3. **`version` is a release, but the sha is not an ancestor of that tag** — a `develop` tree
-     cached under a *release's* version key. Same class as (2), different route: no Phase 1–2 gap
-     involved, just a session that resolved a `directory:` marketplace while `develop` was checked
-     out. It is silent and it persists across releases. *(Live instance found at v3.2.5:
-     `plugins/cache/prawduct/prawduct/3.2.4` at `a0c2468`, which is on `develop` and not an
-     ancestor of `v3.2.4` — i.e. dating from the v3.2.4 release, undetected for a full release.)*
+  3. **`version` is a release, but the cached plugin is not that release's plugin** — a `develop`
+     subtree cached under a *release's* version key. Same class as (2), different route: no
+     Phase 1–2 gap involved, just a session that resolved a `directory:` marketplace while
+     `develop` was checked out. Mechanically possible and it would be silent, so the case stays.
+
+     > 🔍 **NEVER OBSERVED — and its one "live instance" was a false positive, twice over.**
+     > The v3.2.5 sighting (`plugins/cache/prawduct/prawduct/3.2.4` at `a0c2468`) was produced by
+     > the `merge-base --is-ancestor` test #646 removed, which fails for every install. Re-measured
+     > at v3.3.4 against whole trees it appeared to survive (`165e315f` vs `fa827756`) — but whole
+     > trees were the wrong unit too, and against the unit that actually installs it collapses:
+     > **`a0c2468:plugin` and `v3.2.4:plugin` are both `ba3e8581`.** That cache held the v3.2.4
+     > plugin exactly; only `.prawduct/` had moved on, which it does every session.
+     > **Do not cite `a0c2468` as evidence of anything.** If you ever do observe a real case (3),
+     > record it with `:plugin` shas and delete this box.
+
+     *Recorded at length because the instance survived two corrections before dying: each new test
+     was run against the previous test's conclusion rather than against the question.*
 
   The test that separates (2) and (3) from (1), and is worth running rather than eyeballing:
 
   ```
-  git merge-base --is-ancestor "$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")" \
-    "v$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['version'])")" \
-    && echo "cache holds a released tree — case 1" || echo "cache holds a NON-release tree — case 2 or 3"
+  installed_sha=$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")
+  installed_ver=$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['version'])")
+  [ "$(git rev-parse "${installed_sha}:plugin")" = "$(git rev-parse "v${installed_ver}:plugin")" ] \
+    && echo "cache holds the released plugin — case 1" || echo "cache holds a NON-release plugin — case 2 or 3"
   ```
+
+  > **Why subtree equality and not ancestry.** The old form asked
+  > `git merge-base --is-ancestor <installed-sha> v<installed-version>`, which tests commit
+  > lineage. `main` never has one to `develop` — steps 15–16 build it by `read-tree` plus a fresh
+  > commit — so that test returned false for **every** install, including correct ones, and could
+  > only ever print "cache holds a NON-release tree". It routed correct installs into (2)/(3) and
+  > the delete-the-cache remedy below. `:plugin` is the unit because that is what the marketplace
+  > ships; see the `Done when` bullet above. *(Fixed at v3.3.4, #646.)*
 
   **Remedy for (2) and (3):** delete the cache directory named by `installPath` and start a new
   session.

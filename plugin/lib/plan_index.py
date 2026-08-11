@@ -178,6 +178,23 @@ def _declares_non_build_plan_artifact(content: str) -> bool:
     return False
 
 
+def is_build_plan(content: str) -> bool:
+    """Whether this document is a build plan, by its DECLARED type.
+
+    The positive spelling of :func:`_declares_non_build_plan_artifact`, added
+    when a second module needed the question asked forward rather than as a
+    negation. It inherits that predicate's fail-safe direction exactly: a
+    document declaring no ``artifact:`` at all counts as a build plan, because
+    at least one real plan in this repo declares none.
+
+    Callers that care about a build plan's *chunks* — a Status roster, its
+    completeness — must ask this first. A release plan or a discovery note has
+    no roster by design, and reading its silence as "unreadable" reports a
+    problem about a document that never had the thing being looked for.
+    """
+    return not _declares_non_build_plan_artifact(content)
+
+
 def iter_scoped_plan_candidates(
     artifacts_dir: Path, *, include_archived: bool = False
 ) -> Iterator[tuple[Path, str]]:

@@ -3724,8 +3724,29 @@ def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
             print(f"not-archived: {refusal}", file=sys.stderr)
             return 1
         destination = plan_archive.archive_destination(plan_path, artifacts_dir)
+        # The preview reads the plan for the SAME reason the write does: the
+        # `unbuilt_at_archive` stamp is derived from the plan's own Status, so a
+        # preview that skipped it would silently understate the record about to
+        # be written — the mirror of the overstatement this dry-run branch was
+        # already fixed for.
+        #
+        # Guarded even though `refusal_reason` just read the same file and
+        # returned None. The window between the two reads is narrow, not closed,
+        # and an escaping OSError here would leave the CLI raising a stack trace
+        # across its own boundary — which `api-contract.md` § Direction forbids
+        # outright. Refusing at exit 1 is what the write path does for the
+        # identical condition, so the preview and the write agree here too.
+        try:
+            plan_content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"not-archived: cannot read {plan_path}: {exc}", file=sys.stderr)
+            return 1
         fields = plan_archive.completion_fields(
-            state=state, date=date, release=release, superseded_by=superseded_by
+            state=state,
+            date=date,
+            release=release,
+            superseded_by=superseded_by,
+            unbuilt=plan_archive.unbuilt_at_archive(plan_content),
         )
         print(f"would archive: {plan_path} -> {destination}")
         for key, value in fields.items():

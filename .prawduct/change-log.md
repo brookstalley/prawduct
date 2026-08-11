@@ -3,6 +3,177 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-11: CLAUDE.md is back under the length it teaches
+
+<!-- prawduct: type=docs | scope=claude-md-trim -->
+
+**191 lines, always-loaded, against the ~150 the methodology teaches** (`building.md`: CLAUDE.md is
+instructions, not documentation) and the Critic warns above. Every line is paid at every session
+start, in this repo and — through the same discipline it asks of products — as the example it sets.
+Now 150.
+
+Nothing was deleted. Two things moved to files that already owned them, better:
+
+- **`## Project Layout`** duplicated `documentation/project-structure.md`, whose version is strictly
+  richer (it annotates both trees, and carries `.test-evidence.json`, `.governance-ledger.jsonl` and
+  the archive-pruning note that CLAUDE.md's copy had already fallen behind on). The section is now a
+  pointer — which is what a duplicated tree diagram wants to be, since the copy drifts silently.
+- **The Critic's kernel-v3 data plane** — the dispatch manifest, partials, `critic-consolidate`, the
+  shared evidence store, the `clear` refusal while a review is live — was a paragraph-length
+  architecture description of a mechanism whose own skill states it: `plugin/skills/critic/SKILL.md`
+  carries the same sentences, and `review-cycle.md` carries the evidence model in full. What stays
+  in CLAUDE.md is what the skill does *not* restate to its invoker: fix every blocking finding before
+  the next chunk, and reflect immediately afterwards.
+
+Three sections were compressed rather than moved — the Getting Started routes are now a table, and
+the methodology list and reflection steps read as prose. Every route, guide and step survives; the
+principles roster and the governance anchor are untouched, which is what makes the file load-bearing.
+
+## 2026-08-11: an archived plan says whether it finished
+
+<!-- prawduct: type=feat | scope=archive-unbuilt-stamp -->
+
+**A plan archived with unbuilt chunks was indistinguishable in the archive from one that finished
+clean.** The unticked boxes survive the move — deliberately, they *are* the record of how the work
+ended — but nothing reads an archived plan's boxes again, so the fact was preserved in a place no
+reader looks. Explicit `archive-plan` now stamps `unbuilt_at_archive:` into the frontmatter, naming
+the chunks that stopped it.
+
+**Absence means clean, not unknown.** That is the contract that keeps this additive rather than a
+format break: a reader that has never heard of the key sees exactly what it saw before the key
+existed, and the failure direction is safe (`api-contract.md` § Direction, additive-first evolution).
+The field is *derived* from the plan's own Status rather than passed in — the date is a parameter
+because the caller owns the calendar, but completeness is written in the file being archived, and a
+parameter would let a caller assert a plan finished clean when its own Status says otherwise.
+
+**The middle case is the one that matters.** A plan whose Status roster is absent or unparseable
+produces the same silence as a fully-ticked one, so `incompleteness_reason` returns a *sentence*
+there rather than `None` — and that sentence is stamped, because filing an unreadable plan away as
+clean is the silent-completion failure this key exists to end.
+
+**A type gate came out of running it, not reading it.** The first cut stamped whatever it was
+pointed at, so a live dry-run against this repo's own artifacts showed every *release plan* about to
+be filed with "no readable `## Status` roster" — a document that has no roster by design, reported as
+if something were wrong, on every release forever. The stamp now asks `plan_index.is_build_plan`
+first, which fails safe toward *is a plan* (a document declaring no `artifact:` type at all is still
+stamped, because at least one real plan here declares none). A control that fires where there is
+nothing to catch is the thing `nonfunctional-requirements.md` § Direction removes by default.
+
+`--dry-run` previews the stamp. A preview that omitted a field the write makes is the mirror of the
+overstatement that branch was already fixed for — the operator approves a record they were not shown.
+
+Touches only the explicit route. The automatic `plan-backfill` sweep is unaffected and cannot produce
+the field: it refuses incomplete plans outright (#634), so its input is always clean.
+
+## 2026-08-11: `_normalize` stops minting non-words
+
+<!-- prawduct: type=fix | scope=jurisdiction-term-normalization -->
+
+**`work_model_index._normalize` reduced only `'s` and `n't`, so every other contraction survived
+whole** — `you'd`, `i'll`, `they've`, `we're`, `i'm` — and the bare-plural rule stripped one `s` off
+words whose plural is `-es`, minting `enriche`, `matche`, `boxe`, `passe`. Those tokens are what
+`jurisdiction_candidates` matches on, and it applies the same function to **both** sides: the text's
+words and the artifact's vocabulary. A minted token therefore cannot match anything — the artifact
+says `enrich` and the text says `enriche`, so the seeding heuristic that suggests which norms govern
+a piece of work ranks worse with nothing to catch it.
+
+Three rules now, in order: clitics (`n't`, `'ll`, `'re`, `'ve`, `'s`, `'d`, `'m`, longest first),
+the `-es` allomorph after a sibilant, then the bare plural.
+
+**The `-es` rule's membership is measured, not reasoned.** `match` + `es` and `cache` + `s` are the
+same four letters, so no lexical test separates them and the only honest question is which reading
+is right more often in the prose this runs on. Counted over every `.md` in `.prawduct/`, `plugin/`
+and `documentation/`: after `ch`, `sh`, `ss` and `x` the `-es` reading is right in every occurrence
+but one, and `caches` is that one. Two endings were in an earlier draft and were cut by the same
+measurement — a bare `s` (it made `cases` → `cas`) and `z` (it made `sizes` → `siz` and
+`generalizes` → `generaliz`, the `-ize` verb family being the dominant `-zes` population).
+
+`series` and `species` are returned whole: the `-ies` → `y` rule minted `sery`, which is the
+function's own docstring example of the collapse it exists to avoid — and exempting them from that
+rule alone was not enough, because falling through handed them to the bare-plural rule instead.
+
+Checked for regressions the way the risk actually runs: re-normalizing the 3,543-word frequency
+floor under both versions changes 12 words, and all 12 go from a minted non-word to the real base
+(`classe`→`class`, `addresse`→`address`, `boxe`→`box`, `sery`→`series`, …). Nothing got worse.
+
+**The 2026-07-12 #257 ruling does not cover this.** It declared the remaining precision work moot
+*because the code was slated for deletion*. The tripwire was deleted at v3.3.2; `_normalize` was
+not, because `jurisdiction_candidates` reads through it. The premise no longer holds over this
+function, so the ruling no longer reaches it — recorded in the module docstring, where the next
+reader meets the post-ruling framing. What the lowered stakes still govern is proportion: a light
+closed-set reduction is in bounds, a real stemmer is not.
+
+## 2026-08-11: the install-sha checks compare trees, not commits
+
+<!-- prawduct: type=fix | scope=release-runbook-tree-identity -->
+
+**Two release-runbook checks could never pass, on any release.** `main` is built by
+`git read-tree --reset -u origin/develop` plus a fresh commit, so a release tag shares `develop`'s
+**tree** and never its commit **identity**. Both checks tested identity: the `Done when` install-sha
+pair, and the `If this doesn't work` case-triage that decides whether your plugin cache holds
+release content. Neither could return true for a correct `directory:` install resolved from
+`develop` — so the triage could only ever print *"cache holds a NON-release tree"*, routing a
+**correct** install into case (2)/(3) and its "delete the cache directory and restart" remedy.
+
+Both now compare `git rev-parse <sha>:plugin`, which succeeds exactly when the cache holds the
+released content — the thing the checks were written to establish. Measured at v3.3.3: installed
+`f7394808`, released `v3.3.2^{commit}` `1f65e231`, both trees `09791bd1`.
+
+**The unit is the `plugin/` subtree, not the whole tree.** `marketplace.json` declares
+`source: ./plugin`, so that subtree is what a consumer installs. A whole-tree comparison reports a
+mismatch for any commit after the release that touched only `.prawduct/` — governance state, which
+lands nearly every session — while the installed plugin is byte-identical to what shipped.
+
+**Case (3) of the triage is a phantom, and it took two wrong instruments to find that out.** Its one
+"live instance" (`plugins/cache/prawduct/prawduct/3.2.4` at `a0c2468`) was originally diagnosed *by*
+the ancestry test being removed. Re-measured against whole trees it appeared to survive — `165e315f`
+vs `fa827756` — and that is what this entry said in draft. Against the subtree that actually
+installs it collapses: **`a0c2468:plugin` and `v3.2.4:plugin` are both `ba3e8581`.** That cache held
+the v3.2.4 plugin exactly; only `.prawduct/` had moved on. The case remains documented as
+mechanically possible but is marked **never observed**, with the phantom recorded in place so nobody
+cites `a0c2468` again.
+
+**`promote-a-pruned-release.md` carried the same check and needed the opposite treatment.** It was
+"fixed" there by copying — and on that path the defect was never commit identity. The marketplace
+resolves from the primary worktree, which a pruned promotion deliberately never checks `main` out
+in, and its candidate tree comes from a classified `--3way` apply, so a *correct* install differs
+from the release **by construction, in exactly the withheld work**. Comparing them routes the
+operator into the delete-the-cache remedy — the identical false-remedy loop removed next door. That
+runbook now says the check has no pruned equivalent, explains why, and gives the one an operator can
+actually run: is my cache current with my own checkout? That is a fact about the machine, not the
+release. **A check copied into a runbook whose invariants differ is a new defect wearing the old
+one's fix.**
+
+## 2026-08-11: the harness-only removal exception now carries a retention window
+
+<!-- prawduct: type=governance | scope=deprecation-retention-window -->
+
+**The question v3.3.3 left open is ruled.** `api-contract.md` § Direction's exception
+`[[harness-only-removal-is-not-a-major]]` let a harness-only subcommand be removed at any tier, on
+the warrant that its one caller — `hooks.json` — ships and updates with the binary. The field
+falsified that warrant within hours of v3.3.2, and v3.3.3 restored both commands as inert on the
+reading that *unregistering* and *deleting* are separable. That release was the repair; it said in
+its own text that it was not the ratification. This is the ratification.
+
+**Ruled: the exception requires an inert-retention window.** Unregistering a hook is free and
+immediate; deleting its subcommand waits until no supported install still registers it. The tier
+permission the owner originally ruled on is untouched — a harness-only removal still need not spend
+a major. What the window does is *replace* the falsified warrant rather than sit beside it: what
+made the v3.3.2 deletion look safe was the belief that callers update atomically with the binary,
+and the retention window delivers mechanically the safety that belief was assuming.
+
+The window closes when no version a consumer could still be pinned to registers the command. Under
+a `directory:` marketplace that bound is set by how lazily pins update, so the honest floor is at
+least one release after the registration is dropped. Holding it costs a `return 0` and a docstring.
+
+Stamped on the Direction entry's `Rulings:` line and homed as case law at
+`[[deprecation-requires-an-inert-retention-window]]`. Two backlog items move on it: **#644**
+(deprecation conformance leg) leaves `stage: requirements` — the rule its leg checks against is now
+fully written — and **#633** (`test_tracking.test_count`) leaves `stage: research` with its
+direction ruled *delete the field, do not check it*, on `nonfunctional-requirements.md` § Direction's
+rule that a control catching nothing is removed by default. Neither is built here; both are withheld
+to v3.4.0 because each adds a capability rather than fixing a defect.
+
 ## 2026-08-11: two subcommands v3.3.2 retired are callable again
 
 <!-- prawduct: type=fix | scope=retired-hook-subcommands | release=v3.3.3 -->

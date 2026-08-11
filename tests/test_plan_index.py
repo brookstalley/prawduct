@@ -270,6 +270,32 @@ class TestDeclaresNonBuildPlanArtifact:
     def test_no_frontmatter_reads_as_a_build_plan(self):
         assert not plan_index._declares_non_build_plan_artifact("# Just a title\n")
 
+    def test_is_build_plan_is_the_same_predicate_read_forward(self):
+        """The public spelling, added when `plan_archive` needed the question
+        asked positively. Pinned as an exact inverse so the two cannot drift into
+        disagreeing about the same document — which is the failure mode a second
+        name for one predicate invites."""
+        for content in (
+            self._fm("artifact: build-plan\nscope: s"),
+            self._fm("artifact: release-plan\nrelease: v1.0.0"),
+            self._fm("scope: s"),
+            "# Just a title\n",
+        ):
+            assert plan_index.is_build_plan(content) is not (
+                plan_index._declares_non_build_plan_artifact(content)
+            )
+
+    def test_is_build_plan_fails_safe_toward_being_a_plan(self):
+        """A document declaring no ``artifact:`` at all counts as a plan.
+
+        `build-plan-release-readiness.md` is the real counter-example: requiring
+        an explicit `build-plan` would silently drop it. Callers reading a plan's
+        completeness depend on this direction — excluding an unlabelled plan is
+        how one gets filed away as finished without ever being read.
+        """
+        assert plan_index.is_build_plan(self._fm("scope: s")) is True
+        assert plan_index.is_build_plan(self._fm("artifact: discovery\nscope: s")) is False
+
 
 class TestArchivePruning:
     """An archived plan is history, not a live assertion — and is never read.
