@@ -339,9 +339,9 @@ Scan your findings against active learnings. If a change reintroduces a pattern 
 
 **Learnings are ordered, not infallible — the later one wins.** Rules are undated `##` headings in an append-only file, so **position is the ordering signal — later in the file is later in time**. Do not hunt timestamps, or read a narrative date as the rule's own. When two conflict — revoked, narrowed, or softened — the **later** governs; a change conforming to it is not a regression, so do not escalate against a superseded rule.
 
-Two outputs, kept apart. Against the *change*: no finding. Against the *learnings file*, when the supersession is implicit rather than stated: a **NOTE** naming both entries, because the stale rule reads as live to the next reviewer and to every product inheriting it — the only finding this section produces.
+Two outputs, kept apart. Against the *change*: no finding. Against the *learnings file*, when the supersession is implicit rather than stated: a **NOTE** naming both entries, because the stale rule reads as live to the next reviewer and to every product inheriting it — the only finding the supersession check produces.
 
-**When a written rule has no enforcer, the finding is the rule — once.** Rule already written down (`learnings.md`, a guide, a `## Direction` norm) and no check owning it (`record_lint`'s `CHECKS`, a hook, a gate) → report *that*, once, at the instance's severity. Not per occurrence, nor again while it is open. It replaces the instance report, never drops it. First-time or check-covered defects stay ordinary.
+**When a written rule has no enforcer, the finding is the rule — once.** This is not the cross-check owner's alone: it binds every reviewer role, and its canonical statement — the two conditions, and the `rule-unenforced:` summary prefix that makes the yield countable — lives in `agents/critic-reviewer.md`, which all three roles read.
 
 ### Backlog Reconciliation
 

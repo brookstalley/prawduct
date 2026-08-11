@@ -30,6 +30,7 @@ PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
 CRITIC_PROTOCOL = PLUGIN / "skills/critic/review-protocol.md"
 CRITIC_GOALS_13 = PLUGIN / "skills/critic/goals-1-3.md"
 PR_PROTOCOL = PLUGIN / "skills/pr/review-protocol.md"
+REVIEWER_AGENT = PLUGIN / "agents/critic-reviewer.md"
 
 
 class TestCrossComponentContractToken:
@@ -120,6 +121,109 @@ class TestScopeTraceToken:
         assert self.TOKEN not in CRITIC_GOALS_13.read_text(), (
             "the scope pressure-test reached goals-1-3.md — it is scoped to "
             "`final`/`cumulative` and PR review, where the full bundle is in view."
+        )
+
+
+class TestRuleUnenforcedToken:
+    """The rule-over-instance instruction: a written rule with no enforcer is
+    reported once, as the rule, instead of once per occurrence.
+
+    Shipped 2026-08-11 after an audit of 141 PR-review records found 19% of the
+    PR reviewer's warnings were a class whose rule already existed in three
+    places — one finding even cites the learning while filing the instance.
+    """
+
+    TOKEN = "rule-unenforced:"
+    HEADLINE = "no enforcer, the finding is the rule"
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_both_copies_instruct_the_stable_token(self, path: Path) -> None:
+        assert self.TOKEN in path.read_text(), (
+            f"{path.name} no longer tells the reviewer to open the finding "
+            f"`summary` with `{self.TOKEN}` — the instruction's own yield stops "
+            "being countable, which is the observable-yield obligation it "
+            "shipped under. It was reviewed as the sharpest finding against it: "
+            "declining a lint for want of measured evidence while shipping an "
+            "instruction that can never produce any."
+        )
+
+    def test_it_binds_every_reviewer_role_not_just_the_cross_check_owner(self) -> None:
+        # The load-bearing placement. Two reviewers found this independently on
+        # the first cut: the rule lived in review-cycle.md's Learnings
+        # Cross-Check, which agents/critic-reviewer.md routes ONLY to the
+        # sustainability role — while stale counts and citation drift are filed
+        # under correctness (Goals 1-3) and design (Goal 4). Partials are
+        # independent, so the role holding the rule cannot substitute for
+        # another's finding. It has to live where all three roles read it.
+        agent = REVIEWER_AGENT.read_text()
+        assert self.HEADLINE in agent, (
+            "the rule-over-instance instruction left agents/critic-reviewer.md — "
+            "it is the only Critic surface every reviewer role reads, and in any "
+            "other one it cannot reach the roles that file the class it targets."
+        )
+        assert "Every role" in _section(agent, self.HEADLINE, "## What to do") or (
+            "binds all" in _section(agent, self.HEADLINE, "## What to do")
+        ), (
+            "the instruction no longer says it binds every role — without that, a "
+            "reviewer reads it as the Learnings Cross-Check owner's job, which is "
+            "exactly the routing defect it was moved here to fix."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_the_dedupe_scope_is_decidable_and_agrees(self, path: Path) -> None:
+        # First cut said "not again while it is open" — undecidable for a cold
+        # reviewer fork with no state recording that a report is open, so it
+        # resolved either to re-filing (no saving) or to silence indistinguishable
+        # from suppression. Scope is one review; cross-branch dedupe is the
+        # builder's disposition.
+        text = path.read_text()
+        assert "this review" in text, (
+            f"{path.name} no longer scopes the instruction to THIS review — the "
+            "only scope a stateless reviewer can actually decide."
+        )
+        assert "while it is open" not in text, (
+            f"{path.name} re-grew the undecidable cross-branch clause: a reviewer "
+            "fork cannot read whether a prior finding is still open."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_it_is_substitution_not_suppression(self, path: Path) -> None:
+        # R2 of the plan. Without this clause the instruction reads as a licence
+        # to drop findings, which is strictly worse than the per-instance filing
+        # it replaces.
+        text = path.read_text()
+        assert "not suppression" in text, (
+            f"{path.name} lost the substitution-not-suppression clause — the "
+            "instruction then reads as permission to drop the report entirely."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_the_second_condition_is_checked_not_assumed(self, path: Path) -> None:
+        # The first cut's own worked example asserted stale pinned counts have no
+        # check; `record_lint`'s suite-total-claim is exactly that check. A
+        # reviewer following it would file "unenforced" about an enforced rule.
+        text = path.read_text()
+        assert "suite-total-claim" in text, (
+            f"{path.name} dropped the worked counter-example — the instruction's "
+            "second condition (no check owns it) is the one a reviewer is most "
+            "likely to assume rather than verify, and pinned counts are the case "
+            "where assuming it is wrong."
         )
 
 

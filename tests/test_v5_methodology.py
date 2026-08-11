@@ -94,16 +94,16 @@ LAST_MEASURED_TOKENS = {
     # which is itself the honest reading of how tight this ceiling now is.
     "skills/critic/review-protocol.md": 3619,
     "skills/critic/goals-1-3.md": 1998,
-    # +8 on 2026-08-11: the Learnings Cross-Check gained the rule-over-instance
-    # instruction — when a written rule has no enforcer, report the rule once
-    # instead of each occurrence. It is the run-count lever of the ratified
-    # wall-clock norm, so it had to fit under the ceiling rather than raise it.
-    # Paid for in-section: the ordering paragraph dropped its worked enumeration
-    # and its "narrative body" gloss, the two-outputs paragraph lost a restated
-    # clause, and the opening lost a "conversely" the sentence did not need.
-    # Net +8 against a 12-token headroom — the instruction is the only thing
-    # this file gained, and every token of it came out of prose beside it.
-    "skills/critic/review-cycle.md": 9596,
+    # -9 on 2026-08-11: the rule-over-instance instruction landed here first and
+    # cost +8 against 12 tokens of headroom, paid in-section by compressing the
+    # ordering and two-outputs paragraphs. The cumulative review then found the
+    # placement wrong — this file's Learnings Cross-Check reaches only the
+    # sustainability reviewer (agents/critic-reviewer.md routes it), while the
+    # class it targets is filed under correctness and design. The canonical
+    # statement moved to agents/critic-reviewer.md, which is unbudgeted and which
+    # all three roles read; what stays here is a pointer. So the file ends BELOW
+    # where it started: the compression is kept, the prose it funded is not.
+    "skills/critic/review-cycle.md": 9579,
     "skills/critic/framework-checks.md": 1116,
 }
 

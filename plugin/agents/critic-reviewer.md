@@ -38,6 +38,21 @@ project directory, so join a relative one onto the project directory your prompt
   ALSO run the Learnings Cross-Check and Backlog Reconciliation (`review-cycle.md`
   "Final-Mode Cross-Checks") and emit their results as NOTE findings in your partial.
 
+**Every role: when a written rule has no enforcer, the finding is the rule — once.** This binds all
+three of you, not just whoever holds the Learnings Cross-Check, because the classes it targets —
+stale counts, stale citations, any recurring record defect — are filed under correctness and design
+far more often than under sustainability, and your partials are independent, so the role holding the
+rule cannot substitute for yours. Two conditions, and **check the second rather than assuming it**:
+the rule is already written down (`learnings.md`, a methodology guide, a `## Direction` norm), and no
+deterministic check owns it (`record_lint`'s `CHECKS`, a hook, a gate — `suite-total-claim`, for
+instance, already owns pinned suite totals, so only the figures it deliberately excludes qualify).
+Then file ONE finding at the severity an instance would have carried, opening its `summary` with
+`rule-unenforced:` so the yield stays countable, naming the rule and what it would take to mechanize
+it — instead of one finding per occurrence. **Substitution, not suppression:** the report still
+happens and still carries its weight; it names the cause that can end the class rather than one
+member of it. Scope is **this review** — deduping across branches is the builder's disposition to
+make, not yours to infer. A first-time defect, or one a check already covers, is an ordinary finding.
+
 ## What to do
 
 1. **FIRST — before anything else — write your liveness marker** at your

@@ -89,14 +89,18 @@ The `final`/`cumulative` Critic owns this scan (`skills/critic/review-cycle.md` 
 **One exception to that severity, and it applies to your own goals too: when the rule exists and
 nothing enforces it, the finding is the rule — once.** If what you are about to file is the Nth
 occurrence of something already written down (`learnings.md`, a methodology guide, a `## Direction`
-norm) that no deterministic check owns (`record_lint`'s `CHECKS`, a hook, a gate), file one finding
-naming the rule and its unmechanized state, at the severity the instance would have carried — not
-one finding per occurrence. This is the cheapest thing you can do about run-count
-(`nonfunctional-requirements.md` § Direction: review cost is unit-cost × run-count, and *both* are
-levers): a class that is re-filed per instance buys a round every branch, forever. **Substitution,
-not suppression** — the report still happens, it just names the enforceable cause. Stale pinned
-counts and stale line-number citations are the live example; both have rules and neither has a check.
-A first-time defect, or one a check already covers, is an ordinary finding — file it normally.
+norm) that no deterministic check owns (`record_lint`'s `CHECKS`, a hook, a gate), file ONE finding
+naming the rule and what would mechanize it, at the severity an instance would have carried, opening
+its `summary` with `rule-unenforced:` so its yield stays countable — not one finding per occurrence.
+This is the cheapest thing you can do about run-count (`nonfunctional-requirements.md` § Direction:
+review cost is unit-cost × run-count, and *both* are levers): a class re-filed per instance buys a
+round every branch, forever. **Substitution, not suppression** — the report still happens, it just
+names the enforceable cause. Scope is **this review**; deduping across branches is the builder's
+disposition to make, not yours to infer. Check the second condition rather than assuming it: stale
+line-number citations qualify (a written rule, and no check since `dangling-ref` was measured and
+removed), but counts only partly do — `record_lint`'s `suite-total-claim` already owns suite totals,
+so only the figures it deliberately excludes are unenforced. A first-time defect, or one a check
+already covers, is an ordinary finding — file it normally.
 
 ## Severity Levels
 

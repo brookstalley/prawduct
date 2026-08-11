@@ -40,6 +40,24 @@ declined: its regex comment argues the exclusion on false-positive grounds, and 
 tests)" does not outweigh it. The removals stay removed; the reasoning is in
 `build-plan-reviewer-rule-over-instance.md` so the next audit inherits it rather than re-deriving it.
 
+**The cumulative review moved the instruction before it shipped, and that is the interesting part.**
+It first landed in `review-cycle.md`'s Learnings Cross-Check — which `agents/critic-reviewer.md`
+routes only to the *sustainability* reviewer, while stale counts and citation drift are filed under
+correctness and design. Two reviewers reached that independently, and the review was its own worked
+example: the sustainability reviewer said outright that it held the rule and could not make the
+finding it governs. The canonical statement now lives in `agents/critic-reviewer.md`, which all three
+roles read; `review-cycle.md` keeps a pointer and ends up 9 tokens *below* where it started. The same
+review also caught that the instruction emitted nothing observable — declining a lint for want of
+measured evidence while shipping a rule that could never produce any — so findings now open with
+`rule-unenforced:`, and the undecidable "not again while it is open" (no reviewer fork can read that)
+became a scope of one review, with cross-branch dedupe left to the builder's disposition.
+
+The one deferral this bundle makes is filed, not parked: **#633**, `test_count` vs recorded evidence.
+Filing it found more than deferring it would have — prawduct removed that field as computed-not-
+tracked, so it is residue in 11 sibling repos and disagrees with evidence in all 4 that carry both.
+The item holds both directions, build the check or delete the field, because the norm that kept
+`dangling-ref` out argues the second.
+
 ## 2026-08-10: six guards that pinned the repo's release phase, and now name which emptiness they reject
 
 <!-- prawduct: type=fix | scope=phase-blind-real-data-guards | release=v3.3.0 -->
