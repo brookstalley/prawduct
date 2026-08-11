@@ -46,7 +46,7 @@ routes only to the *sustainability* reviewer, while stale counts and citation dr
 correctness and design. Two reviewers reached that independently, and the review was its own worked
 example: the sustainability reviewer said outright that it held the rule and could not make the
 finding it governs. The canonical statement now lives in `agents/critic-reviewer.md`, which all three
-roles read; `review-cycle.md` keeps a pointer and ends up 9 tokens *below* where it started. The same
+roles read; `review-cycle.md` keeps a pointer, sized to whatever headroom its ceiling leaves. The same
 review also caught that the instruction emitted nothing observable — declining a lint for want of
 measured evidence while shipping a rule that could never produce any — so findings now open with
 `rule-unenforced:`, and the undecidable "not again while it is open" (no reviewer fork can read that)

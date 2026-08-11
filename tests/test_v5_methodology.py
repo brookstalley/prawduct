@@ -101,8 +101,8 @@ LAST_MEASURED_TOKENS = {
     # sustainability reviewer (agents/critic-reviewer.md routes it), while the
     # class it targets is filed under correctness and design. The canonical
     # statement moved to agents/critic-reviewer.md, which is unbudgeted and which
-    # all three roles read; what stays here is a pointer. So the file ends BELOW
-    # where it started: the compression is kept, the prose it funded is not.
+    # all three roles read; what stays here is a pointer, and the compression
+    # that funded the original paragraph is kept.
     #
     # +18 on the verify pass: the relocation traded one reach gap for a narrower
     # one — a SINGLE-PASS final/cumulative fork reads this file, not the agent

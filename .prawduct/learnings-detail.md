@@ -3426,3 +3426,27 @@ it would have been inventing a norm mid-build rather than enforcing one.
 (0 live plans, 0 pending entries) and a worktree at pre-prep `50d99594` (3 live, 9 pending) — with
 no skips in either, plus a simulated re-run of runbook steps 3 and 11 against this cycle's own
 change-log entry and plan. One run can only ever prove the phase you are standing in.
+
+## Before recommending that something be built, check whether it was already built and REMOVED
+
+An audit of 141 PR-review records recommended, as its headline fix, "lint pinned figures and
+citations at the source." Both halves were already answered in the tree. `record_lint`'s
+`suite-total-claim` had covered pinned suite totals since it shipped. The citation half —
+`dangling-ref` — had been built, measured at 3 findings and 0 true positives, deleted under
+`nonfunctional-requirements.md` § Direction ("a control that fires and catches nothing is removed by
+default"), and annotated with the exact bar for re-adding it: *evidence that the class costs review
+rounds*. The audit did not clear that bar. Of its two citation-drift findings, one sat in
+`backlog-archive.md`, which every check excludes by design, and the other was a wrong symbol name,
+which path resolution would not catch.
+
+**The evidence was in hand before the recommendation was made.** One of the reviewed findings cited
+`record_lint.py:598-638` by name. It was read as an example of citation drift rather than as proof
+that a record-lint subsystem existed — the file was named in the input and never opened.
+
+The removal comment existed *specifically* to stop a future reader helpfully restoring the check.
+Re-proposing it would have spent the same measurement a second time and re-shipped a control already
+known to fire and catch nothing.
+
+Generalizes past lints: a deletion with a recorded rationale is a decision, not an absence. Absence
+invites a proposal; a decision demands new evidence to reopen. The cheap check that separates them is
+opening the module that would host the thing you are about to recommend.

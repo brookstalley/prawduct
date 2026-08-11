@@ -209,6 +209,33 @@ class TestRuleUnenforcedToken:
             "instruction then reads as permission to drop the report entirely."
         )
 
+    def test_the_single_pass_route_survives(self) -> None:
+        # The narrowest carrier, and the one the ceiling punishes. A single-pass
+        # `final`/`cumulative` fork reads review-cycle.md, NOT the agent
+        # definition — SKILL.md routes it to four protocol files and that is not
+        # one of them. So this pointer is the ONLY way the rule reaches that
+        # fork. Its file sits at 9597 against `assert tokens < 9600` under a
+        # standing "the next addition trims or relocates" rule, which means
+        # deleting this sentence and lowering LAST_MEASURED_TOKENS is a green
+        # suite. That is precisely why presence is asserted here rather than
+        # left to the token record.
+        cycle = (PLUGIN / "skills/critic/review-cycle.md").read_text()
+        assert self.HEADLINE in cycle, (
+            "review-cycle.md lost the rule-over-instance pointer — a single-pass "
+            "final/cumulative reviewer now has no route to the rule at all, "
+            "because SKILL.md never sends it to agents/critic-reviewer.md."
+        )
+        assert "agents/critic-reviewer.md" in cycle and "single-pass" in cycle, (
+            "the pointer no longer names its target or its audience — it has to "
+            "tell the single-pass fork to open the agent definition, which is "
+            "the one file SKILL.md does not route it to."
+        )
+        assert self.TOKEN in cycle, (
+            "the pointer dropped the `rule-unenforced:` token, so a single-pass "
+            "reviewer would file the finding uncountably even when it reads the "
+            "rule correctly."
+        )
+
     @pytest.mark.parametrize(
         "path",
         [REVIEWER_AGENT, PR_PROTOCOL],
