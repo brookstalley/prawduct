@@ -3,6 +3,69 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-11: two subcommands v3.3.2 retired are callable again
+
+<!-- prawduct: type=fix | scope=retired-hook-subcommands | release=v3.3.3 -->
+
+**v3.3.2 deleted `build-index` and `user-prompt-submit` from the binary and from `hooks.json` in
+one commit, and the second half is what broke.** Deleting the registrations was right; deleting the
+subcommands was not. The harness pins a plugin version **per project** and updates those pins
+lazily, so for one update cycle a repo runs a pre-3.3.2 `hooks.json` against a 3.3.2 binary — and
+that pairing invoked names the dispatcher no longer had. The unknown-command branch prints the usage
+string and exits 1, which every product repo saw as `SessionStart:clear hook error` at session start
+and, via `UserPromptSubmit`, once per prompt. Reported from `../samsung-frame-art-loader` (pinned
+3.3.0 with a user-scope 3.3.2 install beside it); reproduced exactly by running the 3.3.2 binary
+with each name.
+
+Both are inert again — exit 0, no writes, unknown flags and stdin payloads tolerated — per the
+deprecation norm that already keeps `regen-views` and `stamp-merged` callable: signalled, not
+removed, with removal deferred to a major. `hooks.json` still does **not** register them, which was
+the correct half of v3.3.2 and is pinned so that keeping them callable cannot resurrect the hooks.
+
+**They are silent, where the other two deprecated commands warn.** That asymmetry is the point, not
+an oversight. `regen-views` warns because a person reads its output and can drop the call; nobody
+reads these — the caller is a stale registration the next plugin update replaces on its own, so a
+notice has no audience and would be the same session-start noise one severity quieter. Stronger
+still on stdout, where silence is a correctness requirement rather than a courtesy: a hook that
+exits 0 has its **stdout injected into the model's context** — SessionStart into the session,
+UserPromptSubmit ahead of every turn — so a deprecation notice printed the ordinary way would be
+read as instruction on every turn. Pinned on both streams.
+
+**The reasoning that let the deletion through is corrected at its source.** `cmd_regen_views`'s
+docstring asserted that this skew "cannot arise between a prawduct skill and this CLI — they ship
+from one version-keyed cache." True of a skill. False of a **hook registration**, which ships from
+that same cache but is invoked by the *harness*, against whichever version that project's pin
+resolves to. Left standing, that sentence reads as blanket permission to delete any hook-registered
+subcommand outright. It now names this case as its counter-example and states the norm's actual
+reach: anything a shipped artifact can invoke, hooks included.
+
+**Both were also refused inside a disposable worktree, which the first version of this fix missed.**
+`main()` runs `_check_ephemeral_worktree` *before* dispatch and it is fail-closed — anything not
+positively known to be read-only counts as a write — and v3.3.2 had removed both names from
+`_HARNESS_INVOKED_COMMANDS` along with everything else. So in a `.claude/worktrees/agent-*` tree a
+stale registration got `BLOCKED: refusing …` and **exit 1**: the same symptom this entry is about,
+surviving in the one environment prawduct itself creates, and falsifying the new docstrings' "exits
+0 unconditionally". Both are now in `_EPHEMERAL_SAFE_COMMANDS` — and so are `regen-views` and
+`stamp-merged`, which carried the identical gap behind the identical false claim since they were
+emptied. One classification, not four decisions. Measured both ways in a real ephemeral worktree:
+exit 1 before, exit 0 after, with the refusal path proved live in the same fixture by a command that
+is *not* on the list. Caught by the Critic, not the author.
+
+The forward-looking guard keys on an append-only `EVER_REGISTERED_HOOK_COMMANDS` set and derives the
+retired set by **subtraction**, because the obvious version does not work: a guard built from the
+*current* `hooks.json` fires only when a command is deleted from the binary while still registered,
+which is not what happened — v3.3.2 dropped the registration and the dispatcher branch in one
+commit, leaving nothing to assert against. Subtracting means un-registering moves a name from one
+checked bucket to the other instead of out of the check, and registering a new hook command without
+recording it fails its own test. The parse is asserted non-empty and the retired set asserted
+non-empty, so neither can go vacuously green.
+
+**Release timing, stated rather than left implicit:** v3.3.2 is tagged and live, so every affected
+repo hits this at session start and once per prompt until a release carries the fix. That is why
+this ships as an expedited v3.3.3 rather than riding the next scheduled promotion. A repo stranded
+in the meantime loses nothing — the two hooks that fail are hooks with no work left to do — and
+updating the plugin clears it.
+
 ## 2026-08-11: two advisories that reported things that were not true
 
 <!-- prawduct: type=fix | scope=advisory-false-positives | chunks=01,02 | release=v3.3.2 -->
