@@ -3477,7 +3477,42 @@ free until no supported install still registers it**. v3.3.3 restores both as in
 Left open for the owner rather than settled here, because scope is normative content and an
 amendment carries it: whether the exception should state that inert-retention window explicitly.
 Recorded the same shape as `[[install-reference-is-published]]` — a premise falsified without the
-decision necessarily becoming wrong.
+decision necessarily becoming wrong. **Ruled 2026-08-11 (v3.3.4):
+`[[deprecation-requires-an-inert-retention-window]]`, below.**
+
+## RULING (deprecation-requires-an-inert-retention-window), 2026-08-11
+
+Owner decision, put directly during the v3.3.4 release review and answered: **the harness-only
+removal exception requires an inert-retention window.** Unregistering a hook is free and immediate;
+deleting its subcommand waits until no supported install still registers it.
+
+This is the question `[[harness-only-removal-is-not-a-major]]` left open one paragraph above, and it
+is settled at the norm rather than in a release plan because scope is normative content. Homed as a
+further dated paragraph on the existing `Rulings:` line in `api-contract.md` § Direction — the
+Statement and Why are untouched, which is the split `docs/norms.md` draws between amending a norm
+and recording case law at its edge.
+
+**Why the window, and not simply "don't remove".** The two halves of a retirement are separable and
+their costs are wildly unequal. Dropping the `hooks.json` registration costs one line and takes
+effect at the consumer's next resolve; dropping the dispatch branch breaks every pin that has not
+yet caught up. A rule that treated them alike would either forbid the free half or permit the
+expensive one. The window is what lets the cheap half proceed at any tier while the expensive half
+waits for the thing that actually makes it safe.
+
+**And it is the replacement for the falsified warrant, not an addition to it.** What made v3.3.2's
+deletion look safe was the belief that the caller updates atomically with the binary. That belief
+was false. The retention window delivers, mechanically, the safety that belief was assuming — which
+is why the tier permission survives unchanged while the warrant stays withdrawn.
+
+**Where the window closes.** When no version a consumer could still be pinned to registers the
+command. Under a `directory:` marketplace that bound is set by how lazily pins update, so the honest
+floor is *at least one release after the registration is dropped*, and longer wherever evidence says
+a pin is older. The cost of holding it is a `return 0` and a docstring; the cost of getting it wrong
+is every product repo erroring at session start and once per prompt, which is what v3.3.2 measured.
+
+**What it unblocks.** #644's conformance leg was at `stage: requirements` on exactly this ground —
+its own Scope-out said the rule it checks against was not fully written until this was ruled. It is
+written now.
 
 ## (one-home-is-the-predicate-not-the-token) Sharing a matcher shares syntax, not the definition — 2026-08-11
 

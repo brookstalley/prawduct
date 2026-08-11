@@ -87,14 +87,27 @@ in `docs/governance-telemetry.md`.
   *routinely* observes a version gap, rather than the one that cannot. Same shape as
   [[install-reference-is-published]] above: a premise falsified without the decision necessarily
   becoming wrong.
-  **What survives, and what needs the owner.** Untouched: that harness-only removal need not spend a
-  major (the tier question the owner actually ruled on), and the narrowness that keeps
-  `stamp-merged`/`regen-views` deferred. Open, and **not** settled here because scope is normative
-  content an amendment must carry: whether the exception should require an inert-retention window —
-  *unregistering a hook is free and immediate; deleting its subcommand waits until no supported
-  install still registers it.* v3.3.3 restores both commands as inert on that reading, but the code
-  is the repair, not the ratification. Until the owner rules, treat the tier permission as live and
-  the atomic-update warrant as withdrawn.
+  **What survives.** Untouched: that harness-only removal need not spend a major (the tier question
+  the owner actually ruled on), and the narrowness that keeps `stamp-merged`/`regen-views` deferred.
+  **Ruled 2026-08-11 (v3.3.4) — the exception requires an inert-retention window.** Put to the owner
+  as the open question this paragraph previously carried, and answered: **unregistering a hook is
+  free and immediate; deleting its subcommand waits until no supported install still registers it.**
+  The two halves are separable and their costs are not alike — dropping the registration costs a
+  line and takes effect at the consumer's next resolve, while dropping the dispatch branch breaks
+  every pin that has not yet caught up. So the exception permits the first half at any tier and
+  defers the second, which is precisely the shape the falsified atomic-update warrant used to stand
+  in for: what made the deletion look safe was the belief that the caller updates with the binary,
+  and the retention window is what actually delivers the safety that belief assumed.
+  **What "no supported install" means in practice:** the window closes when no version a consumer
+  could still be pinned to registers the command — in this repo's `directory:` marketplace that is
+  bounded by how lazily pins update, so the honest floor is *at least one release after the
+  registration is dropped*, and longer if any evidence says a pin is older. Cheap to hold: an inert
+  subcommand is a `return 0` and a docstring.
+  This ratifies the reading v3.3.3 restored both commands under — that release was the repair, and
+  this is the ratification it explicitly said it lacked. The tier permission stands unchanged; the
+  atomic-update warrant stays withdrawn, replaced rather than restored.
+  Case law: [[deprecation-requires-an-inert-retention-window]]. The rule this makes fully written is
+  what unblocks #644's conformance leg from `stage: requirements`.
 
 ## Operations
 
