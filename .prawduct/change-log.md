@@ -5,7 +5,7 @@
 
 ## 2026-08-11: the plan sweep stops recording unbuilt chunks as shipped
 
-<!-- prawduct: type=fix | scope=plan-backfill-completeness | chunks=01 -->
+<!-- prawduct: type=fix | scope=plan-backfill-completeness | chunks=01 | release=v3.3.1 -->
 
 **`plan-backfill` archived a plan with two unbuilt chunks as `lifecycle: completed`,
 `released_in: v1.8.0`, in a real product, today.** It selects by the change log's `release=` tag on
