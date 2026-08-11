@@ -87,14 +87,27 @@ in `docs/governance-telemetry.md`.
   *routinely* observes a version gap, rather than the one that cannot. Same shape as
   [[install-reference-is-published]] above: a premise falsified without the decision necessarily
   becoming wrong.
-  **What survives, and what needs the owner.** Untouched: that harness-only removal need not spend a
-  major (the tier question the owner actually ruled on), and the narrowness that keeps
-  `stamp-merged`/`regen-views` deferred. Open, and **not** settled here because scope is normative
-  content an amendment must carry: whether the exception should require an inert-retention window —
-  *unregistering a hook is free and immediate; deleting its subcommand waits until no supported
-  install still registers it.* v3.3.3 restores both commands as inert on that reading, but the code
-  is the repair, not the ratification. Until the owner rules, treat the tier permission as live and
-  the atomic-update warrant as withdrawn.
+  **What survives.** Untouched: that harness-only removal need not spend a major (the tier question
+  the owner actually ruled on), and the narrowness that keeps `stamp-merged`/`regen-views` deferred.
+  **Ruled 2026-08-11 (v3.3.4) — the exception requires an inert-retention window.** Put to the owner
+  as the open question this paragraph previously carried, and answered: **unregistering a hook is
+  free and immediate; deleting its subcommand waits until no supported install still registers it.**
+  The two halves are separable and their costs are not alike — dropping the registration costs a
+  line and takes effect at the consumer's next resolve, while dropping the dispatch branch breaks
+  every pin that has not yet caught up. So the exception permits the first half at any tier and
+  defers the second, which is precisely the shape the falsified atomic-update warrant used to stand
+  in for: what made the deletion look safe was the belief that the caller updates with the binary,
+  and the retention window is what actually delivers the safety that belief assumed.
+  **What "no supported install" means in practice:** the window closes when no version a consumer
+  could still be pinned to registers the command — in this repo's `directory:` marketplace that is
+  bounded by how lazily pins update, so the honest floor is *at least one release after the
+  registration is dropped*, and longer if any evidence says a pin is older. Cheap to hold: an inert
+  subcommand is a `return 0` and a docstring.
+  This ratifies the reading v3.3.3 restored both commands under — that release was the repair, and
+  this is the ratification it explicitly said it lacked. The tier permission stands unchanged; the
+  atomic-update warrant stays withdrawn, replaced rather than restored.
+  Case law: [[deprecation-requires-an-inert-retention-window]]. The rule this makes fully written is
+  what unblocks #644's conformance leg from `stage: requirements`.
 
 ## Operations
 
@@ -138,7 +151,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   **The one disclosed exception:** if that rollback ALSO fails, the stamped copy survives and the
   reason says so by name — two failing filesystem operations cannot be undone by a third, and a
   refusal that quietly left an orphan would be the worse answer. The live plan is intact either way.
-  Status checkboxes are never touched.
+  Status checkboxes are never touched — but since v3.3.4 what they *said* is recorded, as an
+  additive `unbuilt_at_archive:` frontmatter key naming the chunks a build plan had not finished
+  (absence means clean; a document declaring a non-build-plan `artifact:` type is never stamped,
+  having no roster to read). `--dry-run` previews it, so the preview and the write agree.
   `plan-backfill [--apply] [--json] [--date YYYY-MM-DD]` (mutating with `--apply`) is the
   repo-wide counterpart the sentence above points at: it archives every live plan whose `scope=`
   carries a `release=` tag in the change log, so it decides for itself which files to touch and

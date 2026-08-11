@@ -83,6 +83,113 @@ def test_floor_closes_over_ly_and_ed_but_not_ing_derivations():
     assert wmi._in_floor("conflicting") is False
 
 
+# --- normalization (#638) ---------------------------------------------------
+# ``_normalize`` is the gate every term passes through on BOTH sides of a
+# jurisdiction match — the text's tokens and the artifact's vocabulary. A minted
+# non-word is therefore not a cosmetic defect: it is a term that can never match
+# anything, so the ranking silently degrades with nothing to catch it. These
+# assertions are all about that one property: what comes out is a real word.
+
+
+def test_every_clitic_reduces_to_its_base_word():
+    """#638: only ``'s`` and ``n't`` were handled, so the rest survived whole."""
+    assert wmi._normalize("you'd") == "you"
+    assert wmi._normalize("i'll") == "i"
+    assert wmi._normalize("they've") == "they"
+    assert wmi._normalize("we're") == "we"
+    assert wmi._normalize("i'm") == "i"
+    # The two that already worked, pinned so a reordering of the suffix tuple
+    # cannot regress them: "n't" is longer than "'s" and must be tried first.
+    assert wmi._normalize("don't") == "do"
+    assert wmi._normalize("let's") == "let"
+    assert wmi._normalize("team's") == "team"
+
+
+def test_es_after_a_sibilant_is_one_suffix_not_an_e_plus_s():
+    """#638: the bare-plural rule minted "enriche" from "enriches"."""
+    assert wmi._normalize("enriches") == "enrich"
+    assert wmi._normalize("matches") == "match"
+    assert wmi._normalize("finishes") == "finish"
+    assert wmi._normalize("passes") == "pass"
+    assert wmi._normalize("boxes") == "box"
+
+
+def test_the_es_rule_does_not_swallow_an_ordinary_plural():
+    """The regression the ``-es`` rule could cause, pinned against it.
+
+    "cases" -> "cas" and "enriches" -> "enrich" are indistinguishable by a bare
+    trailing-``s`` test, which is why the stem must end in a sibilant CLUSTER
+    and why a bare ``s`` is not one of them.
+    """
+    assert wmi._normalize("cases") == "case"
+    assert wmi._normalize("phases") == "phase"
+    assert wmi._normalize("releases") == "release"
+
+
+def test_the_ize_verb_family_survives_the_es_rule():
+    """``z`` is excluded from the sibilant set, and this is why.
+
+    "-zes" is dominated by ``-ize`` verbs and ``-ze`` nouns, where the ``s`` is
+    the whole suffix. An earlier draft included ``z`` and turned "sizes" into
+    "siz" and "generalizes" into "generaliz".
+    """
+    assert wmi._normalize("sizes") == "size"
+    assert wmi._normalize("generalizes") == "generalize"
+    assert wmi._normalize("normalizes") == "normalize"
+    assert wmi._normalize("freezes") == "freeze"
+
+
+def test_the_measured_che_exception_is_honoured():
+    """"caches" is "cache" + "s", not "cach" + "es" — the one measured exception.
+
+    It matters here specifically: "cache" is load-bearing vocabulary in this
+    codebase (the backlog cache, the plugin cache), so mis-stemming it would
+    split a term the artifacts and the prose both use constantly.
+    """
+    assert wmi._normalize("caches") == "cache"
+    assert wmi._normalize("caches") == wmi._normalize("cache")
+    assert wmi._normalize("niches") == "niche"
+    # The rule the exception set must not disable.
+    assert wmi._normalize("branches") == "branch"
+    assert wmi._normalize("dispatches") == "dispatch"
+
+
+def test_ies_singulars_are_returned_whole():
+    """"series" is the function's own docstring example of what not to mint.
+
+    Exempting them from the ``-ies`` rule is not enough on its own — falling
+    through hands them to the bare-plural rule, which mints "serie".
+    """
+    assert wmi._normalize("series") == "series"
+    assert wmi._normalize("species") == "species"
+    # The rule the deny-list must not disable.
+    assert wmi._normalize("stories") == "story"
+    assert wmi._normalize("queries") == "query"
+    assert wmi._normalize("entries") == "entry"
+
+
+def test_normalization_still_singularizes_the_ordinary_cases():
+    """The behavior the frequency floor and the vocabulary index both rely on."""
+    assert wmi._normalize("settings") == "setting"
+    assert wmi._normalize("facts") == "fact"
+    # Not-a-plural endings stay untouched.
+    assert wmi._normalize("address") == "address"
+    assert wmi._normalize("status") == "status"
+    assert wmi._normalize("analysis") == "analysis"
+
+
+def test_a_mis_stemmed_term_cannot_match_its_artifact():
+    """Why the above matters, asserted end-to-end rather than argued.
+
+    An artifact declaring "enrichment"-family vocabulary and a text saying
+    "enriches" must meet at the same normalized token. Under the pre-#638
+    function the text produced "enriche" and the artifact "enrich", so the two
+    could never meet — the degraded ranking the issue describes.
+    """
+    assert wmi._normalize("enriches") == wmi._normalize("enrich")
+    assert wmi._normalize("matches") == wmi._normalize("match")
+
+
 # --- jurisdiction ----------------------------------------------------------
 # ``jurisdiction_candidates`` answers "which artifacts cover this text's salient
 # terms" — the mechanical seed for a plan's ``governed_by:``. The salience

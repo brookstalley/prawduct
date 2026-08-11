@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import plan_index
+from . import buildplan_refs, plan_index
 
 
 #: The terminal state of a plan that shipped every chunk.
@@ -63,11 +63,28 @@ ARCHIVED_KEY = "archived"
 #: whose entire purpose is to stop losing plans.
 RELEASE_KEY = "released_in"
 SUPERSEDED_BY_KEY = "superseded_by"
+#: How the work ended, when it did not end clean: the plan's own ``## Status``
+#: did not evidence completion at the moment it was filed. **Absence means
+#: CLEAN, not unknown** — that is what makes the key additive rather than a
+#: format break, and it is why a reader that ignores it sees exactly what it saw
+#: before the key existed (`api-contract.md` § Direction, additive-first
+#: evolution). Written only by the explicit route; the automatic sweep never
+#: produces one because it refuses incomplete plans outright (#634).
+UNBUILT_KEY = "unbuilt_at_archive"
 MAINTAINED_KEY = "maintained"
 
 #: Written in document order, so two plans archived a year apart still read the
-#: same way. `lifecycle` leads because it is the question the reader arrived with.
-_KEY_ORDER = (LIFECYCLE_KEY, ARCHIVED_KEY, RELEASE_KEY, SUPERSEDED_BY_KEY, MAINTAINED_KEY)
+#: same way. `lifecycle` leads because it is the question the reader arrived with;
+#: `unbuilt_at_archive` sits beside `superseded_by` because the two answer the
+#: same follow-up — *how* did this end — from the two different directions.
+_KEY_ORDER = (
+    LIFECYCLE_KEY,
+    ARCHIVED_KEY,
+    RELEASE_KEY,
+    SUPERSEDED_BY_KEY,
+    UNBUILT_KEY,
+    MAINTAINED_KEY,
+)
 
 #: The prose half of "no longer maintained". The frontmatter states it as data;
 #: this states it to the human who opened the file and will otherwise read a
@@ -144,24 +161,60 @@ def _parse_scalar(raw: str) -> str:
     return raw.split("#", 1)[0].rstrip()
 
 
+def unbuilt_at_archive(content: str) -> str | None:
+    """What this plan's ``## Status`` says was still unbuilt, or ``None``.
+
+    A one-line pass-through to :func:`buildplan_refs.incompleteness_reason`,
+    kept so that **one module owns the key and its derivation**: a caller that
+    wants to preview the stamp (the CLI's ``--dry-run``) asks the same question
+    through the same door as the caller that writes it, and neither has to know
+    which module computes completeness.
+
+    Note the middle case, which is the one that matters. ``incompleteness_reason``
+    returns a *sentence* for a plan with no readable ``## Status`` roster rather
+    than ``None`` — an unparseable plan is not evidence of completion. That
+    sentence is stamped like any other, because filing an unreadable plan away as
+    clean is precisely the silent-completion failure this key exists to end.
+
+    **Which is exactly why the type gate comes first.** ``archive-plan`` archives
+    whatever it is pointed at, and a release plan, a discovery note or a design
+    doc has **no ``## Status`` roster by design** — so without this gate the
+    "cannot be read" sentence would land on every release plan at every cut,
+    reporting a missing roster in a document that never had one. That is a
+    control firing where there is nothing to catch, which
+    ``nonfunctional-requirements.md`` § Direction removes by default. Caught by
+    running the real command against this repo's own artifacts rather than by
+    reading the code.
+    """
+    if not plan_index.is_build_plan(content):
+        return None
+    return buildplan_refs.incompleteness_reason(content)
+
+
 def completion_fields(
     *,
     state: str,
     date: str,
     release: str | None = None,
     superseded_by: str | None = None,
+    unbuilt: str | None = None,
 ) -> dict[str, str]:
     """The frontmatter keys recording a terminal state, in document order.
 
     ``release`` is omitted rather than written empty when the product does not
     version — an empty key is a claim that the field was considered and found
     blank, which is not the same as "this product has no releases".
+    ``unbuilt`` is omitted on the same rule and for a stronger reason: its
+    absence is the *positive* claim that the plan finished clean, so an empty
+    one would say "incomplete, in an unstated way" — the opposite of the truth.
     """
     fields: dict[str, str] = {LIFECYCLE_KEY: state, ARCHIVED_KEY: date}
     if release:
         fields[RELEASE_KEY] = release
     if superseded_by:
         fields[SUPERSEDED_BY_KEY] = superseded_by
+    if unbuilt:
+        fields[UNBUILT_KEY] = unbuilt
     fields[MAINTAINED_KEY] = "false"
     return {key: fields[key] for key in _KEY_ORDER if key in fields}
 
@@ -173,6 +226,7 @@ def apply_completion_frontmatter(
     date: str,
     release: str | None = None,
     superseded_by: str | None = None,
+    unbuilt: str | None = None,
 ) -> str:
     """``content`` with completion keys in its frontmatter and the banner below it.
 
@@ -190,7 +244,11 @@ def apply_completion_frontmatter(
     consumer.
     """
     fields = completion_fields(
-        state=state, date=date, release=release, superseded_by=superseded_by
+        state=state,
+        date=date,
+        release=release,
+        superseded_by=superseded_by,
+        unbuilt=unbuilt,
     )
     new_lines = [f"{key}: {_quote_if_needed(value)}" for key, value in fields.items()]
 
@@ -399,12 +457,20 @@ def archive_plan(
     # CRLF document is normalized for the edit and restored on the way out. The
     # test asserts the bytes, not the intent.
     crlf = "\r\n" in content
+    # Derived HERE, from the plan's own content, rather than accepted as a
+    # parameter. The date is a parameter because the caller owns the calendar;
+    # completeness is not that kind of fact — it is written in the file being
+    # archived, and a parameter would let a caller assert a plan finished clean
+    # when its own Status says otherwise. This is the one field the operation
+    # reads rather than is told.
+    unbuilt = unbuilt_at_archive(content)
     stamped = apply_completion_frontmatter(
         content.replace("\r\n", "\n") if crlf else content,
         state=state,
         date=date,
         release=release,
         superseded_by=superseded_by,
+        unbuilt=unbuilt,
     )
     if crlf:
         stamped = stamped.replace("\n", "\r\n")
@@ -452,6 +518,10 @@ def archive_plan(
         "source": plan_path,
         "destination": destination,
         "fields": completion_fields(
-            state=state, date=date, release=release, superseded_by=superseded_by
+            state=state,
+            date=date,
+            release=release,
+            superseded_by=superseded_by,
+            unbuilt=unbuilt,
         ),
     }

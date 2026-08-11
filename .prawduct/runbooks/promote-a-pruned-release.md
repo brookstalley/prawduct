@@ -340,14 +340,35 @@ amended 2026-07-29). Step 10 is that test.
   human-read warning precisely because no automation touches the Release text. **A red run is a
   fact about the release, not a suspect workflow** — this job has been exercised both ways at
   v3.2.4, green against a real tag and red with a `not-released` verdict against a bogus one.
-- Your own install holds the released tree — these two print the **same** 40-character sha:
+- **Your install does NOT hold the released plugin, and that is correct here.** The sibling runbook's
+  install-sha check has no pruned equivalent — do not run it and do not import it.
+
+  Why it cannot exist on this path: the marketplace source is `./plugin`, resolved from whatever the
+  **primary worktree** has checked out, and this procedure deliberately never checks `main` out
+  there (step 12 pushes by ref precisely to avoid it). Meanwhile step 6 builds the candidate by a
+  classified `--3way` apply, so `main`'s tree is *deliberately unlike* `develop`'s — the very next
+  bullet requires `git diff --stat origin/main origin/develop` to be **non-empty**. A correct install
+  therefore holds `develop`'s plugin and the release holds the pruned one, and they differ **by
+  construction, in exactly the withheld work**. Comparing them and following the mismatch into the
+  sibling's case (2)/(3) triage would delete the cache of a perfectly correct install — the same
+  false-remedy loop #646 removed next door.
+
+  What you can check instead, and what it means:
 
   ```
-  echo "released:  $(git rev-parse vX.Y.Z^{commit})"
-  echo "installed: $(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")"
+  # Is my install current with what I have checked out? (Not a fact about the release.)
+  echo "worktree:  $(git rev-parse HEAD:plugin)"
+  echo "installed: $(git rev-parse "$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])"):plugin")"
   ```
 
-  *(Differing shas: see the same bullet in `cut-and-publish-a-plugin-release.md` §"If this doesn't work".)*
+  A difference here means your cache is stale relative to your own checkout — start a new session.
+  It says nothing about whether the release published correctly; `check-released` above is what
+  grades that.
+
+  > *v3.3.4 (#646) fixed the sibling's commit-vs-tree defect and, in the same pass, copied the fix
+  > here — where the problem was never commit identity. Caught by the Critic before it shipped. The
+  > lesson is narrow and worth keeping: a check copied into a runbook whose invariants differ is a
+  > new defect wearing the old one's fix.*
 - `git diff --stat origin/main origin/develop` is **non-empty**, and what it lists is the withheld
   work plus step 3's collateral, nothing else. *Unlike a whole-develop promotion, an empty diff here
   means the withheld work shipped.*

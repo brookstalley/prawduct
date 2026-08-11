@@ -492,6 +492,8 @@ build_state:
 # merged, because its `## Status` boxes are a derived view that stays `[ ]` until a
 # release flips it. The false resume signal is DV7's stated yield, observed live on
 # the branch that removes its cause.
+# Repointed 2026-08-11 on branch fix/v3.3.4-batch: this branch builds the
+# v3.3.4 batch plan (four independent scopes plus two governance stamps).
 active_build_plan: null
 
 # =============================================================================

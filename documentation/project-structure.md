@@ -1,38 +1,53 @@
 # Framework Repository Structure
 
-Prawduct v2 *is* a Claude Code plugin (and its own git-backed marketplace). The file-sync
-engine the v1 distribution shipped (the `tools/` tree) was retired in M4 — governance now
-lives entirely in the plugin (`bin/`, `lib/`, `skills/`, `methodology/`, `hooks/`). The layout:
+Prawduct *is* a Claude Code plugin (and its own git-backed marketplace). The file-sync engine the
+v1 distribution shipped was retired in M4 — governance now lives entirely under `plugin/`. **Every
+framework path is under `plugin/`**, which is the single fact to carry away: the marketplace's
+`source` is `./plugin`, so that subtree is what a consumer actually installs, and the repo root
+holds only the things a consumer never receives.
 
 ```
 prawduct/
 ├── CLAUDE.md                          # Framework operating instructions (principles + methodology pointers)
 ├── README.md                          # Human-facing project overview
-├── VERSION                            # semver (mirrored by .claude-plugin/plugin.json)
-│
-│   # ── Plugin (v2.0 distribution — the primary surface) ──
 ├── .claude-plugin/
-│   ├── plugin.json                    # name: prawduct, version (mirrors VERSION)
-│   └── marketplace.json               # single-plugin marketplace entry (pinned ref: main) — lands in Chunk 2 (marketplace publish, pending)
-├── hooks/hooks.json                   # SessionStart (banner + briefing + guidance digest), Stop (Critic + reflection gates)
-├── skills/                            # framework skills → /prawduct:* (critic, pr, doctor, migrate, building, discovery, …)
-│   ├── critic/                        # bundled Critic protocol (context:fork skill — review-protocol.md, review-cycle.md, framework-checks.md)
-│   └── pr/                            # bundled PR-reviewer protocol (review-protocol.md)
-├── bin/prawduct-hook                  # plugin runtime governance (Python; writes the governed repo's own state + the files architecture.md § Direction's reconciled-files norm names)
-├── lib/                               # plugin governance + scaffolding/migration (init_product, migrate_plugin, core, change_log, plan_index, critic_mode, advisory, …)
-├── methodology/                       # Narrative guides (bundled; read via ${CLAUDE_PLUGIN_ROOT})
-│   ├── discovery.md                   # How to explore a problem space
-│   ├── planning.md                    # How to design artifacts and decompose into chunks
-│   ├── building.md                    # How to build with quality, including the Critic review cycle
-│   ├── reflection.md                  # The learning loop
-│   └── session-digest.md             # SessionStart additionalContext digest
-├── templates/                         # Place-once + planning artifact templates for product repos
-│   ├── project-state.yaml             # Product state template (health_check, build_state)
-│   ├── boundary-patterns.md           # Contract surfaces between components
-│   ├── build-plan.md, product-brief.md, ...  # Artifact templates
-│   ├── human-interface/               # has_human_interface templates
-│   └── unattended-operation/          # runs_unattended templates
-├── pyproject.toml                        # Minimal pytest configuration
+│   └── marketplace.json               # single-plugin marketplace entry; source: ./plugin
+│
+│   # ── plugin/ — the distribution. This subtree IS what installs. ──
+├── plugin/
+│   ├── .claude-plugin/plugin.json     # name: prawduct, version (mirrors plugin/VERSION)
+│   ├── VERSION                        # semver (mirrored by plugin.json and pyproject.toml)
+│   ├── CHANGELOG.md                   # consumer-facing release notes
+│   ├── hooks/hooks.json               # SessionStart (banner + briefing + digest), Stop (Critic + reflection gates), SubagentStop
+│   ├── bin/prawduct-hook              # the runtime: every gate, probe and state writer (Python, one file)
+│   ├── lib/                           # the bodies the hook reaches lazily (init_product, migrate_plugin, core,
+│   │                                  #   change_log, plan_index, plan_archive, critic_consolidate, release_readiness, …)
+│   ├── skills/                        # framework skills → /prawduct:* (critic, pr, backlog, doctor, janitor,
+│   │   │                              #   learnings, methodology, migrate, onboard, report-bug, runbook, advisory, …)
+│   │   ├── critic/                    # bundled Critic protocol (context:fork — SKILL.md, review-protocol.md,
+│   │   │                              #   review-cycle.md, goals-1-3.md, framework-checks.md)
+│   │   └── pr/                        # bundled PR-reviewer protocol
+│   ├── agents/critic-reviewer.md      # the coordinator's subagent definition (its own restricted tools)
+│   ├── methodology/                   # Narrative guides (read via ${CLAUDE_PLUGIN_ROOT})
+│   │   ├── discovery.md               # How to explore a problem space
+│   │   ├── planning.md                # How to design artifacts and decompose into chunks
+│   │   ├── building.md                # The build cycle, including the Critic review cycle
+│   │   ├── reflection.md              # The learning loop
+│   │   └── session-digest.md          # SessionStart additionalContext digest
+│   ├── docs/                          # principles.md (the 24), norms.md, waivers.md,
+│   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md, examples/
+│   └── templates/                     # Place-once + planning artifact templates for product repos
+│       ├── project-state.yaml         # Product state template (health_check, build_state)
+│       ├── boundary-patterns.md       # Contract surfaces between components
+│       ├── build-plan.md, product-brief.md, ...  # Artifact templates
+│       ├── human-interface/           # has_human_interface templates
+│       └── unattended-operation/      # runs_unattended templates
+│
+│   # ── repo root — development only; none of it installs ──
+├── pyproject.toml                        # pytest configuration + project version (the third mirrored version file)
+├── tools/                                # one-off measurement scripts, not shipped and not the retired v1 sync engine
+├── documentation/                        # framework design docs (this file lives here, NOT in plugin/docs/)
+├── incoming-bugs/                        # upstream bug reports products file about prawduct itself
 ├── tests/
 │   ├── test_plugin_runtime.py            # Plugin hook runtime (briefing, gates, canary, handoff)
 │   ├── test_plugin_init.py               # init-product scaffolding (plugin-native)
@@ -52,20 +67,24 @@ prawduct/
 │   ├── test_v5_templates.py              # Surviving template + plugin-skill content
 │   ├── preferences/                      # Architecture/style preference tests
 │   └── scenarios/                        # Framework-validation scenarios
-├── docs/
-│   ├── principles.md                  # Full 24 principles with rationale
-│   ├── project-structure.md           # This file
-│   └── examples/                      # Observability strategy examples (API service, event-driven)
-├── .prawduct/                         # Framework's own prawduct state
+├── .prawduct/                         # Framework's own prawduct state — it governs itself
 │   ├── project-state.yaml             # Source of truth for framework iteration
 │   ├── learnings.md                   # Accumulated wisdom (surfaced via /prawduct:learnings)
 │   ├── learnings-detail.md            # Full learning context and history
+│   ├── change-log.md                  # what shipped, per scope, with its release= tag
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
-│   └── archive/                       # Archived development history
-│       └── working-notes/             # Design notes from v1-v3 era (Feb 2026)
+│   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
+│   ├── runbooks/                      # operational procedures (release cut, pruned promotion)
+│   └── archive/working-notes/         # Design notes from the v1-v3 era (Feb 2026)
 └── .claude/
-    └── settings.json                  # {} — this repo is governed by its own plugin (hooks/hooks.json); the legacy hook wiring was removed at the Chunk-13 cutover
+    └── settings.json                  # {} — this repo is governed by its own plugin (plugin/hooks/hooks.json)
 ```
+
+> **Two paths people get wrong, because their names collide.** `documentation/` (repo root) holds
+> framework *design* docs — including this file — and does not ship. `plugin/docs/` holds the
+> reference material the *methodology cites by path* (`principles.md`, `norms.md`, `waivers.md`) and
+> does ship. A pointer to `docs/principles.md` is wrong on both counts; it is
+> `plugin/docs/principles.md`.
 
 ## Product repos (plugin-governed)
 

@@ -10,6 +10,38 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.3.4
+
+**An archived plan now says whether it actually finished.** `archive-plan` stamps `unbuilt_at_archive:` into the frontmatter, naming the chunks that stopped it — so filing a plan away no longer erases the difference between work that completed and work that was abandoned mid-chunk.
+
+### The archive was losing the one fact you go there for
+
+The unticked boxes do survive the move — deliberately, they *are* the record of how the work ended. But nothing reads an archived plan's `## Status` roster again, so the fact was preserved somewhere no reader looks. Two archived plans, one clean and one abandoned at chunk 3, presented identically.
+
+**Absence means clean, not unknown.** That is what keeps this additive rather than a format break: a reader that has never heard of the key sees exactly what it saw before the key existed, and the safe direction is the default one.
+
+The field is *derived* from the plan's own Status, not passed in by the caller. A parameter would let a caller assert a plan finished clean while its own boxes said otherwise.
+
+**The middle case is the one that matters.** A plan whose Status roster is missing or unparseable used to produce the same silence as a fully-ticked one. It is now stamped with a sentence saying so — filing an unreadable plan away as clean is exactly the silent-completion this key exists to end.
+
+`--dry-run` previews the stamp before it is written.
+
+This touches **only the explicit `archive-plan` route**. The automatic `plan-backfill` sweep is unaffected and cannot produce the field: since v3.3.1 it refuses incomplete plans outright, so its input is always clean.
+
+### Norm suggestions stop matching against non-words
+
+`prawduct-hook jurisdiction` — the heuristic that suggests which norms govern a piece of work — reduced only `'s` and `n't`, so every other contraction survived whole (`you'd`, `i'll`, `they've`), and the bare-plural rule stripped one `s` off words whose plural is `-es`, minting `enriche`, `matche`, `boxe`.
+
+It normalizes **both** sides — your text and the artifact vocabulary — so a minted token could not match anything: the artifact said `enrich`, the text said `enriche`, and the suggestion ranked worse with nothing to signal it. Three rules now, in order: clitics, the `-es` allomorph after a sibilant, then the bare plural. `series` and `species` are returned whole.
+
+The `-es` membership is measured rather than reasoned — `match`+`es` and `cache`+`s` are the same four letters, so no lexical test separates them. Counted over every `.md` in this repo, the `-es` reading is right after `ch`, `sh`, `ss` and `x` in every occurrence but one. Re-normalizing the full 3,543-word frequency floor under both versions changes 12 words, and all 12 go from a minted non-word to the real base.
+
+Ranking only. No gate changes its verdict, and nothing you have written needs revisiting.
+
+### Also in this release, outside the plugin
+
+Three scopes ship in the prawduct repo itself and reach no consumer surface: the release runbook's install-verification checks now compare `plugin/` **subtree** shas rather than commit identity (the old form could never pass, on any release, for any correct install), a governance ruling that the harness-only-removal exception requires an inert-retention window before a subcommand is deleted, and this repo's own CLAUDE.md trimmed back under the length it teaches.
+
 ## v3.3.3
 
 **The `SessionStart:clear hook error` v3.3.2 introduced is fixed. If your sessions started printing a usage dump at startup and once per prompt, update and it stops.**
