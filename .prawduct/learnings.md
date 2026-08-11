@@ -514,3 +514,7 @@ dropping them.
 ## When you argue a deletion is safe because its only caller ships and updates in the same commit, check who INVOKES that caller — if it is the harness, that caller is the one that routinely runs against a mismatched binary, because plugin version pins are per project and lazily updated. Unregister now; keep the subcommand inert until no supported install still registers it — [learnings-detail.md]
 
 ## (one-home-is-the-predicate-not-the-token) — the case behind `architecture.md` § Direction's 2026-08-11 granularity amendment (#643). Sharing a MATCHER shares syntax, not the DEFINITION: the reader that feeds it is the other half. A shared symbol READS as agreement, so nobody re-checks it. Test: does the shared thing include the INPUT — [learnings-detail.md]
+
+## When a negative reproduction seems to CLEAR a finding, prove the mechanism was live before believing it — anything that fails open answers "fine" when you break its inputs, so a clean result can mean the fixture never reached the code. Run a case that MUST trip it in the same fixture first. Tell: your repro exits 0 and you are about to tell a reviewer they were wrong — [learnings-detail.md]
+
+## Editing a norm's STATEMENT in the same commit as the code it would bless is the amend-to-match-own-code tell, even when you are alert to it elsewhere in the same file — a settled-feeling decision arrives as an implementation detail, so the guard never fires. Record the departure beneath the clause; leave the clause alone. Tell: the edit admits just what you wrote — [learnings-detail.md]

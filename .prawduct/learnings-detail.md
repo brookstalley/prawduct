@@ -3497,3 +3497,56 @@ propagates." What was shared was the pattern, not the input it is matched agains
 
 Found by two independent reviewers in the same cumulative round, neither by the author, against a
 commit message that asserted the opposite.
+
+## A negative reproduction against a fail-open mechanism — 2026-08-11 (v3.3.3)
+
+The cumulative Critic found that the restored inert commands were still refused inside an ephemeral
+worktree. I tried to reproduce it by writing the pre-fix binary to a scratchpad path and running it
+there. It exited 0, and for a moment I had "the finding does not reproduce" in hand.
+
+It reproduced perfectly. From a scratchpad path `_gitstate()` raises ImportError, and
+`_check_ephemeral_worktree` **fails open by design** in that case — a bootstrap-resilience contract
+it documents explicitly. So the fixture never reached the code under test. With `CLAUDE_PLUGIN_ROOT`
+pointed at the checkout, both commands exited 1 with `BLOCKED: refusing …`.
+
+The general shape is worse than a fixture mistake. A mechanism that degrades safely is *built* to
+answer "fine" when its inputs are broken, so breaking the fixture and breaking the subject produce
+the same output — and the fail-open path is invisible unless you already know it exists. A negative
+result is therefore never self-certifying: it says either "the finding is wrong" or "my setup did
+not reach it", and nothing in the output distinguishes them.
+
+The cheap discriminator is to run, in the same fixture, a case that MUST trip the mechanism. Here
+that was any command absent from `_EPHEMERAL_SAFE_COMMANDS` (`test-evidence` did it) — it printed
+`BLOCKED`, proving the guard was live, after which the exit-0 result meant something. That check
+costs one command and would have prevented telling a reviewer they were wrong.
+
+Prompted by the test-evidence recorder's own question — whether the fixture actually reaches the
+subject — which is doing real work at exactly the moment it fires.
+
+## Editing a norm's statement in the same commit as the code it blesses — 2026-08-11 (v3.3.3)
+
+`api-contract.md` § Deprecation & Compatibility said "Deprecation is signalled, not silent … print a
+deprecation notice to stderr on use." The two commands this branch restored deliberately print
+nothing, for a good reason (their caller is a registration with no reader, and hook stdout is
+injected into the model's context). I softened the clause to "…where a signal has a reader."
+
+That is the amend-to-match-own-code tell, and the aggravating detail is that I was *primed*: forty
+lines earlier in the same artifact, in the same sitting, I had explicitly declined to settle the
+adjacent retention-window question **because scope is normative content an amendment must carry**.
+The cumulative Critic did not catch it; the PR reviewer did.
+
+Why the guard failed while alert. The retention question *arrived as a question*, so it was met with
+the norm-lifecycle machinery. The silence question arrived as an implementation detail I had already
+decided — and a decision that feels settled does not present as a norm change at all. Vigilance
+aimed at "am I about to amend a norm?" does not fire, because subjectively I was only writing down
+what the code already did.
+
+So the usable tell is structural rather than introspective: **a norm's statement edited in the same
+commit as the code that statement would bless.** That is checkable without knowing the author's
+state of mind. `cost-of-commit` reporting the doc paths as "free" made it frictionless in the
+direction of the mistake — cheap edits get less scrutiny, and this one was cheap and wrong.
+
+The repair: restore the clause verbatim, record the two silent commands beneath it as a dated
+departure pending owner ratification, naming why, what the owner is being asked, and the remedy if
+the answer is no (warn on stderr — never stdout).
+
