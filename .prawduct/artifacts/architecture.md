@@ -106,8 +106,7 @@ processes the harness spawns on lifecycle events, and reviewer subagents the ses
 Claude Code harness (external)
   │  fires lifecycle hooks (python3, one process per event); backgrounds Agent subagents
   ├─ SessionStart  → identity/version banner · guidance digest (injected as context)
-  │                → briefing (every source) · session reset (boundary sources only) · build index
-  ├─ UserPromptSubmit → prompt-time checks
+  │                → briefing (every source) · session reset (boundary sources only)
   ├─ Stop          → governance gates (Critic coverage + reflection) + consolidation backstop
   └─ SubagentStop  → (scoped to critic-reviewer) consolidate when all reviewers reported
   │

@@ -432,7 +432,8 @@ def _read_text(path: Path) -> "str | None":
 
 
 def _norm_field_re():
-    """The norm-entry field marker, IMPORTED from its one home in ``norm_probes``.
+    """What a norm entry IS, imported from its one home in ``norm_probes``:
+    ``(field marker, blockquote prefix)``.
 
     #568 was two definitions of a norm entry disagreeing; closing it with a
     second *copy* of the marker would have re-created the same defect in a
@@ -440,10 +441,21 @@ def _norm_field_re():
     (`architecture.md` § Direction: every fact has one home). Imported lazily
     because ``norm_probes`` pulls the advisory-store and backlog readers, and
     this module's top level is on the record-lint path.
-    """
-    from .norm_probes import _FIELD_MARKER_RE  # noqa: PLC0415 — lazy; heavy deps
 
-    return _FIELD_MARKER_RE
+    **The blockquote prefix is part of the definition, not a detail of the other
+    module's parsing.** Importing only the marker is what let the two drift when
+    blockquote tolerance landed: ``norm_probes`` strips ``>`` inside
+    ``_direction_lines`` before matching, this module walks raw text, and the
+    identical regex then answered differently on identical input. Sharing both
+    halves is what makes "cannot drift apart on an edit" true rather than
+    merely intended.
+    """
+    from .norm_probes import (  # noqa: PLC0415 — lazy; heavy deps
+        _BLOCKQUOTE_PREFIX_RE,
+        _FIELD_MARKER_RE,
+    )
+
+    return _FIELD_MARKER_RE, _BLOCKQUOTE_PREFIX_RE
 
 
 def direction_norm_count(text: str) -> "int | None":
@@ -467,12 +479,19 @@ def direction_norm_count(text: str) -> "int | None":
     :mod:`lib.norm_probes` rather than restated here, so a norm entry is a
     field-bearing entry everywhere and the two cannot drift apart on an edit.
     """
-    field_re = _norm_field_re()
+    field_re, blockquote_re = _norm_field_re()
     in_section = False
     section_level = 0
     count: "int | None" = None
     pending_bullet = False
-    for line in text.splitlines():
+    for raw in text.splitlines():
+        # Strip blockquote markers exactly as `norm_probes._direction_lines`
+        # does. Sharing the field REGEX is not enough to share the DEFINITION:
+        # that function feeds the probes de-quoted lines, while this walks the
+        # raw text, so a `> **Why:** ...` registry counted N entries there and 0
+        # here — #568 reopening in the blockquote case, silently skipping the
+        # `governed_by` lint for exactly the products the strip was added for.
+        line = blockquote_re.sub("", raw)
         heading = _HEADING_RE.match(line)
         if heading:
             level = len(heading.group(1))

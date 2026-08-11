@@ -6,7 +6,7 @@
 **Critic mode:** cumulative-final
 **Target release:** v3.3.2
 **Branch:** `fix/advisory-false-positives`
-**Baseline:** 4336 passed, 0 failed, 11 skipped (evidence tree-valid at branch point)
+**Baseline:** green at the branch point, evidence tree-valid (`prawduct-hook test-status`; the count is in `.prawduct/.test-evidence.json`, not restated here — a pinned total goes stale the next time anyone adds a test)
 
 ## Requirements Confidence
 
@@ -121,5 +121,14 @@ Two surfaces report things that are not true.
 - [ ] Chunk 01: blockquote/bullet-tolerant field detection
 - [ ] Chunk 02: delete the work-model tripwire (keep jurisdiction)
 
-**Context:** Plan written 2026-08-11 immediately after the v3.3.1 cut, from two defects diagnosed
-post-release. Both reproduced before planning. Nothing built yet.
+**Context:** Both chunks are BUILT and committed (`f1019cab` Chunk 01, `ec57f85b` Chunk 02) and the
+cumulative Critic review `rev-20260811T132447Z-1e7a38f1` has run: 2 BLOCKING, 9 WARNING, 11 NOTE.
+Its blockers were the documentation half of Chunk 02's own delete scope — artifacts still asserting
+the deleted tripwire as live — plus, as a warning the change-log actively denied, a real defect
+introduced by Chunk 01: the blockquote strip landed only in `_direction_lines`, so
+`record_lint.direction_norm_count` stayed blockquote-blind and the two modules disagreed about what
+a norm entry is. That is #568 reopening, and it is fixed by sharing the blockquote prefix through
+`_norm_field_re` rather than only the field regex.
+
+**The boxes stay unticked until `/prawduct:critic verify-resolutions` clears** — ticking the last one
+disarms the Stop gates, and the review is not closed until the resolution facts are recorded.

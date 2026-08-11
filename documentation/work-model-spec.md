@@ -1,5 +1,14 @@
 # Work Model — Implementation Spec
 
+> ⚠️ **HISTORICAL — the runtime leg described here was deleted in v3.3.2.**
+> The `UserPromptSubmit` orphan-term nudge (`prawduct-hook user-prompt-submit`, `build-index`, and
+> the derived vocabulary index) no longer exists: the owner ruled 2026-07-12 (#257) that its
+> resolution was deletion rather than a further precision fix, after its noise desensitized the one
+> signal it existed to carry. Requirements-precede-code enforcement moved to the review-time
+> `scope-trace:` question in the Critic and PR protocols (CRT-5M9J, #293). What survives of this
+> design is `prawduct-hook jurisdiction` and `lib/work_model_index.jurisdiction_candidates`.
+> This document is kept as the record of what was built and why — read it as history, not as spec.
+
 > Spec (the *how it lands*) for the kernel in [`work-model.md`](./work-model.md). Revised after an
 > independent confidence-check (verdict: *proceed after fixing blockers*; full notes at the end).
 > Structured by the **confidence gate**: ship what we have high confidence in; defer the rest with

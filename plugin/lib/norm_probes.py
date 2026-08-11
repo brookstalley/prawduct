@@ -394,7 +394,17 @@ def _direction_lines(text: str) -> list[str]:
     does — as a line start for the soft-wrap rule and as a field marker
     downstream. A line that is only a marker (`>`) becomes blank, which is the
     correct reading: an empty quoted line separates logical units just as an
-    empty plain one does."""
+    empty plain one does.
+
+    **The strip runs before HEADING detection too, so `> ## Direction` opens a
+    section and a quoted sibling heading closes one.** That is deliberate and
+    wider than the field lines the change was aimed at: a heading inside a
+    blockquote is still a heading of the quoted document, and stripping for
+    fields but not for headings would leave a wholly-quoted artifact with field
+    lines belonging to no section — a silent zero rather than a visible error.
+    Both directions are pinned by ``TestBlockquotedHeadingsOpenASection``,
+    because a strip applied when opening but not when closing would swallow the
+    rest of the document."""
     out: list[str] = []
     in_section = False
     section_level = 0

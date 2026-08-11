@@ -18,9 +18,24 @@ The strip happens in `_direction_lines` rather than in the four matchers, becaus
 point `_FIELD_MARKER_RE`, `_WHY_RE`, `_STATUS_RE` and `_FIELD_OR_ITEM_RE` all read through. One
 change therefore fixes entry detection *and* the soft-wrap joiner, which had been folding the marker
 into the middle of the prose the citation scans read (`"says the > display plane never requires…"`,
-degrading `dead-why` and `stalled-transition`). It also leaves `_FIELD_MARKER_RE` byte-identical,
-which is what `record_lint._norm_field_re` imports to keep one definition of a norm entry (#568) —
-`record_lint` needs to know nothing about blockquotes.
+degrading `dead-why` and `stalled-transition`).
+
+**That was not sufficient, and the first version of this entry said the opposite.** It claimed
+`record_lint` "needs to know nothing about blockquotes" because `_FIELD_MARKER_RE` stayed
+byte-identical for its imported copy. True of the regex bytes; false of the *definition*.
+`direction_norm_count` walks the raw text and never goes through `_direction_lines`, so the
+identical regex answered differently on identical input: a blockquoted registry became N entries to
+the probes and 0 to the `governed_by` lint, whose `if not norms: continue` then silently skipped
+exactly the products the strip was added for. That is #568 reopening in a new case — and it was
+*introduced* by the fix, since before it both readers agreed on zero. `_norm_field_re` now shares
+**both** halves of the definition, the marker and the blockquote prefix, which is what makes its own
+docstring's "cannot drift apart on an edit" true rather than merely intended. Three cross-module
+tests pin it. Caught by two independent reviewers in the cumulative review, not by the author.
+
+The strip runs before *heading* detection too, so `> ## Direction` opens a section and a quoted
+sibling heading closes one. Deliberate and wider than the field lines it was aimed at: stripping for
+fields but not headings would leave a wholly-quoted artifact with field lines belonging to no
+section — a silent zero rather than a visible error. Both directions are pinned.
 
 Measured rather than asserted: across all seven sibling repos carrying Direction sections, the
 affected repo flips and every other one is unchanged. The direct sibling of #569, which widened the

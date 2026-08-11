@@ -1403,3 +1403,92 @@ class TestBlockquotedNormFields:
     def test_a_heading_only_direction_section_is_still_not_a_registry(self):
         body = "# Architecture\n\n## Direction\n\n> Nothing normative here.\n"
         assert np._has_direction_entry(body) is False
+
+
+class TestBlockquotedEntriesCountTheSameInBothModules:
+    """#568's invariant, re-asserted for the blockquote case.
+
+    `record_lint.direction_norm_count` and `norm_probes._has_direction_entry`
+    are one definition of a norm entry. When blockquote tolerance first landed
+    it went into `_direction_lines` only — so the probes saw a blockquoted
+    registry and record_lint saw an empty one, and `governed_by`'s
+    `if not norms: continue` silently skipped exactly the products the
+    tolerance was added for. Sharing the field regex was not enough; the
+    blockquote prefix is part of the definition too.
+    """
+
+    _QUOTED = (
+        "# Architecture\n\n## Direction\n\n"
+        "- **The manifest is the only channel.**\n\n"
+        "> **Why:** a single file-shaped channel makes the availability norm\n"
+        "> structurally true rather than carefully maintained.\n"
+    )
+    _PLAIN = (
+        "# Architecture\n\n## Direction\n\n"
+        "- **The manifest is the only channel.**\n"
+        "  Why: a single file-shaped channel makes it structurally true.\n"
+    )
+
+    def test_a_blockquoted_entry_counts_in_both(self):
+        from lib import record_lint
+
+        assert np._has_direction_entry(self._QUOTED) is True
+        assert record_lint.direction_norm_count(self._QUOTED) == 1
+
+    def test_quoting_an_entry_does_not_change_either_answer(self):
+        """The two formats are the same registry, so both readers must agree
+        across both of them — not merely agree with each other on one."""
+        from lib import record_lint
+
+        assert record_lint.direction_norm_count(self._QUOTED) == record_lint.direction_norm_count(
+            self._PLAIN
+        )
+        assert np._has_direction_entry(self._QUOTED) == np._has_direction_entry(self._PLAIN)
+
+    def test_a_blockquoted_roadmap_still_counts_zero_in_both(self):
+        """The widening must not mint entries: the discriminator is the FIELD."""
+        from lib import record_lint
+
+        roadmap = (
+            "# Architecture\n\n## Direction\n\n"
+            "> - **Ship the importer.** Targeted for Q3.\n"
+            "> - **Then the exporter.** Q4.\n"
+        )
+        assert record_lint.direction_norm_count(roadmap) == 0
+        assert np._has_direction_entry(roadmap) is False
+
+
+class TestBlockquotedHeadingsOpenASection:
+    """The strip lands before heading detection, so `> ## Direction` opens a
+    section. That is a widening beyond the field lines the fix was aimed at, and
+    it is pinned here rather than left as an undocumented side effect.
+
+    It is the correct reading — a heading inside a blockquote is still a heading
+    of the quoted document, and the alternative (strip for fields but not for
+    headings) would mean a wholly-quoted artifact had field lines belonging to
+    no section, which is the inconsistency that produces a silent zero.
+    """
+
+    def test_a_quoted_direction_heading_opens_the_section(self):
+        body = (
+            "# Architecture\n\n> ## Direction\n\n"
+            "> - **The manifest is the only channel.**\n"
+            ">   Why: structurally true rather than carefully maintained.\n"
+        )
+        assert np._has_direction_entry(body) is True
+
+    def test_a_quoted_heading_still_CLOSES_the_section(self):
+        """The closing half must widen with the opening half. If `>` were
+        stripped when opening but not when closing, a quoted sibling heading
+        would leave the section open and swallow the rest of the document.
+        """
+        body = (
+            "# Architecture\n\n> ## Direction\n\n"
+            "> - **X.**\n>   Why: because.\n\n"
+            "> ## Glossary\n\n"
+            "> - **Y.**\n>   Why: this one is NOT in Direction.\n"
+        )
+        lines = np._direction_lines(body)
+        joined = "\n".join(lines)
+        assert "because" in joined
+        assert "NOT in Direction" not in joined, "a quoted sibling heading must close the section"
