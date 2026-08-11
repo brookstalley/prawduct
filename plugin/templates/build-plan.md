@@ -44,10 +44,21 @@ last_validated: 2026-07-03
 #                                          because a shipped version is immutable
 #                                          and cannot drift.
 #   superseded_by: <what replaced it, or why it stopped>   <- superseded only
+#   unbuilt_at_archive: <what this plan's own Status said was still unbuilt>
+#                                       <- ABSENCE MEANS CLEAN, not unknown. It
+#                                          appears only when the Status roster
+#                                          shows unticked chunks, or when there
+#                                          is no readable roster at all — an
+#                                          unparseable plan is not evidence of
+#                                          completion. Written by the explicit
+#                                          `archive-plan` route only; the
+#                                          automatic sweep refuses incomplete
+#                                          plans, so it never produces one.
 #   maintained: false
 # Status checkboxes are NOT touched on the way in. An archived plan may carry
 # unticked boxes — that records how the work ended, and nothing reads them once
-# the plan is out of the live directory.
+# the plan is out of the live directory. `unbuilt_at_archive:` exists because
+# nothing reads them: the fact has to be said in the frontmatter to be said at all.
 ---
 
 ## Requirements Confidence

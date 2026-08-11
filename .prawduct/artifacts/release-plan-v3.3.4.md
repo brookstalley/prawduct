@@ -7,9 +7,14 @@ last_validated: 2026-08-11
 
 # Release plan — v3.3.4
 
-A patch release carrying four independent small fixes, derived from a review of the ten most
-recent open issues. Four scopes ship; six issues from that same review are withheld to v3.4.0
-with named blockers.
+A patch release carrying four independent small fixes plus the two owner rulings taken during the
+same review, derived from a review of the ten most recent open issues. **Five scopes ship** — the
+four fixes and `deprecation-retention-window`, which carries the rulings; six issues from that same
+review are withheld to v3.4.0 with named blockers.
+
+*The rulings are a shipping scope rather than release prep because `release_pending_scopes` reads
+`scope=` and ignores `type=`: a `type=governance` change-log entry is release-pending like any
+other. Treating them as prep would leave a pending scope unclassified and exit the gate 1.*
 
 ## Release classification
 
@@ -93,23 +98,38 @@ tree but never its commit identity. Both checks in
 and the `merge-base --is-ancestor` case-triage at `:739` — test commit identity, so **neither can
 ever pass** on a `directory:` install resolved from `develop`. The triage can only print "cache
 holds a NON-release tree", routing a *correct* install into case (2)/(3) and its
-"delete the cache directory and restart" remedy. Both become
-`git rev-parse <sha>^{tree}` equality, which succeeds exactly when the cache holds the released
-content — the thing the checks were written to establish.
+"delete the cache directory and restart" remedy. Both become `git rev-parse <sha>:plugin` equality,
+which succeeds exactly when the cache holds the released content — the thing the checks were written
+to establish.
 
-**Case (3) was re-triaged, and it is real — measured 2026-08-11.** Its one instance
-(`plugins/cache/prawduct/prawduct/3.2.4` at `a0c2468`) had been diagnosed *by* the ancestry test this
-scope removes, so it could have been that test's false positive. It is not: `a0c2468^{tree}` is
-`165e315f` against `v3.2.4^{tree}` `fa827756` — different trees, so the cache under a release's
-version key genuinely held non-release content (`a0c2468` is dated 2026-08-04, on `develop`, after
-the cut). The case carries forward with its prose rewritten to cite the tree measurement, not the
-ancestry one. The wrong move would have been swapping the test and leaving the prose.
+**The unit is the `plugin/` subtree, not the whole tree** (Critic R-12). `marketplace.json` declares
+`source: ./plugin`, so that subtree is what a consumer installs; comparing whole trees reports a
+mismatch for any post-release commit touching only `.prawduct/` — which is nearly every session —
+while the installed content is byte-identical to what shipped.
 
-**The same defect is in `promote-a-pruned-release.md` and ships fixed there too.** The issue named
-one runbook; the check is duplicated in the pruned-promotion sibling, where the disjoint history is
-even more pronounced. Fixing one would have left the next pruned release with the identical false
-alarm — in-scope by the *fix, not file* preference, since it is the same defect in the same class of
-file.
+**Case (3) is a phantom after all, and it took two wrong tests to see it.** Its one instance
+(`plugins/cache/prawduct/prawduct/3.2.4` at `a0c2468`) was diagnosed *by* the ancestry test this
+scope removes. Re-measured against whole trees it appeared to survive — `165e315f` vs `fa827756` —
+and that is what this plan said until the subtree narrowing arrived. Against the unit that actually
+installs it collapses: **`a0c2468:plugin` and `v3.2.4:plugin` are both `ba3e8581`.** The cache held
+the v3.2.4 plugin exactly. The case stays in the runbook as mechanically possible but is marked
+**never observed**, with the phantom recorded so nobody cites `a0c2468` again.
+
+*Worth naming as a method failure, not just a corrected fact: each re-measurement was run against
+the previous test's conclusion rather than against the question. The plan's original instruction —
+"do not carry the case forward on evidence produced by the broken test" — was right and I obeyed its
+letter twice while still using the wrong instrument.*
+
+**The pruned runbook needed the opposite of this fix, and first got a copy of it.** The check was
+duplicated in `promote-a-pruned-release.md`, so it was corrected there in the same pass — but on
+that path the defect was never commit identity. The marketplace resolves from the primary worktree,
+which a pruned promotion deliberately never checks `main` out in, and step 6 builds the candidate by
+a classified `--3way` apply, so a *correct* install differs from the release **by construction, in
+exactly the withheld work**. Comparing them at all routes the operator into the delete-the-cache
+remedy — the same false-remedy loop #646 removes next door. That runbook now states the check has no
+pruned equivalent and gives the one the operator can actually run (is my cache current with my own
+checkout?), which is a fact about the machine and not about the release. Caught by the Critic before
+it shipped.
 
 **`#638` — `_normalize` stops minting non-words.** `plugin/lib/work_model_index.py:67` reduces only
 `'s` and `n't`, so every other contraction survives whole (`you'd`, `i'll`, `they've`), and the

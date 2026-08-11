@@ -91,7 +91,7 @@ Each build plan chunk includes `/prawduct:critic` in its "Done when" steps. Foll
 
 Two things bind you and are not restated by the skill you invoke. **Fix every blocking finding before the next chunk** — `/prawduct:critic verify-resolutions` records the resolution facts that unblock them. Then **reflect immediately**: what did the Critic surface that you missed? Critic reviews are the richest source of methodology insights, and the insight decays fast.
 
-Everything else about the Critic — the no-execution contract, the deterministic kernel-v3 data plane (`critic-begin` → partials → `critic-consolidate` → the shared evidence store), when to run `critic-consolidate` by hand after a coordinator review, and the invariant that a live review blocks `prawduct-hook clear` — lives with the plugin and is read there, not from here: `plugin/skills/critic/SKILL.md` for the mechanics, `plugin/skills/critic/review-cycle.md` for modes and the evidence model, `plugin/skills/critic/review-protocol.md` for goals and severity.
+Everything else about the Critic lives with the plugin and is read there, not from here: `plugin/skills/critic/SKILL.md` for the mechanics (the no-execution contract, the deterministic kernel-v3 data plane — `critic-begin` → partials → `critic-consolidate` → the shared evidence store — and the invariant that a live review blocks `prawduct-hook clear`), `plugin/skills/critic/review-cycle.md` for modes and the evidence model, `plugin/skills/critic/review-protocol.md` for goals and severity, and `plugin/methodology/building.md` for the builder-side steps the skill does not address to you — including running `critic-consolidate` by hand after a coordinator review.
 
 ## PR Review — Release Readiness
 

@@ -151,7 +151,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   **The one disclosed exception:** if that rollback ALSO fails, the stamped copy survives and the
   reason says so by name — two failing filesystem operations cannot be undone by a third, and a
   refusal that quietly left an orphan would be the worse answer. The live plan is intact either way.
-  Status checkboxes are never touched.
+  Status checkboxes are never touched — but since v3.3.4 what they *said* is recorded, as an
+  additive `unbuilt_at_archive:` frontmatter key naming the chunks a build plan had not finished
+  (absence means clean; a document declaring a non-build-plan `artifact:` type is never stamped,
+  having no roster to read). `--dry-run` previews it, so the preview and the write agree.
   `plan-backfill [--apply] [--json] [--date YYYY-MM-DD]` (mutating with `--apply`) is the
   repo-wide counterpart the sentence above points at: it archives every live plan whose `scope=`
   carries a `release=` tag in the change log, so it decides for itself which files to touch and

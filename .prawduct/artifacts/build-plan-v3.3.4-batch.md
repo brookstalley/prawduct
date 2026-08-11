@@ -28,9 +28,9 @@ governed_by:
 
 # Build Plan — v3.3.4 batch
 
-**Scope:** `v3.3.4-batch` (four change-log scopes ship under it — see Chunk table)
+**Scope:** `v3.3.4-batch` (five change-log scopes ship under it — see Chunk table)
 **Type:** bugfix + task batch
-**Size:** medium (five files across four independent scopes, plus two governance stamps)
+**Size:** medium (nine files across five independent scopes)
 **Critic mode:** cumulative-final
 **Target release:** v3.3.4
 **Branch:** `fix/v3.3.4-batch`
@@ -45,7 +45,7 @@ before any code was written; #636's input (`incompleteness_reason`) already retu
 sentence; #631 is a line-count target with an existing destination file.
 
 The parent requirement for the batch is `.prawduct/artifacts/release-plan-v3.3.4.md`, which
-classifies these four as shipping and records the two rulings Chunk 00 stamps.
+classifies all five as shipping and records the two rulings Chunk 00 stamps.
 
 ## Correction to the release plan, taken before building
 
@@ -71,7 +71,7 @@ Two consequences, both measured rather than inferred:
    is sitting on `develop` from earlier work. The gate answers that, and it currently says none.
 
 The scope cells also carry `(#NNN)` suffixes, which will not match the bare change-log `scope=`
-token. Chunk 05 rewrites the table to the four shipping scopes with bare names; the prose section
+token. Chunk 05 rewrites the table to the five shipping scopes with bare names; the prose section
 *Why six issues are withheld* keeps every word of the deferral reasoning, which is where that
 reasoning belongs — it is a statement about the roadmap, not about this release's partition.
 
@@ -167,6 +167,20 @@ a0c2468 is dated 2026-08-04, on develop, after the v3.2.4 cut
 key `3.2.4` held a tree that is not `v3.2.4`'s. It carries forward — and now on evidence produced by
 the test that ships, rather than by the one being removed.
 
+**Two things the Critic added after the first cut, recorded because they changed the design:**
+
+- **The unit is `git rev-parse <sha>:plugin`, not `^{tree}`.** `marketplace.json` declares
+  `source: ./plugin`, so a whole-tree comparison over-fires on any post-release commit touching only
+  `.prawduct/` — nearly every session.
+- **The pruned runbook needed the opposite of this fix.** Copying the tree comparison there was
+  itself a defect: a pruned release's `main` is deliberately unlike `develop`, so a *correct* install
+  differs by construction and the comparison routes the operator into the delete-the-cache remedy.
+  That runbook now states the check has no pruned equivalent and gives the one that does apply.
+
+**And the case-(3) verdict inverted under the corrected unit.** `a0c2468:plugin` equals
+`v3.2.4:plugin` (`ba3e8581`), so the instance was a false positive of *both* prior tests. The case is
+marked never-observed rather than deleted.
+
 **Out of scope.** The `UNVERIFIED` remedy banner (deleting the cache directory and re-resolving) is
 still unexecuted and stays marked. This chunk fixes the detections, not the remedy's verification.
 
@@ -222,7 +236,13 @@ from one that finished clean.
   `plugin/lib/buildplan_refs.py::incompleteness_reason` over the plan's own content.
 - The key joins `_KEY_ORDER` (so `_is_own_key` strips it on re-archive and the write stays
   idempotent) and `read_completion` reads it back.
-- The CLI wrapper passes the plan content through; no new flag.
+- The CLI wrapper passes the plan content through; no new flag. `--dry-run` previews the stamp —
+  a preview omitting a field the write makes is the mirror of the overstatement that branch was
+  already fixed for.
+- **A type gate, added after running it:** the stamp asks `plan_index.is_build_plan` first. Without
+  it the "no readable roster" sentence lands on every *release plan* at every cut — a document with
+  no roster by design. Fails safe toward *is a plan* (no declared `artifact:` type is still stamped).
+  `is_build_plan` is the new public spelling of `plan_index._declares_non_build_plan_artifact`.
 
 **The contract.** Absence means **clean**, not unknown. That is what makes this additive rather than
 a format break: a reader that ignores the field sees exactly what it sees today.
@@ -255,6 +275,12 @@ explicit route. How incompleteness is *detected* is unchanged.
 
 - The architecture description and component inventory move to
   `documentation/project-structure.md`, which already owns that subject. CLAUDE.md points at it.
+- **That file's framework half had to be repaired first** (Critic R-9). Delegating made it
+  load-bearing, and its tree still showed `bin/`, `lib/`, `skills/`, `methodology/`, `templates/`,
+  `hooks/` and `VERSION` at the repo root — all under `plugin/` since the cutover — plus a
+  `docs/principles.md` that does not exist and a claim that `tools/` was retired while a tracked
+  file lives there. A pointer is only as good as its target; handing a session wrong paths for the
+  most-read files in the repo is worse than the duplication it replaced.
 - Nothing that moves is deleted.
 - The principles roster and the governance anchor stay — those are what make the file load-bearing.
 
@@ -273,7 +299,7 @@ explicit route. How incompleteness is *detected* is unchanged.
 
 **Deliverables**
 
-- `release-plan-v3.3.4.md` § Release classification — four rows, bare change-log scope names, all
+- `release-plan-v3.3.4.md` § Release classification — five rows, bare change-log scope names, all
   `ships`. The six withheld issues leave the table and stay in the prose, where the deferral
   reasoning already lives and belongs.
 - The *Verification* section's `K withheld = 6` line is corrected to what the gate will actually
@@ -283,7 +309,7 @@ explicit route. How incompleteness is *detected* is unchanged.
   runbook's Phase 0, not only here.
 
 **Done when**
-- [ ] `check-releasability --release v3.3.4` exits 0, reporting 4 shipping / 0 withheld
+- [ ] `check-releasability --release v3.3.4` exits 0, reporting 5 shipping / 0 withheld
 - [ ] The withheld-issue reasoning survives verbatim in prose
 - [ ] Suite green
 
@@ -298,7 +324,7 @@ explicit route. How incompleteness is *detected* is unchanged.
 
 ## Context
 
-Branch `fix/v3.3.4-batch` off `develop`. Four independent scopes plus two governance stamps; no
+Branch `fix/v3.3.4-batch` off `develop`. Five independent scopes; no
 chunk depends on another's output, so ordering is by risk (governance first, docs last) rather than
 by dependency. The release itself — version bump, `release=` tagging, promotion — follows
 `cut-and-publish-a-plugin-release.md` **standard Phase 2** after this plan closes, per the

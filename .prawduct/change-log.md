@@ -115,20 +115,34 @@ release content. Neither could return true for a correct `directory:` install re
 `develop` — so the triage could only ever print *"cache holds a NON-release tree"*, routing a
 **correct** install into case (2)/(3) and its "delete the cache directory and restart" remedy.
 
-Both now compare `git rev-parse <sha>^{tree}`, which succeeds exactly when the cache holds the
+Both now compare `git rev-parse <sha>:plugin`, which succeeds exactly when the cache holds the
 released content — the thing the checks were written to establish. Measured at v3.3.3: installed
 `f7394808`, released `v3.3.2^{commit}` `1f65e231`, both trees `09791bd1`.
 
-**The same defect was in `promote-a-pruned-release.md` and is fixed there too.** The issue named one
-runbook; the check is duplicated in the pruned-promotion sibling, where the disjoint history is even
-more pronounced (its candidate tree is built by a classified `--3way` apply). Fixing one and leaving
-the other would have left the next pruned release with the identical false alarm.
+**The unit is the `plugin/` subtree, not the whole tree.** `marketplace.json` declares
+`source: ./plugin`, so that subtree is what a consumer installs. A whole-tree comparison reports a
+mismatch for any commit after the release that touched only `.prawduct/` — governance state, which
+lands nearly every session — while the installed plugin is byte-identical to what shipped.
 
-**Case (3) was re-measured before being carried forward, and it survives.** Its one instance was
-originally diagnosed *by* the ancestry test being removed, so it could have been a false positive of
-that test. It is not: `a0c2468^{tree}` is `165e315f` against `v3.2.4^{tree}` `fa827756` — different
-trees, so the cache under version key `3.2.4` genuinely held non-release content. Case (3) stays,
-now resting on evidence the shipped test produced rather than the broken one.
+**Case (3) of the triage is a phantom, and it took two wrong instruments to find that out.** Its one
+"live instance" (`plugins/cache/prawduct/prawduct/3.2.4` at `a0c2468`) was originally diagnosed *by*
+the ancestry test being removed. Re-measured against whole trees it appeared to survive — `165e315f`
+vs `fa827756` — and that is what this entry said in draft. Against the subtree that actually
+installs it collapses: **`a0c2468:plugin` and `v3.2.4:plugin` are both `ba3e8581`.** That cache held
+the v3.2.4 plugin exactly; only `.prawduct/` had moved on. The case remains documented as
+mechanically possible but is marked **never observed**, with the phantom recorded in place so nobody
+cites `a0c2468` again.
+
+**`promote-a-pruned-release.md` carried the same check and needed the opposite treatment.** It was
+"fixed" there by copying — and on that path the defect was never commit identity. The marketplace
+resolves from the primary worktree, which a pruned promotion deliberately never checks `main` out
+in, and its candidate tree comes from a classified `--3way` apply, so a *correct* install differs
+from the release **by construction, in exactly the withheld work**. Comparing them routes the
+operator into the delete-the-cache remedy — the identical false-remedy loop removed next door. That
+runbook now says the check has no pruned equivalent, explains why, and gives the one an operator can
+actually run: is my cache current with my own checkout? That is a fact about the machine, not the
+release. **A check copied into a runbook whose invariants differ is a new defect wearing the old
+one's fix.**
 
 ## 2026-08-11: the harness-only removal exception now carries a retention window
 
