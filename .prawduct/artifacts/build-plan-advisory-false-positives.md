@@ -109,7 +109,12 @@ Strip leading blockquote markers in
   raw text, so the byte-identical regex answered differently on identical input until it imported the
   blockquote prefix too — see the change-log entry and `[[harness-only-removal-is-not-a-major]]`'s
   sibling learning. `record_lint.py` is a Chunk 01 deliverable for that reason.
+
 ### Chunk 02: delete the work-model tripwire (replacing the contraction fix)
+
+**Deliverables:** `plugin/bin/prawduct-hook`, `plugin/hooks/hooks.json`,
+`plugin/lib/work_model_index.py`, `plugin/lib/common_words.py`,
+`tests/test_work_model_hooks.py`, `tests/test_work_model_index.py`.
 
   **Replaced 2026-08-11, owner direction.** The original chunk was a precision fix on
   `work_model_index._normalize`. The 2026-07-12 owner ruling recorded on #257 says the resolution for
@@ -152,10 +157,10 @@ Strip leading blockquote markers in
 
 ## Status
 
-- [ ] Chunk 01: blockquote/bullet-tolerant field detection
-- [ ] Chunk 02: delete the work-model tripwire (keep jurisdiction)
+- [x] Chunk 01: blockquote-tolerant field detection — built 2026-08-11, reviewed
+- [x] Chunk 02: delete the work-model tripwire (keep jurisdiction) — built 2026-08-11, reviewed
 
-**Context:** Both chunks are BUILT and committed (`f1019cab` Chunk 01, `ec57f85b` Chunk 02) and the
+**Context:** COMPLETE. Both chunks are built, committed (`f1019cab` Chunk 01, `ec57f85b` Chunk 02) and the
 cumulative Critic review `rev-20260811T132447Z-1e7a38f1` has run: 2 BLOCKING, 9 WARNING, 11 NOTE.
 Its blockers were the documentation half of Chunk 02's own delete scope — artifacts still asserting
 the deleted tripwire as live — plus, as a warning the change-log actively denied, a real defect
@@ -164,5 +169,12 @@ introduced by Chunk 01: the blockquote strip landed only in `_direction_lines`, 
 a norm entry is. That is #568 reopening, and it is fixed by sharing the blockquote prefix through
 `_norm_field_re` rather than only the field regex.
 
-**The boxes stay unticked until `/prawduct:critic verify-resolutions` clears** — ticking the last one
-disarms the Stop gates, and the review is not closed until the resolution facts are recorded.
+Three verify rounds followed, each finding something the previous round's fix had asserted was
+handled: `record_lint` needed no change (it did); R-1's sites were swept (two were not — the
+verifying grep searched `plugin/docs|methodology|skills`, never `.gitignore` or `plugin/bin/`); and
+the deliverable check was fixed by frontmatter (the chunk *headings* were a second, independent
+cause, so the check had never run at all). The common thread is asserting a verification that was
+not performed against the thing named — both learnings this branch produced point at it.
+
+**Closed 2026-08-11**: `rev-20260811T143929Z-f65cd6de` returned 0 blocking, 0 warning, 0 note, and
+the boxes were ticked after it, never before — ticking the last one disarms the Stop gates.
