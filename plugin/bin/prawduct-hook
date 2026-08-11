@@ -5264,7 +5264,9 @@ _USAGE = (
 
 
 def _work_model_load_lib():
-    """Import the pure catch logic, seeding sys.path like the other lib readers."""
+    """Import the jurisdiction-matching logic, seeding sys.path like the other
+    lib readers. (It was the tripwire's catch logic until v3.3.2 removed that;
+    `jurisdiction_candidates` is what the module is for now.)"""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
