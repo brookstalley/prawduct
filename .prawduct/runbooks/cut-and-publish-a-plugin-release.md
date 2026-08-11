@@ -429,15 +429,23 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     `could not archive <scope>: …` and appears under neither heading.
 
     > ⚠️ **Do not reach for `archive-plan` here, and do not loop on "re-run until 0".**
-    > `archive-plan` asks the *same* refusal predicate, so it declines every one of these
+    > `archive-plan` asks the *same* refusal predicate for most of these, so it declines them
     > for the same reason the sweep did. **Each reason names its own remedy, and they are
     > all different:** *"already exists"* → rename one of the two, then re-run.
     > *"already records lifecycle …"* → the plan already has an end of life and only needs
     > moving; `git mv` it into `archive/` and it leaves the live scan. *"cannot read …"* →
     > fix the file's encoding by hand first; nothing can converge a plan it cannot decode.
 
-    Once each named plan has had its own remedy, re-run and expect exit 0. A preview always
-    exits 0 even when it lists refusals, because it attempted nothing.
+    > *"…Status roster"* / *"…still unticked"* → **the one reason `archive-plan` does NOT
+    > share** (v3.3.1, #634). The sweep cannot tell a dead plan from live work whose scope
+    > shipped partially, so it hands you the call: tick the chunks if they shipped, or
+    > `archive-plan <path> --state superseded --superseded-by "…"` if the work stopped.
+
+    Once each named plan has had its own remedy, re-run and expect exit 0 — **except where a
+    completeness refusal was answered with an explicit `archive-plan`**, which removes the plan
+    from the live set directly, so the re-run has nothing left to move and reports it under
+    neither heading. A preview always exits 0 even when it lists refusals, because it
+    attempted nothing.
 
     > ⚠️ **Read the `NOT moving` list before `--apply`.** The preview separates plans it
     > will archive from plans the change log says shipped but which it refuses (a name

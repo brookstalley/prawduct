@@ -118,13 +118,17 @@ When `develop` is ready to release as `vX.Y.Z`:
    and the run reports it under the plans it kept rather than the ones it moved.
    The preview also lists, separately, plans the change log says shipped but which the
    sweep **refuses** (a name already in the archive, a plan already carrying a terminal
-   state, one it cannot read). Read that list before confirming: those need a person, and
+   state, one it cannot read, or — since v3.3.1 — one whose `## Status` does not evidence
+   completion). Read that list before confirming: those need a person, and
    they are the ones that otherwise stay live silently. **`--apply` exits 1 when that list
    is non-empty** — it archived what it could, and the rest is named work that did not
    move. Read each reason and apply *that* reason's remedy: `archive-plan` is the wrong
-   reflex here, because it asks the same refusal predicate and declines identically (a name
-   collision wants a rename, a plan already carrying a terminal state wants a `git mv` into
-   `archive/`, an undecodable file wants its encoding fixed). A write-time failure prints to
+   reflex for MOST of these, because it asks the same refusal predicate and declines
+   identically (a name collision wants a rename, a plan already carrying a terminal state
+   wants a `git mv` into `archive/`, an undecodable file wants its encoding fixed). The
+   completeness refusal is the **one exception**: `archive-plan` does not ask it, and is the
+   intended route once you have decided the plan is done — tick the chunks if they shipped,
+   or archive it `--state superseded --superseded-by "…"` if the work stopped. A write-time failure prints to
    stderr rather than into that list, so check both. The preview exits 0 either way, having
    attempted nothing.
    A plan whose work was **descoped** rather than shipped has no `release=` tag and is not

@@ -19,12 +19,25 @@ data. Where a product has no release tags at all, nothing is moved — the set i
 state, so the report-never-write rule that governs checkbox state does not reach
 it.
 
-**Checkbox state is explicitly not a precondition, and is not corrected on the
-way in.** Nothing reads an archived plan's boxes, so "make it look complete
-first" would be ceremony with no consumer — and it would put a writer exactly
-where the rule is that only a session with the work in context may say which
-chunk is done. Removing that precondition is what makes this fully mechanical;
-it was the only step that could not be automated before.
+**Checkbox state is never CORRECTED on the way in.** Nothing reads an archived
+plan's boxes, so "make it look complete first" would be ceremony with no
+consumer — and it would put a writer exactly where the rule is that only a
+session with the work in context may say which chunk is done. That half is
+unchanged and binds both routes.
+
+**It IS a precondition of this sweep, though — since #634 (v3.3.1).** The test
+above answers "did the scope ship", never "did the plan finish", and the two come
+apart whenever a scope ships partially: a real product archived a plan as
+``completed``/``released_in`` with two chunks unbuilt and still live work, having
+declined the identical proposal at its two previous cuts. So a plan whose own
+``## Status`` does not evidence completion is now *refused and named* rather than
+proposed (:func:`_incompleteness_refusal`). This does not put a model in the write
+path — the predicate is a deterministic count, and declining moves the judgment to
+a human and OUT of the write path. Nor does it strand the descoped plan the
+archival norm worries about: that plan was never meant to be archived *completed*
+but **superseded**, which needs a human to name a reason, so an explicit
+``archive-plan`` — which asks no completeness question at all — is one command
+away. The ruling is recorded in ``data-model.md`` § Direction (Ruled 2026-08-11).
 
 **Module boundary.** ``change_log.py`` knows tags and nothing about plans;
 ``plan_index.py`` knows plans and nothing about tags. Deriving the shipped set
@@ -156,7 +169,10 @@ def survey(prawduct_dir: Path) -> dict:
     Returns ``{has_release_tags, shipped, blocked, unshipped}``. ``shipped`` is
     ``[{path, scope, release}]`` — the plans a run would actually archive.
     ``blocked`` is ``[{path, scope, release, reason}]``: plans the change log
-    says shipped but which :func:`plan_archive.refusal_reason` would refuse.
+    says shipped but which :func:`plan_archive.refusal_reason` would refuse, plus
+    (since #634) those whose own ``## Status`` does not evidence completion —
+    see :func:`_incompleteness_refusal` for why that second predicate lives here
+    rather than beside the first.
     ``unshipped`` is ``[{path, scope}]``, the live plans it leaves alone.
 
     **The preview asks the refusal predicate, because a preview that overstates
@@ -231,8 +247,16 @@ def backfill(prawduct_dir: Path, *, date: str, apply: bool = False) -> dict:
 
     Each plan is stamped ``lifecycle: completed`` and ``released_in: <version>``.
     *Completed* rather than *superseded* because the change log recording a
-    release for the scope is precisely the evidence that the work shipped; the
-    plan's own checkboxes are not consulted, and deliberately so.
+    release for the scope is evidence that the SCOPE shipped.
+
+    **That is not the same as the plan having finished, and since #634 this no
+    longer assumes it is.** The two come apart whenever a scope ships partially,
+    and the assumption archived two unbuilt chunks as shipped in a real product.
+    :func:`survey` now also asks :func:`_incompleteness_refusal`, so a plan whose
+    own ``## Status`` does not evidence completion lands in ``blocked`` with the
+    chunk named. Checkboxes are still never *corrected* on the way in — how the
+    work ended is a fact worth keeping — and an explicit ``archive-plan`` still
+    asks no completeness question at all.
 
     Refusals are per-plan and collected, not fatal: a name collision in the
     archive must not abandon a 73-plan sweep partway with no report of where it
