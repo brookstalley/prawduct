@@ -1,6 +1,6 @@
 ---
 artifact: build-plan
-version: 1
+version: 2
 scope: advisory-false-positives
 governed_by:
   - artifact: api-contract.md   # § Direction — additive-first evolution; the deprecation clause Chunk 02 departs from
@@ -84,7 +84,12 @@ Two surfaces report things that are not true.
 
 ## Chunks
 
-- **Chunk 01 — blockquote-tolerant field detection.** Strip leading blockquote markers in
+### Chunk 01: blockquote-tolerant field detection
+
+**Deliverables:** `plugin/lib/norm_probes.py`, `plugin/lib/record_lint.py`,
+`tests/test_norm_probes.py`.
+
+Strip leading blockquote markers in
   `_direction_lines`, which is the single point every downstream matcher (`_FIELD_MARKER_RE`,
   `_WHY_RE`, `_STATUS_RE`, `_FIELD_OR_ITEM_RE`) reads through — so one change fixes entry detection
   AND the soft-wrap fold. Tests: every emphasis form of `Why`/`Status` in blockquote form; samsung's
@@ -97,9 +102,14 @@ Two surfaces report things that are not true.
   `_FIELD_MARKER_RE` to accept a `- **Why:**` sub-bullet. **Dropped.** Reading the sibling
   `record_lint.direction_norm_count` showed a bullet-prefixed field line is consumed as a *new bullet*
   there and never counted, so the two modules would diverge further for a shape no repo writes. The
-  blockquote half needs no such widening — stripping at `_direction_lines` leaves the shared marker
-  regex untouched, which is what keeps `record_lint`'s imported copy in step.
-- **Chunk 02 — ~~contraction and verb-plural normalization~~ → DELETE the work-model tripwire.**
+  blockquote half needs no such widening of the marker itself.
+
+  **Corrected after review:** this paragraph originally closed by claiming that stripping at
+  `_direction_lines` "keeps `record_lint`'s imported copy in step". It did not. `record_lint` walks
+  raw text, so the byte-identical regex answered differently on identical input until it imported the
+  blockquote prefix too — see the change-log entry and `[[harness-only-removal-is-not-a-major]]`'s
+  sibling learning. `record_lint.py` is a Chunk 01 deliverable for that reason.
+### Chunk 02: delete the work-model tripwire (replacing the contraction fix)
 
   **Replaced 2026-08-11, owner direction.** The original chunk was a precision fix on
   `work_model_index._normalize`. The 2026-07-12 owner ruling recorded on #257 says the resolution for
@@ -116,7 +126,9 @@ Two surfaces report things that are not true.
     `should_fire`, `format_nudge`, `nudge_for`, `_is_question`, `_is_harness_text`, and the constants
     only they use (`REQUIREMENT_VERBS`, `MAINTENANCE_VERBS`, `_DIRECTIVE_VERBS`, `_NOUN_DETERMINERS`,
     `_SENTENCE_BREAK`, `_HARNESS_MARKERS`).
-  - `tests/test_work_model_hooks.py` and the tripwire half of `tests/test_work_model_index.py`.
+  - The tripwire halves of `tests/test_work_model_hooks.py` and `tests/test_work_model_index.py`
+    were removed. Both files SURVIVE: the first keeps the gitignore-contract tests (and gains the
+    corpus-assembly test), the second keeps the salience and jurisdiction coverage.
   - Prose describing the tripwire — it is named as "tripwire #1" in the session digest and is
     referenced from the governance surfaces; a deleted mechanism that documentation still asserts is
     a Living Documentation failure, not a leftover.
