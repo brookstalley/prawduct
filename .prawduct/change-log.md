@@ -5,7 +5,7 @@
 
 ## 2026-08-11: CLAUDE.md is back under the length it teaches
 
-<!-- prawduct: type=docs | scope=claude-md-trim -->
+<!-- prawduct: type=docs | scope=claude-md-trim | release=v3.3.4 -->
 
 **191 lines, always-loaded, against the ~150 the methodology teaches** (`building.md`: CLAUDE.md is
 instructions, not documentation) and the Critic warns above. Every line is paid at every session
@@ -31,7 +31,7 @@ principles roster and the governance anchor are untouched, which is what makes t
 
 ## 2026-08-11: an archived plan says whether it finished
 
-<!-- prawduct: type=feat | scope=archive-unbuilt-stamp -->
+<!-- prawduct: type=feat | scope=archive-unbuilt-stamp | release=v3.3.4 -->
 
 **A plan archived with unbuilt chunks was indistinguishable in the archive from one that finished
 clean.** The unticked boxes survive the move — deliberately, they *are* the record of how the work
@@ -67,7 +67,7 @@ the field: it refuses incomplete plans outright (#634), so its input is always c
 
 ## 2026-08-11: `_normalize` stops minting non-words
 
-<!-- prawduct: type=fix | scope=jurisdiction-term-normalization -->
+<!-- prawduct: type=fix | scope=jurisdiction-term-normalization | release=v3.3.4 -->
 
 **`work_model_index._normalize` reduced only `'s` and `n't`, so every other contraction survived
 whole** — `you'd`, `i'll`, `they've`, `we're`, `i'm` — and the bare-plural rule stripped one `s` off
@@ -105,7 +105,7 @@ closed-set reduction is in bounds, a real stemmer is not.
 
 ## 2026-08-11: the install-sha checks compare trees, not commits
 
-<!-- prawduct: type=fix | scope=release-runbook-tree-identity -->
+<!-- prawduct: type=fix | scope=release-runbook-tree-identity | release=v3.3.4 -->
 
 **Two release-runbook checks could never pass, on any release.** `main` is built by
 `git read-tree --reset -u origin/develop` plus a fresh commit, so a release tag shares `develop`'s
@@ -146,7 +146,7 @@ one's fix.**
 
 ## 2026-08-11: the harness-only removal exception now carries a retention window
 
-<!-- prawduct: type=governance | scope=deprecation-retention-window -->
+<!-- prawduct: type=governance | scope=deprecation-retention-window | release=v3.3.4 -->
 
 **The question v3.3.3 left open is ruled.** `api-contract.md` § Direction's exception
 `[[harness-only-removal-is-not-a-major]]` let a harness-only subcommand be removed at any tier, on

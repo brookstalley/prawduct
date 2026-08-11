@@ -24,7 +24,13 @@ governed_by:
     dispositions:
       - "CITED (Chunk 00, ruling 2). The direction that settles #633 toward deletion rather than a
          `test-count-lag` check. No departure — the ruling applies the norm."
+lifecycle: completed
+archived: 2026-08-11
+released_in: v3.3.4
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan — v3.3.4 batch
 
