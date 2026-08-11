@@ -3446,6 +3446,39 @@ Recorded as a `Rulings:` line on the entry rather than as an edit to its Stateme
 a norm to permit your own change is the amend tell. `stamp-merged` and `regen-views` stay
 inert-and-deferred, which is the contrast that keeps the exception narrow rather than a loophole.
 
+### Premise falsified the same day — 2026-08-11 (v3.3.3)
+
+The paragraph above contains one false sentence: *"so no caller could observe a gap."* Every
+product repo did. Within hours of v3.3.2 publishing, `../samsung-frame-art-loader` and its siblings
+were printing `SessionStart:clear hook error` with the CLI usage string at every session start, and
+the same failure once per prompt through `UserPromptSubmit`.
+
+**Where the reasoning went wrong.** "Shipped inside the same plugin at the same version and updated
+in the same commit" is a fact about the *repository*, and it was read as a fact about *installs*.
+It is not one. Claude Code caches the plugin per version under
+`plugins/cache/prawduct/prawduct/<version>/` and records a pin **per project** in
+`installed_plugins.json`; those pins move lazily and independently of each other. At the moment of
+the report, four sibling repos sat at 3.3.0 or 3.3.1 with a user-scope 3.3.2 install beside them.
+The harness then resolves which binary runs — so a `hooks.json` registration is not a caller that
+updates in lockstep with the binary. It is the caller that *most reliably does not*, because it is
+invoked by the harness rather than by anything that ships with it.
+
+Co-shipping is real, but it only proves atomicity **within one cache directory**, and the decision
+lands across directories. That is the transferable error: a compatibility argument that names a
+version or a commit, rather than naming who invokes the caller and when that invoker updates.
+
+**What this does and does not overturn.** The tier question the owner actually ruled on — that
+harness-only removal need not spend a major — is untouched; nothing here argues a major was owed.
+What is withdrawn is the *warrant*, the claim that no gap is observable. The consequence follows
+from the norm's own why (protecting callers across versions) rather than from the tier: unregistering
+a hook is free and takes effect at the next session start, but **deleting its subcommand is not
+free until no supported install still registers it**. v3.3.3 restores both as inert on that reading.
+
+Left open for the owner rather than settled here, because scope is normative content and an
+amendment carries it: whether the exception should state that inert-retention window explicitly.
+Recorded the same shape as `[[install-reference-is-published]]` — a premise falsified without the
+decision necessarily becoming wrong.
+
 ## (one-home-is-the-predicate-not-the-token) Sharing a matcher shares syntax, not the definition — 2026-08-11
 
 `record_lint._norm_field_re` imports `norm_probes._FIELD_MARKER_RE` *specifically* so that one
@@ -3464,3 +3497,56 @@ propagates." What was shared was the pattern, not the input it is matched agains
 
 Found by two independent reviewers in the same cumulative round, neither by the author, against a
 commit message that asserted the opposite.
+
+## A negative reproduction against a fail-open mechanism — 2026-08-11 (v3.3.3)
+
+The cumulative Critic found that the restored inert commands were still refused inside an ephemeral
+worktree. I tried to reproduce it by writing the pre-fix binary to a scratchpad path and running it
+there. It exited 0, and for a moment I had "the finding does not reproduce" in hand.
+
+It reproduced perfectly. From a scratchpad path `_gitstate()` raises ImportError, and
+`_check_ephemeral_worktree` **fails open by design** in that case — a bootstrap-resilience contract
+it documents explicitly. So the fixture never reached the code under test. With `CLAUDE_PLUGIN_ROOT`
+pointed at the checkout, both commands exited 1 with `BLOCKED: refusing …`.
+
+The general shape is worse than a fixture mistake. A mechanism that degrades safely is *built* to
+answer "fine" when its inputs are broken, so breaking the fixture and breaking the subject produce
+the same output — and the fail-open path is invisible unless you already know it exists. A negative
+result is therefore never self-certifying: it says either "the finding is wrong" or "my setup did
+not reach it", and nothing in the output distinguishes them.
+
+The cheap discriminator is to run, in the same fixture, a case that MUST trip the mechanism. Here
+that was any command absent from `_EPHEMERAL_SAFE_COMMANDS` (`test-evidence` did it) — it printed
+`BLOCKED`, proving the guard was live, after which the exit-0 result meant something. That check
+costs one command and would have prevented telling a reviewer they were wrong.
+
+Prompted by the test-evidence recorder's own question — whether the fixture actually reaches the
+subject — which is doing real work at exactly the moment it fires.
+
+## Editing a norm's statement in the same commit as the code it blesses — 2026-08-11 (v3.3.3)
+
+`api-contract.md` § Deprecation & Compatibility said "Deprecation is signalled, not silent … print a
+deprecation notice to stderr on use." The two commands this branch restored deliberately print
+nothing, for a good reason (their caller is a registration with no reader, and hook stdout is
+injected into the model's context). I softened the clause to "…where a signal has a reader."
+
+That is the amend-to-match-own-code tell, and the aggravating detail is that I was *primed*: forty
+lines earlier in the same artifact, in the same sitting, I had explicitly declined to settle the
+adjacent retention-window question **because scope is normative content an amendment must carry**.
+The cumulative Critic did not catch it; the PR reviewer did.
+
+Why the guard failed while alert. The retention question *arrived as a question*, so it was met with
+the norm-lifecycle machinery. The silence question arrived as an implementation detail I had already
+decided — and a decision that feels settled does not present as a norm change at all. Vigilance
+aimed at "am I about to amend a norm?" does not fire, because subjectively I was only writing down
+what the code already did.
+
+So the usable tell is structural rather than introspective: **a norm's statement edited in the same
+commit as the code that statement would bless.** That is checkable without knowing the author's
+state of mind. `cost-of-commit` reporting the doc paths as "free" made it frictionless in the
+direction of the mistake — cheap edits get less scrutiny, and this one was cheap and wrong.
+
+The repair: restore the clause verbatim, record the two silent commands beneath it as a dated
+departure pending owner ratification, naming why, what the owner is being asked, and the remedy if
+the answer is no (warn on stderr — never stdout).
+
