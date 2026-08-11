@@ -126,10 +126,10 @@ subcommand opens `api-contract.md`, and the reader who next picks up #633 opens 
 are withheld to v3.4.0; this chunk writes the rules they will be built against, nothing more.
 
 **Done when**
-- [ ] The api-contract paragraph ends with a ruling, not an open question
-- [ ] `learnings.md` carries the ruling and links it from the existing entry
-- [ ] Both issues carry their new stage and the reasoning that moved them
-- [ ] Suite green
+- [x] The api-contract paragraph ends with a ruling, not an open question
+- [x] `learnings.md` carries the ruling and links it from the existing entry
+- [x] Both issues carry their new stage and the reasoning that moved them
+- [x] Suite green
 
 ---
 
@@ -157,15 +157,14 @@ Neither can pass on a `directory:` install resolved from `develop`. The triage c
 **The case-(3) re-measurement, done before writing** (the plan required it, and it changes nothing —
 recording the result so the next reader does not redo it):
 
-```
-a0c2468^{tree} = 165e315f499377cd6778868575eec253dde54285
-v3.2.4^{tree}  = fa8277569e0b240fd729a8a51ecc619a4b8401bf   <- different
-a0c2468 is dated 2026-08-04, on develop, after the v3.2.4 cut
-```
-
-**Case (3) is real, not a phantom.** The instance survives the correct test: the cache under version
-key `3.2.4` held a tree that is not `v3.2.4`'s. It carries forward — and now on evidence produced by
-the test that ships, rather than by the one being removed.
+> ~~**Case (3) is real, not a phantom.** The instance survives the correct test: the cache under
+> version key `3.2.4` held a tree that is not `v3.2.4`'s (`a0c2468^{tree}` `165e315f` vs
+> `v3.2.4^{tree}` `fa827756`).~~
+>
+> **SUPERSEDED — struck, not deleted, because the error is the point.** Whole trees were still the
+> wrong unit. See *the case-(3) verdict inverted* below. This paragraph is what the plan asserted
+> between the first re-measurement and the Critic's R-12, and leaving it visible is what stops the
+> next reader from re-deriving it.
 
 **Two things the Critic added after the first cut, recorded because they changed the design:**
 
@@ -175,7 +174,8 @@ the test that ships, rather than by the one being removed.
 - **The pruned runbook needed the opposite of this fix.** Copying the tree comparison there was
   itself a defect: a pruned release's `main` is deliberately unlike `develop`, so a *correct* install
   differs by construction and the comparison routes the operator into the delete-the-cache remedy.
-  That runbook now states the check has no pruned equivalent and gives the one that does apply.
+  That runbook now states the check has no pruned equivalent — the check was **removed** there, not
+  converted — and gives the one that does apply.
 
 **And the case-(3) verdict inverted under the corrected unit.** `a0c2468:plugin` equals
 `v3.2.4:plugin` (`ba3e8581`), so the instance was a false positive of *both* prior tests. The case is
@@ -185,10 +185,12 @@ marked never-observed rather than deleted.
 still unexecuted and stays marked. This chunk fixes the detections, not the remedy's verification.
 
 **Done when**
-- [ ] Both checks compare trees; no `merge-base --is-ancestor` against a tag remains in either
-- [ ] Case (3) prose cites the tree measurement above, not the ancestry test
-- [ ] The `Done when` bullet's blockquote still says a mismatch grades *your machine*, not the release
-- [ ] Suite green
+- [x] The whole-develop runbook's two checks compare `:plugin` subtrees; no `merge-base --is-ancestor`
+      against a tag remains anywhere
+- [x] The pruned runbook states the check has no equivalent on its path and offers the one that does
+- [x] Case (3) prose cites the **subtree** measurement and marks the case never-observed
+- [x] The `Done when` bullet's blockquote still says a mismatch grades *your machine*, not the release
+- [x] Suite green
 
 ---
 
@@ -217,10 +219,10 @@ reasonably read this chunk as a departure.
 distinct terms (`series` → `seri`). This stays a light, predictable reduction.
 
 **Done when**
-- [ ] `you'd` / `i'll` / `they've` / `we're` / `i'm` reduce to their base word
-- [ ] `enriches` survives as a real word; `series`-class terms are not collapsed
-- [ ] Tests pin both directions and fail against the pre-change function
-- [ ] Suite green
+- [x] `you'd` / `i'll` / `they've` / `we're` / `i'm` reduce to their base word
+- [x] `enriches` survives as a real word; `series`-class terms are not collapsed
+- [x] Tests pin both directions and fail against the pre-change function
+- [x] Suite green
 
 ---
 
@@ -256,12 +258,12 @@ unreadable plan as clean is the exact silent-completion failure the function was
 explicit route. How incompleteness is *detected* is unchanged.
 
 **Done when**
-- [ ] Explicit `archive-plan` of a plan with unticked chunks writes `unbuilt_at_archive:` naming the
+- [x] Explicit `archive-plan` of a plan with unticked chunks writes `unbuilt_at_archive:` naming the
       chunk(s) that stopped it
-- [ ] A complete plan archives with no such field
-- [ ] A plan with no readable Status roster is stamped, not silently filed clean
-- [ ] Re-archiving neither duplicates nor drifts the field
-- [ ] Suite green
+- [x] A complete plan archives with no such field
+- [x] A plan with no readable Status roster is stamped, not silently filed clean
+- [x] Re-archiving neither duplicates nor drifts the field
+- [x] Suite green
 
 ---
 
@@ -287,11 +289,11 @@ explicit route. How incompleteness is *detected* is unchanged.
 **Out of scope.** The session digest's own budget (#630, withheld), and the principles roster.
 
 **Done when**
-- [ ] Project-specific content at or under ~150 lines
-- [ ] Every moved paragraph lands in a file that already owns that subject
-- [ ] The always-injected session digest still covers everything a product session needs
-- [ ] `tests/test_plugin_methodology_digest.py` green (unchanged — this batch adds nothing to the digest)
-- [ ] Suite green
+- [x] Project-specific content at or under ~150 lines
+- [x] Every moved paragraph lands in a file that already owns that subject
+- [x] The always-injected session digest still covers everything a product session needs
+- [x] `tests/test_plugin_methodology_digest.py` green (unchanged — this batch adds nothing to the digest)
+- [x] Suite green
 
 ---
 
@@ -309,18 +311,18 @@ explicit route. How incompleteness is *detected* is unchanged.
   runbook's Phase 0, not only here.
 
 **Done when**
-- [ ] `check-releasability --release v3.3.4` exits 0, reporting 5 shipping / 0 withheld
-- [ ] The withheld-issue reasoning survives verbatim in prose
-- [ ] Suite green
+- [x] `check-releasability --release v3.3.4` exits 0, reporting 5 shipping / 0 withheld
+- [x] The withheld-issue reasoning survives verbatim in prose
+- [x] Suite green
 
 ## Status
 
-- [ ] Chunk 00: The two rulings, stamped where they bind
-- [ ] Chunk 01: The install-sha checks compare trees, not commits
-- [ ] Chunk 02: `_normalize` stops minting non-words
-- [ ] Chunk 03: `archive-plan` stamps `unbuilt_at_archive:`
-- [ ] Chunk 04: CLAUDE.md back under the length it teaches
-- [ ] Chunk 05: Release-plan correction + classification table
+- [x] Chunk 00: The two rulings, stamped where they bind
+- [x] Chunk 01: The install-sha checks compare trees, not commits
+- [x] Chunk 02: `_normalize` stops minting non-words
+- [x] Chunk 03: `archive-plan` stamps `unbuilt_at_archive:`
+- [x] Chunk 04: CLAUDE.md back under the length it teaches
+- [x] Chunk 05: Release-plan correction + classification table
 
 ## Context
 
