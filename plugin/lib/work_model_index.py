@@ -30,6 +30,16 @@ tripwire might return. Note what that means for precision: a defect in
 :func:`_normalize` no longer produces a visible false claim, it produces a
 slightly worse *ranking*. That is a real but much cheaper failure, and it is why
 this module is no longer on a precision-fix footing.
+
+**And why the 2026-07-12 ruling does not forbid fixing it anyway (#638, v3.3.4).**
+That ruling declared the remaining precision work moot *because the code was
+slated for deletion*. The tripwire was deleted; ``_normalize`` was not, because
+:func:`jurisdiction_candidates` reads through it. The ruling's premise no longer
+holds over this function, so the ruling no longer covers it — the same
+premise-falsified-without-the-decision-being-wrong shape recorded at
+``[[harness-only-removal-is-not-a-major]]``. What the lowered stakes DO govern is
+how much machinery is warranted here: a light, measured, closed-set reduction is
+in bounds; a real stemmer still is not.
 """
 from __future__ import annotations
 
@@ -64,19 +74,80 @@ _WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
 _MIN_LEN = 4  # shorter tokens are too generic to count as a "salient" term
 
 
+#: Contraction and possessive suffixes, reduced to the base word ("let's" ->
+#: "let", "you'd" -> "you"). LONGEST FIRST, because the loop takes the first
+#: match and "n't" would otherwise never be reached past a shorter sibling.
+#: Every clitic English writes with an apostrophe is here — an incomplete set is
+#: what left "you'd"/"i'll"/"they've" surviving whole into the term vocabulary
+#: while "let's"/"don't" reduced correctly (#638).
+_CLITICS: tuple[str, ...] = ("n't", "'ll", "'re", "'ve", "'s", "'d", "'m")
+
+#: Stems that take the ``-es`` plural/3sg allomorph rather than a bare ``-s``.
+#: Stripping one ``s`` from "enriches" mints "enriche"; stripping "es" gives
+#: "enrich".
+#:
+#: **The membership is measured, not guessed**, because every ending here is
+#: ambiguous in principle — "match" + "es" and "cache" + "s" are the same four
+#: letters — so the question is which reading is right more often in the prose
+#: this actually runs on. Counted over every ``.md`` in this repo's
+#: ``.prawduct/``, ``plugin/`` and ``documentation/`` trees: ``ch`` (matches,
+#: reaches, catches, branches, touches, dispatches, searches, …), ``sh``
+#: (publishes, hashes, refreshes, finishes, crashes), ``ss`` (passes, classes,
+#: misses, addresses, bypasses) and ``x`` (fixes, prefixes, suffixes, indexes,
+#: checkboxes) are true ``-es`` in every occurrence but one.
+#:
+#: Two endings are DELIBERATELY ABSENT, and both were in an earlier draft:
+#: a bare ``s`` (it makes "cases" -> "cas") and ``z`` (it makes "sizes" -> "siz"
+#: and "generalizes" -> "generaliz" — the ``-ize`` verb family is the dominant
+#: ``-zes`` population, 100+ occurrences against a handful of true ones).
+_ES_STEM_ENDINGS: tuple[str, ...] = ("ch", "sh", "ss", "x")
+
+#: The one-in-a-hundred exception to the rule above: ordinary words whose stem
+#: genuinely ends in ``-e``, so their plural is a bare ``-s``. "caches" is the
+#: measured instance (34 occurrences in this repo, against zero other ``-ches``
+#: exceptions); the rest of the ``-che`` nouns are carried because this module
+#: runs inside every governed product, whose prose this corpus does not predict.
+#: A CLOSED set of known exceptions, not the beginning of a dictionary — add to
+#: it only for a word someone has actually seen mis-stemmed.
+_ES_EXCEPTIONS: frozenset[str] = frozenset(
+    {"caches", "niches", "aches", "headaches", "avalanches", "mustaches", "quiches"}
+)
+
+#: Words that END in "-ies" without it being a plural suffix. The ``-ies`` -> "y"
+#: rule is right for "stories"/"queries" and wrong for these, and no lexical test
+#: separates them — so they are named. Same closed-set discipline as above.
+_IES_INVARIANTS: frozenset[str] = frozenset({"series", "species"})
+
+
 def _normalize(token: str) -> str:
     """Lowercase + a light, predictable singularization. No real stemmer — an
-    aggressive one collapses distinct terms ("series" -> "seri")."""
+    aggressive one collapses distinct terms ("series" -> "seri").
+
+    **Every branch here exists to avoid minting a non-word**, because a minted
+    token is a term the artifact vocabulary can never match and therefore a
+    silent hole in :func:`jurisdiction_candidates`' ranking. The three rules are
+    clitics, the ``-es`` allomorph, and the bare plural, applied in that order.
+    """
     t = token.lower().strip("'-")
-    # Contractions/possessives reduce to their base word ("let's" -> "let",
-    # "don't" -> "do") — the bare plural rule would otherwise mint non-words
-    # like "let'" that read as unfamiliar terms.
-    if t.endswith("'s"):
-        t = t[:-2]
-    elif t.endswith("n't"):
-        t = t[:-3]
+    for clitic in _CLITICS:
+        if t.endswith(clitic):
+            t = t[: -len(clitic)]
+            break
+    # Returned WHOLE, not merely exempted from the ``-ies`` rule: falling through
+    # would hand "series" to the bare-plural rule, which mints "serie" — the same
+    # defect one branch lower down.
+    if t in _IES_INVARIANTS:
+        return t
     if len(t) > 5 and t.endswith("ies"):
         return t[:-3] + "y"
+    # "-es" after a sibilant is one suffix, not an "-e" plus a plural "s".
+    if (
+        len(t) > 4
+        and t.endswith("es")
+        and t not in _ES_EXCEPTIONS
+        and t[:-2].endswith(_ES_STEM_ENDINGS)
+    ):
+        return t[:-2]
     if len(t) > 4 and t.endswith("s") and not t.endswith(("ss", "us", "is")):
         return t[:-1]
     return t
