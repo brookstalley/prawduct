@@ -13,14 +13,18 @@ consumer migration, C9 tier 1).
 **Envelope (D2).** One JSON object per line::
 
     {"schema": 1, "kind": "review", "id": "...", "ts": "...",
-     "actor": {"session": ..., "worktree": ..., "plugin": ...}, "body": {...}}
+     "actor": {"session": ..., "worktree": ..., "plugin": ..., "branch": ...},
+     "body": {...}}
 
 ``schema`` rides on every record so readers can reject-or-skip explicitly
 (C7); ``kind`` namespaces the store (``review``/``resolution``/``disposition``
 now; ``test-run``/``pr-review``/``promotion`` reserved for later constituent
 plans); ``id`` is fixed at dispatch time so consolidation is idempotent
 (CRT-4B7X) and readers dedupe. ``actor`` answers the debugging question
-("who wrote this, when, from where, under which plugin") — Q7.
+("who wrote this, when, from where, under which plugin") — Q7. Its ``branch``
+is OPTIONAL and omitted (never null) when HEAD is detached or unreadable; it
+was added by #648 because ``worktree`` alone stopped being able to say whether
+a tree was disposable, and no reader can probe a tree that is already deleted.
 
 **Keying (D3).** Facts reference *tree SHAs* captured via a temporary index
 (``capture_tree``): objects are written to the shared odb, the session's real
@@ -146,16 +150,30 @@ def append_fact(
             "lives in the clone's git common dir and has no fallback location",
         }
 
+    actor = {
+        "session": _session_epoch(project_dir),
+        "worktree": str(project_dir),
+        "plugin": _plugin_version(),
+    }
+    # `actor.branch` (#648) — additive, and OMITTED (never null) on a detached
+    # HEAD or a failed probe. Since #648 the worktree path alone cannot say
+    # whether a tree was disposable: an `agent-<hex>` path is disposable on the
+    # harness's scratch branch and durable on a real named one. The reader
+    # cannot probe a tree that is usually deleted by the time it looks, so the
+    # answer has to be captured here, at write time, or it is unavailable
+    # forever. Omitted-not-null makes "no branch recorded" mean exactly one
+    # thing on read — the historical shape and the unreadable-branch shape
+    # agree, and `gitstate.ephemeral_kind_of` lands both on the restrictive
+    # answer. No schema version moves: absent is a valid, meaningful state.
+    branch = gitstate.current_branch(project_dir)
+    if branch:
+        actor["branch"] = branch
     envelope = {
         "schema": SCHEMA_VERSION,
         "kind": kind,
         "id": fact_id,
         "ts": _now_iso(),
-        "actor": {
-            "session": _session_epoch(project_dir),
-            "worktree": str(project_dir),
-            "plugin": _plugin_version(),
-        },
+        "actor": actor,
         "body": body,
     }
     line = json.dumps(envelope) + "\n"
@@ -697,14 +715,25 @@ def is_ephemeral_fact(fact: dict) -> bool:
     worktree = actor.get("worktree")
     if not isinstance(worktree, str):
         return False
-    return gitstate.ephemeral_worktree_kind_of_path(worktree) is not None
+    # `actor.branch` when the writer recorded one (#648). A non-string is
+    # treated as absent rather than rejected: same reader convention as the
+    # opaque envelope above, and absence lands on the restrictive answer, so a
+    # malformed field cannot quietly promote a disposable tree to durable.
+    branch = actor.get("branch")
+    if not isinstance(branch, str) or not branch:
+        branch = None
+    return gitstate.ephemeral_kind_of(worktree, branch) is not None
 
 
 def ephemeral_facts(facts: list[dict]) -> list[dict]:
-    """Facts recorded from a disposable worktree, by ``actor.worktree`` shape.
+    """Facts recorded from a disposable worktree, by ``actor`` path + branch.
 
-    Derived on READ, never stored: schema 1 already carries the path, so no
-    version moves and every fact already in the store classifies retroactively.
+    Classification is derived on READ, so no schema version moves and every
+    fact already in the store still classifies. What #648 changed is that the
+    *inputs* now include ``actor.branch``, which only facts written since then
+    carry — a branch-less record keeps exactly the reading it always had (see
+    :func:`gitstate.ephemeral_kind_of`), and is genuinely disposable anyway,
+    since the guard refused the durable case for as long as that shape existed.
 
     These facts are **not** filtered out of anything. Tree-keying already makes
     them cover nothing — a fact recorded against a disposable worktree's tree

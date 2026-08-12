@@ -129,6 +129,11 @@ def resolve_project_dir(env_project_dir: str | None, cwd: Path) -> Path:
 # source bug report proposed — would silence governance in every one of them,
 # which is a worse failure than the silent strand this predicate exists to
 # close. The parent is therefore necessary but never sufficient.
+#
+# The DIRECTORY is likewise necessary but not sufficient for `agent-`: the
+# branch decides, because the branch is what carries a write out of the tree.
+# `is_ephemeral_worktree` owns that reasoning; the two patterns below are only
+# the harness's naming.
 _EPHEMERAL_DIR_PATTERNS = (
     (re.compile(r"^agent-[0-9a-f]{6,}$"), "agent"),
     (re.compile(r"^wf_[0-9a-z_-]{4,}$", re.IGNORECASE), "workflow"),
@@ -151,18 +156,37 @@ def _under_claude_worktrees(project_dir: Path) -> bool:
     )
 
 
-def ephemeral_worktree_kind_of_path(path: str | Path) -> str | None:
-    """Classify a worktree PATH as disposable — no git, no stat, no filesystem.
+def _dir_label(name: str) -> str | None:
+    """``"agent"``/``"workflow"``/``None`` from a worktree's basename alone.
 
-    Shares :data:`_EPHEMERAL_DIR_PATTERNS` with :func:`is_ephemeral_worktree`
-    rather than being called by it, so neither can drift from the other while
-    each keeps its own single ancestor test.
+    One body for every caller of :data:`_EPHEMERAL_DIR_PATTERNS`, so the
+    directory half can never be spelled two ways.
+    """
+    for pattern, label in _EPHEMERAL_DIR_PATTERNS:
+        if pattern.match(name):
+            return label
+    return None
 
-    Exists for readers that must classify a path they cannot probe: an
-    evidence fact records ``actor.worktree`` as a string, and by the time
-    anyone reads it that worktree is usually deleted, so the branch fallback
-    below would answer ``None`` for every historical record. Path shape is the
-    only signal that survives the tree it describes.
+
+def ephemeral_kind_of(path: str | Path, branch: str | None) -> str | None:
+    """Classify a worktree from its path and branch — no git, no filesystem.
+
+    THE decision function. :func:`is_ephemeral_worktree` probes git for the
+    branch and delegates here; :func:`ephemeral_worktree_kind_of_path` passes
+    ``branch=None``. Both answers therefore come from one body, which is what
+    keeps a live tree and the historical record of that same tree from
+    disagreeing about whether it was disposable (#648).
+
+    ``branch=None`` means *unknown or none* — a detached HEAD, a failed probe,
+    or a stored record that predates branch capture. It resolves to the
+    restrictive answer for an ``agent-`` path: such a tree has no branch that
+    could carry a write out, a failing probe must not become a way to unlock
+    the guard, and every agent-path fact recorded before this change was in
+    fact disposable (the guard refused the durable case), so historical records
+    keep exactly the reading they had.
+
+    Why the branch decides at all, and why only for ``agent-``, is in
+    :func:`is_ephemeral_worktree`.
     """
     try:
         candidate = Path(path)
@@ -170,10 +194,28 @@ def ephemeral_worktree_kind_of_path(path: str | Path) -> str | None:
         return None
     if not _under_claude_worktrees(candidate):
         return None
-    for pattern, label in _EPHEMERAL_DIR_PATTERNS:
-        if pattern.match(candidate.name):
-            return label
-    return None
+    dir_label = _dir_label(candidate.name)
+    if dir_label == "workflow":
+        return "workflow"
+    scratch = branch is not None and _EPHEMERAL_BRANCH_PATTERN.match(branch) is not None
+    if dir_label == "agent":
+        return "agent" if (branch is None or scratch) else None
+    return "agent" if scratch else None
+
+
+def ephemeral_worktree_kind_of_path(path: str | Path) -> str | None:
+    """Classify a worktree PATH alone as disposable, with no branch to consult.
+
+    Exists for readers that must classify a path they cannot probe: an evidence
+    fact records ``actor.worktree`` as a string, and by the time anyone reads it
+    that worktree is usually deleted, so no live git probe is possible. Path
+    shape is the only signal that survives the tree it describes.
+
+    Prefer :func:`ephemeral_kind_of` wherever a recorded branch IS available —
+    since #648 the path alone cannot distinguish a disposable agent worktree
+    from a durable one, so this answers the restrictive default for both.
+    """
+    return ephemeral_kind_of(path, None)
 
 
 def is_ephemeral_worktree(project_dir: Path) -> str | None:
@@ -198,9 +240,32 @@ def is_ephemeral_worktree(project_dir: Path) -> str | None:
     Detection is a conjunction: the ``.claude/worktrees`` ancestor locates the
     harness's worktree root, and the ``agent-``/``wf_`` id shape distinguishes a
     disposable tree from an ``EnterWorktree`` session worktree living under the
-    same parent (see :data:`_EPHEMERAL_DIR_PATTERNS`). The branch name is
-    consulted only as a fallback, so a future harness change to the directory
-    naming degrades to one more signal rather than to silence.
+    same parent (see :data:`_EPHEMERAL_DIR_PATTERNS`).
+
+    **For ``agent-`` the branch is a second conjunct, not a fallback (#648).**
+    What makes a tree disposable is that its code commit returns while its
+    ``.prawduct/`` write does not — the two are *separated*, so the write
+    strands and the agent is told it succeeded. That separation exists only for
+    the harness's own scratch branch. On a real named branch the two are
+    inseparable: the branch is what lands, so a ``.prawduct/`` write on it is
+    carried; and if the branch is discarded the code goes with it, leaving
+    nothing silently ungoverned. Classifying an agent-path tree on
+    ``fix/whatever`` as disposable refused every governance write on a branch
+    someone was really working — making the Critic gate unsatisfiable with no
+    workaround short of evicting the worktree (brookstalley/discodon#2213).
+
+    An agent-path tree whose branch cannot be read — detached HEAD, git probe
+    failure — is disposable. That is the restrictive answer, and it is the
+    right one twice over: a detached HEAD has no branch to carry a write out,
+    and a failing probe must not become an accidental way to unlock the guard.
+
+    ``wf_`` stays path-only. A workflow stage gets no named branch of its own,
+    so there the path IS the identity; adding the branch conjunct would
+    classify every workflow worktree as durable.
+
+    The branch is still consulted as a *fallback* when the directory matches
+    nothing, so a future harness change to the directory naming degrades to one
+    more signal rather than to silence.
 
     Never raises (lib convention) — every probe inside fails open to ``None``,
     which is today's behavior: govern the tree normally.
@@ -214,14 +279,16 @@ def is_ephemeral_worktree(project_dir: Path) -> str | None:
     # subprocess, which is what keeps this off the hook's hot path.
     if not _under_claude_worktrees(project_dir):
         return None
-    for pattern, label in _EPHEMERAL_DIR_PATTERNS:
-        if pattern.match(project_dir.name):
-            return label
 
-    branch = current_branch(project_dir)
-    if branch is not None and _EPHEMERAL_BRANCH_PATTERN.match(branch):
-        return "agent"
-    return None
+    # Only an `agent-` tree's answer depends on the branch, so only it pays for
+    # the `current_branch` subprocess — a workflow worktree stays exactly as
+    # cheap as it was. This skips the PROBE, never the decision: the answer
+    # still comes from `ephemeral_kind_of` on every path, so there is one body
+    # to change and no second copy that could mask a defect in the first.
+    needs_branch = _dir_label(project_dir.name) != "workflow"
+    return ephemeral_kind_of(
+        project_dir, current_branch(project_dir) if needs_branch else None
+    )
 
 
 def git_status_output(project_dir: Path) -> str | None:

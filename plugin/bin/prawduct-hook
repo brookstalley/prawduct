@@ -5611,6 +5611,14 @@ def _binary_skew(project_dir: Path) -> "tuple[Path, Path] | None":
 # correctly following prawduct's own rules ("file it via /prawduct:backlog")
 # produces a stranded write and is told it succeeded.
 #
+# That reasoning is about the SEPARATION of the code commit from the state
+# write, which is a property of the harness's scratch branch — not of the
+# directory the tree happens to sit in. An agent worktree holding a real named
+# branch has no such separation: the branch carries the whole tree, `.prawduct/`
+# included. Refusing there produced a message whose stated reason was false and
+# a Critic gate no route could satisfy (#648); `gitstate.is_ephemeral_worktree`
+# owns that distinction, so everything below reads as written once it answers.
+#
 # DECIDED: this classification is an allowlist of READS — an unlisted command
 # defaults to refused-inside-an-ephemeral-worktree, the restrictive side. That
 # deliberately inverts `_DATA_PLANE_COMMANDS` (below), whose own DECIDED note
@@ -5804,16 +5812,28 @@ def _backlog_is_service_backed(project_dir: Path) -> bool:
         return False
 
 
-def _print_ephemeral_notice(kind: str, project_dir: Path) -> None:
+def _print_ephemeral_notice(kind: str | None, project_dir: Path) -> None:
     """The HEAD-snapshot notice, on every path that proceeds.
 
-    One function because three callers emit it for three different reasons
-    (read-only command, dispatcher override, harness-invoked carve-out) and the
-    text is the same answer to the same question each time — a second copy is
-    how one of them ends up saying something the others do not.
+    One function because four callers emit it for four different reasons
+    (read-only command, dispatcher override, harness-invoked carve-out, and a
+    DURABLE harness worktree) and the text is the same answer to the same
+    question each time — a second copy is how one of them ends up saying
+    something the others do not.
+
+    ``kind`` is ``None`` for the durable case (#648): an `agent-` worktree on a
+    real named branch is a peer checkout, so the refusal does not apply and the
+    word "ephemeral" would be false — but the READING half is unchanged, which
+    is the whole reason the notice is separate from the refusal. Only the first
+    clause varies; the fork-point warning is identical, because it is identical.
     """
+    what = (
+        f"an ephemeral {kind} worktree"
+        if kind is not None
+        else "a linked agent worktree"
+    )
     print(
-        f"NOTE: this is an ephemeral {kind} worktree ({project_dir}). Every "
+        f"NOTE: this is {what} ({project_dir}). Every "
         "tracked file here — build plans, artifacts, learnings — is a "
         "snapshot of the commit it was forked from, so uncommitted changes "
         "in the dispatching session are NOT visible. Where a file and your "
@@ -5848,6 +5868,16 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
         # binary-skew tests, all of which run the hook with no importable lib/.)
         return 0
     if kind is None:
+        # DURABLE — but the snapshot question is not the write question (#648).
+        # An `agent-` worktree on a real named branch is a peer checkout, so
+        # nothing here strands and no refusal applies; it is still a tree the
+        # harness forked from a commit, so the dispatching session's uncommitted
+        # artifacts are just as invisible in it. Returning here would have
+        # removed the notice for exactly the population the branch conjunct
+        # creates. Classified by PATH, deliberately: the question is "did the
+        # harness fork this tree", which the branch cannot answer.
+        if _gitstate().ephemeral_worktree_kind_of_path(project_dir) is not None:
+            _print_ephemeral_notice(None, project_dir)
         return 0
 
     if command in _HARNESS_INVOKED_COMMANDS:

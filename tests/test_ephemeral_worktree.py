@@ -95,9 +95,31 @@ def _add_worktree(repo: Path, dest: Path, branch: str) -> Path:
 
 
 def _agent_worktree(repo: Path, wid: str = "a287823214767feaa") -> Path:
-    """The shape Claude Code's Agent tool produces, as observed in the field."""
+    """The shape Claude Code's Agent tool produces, as observed in the field.
+
+    Both halves are the harness's own: the `agent-<hex>` directory AND the
+    `worktree-agent-<hex>` scratch branch. That pairing is what makes the tree
+    disposable, so this fixture is the DISPOSABLE case specifically — see
+    :func:`_agent_worktree_on_named_branch` for the agent-path tree that is not.
+    """
     return _add_worktree(
         repo, repo / ".claude" / "worktrees" / f"agent-{wid}", f"worktree-agent-{wid}"
+    )
+
+
+def _agent_worktree_on_named_branch(
+    repo: Path, branch: str = "fix/real-thing", wid: str = "b391f7c0d2e84a15c"
+) -> Path:
+    """An agent-path worktree holding a REAL named branch (#648).
+
+    The field shape that path-only classification got wrong: four concurrent
+    agents in one devcontainer, each with a durable branch checked out under
+    `.claude/worktrees/agent-*` (brookstalley/discodon#2213). Nothing about
+    such a tree is disposable — the branch is what lands, and it carries the
+    whole tree including `.prawduct/`.
+    """
+    return _add_worktree(
+        repo, repo / ".claude" / "worktrees" / f"agent-{wid}", branch
     )
 
 
@@ -165,6 +187,57 @@ class TestPredicatePositive:
             primary / ".claude" / "worktrees" / "renamed-by-a-future-harness",
             "worktree-agent-a287823214767feaa",
         )
+        assert gitstate.is_ephemeral_worktree(wt) == "agent"
+
+
+class TestBranchIdentityDecides:
+    """#648 — the discriminator is what carries the write out, not the path.
+
+    #594 closed a real defect: an `isolation: "worktree"` agent's code commit
+    returns while its `.prawduct/` write dies at the merge, so the write is
+    stranded and the agent is told it succeeded. That separation is what makes
+    a tree disposable — and it exists only for the harness's own scratch
+    branch. On a REAL named branch the two are inseparable: the branch is what
+    lands, so a `.prawduct/` write on it is carried; and if the branch is
+    discarded the code goes with it, leaving nothing silently ungoverned.
+
+    Classifying on the directory alone conflated the two and made the Critic
+    gate unsatisfiable for every durable branch worked in an agent worktree.
+    """
+
+    def test_agent_path_on_a_named_branch_is_not_ephemeral(self, tmp_path, gitstate):
+        """THE #648 regression."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree_on_named_branch(primary)
+        assert gitstate.is_ephemeral_worktree(wt) is None
+
+    def test_agent_path_on_the_scratch_branch_is_still_ephemeral(self, tmp_path, gitstate):
+        """The other half — #594's defect must not reopen."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        assert gitstate.is_ephemeral_worktree(_agent_worktree(primary)) == "agent"
+
+    def test_workflow_path_stays_path_only_regardless_of_branch(self, tmp_path, gitstate):
+        """A workflow stage gets no named branch of its own, so for `wf_*` the
+        path IS the identity. Adding the branch conjunct there would classify
+        every workflow worktree as durable and reopen #594 for all of them."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _add_worktree(
+            primary, primary / ".claude" / "worktrees" / "wf_abc123", "feat/looks-real"
+        )
+        assert gitstate.is_ephemeral_worktree(wt) == "workflow"
+
+    def test_agent_path_with_detached_head_is_ephemeral(self, tmp_path, gitstate):
+        """Fail closed. A detached HEAD has no branch to carry a write out, so
+        the restrictive answer is the correct one — and it is also what an
+        unreadable-git probe degrades to, which must not become an accidental
+        way to unlock the guard."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree_on_named_branch(primary, branch="tmp/detach-me")
+        _git(wt, "checkout", "--detach", "--quiet")
         assert gitstate.is_ephemeral_worktree(wt) == "agent"
 
 
@@ -354,6 +427,74 @@ class TestGuardRefusesWrites:
         assert "BLOCKED" in result.stderr
         assert "ephemeral agent worktree" in result.stderr
 
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ("critic-begin", "--mode", "chunk"),
+            ("advisory", "dismiss", "some-id"),
+            ("disposition", "rev-x", "F1", "--accept", "why"),
+            ("learnings-obligation", "--apply"),
+            ("test-evidence", "record"),
+        ],
+    )
+    def test_state_writers_proceed_on_a_named_branch(self, tmp_path, argv):
+        """#648 — the same writers the guard refuses on a scratch branch must
+        reach their own logic on a durable one.
+
+        Asserts the REFUSAL did not fire, not that the command succeeded: every
+        one of these still exits nonzero here for its own reasons (no active
+        review, no such advisory). Conflating the two is how the mirror-image
+        test in `test_state_writers_refuse` was found vacuous.
+
+        Matched on `BLOCKED: refusing`, not on the bare phrase "ephemeral agent
+        worktree" — that phrase also occurs in the HEAD-snapshot NOTICE, so the
+        looser assertion forbade the notice as well, which is precisely the
+        regression this change had to avoid. An assertion whose wording quietly
+        covers a second, wanted behaviour is how that behaviour gets deleted.
+        """
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree_on_named_branch(primary)
+
+        stderr = _run(wt, *argv).stderr
+
+        assert "BLOCKED" not in stderr
+        assert "refusing" not in stderr
+
+    def test_a_durable_agent_worktree_still_gets_the_snapshot_notice(self, tmp_path):
+        """The refusal and the notice answer DIFFERENT questions — "may I write
+        here" versus "how old is what I am reading" — and only the first one
+        stops applying on a named branch. The tree is still one the harness
+        forked from a commit, so the dispatching session's uncommitted
+        artifacts are exactly as invisible in it as in a disposable one.
+        """
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree_on_named_branch(primary)
+
+        stderr = _run(wt, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0", "skipped=0").stderr
+
+        assert "snapshot of the commit it was forked from" in stderr
+        # ...and it must not call a durable tree ephemeral while doing so.
+        assert "ephemeral" not in stderr
+
+    def test_an_enter_worktree_session_gets_no_notice(self, tmp_path):
+        """Scope pin. The notice addresses trees the HARNESS forked for an
+        agent; an `EnterWorktree` session worktree is the user's own and has
+        never carried it. Widening that population is a separate decision, not
+        a side effect of #648."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _add_worktree(
+            primary, primary / ".claude" / "worktrees" / "my-feature", "feat/mine"
+        )
+
+        stderr = _run(wt, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0", "skipped=0").stderr
+
+        assert "snapshot of the commit it was forked from" not in stderr
+
     def test_unknown_command_refuses_fail_closed(self, tmp_path):
         """The allowlist is of READS, so a command added later defaults to
         refused here rather than to a silent strand."""
@@ -363,6 +504,53 @@ class TestGuardRefusesWrites:
         result = _run(wt, "some-future-write-command")
         assert result.returncode == 1
         assert "BLOCKED" in result.stderr
+
+
+class TestConcurrentLanesDoNotCollide:
+    """#649's decider — and the reason #649 closes rather than gets built.
+
+    The upstream report (brookstalley/discodon#2213 §B3) read this as a
+    single-slot defect in `.test-evidence.json`: last writer defines the record,
+    so a gate vouches for a tree nobody ran. The slot is real, but it is not
+    shared — `gates.get_prawduct_dir` is `project_dir / ".prawduct"`, and
+    STH-4K7N already resolves `project_dir` per worktree. The overwriting was a
+    SYMPTOM of the guard: agent worktrees could not write their own
+    `.prawduct/` at all, so every lane's evidence funnelled into the one clone.
+
+    Once the classification is right, lanes separate with no format change. If
+    this test ever fails, #649 is a real defect after all and this is the
+    concrete failure to build against.
+    """
+
+    def test_two_agent_lanes_keep_independent_test_evidence(self, tmp_path):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        lane_a = _agent_worktree_on_named_branch(
+            primary, branch="fix/lane-a", wid="aaaa1111bbbb2222c"
+        )
+        lane_b = _agent_worktree_on_named_branch(
+            primary, branch="fix/lane-b", wid="cccc3333dddd4444e"
+        )
+
+        for lane, passed in ((lane_a, "11"), (lane_b, "22")):
+            result = _run(
+                lane, "test-evidence", "record",
+                "--from-counts", f"passed={passed}", "failed=0", "skipped=0",
+            )
+            assert result.returncode == 0, result.stderr
+
+        import json
+
+        def _passed(tree: Path) -> int:
+            return json.loads(
+                (tree / ".prawduct" / ".test-evidence.json").read_text()
+            )["passed"]
+
+        assert _passed(lane_a) == 11
+        assert _passed(lane_b) == 22
+        # The clone collects nothing — the failure mode the report described is
+        # each lane overwriting one shared record, which would show up here.
+        assert not (primary / ".prawduct" / ".test-evidence.json").exists()
 
 
 class TestGuardAllowsReads:
