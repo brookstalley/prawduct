@@ -92,6 +92,51 @@ guards it — go find what you already wrote about that lifetime and ask *this* 
 
 ---
 
+## Naming a chunk/scope/tag freely writes into a MACHINE-READ field and can silently switch off the gate that reads it — check the parser's accepted form before inventing an id, because a value it cannot parse yields `null`, and null is NO ANSWER, not a pass. Tell: you chose an identifier or tag value for readability, in a field some gate keys on
+
+Two instances landed on one branch (#648). The build plan used `CH-01`/`CH-02` chunk ids, which
+`_CHUNK_ITEM_RE` cannot parse — so `verify-records` produced `chunk_graded: null` and
+`counts["chunk-ref-missing"]: null`, and the deliverable check never ran. Nothing said so: the
+command exited cleanly and the field was simply empty. The Critic found it by reading the manifest,
+not the plan. Separately, a change-log entry invented `release=unreleased`; that one was caught only
+because three tests happened to police that vocabulary — luck, not design.
+
+Both are the same act: **writing a value into a machine-read field without checking what the machine
+accepts.** The ids were chosen for readability, which is exactly why neither looked wrong. `CH-01`
+is *more* legible than `Chunk 01`; the parser simply does not accept it.
+
+The asymmetry that makes this class dangerous is in the failure mode, not the mistake. A gate that
+**refuses** an unparseable id costs you thirty seconds and tells you the vocabulary. A gate that
+returns `null` reads as "checked, nothing found" — indistinguishable from a pass at every surface
+that consumes it. When you own the gate, prefer refusal. When you own only the value, ask what reads
+it and what it does with something it does not recognize.
+
+---
+
+## A NEGATIVE assertion forbids everything its wording matches, not the one thing you meant — match the exact string that carries the behaviour you are excluding, because a loose phrase quietly outlaws any OTHER output containing it, and the test then pins that deletion as if it were the requirement. Always pair it with a POSITIVE assertion for the behaviour that must survive
+
+Making agent worktrees durable (#648), I asserted `"ephemeral agent worktree" not in stderr`,
+intending "the refusal did not fire." That phrase also occurs in the **HEAD-snapshot NOTICE**, which
+answers a different question — "how old is what I am reading", not "may I write here" — and still
+applies to a durable agent worktree, because the tree is still one the harness forked from a commit.
+The guard's `_check_ephemeral_worktree` returned early when `kind is None`, so making these worktrees
+durable silently removed the notice for exactly the population the change created, and my test
+locked that removal in.
+
+Two things made it invisible. First, the assertion **read as rigor**: a negative check on the exact
+symptom, in a test whose docstring claimed to cover only the refusal. Second, I had reasoned
+carefully about the refusal and never noticed the notice riding the same predicate — the guard
+already split "may I write here" from "how old is what I am reading" on two other paths, and I
+created a third that skipped the split. The Critic caught both halves (R-1, R-2).
+
+The fix is not "assert more carefully." It is structural: **a negative assertion needs a positive
+twin.** The rewrite matches `"BLOCKED"` and `"refusing"` — words that occur in the refusal and
+nowhere else — and adds two companion cases asserting the notice IS present on a durable agent path
+and absent on an `EnterWorktree` path. Now the wanted behaviour is pinned by something, so a future
+change that deletes it goes red instead of green.
+
+---
+
 ## A sample you sliced for DISPLAY is not the set — if the command that formed your impression carried a `[:8]` or a `head`, re-run it unsliced before writing "all/every/entirely", because the slice is invisible in the output you read back. A RETRACTION is where this bites hardest
 
 A Critic warning retracted a claim I had measured in an unrepresentative scratch repo. Fixing it, I
