@@ -494,7 +494,12 @@ build_state:
 # the branch that removes its cause.
 # Repointed 2026-08-11 on branch fix/v3.3.4-batch: this branch builds the
 # v3.3.4 batch plan (four independent scopes plus two governance stamps).
-active_build_plan: null
+# REPOINTED 2026-08-12 on branch fix/durable-agent-worktrees: this branch builds
+# the durable-agent-worktrees plan (#648/#649 — the ephemeral guard's branch
+# conjunct plus the historical reader's reconciliation). The plan stays LIVE past
+# its merge to develop: the base is the integration branch, so the work is
+# release-pending and the plan is archived at the develop->main release, not here.
+active_build_plan: .prawduct/artifacts/build-plan-durable-agent-worktrees.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

@@ -107,7 +107,7 @@ An absent file is the empty store.
 | `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal` today; `test-run`, `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
-| `actor` | object | `{session, worktree, plugin}` — provenance: which session, which worktree, which plugin version wrote it |
+| `actor` | object | `{session, worktree, plugin}` plus optional `branch` — provenance: which session, which worktree, which plugin version wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted |
 | `body` | object | Kind-specific payload (see below) |
 
 - **Review fact `body`** — the tree interval reviewed (`base_tree`/`head_tree` and their commits),

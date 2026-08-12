@@ -13,11 +13,13 @@ any rule you read here, name the decision you are about to make and say what the
 about it — or say that it does not apply, which is also an answer. A rule you nodded at and did
 not spend has done nothing, and it will read exactly as true the next time you fail to spend it.
 
-This is why entries carry their instances inline rather than in `learnings-detail.md` (read on
-demand, when debugging a known area — not at the moment a rule has to fire). A general statement
-is what makes a rule storable *and* what makes it inert; the instances are what you pattern-match
-your own case against. Rules are collapsed by merging statements and unioning instances, never by
-dropping them.
+This is why an entry carries its **tell** inline — the shape of the case, concrete enough to
+pattern-match your own situation against — while the full narrative sits in `learnings-detail.md`
+(read on demand, when debugging a known area, not at the moment a rule has to fire). A general
+statement is what makes a rule storable *and* what makes it inert; the tell is what makes it
+recognizable. That is the line the `learnings-entry-shape` check enforces at 400 chars: enough to
+fire on, not the whole account. Rules are collapsed by merging statements and unioning tells,
+never by dropping them.
 
 ---
 
@@ -59,7 +61,13 @@ dropping them.
 
 ## A safety argument and its counterexample can sit two paragraphs apart in YOUR OWN writing and never meet, because each answers a different question — before clearing a reader/caller/path as unaffected, re-read what you just wrote about the mechanism's lifetime and ask it against the clearance, not against the wording it was written for
 
+## Naming a chunk/scope/tag freely writes into a MACHINE-READ field and can silently switch off the gate that reads it — check the parser's accepted form before inventing an id, because a value it cannot parse yields `null`, and null is NO ANSWER, not a pass. Tell: you chose an identifier or tag value for readability, in a field some gate keys on
+
+## RESTORE THE WAY YOU MUTATED — after a red-verify mutation, invert the exact replacement rather than reaching for `git checkout -- <file>`, because checkout reverts to HEAD and silently takes every OTHER uncommitted edit in that file with it. Tell: the file you are about to restore also carries unrelated work-in-progress, and the mutation was applied surgically while the undo is file-wide
+
 ## A test asserts what would BREAK, not what you just built — red-verify mechanically (break the subject, watch that specific test go red, restore), because the vacuous shapes all look correct while proving nothing
+
+## A NEGATIVE assertion forbids everything its wording matches, not the one thing you meant — match the exact string that carries the behaviour you are excluding, because a loose phrase quietly outlaws any OTHER output containing it, and the test then pins that deletion as if it were the requirement. Always pair it with a POSITIVE assertion for the behaviour that must survive
 
 ## Apparent duplication across governing docs may be the RECEIPT for a token budget already paid — check for a pinning test before cutting it, never fund a budget by moving prose between files, and raise the ceiling rather than spend redundancy twice
 

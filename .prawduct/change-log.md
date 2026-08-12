@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-12: an agent worktree on a real branch is not disposable
+
+<!-- prawduct: type=fix | scope=durable-agent-worktrees -->
+
+**The Critic gate was unsatisfiable for any branch worked in an agent worktree, with no
+workaround.** `is_ephemeral_worktree` classified from the directory name alone — anything under
+`.claude/worktrees/agent-*` was disposable — and returned before ever reading the branch. A
+worktree holding `fix/gate-integrity` was therefore refused every `.prawduct/` write, `critic-begin`
+included, with a message whose stated reason ("discarded when it merges") was false for exactly
+that tree. The only route left was evicting the worktree to check the branch out in the clone.
+Reported from a product repo running four concurrent agents (brookstalley/discodon#2213); a full
+review ran, produced four substantive warnings, and recorded nothing.
+
+**The discriminator is what carries the write out, not where the tree sits.** #594's defect is a
+*separation*: an `isolation: "worktree"` agent's code commit returns while its `.prawduct/` write
+dies at the merge, so the write strands and the agent is told it succeeded. That separation is a
+property of the harness's own `worktree-agent-<hex>` scratch branch. On a real named branch there
+is nothing to separate — the branch is what lands, so the whole tree is carried; and if the branch
+is discarded the code goes with it, leaving nothing silently ungoverned.
+
+**That inseparability is assumed, not measured.** Verifying it against the harness's actual
+disposal policy means dispatching a probe agent, which this session was asked not to do. The
+falsifier is precise, and it is recorded in `is_ephemeral_worktree`'s docstring and the hook's
+guard header so it outlives this entry: if the harness ever merges a code commit *off* a named
+branch while discarding that branch, the separation exists after all and #594's silent strand
+returns for that case.
+
+So the branch is now a second conjunct for `agent-` paths. `wf_` stays path-only, because a
+workflow stage gets no named branch and there the path IS the identity. A detached or unreadable
+HEAD stays disposable — the restrictive side, so a failing git probe can never become a way to
+unlock the guard.
+
+**This makes concurrent agent worktrees work without any new arbitration.** `.prawduct/` already
+resolves per-worktree (STH-4K7N), so once the classification is right, N agents each get their own
+state, their own critic marker, and their own test evidence. The upstream report also described
+`.test-evidence.json` as a shared single slot that concurrent lanes overwrite; it is not shared,
+and the overwriting was a symptom of this same guard funnelling every lane into the clone. A test
+pins that (`TestConcurrentLanesDoNotCollide`), which is what closes it rather than an argument.
+
+Evidence facts now record `actor.branch`, omitted rather than null when HEAD is detached. Without
+it the historical reader and the live predicate would disagree about the same path — and
+`evidence status` would print "the review cost was spent, the coverage was not gained" over
+precisely the durable reviews this change enables. Facts written before the field keep exactly the
+reading they had.
+
 ## 2026-08-11: CLAUDE.md is back under the length it teaches
 
 <!-- prawduct: type=docs | scope=claude-md-trim | release=v3.3.4 -->

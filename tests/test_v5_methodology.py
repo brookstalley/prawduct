@@ -563,6 +563,17 @@ class TestBuildingMethodology:
         # plans are archived rather than deleted. Paid for by relocating both
         # rationales to the digests, which are always-injected where this file is
         # read on demand -- the same funding move the +146 above was taken on.
+        # #648 (2026-08-12) landed NET ZERO and so moved no number here. Making
+        # agent worktrees durable falsified this file's flat claim that
+        # `prawduct-hook` refuses a worktree subagent's `.prawduct/` write --
+        # true only on the harness's scratch branch now, and a dispatcher reads
+        # this line as a backstop. The qualification was funded by two trims in
+        # the same pass, both pure restatement: "See Modes below" (the Modes
+        # section already back-references the inference rule it follows) and
+        # "; never file by default" (the very next clause states the same rule
+        # positively, and better). Recorded because a self-funded change is the
+        # one most likely to go unlogged -- the ledger is for what was spent
+        # AND what paid, not only for movements in the total.
         tokens = estimate_tokens(self.content)
         assert tokens < 4810, f"building.md is ~{tokens} tokens, should be <4810"
 
