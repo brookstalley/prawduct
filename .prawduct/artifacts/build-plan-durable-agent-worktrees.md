@@ -53,9 +53,14 @@ assumption breaks and #594's defect returns for exactly that case.
   `.claude/worktrees/agent-*`/`wf_*` path is disposable **only when** its branch also matches
   the harness's scratch shape (or the branch is unreadable/detached — fail closed, the
   restrictive side, since a tree with no branch has nothing that carries a write out).
-- `plugin/bin/prawduct-hook` — the Ephemeral-worktree guard header's DECIDED note: replace the
-  path-based rationale with the branch-identity one. The note currently asserts the write "dies
-  at that merge", which is what makes the refusal message false on a real branch.
+- `plugin/bin/prawduct-hook` — two changes, not one. (a) The Ephemeral-worktree guard header's
+  rationale: replace the path-based reasoning with the branch-identity one. The note currently
+  asserts the write "dies at that merge", which is what makes the refusal message false on a real
+  branch. (b) `_check_ephemeral_worktree`'s `kind is None` arm gains a behavior path: it must
+  still emit the HEAD-snapshot NOTICE for a durable agent worktree. The notice answers "how old is
+  what I am reading" and the refusal answers "may I write here" — only the second stops applying
+  on a named branch, and the early return would have dropped the first for exactly the population
+  this chunk creates.
 - `tests/test_ephemeral_worktree.py` — the missing coverage. Every existing case builds its
   fixture on branch `worktree-agent-<wid>`, so no test today distinguishes the two.
 

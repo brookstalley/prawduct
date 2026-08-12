@@ -240,6 +240,29 @@ class TestBranchIdentityDecides:
         _git(wt, "checkout", "--detach", "--quiet")
         assert gitstate.is_ephemeral_worktree(wt) == "agent"
 
+    @pytest.mark.parametrize("branch", [17, b"fix/bytes", object(), True, []])
+    def test_a_non_string_branch_normalizes_to_absent_in_the_decision_body(
+        self, gitstate, branch
+    ):
+        """`ephemeral_kind_of` guards BOTH its arguments, not just `path`.
+
+        The function already defends `path` with `try/except TypeError`; before
+        this it passed `branch` straight to a regex, so a non-string raised
+        from a lib whose convention is to answer rather than raise. Every live
+        caller normalized first, which is exactly the arrangement that outlives
+        the caller who remembers to.
+
+        The normalized answer is ABSENT, not "not ephemeral" — a malformed
+        field lands on the restrictive side, so it can never promote a
+        disposable tree to durable. Asserted against the agent path, where the
+        two answers actually differ (`"agent"` vs `None`); on a non-worktree
+        path both branches return `None` and the test would pass vacuously.
+        """
+        agent_path = "/repo/.claude/worktrees/agent-abc123"
+        assert gitstate.ephemeral_kind_of(agent_path, branch) == "agent"
+        assert gitstate.ephemeral_kind_of(agent_path, None) == "agent"
+        assert gitstate.ephemeral_kind_of(agent_path, "fix/real-thing") is None
+
 
 class TestPredicateNegative:
     """A false positive silences governance in a worktree someone is really

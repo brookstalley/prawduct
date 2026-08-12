@@ -23,6 +23,13 @@ property of the harness's own `worktree-agent-<hex>` scratch branch. On a real n
 is nothing to separate — the branch is what lands, so the whole tree is carried; and if the branch
 is discarded the code goes with it, leaving nothing silently ungoverned.
 
+**That inseparability is assumed, not measured.** Verifying it against the harness's actual
+disposal policy means dispatching a probe agent, which this session was asked not to do. The
+falsifier is precise, and it is recorded in `is_ephemeral_worktree`'s docstring and the hook's
+guard header so it outlives this entry: if the harness ever merges a code commit *off* a named
+branch while discarding that branch, the separation exists after all and #594's silent strand
+returns for that case.
+
 So the branch is now a second conjunct for `agent-` paths. `wf_` stays path-only, because a
 workflow stage gets no named branch and there the path IS the identity. A detached or unreadable
 HEAD stays disposable — the restrictive side, so a failing git probe can never become a way to

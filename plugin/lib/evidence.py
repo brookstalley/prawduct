@@ -732,8 +732,14 @@ def ephemeral_facts(facts: list[dict]) -> list[dict]:
     fact already in the store still classifies. What #648 changed is that the
     *inputs* now include ``actor.branch``, which only facts written since then
     carry — a branch-less record keeps exactly the reading it always had (see
-    :func:`gitstate.ephemeral_kind_of`), and is genuinely disposable anyway,
-    since the guard refused the durable case for as long as that shape existed.
+    :func:`gitstate.ephemeral_kind_of`), and is almost always genuinely
+    disposable, since the guard refused the durable case for as long as that
+    shape existed. Two carve-outs make that "almost": a write forced with
+    ``PRAWDUCT_ALLOW_EPHEMERAL_WRITES=1``, and the harness-invoked commands the
+    guard exempts — either could have recorded a branch-less fact from a tree
+    that was not disposable. Both are rare and neither is worth a schema move;
+    the classification is restrictive, so such a fact reads as covering
+    nothing, which understates coverage rather than overstating it.
 
     These facts are **not** filtered out of anything. Tree-keying already makes
     them cover nothing — a fact recorded against a disposable worktree's tree

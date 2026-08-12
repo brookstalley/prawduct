@@ -197,6 +197,13 @@ def ephemeral_kind_of(path: str | Path, branch: str | None) -> str | None:
     dir_label = _dir_label(candidate.name)
     if dir_label == "workflow":
         return "workflow"
+    # Normalize `branch` HERE, not in each caller. `path` is already defended
+    # two lines up, and a decision function that guards one argument but not
+    # the other invites exactly the caller that forgets. A non-string reaches
+    # the same answer as absent — the restrictive side — so a malformed field
+    # can never promote a disposable tree to durable.
+    if not isinstance(branch, str) or not branch:
+        branch = None
     scratch = branch is not None and _EPHEMERAL_BRANCH_PATTERN.match(branch) is not None
     if dir_label == "agent":
         return "agent" if (branch is None or scratch) else None
@@ -253,6 +260,15 @@ def is_ephemeral_worktree(project_dir: Path) -> str | None:
     ``fix/whatever`` as disposable refused every governance write on a branch
     someone was really working — making the Critic gate unsatisfiable with no
     workaround short of evicting the worktree (brookstalley/discodon#2213).
+
+    **That inseparability is ASSUMED, not measured (#648).** It has not been
+    verified against the harness's actual disposal policy — doing so means
+    dispatching a probe agent, which the session that made this change was
+    asked not to do. The falsifier is precise: *if the harness ever merges a
+    code commit off a named branch while discarding that branch*, the two are
+    separable after all and #594's silent-strand defect returns for exactly
+    that case. Anything relying on this predicate to refuse a worktree
+    subagent's ``.prawduct/`` write is relying on that assumption too.
 
     An agent-path tree whose branch cannot be read — detached HEAD, git probe
     failure — is disposable. That is the restrictive answer, and it is the

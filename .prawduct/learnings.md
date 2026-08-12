@@ -13,11 +13,13 @@ any rule you read here, name the decision you are about to make and say what the
 about it — or say that it does not apply, which is also an answer. A rule you nodded at and did
 not spend has done nothing, and it will read exactly as true the next time you fail to spend it.
 
-This is why entries carry their instances inline rather than in `learnings-detail.md` (read on
-demand, when debugging a known area — not at the moment a rule has to fire). A general statement
-is what makes a rule storable *and* what makes it inert; the instances are what you pattern-match
-your own case against. Rules are collapsed by merging statements and unioning instances, never by
-dropping them.
+This is why an entry carries its **tell** inline — the shape of the case, concrete enough to
+pattern-match your own situation against — while the full narrative sits in `learnings-detail.md`
+(read on demand, when debugging a known area, not at the moment a rule has to fire). A general
+statement is what makes a rule storable *and* what makes it inert; the tell is what makes it
+recognizable. That is the line the `learnings-entry-shape` check enforces at 400 chars: enough to
+fire on, not the whole account. Rules are collapsed by merging statements and unioning tells,
+never by dropping them.
 
 ---
 

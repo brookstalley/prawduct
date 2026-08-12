@@ -5619,6 +5619,11 @@ def _binary_skew(project_dir: Path) -> "tuple[Path, Path] | None":
 # a Critic gate no route could satisfy (#648); `gitstate.is_ephemeral_worktree`
 # owns that distinction, so everything below reads as written once it answers.
 #
+# The inseparability is ASSUMED, not measured — see that function's docstring
+# for the falsifier. If the harness ever merges a code commit off a named
+# branch while discarding the branch, this guard stops covering that case and
+# #594's silent strand returns for it.
+#
 # DECIDED: this classification is an allowlist of READS — an unlisted command
 # defaults to refused-inside-an-ephemeral-worktree, the restrictive side. That
 # deliberately inverts `_DATA_PLANE_COMMANDS` (below), whose own DECIDED note
