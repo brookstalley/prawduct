@@ -762,6 +762,15 @@ mean the withheld work shipped.*
      > install a NON-release tree and sent the operator to delete the cache. The v3.2.5 note above
      > was taken *with* the broken test, which is why it could only report "shas differ" and never
      > reach a case.
+
+     > **The `Done when` pair MATCHING, measured from a fresh session — v3.3.4, 2026-08-12.**
+     > `released` and `installed` both `abafac9677e2ac2ca3fc116311386af1cf2d3cef`. This is the
+     > first end-to-end confirmation the check has ever produced: every prior measurement was
+     > taken from the cutting session, where a mismatch is correct-and-expected (case 1) and the
+     > pair therefore *cannot* match. Taking it from a later session is what makes a match
+     > meaningful, and it closes the loop the v3.3.4 note above could only open — the pair
+     > differing at the cut and matching a day later is exactly the auto-update working. A
+     > mismatch here would have been the first genuine (2)/(3) ever seen; it was not.
   2. **`version` is the new release, and the sha is the *prep* commit** — the failure this bullet
      was written for. The cache was filled during the Phase 1–2 gap, and it will not refresh on
      its own because the version key never changed between prep and promotion. Fix it before you
