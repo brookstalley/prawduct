@@ -92,6 +92,28 @@ guards it — go find what you already wrote about that lifetime and ask *this* 
 
 ---
 
+## RESTORE THE WAY YOU MUTATED — after a red-verify mutation, invert the exact replacement rather than reaching for `git checkout -- <file>`, because checkout reverts to HEAD and silently takes every OTHER uncommitted edit in that file with it. Tell: the file you are about to restore also carries unrelated work-in-progress, and the mutation was applied surgically while the undo is file-wide
+
+Red-verifying a new type guard in `ephemeral_kind_of`, I mutated `gitstate.py` by script, confirmed
+5 parametrized cases went red, then restored with `git checkout -- plugin/lib/gitstate.py`. The
+mutation went away and so did two unrelated uncommitted edits living in the same file — the guard
+being verified, and a docstring paragraph recording an unverified assumption for a different
+finding. Both vanished without a word. It surfaced only because an unrelated system reminder
+displayed the file's committed content, prompting a grep for both markers.
+
+The asymmetry is the whole defect. **Mutation is surgical and restoration is file-wide**: the mutate
+step replaces one known hunk, so the natural inverse is to replace it back — but "put the file
+back" retrieves `git checkout --` from muscle memory, and that command's scope is the file, not the
+edit. Nothing warns you, because reverting to HEAD is exactly what it advertises.
+
+Two safe shapes. Either invert the replacement (the script that applied the mutation can un-apply
+it, and it fails loudly if the text is not found), or red-verify *before* the file accumulates other
+uncommitted work. A file with uncommitted edits has no safe `git checkout --`, and mutation testing
+is precisely the workflow that tempts you to use one — you are mid-verification, the fix is not
+committed yet, and the file is at its most crowded.
+
+---
+
 ## Naming a chunk/scope/tag freely writes into a MACHINE-READ field and can silently switch off the gate that reads it — check the parser's accepted form before inventing an id, because a value it cannot parse yields `null`, and null is NO ANSWER, not a pass. Tell: you chose an identifier or tag value for readability, in a field some gate keys on
 
 Two instances landed on one branch (#648). The build plan used `CH-01`/`CH-02` chunk ids, which
