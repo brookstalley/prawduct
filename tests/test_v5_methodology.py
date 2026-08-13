@@ -137,7 +137,13 @@ LAST_MEASURED_TOKENS = {
     # mode's payload — the ceiling raised above named this addition. Nothing paid
     # it back here: the file was already deduped to 2 tokens of headroom by its
     # prior edit, so this is the raise being spent as declared, not fat traded.
-    "skills/critic/goals-1-3.md": 2211,
+    # +32 on 2026-08-13: the last of the three additions the raise above named —
+    # verify-mode observations are delivered pre-priced (ACCEPT is the default,
+    # fixing one costs a round, batch survivors). It goes in the sentence that
+    # already defines what an observation IS, so it costs the rule and no
+    # framing. The raise is now fully spent: 7 tokens of headroom, and the next
+    # addition trims.
+    "skills/critic/goals-1-3.md": 2243,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -931,7 +937,8 @@ class TestCriticGoals13:
         )
 
     def test_token_budget(self):
-        # Ceiling 2000. This file is the chunk / verify-resolutions payload and
+        # The ceiling is the number this test asserts, and nothing else should
+        # restate it. This file is the chunk / verify-resolutions payload and
         # orders its reader to open nothing else, so every pointer-chase it
         # would cause has to be inlined here instead -- which is why it is long,
         # and why the ceiling is the thing that governs rather than a line count.

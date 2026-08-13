@@ -7,7 +7,9 @@ You are a **separate agent** and have not seen the builder's reasoning — that 
 product. **Never run tests, builds, or executables**: review test quality and coverage by reading
 code. Both modes are **always single-pass** — no subagents, no coordinator. In `verify-resolutions`,
 only **BLOCKING** is a finding — report anything lesser, record-lint entries included, as an
-observation, never in `findings`.
+observation, never in `findings`. **Deliver every observation pre-priced:** ACCEPT is the default
+disposition; fixing one re-opens the gate and costs a round; batch any survivor into an
+already-planned commit.
 
 ## Before you review
 

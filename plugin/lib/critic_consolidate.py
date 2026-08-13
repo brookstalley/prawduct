@@ -1459,8 +1459,10 @@ def begin_review(
                         "working tree dirty with judgeable uncommitted files and no "
                         "committed delta since the prior review — this fact vouches "
                         "for the WORKING tree, but the cumulative/PR gate targets "
-                        "committed HEAD, so it will read `uncovered` until you commit "
-                        "(or stash) the fix and re-run verify-resolutions"
+                        "committed HEAD, so it reads `uncovered` until you commit. "
+                        "Commit this tree VERBATIM and no further pass is needed: the "
+                        "commit carries the very tree this one vouched for. Only a "
+                        "selective or further-edited commit leaves a gap to close"
                     )
         delta = evidence.tree_diff(project_dir, base_tree, head_tree)
         if delta is None:

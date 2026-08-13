@@ -1254,13 +1254,21 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     hook's — so the wording has one home and cannot drift at one site only.
     Each caller owns nothing but its own indentation.
 
+    The standard remedy states the whole golden path, not just the command.
+    Naming only "fix them, then verify" leaves the batching to the operator,
+    and the loop that actually costs rounds is fix-commit-verify per finding:
+    each commit extends HEAD, so each one buys a fresh round whose demoted
+    observations tempt the next fix. Fixing everything in the working tree and
+    verifying once is sound — a verify pass reads the dirty tree — and the
+    verified tree is what gets committed.
+
     Three cases, because the standard remedy is *wrong* for a superseded
     blocker: one carried by a review fact no verify-resolutions pass will
     anchor to again (``coverage_algebra._verify_anchor_id``). A verify pass
     resolves findings on the fact it anchors to, so it will never name that
     round again, and the state clears only through a spanning review.
 
-    - none superseded → the standard fix-then-verify remedy.
+    - none superseded → the standard golden-path remedy.
     - some superseded → the standard remedy, then the exception.
     - **all** superseded → the spanning review LEADS. Appending the exception
       after "run verify-resolutions" would hand the operator the one route
@@ -1272,8 +1280,10 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     """
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
     standard = [
-        "Fix them, then run /prawduct:critic verify-resolutions — it records the",
-        "resolution facts and this same evidence passes (no full re-review).",
+        "Fix ALL of them in the working tree first — do not commit between fixes.",
+        "Then run ONE /prawduct:critic verify-resolutions (it reads the dirty tree)",
+        "and commit that verified tree verbatim: it records the resolution facts,",
+        "so this same evidence passes with no full re-review.",
     ]
     n = sum(1 for e in entries if e.get("superseded"))
     if not n:
@@ -1322,9 +1332,10 @@ def check_cumulative_critic(project_dir: Path) -> int:
     - ``schema-ahead`` — a fact from a newer plugin exists; update the
       plugin before trusting any verdict (C9 tier 3, fail closed).
     - ``blocking`` — coverage composes but carries unresolved BLOCKING
-      findings (listed): fix them, then ``/prawduct:critic
-      verify-resolutions`` records the resolution facts — the same
-      evidence then passes with no full re-review. A finding the message
+      findings (listed): fix them all in the working tree, then ONE
+      ``/prawduct:critic verify-resolutions`` records the resolution facts —
+      the same evidence then passes with no full re-review, and the verified
+      tree is what gets committed. A finding the message
       marks *superseded* is the exception, and the message says so: it
       sits on a round no verify pass anchors to again, so it clears only
       through a spanning ``/prawduct:critic cumulative``. When EVERY

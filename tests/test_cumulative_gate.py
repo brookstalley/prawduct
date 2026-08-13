@@ -1626,13 +1626,26 @@ class TestBlockingRemedyLines:
             assert "Superseded" not in text, reachable
             assert "/prawduct:critic cumulative" not in text, reachable
 
+    def test_standard_remedy_prescribes_the_batch_golden_path(self):
+        """Naming the command alone leaves the batching to the operator, and the
+        loop that costs rounds is fix-commit-verify per finding: every commit
+        extends HEAD, so every one buys a fresh round. All four moves have to be
+        in the text an operator acts on — batch the fixes, hold the commit, run
+        exactly one verify, commit the tree that passed."""
+        text = self._text([{"fid": "R-1"}])
+        assert "Fix ALL of them in the working tree" in text
+        assert "do not commit between fixes" in text
+        assert "run ONE /prawduct:critic verify-resolutions" in text
+        assert "commit that verified tree verbatim" in text
+
     def test_mixed_set_keeps_the_standard_remedy_and_adds_the_exception(self):
         lines = gates.blocking_remedy_lines(
             [{"superseded": True}, {"superseded": False}, {"superseded": True}]
         )
         text = " ".join(lines)
         # The standard route still leads — one of the three IS reachable by it.
-        assert lines[0].startswith("Fix them, then run /prawduct:critic verify-resolutions")
+        assert lines[0].startswith("Fix ALL of them in the working tree")
+        assert "run ONE /prawduct:critic verify-resolutions" in text
         assert "Superseded: 2 findings" in text
         assert "/prawduct:critic cumulative" in text
 
@@ -1646,7 +1659,10 @@ class TestBlockingRemedyLines:
             assert lines[0].startswith("Superseded:"), lines
             assert "/prawduct:critic cumulative" in text
             # The unreachable route is never prescribed as the action to take.
-            assert "run /prawduct:critic verify-resolutions" not in text, lines
+            # Matched on the SLASH-COMMAND form, not on "run …": the lead says
+            # "no verify-resolutions pass will name again", which is the mode as
+            # a noun, and only the invocation is the prescription.
+            assert "/prawduct:critic verify-resolutions" not in text, lines
 
     def test_reads_naturally_for_one_and_for_many(self):
         assert "the blocker above sits" in self._text([{"superseded": True}])

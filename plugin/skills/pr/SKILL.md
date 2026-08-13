@@ -3,7 +3,7 @@ description: PR lifecycle management — create, update, merge, or check status 
 argument-hint: "[create|update|merge|status]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(gh pr *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook check-change-log-entry), Bash(prawduct-hook resolve-base), Bash(prawduct-hook archive-plan *), Bash(prawduct-hook ledger-append *), Bash(python3 plugin/bin/prawduct-hook ledger-append *), Read, Write, Agent
+allowed-tools: Bash(gh pr *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook cost-of-commit *), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification *), Bash(prawduct-hook verify-operator-verification *), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook check-change-log-entry), Bash(prawduct-hook resolve-base), Bash(prawduct-hook archive-plan *), Bash(prawduct-hook ledger-append *), Bash(python3 plugin/bin/prawduct-hook ledger-append *), Read, Write, Agent
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -129,7 +129,9 @@ Push branch with `-u`. Draft title and description from work context + review fi
 ## Update Flow
 
 1. Push new commits to remote
-2. If substantive changes (not just formatting/comments), re-run the reviewer on the delta. **A base-sync merge that introduces no judgeable authored content is not substantive** — it adds no work for a release-readiness reviewer to assess. Do not judge that by eye: re-run `prawduct-hook check-cumulative-critic`, and if it exits 0 *by transfer* (the message says `transferred across base advance`), the gate has just proved the branch's own diff is byte-identical to the reviewed one, so there is nothing new for the reviewer to read.
+2. Re-run the reviewer **only on a substantive delta**. Substantive = the delta since the reviewed commit contains at least one **judgeable path authored on this branch**. Two deltas are not substantive, and **neither is judged by eye** — a re-review of records and a base sync is minutes of opus for nothing to assess:
+   - **Only non-judgeable paths.** Get the delta's paths with `git diff --name-only <last-reviewed commit>..HEAD` (`@{u}..HEAD` before step 1 pushes) and pass them to `prawduct-hook cost-of-commit` as **explicit file arguments**. Not substantive requires `paths` non-empty **and** `judgeable` empty. The empty-`judgeable` half alone is not the test: a bare or directory-only invocation prices the *working* tree, which by this step is clean, so it returns the same empty list having examined none of your delta — and skipping the reviewer on that reading is a governance bypass, not a saving. Empty `paths`, or a `reason` (git unreadable), is **substantive**; unknown is never free. `.prawduct/` records and non-governance-protected `.md` move no coverage; source and config classify by *path*, so a comment-only edit to a `.py` or a CI workflow **is** judgeable and does re-run the reviewer (content equivalence was built as an exception and reverted — `coverage_algebra.is_judgeable_path`).
+   - **A base-sync merge that introduces no judgeable authored content** — it adds no work for a release-readiness reviewer to assess. Re-run `prawduct-hook check-cumulative-critic`, and if it exits 0 *by transfer* (the message says `transferred across base advance`), the gate has just proved the branch's own diff is byte-identical to the reviewed one, so there is nothing new for the reviewer to read.
 3. Update PR description if scope changed
 4. Update evidence file; if the reviewer re-ran, append a fresh `review.pr` ledger event (as in Create Step 4)
 

@@ -3,6 +3,59 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: the batch-fix golden path, stated at the point of action
+
+<!-- prawduct: type=feature | scope=tactical-efficiency -->
+
+Five consecutive 0/0/0 verify passes on one branch, 1,270 seconds, each one bought by the builder
+electing to fix the previous pass's demoted observations. The discipline that prevents this already
+existed in `building.md` and in `critic-consolidate`'s output — but neither is open at the moment
+the decision gets made. The builder is reading a gate's stderr, or a verify report, or the PR
+update step, and all three said less than they needed to.
+
+**The PR/Stop gates' blocking remedy now prescribes the whole golden path**, not just the command:
+fix ALL of them in the working tree, do not commit between fixes, run ONE `verify-resolutions`
+(it reads the dirty tree), and commit that verified tree verbatim. The failure mode it names is
+fix-commit-verify per finding — each commit extends HEAD, so each one buys a fresh round whose
+demoted observations tempt the next fix. Superseded-blocker routing is untouched: the spanning
+review still leads when every blocker is one, since that is a routing question and this is a
+batching one.
+
+**Verify-mode observations arrive pre-priced.** `goals-1-3.md` now delivers them with the
+disposition attached — ACCEPT is the default, fixing one re-opens the gate and costs a round,
+batch any survivor into an already-planned commit. Placement is the point: the builder decides
+while reading the report, so the price has to be in the report. It spends the last of the ceiling
+raise this pass declared for exactly this addition, leaving 7 tokens.
+
+**`/prawduct:pr` Update defines "substantive"** — at least one judgeable path in the delta since
+the reviewed commit — and gives a command for each non-substantive shape rather than leaving it to
+the eye: `cost-of-commit` for a records-only delta, `check-cumulative-critic` for a base sync that
+exits 0 by transfer. **It closes half the observed 520-second re-review, not all of it**, and says
+so: the `.prawduct` records are non-judgeable, but a CI workflow is config, so a comment-only edit
+to it stays judgeable. The content-equivalence exception that would close the rest was built and
+reverted as unsound (COV-3M8Q) — the rule states its limit instead of overreaching to match the
+evidence that motivated it.
+
+The chunk's review caught a fail-open in its own new rule, and it is the reason the `cost-of-commit`
+bullet is as long as it is. `cost-of-commit` with no arguments — or with a directory — prices the
+**working tree**, and at that point in the Update flow the working tree is clean because the delta
+is already pushed. It returns an empty `judgeable` list having examined none of the delta, and an
+agent testing only for that emptiness skips the independent PR review entirely. The paths are now
+passed explicitly, "not substantive" requires a non-empty priced set as well as an empty judgeable
+one, and an unreadable or empty result is substantive: unknown is never free.
+
+One consequence of the golden path reached further than the three surfaces. `critic-consolidate`'s
+dirty-tree note told the builder the gate would read `uncovered` "until you commit (or stash) the
+fix **and re-run verify-resolutions**" — the extra round the new remedy exists to remove, and
+wrong besides: a verify pass over a dirty tree vouches for that tree, so committing it verbatim
+carries the very tree the pass vouched for and the gate composes with nothing further. The note now
+says so, and names the actual exception — a selective or further-edited commit.
+
+Two things were analyzed and deliberately not built, both from the parent analysis: a sincerity
+flag (`--im-really-done`), which cannot catch an error that is not insincerity, and refusing verify
+dispatch when the delta is "only fixes", which is unsound because the fixes live in judgeable files
+and refusing would strand the gate uncovered.
+
 ## 2026-08-13: prose findings priced honestly
 
 <!-- prawduct: type=feature | scope=tactical-efficiency -->

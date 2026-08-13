@@ -63,7 +63,7 @@ the remaining input.
 - [x] Chunk 02: Coverage-verdict memo — the PR gate answers in constant time
 - [x] Chunk 03: Disposition-aware reviews — accepted findings stop being re-litigated
 - [x] Chunk 04: Prose findings priced honestly — severity ceilings, deletion-first remedies, no archaeology
-- [ ] Chunk 05: Verify-resolutions golden path at every point of action
+- [x] Chunk 05: Verify-resolutions golden path at every point of action
 - [ ] Chunk 06: The plan declares its branch — active-plan resolution goes branch-scoped
 - [ ] Chunk 07: Advisory recommends union-merge for the append-only change-log
 Context: Plan authored 2026-08-13 by the Fable analysis session (Chunks 06–07 added same day
@@ -112,8 +112,24 @@ structural instead of documented. Five prose corrections from the verify pass ar
 recorded in `.prawduct/.handoff-notes.md` — they are deferred only because a concurrent worktree
 agent (#654/#655) holds those files.
 
-Next: Chunk 03. Note Chunks 03–05 all edit the Critic/PR protocol prose, and every one of those
-files sits within ~30 tokens of a guardrail ceiling.
+Chunk 05 landed 2026-08-13 (review `rev-20260813T212253Z-9a675b4c` + one verify pass, final state
+0 findings, 0 blocking throughout). Its warning was a **fail-open in its own new rule**:
+`cost-of-commit` with no arguments — or a directory — prices the *working* tree, which at that
+point in the PR Update flow is clean because the delta is already pushed, so it returns an empty
+`judgeable` list having read none of the delta and the agent skips the independent PR review. The
+step now passes explicit paths and requires a non-empty priced set; unknown is never free. The
+chunk also reached one surface beyond its three: `critic-consolidate`'s dirty-tree note prescribed
+the same superfluous round the new remedy removes. **Its `gates.py` twin is carried into Chunk 06**
+— see the carry note under Chunk 05.
+
+Dogfooded end to end: the verify pass delivered its observations pre-priced (the chunk's own new
+instruction, on its first live run), and Chunk 05 closed by committing the vouched-for tree
+verbatim rather than fixing the two demoted observations and buying a round — which is the golden
+path the chunk installs, taken by the chunk itself.
+
+Next: Chunk 06, starting with the two carried items above. Note Chunks 03–05 all edit the
+Critic/PR protocol prose, and every one of those files sits within ~30 tokens of a guardrail
+ceiling; `goals-1-3.md` now has 7.
 
 ## Scaffolding
 
@@ -289,17 +305,24 @@ this repo after the change and reading the manifest/report surfaces. Chunk 06 by
      ACCEPT is the default disposition; fixing any of these re-opens the gate and costs a round;
      batch survivors into an already-planned commit.
   3. `plugin/skills/pr/SKILL.md` Update flow — define "substantive": a delta that is only
-     non-judgeable paths and/or a base-sync merge does not re-run the PR reviewer (closes the
-     observed 520-second re-review of a CI comment + `.prawduct` records).
+     non-judgeable paths and/or a base-sync merge does not re-run the PR reviewer.
+     **Closes half of the observed 520-second re-review, not all of it** — the `.prawduct`
+     records are non-judgeable, but a CI workflow file is config, so `is_judgeable_path` calls
+     a comment-only edit to it judgeable and the reviewer still re-runs. The content-equivalence
+     exception that would close the other half was built and reverted as unsound (COV-3M8Q),
+     so the rule states its own limit rather than overreaching to meet the evidence.
   Explicitly **not** built (analysis "What was deliberately not proposed"): a sincerity flag, and
   refusing verify dispatch when the delta is "only fixes" — the fixes live in judgeable files, so
   refusal would strand the gate uncovered.
 - **Depends on:** Chunk 04 (shares `goals-1-3.md`)
 - **Artifacts consumed:** `tactical-efficiency-analysis-2026-08-13.md` §F5
 - **Deliverables:** `plugin/lib/gates.py` (`blocking_remedy_lines` + its tests),
-  `plugin/skills/critic/goals-1-3.md`, `plugin/skills/pr/SKILL.md`
+  `plugin/skills/critic/goals-1-3.md`, `plugin/skills/pr/SKILL.md`,
+  `plugin/lib/critic_consolidate.py` (the dirty-tree dispatch note prescribed the same superfluous
+  round the new remedy removes — added during the build, reason in the change-log)
 - **Tests:** `blocking_remedy_lines` unit tests updated to the new wording (both callers render
-  it — the one-home rule holds); prose guards as in Chunk 04
+  it — the one-home rule holds); prose guards as in Chunk 04, in
+  `tests/test_verify_golden_path.py`
 - **Acceptance criteria:** gate stderr on a blocking verdict prescribes the batch golden path;
   verify-mode report template carries the pricing line; suite green
 - **Done when:**
@@ -307,6 +330,21 @@ this repo after the change and reading the manifest/report surfaces. Chunk 06 by
   2. Change-log entry added
   3. `/prawduct:critic` run and blocking findings resolved
   4. Committed and chunk marked `[x]` in Status
+
+**Carried into Chunk 06's commit — two items, deliberately not fixed in Chunk 05's.** Both are
+judgeable-file edits, and Chunk 05's closing commit is the verbatim commit of a tree a verify pass
+already vouched for; editing them in would have forfeited that and bought exactly the round this
+chunk exists to remove. Riding a commit Chunk 06 is making anyway buys none. **Do them there:**
+
+1. `plugin/lib/gates.py` — the `uncovered` remedy's last clause still tells a builder whose verify
+   fact anchored the WORKING tree to "commit (or stash) the WIP and **re-run**". Same defect as the
+   consolidate note this chunk corrected, and this one's reader is the builder: committing the WIP
+   *verbatim* ends the fact at the tree the gate targets, so no re-run is owed. Name the real
+   exception instead — a selective or further-edited commit.
+2. `tests/test_critic_consolidate.py` — the corrected half of the dirty-tree note ("Commit this
+   tree VERBATIM and no further pass is needed") has no pin; the existing assertion covers only
+   "vouches for the WORKING tree", which survived the edit unchanged. By this chunk's own logic, a
+   restated rule is what a later trim deletes first.
 
 ### Chunk 06: The plan declares its branch — active-plan resolution goes branch-scoped (analysis F7; closes #283)
 
