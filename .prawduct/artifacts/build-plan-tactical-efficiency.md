@@ -62,13 +62,13 @@ the remaining input.
 - [x] Chunk 01: Base-advance coverage transfer — a clean base sync no longer voids review coverage
 - [x] Chunk 02: Coverage-verdict memo — the PR gate answers in constant time
 - [x] Chunk 03: Disposition-aware reviews — accepted findings stop being re-litigated
-- [ ] Chunk 04: Prose findings priced honestly — severity ceilings, deletion-first remedies, no archaeology
+- [x] Chunk 04: Prose findings priced honestly — severity ceilings, deletion-first remedies, no archaeology
 - [ ] Chunk 05: Verify-resolutions golden path at every point of action
 - [ ] Chunk 06: The plan declares its branch — active-plan resolution goes branch-scoped
 - [ ] Chunk 07: Advisory recommends union-merge for the append-only change-log
 Context: Plan authored 2026-08-13 by the Fable analysis session (Chunks 06–07 added same day
 after owner feedback: doctor is rarely run → advisory surface; active plan is branch state →
-Chunk 06). Chunks 01–03 built and committed; 04–07 outstanding. Executes on Opus. Parent evidence:
+Chunk 06). Chunks 01–04 built and committed; 05–07 outstanding. Executes on Opus. Parent evidence:
 `tactical-efficiency-analysis-2026-08-13.md` — read it before Chunk 01; each chunk cites its
 finding (F1–F7). Backlog: #565 is closed by Chunk 01 (shipped), #283 by Chunk 06 (archive in the
 closing PR, not after). Branch: build on `feat/tactical-efficiency-pass` off `develop`;
@@ -87,6 +87,20 @@ a worktree subagent at the owner's request and merged into this branch (`243c776
 here rather than later** — the Stop gate transfers on its merge-base fallback span only, and a
 grant records its yield through a span-keyed `guard-refusal` fact that repeated polls do not
 duplicate.
+
+Chunk 04 landed 2026-08-13 (`a02aa1c6` + `8e7d8781`; review `rev-20260813T203202Z-87a90058` and
+two verify passes, final state 0 findings). Its blocking finding was a plan citation that resolved
+from neither ref root; its most valuable was the **floor clause** — a severity ceiling stated with
+only an upward exit silently outranks every rule that promotes a finding, so Goal 4's
+actively-misleading-README BLOCKING would have come down to a WARNING. The second verify pass
+caught the chunk violating its own provenance ban inside the test that pins that ban.
+
+**Retroactivity of the archaeology rule: contain, do not sweep.** The rule is new, so the repo
+carries a latent set of pre-existing review ids and chunk anchors in comments (the verify pass
+counted several in `tests/test_v5_methodology.py` alone). Those are not load-bearing, so under this
+chunk's own ceiling they are NOTEs, and sweeping them is exactly the wording churn the chunk exists
+to stop. The rule binds new and edited comments; existing ones are corrected only when their file is
+being touched anyway. Not backlog work — a decision, recorded here so it is not re-opened.
 
 Chunk 02 landed 2026-08-13 (`65b37539`; review `rev-20260813T161546Z-20da8706` + verify pass,
 final state 0 findings). Profiled before building: the entire 29–120 s gate cost is
