@@ -119,7 +119,7 @@ LAST_MEASURED_TOKENS = {
     # in both Assess and Dispatch (kept at Dispatch, where the Agent calls are),
     # and the drift bullet named the chunk-number case twice and re-derived
     # "archiving moves the file" from "archived, not deleted". The last 18 are
-    # the review's floor clause — without it the ceiling silently outranks the
+    # the floor clause — without it the ceiling silently outranks the
     # README bullet's actively-misleading BLOCKING two entries above, so a wrong
     # command ships as a WARNING that gates nothing. This file is now at ONE
     # token of headroom: the next addition trims or relocates, and there is no
@@ -132,7 +132,7 @@ LAST_MEASURED_TOKENS = {
     # the pre-priced verify observations. Each is shorter than the review round
     # it prevents. Deduped first and found nothing: the file was squeezed to 2
     # tokens of headroom by its last edit.
-    # +142 on 2026-08-13: the same two rules plus the review's floor clause (the
+    # +142 on 2026-08-13: the same two rules plus the floor clause (the
     # ceiling never lowers a severity another rule assigns explicitly), in chunk
     # mode's payload — the ceiling raised above named this addition. Nothing paid
     # it back here: the file was already deduped to 2 tokens of headroom by its

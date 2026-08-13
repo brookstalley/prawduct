@@ -230,7 +230,12 @@ this repo after the change and reading the manifest/report surfaces. Chunk 06 by
      drift" + `plugin/skills/pr/review-protocol.md` severity notes): comment/docstring/doc wording, counts, and
      phrasing are **NOTE** unless load-bearing — referenced by a test or a gate, or the reviewer
      names the concrete wrong action a maintainer takes because of it (the existing WARNING bar,
-     now applied to prose explicitly).
+     now applied to prose explicitly). The ceiling never lowers a severity another rule assigns
+     explicitly.
+     <!-- Amended 2026-08-13: the floor clause was added during the chunk's review. Stated with
+          only its upward exit, a rule that suppresses findings silently outranks every rule that
+          promotes one — Goal 4's actively-misleading-README BLOCKING among them. -->
+
   2. **Remedy constraint** (same three surfaces, one sentence each citing the owner): for stale
      prose the permitted recommendations are **delete the claim, make it relational, or pin it
      with a test** — never "reword the narration," never "add a comment explaining the history."

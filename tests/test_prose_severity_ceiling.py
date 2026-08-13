@@ -69,8 +69,8 @@ def test_the_ceiling_names_what_lifts_it(path: Path) -> None:
 
 @pytest.mark.parametrize("path", SEVERITY_SURFACES, ids=SURFACE_IDS)
 def test_the_ceiling_has_a_floor(path: Path) -> None:
-    # The highest-stakes clause here, and the one the chunk's own review caught
-    # missing. A ceiling stated with only an upward exit reads as outranking
+    # The highest-stakes clause here. A ceiling stated with only an upward exit
+    # reads as outranking
     # every other severity assignment: Goal 4 rates an actively misleading README
     # instruction BLOCKING, and a reviewer who names that wrong action lands on
     # WARNING instead — which gates nothing, so the wrong command ships. The
