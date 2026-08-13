@@ -3,6 +3,24 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: the four-cycle program gets a durable home
+
+<!-- prawduct: type=docs | scope=purpose-and-cession -->
+
+**The parent requirement document for Cycles 2–4 lived only in a gitignored file that `/clear`
+regenerates.** `.prawduct/.handoff-notes.md` carried the owner-ratified program — the #181
+deletion-pass framing and its constraints, the responsibility-ledger design, the sibling-first
+telemetry plan, the prose-test taxonomy, the disposition seed rows, and an open learnings-rule
+candidate — and `build-plan-purpose-and-cession.md` cited it four times as its parent source.
+That plan is committed; the file it pointed at is not, and was consumed at the next `/clear`.
+
+`.prawduct/artifacts/program-purpose-and-cession.md` is now that home, following the
+`framework-efficiency-review-2026-07-02.md` precedent (a committed parent requirement document
+for a multi-wave program). The build plan's four references are repointed. Purpose and
+principles are referenced, never restated — `documentation/purpose.md` and
+`plugin/docs/principles.md` keep their one-home ownership, as does `project-preferences.md` for
+the model-floor norm; this file carries only the per-cycle model mapping.
+
 ## 2026-08-13: principles 25 and 26 — the moving-target posture, codified
 
 <!-- prawduct: type=docs | scope=purpose-and-cession -->

@@ -23,7 +23,7 @@ last_validated: 2026-08-13
 
 **Level:** High
 
-**Why:** The problem (prawduct has no recorded purpose; the graceful-cession posture exists only in one conversation), success criteria (purpose.md on disk carrying the owner's ratified framing; principles #25/#26 landed with their cascade coherent), and scope (documents and their pinning contracts only — no mechanism, no gates, no ledger yet) were each confirmed directly with the owner on 2026-08-12. Source material is `.prawduct/.handoff-notes.md` (the ratified program plan) — no fast-moving external facts.
+**Why:** The problem (prawduct has no recorded purpose; the graceful-cession posture exists only in one conversation), success criteria (purpose.md on disk carrying the owner's ratified framing; principles #25/#26 landed with their cascade coherent), and scope (documents and their pinning contracts only — no mechanism, no gates, no ledger yet) were each confirmed directly with the owner on 2026-08-12. Source material is the ratified program plan, now durably recorded in `.prawduct/artifacts/program-purpose-and-cession.md` (it was carried in the gitignored `.prawduct/.handoff-notes.md` while this plan was authored) — no fast-moving external facts.
 
 **Open assumptions / unknowns:**
 - [ASSUMPTION: `purpose.md` lives in `documentation/` (framework-internal), not `plugin/docs/` (shipped to products) — it is prawduct's own north star, not consumer guidance | MED impact | user can override]
@@ -36,11 +36,11 @@ last_validated: 2026-08-13
 
 - [x] Chunk 01: documentation/purpose.md — the framework's own north star
 - [x] Chunk 02: Principles 25 and 26 with their cascade
-Context: Plan authored 2026-08-13 from the ratified program in `.prawduct/.handoff-notes.md` (owner approved 2026-08-12). This is Cycle 1 of a four-cycle program; Cycle 2 is backlog #181 (GOV-6D4Q), the deletion-only pass — this plan deliberately precedes it so the pass's "why" is on disk first. BOTH CHUNKS COMPLETE 2026-08-13: suite green, evidence recorded. Review history: cumulative rev-20260813T042938Z-81decaea (1 blocking — the ride-along early plan archive, reverted; 4 warnings; 1 note → #302/MET-9W2P shipped, Principle 25 IS that item) then verify-resolutions rev-20260813T044600Z-78bedb91 (all resolved, 0/0/0). Branch `docs/purpose-and-cession` is PR-ready; owner runs `/prawduct:pr` next session, then Cycle 2 (#181).
+Context: Plan authored 2026-08-13 from the ratified program, now recorded in `.prawduct/artifacts/program-purpose-and-cession.md` (owner approved 2026-08-12). This is Cycle 1 of a four-cycle program; Cycle 2 is backlog #181 (GOV-6D4Q), the deletion-only pass — this plan deliberately precedes it so the pass's "why" is on disk first. BOTH CHUNKS COMPLETE 2026-08-13: suite green, evidence recorded. Review history: cumulative rev-20260813T042938Z-81decaea (1 blocking — the ride-along early plan archive, reverted; 4 warnings; 1 note → #302/MET-9W2P shipped, Principle 25 IS that item) then verify-resolutions rev-20260813T044600Z-78bedb91 (all resolved, 0/0/0). Branch `docs/purpose-and-cession` is PR-ready; owner runs `/prawduct:pr` next session, then Cycle 2 (#181).
 
 ## Verification Strategy
 
-Prose deliverables: verification is coherence, not execution. Each chunk closes by (a) re-reading the changed docs end-to-end against `.prawduct/.handoff-notes.md`'s ratified framing, (b) running the full test suite (the roster and budget pins are the executable contract), and (c) Critic review per chunk. No product to launch.
+Prose deliverables: verification is coherence, not execution. Each chunk closes by (a) re-reading the changed docs end-to-end against the ratified framing (`.prawduct/artifacts/program-purpose-and-cession.md`), (b) running the full test suite (the roster and budget pins are the executable contract), and (c) Critic review per chunk. No product to launch.
 
 ## Build Chunks
 
@@ -48,7 +48,7 @@ Prose deliverables: verification is coherence, not execution. Each chunk closes 
 
 - **Description:** Create the purpose document prawduct has never had (verified 2026-08-12: nothing vision/purpose-shaped ever existed in git history). Spine is the owner's framing, user-needs not model-timelines: prawduct builds on today's models and runtimes to close the gap between what they provide and what consumers need to deliver successful software products; models are commodities, consumers differentiate above the mass-market baseline, and prawduct supplies that layer permanently — ceding what the baseline absorbs and moving its value higher. Body carries: why the gap never closes (requirements arrive late — human nature, not tooling immaturity); the three-hedge taxonomy (runtime judgment / joint myopia / statelessness) with their distinct depreciation schedules; the durable core (mandate + record + audit); fractional shifting ownership with the false-precision caveat (continuous evolution, not step functions); deletion with the same care as addition; and the directional-by-construction telemetry rule (schemas physically incapable of carrying proprietary information). ~One page.
 - **Depends on:** none
-- **Artifacts consumed:** `.prawduct/.handoff-notes.md` (ratified program + owner refinements)
+- **Artifacts consumed:** `.prawduct/artifacts/program-purpose-and-cession.md` (ratified program + owner refinements)
 - **Deliverables:** new `documentation/purpose.md`; the six artifact-frontmatter comments currently reading "vision lives in README.md + CLAUDE.md" (`architecture.md`, `data-model.md`, `api-contract.md`, `observability-strategy.md`, `nonfunctional-requirements.md`, `security-model.md` under `.prawduct/artifacts/`) repointed to `documentation/purpose.md` — one-home cascade, the relocated parent's old pointers must not survive
 - **Tests:** none new — no contract surface changes in this chunk
 - **Acceptance criteria:** doc exists, ≤ ~120 lines, carries every element listed in the description, contradicts nothing in `CLAUDE.md` or `plugin/docs/principles.md`; full suite still green
