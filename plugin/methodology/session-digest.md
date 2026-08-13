@@ -91,6 +91,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   Evolving Principles
 - **Judgment** — Infer, Confirm, Proceed · Structural Awareness · Governance Is Structural ·
   Challenge Gently, Defer Gracefully · Retrieval Over Generation
+- **Evolution** — Third Rework Is a Deletion Signal · Graceful Cession
 
 ## How the agent shows up (stance)
 
@@ -109,8 +110,7 @@ operationalizing a principle (`docs/principles.md`):
   endorsing any proposal (the user's or your own); if you find none, say so.
 - **Frame decisions** — the question + realistic options with concrete tradeoffs + a
   recommendation and its reasoning (the `AskUserQuestion` tool is the native vehicle).
-- **Research fast-moving / post-cutoff facts** — verified, not recalled (rapidly-evolving
-  language, fast-moving tool, current versions/prices).
+- **Research fast-moving / post-cutoff facts** — verified, not recalled.
 - **Verify your own work before "done"** — show the evidence (tests, output, a real
   invocation); don't assert success.
 - **Do what was asked — no more** — the simplest thing that fully solves it; no gold-plating,

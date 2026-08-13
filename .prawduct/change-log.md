@@ -3,6 +3,73 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: a model floor, and a frontier coherence pass over every cycle
+
+<!-- prawduct: type=docs | scope=purpose-and-cession -->
+
+Owner decision 2026-08-13: **Sonnet is the minimum model for any prawduct work**, main session or
+subagent — Haiku-class models are never used — and any cycle whose substantive stages ran below
+Fable closes with a **Fable final-coherence pass** over the whole result before it lands. Scaling
+cost down is legitimate for mechanical stages, but sub-frontier models miss exactly the
+cross-cutting incoherence prawduct exists to catch.
+
+Both are **session-level operator choices**, which is why the Enforcement row reads *Session
+config / user-observed* rather than Test: the runtime cannot observe which model it is, and a
+mechanical selector would reopen the "no intelligent model switching" pin. Reviewers still inherit
+the session model. Recorded in `project-preferences.md`; the per-cycle mapping for Cycles 2–4 is in
+`program-purpose-and-cession.md`.
+
+## 2026-08-13: the four-cycle program gets a durable home
+
+<!-- prawduct: type=docs | scope=purpose-and-cession -->
+
+**The parent requirement document for Cycles 2–4 lived only in a gitignored file that `/clear`
+regenerates.** `.prawduct/.handoff-notes.md` carried the owner-ratified program — the #181
+deletion-pass framing and its constraints, the responsibility-ledger design, the sibling-first
+telemetry plan, the prose-test taxonomy, the disposition seed rows, and an open learnings-rule
+candidate — and `build-plan-purpose-and-cession.md` cited it four times as its parent source.
+That plan is committed; the file it pointed at is not, and was consumed at the next `/clear`.
+
+`.prawduct/artifacts/program-purpose-and-cession.md` is now that home, following the
+`framework-efficiency-review-2026-07-02.md` precedent (a committed parent requirement document
+for a multi-wave program). The build plan's four references are repointed. Purpose and
+principles are referenced, never restated — `documentation/purpose.md` and
+`plugin/docs/principles.md` keep their one-home ownership, as does `project-preferences.md` for
+the model-floor norm; this file carries only the per-cycle model mapping.
+
+## 2026-08-13: principles 25 and 26 — the moving-target posture, codified
+
+<!-- prawduct: type=docs | scope=purpose-and-cession -->
+
+New `## Evolution` section in `plugin/docs/principles.md` (owner decision 2026-08-12, per
+Principle 19): **#25 Third Rework Is a Deletion Signal** (proposed by the 2026-07-02 efficiency
+review, unadopted until now; four recorded supporting cases) and **#26 Graceful Cession**
+(mechanisms carry the assumptions that justify them; a broken assumption forces a re-price).
+Cascade: roster test 24→26, CLAUDE.md roster + purpose pointer (paid by cutting the
+Sessions/Work-Cycles copy building.md owns and the duplicate principles pointer; 148 lines),
+session-digest roster line (paid in-file; net −2 chars).
+
+## 2026-08-13: the framework records its own purpose
+
+<!-- prawduct: type=docs | scope=purpose-and-cession -->
+
+**Prawduct required every product to record its vision and never recorded its own** — verified
+against full git history: nothing purpose-shaped ever existed, and six artifact frontmatters
+pointed the product-brief slot at "README.md + CLAUDE.md", neither of which states a purpose.
+`documentation/purpose.md` is now the one home (architecture.md "every fact has one home");
+those six comments now reference it.
+
+**The content is an owner decision, not agent inference** — ratified 2026-08-12 in session,
+recorded here so the authority lives outside the documents it authorizes: the value proposition
+(build on today's runtimes to close the gap to what consumers need; cede what the rising
+baseline absorbs and move higher — the gap never closes because requirements arrive late, which
+is human nature, not tooling immaturity), the three-hedge taxonomy with distinct depreciation
+schedules, the durable core (mandate + record + audit), continuous fractional drift over step
+functions, deletion with the same care as addition, and directional-by-construction telemetry.
+This entry's cycle precedes the #181 (GOV-6D4Q) deletion-only pass deliberately: the pass's
+"why" belongs on disk before the pass runs. Principles 25 and 26 land in this same scope's
+second chunk.
+
 ## 2026-08-12: an agent worktree on a real branch is not disposable
 
 <!-- prawduct: type=fix | scope=durable-agent-worktrees -->

@@ -3,7 +3,7 @@ artifact: observability-strategy
 version: 2
 depends_on:
   - artifact: nonfunctional-requirements
-  - artifact: product-brief   # vision lives in README.md + CLAUDE.md
+  - artifact: product-brief   # purpose lives in documentation/purpose.md
 last_validated: null
 ---
 

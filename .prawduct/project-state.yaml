@@ -499,7 +499,14 @@ build_state:
 # conjunct plus the historical reader's reconciliation). The plan stays LIVE past
 # its merge to develop: the base is the integration branch, so the work is
 # release-pending and the plan is archived at the develop->main release, not here.
-active_build_plan: .prawduct/artifacts/build-plan-durable-agent-worktrees.md
+# Repointed 2026-08-13 (purpose-and-cession Cycle 1) while durable-agent-worktrees
+# is release-pending — a recorded departure, mirroring 2026-08-08: the pointer must
+# track the plan under review or the gates grade the wrong plan, so it moves at the
+# NEW plan's birth; the release-pending plan STAYS LIVE in artifacts/ (gitflow RETAIN
+# rule, pr/SKILL.md) and is archived by the develop->main release, which stamps its
+# release=. An early archive here was made and reverted on a blocking Critic finding
+# (rev-20260813T042938Z-81decaea): plan-backfill refuses names already in archive/.
+active_build_plan: .prawduct/artifacts/build-plan-purpose-and-cession.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

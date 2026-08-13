@@ -34,7 +34,7 @@ prawduct/
 │   │   ├── building.md                # The build cycle, including the Critic review cycle
 │   │   ├── reflection.md              # The learning loop
 │   │   └── session-digest.md          # SessionStart additionalContext digest
-│   ├── docs/                          # principles.md (the 24), norms.md, waivers.md,
+│   ├── docs/                          # principles.md (the 26), norms.md, waivers.md,
 │   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md, examples/
 │   └── templates/                     # Place-once + planning artifact templates for product repos
 │       ├── project-state.yaml         # Product state template (health_check, build_state)
