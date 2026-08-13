@@ -97,8 +97,22 @@ LAST_MEASURED_TOKENS = {
     # dropping the worked example. The narration lives HERE rather than in the file's
     # own budget comment: at 1 token of headroom the file cannot afford to carry one,
     # which is itself the honest reading of how tight this ceiling now is.
-    "skills/critic/review-protocol.md": 3619,
-    "skills/critic/goals-1-3.md": 1998,
+    # +45 on 2026-08-13, ceiling 3620 -> 3800: the tactical-efficiency pass adds
+    # point-of-action rules to this file in three chunks (03 prior_dispositions,
+    # 04 the prose severity ceiling and remedy constraint). The file had 1 token
+    # of headroom and nothing left to dedupe — its own budget comment already
+    # records that. Raising ONCE with the whole pass named beats three creeping
+    # raises that each look local; the reading below still fails on any drift, so
+    # the ceiling buys room while the pin keeps the accounting honest.
+    "skills/critic/review-protocol.md": 3664,
+    # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
+    # is the one every chunk and verify reviewer reads, so it is where the
+    # volume-cutting instructions have to live: chunk 03 adds prior_dispositions
+    # (don't re-litigate an accepted finding), 04 the prose severity ceiling, 05
+    # the pre-priced verify observations. Each is shorter than the review round
+    # it prevents. Deduped first and found nothing: the file was squeezed to 2
+    # tokens of headroom by its last edit.
+    "skills/critic/goals-1-3.md": 2069,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -849,7 +863,7 @@ class TestCriticSkill:
         # every correctly-sequenced chunk. The PR reviewer's protocol carries it
         # instead, where the sequencing is finished.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
+        assert tokens < 3800, f"review-protocol.md is ~{tokens} tokens, should be <3800"
 
 
 # =============================================================================
@@ -1045,7 +1059,7 @@ class TestCriticGoals13:
         # THIS file is the only surface whose reader writes both, and they sat
         # eight lines apart with no cue. Three words in the schema example.
         tokens = estimate_tokens(self.content)
-        assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
+        assert tokens < 2250, f"goals-1-3.md is ~{tokens} tokens, should be <2250"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion

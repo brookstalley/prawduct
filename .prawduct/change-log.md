@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: accepted findings stop being re-litigated, and one defect reads as one
+
+<!-- prawduct: type=feat | scope=tactical-efficiency -->
+
+**Dispositions have been facts for a while; nothing put one where a REVIEWER could see it.** A
+cumulative dispatched after an `--accept` handed its reviewers a diff and no memory, so they found
+the same true thing again — measured on one consumer branch, round 9 re-raised six of round 7's
+findings verbatim, several already accepted.
+
+`critic-begin` now writes a `prior_dispositions` block into the dispatch manifest: findings already
+accepted or filed, with their reasons, **scoped to the files this review will look at**. That scope
+is what keeps a store shared by every worktree of a clone (652 dispositions here) from becoming a
+second document prepended to every review, and it makes the protocol instruction checkable against
+the evidence the reviewer holds — *not re-raised absent material change in its cited files*. Only
+the live answer appears (re-disposition appends, so a finding can carry a superseded predecessor);
+truncation is reported, never silent; a failed join says `unavailable` rather than reading as "no
+priors". Both reviewer protocol files carry the instruction, mirroring the existing `record_lint`
+"already answered, don't recount" pattern.
+
+**The grouping that was supposed to catch a triplicate reported `[]`.** Three reviewers filed one
+defect on one file (R-1/R-5/R-11) and `likely_duplicate_groups` grouped none of them. Cause: Jaccard
+divides by the union, so a terse title wholly contained in a verbose one scores low while sharing
+every word it has — exactly what happens when three reviewers describe one defect at three levels
+of detail. Added a second qualifying path: identical file attributions plus overlap coefficient
+(the length-insensitive form of the same question) ≥ 0.6. A floor of 3 significant words on the
+shorter title stops the degenerate case a one-word title would create — caught by a test before it
+shipped, not after.
+
+Consolidation now also **renders** each group as one defect line with every fid named. The count
+already said "~N distinct"; the list is what gets worked, and three separately-worded findings read
+as three jobs whatever the count claimed. Presentation only — `merge_findings` still keys exactly
+and every finding survives in the fact and the derived view, so a wrong group costs one confusing
+line and can never hide a finding. That asymmetry is what lets the bar sit low.
+
+Both budgeted protocol files hit their ceilings. Raised once with the whole pass named
+(`goals-1-3.md` 2000→2250, `review-protocol.md` 3620→3800) rather than three creeping raises across
+Chunks 03–05; deduping was attempted first and found nothing — the last edit had already squeezed
+both to 1–2 tokens of headroom, which their own budget comments record.
+
 ## 2026-08-13: the PR gate answers in constant time
 
 <!-- prawduct: type=perf | scope=tactical-efficiency -->

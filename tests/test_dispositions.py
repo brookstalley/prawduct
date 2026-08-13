@@ -70,8 +70,13 @@ def _review_fact(
     *,
     scope: str | None = None,
     chunk: str | None = None,
+    files: "list[str] | None" = None,
 ) -> None:
-    """Append a review fact carrying ``(fid, severity)`` findings."""
+    """Append a review fact carrying ``(fid, severity)`` findings.
+
+    ``files`` sets every finding's attribution — the axis
+    ``prior_dispositions`` scopes on, so a test about it must be able to set
+    it."""
     body = {
         "base_tree": "a" * 40,
         "head_tree": "b" * 40,
@@ -85,6 +90,7 @@ def _review_fact(
                 "goal": "Nothing Is Broken",
                 "title": f"finding {fid}",
                 "recommendation": "do the thing",
+                "files": list(files) if files is not None else [],
             }
             for fid, severity in findings
         ],
@@ -964,3 +970,97 @@ class TestCli:
         again = _hook(repo, "disposition", "rev-1", "R-1", "--accept", "craft")
         assert again.returncode == 0, again.stderr
         assert "no-op" in again.stdout
+
+
+# ---------------------------------------------------------------------------
+# Prior dispositions on the dispatch manifest (tactical-efficiency Chunk 03)
+# ---------------------------------------------------------------------------
+
+
+class TestPriorDispositions:
+    """Answers already given, put where a REVIEWER can see them.
+
+    Dispositions have been facts for a while, but nothing carried one into a
+    dispatch — so a cumulative run after an ``--accept`` handed its reviewers a
+    diff and no memory, and they found the same true thing again. Measured on
+    one consumer branch: round 9 re-raised six of round 7's findings verbatim,
+    several already accepted.
+    """
+
+    def test_an_accepted_finding_in_scope_is_carried(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert block["matched"] == 1 and block["shown"] == 1
+        entry = block["entries"][0]
+        assert entry["review_id"] == "rev-1" and entry["fid"] == "R-1"
+        assert entry["action"] == dispositions.ACCEPT
+        assert entry["reason"] == "by design"
+        assert entry["title"] == "finding R-1"
+        assert entry["files"] == ["lib/a.py"]
+
+    def test_a_disposition_about_other_files_is_not_carried(self, tmp_path):
+        # The scope rule is what keeps a store shared by every worktree of a
+        # clone (652 dispositions on this repo) from becoming a second document
+        # prepended to every review.
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/elsewhere.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert block["entries"] == [] and block["matched"] == 0
+
+    def test_only_the_live_answer_is_carried(self, tmp_path):
+        # Re-disposition APPENDS. Showing both would hand a reviewer two
+        # contradictory answers about one finding.
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="first answer")
+        dispositions.record(
+            repo, "rev-1", "R-1", dispositions.FILE, backlog_id="owner/repo#1"
+        )
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert block["matched"] == 1
+        assert block["entries"][0]["action"] == dispositions.FILE
+        assert block["entries"][0]["backlog_id"] == "owner/repo#1"
+
+    def test_a_disposition_whose_finding_is_gone_is_skipped(self, tmp_path):
+        # A hand-edited store can hold a disposition with nothing to join to;
+        # there is no title to show and nothing a reviewer could match against.
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        store = evidence.read_facts(repo)
+        store["facts"] = [f for f in store["facts"] if f.get("kind") != "review"]
+        assert dispositions.prior_dispositions(store, ["lib/a.py"])["entries"] == []
+
+    def test_truncation_is_reported_never_silent(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        pairs = [(f"R-{i}", "note") for i in range(1, 8)]
+        _review_fact(repo, "rev-1", pairs, files=["lib/a.py"])
+        for fid, _ in pairs:
+            dispositions.record(repo, "rev-1", fid, dispositions.ACCEPT, reason="ok")
+        block = dispositions.prior_dispositions(
+            evidence.read_facts(repo), ["lib/a.py"], limit=3
+        )
+        assert block["matched"] == 7
+        assert block["shown"] == 3
+        assert block["truncated"] == 4
+        # Newest-first, so truncation drops the oldest answers, not the live ones.
+        assert block["entries"][0]["fid"] == "R-7"
+
+    def test_an_empty_scope_carries_everything(self, tmp_path):
+        # A review whose files_changed is empty (a same-tree verify pass) must
+        # not silently mean "no priors apply".
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        assert dispositions.prior_dispositions(evidence.read_facts(repo), [])["matched"] == 1
+
+    def test_a_finding_with_no_file_attribution_is_carried_only_unscoped(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=[])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        store = evidence.read_facts(repo)
+        assert dispositions.prior_dispositions(store, ["lib/a.py"])["matched"] == 0
+        assert dispositions.prior_dispositions(store, [])["matched"] == 1

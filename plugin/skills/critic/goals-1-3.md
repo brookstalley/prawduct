@@ -33,6 +33,11 @@ norms exist; with none, **NOTE** naming the capture path. Tell: amending a norm 
 code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
 `/prawduct:doctor`; never a downgrade.
 
+**The manifest's `prior_dispositions` lists findings already accepted or filed in these files, with
+reasons. Do not re-raise one absent material change in its cited files** — one line under a
+`priors:` note instead. Already answered, don't recount (same rule as `record_lint`). `truncated`
+= older answers dropped; `unavailable` = the join failed, so you know nothing.
+
 **Record checks are already answered — read the manifest's `record_lint`.** Never
 recount what it counted: that is how a record defect buys a review round. Each entry carries its own
 explanation — raise it, don't restate it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →

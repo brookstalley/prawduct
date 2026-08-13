@@ -61,7 +61,7 @@ the remaining input.
 
 - [x] Chunk 01: Base-advance coverage transfer — a clean base sync no longer voids review coverage
 - [x] Chunk 02: Coverage-verdict memo — the PR gate answers in constant time
-- [ ] Chunk 03: Disposition-aware reviews — accepted findings stop being re-litigated
+- [x] Chunk 03: Disposition-aware reviews — accepted findings stop being re-litigated
 - [ ] Chunk 04: Prose findings priced honestly — severity ceilings, deletion-first remedies, no archaeology
 - [ ] Chunk 05: Verify-resolutions golden path at every point of action
 - [ ] Chunk 06: The plan declares its branch — active-plan resolution goes branch-scoped
@@ -82,8 +82,20 @@ path — so `evidence.tree_diff` now sends `:(literal)` pathspecs and reads `-z`
 findings were filed rather than built, both deliberate scope calls with their reasons on the
 issues: **#654** (the Stop gate composes the same span and attempts no transfer, so a synced
 branch passes the PR gate and is then blocked at session end) and **#655** (a transferred pass
-emits no yield signal, against the standing control-observability norm). #654 in particular is
-worth reading before Chunk 02 touches this gate. Next: Chunk 02.
+emits no yield signal, against the standing control-observability norm).
+
+Chunk 02 landed 2026-08-13 (`65b37539`; review `rev-20260813T161546Z-20da8706` + verify pass,
+final state 0 findings). Profiled before building: the entire 29–120 s gate cost is
+`coverage_verdict`'s free-edge search keying every tree the store mentions (17.4 s cold / 0.01 s
+warm here), so the memo targets exactly that. Measured 20.0 s → 0.35 s on this repo. The Critic
+caught that the memo's stated soundness precondition was not the one the call site established;
+`read_facts` now hands back the fingerprint of the bytes it parsed, which makes the pairing
+structural instead of documented. Five prose corrections from the verify pass are owed and
+recorded in `.prawduct/.handoff-notes.md` — they are deferred only because a concurrent worktree
+agent (#654/#655) holds those files.
+
+Next: Chunk 03. Note Chunks 03–05 all edit the Critic/PR protocol prose, and every one of those
+files sits within ~30 tokens of a guardrail ceiling.
 
 ## Scaffolding
 
