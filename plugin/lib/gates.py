@@ -196,6 +196,61 @@ def _test_evidence_tree_valid(
     )
 
 
+def suite_vouches_for_current_tree(project_dir: Path) -> tuple[bool, str]:
+    """Did the saved suite run actually run against *this* tree?
+
+    Deliberately STRICTER than :func:`tests_are_current`, and the difference is
+    the whole point. That function is a disjunction, and its first disjunct —
+    session-freshness — asks only *when* the run happened. That is the right
+    question for "should this session re-run the suite": the trust model there
+    is write code → run tests → Critic reviews, and a run from earlier in the
+    same session is inside the cycle.
+
+    It is the wrong question for the base-advance transfer
+    (:func:`coverage.diagnose_base_advance_transfer`), whose third condition
+    exists to price ONE specific exposure: a reviewed diff meeting an advanced
+    base in files nobody re-read. Suite at 09:00, base merged at 11:00, gate at
+    11:05 satisfies session-freshness while no run has ever seen the merged
+    tree — so the condition would vouch for exactly the state it was added to
+    cover, and the pass message's "suite current" would be true of the clock and
+    false of the repo.
+
+    So only the tree-validity clause counts here: the run's recorded
+    ``evidence_tree`` must be judgeable-identical to the current working tree
+    (:func:`_test_evidence_tree_valid`). Evidence with no ``evidence_tree`` —
+    pre-clause records, and the ``--from-counts`` on-ramp — cannot answer the
+    question at all, so it denies rather than falling back to timing.
+
+    Returns ``(vouches, reason)``; the reason is printed either way, because a
+    denial here is the cheapest remedy the gate has to offer.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    evidence_path = prawduct_dir / ".test-evidence.json"
+    if not evidence_path.is_file():
+        return False, "no .test-evidence.json on disk"
+    try:
+        record = json.loads(evidence_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return False, f"unreadable evidence ({exc})"
+    if not isinstance(record, dict):
+        return False, "evidence is not a JSON object"
+    schema_ok, schema_err = _validate_evidence_schema(record)
+    if not schema_ok:
+        return False, schema_err
+    failed = record.get("failed")
+    if isinstance(failed, int) and failed > 0:
+        return False, f"{failed} test(s) failing in saved evidence"
+    recorded_tree = record.get("evidence_tree")
+    if not isinstance(recorded_tree, str) or not recorded_tree:
+        return False, (
+            "the saved run records no evidence_tree, so nothing can say which "
+            "tree it ran against — re-run the suite (or restamp with "
+            "`test-evidence record --no-rerun`) so the transfer has a tree to check"
+        )
+    valid, reason = _test_evidence_tree_valid(project_dir, recorded_tree)
+    return valid, reason
+
+
 def _read_session_start(prawduct_dir: Path) -> str:
     """Content of the ``.session-start`` marker, or ``""`` when the marker is
     missing or unreadable. Used by the test-evidence freshness check
@@ -1014,8 +1069,9 @@ def check_cumulative_critic(project_dir: Path) -> int:
     final facts compose identically), no file mtime is compared, and
     ``.critic-findings.json`` is never read (D7). A review recorded
     pre-commit vouches for the verbatim commit because the commit carries
-    the reviewed tree (D3) — so squash-merges stay covered and rebases
-    correctly demand a fresh look.
+    the reviewed tree (D3) — so squash-merges stay covered, while a rebase
+    leaves a gap composition cannot close (one case of which the transfer
+    below closes by computation instead).
 
     Exit 0 — covered. Exit 1 — anything else, with the specific reason and
     a copy-pasteable remedy on stderr:
@@ -1036,6 +1092,13 @@ def check_cumulative_critic(project_dir: Path) -> int:
       commit (only part of the reviewed state committed), the commit's
       tree was never reviewed — ``/prawduct:critic verify-resolutions``
       reviews that delta and closes the gap.
+
+    One computed exception precedes that verdict: when the span went uncovered
+    only because the BASE ADVANCED, coverage **transfers** — conditions and
+    their rationale in :func:`coverage.diagnose_base_advance_transfer` and
+    :func:`suite_vouches_for_current_tree`, which own them. All hold → exit 0
+    with the transfer named. Any unverifiable → no transfer and the remedy above
+    stands unchanged, because authority fails closed.
     """
     read = evidence.read_facts(project_dir)
     precheck = _store_precheck(read)
@@ -1105,6 +1168,45 @@ def check_cumulative_critic(project_dir: Path) -> int:
             print(line, file=sys.stderr)
         return 1
 
+    # A base advance moves the span's START node, so a branch whose own diff did
+    # not move a byte reads as uncovered and buys a full re-review. Attempt the
+    # transfer BEFORE printing anything: when it holds, this is a pass, and the
+    # remedy block below would be describing a problem the operator does not
+    # have. Condition 3 lives here rather than in the diagnosis because the test
+    # evidence is this module's — and because the near miss (byte identity
+    # holds, the suite has not met the merged tree) has a remedy worth naming: a
+    # suite run, which is minutes against a cumulative's tens of them.
+    transfer = coverage.diagnose_base_advance_transfer(
+        project_dir,
+        read.get("facts", []),
+        base_tree,
+        head_tree,
+        diff_fn,
+        key_fn,
+    )
+    transfer_stale: "str | None" = None
+    if transfer is not None and transfer.get("status") == "match":
+        tests_ok, tests_reason = suite_vouches_for_current_tree(project_dir)
+        if tests_ok:
+            advance = transfer["advance_files"]
+            advanced = (
+                "the advance's own diff was unreadable, so its size is unknown"
+                if advance is None
+                else f"the advance touched {len(advance)} judgeable file(s), none of them yours"
+            )
+            print(
+                f"satisfied (transferred across base advance "
+                f"{transfer['prior_base'][:12]}→{base_tree[:12]}; branch diff "
+                f"byte-identical; suite current): {transfer['prior_reviews']} review "
+                f"fact(s) already span {transfer['prior_base'][:12]}.."
+                f"{transfer['prior_head'][:12]} with 0 unresolved blocking, the "
+                f"{len(transfer['files'])} judgeable file(s) this branch changes are "
+                f"byte-identical in both spans, and {advanced}. "
+                f"Test evidence: {tests_reason}."
+            )
+            return 0
+        transfer_stale = tests_reason
+
     print(
         f"uncovered: no composed review evidence spans "
         f"{base_tree[:12]}..{head_tree[:12]} at HEAD "
@@ -1126,6 +1228,30 @@ def check_cumulative_critic(project_dir: Path) -> int:
         ),
         file=sys.stderr,
     )
+    # Surfaced FIRST among the remedies for the reason the two NOTEs below are
+    # surfaced before the generic route: the reader acts on the first one they
+    # meet, and this is the cheapest of all of them — a suite run against a
+    # review round.
+    if transfer_stale is not None:
+        print(
+            f"NOTE: the branch's own diff is byte-identical to the span review "
+            f"{transfer['prior_fact_id']} already covered ({len(transfer['files'])} "
+            f"judgeable file(s)), and the base advance touched none of them — the "
+            f"ONLY condition denying the transfer is that no saved suite run has "
+            f"met this tree ({transfer_stale}). Run the suite and `prawduct-hook "
+            f"test-evidence record`, then re-run this gate: the coverage transfers "
+            f"and no review is needed. The suite is what vouches for the reviewed "
+            f"diff meeting the advanced base — a run from earlier in this session "
+            f"does not, which is why timing is not what is checked here.",
+            file=sys.stderr,
+        )
+    elif transfer is not None and transfer.get("status") == "unavailable":
+        print(
+            f"NOTE: the base-advance transfer check could not run "
+            f"({transfer['reason']}) — this is not a finding that your gap is "
+            f"genuine work, only that the cheap check was unavailable.",
+            file=sys.stderr,
+        )
     # COV-7K4N: a stale remote base (origin/<b> behind an ancestor-of-HEAD local
     # <b>) drags already-reviewed work into the required span and reads as
     # uncovered — the cheap, correct remedy is `git push origin <b>`, not a full

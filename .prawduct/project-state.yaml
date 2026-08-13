@@ -506,7 +506,7 @@ build_state:
 # rule, pr/SKILL.md) and is archived by the develop->main release, which stamps its
 # release=. An early archive here was made and reverted on a blocking Critic finding
 # (rev-20260813T042938Z-81decaea): plan-backfill refuses names already in archive/.
-active_build_plan: .prawduct/artifacts/build-plan-purpose-and-cession.md
+active_build_plan: .prawduct/artifacts/build-plan-tactical-efficiency.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

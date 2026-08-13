@@ -84,7 +84,12 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4808,
+    # -1 on 2026-08-13: the evidence-model paragraph said a rebase/amend
+    # "demands a fresh look", which the base-advance transfer falsified — the PR
+    # gate can now close one case of that gap by computation. Narrowed to "opens
+    # a gap", which is what stayed true, and which costs a word less than the
+    # remedy it used to name.
+    "methodology/building.md": 4807,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -94,7 +99,14 @@ LAST_MEASURED_TOKENS = {
     # which is itself the honest reading of how tight this ceiling now is.
     "skills/critic/review-protocol.md": 3619,
     "skills/critic/goals-1-3.md": 1998,
-    "skills/critic/review-cycle.md": 9588,
+    # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
+    # a computed pass the gate can now print, which a reader who only knows
+    # "uncovered means run a cumulative" will otherwise re-review straight
+    # through. Paid for three times over inside the section: the gate's span and
+    # blocking-remedy mechanics were each stated a second time here after the
+    # composition bullets above already owned them, and the selective-commit
+    # routing a third.
+    "skills/critic/review-cycle.md": 9597,
     "skills/critic/framework-checks.md": 1116,
 }
 

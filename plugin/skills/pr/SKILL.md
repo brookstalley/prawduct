@@ -39,7 +39,11 @@ $ARGUMENTS
 ## Create Flow
 
 ### Step 1: Branch hygiene
-Verify on a feature branch (not main/master/develop). Verify commits ahead of base. If uncommitted changes, offer to commit or stash. **Before running the test suite, run `prawduct-hook test-status` — if it exits 0 (`current`), the saved `.prawduct/.test-evidence.json` already covers the current tree (HEAD + uncommitted edits) and re-running is wasteful. Only run the suite if `test-status` reports `stale` or evidence is missing.** When you do run, write fresh evidence so the next caller can skip it.
+Verify on a feature branch (not main/master/develop). Verify commits ahead of base. If uncommitted changes, offer to commit or stash.
+
+**Sync the base BEFORE the review gates, not after.** Run `prawduct-hook resolve-base`, then `git merge-base <base> HEAD` — if that is not `<base>`'s tip, the base has moved. Merge (or rebase onto) it and resolve conflicts **now**, at Step 1: a sync landed after Step 2 or Step 3 moves the span those gates just answered about, which is how one branch paid for two of its three cumulative rounds. Sync first even though the gate can transfer coverage across a base advance — the transfer needs your diff byte-identical AND a suite run that has met the merged tree, so a conflict resolution (which edits your files) denies it outright and an unsynced suite run denies it until you re-run.
+
+**Then the suite: run `prawduct-hook test-status` first** — if it exits 0 (`current`), the saved `.prawduct/.test-evidence.json` already covers the current tree (HEAD + uncommitted edits) and re-running is wasteful. Only run the suite if `test-status` reports `stale` or evidence is missing. When you do run, write fresh evidence so the next caller can skip it. Running it *after* the sync is what leaves the transfer available later.
 
 ### Step 1b: Doc-only fast-path
 **Run `prawduct-hook check-pr-doc-only`.** This mirrors the stop hook's session-end behavior at the PR boundary: when every file in `merge-base...HEAD` ends in `.md` and none is governance-protected (`skills/`, `methodology/`, `templates/`, root `CLAUDE.md` — skill prose is behavioral logic, not docs; same bound list as the `Type: trivial` gate), the cumulative-Critic and PR-reviewer gates add no value and are skipped.
@@ -125,7 +129,7 @@ Push branch with `-u`. Draft title and description from work context + review fi
 ## Update Flow
 
 1. Push new commits to remote
-2. If substantive changes (not just formatting/comments), re-run the reviewer on the delta
+2. If substantive changes (not just formatting/comments), re-run the reviewer on the delta. **A base-sync merge that introduces no judgeable authored content is not substantive** — it adds no work for a release-readiness reviewer to assess. Do not judge that by eye: re-run `prawduct-hook check-cumulative-critic`, and if it exits 0 *by transfer* (the message says `transferred across base advance`), the gate has just proved the branch's own diff is byte-identical to the reviewed one, so there is nothing new for the reviewer to read.
 3. Update PR description if scope changed
 4. Update evidence file; if the reviewer re-ran, append a fresh `review.pr` ledger event (as in Create Step 4)
 

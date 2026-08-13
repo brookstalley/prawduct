@@ -577,13 +577,53 @@ def capture_tree(project_dir: Path) -> dict:
             pass  # already absent — mkstemp file deleted above, git may not have recreated it
 
 
-def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None":
+def tree_diff(
+    project_dir: Path, tree_a: str, tree_b: str, paths: "list[str] | None" = None
+) -> "list[str] | None":
     """Paths changed between two tree objects (``git diff --name-only``),
     or ``None`` when the diff cannot be computed (missing object, git
     failure) — never guessed, matching ``coverage_algebra.DiffFn``'s
     contract. This is the diff the gates inject into the algebra and the
     dispatch side uses for its ``files_changed`` snapshot, so the recorded
     set and the composed edge-validity check agree by construction.
+
+    ``paths`` narrows the question to a pathspec: *do these two trees differ on
+    THESE files?* Asked of a whole tree the answer costs a full tree walk; asked
+    of a handful of paths it costs a pruned one, which is what makes a per-file
+    equality check affordable across many candidate trees
+    (``coverage.diagnose_base_advance_transfer``). The comparison stays git's
+    own, so a mode-only change (``chmod +x``, a file becoming a symlink at the
+    same blob) still reports as a difference — the fail-OPEN that a
+    ``(path, object id)`` comparison would introduce, and that
+    :func:`tree_entries` documents at length, never arises.
+
+    **A path this function reports must be a path it can be asked back about,
+    and two separate git conventions break that round trip.** Both matter here
+    because the returned list becomes the pathspec of the next call
+    (``coverage.diagnose_base_advance_transfer`` asks "do these trees differ on
+    the files you just told me changed?"), and both are answered at this
+    boundary rather than by each caller.
+
+    - ``-z``, so paths come back RAW. ``--name-only`` alone honours
+      ``core.quotepath``, which is on by default, so a non-ASCII filename is
+      returned C-quoted — ``"caf\\303\\251.py"``, surrounding quotes included.
+      Handed back as a pathspec that string matches nothing on disk, git
+      reports no difference over a file it never compared, and a caller reading
+      emptiness as agreement gets a fail-OPEN. ``-c core.quotepath=false`` is
+      NOT sufficient: a name containing ``"`` or ``\\`` stays quoted regardless
+      (pinned in ``tests/test_record_lint.py``), so only ``-z`` closes it. Same
+      reasoning, same fix as :func:`tree_entries`.
+    - ``:(literal)`` on each pathspec, because pathspecs are wildmatch patterns
+      and real filenames carry glob metacharacters (``app/[id]/page.tsx`` is an
+      ordinary route convention). Measured rather than assumed (2026-08-13):
+      git compares a pathspec literally *as well as* by wildmatch, so a path
+      does select its own spelling — but ``x[a].py`` ALSO selects ``xa.py``, so
+      an unrelated file can answer a question asked about this one. That
+      direction is a spurious *denial* rather than a wrong pass, but it is
+      silent, and ``:(literal)`` removes the class instead of leaving
+      correctness resting on git's match ORDER.
+
+    (``--`` stops option injection; it does nothing about either of these.)
 
     A tree id that is not a full-length object id never reaches git argv — it
     is a malformed fact, and a malformed fact yields no answer here for the
@@ -595,10 +635,13 @@ def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None"
         if not gitstate.is_object_id(value):
             _attribute_bad_tree(value)
             return None
-    rc, out, _err = run_git(project_dir, "diff", "--name-only", tree_a, tree_b)
+    pathspec = ["--", *(f":(literal){p}" for p in paths)] if paths else []
+    rc, out, _err = run_git(
+        project_dir, "diff", "--name-only", "-z", tree_a, tree_b, *pathspec
+    )
     if rc != 0:
         return None
-    return [line for line in out.splitlines() if line.strip()]
+    return [path for path in out.split("\0") if path]
 
 
 def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | None":

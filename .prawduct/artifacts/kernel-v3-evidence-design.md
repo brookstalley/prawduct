@@ -124,9 +124,14 @@ machinery at once.
 - `base_commit` + `base_tree`: where the reviewed diff started (resolved by
   `resolve-base`, as today).
 - `head_tree` (+ `head_commit` when the reviewed state was a commit).
-- Rebase/amend changes the tree → coverage gap → re-review. Correct by
-  design (post-sync fresh review is already the learned rule); squash-merge
-  preserves the tree, so squashed PRs stay covered.
+- Rebase/amend changes the tree → coverage gap composition cannot close.
+  Correct by design; squash-merge preserves the tree, so squashed PRs stay
+  covered. **Amended 2026-08-13 (tactical-efficiency Chunk 01):** "→ re-review"
+  is no longer the only outcome. The PR gate closes one case of that gap by a
+  separate COMPUTED route — a base advance (merge or rebase) leaving the
+  branch's own diff byte-identical transfers its coverage, subject to a suite
+  run that has met the resulting tree (`coverage.diagnose_base_advance_transfer`).
+  Composition itself is unchanged; the transfer sits beside it, not inside it.
 
 [ASSUMPTION: tree-SHA keying via temp-index write-tree is viable in every
 supported topology (worktrees, containers, headless) — chunk 1 spikes it

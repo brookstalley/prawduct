@@ -23,6 +23,9 @@ governed_by:
       - "derived views are disposable and never authoritative — no gate reads a view to reach a verdict → [DECISION: Chunk 02's cache is memoization of the pure verdict function, keyed on a content hash covering EVERY input (base tree, head tree, evidence-store content); a key miss or unreadable cache recomputes from the store, so the cache can never substitute for it | engages the norm's why: a stale view must not decide a gate | user can veto the cache entirely]"
       - "newer-schema facts surface as a loud block → conforms (schema-ahead precheck untouched, and it runs before any cache read)"
       - "two stores, two lifetimes → conforms: the cache lives with the per-clone gitignored nags-and-caches, never in committed state"
+      - "a governance document reaches a terminal state, never deleted; live outranks archived → engaged at plan close, not by any chunk: this plan is archived with `archive-plan --state completed` in the closing PR (Governance Checkpoints). Chunk 06 additionally strengthens the live-outranks-archived half — an archived plan's `branch:` frontmatter is ignored by the resolver, so moving a plan under `archive/` ends its claim"
+      - "every issue written to the backlog store conforms to the issue standard's §1 title rules on every write path → conforms; enforced rather than asserted: all backlog writes here go through `/prawduct:backlog`, whose adapter refused a 95-char title on the #654 filing and rewrote it before writing"
+      - "`backlog_service_repo` selects the authoritative backlog store; once set, `.prawduct/backlog.md` is frozen history → conforms: every backlog touch in this plan (#565, #283, and the items filed from review findings) routes through the skill, which reads the scalar; nothing in this plan reads or writes the markdown file"
 last_validated: 2026-08-13
 ---
 
@@ -56,7 +59,7 @@ the remaining input.
 
 ## Status
 
-- [ ] Chunk 01: Base-advance coverage transfer — a clean base sync no longer voids review coverage
+- [x] Chunk 01: Base-advance coverage transfer — a clean base sync no longer voids review coverage
 - [ ] Chunk 02: Coverage-verdict memo — the PR gate answers in constant time
 - [ ] Chunk 03: Disposition-aware reviews — accepted findings stop being re-litigated
 - [ ] Chunk 04: Prose findings priced honestly — severity ceilings, deletion-first remedies, no archaeology
@@ -67,11 +70,20 @@ Context: Plan authored 2026-08-13 by the Fable analysis session (Chunks 06–07 
 after owner feedback: doctor is rarely run → advisory surface; active plan is branch state →
 Chunk 06). Nothing built yet. Executes on Opus. Parent evidence:
 `tactical-efficiency-analysis-2026-08-13.md` — read it before Chunk 01; each chunk cites its
-finding (F1–F7). Backlog: #565 is closed by Chunk 01, #283 by Chunk 06 (archive both in the
-closing PR, not after). Branch: build on `feat/tactical-efficiency-pass` off `develop`. Set
-`active_build_plan` to this file when the build session starts (Chunk 06 is what makes that
-scalar legacy; this plan itself opts into `branch:` frontmatter once Chunk 06 lands). Next:
-Chunk 01.
+finding (F1–F7). Backlog: #565 is closed by Chunk 01 (shipped), #283 by Chunk 06 (archive in the
+closing PR, not after). Branch: build on `feat/tactical-efficiency-pass` off `develop`;
+`active_build_plan` points here (Chunk 06 is what makes that scalar legacy; this plan opts into
+`branch:` frontmatter once Chunk 06 lands).
+
+Chunk 01 landed 2026-08-13 (review `rev-20260813T150910Z-86134e56` + two verify passes, final
+state 0 findings). Two of its blocking findings were soundness holes in the per-file equality
+check that only a hostile filename exposes — a glob-metacharacter path and a C-quoted non-ASCII
+path — so `evidence.tree_diff` now sends `:(literal)` pathspecs and reads `-z` output. Two
+findings were filed rather than built, both deliberate scope calls with their reasons on the
+issues: **#654** (the Stop gate composes the same span and attempts no transfer, so a synced
+branch passes the PR gate and is then blocked at session end) and **#655** (a transferred pass
+emits no yield signal, against the standing control-observability norm). #654 in particular is
+worth reading before Chunk 02 touches this gate. Next: Chunk 02.
 
 ## Scaffolding
 

@@ -3,6 +3,57 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: a clean base sync no longer voids review coverage
+
+<!-- prawduct: type=feat | scope=tactical-efficiency -->
+
+**A base advance moved the PR span's start node, so a branch whose own diff had not moved a byte
+read `uncovered` and bought a full re-review.** Measured in the busiest consumer repo (which merges
+its base ~20×/day): two of three cumulative rounds on one branch existed only for this reason, and
+the round after a sync re-raised six of the previous round's findings verbatim — ~30 of 60 review
+minutes on a 6-fix branch were base tax. In both observed forced syncs, every merge conflict was in
+prawduct's own non-judgeable record files.
+
+`check-cumulative-critic` now attempts a computed **transfer** before reporting `uncovered`
+(`coverage.diagnose_base_advance_transfer`): a span already covered transfers to the required one
+when the two spans' judgeable changed-file sets are identical, every one of those files is
+byte-identical on both ends, and a saved suite run has met the resulting tree. Computed, never
+stored — the free-edge philosophy. Any condition unverifiable denies the transfer and today's
+remedy stands, because authority fails closed.
+
+**The third condition is `gates.suite_vouches_for_current_tree`, deliberately stricter than
+`tests_are_current`.** That function is a disjunction whose first clause asks only *when* a run
+happened — the right question for "should this session re-run the suite", and the wrong one here: a
+suite at 09:00, a base merged at 11:00 and a gate at 11:05 satisfies session-freshness while no run
+has ever seen the merged tree, which is precisely the exposure condition 3 exists to price. Only
+the tree-validity clause counts for a transfer, and evidence carrying no `evidence_tree` (the
+`--from-counts` on-ramp) denies rather than falling back to timing.
+
+`evidence.tree_diff` gained an optional pathspec, and a path this function REPORTS must be one it
+can be asked back about — the transfer feeds the returned list straight back in as a pathspec. Two
+git conventions break that round trip, and both are answered at the boundary. **`-z`, because
+`--name-only` honours `core.quotepath`:** a non-ASCII filename came back C-quoted
+(`"caf\303\251.py"`, quotes included), matched nothing as a pathspec, and the empty answer read as
+agreement — a genuine fail-OPEN that granted a transfer over an *edited* branch file, caught by the
+verify pass and now pinned by a fixture that fails loudly without `-z`. (`core.quotepath=false` is
+insufficient: names holding `"` or `\` stay quoted regardless.) **`:(literal)` on each pathspec,**
+because pathspecs are wildmatch patterns. Measured rather than assumed: git compares literally as
+well, so a path does select its own spelling — but `x[a].py` also selects `xa.py`, letting an
+unrelated file answer a question asked about this one. That direction is a silent spurious denial
+rather than a wrong pass; `:(literal)` removes the class instead of resting on git's match order.
+
+**The soundness boundary is byte equality ACROSS contexts, not content equivalence WITHIN one** —
+the 2026-07-29 ruling (COV-3M8Q) is untouched, and any edit at all to a branch file, comments
+included, denies the transfer. Candidates are selected by content rather than commit ancestry, which
+is what makes the rebase case work at all: rebasing rewrites the very commits a branch's facts
+anchor to while leaving the trees they vouch for identical. The one new exposure — a reviewed diff
+meeting advanced context in disjoint files — is what the test-evidence condition prices, and a
+transfer denied ONLY by stale evidence says so, naming a suite run rather than a review round.
+
+Riders: `/prawduct:pr` Step 1 now syncs the base BEFORE the review gates (#565's ordering fix), and
+the Update flow states that a base-sync merge introducing no judgeable authored content is not
+substantive and does not re-run the PR reviewer.
+
 ## 2026-08-13: a model floor, and a frontier coherence pass over every cycle
 
 <!-- prawduct: type=docs | scope=purpose-and-cession -->
