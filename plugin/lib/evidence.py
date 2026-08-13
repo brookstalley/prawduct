@@ -348,15 +348,26 @@ def read_facts(project_dir: Path) -> dict:
          "excluded": int, "duplicates": int,
          "fingerprint": str | None}
 
-    ``fingerprint`` is a SHA-256 of the EXACT bytes these facts were parsed
-    from, and ``None`` whenever there were none to parse (no repo, no store,
-    unreadable). It exists so a caller memoizing a function OF these facts can
-    key on it without hashing the parsed structure — and, more to the point,
-    without opening the store a second time: the store is shared by every
-    worktree of the clone, so a separate read is a separate moment, and a
-    sibling's append between the two silently decouples the key from the facts
-    it is supposed to describe. Handing it back from the one read makes that
-    impossible rather than unlikely.
+    ``fingerprint`` is a SHA-256 over exactly the text these facts were parsed
+    from, and ``None`` whenever there was none to parse (no repo, no store,
+    unreadable). Deterministic over what was parsed rather than over the bytes
+    on disk: ``read_text`` applies universal-newline translation, so on a CRLF
+    store the digest is of the normalized text — which is the right subject,
+    since it is the parse the caller is keying a function of.
+
+    It exists so a caller memoizing a function OF these facts can key on it
+    without hashing the parsed structure — and, more to the point, without
+    opening the store a second time: the store is shared by every worktree of
+    the clone, so a separate read is a separate moment, and a sibling's append
+    between the two silently decouples the key from the facts it is supposed to
+    describe. Handing it back from the one read makes that impossible rather
+    than unlikely.
+
+    It covers the WHOLE file, not the returned ``facts``. That is deliberate and
+    is not the same set: ``schema_ahead`` lines are filtered out of what this
+    returns, so a fingerprint over the filtered view would be blind to a newer
+    plugin's appends — the exact writes a reader most needs to notice it has not
+    seen.
 
     ``schema_ahead`` records were written by a NEWER plugin than this reader —
     they are never silently dropped into ``excluded``: gate callers must treat

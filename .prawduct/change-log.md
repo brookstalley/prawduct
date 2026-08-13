@@ -13,14 +13,26 @@ the same true thing again — measured on one consumer branch, round 9 re-raised
 findings verbatim, several already accepted.
 
 `critic-begin` now writes a `prior_dispositions` block into the dispatch manifest: findings already
-accepted or filed, with their reasons, **scoped to the files this review will look at**. That scope
-is what keeps a store shared by every worktree of a clone (652 dispositions here) from becoming a
-second document prepended to every review, and it makes the protocol instruction checkable against
-the evidence the reviewer holds — *not re-raised absent material change in its cited files*. Only
-the live answer appears (re-disposition appends, so a finding can carry a superseded predecessor);
-truncation is reported, never silent; a failed join says `unavailable` rather than reading as "no
-priors". Both reviewer protocol files carry the instruction, mirroring the existing `record_lint`
-"already answered, don't recount" pattern.
+accepted or filed, with their reasons. Only the live answer appears (re-disposition appends, so a
+finding can carry a superseded predecessor); truncation is reported, never silent; a failed join
+says `unavailable` rather than reading as "no priors". Both reviewer protocol files carry the
+instruction, mirroring the existing `record_lint` "already answered, don't recount" pattern.
+
+**Scoping it by cited file alone did not work, and the measurement is the reason it changed.** That
+first cut carried 92 entries on a live dispatch — **22,703 of 25,001 manifest bytes (91%), ~5,700
+tokens, 2.7× the protocol file the block exists to shorten** — because a repo's hottest files are
+cited by nearly every finding it has ever recorded, so the filter was weakest exactly where reviews
+concentrate. A control that costs more attention than it saves is not a control. The block is now
+scoped by build-plan **scope** as well as by cited file (answers about *this* body of work, which is
+what "already answered" always meant), and the entry limit dropped 40 → 15. Re-measured on the next
+dispatch: 8,412 of 12,263 bytes (69%).
+
+**Caveat, because the two fixes are not equally proven:** `scope_chosen_by` was `not-resolved` on
+that dispatch, so the re-measured drop comes from the limit alone — the scope axis is built and
+tested but does not engage until a dispatch resolves a scope, which is what Chunk 06's branch-scoped
+plan resolution supplies. A review recorded with no scope matches nothing rather than everything:
+an unscoped fact cannot claim to be about this work, and an advisory block whose failure mode is
+drowning the review should fail toward carrying less.
 
 **The grouping that was supposed to catch a triplicate reported `[]`.** Three reviewers filed one
 defect on one file (R-1/R-5/R-11) and `likely_duplicate_groups` grouped none of them. Cause: Jaccard

@@ -3655,17 +3655,6 @@ class TestWorktreeVisibility:
         assert "(detached)" in result.stdout
 
 
-def _redispatchable(repo: Path) -> None:
-    """Clear the in-flight guard so a test can dispatch twice.
-
-    `critic-begin` refuses while a marker is present — correctly; that guard is
-    what stops a second dispatch from archiving a live review's partials. A test
-    that seeds evidence between two dispatches has to stand it down explicitly
-    rather than work around it."""
-    (repo / ".prawduct" / ".critic-active").unlink(missing_ok=True)
-    cc.remove_partials(repo / ".prawduct")
-
-
 class TestRecordLintInManifest:
     """Record checks are answered at DISPATCH and carried in the manifest, so a
     reviewer reads the result instead of re-deriving it — and the control's own
@@ -3735,7 +3724,7 @@ class TestRecordLintInManifest:
             },
         )
         _d.record(repo, "rev-prior-1", "R-9", _d.ACCEPT, reason="by design")
-        _redispatchable(repo)
+        _abandon(repo)
         result = _run_begin(repo, "--mode", "chunk", "--scope", scope)
         assert result.returncode == 0, result.stderr
         priors = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())[
@@ -3766,13 +3755,40 @@ class TestRecordLintInManifest:
             },
         )
         _d.record(repo, "rev-other-1", "R-9", _d.ACCEPT, reason="different work")
-        _redispatchable(repo)
+        _abandon(repo)
         result = _run_begin(repo, "--mode", "chunk", "--scope", "tactical-scope")
         assert result.returncode == 0, result.stderr
         priors = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())[
             "prior_dispositions"
         ]
         assert priors["entries"] == []
+
+    def test_a_review_recorded_without_a_scope_matches_nothing(self, tmp_path):
+        """The docstring makes this normative — "reviews recorded without a
+        scope match nothing rather than everything" — because an unscoped fact
+        cannot claim to be about this work, and an advisory block whose failure
+        mode is drowning the review should fail toward carrying less."""
+        from lib import dispositions as _d
+
+        repo, manifest, _res = self._dispatch(tmp_path)
+        changed = manifest["files_changed"][0]
+        evidence.append_fact(
+            repo, "review", "rev-unscoped-1",
+            {
+                "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": "final",
+                "scope": None,
+                "findings": [{
+                    "fid": "R-9", "severity": "warning", "goal": "Nothing Is Broken",
+                    "title": "answered, but for unknown work", "files": [changed],
+                }],
+            },
+        )
+        _d.record(repo, "rev-unscoped-1", "R-9", _d.ACCEPT, reason="no scope recorded")
+        store = evidence.read_facts(repo)
+        assert _d.prior_dispositions(store, [changed], scope="tactical-scope")["entries"] == []
+        # ...and the same fact IS carried when the caller asks unscoped, so this
+        # is the scope axis filtering, not the file axis silently dropping it.
+        assert _d.prior_dispositions(store, [changed], scope=None)["matched"] == 1
 
     def test_a_missing_declared_deliverable_lands_in_the_manifest(self, tmp_path):
         plan = (

@@ -89,7 +89,7 @@ class VerdictCache:
     call site that needs a composed verdict — the span itself and each
     diagnosis — so they share both the disk cache and the in-process one.
 
-    Construct with :meth:`for_project`; a cache whose fingerprint could not be
+    Construct with :meth:`for_read`; a cache whose fingerprint could not be
     computed is *inert* (every call recomputes), so callers need no special
     case for "no store" or "unreadable store".
     """

@@ -1344,8 +1344,8 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     # that ordering is the contract: a fact from a newer plugin must block
     # before anything replays a verdict, or the block becomes skippable by
     # having asked the same question once before. (The cache OBJECT is built by
-    # the caller, but constructing it only hashes the store — it decides
-    # nothing.)
+    # the caller, from the same `read_facts` result the precheck grades — it
+    # opens nothing and decides nothing.)
     diff_fn = _cached_diff_fn(project_dir)
     key_fn = _tree_key_fn(project_dir)
 
