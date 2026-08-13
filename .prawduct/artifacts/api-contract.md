@@ -2,7 +2,7 @@
 artifact: api-contract
 version: 1
 depends_on:
-  - artifact: product-brief   # vision lives in README.md + CLAUDE.md
+  - artifact: product-brief   # purpose lives in documentation/purpose.md
   - artifact: data-model
   - artifact: security-model
 last_validated: null

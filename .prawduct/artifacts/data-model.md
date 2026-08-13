@@ -2,7 +2,7 @@
 artifact: data-model
 version: 1
 depends_on:
-  - artifact: product-brief   # prawduct has no product-brief.md; the vision lives in README.md + CLAUDE.md
+  - artifact: product-brief   # prawduct has no product-brief.md; the purpose lives in documentation/purpose.md
 last_validated: null
 ---
 

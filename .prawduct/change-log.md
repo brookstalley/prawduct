@@ -3,6 +3,27 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: the framework records its own purpose
+
+<!-- prawduct: type=docs | scope=purpose-and-cession -->
+
+**Prawduct required every product to record its vision and never recorded its own** — verified
+against full git history: nothing purpose-shaped ever existed, and six artifact frontmatters
+pointed the product-brief slot at "README.md + CLAUDE.md", neither of which states a purpose.
+`documentation/purpose.md` is now the one home (architecture.md "every fact has one home");
+those six comments now reference it.
+
+**The content is an owner decision, not agent inference** — ratified 2026-08-12 in session,
+recorded here so the authority lives outside the documents it authorizes: the value proposition
+(build on today's runtimes to close the gap to what consumers need; cede what the rising
+baseline absorbs and move higher — the gap never closes because requirements arrive late, which
+is human nature, not tooling immaturity), the three-hedge taxonomy with distinct depreciation
+schedules, the durable core (mandate + record + audit), continuous fractional drift over step
+functions, deletion with the same care as addition, and directional-by-construction telemetry.
+This entry's cycle precedes the #181 (GOV-6D4Q) deletion-only pass deliberately: the pass's
+"why" belongs on disk before the pass runs. Principles 25 and 26 land in this same scope's
+second chunk.
+
 ## 2026-08-12: an agent worktree on a real branch is not disposable
 
 <!-- prawduct: type=fix | scope=durable-agent-worktrees -->
