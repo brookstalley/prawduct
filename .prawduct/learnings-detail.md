@@ -3789,3 +3789,30 @@ the moment the plan is renumbered or archived.
 Third defect of this shape on one branch, and the countermeasure was the same each time: when you
 install a rule, grep for every place that states the old one — including the places the chunk
 itself created.
+
+## "Fail closed" means the channel's blocking value — 2026-08-13 (tactical-efficiency ch.06)
+
+A new plan-resolution refusal was written to fail closed: rather than guess between two build plans
+claiming one branch, raise. The CLI wrapper caught it and returned **1** for every command, with a
+docstring stating "a refused gate is a blocked gate, which is the intended posture."
+
+`stop` is a harness hook. `api-contract.md` § Error Model — a recorded decision — gives its row
+exactly two outcomes: **0 allow/clean, 2 block**. Exit 1 is in neither column, so on the one state
+the feature invents, the session ended **clean** with the reflection gate, the composed-coverage
+Critic gate and the PR gate never having run. The wrapper written to fail closed was the thing that
+failed open, and the docstring asserting the posture was the reason nobody looked.
+
+**The generalizable error is checking the contract for the surface you are writing rather than the
+surface the refusal can REACH.** A refusal raised deep in a resolver surfaces at every command that
+resolves — CLI, hook, library caller — and those speak different protocols. Non-zero is a
+convention; blocking is a specific value in a specific table.
+
+Two follow-ons, both found while fixing it:
+
+1. **Guarding call sites is whack-a-mole when the raise is deep.** Three sites in `cmd_stop` resolve
+   a plan independently, and guarding each one only moved which line raised. The fix is one probe at
+   the entry point, before any gate runs — which is also what the rendered message claims ("every
+   gate resolves a plan, so none of them ran").
+2. **The probe must precede any early `return 0`.** A background-work deferral returned 0 further
+   down; deferring a refusal would have ended the session clean by a second route, and no amount of
+   background work resolves two plans claiming one branch.

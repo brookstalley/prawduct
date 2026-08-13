@@ -451,7 +451,7 @@ chunk exists to remove. Riding a commit Chunk 06 is making anyway buys none. **D
 
 - **Description:** In both observed forced base syncs, 100% of merge conflicts were prawduct's
   own files, led by top-appended `.prawduct/change-log.md`. Add a **post-sync advisory probe**
-  (register in `lib/probe_families.register_all`, same pattern as
+  (register in `lib/probe_families.py::register_all`, same pattern as
   `stale_base_probes.probe_unpromoted_release_prep` — trigger and resolution read the same
   observable state) that fires when a committed `.prawduct/change-log.md` has no `merge=union`
   gitattribute, RECOMMENDS the exact line (`.prawduct/change-log.md merge=union`), and
