@@ -754,6 +754,133 @@ class TestBaseAdvanceTransfer:
         assert "transferred across base advance" in out
 
 
+def _guard_records(repo: Path) -> list[dict]:
+    read = evidence.read_facts(repo)
+    return [f for f in read["facts"] if f.get("kind") == "guard-refusal"]
+
+
+class TestTransferYieldSignal:
+    """A control names the yield it expects AND emits that yield observably.
+
+    The transfer's justification is a measured claim — it removes a review round
+    whenever a branch syncs a base it does not collide with — and a yield claim
+    nothing can falsify is not a yield claim. Its sibling in this subsystem
+    (``critic-begin``'s free-interval refusal) satisfies the norm through the
+    same sink; these pin that the transfer does too, and that emitting it costs
+    the Chunk 02 verdict memo nothing after the first grant.
+    """
+
+    def test_a_grant_records_one_firing(self, tmp_path, capsys):
+        repo, prior_base, prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        records = _guard_records(repo)
+        assert len(records) == 1
+        body = records[0]["body"]
+        assert body["guard"] == "base-advance-transfer"
+        assert body["gate"] == "check-cumulative-critic"
+        # Nested, never at the body's top level: a bare base_tree/head_tree pair
+        # is the shape a coverage EDGE has, and no reader that walks bodies
+        # looking for edges may mistake an observational record for one.
+        assert body["interval"]["base_tree"] == _tree(repo, "main")
+        assert body["interval"]["head_tree"] == _tree(repo)
+        assert body["prior_interval"] == {
+            "base_tree": prior_base,
+            "head_tree": prior_head,
+        }
+        assert body["files"] == ["feature.py"]
+        assert "base_tree" not in body and "head_tree" not in body
+
+    def test_a_repeated_poll_leaves_the_store_byte_identical(self, tmp_path, capsys):
+        # The interaction that would have undone the verdict memo: the memo keys
+        # on a content hash of the whole store, and the gate is polled several
+        # times a session. A record per POLL evicts every cached verdict on every
+        # poll and puts the gate back on its ~17 s cold path.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        store = evidence.store_path(repo)
+        after_first = store.read_bytes()
+        for _ in range(3):
+            assert _run_gate(repo, capsys)[0] == 0
+        assert store.read_bytes() == after_first
+        assert len(_guard_records(repo)) == 1
+
+    def test_the_memo_still_hits_on_the_poll_after_a_grant(self, tmp_path, capsys):
+        # The residual, pinned as bounded: the FIRST grant appends, so the next
+        # poll recomputes cold — once per transferred span. Every poll after
+        # that must hit the memo again, or the dedupe bought nothing.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        assert _run_gate(repo, capsys)[0] == 0  # the one cold re-run
+        read = evidence.read_facts(repo)
+        cache = gates.verdict_cache.VerdictCache.for_read(repo, read)
+        assert cache.enabled
+        cache.verdict(
+            read["facts"],
+            _tree(repo, "main"),
+            _tree(repo),
+            gates._cached_diff_fn(repo),
+            gates._tree_key_fn(repo),
+        )
+        assert (cache.hits, cache.misses) == (1, 0)
+
+    def test_a_moved_span_is_a_new_firing(self, tmp_path, capsys):
+        # Dedupe on identity, not on "already recorded once ever": a second base
+        # advance is a second saved round and must be countable as one.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "upstream2.py", "u = 2\n", "u2")
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge main again", "main")
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        assert len(_guard_records(repo)) == 2
+
+    def test_a_denied_transfer_records_nothing(self, tmp_path, capsys):
+        # The still-emits-nothing regression: a record on a DENIAL would make
+        # the yield query count rounds the control never saved.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        rc, _out, err = _run_gate(repo, capsys)  # no test evidence → condition 3 denies
+        assert rc == 1, err
+        assert _guard_records(repo) == []
+
+    def test_an_unwritable_store_degrades_loudly_and_still_passes(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        # Fail-soft like its sibling: the transfer is correct whether or not the
+        # record lands, so a store error must not convert a granted pass into a
+        # gate failure — and must not be silent, or the yield query reads as a
+        # lower bound with nothing saying so.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        monkeypatch.setattr(
+            evidence,
+            "append_guard_refusal",
+            lambda *a, **k: {"status": "error", "reason": "store unwritable (simulated)"},
+        )
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "transferred across base advance" in out
+        assert "NOT" in err and "recorded" in err
+        assert "lower bound" in err
+
+    def test_the_firing_is_surfaced_by_the_yield_query(self, tmp_path, capsys):
+        # The acceptance criterion is a QUERY, not a file: `evidence list --kind
+        # guard-refusal` is what a maintainer runs to ask whether this control
+        # has ever fired.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        capsys.readouterr()
+        assert evidence.evidence_cmd(repo, ["list", "--kind", "guard-refusal"]) == 0
+        assert "base-advance-transfer" in capsys.readouterr().out
+
+
 class TestFixChurnDiagnosis:
     """An ``uncovered`` gap whose whole content is the builder's own
     non-blocking fixes must SAY so and name ``disposition`` — otherwise the

@@ -657,6 +657,95 @@ def _tree_key_fn(project_dir: Path):
     return key_fn
 
 
+#: Grouping key for the base-advance transfer's yield records. Both review
+#: gates emit under this one name, because the question the records answer —
+#: "did the transfer ever fire, and did it ever pass something that turned out
+#: to need a review?" — is about the control, not about which gate observed it.
+_TRANSFER_GUARD = "base-advance-transfer"
+
+
+def record_transfer_grant(
+    project_dir: Path,
+    facts: list[dict],
+    transfer: dict,
+    base_tree: str,
+    target_tree: str,
+    gate: str,
+) -> dict:
+    """Emit the base-advance transfer's yield signal. One call per grant, at
+    both gates.
+
+    The transfer's justification is a measurement — a review round costs 4-10
+    minutes and the transfer removes one whenever a branch syncs a base it does
+    not collide with — and this repo's standing norm is that *a control names
+    the yield it expects AND emits that yield observably*, retroactively. The
+    sibling control in this subsystem (``critic_consolidate.begin_review``'s
+    free-interval refusal) satisfies it through the same sink; without a record
+    here, nobody can count the transfer's firings, and a yield claim nothing can
+    falsify is not a yield claim.
+
+    **The id is a function of the span, and of nothing else.** The gate is
+    polled — several times a session on an unchanged repo — and
+    ``verdict_cache`` keys the composed verdict on a content hash of the whole
+    evidence store, so a record per *poll* would invalidate every memoized
+    verdict on every poll and hand back the cold path the memo was built to
+    remove. Keying on ``(base_tree, target_tree, prior_base, prior_head)`` makes
+    the second and later observations of one grant append nothing at all.
+
+    **The residual, stated:** the first grant DOES append, so the poll after it
+    recomputes cold — once per distinct transferred span, against a review round
+    saved. What the key removes is the unbounded version, where every poll pays
+    that again forever.
+
+    ``gate`` therefore rides in the BODY and not in the key, which is a
+    deliberate undercount rather than an oversight. The two gates ask about
+    different spans (the PR gate targets HEAD's tree, the Stop gate the working
+    tree), so they usually key apart on their own; when they coincide — a clean
+    tree at session end — they describe ONE base sync that would have been paid
+    off by ONE cumulative review, and counting it twice would inflate the yield
+    of the control the record exists to audit. ``count_branch_rounds`` states
+    the same preference for the same reason: undercounting says "at least this
+    many", overcounting says something false.
+
+    Fail-soft and never silent, exactly like its sibling: the transfer is
+    correct whether or not the record lands, so a store failure must not turn a
+    granted pass into a gate failure — but it is attributed on stderr, because a
+    firing that vanishes leaves the yield query reading a lower bound it does
+    not announce. Returns the sink's result so a caller (and a test) can see
+    which of appended / duplicate / error happened.
+    """
+    prior_base, prior_head = transfer.get("prior_base", ""), transfer.get("prior_head", "")
+    recorded = evidence.append_guard_refusal(
+        project_dir,
+        _TRANSFER_GUARD,
+        {
+            # Nested for the reason the sibling nests its own: a top-level
+            # base_tree/head_tree pair is the shape a coverage EDGE has, and no
+            # reader walking bodies for edges may mistake a transfer record for
+            # one. (``coverage_algebra`` reads ``kind == "review"`` only, so this
+            # is belt-and-braces on a property that already holds.)
+            "interval": {"base_tree": base_tree, "head_tree": target_tree},
+            "prior_interval": {"base_tree": prior_base, "head_tree": prior_head},
+            "gate": gate,
+            "prior_fact_id": transfer.get("prior_fact_id"),
+            "prior_reviews": transfer.get("prior_reviews"),
+            "files": list(transfer.get("files") or []),
+            "advance_files": transfer.get("advance_files"),
+        },
+        dedupe_key="\0".join((base_tree, target_tree, prior_base, prior_head)),
+        known_facts=facts,
+    )
+    if recorded.get("status") not in ("appended", "duplicate"):
+        print(
+            f"{gate}: the base-advance transfer is correct but its firing was NOT "
+            f"recorded ({recorded.get('reason', 'unknown')}) — this grant is missing "
+            f"from `prawduct-hook evidence list --kind guard-refusal`, so read that "
+            f"query as a lower bound.",
+            file=sys.stderr,
+        )
+    return recorded
+
+
 def session_review_verdict(project_dir: Path) -> dict:
     """The Stop-hook Critic gate's question, answered by composition (Q2):
     does composed review coverage span this session's base tree → the current
@@ -691,6 +780,14 @@ def session_review_verdict(project_dir: Path) -> dict:
       gate's own bar — strictly stronger evidence about the current state —
       so requiring an unsatisfiable base instead would only train waivers
       (chunk-04 refinement, recorded in the design doc).
+    - Merge-base coverage does not compose but transfers across a base
+      advance → covered, with a ``transferred`` key naming what vouched.
+      This gate asks the PR gate's composition question, so a span the PR
+      gate passes by transfer had to pass here too: without it, syncing a
+      base cleared ``/prawduct:pr`` and then blocked the same tree at
+      session end, sending the builder to run exactly the cumulative round
+      the transfer exists to remove. Conditions and their shape:
+      :func:`_merge_base_verdict`.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     read = evidence.read_facts(project_dir)
@@ -726,14 +823,25 @@ def session_review_verdict(project_dir: Path) -> dict:
     key_fn = _tree_key_fn(project_dir)
 
     verdict = coverage_algebra.coverage_verdict(facts, base, target, diff_fn, key_fn)
+    transfer_note: "str | None" = None
     if verdict["status"] != "covered" and base_source == "marker":
         mb_verdict = _merge_base_verdict(project_dir, facts, target, diff_fn, key_fn)
+        if mb_verdict is not None:
+            transfer_note = mb_verdict.pop("transfer_note", None)
         if mb_verdict is not None and (
             mb_verdict["status"] == "covered"
             or (mb_verdict["status"] == "blocked" and verdict["status"] == "uncovered")
         ):
             verdict = mb_verdict
             base, base_source = mb_verdict["base"], "merge-base-fallback"
+    # The near-miss and could-not-run notes are computed against the merge-base
+    # span but carried onto whichever verdict is RETURNED, because that is the
+    # one the Stop hook renders (as the `reason` in its block message) and this
+    # gate has no stderr of its own — the fallback's own verdict is discarded
+    # whenever the primary one already blocks, which would drop the cheapest
+    # remedy the gate has to offer on exactly the sessions that need it.
+    if transfer_note and verdict["status"] == "uncovered":
+        verdict["reason"] = f"{verdict.get('reason', 'no path')} — {transfer_note}"
     verdict.update({"base": base, "target": target, "base_source": base_source})
     return verdict
 
@@ -753,15 +861,94 @@ def _merge_base_verdict(
 
     This path is deliberately NOT memoized while the PR gate is: its target is
     the working tree, which moves on nearly every edit, so a keyed entry would
-    almost always miss and the store hash would be pure cost. The session gate's
-    own latency is tracked with the Stop-gate transfer gap on the backlog."""
+    almost always miss and the store hash would be pure cost.
+
+    **This is also where the base-advance transfer applies, and only here.** The
+    gate's own span (session base tree → working tree) is the wrong one to ask:
+    its start node is the tree HEAD sat at when the session opened, which no base
+    sync moves, and after a sync the diff across it IS the advance rather than
+    the branch's own work — so the transfer's first condition (the two spans hold
+    the same branch diff) could not hold, and asking would spend git calls to
+    learn nothing. The merge-base span is the PR gate's span with the working
+    tree in place of HEAD's tree, which is the shape
+    :func:`coverage.diagnose_base_advance_transfer` was written for: after a sync
+    the merge-base moves to the new base tip and the required diff becomes
+    exactly the branch diff. The substitution costs nothing in soundness —
+    uncommitted judgeable work makes the required diff differ from any reviewed
+    one and condition 1 denies — and condition 3 lands MORE squarely here than at
+    the PR gate, because :func:`suite_vouches_for_current_tree` asks about the
+    working tree, which is this gate's target.
+
+    Attempted only on ``uncovered``: a ``blocked`` span is owed a blocker, and
+    no transfer discharges that (the PR gate returns before its own attempt for
+    the same reason). Every unverifiable condition denies, so the fallback fails
+    closed exactly as it did before.
+
+    Its cost lands on the failing path only, and lands small: the diagnosis's
+    extra verdicts run through the ``diff_fn``/``key_fn`` caches this call
+    already built, so the ``git ls-tree`` per tree — the expensive part — is
+    paid once for the whole invocation whether one verdict is computed or five.
+    The unmemoized-across-calls property above is unchanged.
+
+    Adds ``transfer_note`` — the near-miss or could-not-run sentence — for the
+    caller to carry onto the verdict it actually returns; the caller pops it, so
+    it never reaches a consumer as part of the verdict shape."""
     resolved = coverage.resolve_merge_base_tree(project_dir)
     if resolved["status"] != "ok":
         return None
     mb_tree = resolved["tree"]
     verdict = coverage_algebra.coverage_verdict(facts, mb_tree, target, diff_fn, key_fn)
     verdict["base"] = mb_tree
-    return verdict
+    if verdict["status"] != "uncovered":
+        return verdict
+
+    def verdict_fn(f: list[dict], base: str, tgt: str) -> dict:
+        return coverage_algebra.coverage_verdict(f, base, tgt, diff_fn, key_fn)
+
+    transfer = coverage.diagnose_base_advance_transfer(
+        project_dir, facts, mb_tree, target, diff_fn, verdict_fn
+    )
+    if transfer is None:
+        return verdict
+    if transfer.get("status") == "unavailable":
+        verdict["transfer_note"] = (
+            f"the base-advance transfer check could not run ({transfer['reason']}) — "
+            f"that is not a finding that this gap is genuine work, only that the "
+            f"cheap check was unavailable"
+        )
+        return verdict
+    tests_ok, tests_reason = suite_vouches_for_current_tree(project_dir)
+    if not tests_ok:
+        verdict["transfer_note"] = (
+            f"this branch's own diff is byte-identical to the span review "
+            f"{transfer['prior_fact_id']} already covered ({len(transfer['files'])} "
+            f"judgeable file(s)), and the base advance touched none of them — the ONLY "
+            f"condition denying the transfer is that no saved suite run has met this "
+            f"tree ({tests_reason}). Run the suite and `prawduct-hook test-evidence "
+            f"record`, then re-run: the coverage transfers and no review is needed"
+        )
+        return verdict
+    record_transfer_grant(
+        project_dir, facts, transfer, mb_tree, target, "session-review-verdict"
+    )
+    return {
+        "status": "covered",
+        # No composed path exists over THIS span — the coverage was computed,
+        # not walked — so the list is empty rather than borrowed from the prior
+        # span, whose steps describe different trees. `transferred` is where a
+        # reader (or a test) finds what actually vouched.
+        "path": [],
+        "base": mb_tree,
+        "transferred": {
+            "prior_base": transfer["prior_base"],
+            "prior_head": transfer["prior_head"],
+            "prior_fact_id": transfer["prior_fact_id"],
+            "prior_reviews": transfer["prior_reviews"],
+            "files": transfer["files"],
+            "advance_files": transfer["advance_files"],
+            "tests_reason": tests_reason,
+        },
+    }
 
 
 _CRITIC_MODE_GOALS_1_3_ONLY = frozenset({
@@ -1108,8 +1295,10 @@ def check_cumulative_critic(project_dir: Path) -> int:
     only because the BASE ADVANCED, coverage **transfers** — conditions and
     their rationale in :func:`coverage.diagnose_base_advance_transfer` and
     :func:`suite_vouches_for_current_tree`, which own them. All hold → exit 0
-    with the transfer named. Any unverifiable → no transfer and the remedy above
-    stands unchanged, because authority fails closed.
+    with the transfer named, and the firing recorded
+    (:func:`record_transfer_grant` — the transfer's yield has to be countable).
+    Any unverifiable → no transfer and the remedy above stands unchanged,
+    because authority fails closed.
 
     Composed verdicts are memoized across calls (:mod:`verdict_cache`) — a cold
     one costs 17 s on this repo's store and the gate is polled several times a
@@ -1219,6 +1408,14 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     if transfer is not None and transfer.get("status") == "match":
         tests_ok, tests_reason = suite_vouches_for_current_tree(project_dir)
         if tests_ok:
+            record_transfer_grant(
+                project_dir,
+                read.get("facts", []),
+                transfer,
+                base_tree,
+                head_tree,
+                "check-cumulative-critic",
+            )
             advance = transfer["advance_files"]
             advanced = (
                 "the advance's own diff was unreadable, so its size is unknown"
