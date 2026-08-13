@@ -3,6 +3,18 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: principles 25 and 26 — the moving-target posture, codified
+
+<!-- prawduct: type=docs | scope=purpose-and-cession -->
+
+New `## Evolution` section in `plugin/docs/principles.md` (owner decision 2026-08-12, per
+Principle 19): **#25 Third Rework Is a Deletion Signal** (proposed by the 2026-07-02 efficiency
+review, unadopted until now; four recorded supporting cases) and **#26 Graceful Cession**
+(mechanisms carry the assumptions that justify them; a broken assumption forces a re-price).
+Cascade: roster test 24→26, CLAUDE.md roster + purpose pointer (paid by cutting the
+Sessions/Work-Cycles copy building.md owns and the duplicate principles pointer; 148 lines),
+session-digest roster line (paid in-file; net −2 chars).
+
 ## 2026-08-13: the framework records its own purpose
 
 <!-- prawduct: type=docs | scope=purpose-and-cession -->

@@ -1662,6 +1662,8 @@ class TestPrinciplesDoc:
         (22, "Governance Is Structural"),
         (23, "Challenge Gently, Defer Gracefully"),
         (24, "Retrieval Over Generation"),
+        (25, "Third Rework Is a Deletion Signal"),
+        (26, "Graceful Cession"),
     ]
 
     @pytest.mark.parametrize("num,name", PRINCIPLES, ids=[f"{n}-{name}" for n, name in PRINCIPLES])
@@ -1672,12 +1674,15 @@ class TestPrinciplesDoc:
             "the 24 principles are the framework's foundation; a drop or renumber must fail loud."
         )
 
-    def test_exactly_24_numbered_principles(self):
+    def test_exactly_26_numbered_principles(self):
         """No principle is added/removed without updating this contract.
-        24 (Retrieval Over Generation) added 2026-07-17 — MET-4V8Q, per Principle 19."""
+        24 (Retrieval Over Generation) added 2026-07-17 — MET-4V8Q, per Principle 19.
+        25 (Third Rework Is a Deletion Signal) and 26 (Graceful Cession) added
+        2026-08-13 — owner decision 2026-08-12, per Principle 19; the framing they
+        codify is documentation/purpose.md (framework repo)."""
         import re
         principles = read_file("docs/principles.md")
         headings = re.findall(r"^### (\d+)\. ", principles, re.MULTILINE)
-        assert [int(h) for h in headings] == list(range(1, 25)), (
-            f"expected principle headings 1..24 in order, found {headings}"
+        assert [int(h) for h in headings] == list(range(1, 27)), (
+            f"expected principle headings 1..26 in order, found {headings}"
         )

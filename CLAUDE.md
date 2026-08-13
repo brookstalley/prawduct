@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Prawduct turns product ideas into well-built software through structured discovery, quality-governed building, and continuous learning. You (Claude) are the primary runtime — these principles and methodology guides are your operating instructions.
+Prawduct turns product ideas into well-built software through structured discovery, quality-governed building, and continuous learning. You (Claude) are the primary runtime — these principles and methodology guides are your operating instructions. Why prawduct exists and how it must evolve: `documentation/purpose.md`.
 
 ## Principles
 
@@ -42,7 +42,9 @@ These guide every decision. Apply them with judgment, not mechanically.
 23. **Challenge Gently, Defer Gracefully** — Explain disagreements, offer alternatives, but the user owns the product.
 24. **Retrieval Over Generation** — Before a consequential decision, do the cheapest check that could change it (read the mechanism, search current practice) instead of committing a plausible generated answer. Cite or flag.
 
-Full principles with rationale and examples: `plugin/docs/principles.md`
+**Evolution**
+25. **Third Rework Is a Deletion Signal** — A mechanism's third rework flips the default from patch to delete: re-state the need, check what the environment now provides, prefer removal or a higher altitude over a fourth version.
+26. **Graceful Cession** — Mechanisms carry the assumptions that justify them. When a runtime or harness change breaks one, re-price: cede the absorbed ground and move up an abstraction level. Ceding is success.
 
 ## Getting Started
 
@@ -55,10 +57,6 @@ When someone opens this directory, route on what they came for:
 | **Ad-hoc work outside this repo** — *"build me X in ../foo"* | Not framework work and not being onboarded. Do the work, applying the principles as engineering judgment rather than as process. Reflect at the end on whether the methodology helped, hindered, or was irrelevant — that observation is the only thing this repo gets out of it. |
 | **Review product feedback** — *"what have my products learned?"* | Scan known product directories for `.prawduct/learnings.md`, looking for methodology friction; summarize it and propose framework updates. Also triage `incoming-bugs/` — upstream bug reports about prawduct itself, which the `untriaged-upstream-reports` advisory nudges — into the backlog via `/prawduct:backlog`, then archive each (`/prawduct:report-bug`). |
 | **First contact** — *"what is this?"* | Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. It installs as a Claude Code plugin; product repos commit a small install reference and no framework files. |
-
-## Sessions and Work Cycles
-
-A **session** is one Claude Code invocation (clear hook → stop hook). A **work cycle** is one unit of work within a session with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen per session. Context compaction is NOT a session boundary — persist plans and decisions to files before compaction. See `plugin/methodology/building.md` for the full model.
 
 ## Before Building: Requirements Clarity
 
