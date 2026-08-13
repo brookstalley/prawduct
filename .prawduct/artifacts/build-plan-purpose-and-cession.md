@@ -35,8 +35,8 @@ last_validated: 2026-08-13
 ## Status
 
 - [x] Chunk 01: documentation/purpose.md — the framework's own north star
-- [ ] Chunk 02: Principles 25 and 26 with their cascade
-Context: Plan authored 2026-08-13 from the ratified program in `.prawduct/.handoff-notes.md` (owner approved 2026-08-12). This is Cycle 1 of a four-cycle program; Cycle 2 is backlog #181 (GOV-6D4Q), the deletion-only pass — this plan deliberately precedes it so the pass's "why" is on disk first. Chunk 01 committed 2026-08-13 (suite 4388 green, evidence recorded; Critic data plane ruled the doc-only diff a free edge — no review fact owed). Mid-cycle owner decisions landed alongside: the model-floor norm (project-preferences.md) and the change-log seeded as a #181 disposition-list row (.handoff-notes.md). Next: Chunk 02 — principles 25/26 go under a NEW `## Evolution` section (roster test requires document-order numbering, so they follow #24; Evolution is the honest grouping and CLAUDE.md's roster gains the matching group header).
+- [x] Chunk 02: Principles 25 and 26 with their cascade
+Context: Plan authored 2026-08-13 from the ratified program in `.prawduct/.handoff-notes.md` (owner approved 2026-08-12). This is Cycle 1 of a four-cycle program; Cycle 2 is backlog #181 (GOV-6D4Q), the deletion-only pass — this plan deliberately precedes it so the pass's "why" is on disk first. BOTH CHUNKS COMPLETE 2026-08-13: suite green, evidence recorded. Review history: cumulative rev-20260813T042938Z-81decaea (1 blocking — the ride-along early plan archive, reverted; 4 warnings; 1 note → #302/MET-9W2P shipped, Principle 25 IS that item) then verify-resolutions rev-20260813T044600Z-78bedb91 (all resolved, 0/0/0). Branch `docs/purpose-and-cession` is PR-ready; owner runs `/prawduct:pr` next session, then Cycle 2 (#181).
 
 ## Verification Strategy
 
