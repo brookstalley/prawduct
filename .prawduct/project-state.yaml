@@ -499,7 +499,7 @@ build_state:
 # conjunct plus the historical reader's reconciliation). The plan stays LIVE past
 # its merge to develop: the base is the integration branch, so the work is
 # release-pending and the plan is archived at the develop->main release, not here.
-active_build_plan: .prawduct/artifacts/build-plan-durable-agent-worktrees.md
+active_build_plan: .prawduct/artifacts/build-plan-purpose-and-cession.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)
