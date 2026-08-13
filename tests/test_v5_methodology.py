@@ -89,7 +89,15 @@ LAST_MEASURED_TOKENS = {
     # gate can now close one case of that gap by computation. Narrowed to "opens
     # a gap", which is what stayed true, and which costs a word less than the
     # remedy it used to name.
-    "methodology/building.md": 4807,
+    # -1 on 2026-08-13 (net): the comment policy gained the archaeology rule —
+    # review/finding ids never ship, and a comment recounting history is a
+    # deletion rather than a rewrite. Paid for entirely inside the file, and
+    # a token over: the Blocking-findings paragraph restated the disposition
+    # menu and the disagreement rule that "Resolve findings" already owns
+    # (only "warnings and notes gate nothing" was its own), the Critic-review
+    # step said "runs as a separate agent" a second time, and the seven goal
+    # names were spelled out beside the pointer to the file that defines them.
+    "methodology/building.md": 4806,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -104,7 +112,19 @@ LAST_MEASURED_TOKENS = {
     # records that. Raising ONCE with the whole pass named beats three creeping
     # raises that each look local; the reading below still fails on any drift, so
     # the ceiling buys room while the pin keeps the accounting honest.
-    "skills/critic/review-protocol.md": 3664,
+    # +135 on 2026-08-13: the prose severity ceiling and the three permitted
+    # remedies, the pass's answer to comment/doc wording being the largest
+    # category of finding volume. Spends the ceiling raised above for exactly
+    # this, and pays 41 of it back in place: the model-override rule was stated
+    # in both Assess and Dispatch (kept at Dispatch, where the Agent calls are),
+    # and the drift bullet named the chunk-number case twice and re-derived
+    # "archiving moves the file" from "archived, not deleted". The last 18 are
+    # the review's floor clause — without it the ceiling silently outranks the
+    # README bullet's actively-misleading BLOCKING two entries above, so a wrong
+    # command ships as a WARNING that gates nothing. This file is now at ONE
+    # token of headroom: the next addition trims or relocates, and there is no
+    # third raise coming.
+    "skills/critic/review-protocol.md": 3799,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: chunk 03 adds prior_dispositions
@@ -112,7 +132,12 @@ LAST_MEASURED_TOKENS = {
     # the pre-priced verify observations. Each is shorter than the review round
     # it prevents. Deduped first and found nothing: the file was squeezed to 2
     # tokens of headroom by its last edit.
-    "skills/critic/goals-1-3.md": 2069,
+    # +142 on 2026-08-13: the same two rules plus the review's floor clause (the
+    # ceiling never lowers a severity another rule assigns explicitly), in chunk
+    # mode's payload — the ceiling raised above named this addition. Nothing paid
+    # it back here: the file was already deduped to 2 tokens of headroom by its
+    # prior edit, so this is the raise being spent as declared, not fat traded.
+    "skills/critic/goals-1-3.md": 2211,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight

@@ -90,7 +90,8 @@ The `final`/`cumulative` Critic owns this scan (`skills/critic/review-cycle.md` 
 
 - **BLOCKING**: Must fix before creating PR. Release blockers — secrets or credentials in the diff, an incoherent changeset that doesn't match what the PR claims to ship.
 - **WARNING**: Should fix. Scope drift, unclear narrative, merge hygiene issues (debug code, unintended files, stale test evidence).
-- **NOTE**: Informational. Bundle-level simplification opportunities.
+- **NOTE**: Informational. Bundle-level simplification opportunities. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly. Comment, docstring and doc wording, counts and phrasing otherwise stay here, because rating them WARNING turns each into a fix commit that re-opens the coverage you were dispatched against.
+- **Prose remedies**: stale prose gets one of three — delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
 ## Output Format
 

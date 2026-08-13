@@ -227,7 +227,7 @@ this repo after the change and reading the manifest/report surfaces. Chunk 06 by
   is a `code`-typed chunk — skill prose is behavioral logic here). Four rules, stated once each
   at the surface that owns them:
   1. **Severity ceiling** (`goals-1-3.md` Severity + `review-protocol.md` Goal 4 "Documentation
-     drift" + `pr/review-protocol.md` severity notes): comment/docstring/doc wording, counts, and
+     drift" + `plugin/skills/pr/review-protocol.md` severity notes): comment/docstring/doc wording, counts, and
      phrasing are **NOTE** unless load-bearing — referenced by a test or a gate, or the reviewer
      names the concrete wrong action a maintainer takes because of it (the existing WARNING bar,
      now applied to prose explicitly).

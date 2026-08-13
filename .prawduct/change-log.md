@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: prose findings priced honestly
+
+<!-- prawduct: type=feature | scope=tactical-efficiency -->
+
+Comment and doc wording is 42% of finding volume, and the mechanism that produced it was a gap
+between two rules. Goal 4 rated any comment/code contradiction WARNING; the NOTE ceiling for
+record prose covered change-logs and plans but not code comments. Nothing constrained the
+*remedy*, so "update the narration" was a legal recommendation — which is how one wall-time figure
+became nine findings across five rounds on three branches, the tenth edit missing and buying the
+round after that.
+
+**Prose is NOTE unless load-bearing** — a test or a gate reads it, or the reviewer names the
+concrete wrong action a maintainer takes because of it. That is the existing WARNING bar, now
+applied to comment, docstring and doc wording, counts and phrasing rather than only to record
+prose. **Stale prose gets one of three remedies**: delete the claim, make it relational, or pin it
+with a test. The list is closed — rewording the narration is what ships the sentence the next
+round finds stale. And **review history never enters a shipped comment**: ids dangle, so a comment
+recounting history is a deletion rather than a correction, since a corrected id goes stale too.
+`building.md` carries the builder-side half — history's one home is commits and the change-log.
+
+The ceiling has a floor, which the chunk's own review caught missing: **it never lowers a severity
+another rule assigns explicitly.** Without that clause a rule written to suppress findings also
+suppresses promoted ones — Goal 4 rates an actively misleading README instruction BLOCKING, and a
+reviewer who dutifully named that wrong action would have landed on WARNING, which gates nothing,
+shipping the wrong command.
+
+The policy is stated on all three severity surfaces rather than pointed at from two, because their
+audiences are disjoint: `goals-1-3.md` is chunk mode's payload, `review-protocol.md` is the
+final/cumulative payload, and the PR reviewer reads neither. `test_prose_severity_ceiling.py` pins
+all three — the rule's own second remedy, applied to itself, on files under standing pressure to be
+trimmed.
+
+**No ceiling was raised.** The `review-protocol.md` and `goals-1-3.md` additions spend the raises
+this pass declared in advance; `review-protocol.md` paid 41 tokens of that back by deleting a
+model-override rule stated in both the Assess and Dispatch steps. `building.md` had 3 tokens of
+headroom and funded the whole addition in place, landing a token *below* where it started: its
+Blocking-findings paragraph restated the disposition menu that "Resolve findings" already owns,
+the Critic step said "runs as a separate agent" twice, and the seven goal names were spelled out
+beside the pointer to the file that defines them.
+
+Not added: any new control. This is a ceiling and a remedy constraint on findings that already
+exist, so it is net-subtractive and the observable-yield obligation does not attach.
+
 ## 2026-08-13: the cumulative's eight warnings, resolved
 
 <!-- prawduct: type=fix | scope=tactical-efficiency -->
