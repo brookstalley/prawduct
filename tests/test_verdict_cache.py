@@ -141,6 +141,53 @@ class TestHitsAndInvalidation:
         assert second.verdict(facts, base, moved, diff_fn, key_fn)["status"] == "uncovered"
         assert second.misses == 1
 
+    def test_a_plugin_upgrade_invalidates(self, tmp_path, monkeypatch):
+        """The verdict depends on `coverage_algebra.is_judgeable_path`, which
+        decides what needs review at all — and this cache outlives the plugin in
+        `.git/prawduct/`. Widen judgeability in a release and every entry the
+        older one wrote becomes a `covered` the new rules would not grant, so
+        the computing code is an input to the key like any other.
+
+        `CACHE_SCHEMA` was the intended guard and is a hand bump nothing
+        enforces: a maintainer changing judgeability has no reason to open a
+        cache module. The version is derived, which is what makes it a real
+        input rather than a remembered one — and what this test pins.
+        """
+        repo = _repo(tmp_path)
+        base, head = _tree(repo, "main"), _tree(repo)
+        _fact(repo, base, head, ["feature.py"])
+        diff_fn, key_fn = _fns(repo)
+        facts = evidence.read_facts(repo).get("facts", [])
+        monkeypatch.setattr(evidence, "_plugin_version", lambda: "3.3.4")
+        first = _fresh(repo)
+        assert first.verdict(facts, base, head, diff_fn, key_fn)["status"] == "covered"
+        first.flush()
+        # Same repo, same store, same trees — a newer plugin.
+        monkeypatch.setattr(evidence, "_plugin_version", lambda: "3.4.0")
+        second = _fresh(repo)
+        assert second.verdict(facts, base, head, diff_fn, key_fn)["status"] == "covered"
+        assert second.misses == 1, (
+            "an entry written by a different plugin version was replayed — a "
+            "judgeability change in that release would ship as a stale `covered`"
+        )
+
+    def test_an_unversioned_plugin_still_keys_deterministically(self, tmp_path, monkeypatch):
+        """`_plugin_version()` is nullable by contract (never invented). The key
+        has to survive that without collapsing two versions into one bucket or
+        raising."""
+        repo = _repo(tmp_path)
+        base, head = _tree(repo, "main"), _tree(repo)
+        _fact(repo, base, head, ["feature.py"])
+        diff_fn, key_fn = _fns(repo)
+        facts = evidence.read_facts(repo).get("facts", [])
+        monkeypatch.setattr(evidence, "_plugin_version", lambda: None)
+        first = _fresh(repo)
+        assert first.verdict(facts, base, head, diff_fn, key_fn)["status"] == "covered"
+        first.flush()
+        second = _fresh(repo)
+        assert second.verdict(facts, base, head, diff_fn, key_fn)["status"] == "covered"
+        assert second.hits == 1
+
     def test_the_two_endpoints_are_not_interchangeable(self, tmp_path):
         # Both trees are in the key, so a reversed span is a different question
         # and must not collide with the forward one.

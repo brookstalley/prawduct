@@ -591,6 +591,19 @@ class TestBaseAdvanceTransfer:
         assert "transferred" not in err
         assert "differ between the saved run and the tree this gate vouches for" in err
 
+    def test_a_run_that_met_only_the_dirty_tree_denies(self, tmp_path, capsys):
+        # The shape that made condition 3 ask the wrong question: the suite ran
+        # against the WORKING tree, which carries uncommitted judgeable work, so
+        # it never met the HEAD tree this gate vouches for. Before the retarget
+        # the gate printed `satisfied (… suite current)` here.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        (repo / "wip.py").write_text("scratch = 1\n")
+        _write_test_evidence(repo)  # evidence_tree = the working tree, WIP included
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 1, out
+        assert "transferred" not in out
+        assert "differ between the saved run and the tree this gate vouches for" in err
+
     def test_evidence_without_a_recorded_tree_denies(self, tmp_path, capsys):
         # A `--from-counts` record cannot say which tree it ran against, so it
         # cannot answer condition 3 — deny rather than fall back to timing.

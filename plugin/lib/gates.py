@@ -225,8 +225,8 @@ def suite_vouches_for_tree(
     false of the repo.
 
     So only the tree-validity clause counts here: the run's recorded
-    ``evidence_tree`` must be judgeable-identical to the current working tree
-    (:func:`_test_evidence_tree_valid`). Evidence with no ``evidence_tree`` —
+    ``evidence_tree`` must be judgeable-identical to the tree in question — see
+    ``target_tree`` below for which tree that is. Evidence with no ``evidence_tree`` —
     pre-clause records, and the ``--from-counts`` on-ramp — cannot answer the
     question at all, so it denies rather than falling back to timing.
 
