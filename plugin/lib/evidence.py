@@ -208,7 +208,14 @@ def append_fact(
     return {"status": "appended", "path": str(path), "id": fact_id}
 
 
-def append_guard_refusal(project_dir: Path, guard: str, body: dict) -> dict:
+def append_guard_refusal(
+    project_dir: Path,
+    guard: str,
+    body: dict,
+    *,
+    dedupe_key: "str | None" = None,
+    known_facts: "list[dict] | None" = None,
+) -> dict:
     """Record that a pre-dispatch guard fired. One sink for the whole class.
 
     A guard that declines to spend something leaves no trace by default: its
@@ -263,11 +270,62 @@ def append_guard_refusal(project_dir: Path, guard: str, body: dict) -> dict:
     lands, so a store error must never convert it into an error exit. It must
     not be silent either (``learnings.md``: "'advice fails soft' is not 'advice
     fails silent'") — attribute it on stderr and carry on.
+
+    **``dedupe_key`` is for a guard that fires on a POLLED path**, where the
+    default one-record-per-firing shape is wrong twice over. ``critic-begin``
+    runs once per dispatch, so a fresh id per firing counts dispatches; a gate
+    is re-asked several times a session about an unchanged repo, so the same id
+    per *observation* is what counts events. It also has to be that way for a
+    reason outside this module: ``verdict_cache`` keys the composed coverage
+    verdict on a content hash of this whole store, so a record appended on every
+    poll would invalidate every memoized verdict on every poll and put the gate
+    back on its cold path. With a key, the id is a digest of ``(guard,
+    dedupe_key)`` — no timestamp, no uuid — and the second observation of the
+    same event appends nothing at all, leaving the store byte-identical.
+
+    A deduped call returns ``{"status": "duplicate", "id": ...}``, which is a
+    SUCCESS: the event is already on the record. Callers checking for a degraded
+    write must test for it (``status not in ("appended", "duplicate")``), not
+    for ``!= "appended"``.
+
+    ``known_facts`` is the probe's input when the caller has already read the
+    store — every gate caller has, and on a large store that read is a
+    substantial fraction of the gate's whole budget, so re-reading it here would
+    charge the transfer's observability to the latency the memo exists to
+    protect. Passing the same read the caller is acting on also keeps one moment
+    (the pairing :meth:`verdict_cache.VerdictCache.for_read` makes structural for
+    the same reason). Omit it and the probe reads the store itself. Either way
+    the failure direction is a redundant line, never a missing one: two
+    processes racing the same event can both append, and ``read_facts`` dedupes
+    ``(kind, id)`` on the way back out.
     """
     if not isinstance(guard, str) or not guard.strip():
         return {"status": "error", "reason": "guard name must be a non-empty string"}
     if not isinstance(body, dict):
         return {"status": "error", "reason": "fact body must be an object"}
+    if dedupe_key is not None:
+        if not isinstance(dedupe_key, str) or not dedupe_key.strip():
+            return {
+                "status": "error",
+                "reason": "dedupe key must be a non-empty string",
+            }
+        digest = hashlib.sha256(
+            "\0".join((guard.strip(), dedupe_key)).encode("utf-8", "surrogateescape")
+        ).hexdigest()[:16]
+        fact_id = f"guard-{guard.strip()}-{digest}"
+        already = (
+            any(
+                f.get("id") == fact_id and f.get("kind") == "guard-refusal"
+                for f in known_facts
+            )
+            if isinstance(known_facts, list)
+            else has_fact(project_dir, "guard-refusal", fact_id)
+        )
+        if already:
+            return {"status": "duplicate", "id": fact_id}
+        return append_fact(
+            project_dir, "guard-refusal", fact_id, {**body, "guard": guard.strip()}
+        )
     fact_id = "guard-{}-{}-{}".format(
         guard.strip(),
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),

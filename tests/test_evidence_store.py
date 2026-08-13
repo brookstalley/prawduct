@@ -696,3 +696,119 @@ class TestStoreGrowthAdvisory:
         monkeypatch.setattr(evidence, "TREE_COUNT_ADVISORY", 3)
         assert evidence._cmd_status(repo) == 0
         assert "NOTE:" not in capsys.readouterr().out
+
+
+class TestDedupedGuardRefusal:
+    """A guard on a POLLED path records the EVENT, not the observation.
+
+    ``critic-begin`` fires once per dispatch, so its default id (timestamp +
+    uuid) counts firings correctly. A gate is re-asked several times a session
+    about an unchanged repo, and the composed-verdict memo keys on a content
+    hash of this whole store — so a record per poll would both miscount the
+    event and evict every memoized verdict on every poll. ``dedupe_key`` is the
+    answer: a deterministic id, and a second observation that writes nothing.
+    """
+
+    def test_the_id_is_a_function_of_guard_and_key_only(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        first = evidence.append_guard_refusal(
+            repo, "polled-guard", {"n": 1}, dedupe_key="span-A"
+        )
+        assert first["status"] == "appended", first
+        other = _make_repo(tmp_path, name="repo2")
+        again = evidence.append_guard_refusal(
+            other, "polled-guard", {"n": 2}, dedupe_key="span-A"
+        )
+        # Same guard + same key ⇒ same id in a different clone at a different
+        # moment: nothing about *when* or *where* is in the digest, which is
+        # what makes the dedupe hold across the polls of one session.
+        assert again["id"] == first["id"]
+        assert first["id"].startswith("guard-polled-guard-")
+
+    def test_a_different_key_is_a_different_event(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        a = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="span-A")
+        b = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="span-B")
+        assert a["id"] != b["id"]
+        assert b["status"] == "appended"
+
+    def test_a_second_observation_leaves_the_store_byte_identical(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        assert (
+            evidence.append_guard_refusal(repo, "g", {"n": 1}, dedupe_key="k")["status"]
+            == "appended"
+        )
+        before = _store_file(repo).read_bytes()
+        second = evidence.append_guard_refusal(repo, "g", {"n": 1}, dedupe_key="k")
+        assert second["status"] == "duplicate"
+        assert _store_file(repo).read_bytes() == before
+
+    def test_known_facts_answers_the_probe_without_a_second_read(
+        self, tmp_path, monkeypatch
+    ):
+        # The whole point of the parameter: a gate has already read the store,
+        # and on a large one that read is a real slice of its budget. Passing
+        # the read it is acting on must make the probe free — and keep it right.
+        repo = _make_repo(tmp_path)
+        first = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="k")
+        assert first["status"] == "appended"
+        facts = evidence.read_facts(repo)["facts"]
+
+        def _forbidden(*_args, **_kwargs):
+            raise AssertionError("known_facts must answer the probe by itself")
+
+        monkeypatch.setattr(evidence, "has_fact", _forbidden)
+        assert (
+            evidence.append_guard_refusal(
+                repo, "g", {}, dedupe_key="k", known_facts=facts
+            )["status"]
+            == "duplicate"
+        )
+
+    def test_a_stale_known_facts_list_re_appends_rather_than_dropping(self, tmp_path):
+        # The failure direction the parameter accepts: a caller whose read
+        # predates the record writes a redundant line. `read_facts` dedupes
+        # (kind, id) on the way out, so the store stays one event — never zero.
+        repo = _make_repo(tmp_path)
+        stale = evidence.read_facts(repo)["facts"]
+        evidence.append_guard_refusal(repo, "g", {}, dedupe_key="k")
+        again = evidence.append_guard_refusal(
+            repo, "g", {}, dedupe_key="k", known_facts=stale
+        )
+        assert again["status"] == "appended"
+        read = evidence.read_facts(repo)
+        assert read["duplicates"] == 1
+        assert sum(1 for f in read["facts"] if f["kind"] == "guard-refusal") == 1
+
+    def test_a_review_fact_with_the_same_id_never_answers_the_probe(self, tmp_path):
+        # The probe is (kind, id), not id: kinds are separate namespaces, and a
+        # guard record silently skipped because some other kind squats its id
+        # would lose the firing this whole mechanism exists to count.
+        repo = _make_repo(tmp_path)
+        minted = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="k")
+        _store_file(repo).write_text("")
+        evidence.append_fact(
+            repo, "review", minted["id"],
+            {"base_tree": "a", "head_tree": "b", "files_changed": [],
+             "files_reviewed": [], "findings": []},
+        )
+        assert (
+            evidence.append_guard_refusal(repo, "g", {}, dedupe_key="k")["status"]
+            == "appended"
+        )
+
+    def test_an_empty_key_is_rejected_rather_than_silently_undeduped(self, tmp_path):
+        # Falling back to the random-id form here would be the worst outcome:
+        # the caller asked for one-record-per-event and would get one per poll,
+        # with nothing saying so.
+        repo = _make_repo(tmp_path)
+        result = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="  ")
+        assert result["status"] == "error"
+        assert "dedupe key" in result["reason"]
+
+    def test_the_undeduped_form_is_unchanged(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        a = evidence.append_guard_refusal(repo, "g", {})
+        b = evidence.append_guard_refusal(repo, "g", {})
+        assert a["status"] == b["status"] == "appended"
+        assert a["id"] != b["id"]

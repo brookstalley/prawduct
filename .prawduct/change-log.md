@@ -41,6 +41,58 @@ Both budgeted protocol files hit their ceilings. Raised once with the whole pass
 (`goals-1-3.md` 2000→2250, `review-protocol.md` 3620→3800) rather than three creeping raises across
 Chunks 03–05; deduping was attempted first and found nothing — the last edit had already squeezed
 both to 1–2 tokens of headroom, which their own budget comments record.
+## 2026-08-13: syncing a base no longer clears the PR gate and blocks at session end
+
+<!-- prawduct: type=fix | scope=tactical-efficiency -->
+
+**Two gates asked the same composition question and only one could answer it by transfer.**
+`/prawduct:pr` Step 1 prescribes syncing the base before the review gates; that span passes the PR
+gate by base-advance transfer, and the *same tree* was then blocked at session end — sending the
+builder to run exactly the cumulative round the transfer exists to remove. The Stop gate's
+merge-base fallback (`gates.session_review_verdict` → `_merge_base_verdict`) now attempts the same
+transfer under the same three conditions.
+
+**Which span, and why only that one.** The Stop gate's own span is the session base tree → the
+working tree, and its start node is the tree HEAD sat at when the session opened — no base sync
+moves it, and after a sync the diff across it *is* the advance rather than the branch's own work,
+so the transfer's first condition could not hold. The merge-base span is the PR gate's span with
+the working tree in place of HEAD's tree, which is the shape the diagnosis was written for. The
+substitution costs nothing in soundness — uncommitted judgeable work lands in the required diff, so
+no reviewed span matches it and the transfer denies with no special case — and condition 3
+(`suite_vouches_for_current_tree`) lands more squarely here than at the PR gate, because it asks
+about the working tree, which is this gate's target. Attempted on `uncovered` only: a `blocked`
+span is owed a blocker and no transfer discharges it. Every unverifiable condition still denies.
+
+**The near miss now reaches the builder.** This gate has no stderr of its own — the Stop hook
+renders its verdict — so the "byte-identical, only the suite is stale, run it and re-run" sentence
+rides on the verdict's `reason`, and is carried onto whichever verdict is returned. Without that
+the fallback's verdict is discarded whenever the primary one already blocks, dropping the cheapest
+remedy on exactly the sessions that need it.
+
+**A granted transfer now emits its yield.** The standing norm is that a control names the yield it
+expects AND emits that yield observably; the transfer's justification is a measured claim about
+review rounds saved, and a yield claim nothing can falsify is not a yield claim. Both gates now
+append a `guard-refusal` fact under guard `base-advance-transfer` — the same sink and the same
+norm as `critic-begin`'s free-interval refusal — surfaced by
+`prawduct-hook evidence list --kind guard-refusal`. No new fact kind, no schema change.
+
+**Why the record is keyed and not timestamped.** `verdict_cache` keys the composed verdict on a
+content hash of the whole evidence store, and the gates are polled several times a session, so a
+record per *poll* would evict every memoized verdict on every poll and hand back the ~17 s cold
+path the memo was built to remove. `evidence.append_guard_refusal` gained an optional `dedupe_key`:
+the id becomes a digest of `(guard, key)` with no timestamp and no uuid, a second observation
+returns `duplicate` and writes nothing, and the store stays byte-identical across repeated gate
+calls (pinned by test at both gates). The probe reads the caller's already-parsed facts rather than
+re-opening a 7 MB store — the same one-read/one-moment pairing `VerdictCache.for_read` makes
+structural. The residual, stated: the *first* grant does append, so the poll after it recomputes
+cold — once per transferred span, against a review round saved.
+
+The key is the span (`base_tree`, `head_tree`, `prior_base`, `prior_head`) and deliberately not the
+gate, which rides in the body instead. When the two gates coincide on one span they describe one
+base sync that one cumulative would have paid off, and counting it twice would inflate the yield of
+the control the record exists to audit — `count_branch_rounds` states the same preference for the
+same reason. Recording is fail-soft like its sibling and never silent: a store failure is
+attributed on stderr and the correct verdict stands.
 
 ## 2026-08-13: the PR gate answers in constant time
 
