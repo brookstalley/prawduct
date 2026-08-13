@@ -3816,3 +3816,30 @@ Two follow-ons, both found while fixing it:
 2. **The probe must precede any early `return 0`.** A background-work deferral returned 0 further
    down; deferring a refusal would have ended the session clean by a second route, and no amount of
    background work resolves two plans claiming one branch.
+
+---
+
+## A recommendation an advisory prints ships to every consumer's repo, so test its EFFECT, not just that it fires
+
+A probe is easy to test into a false sense of completeness. Fires on the bad state, inert on the
+good state, stable id, wired into the roster — six or eight green tests, and not one of them touches
+the question the advisory actually raises with the user: *does doing this do what you say it does?*
+
+The change-log union-merge advisory tells an operator to add a line to `.gitattributes` in a repo
+prawduct does not own. The claim behind it — "union-merge is safe for an append-only entry log" —
+came from an analysis document and read as obviously true. It is true, and checking took four
+minutes: two branches each prepending a tagged entry, merged with the attribute and without it. The
+control conflicts; the attributed merge succeeds with both entries present and each
+`<!-- prawduct: … -->` line still under its own header, because the union driver concatenates whole
+hunks and never crosses them.
+
+The check paid for itself twice over. It converted an assertion into a test with a control, and it
+surfaced the honest caveat that belonged in the shipped text: union **never** conflicts, so a
+genuine two-sided edit to the same line survives as both versions rather than as a conflict to
+resolve. That is fine for this file — the release gate's tag validator errors on one key set two
+ways — but a reader deciding whether to take the advice deserves to know it, and nobody would have
+written it without having watched the driver work.
+
+The general shape: when a mechanism's output is *advice*, the advice is the deliverable, and a test
+that only exercises the mechanism has tested the packaging. The recommendation needs a fixture where
+it is followed and one where it is not.

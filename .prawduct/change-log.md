@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: the change log recommends its own merge driver
+
+<!-- prawduct: type=feature | scope=tactical-efficiency -->
+
+On both forced base syncs measured on a consumer repo, **100% of the merge conflicts were
+prawduct's own record files**, led by this one. Every branch writes its entry at the TOP of the
+change log, so two branches always edit the same first lines and merging an advanced base conflicts
+there every single time — a manual resolution and a reconcile commit for a file whose two sides
+never actually disagree.
+
+A post-sync advisory now recommends `.prawduct/change-log.md merge=union` when the committed log
+resolves no such gitattribute, and self-resolves once it does. It **recommends and never writes**:
+`.gitattributes` is not in the plugin's write set, and unexpected framework writes to a repo's
+committed configuration are the trust breach that set exists to prevent. The advisory surface is
+the one that runs every session; `/prawduct:doctor` lists the same check as the secondary surface,
+where it is a recommendation and does not grade a repo degraded — a repo is free to decline advice.
+
+**The recommendation is verified, not assumed.** Two branches prepending tagged entries conflict
+without the attribute and merge cleanly with it, each entry's `<!-- prawduct: … -->` line still
+under its own header, because the union driver concatenates whole hunks and never crosses them. The
+trade it makes is real and stated where the probe lives: union never conflicts, so a genuine
+two-sided edit to the *same* line survives as both versions rather than as a conflict — caught
+downstream by the release gate's tag validator, which errors on one key set two ways.
+
+**Three answers, not two, at the git boundary.** `git check-attr` returning nothing and git being
+unaskable are the same empty answer unless the code keeps them apart, so `gitstate` gained a
+tri-state pair (`git_merge_attribute`, `git_path_is_tracked`) that returns `None` for "could not
+ask". The probe raises no advisory on `None` — nagging a repo that may already be fixed is the
+wrong error — and prints a `NOTE` naming what went unchecked when the log is committed, which is
+when the harm is live. Where git cannot be asked at all it stays fully quiet: nothing that cannot
+merge can conflict.
+
+Also here, riding the commit rather than a later round: the ~dozen docstrings that still described
+active-plan resolution as "the `active_build_plan` pointer" now say "this repo's active build plan"
+and point at the function that owns the rule, so the precedence has one home instead of a ninth
+copy that goes stale on the next change.
+
 ## 2026-08-13: the plan declares its branch
 
 <!-- prawduct: type=feature | scope=tactical-efficiency -->

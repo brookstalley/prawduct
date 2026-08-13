@@ -247,8 +247,8 @@ def _count_build_plan_chunks(
 ) -> tuple[int, int]:
     """Count chunks in the active build plan's Status section.
 
-    Resolves the plan via the ``active_build_plan:`` pointer (falls back to
-    ``artifacts/build-plan.md``), so scope-named plans are counted too —
+    Resolves this repo's active build plan (``core.resolve_build_plan_path``,
+    which owns what "active" means), so scope-named plans are counted too —
     unless ``plan_path`` names one, which the gate paths pass so that
     "is there governed work" and "what does it declare" read one file.
     Returns ``(total, complete)``; ``(0, 0)`` if the plan or its Status section
@@ -672,13 +672,14 @@ def resolve_reviewed_plan(
     known: "dict[str, Path] | None" = None,
 ) -> ReviewedPlan:
     """Resolve the build plan a review is about, preferring the reviewed SCOPE's
-    plan over the ``active_build_plan`` pointer.
+    plan over this repo's active build plan.
 
-    The pointer answers "which plan is in progress in this repo," which is not
-    the same question as "which plan is this review of" — and on a repo running
-    several plans across worktrees the two legitimately differ. The pointer is
-    then *correct* and still the wrong answer here, which is why this resolves
-    around it rather than asking anyone to repoint it.
+    Active-plan resolution (``core.resolve_build_plan_path``) answers "which plan
+    is in progress in this repo," which is not the same question as "which plan
+    is this review of" — and on a repo running several plans across worktrees the
+    two legitimately differ. That answer is then *correct* and still the wrong one
+    here, which is why this resolves around it rather than asking anyone to
+    repoint anything.
 
     ``known`` is a prebuilt scope→plan map, so a caller resolving both halves
     pays one walk of ``artifacts/`` rather than two — see
@@ -710,8 +711,8 @@ def resolve_reviewed_plan(
                 scope,
                 "none",
                 f"the dispatch names scope {scope!r} but no build plan under "
-                "artifacts/ declares it — grading the active_build_plan pointer's "
-                "plan would grade a different subject",
+                "artifacts/ declares it — grading this repo's active plan "
+                "would grade a different subject",
             )
         return ReviewedPlan(match, _repo_rel(prawduct_dir, match), scope, SOURCE_SCOPE_NAMED, None)
 
@@ -774,11 +775,11 @@ def resolve_chunk_progress(
     rather than walking Status for itself, which is what
     ``TestOneCurrentChunkImplementation`` pins.
 
-    ``plan_path`` overrides which plan is read. It defaults to the
-    ``active_build_plan`` pointer, so every existing caller is unchanged; mode
-    inference passes the branch's own plan when :func:`resolve_reviewed_plan`
-    found one, so "which chunk is current" and "which plan the record names"
-    cannot answer about two different files.
+    ``plan_path`` overrides which plan is read. It defaults to this repo's
+    active build plan, so every existing caller is unchanged; mode inference
+    passes the branch's own plan when :func:`resolve_reviewed_plan` found one,
+    so "which chunk is current" and "which plan the record names" cannot answer
+    about two different files.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if plan_path is None:
@@ -955,8 +956,8 @@ def _parse_build_plan_status(
     description, size, type, current_chunk, context, governance_level.
     Returns empty dict if no build plan or no Status section.
 
-    ``plan_path`` overrides which plan is read, defaulting to the
-    ``active_build_plan`` pointer (see :func:`resolve_chunk_progress`).
+    ``plan_path`` overrides which plan is read, defaulting to this repo's
+    active build plan (see :func:`resolve_chunk_progress`).
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if plan_path is None:
@@ -1404,11 +1405,10 @@ def _parse_build_plan_chunk_refs(
     """Extract backticked file-path references from a single chunk's section
     in ``.prawduct/artifacts/build-plan.md``.
 
-    ``plan_path`` names the plan to read; it defaults to the
-    ``active_build_plan`` pointer, which is right for ``verify-chunk-refs``
-    (a repo-level question) and wrong for a review (a question about the plan
-    the DISPATCH named). The review path passes
-    :func:`resolve_reviewed_plan`'s answer.
+    ``plan_path`` names the plan to read; it defaults to this repo's active
+    build plan, which is right for ``verify-chunk-refs`` (a repo-level question)
+    and wrong for a review (a question about the plan the DISPATCH named). The
+    review path passes :func:`resolve_reviewed_plan`'s answer.
 
     The section is located by ``_chunk_section_lines`` (both the ``### Chunk NN:``
     and ``## Chunk N (ID) — Name`` heading forms, leading zeros tolerant), and
@@ -1529,8 +1529,8 @@ def _parse_build_plan_chunk_type(
 ) -> tuple[str | None, str | None]:
     """Extract the `Type:` declaration from a chunk's build-plan section.
 
-    ``plan_path`` names the plan to read, defaulting to the ``active_build_plan``
-    pointer. It exists so a caller that has already resolved *which plan* — via
+    ``plan_path`` names the plan to read, defaulting to this repo's active
+    build plan. It exists so a caller that has already resolved *which plan* — via
     :func:`resolve_reviewed_plan` — reads this chunk field from the same file it
     read the others from. Two chunk-level fields resolving from two different
     plans is the same "one question, two answers" defect one field over.

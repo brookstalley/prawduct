@@ -36,6 +36,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .change_log import CHANGE_LOG_REL_PATH
 from .core import read_str_yaml_key
 
 _BASE_BRANCH_KEY = "base_branch"
@@ -838,9 +839,6 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     )
 
 
-_CHANGE_LOG_REL_PATH = ".prawduct/change-log.md"
-
-
 def check_change_log_entry(project_dir: Path) -> int:
     """PR-boundary probe: a code-changing branch must add a change-log entry.
 
@@ -891,19 +889,19 @@ def check_change_log_entry(project_dir: Path) -> int:
         print(f"doc-only: all {len(files)} changed file(s) are .md — no entry required.")
         return 0
 
-    if _CHANGE_LOG_REL_PATH not in files:
+    if CHANGE_LOG_REL_PATH not in files:
         sample = ", ".join(non_md[:3])
         more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
         print(
             f"no-entry: branch changes code ({sample}{more}) but "
-            f"{_CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "
+            f"{CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "
             f"this work before opening the PR.",
             file=sys.stderr,
         )
         return 1
 
     proc2 = subprocess.run(
-        ["git", "diff", f"{base}...HEAD", "--", _CHANGE_LOG_REL_PATH],
+        ["git", "diff", f"{base}...HEAD", "--", CHANGE_LOG_REL_PATH],
         cwd=str(project_dir),
         capture_output=True,
         text=True,
@@ -911,7 +909,7 @@ def check_change_log_entry(project_dir: Path) -> int:
     )
     if proc2.returncode != 0:
         print(
-            f"git-failed: git diff of {_CHANGE_LOG_REL_PATH} failed: "
+            f"git-failed: git diff of {CHANGE_LOG_REL_PATH} failed: "
             f"{proc2.stderr.strip()}. Check the change-log by hand.",
             file=sys.stderr,
         )
@@ -921,14 +919,14 @@ def check_change_log_entry(project_dir: Path) -> int:
     )
     if not added_header:
         print(
-            f"entry-edited-not-added: {_CHANGE_LOG_REL_PATH} changed but no new "
+            f"entry-edited-not-added: {CHANGE_LOG_REL_PATH} changed but no new "
             f"entry header (+## ...) was added — editing an existing entry does "
             f"not vouch for this branch's code changes.",
             file=sys.stderr,
         )
         return 1
 
-    print(f"entry-present: {_CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD.")
+    print(f"entry-present: {CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD.")
     return 0
 
 

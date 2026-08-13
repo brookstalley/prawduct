@@ -1095,8 +1095,8 @@ def _has_active_build_plan_file(
 ) -> bool:
     """Return True if the build plan has at least one incomplete chunk.
 
-    ``plan_path`` names the plan to read, defaulting to the ``active_build_plan``
-    pointer. The Stop hook and the SessionStart advisory both pass the BRANCH's
+    ``plan_path`` names the plan to read, defaulting to this repo's active
+    build plan. The Stop hook and the SessionStart advisory both pass the BRANCH's
     plan, so the gate's "should I run" and its "what does the chunk declare"
     cannot answer about different files.
 

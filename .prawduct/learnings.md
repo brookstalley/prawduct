@@ -540,3 +540,5 @@ never by dropping them.
 ## Scrub the WHOLE diff before dispatching a review, tests and their comments included — a rule you just wrote is a rule you are still violating elsewhere in the same commit, and the reviewer will find it in the place you were not looking. Tell: you scrubbed the files the chunk is "about" and not the ones it added — [learnings-detail.md]
 
 ## "Fail closed" means the CHANNEL's blocking value, not merely a non-zero one — mapping every refusal to a generic error code fails OPEN wherever the contract reads a SPECIFIC code as "block". Check the contract for the surface the refusal can REACH, not the one you were writing. Tell: you wrote "a refused gate is a blocked gate" and never opened the exit-code table — [learnings-detail.md]
+
+## A recommendation an advisory prints ships to every consumer's repo, so test its EFFECT, not just that it fires — make the change on a fixture, observe the promised outcome, and keep the un-made case as the control. Tell: every test you wrote asserts on the advisory object and none on what following it does — [learnings-detail.md]

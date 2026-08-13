@@ -765,6 +765,75 @@ def git_paths_ignored(project_dir: Path, rel_paths: "list[str]") -> "set[str]":
     return {p for p in result.stdout.split("\0") if p}
 
 
+def git_path_is_tracked(project_dir: Path, rel_path: str) -> bool | None:
+    """True if ``rel_path`` is tracked, False if not, ``None`` if git could not
+    be asked.
+
+    Three answers, not two, for the same reason :func:`local_branches` returns
+    ``None``: "git says this path is untracked" and "I could not run git" are
+    different facts, and a caller that collapses them turns a failed probe into a
+    confident claim about the repository. Callers keep them apart.
+
+    ``git ls-files`` exits 0 whether or not anything matched — an empty stdout is
+    the "untracked" answer — so only a non-zero exit (no repo, no git, a broken
+    index) means unknown. The pathspec is sent ``:(literal)`` because ls-files
+    matches wildmatch by default: a path containing ``*``, ``?`` or ``[`` would
+    otherwise match some *other* file and report it tracked.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", f":(literal){rel_path}"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash a probe
+        return None
+    if result.returncode != 0:
+        return None
+    return any(p for p in result.stdout.split("\0"))
+
+
+def git_merge_attribute(project_dir: Path, rel_path: str) -> str | None:
+    """The ``merge`` gitattribute git resolves for ``rel_path``, or ``None``.
+
+    Returns git's own answer verbatim — a driver name such as ``union``, or
+    ``unspecified``/``unset`` when no attribute applies — so the caller compares
+    against the value it needs rather than re-implementing attribute precedence.
+    ``None`` means **git could not be asked** (no repo, no git, unparseable
+    output), which is not the same answer as ``unspecified`` and must not be
+    read as one.
+
+    Deliberately the *effective* answer for this working copy: it includes
+    ``.git/info/attributes`` and the global attributes file, not only the
+    committed ``.gitattributes``. What a caller wants to know is what git will
+    actually do at merge time here; a per-clone override genuinely protects this
+    clone, and only this one.
+
+    ``-z`` output is ``path NUL attr NUL value NUL``, which sidesteps both the
+    C-quoting of non-ASCII paths and the ambiguity of the plain format's
+    ``path: attr: value`` when the path itself contains a colon. ``check-attr``
+    takes pathnames rather than pathspecs, so nothing here is glob-expanded.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "check-attr", "-z", "merge", "--", rel_path],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash a probe
+        return None
+    if result.returncode != 0:
+        return None
+    fields = result.stdout.split("\0")
+    if len(fields) < 3:
+        return None
+    return fields[2]
+
+
 def _get_session_changed_files(project_dir: Path, status_output: str | None = None) -> list[str]:
     """Get files changed since session start. Returns list of file paths.
 
