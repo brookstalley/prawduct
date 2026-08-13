@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: the PR gate answers in constant time
+
+<!-- prawduct: type=perf | scope=tactical-efficiency -->
+
+**Asking whether a review was needed cost more than some reviews.** Nine `check-cumulative-critic`
+invocations in one consumer session ran 29–120 s each; two hit the 2-minute Bash ceiling (one
+`Exit code 143`) and the agent resorted to `timeout 200`. Profiled on this repo before building
+anything: `read_facts` is 0.06 s and merge-base resolution 0.07 s, while
+`coverage_algebra.coverage_verdict` is **17.4 s cold and 0.01 s with the per-invocation key cache
+warm** — the whole cost is the free-edge search keying every tree the store mentions, one
+`git ls-tree` each (701 trees here, and the store only grows).
+
+`verdict_cache.VerdictCache` memoizes the composed verdict, keyed on a content hash covering every
+input: both endpoint trees and a SHA-256 of the entire evidence store. Measured end to end on this
+repo: **20.0 s → 0.35 s.** The three call sites that need a composed verdict — the span itself,
+the fix-churn diagnosis and the base-advance transfer — now share one cache; both diagnoses take a
+`verdict_fn` in place of the `diff_fn`/`key_fn` pair they only ever used for that call.
+
+**Why this is a memo and not a second home for a fact** (`data-model.md`: *derived views are
+disposable and never authoritative*): the key covers every input the verdict is a function of, so
+a hit replays a computation whose inputs are provably unchanged. Miss, unreadable cache, corrupt
+entry, foreign schema or unreadable store all recompute. **And a cached verdict can never be a
+false PASS:** git objects are immutable and content-addressed, so they are not in the key and do
+not need to be — `coverage_verdict` grants `covered` only through review edges (from facts, which
+ARE keyed) and free edges (tree-key equality), and a missing object makes `key_fn` return `None`,
+which denies a free edge and can never manufacture one. Git-side degradation therefore moves the
+verdict only toward denial. The residual, stated rather than implied: an `uncovered` computed while
+an object was transiently unreadable is replayed until the store's next append.
+
+The flush is unconditional (a `try/finally` wrapper), because the gate has four exit paths, three
+of them failures — and polling happens most when the gate is *not* passing, so a memo that only
+persisted on success would leave exactly its motivating case uncached. Cache lives beside the
+evidence store in the per-clone `.git/prawduct/` area, bounded at 64 entries.
+
+One test changed rather than being added to: the pin that `diagnose_fix_churn`'s injected functions
+carry no defaults now names `verdict_fn`, which carries both properties a forgotten argument would
+cost. Same contract, same direction, applied to the parameter that now holds it.
+
 ## 2026-08-13: a clean base sync no longer voids review coverage
 
 <!-- prawduct: type=feat | scope=tactical-efficiency -->

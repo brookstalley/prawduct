@@ -60,7 +60,7 @@ the remaining input.
 ## Status
 
 - [x] Chunk 01: Base-advance coverage transfer — a clean base sync no longer voids review coverage
-- [ ] Chunk 02: Coverage-verdict memo — the PR gate answers in constant time
+- [x] Chunk 02: Coverage-verdict memo — the PR gate answers in constant time
 - [ ] Chunk 03: Disposition-aware reviews — accepted findings stop being re-litigated
 - [ ] Chunk 04: Prose findings priced honestly — severity ceilings, deletion-first remedies, no archaeology
 - [ ] Chunk 05: Verify-resolutions golden path at every point of action

@@ -48,6 +48,7 @@ converted here.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -286,7 +287,18 @@ def read_facts(project_dir: Path) -> dict:
         {"status": "ok"|"empty"|"error", "reason"?: str,
          "facts": [envelope, ...],          # schema-supported, deduped, in order
          "schema_ahead": [{"line", "schema", "kind", "id"}, ...],
-         "excluded": int, "duplicates": int}
+         "excluded": int, "duplicates": int,
+         "fingerprint": str | None}
+
+    ``fingerprint`` is a SHA-256 of the EXACT bytes these facts were parsed
+    from, and ``None`` whenever there were none to parse (no repo, no store,
+    unreadable). It exists so a caller memoizing a function OF these facts can
+    key on it without hashing the parsed structure — and, more to the point,
+    without opening the store a second time: the store is shared by every
+    worktree of the clone, so a separate read is a separate moment, and a
+    sibling's append between the two silently decouples the key from the facts
+    it is supposed to describe. Handing it back from the one read makes that
+    impossible rather than unlikely.
 
     ``schema_ahead`` records were written by a NEWER plugin than this reader —
     they are never silently dropped into ``excluded``: gate callers must treat
@@ -303,6 +315,7 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
+            "fingerprint": None,
         }
     if not path.is_file():
         return {
@@ -311,6 +324,7 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
+            "fingerprint": None,
         }
     try:
         raw_text = path.read_text(encoding="utf-8")
@@ -322,8 +336,10 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
+            "fingerprint": None,
         }
 
+    fingerprint = hashlib.sha256(raw_text.encode('utf-8')).hexdigest()
     raw_lines = raw_text.splitlines()
     facts: list[dict] = []
     schema_ahead: list[dict] = []
@@ -428,6 +444,7 @@ def read_facts(project_dir: Path) -> dict:
         "schema_ahead": schema_ahead,
         "excluded": excluded,
         "duplicates": duplicates,
+        "fingerprint": fingerprint,
     }
 
 

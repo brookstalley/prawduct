@@ -42,7 +42,14 @@ import json
 import sys
 from pathlib import Path
 
-from . import buildplan_refs, coverage, coverage_algebra, evidence, gitstate
+from . import (
+    buildplan_refs,
+    coverage,
+    coverage_algebra,
+    evidence,
+    gitstate,
+    verdict_cache,
+)
 from .core import read_bool_yaml_key
 
 
@@ -738,12 +745,16 @@ def _merge_base_verdict(
     unwedging fallback (see :func:`session_review_verdict`). ``None`` when
     the merge base cannot be resolved (the primary verdict then stands).
 
-    ``key_fn`` is required for the reason :func:`coverage.diagnose_fix_churn`
-    documents at its own ``coverage_verdict`` call: a ``None`` key sends
-    ``_find_path`` down the pairwise free-edge branch, which :func:`_tree_key_fn`
-    measures on this repo's store at ~5.6k ``git diff`` subprocesses. It used to
-    default, unreachably — the sole caller passes it — and an unreachable
-    default for a silent slow path is a hang waiting for its first caller."""
+    ``key_fn`` is required, not defaulted: a ``None`` key sends ``_find_path``
+    down the pairwise free-edge branch, which :func:`_tree_key_fn` measures on
+    this repo's store at ~5.6k ``git diff`` subprocesses. It used to default,
+    unreachably — the sole caller passes it — and an unreachable default for a
+    silent slow path is a hang waiting for its first caller.
+
+    This path is deliberately NOT memoized while the PR gate is: its target is
+    the working tree, which moves on nearly every edit, so a keyed entry would
+    almost always miss and the store hash would be pure cost. The session gate's
+    own latency is tracked with the Stop-gate transfer gap on the backlog."""
     resolved = coverage.resolve_merge_base_tree(project_dir)
     if resolved["status"] != "ok":
         return None
@@ -1099,8 +1110,24 @@ def check_cumulative_critic(project_dir: Path) -> int:
     :func:`suite_vouches_for_current_tree`, which own them. All hold → exit 0
     with the transfer named. Any unverifiable → no transfer and the remedy above
     stands unchanged, because authority fails closed.
+
+    Composed verdicts are memoized across calls (:mod:`verdict_cache`) — a cold
+    one costs 17 s on this repo's store and the gate is polled several times a
+    session. The wrapper exists to make the flush unconditional: the body has
+    four exit paths, three of them failures, and a memo that only persisted on
+    success would leave exactly the repeated-poll case it was built for
+    uncached.
     """
     read = evidence.read_facts(project_dir)
+    cache = verdict_cache.VerdictCache.for_read(project_dir, read)
+    try:
+        return _cumulative_critic_verdict(project_dir, read, cache)
+    finally:
+        cache.flush()
+
+
+def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
+    """:func:`check_cumulative_critic`'s body; see it for the contract."""
     precheck = _store_precheck(read)
     if precheck is not None:
         status, reason = precheck
@@ -1124,15 +1151,19 @@ def check_cumulative_critic(project_dir: Path) -> int:
         print(f"no-head: cannot resolve HEAD^{{tree}} ({err}).", file=sys.stderr)
         return 1
 
+    # Every cached ANSWER is read after the schema-ahead precheck above, and
+    # that ordering is the contract: a fact from a newer plugin must block
+    # before anything replays a verdict, or the block becomes skippable by
+    # having asked the same question once before. (The cache OBJECT is built by
+    # the caller, but constructing it only hashes the store — it decides
+    # nothing.)
     diff_fn = _cached_diff_fn(project_dir)
     key_fn = _tree_key_fn(project_dir)
-    verdict = coverage_algebra.coverage_verdict(
-        read.get("facts", []),
-        base_tree,
-        head_tree,
-        diff_fn,
-        key_fn,
-    )
+
+    def verdict_fn(facts: list[dict], base: str, target: str) -> dict:
+        return cache.verdict(facts, base, target, diff_fn, key_fn)
+
+    verdict = verdict_fn(read.get("facts", []), base_tree, head_tree)
 
     if verdict["status"] == "covered":
         steps = verdict.get("path", [])
@@ -1182,7 +1213,7 @@ def check_cumulative_critic(project_dir: Path) -> int:
         base_tree,
         head_tree,
         diff_fn,
-        key_fn,
+        verdict_fn,
     )
     transfer_stale: "str | None" = None
     if transfer is not None and transfer.get("status") == "match":
@@ -1285,8 +1316,7 @@ def check_cumulative_critic(project_dir: Path) -> int:
         head_tree,
         base_tree,
         resolved.get("merge_base", ""),
-        diff_fn,
-        key_fn,
+        verdict_fn,
     )
     if churn is not None and churn.get("status") == "unavailable":
         # A degraded advisory that says nothing is indistinguishable from one

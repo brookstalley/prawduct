@@ -807,13 +807,24 @@ class TestFixChurnDiagnosis:
 
         from lib import coverage
 
-        for fn in (coverage.diagnose_fix_churn, gates._merge_base_verdict):
+        # The injected names changed when the verdict gained a memo — the two
+        # diagnoses now receive `verdict_fn`, which carries BOTH properties a
+        # forgotten argument would cost: the n-key free-edge form and the
+        # cross-call cache. Same contract, same direction, applied to whichever
+        # parameter now holds it; nothing here is relaxed.
+        pinned = {
+            coverage.diagnose_fix_churn: ("verdict_fn",),
+            coverage.diagnose_base_advance_transfer: ("diff_fn", "verdict_fn"),
+            gates._merge_base_verdict: ("diff_fn", "key_fn"),
+        }
+        for fn, names in pinned.items():
             params = inspect.signature(fn).parameters
-            for name in ("diff_fn", "key_fn"):
+            for name in names:
                 assert params[name].default is inspect.Parameter.empty, (
                     f"{fn.__name__}'s {name} has a default again. A missing "
                     "argument then silently selects the pairwise free-edge "
                     "branch (~5.6k `git diff` subprocesses on this repo's "
+                    "store) or an uncached recomputation (17 s on this repo's "
                     "store) on the interactive PR path, instead of raising a "
                     "TypeError the caller can see."
                 )
@@ -1120,7 +1131,7 @@ class TestFixChurnDiagnosis:
         }
         out = coverage.diagnose_fix_churn(
             repo, [bogus], head_tree, "1" * 40, "2" * 40,
-            diff_fn=lambda *a, **k: [], key_fn=lambda f: f.get("id"),
+            verdict_fn=lambda *a: {"status": "uncovered"},
         )
         assert out is not None, (
             "the producer went silent on a git failure — `None` here is read by "
@@ -1139,7 +1150,7 @@ class TestFixChurnDiagnosis:
         repo = _branch_repo(tmp_path)
         out = coverage.diagnose_fix_churn(
             repo, [], "", "b" * 40, "c" * 40,
-            diff_fn=lambda *a, **k: [], key_fn=lambda f: f.get("id"),
+            verdict_fn=lambda *a: {"status": "uncovered"},
         )
         assert out == {"status": "unavailable", "reason": "missing span endpoints"}
 
