@@ -271,7 +271,7 @@ against the repo root.
 
 Three layers:
 
-1. **24 Principles** — Always in context via CLAUDE.md. Grouped into Quality, Product, Process, Learning, and Judgment. They govern how work gets done but don't enforce process interruptions.
+1. **26 Principles** — Always in context via CLAUDE.md. Grouped into Quality, Product, Process, Learning, Judgment, and Evolution. They govern how work gets done but don't enforce process interruptions.
 
 2. **Methodology guides** — Narrative essays read when entering each activity (discovery, planning, building, reflection). They teach the approach rather than prescribing rigid steps. Governance depth scales with work size and type.
 

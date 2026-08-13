@@ -3,6 +3,22 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: a model floor, and a frontier coherence pass over every cycle
+
+<!-- prawduct: type=docs | scope=purpose-and-cession -->
+
+Owner decision 2026-08-13: **Sonnet is the minimum model for any prawduct work**, main session or
+subagent — Haiku-class models are never used — and any cycle whose substantive stages ran below
+Fable closes with a **Fable final-coherence pass** over the whole result before it lands. Scaling
+cost down is legitimate for mechanical stages, but sub-frontier models miss exactly the
+cross-cutting incoherence prawduct exists to catch.
+
+Both are **session-level operator choices**, which is why the Enforcement row reads *Session
+config / user-observed* rather than Test: the runtime cannot observe which model it is, and a
+mechanical selector would reopen the "no intelligent model switching" pin. Reviewers still inherit
+the session model. Recorded in `project-preferences.md`; the per-cycle mapping for Cycles 2–4 is in
+`program-purpose-and-cession.md`.
+
 ## 2026-08-13: the four-cycle program gets a durable home
 
 <!-- prawduct: type=docs | scope=purpose-and-cession -->
