@@ -183,10 +183,43 @@ uncovered.)
 (`test_count`), plus an `active_build_plan` judgment call. Each conflict costs manual resolution
 plus reconcile commits (4 `chore: reconcile test_count` commits on one branch).
 
-**Fix (Chunk 06, small).** Declare `merge=union` for `.prawduct/change-log.md` via
-`.gitattributes` (scaffolded by onboard/doctor; documented). Union-merge is safe for an
-append-only entry log and eliminates the dominant conflict class. `test_count` churn is #633's
-scope — linked, not built here.
+**Fix (Chunk 07, small).** Recommend `merge=union` for `.prawduct/change-log.md` via
+`.gitattributes`. Union-merge is safe for an append-only entry log and eliminates the dominant
+conflict class. Delivery surface is a **post-sync advisory probe** (fires in every session
+briefing — owner feedback 2026-08-13: doctor is very rarely run, so a doctor-only check would
+almost never fire); doctor lists it too, as the secondary surface. Advisory-only either way —
+the architecture write-set norm keeps the plugin from writing `.gitattributes` itself.
+`test_count` churn is #633's scope — linked, not built here.
+
+### F7 — `active_build_plan` is branch state stored in a product-level scalar
+
+**Evidence.** Both forced develop merges in kairo required a judgment call on the
+`active_build_plan` line of `project-state.yaml`; #283 (BLD-7W2J, 2026-06-10) records the class:
+two concurrent branches each set the one pointer, guaranteeing a same-line conflict on develop,
+after which one plan is invisible to every pointer-resolved governance surface until repointed.
+Owner, 2026-08-13: *"the active build plan is a property of the branch, not the product."* The
+current RETAIN-on-develop convention even has to instruct sessions to ignore an advisory because
+the pointer keeps naming a merged-but-unreleased plan.
+
+**Mechanism.** One parity-tested resolver pair (`core.resolve_build_plan_path` + the
+`bin/prawduct-hook` inline mirror) serves every reader (stop hook, briefing,
+`infer-critic-mode`, `record_lint`, `verify-chunk-refs`, archive/backfill) — so the resolution
+rule can change in one place.
+
+**Why not a literal git branch decoration.** `branch.<name>.description`, per-branch config, and
+notes refs are per-clone and non-propagating: a fresh clone, a second collaborator, or CI loses
+them silently, and the gates then fail *open* (no plan → no Critic trigger). The only
+branch-scoped state git shares reliably is content committed on the branch.
+
+**Fix (Chunk 06) — the plan declares its branch.** Build plans gain optional frontmatter
+`branch: <name>`; the resolver prefers the live (non-archived) plan whose `branch:` matches
+`git branch --show-current`, falling back to the `active_build_plan` scalar, then the
+conventional default — so existing repos behave unchanged until a plan opts in. Two live plans
+claiming one branch is a loud error, never a silent pick. Merge semantics come free: each plan
+file is its own file (no shared-line conflicts); archiving moves the plan out of the live
+directory, ending its claim; a plan merged to develop carries a `branch:` that no longer matches,
+so it reads live-but-inactive — which is exactly what RETAIN wants, with no advisory to ignore.
+Closes #283's in-flight half (the release-side half was already solved by scope enumeration).
 
 ## Deferred captures (foundational — backlog, not this pass)
 

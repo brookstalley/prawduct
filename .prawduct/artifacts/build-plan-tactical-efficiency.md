@@ -45,8 +45,11 @@ protocols); no fast-moving or post-cutoff dependency exists.
 - [ASSUMPTION: Chunk 04's severity ceiling for non-load-bearing prose applies in `chunk`,
   `final`, and `cumulative` modes alike (verify mode is already blocking-only) | MED impact |
   user can restrict it to cumulative-only]
-- [ASSUMPTION: Chunk 06 stays advisory-only per the architecture write-set norm (see governed_by
+- [ASSUMPTION: Chunk 07 stays advisory-only per the architecture write-set norm (see governed_by
   DECISION) | LOW impact | user can amend the norm to allow the write]
+- [ASSUMPTION: Chunk 06 keeps the `active_build_plan` scalar as a working fallback rather than
+  deprecating it in this pass — consumer migration is a follow-on | MED impact | user can widen
+  to full scalar retirement]
 
 **What would raise confidence:** Nothing pending — the veto window on the assumptions above is
 the remaining input.
@@ -58,12 +61,17 @@ the remaining input.
 - [ ] Chunk 03: Disposition-aware reviews — accepted findings stop being re-litigated
 - [ ] Chunk 04: Prose findings priced honestly — severity ceilings, deletion-first remedies, no archaeology
 - [ ] Chunk 05: Verify-resolutions golden path at every point of action
-- [ ] Chunk 06: Doctor recommends union-merge for the append-only change-log
-Context: Plan authored 2026-08-13 by the Fable analysis session; nothing built yet. Executes on
-Opus. Parent evidence: `tactical-efficiency-analysis-2026-08-13.md` — read it before Chunk 01;
-each chunk cites its finding (F1–F6). Backlog: #565 is closed by Chunk 01 (archive it in the
+- [ ] Chunk 06: The plan declares its branch — active-plan resolution goes branch-scoped
+- [ ] Chunk 07: Advisory recommends union-merge for the append-only change-log
+Context: Plan authored 2026-08-13 by the Fable analysis session (Chunks 06–07 added same day
+after owner feedback: doctor is rarely run → advisory surface; active plan is branch state →
+Chunk 06). Nothing built yet. Executes on Opus. Parent evidence:
+`tactical-efficiency-analysis-2026-08-13.md` — read it before Chunk 01; each chunk cites its
+finding (F1–F7). Backlog: #565 is closed by Chunk 01, #283 by Chunk 06 (archive both in the
 closing PR, not after). Branch: build on `feat/tactical-efficiency-pass` off `develop`. Set
-`active_build_plan` to this file when the build session starts. Next: Chunk 01.
+`active_build_plan` to this file when the build session starts (Chunk 06 is what makes that
+scalar legacy; this plan itself opts into `branch:` frontmatter once Chunk 06 lands). Next:
+Chunk 01.
 
 ## Scaffolding
 
@@ -253,21 +261,68 @@ this repo after the change and reading the manifest/report surfaces. Chunk 06 by
   3. `/prawduct:critic` run and blocking findings resolved
   4. Committed and chunk marked `[x]` in Status
 
-### Chunk 06: Doctor recommends union-merge for the append-only change-log (analysis F6)
+### Chunk 06: The plan declares its branch — active-plan resolution goes branch-scoped (analysis F7; closes #283)
+
+- **Description:** `active_build_plan` is branch state stored in a product-level scalar — two
+  concurrent branches guarantee a same-line conflict, and after the merge one plan is invisible
+  to every pointer-resolved surface. Invert the pointer: build plans gain optional frontmatter
+  `branch: <name>`, and the resolver pair (`core.resolve_build_plan_path` + the parity-tested
+  `bin/prawduct-hook` mirror — change BOTH, the parity test pins them) resolves in precedence
+  order: (1) the live (non-archived) plan under `artifacts/` whose `branch:` matches
+  `git branch --show-current`; (2) the `active_build_plan` scalar; (3) the conventional default.
+  Existing repos behave unchanged until a plan opts in. **Two live plans claiming the current
+  branch is a loud error** surfaced by the resolver's callers, never a silent pick (authority
+  fails closed). Detached HEAD or a non-matching `branch:` falls through to (2)/(3); the session
+  briefing names a live plan whose `branch:` matches no existing branch (advice, fails soft).
+  Archive keeps working with less ceremony: moving a plan under `archive/` ends its claim, so
+  `archive-plan`'s pointer-clearing becomes unnecessary for frontmatter-resolved plans (keep it
+  for the scalar). NOT in scope: removing the scalar, migrating consumer repos, or touching the
+  release-side scope enumeration (already pointer-free). Frontmatter scanning may open every
+  live `artifacts/*.md` header — keep it cheap (first-KB reads) and note that Chunk 02's memo
+  does not cover this path.
+  Docs: `plugin/templates/build-plan.md` frontmatter gains `branch:` with a two-line comment;
+  `plugin/methodology/planning.md` "Plan lifecycle" paragraph updated (the gitflow RETAIN story
+  simplifies: a merged plan's `branch:` stops matching, so it reads live-but-inactive with no
+  advisory to ignore); `plugin/skills/pr/SKILL.md` merge-flow pointer language updated.
+- **Depends on:** none (touches `plugin/lib/core.py`, `plugin/bin/prawduct-hook`; independent of
+  Chunks 01–05)
+- **Artifacts consumed:** `tactical-efficiency-analysis-2026-08-13.md` §F7
+- **Tests:** branch-match wins over scalar; scalar still wins when no plan matches; default when
+  neither; ambiguity (two live plans, same `branch:`) errors loudly; archived plan with matching
+  `branch:` is ignored; detached HEAD falls through; parity test still pins resolver and mirror;
+  this plan's own file gains `branch: feat/tactical-efficiency-pass` as the first opt-in
+- **Acceptance criteria:** on this branch with the frontmatter added and the scalar left pointing
+  at the purpose-and-cession plan, every pointer-resolved surface (briefing, `infer-critic-mode`,
+  stop-hook gate trigger) resolves THIS plan; on develop nothing changes; suite green
+- **Critic mode:** final
+  <!-- Override: every governance surface resolves through this pair — coherence check before
+       the last chunk rides on it. -->
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. Change-log entry added
+  3. `/prawduct:critic` run and blocking findings resolved
+  4. `/prawduct:backlog update 283 status=shipped closed-by=tactical-efficiency`
+  5. Committed and chunk marked `[x]` in Status
+
+### Chunk 07: Advisory recommends union-merge for the append-only change-log (analysis F6)
 
 - **Description:** In both observed forced base syncs, 100% of merge conflicts were prawduct's
-  own files, led by top-appended `.prawduct/change-log.md`. Add a `/prawduct:doctor` check that
-  detects a committed `.prawduct/change-log.md` with no `merge=union` gitattribute and
-  RECOMMENDS the exact line (`.prawduct/change-log.md merge=union`), explaining the conflict
-  class it removes. Advisory-only per the governed_by DECISION — doctor prints, never writes.
-  Document the recommendation where the change-log convention lives. `test_count` churn is out of
-  scope here — #633 owns it (this analysis added evidence there).
+  own files, led by top-appended `.prawduct/change-log.md`. Add a **post-sync advisory probe**
+  (register in `lib/probe_families.register_all`, same pattern as
+  `stale_base_probes.probe_unpromoted_release_prep` — trigger and resolution read the same
+  observable state) that fires when a committed `.prawduct/change-log.md` has no `merge=union`
+  gitattribute, RECOMMENDS the exact line (`.prawduct/change-log.md merge=union`), and
+  self-resolves once the attribute exists. The advisory surface is chosen because it runs in
+  every session briefing — doctor is rarely run (owner, 2026-08-13); doctor may list the same
+  check as a secondary surface if cheap. Advisory-only per the governed_by DECISION — recommend,
+  never write. `test_count` churn is out of scope — #633 owns it.
 - **Depends on:** none
 - **Artifacts consumed:** `tactical-efficiency-analysis-2026-08-13.md` §F6
-- **Tests:** doctor fires on a fixture repo without the attribute; silent when present; silent
-  when change-log is absent/gitignored
-- **Acceptance criteria:** `/prawduct:doctor` in a fixture consumer prints the recommendation
-  once with the verbatim line; suite green
+- **Tests:** probe fires on a fixture repo without the attribute; returns `[]` when present, when
+  change-log is absent/gitignored, and when `git check-attr` is unavailable (fail soft, say why);
+  advisory id stable across firings
+- **Acceptance criteria:** fixture briefing shows the advisory with the verbatim line; adding the
+  line resolves it on next sync; suite green
 - **Type:** cumulative-final
   <!-- Last chunk: its review IS the one `/prawduct:critic cumulative` over the branch —
        commit first, run once; that review is also the `/prawduct:pr create` gate. -->
@@ -287,13 +342,15 @@ fresh cumulative — the headline tax, gone, demonstrable in one command.
 ## Governance Checkpoints
 
 **Commit & PR cadence:** feature branch `feat/tactical-efficiency-pass` off `develop`; commit per
-chunk after its Critic review passes. Chunk 06's cumulative makes the branch PR-ready;
-`/prawduct:pr create` when the user asks. All bookkeeping (backlog archives incl. #565,
+chunk after its Critic review passes. Chunk 07's cumulative makes the branch PR-ready;
+`/prawduct:pr create` when the user asks. All bookkeeping (backlog archives incl. #565 and #283,
 change-log entries with `scope=tactical-efficiency` and no `release=`) rides in the branch.
 
 - After Chunk 01 (`final` review): the keystone — confirm the transfer's fail-closed posture and
   the soundness boundary prose before anything builds near it.
 - After Chunk 04: re-read the four prose rules end-to-end across the three protocol files for
   coherence (they were edited in two chunks; Principle 13).
-- After Chunk 06 (cumulative): full-bundle review; then re-measure a consumer branch's round
+- After Chunk 06 (`final` review): confirm every pointer-resolved surface behaves identically on
+  a repo with no `branch:` opt-in — the fallback chain is the compatibility contract.
+- After Chunk 07 (cumulative): full-bundle review; then re-measure a consumer branch's round
   count in a follow-up session — the analysis' cost baseline is the before-picture.
