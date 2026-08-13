@@ -127,11 +127,18 @@ machinery at once.
 - Rebase/amend changes the tree → coverage gap composition cannot close.
   Correct by design; squash-merge preserves the tree, so squashed PRs stay
   covered. **Amended 2026-08-13 (tactical-efficiency Chunk 01):** "→ re-review"
-  is no longer the only outcome. The PR gate closes one case of that gap by a
+  is no longer the only outcome. BOTH review gates close one case of that gap by a
   separate COMPUTED route — a base advance (merge or rebase) leaving the
   branch's own diff byte-identical transfers its coverage, subject to a suite
-  run that has met the resulting tree (`coverage.diagnose_base_advance_transfer`).
-  Composition itself is unchanged; the transfer sits beside it, not inside it.
+  run that has met the tree that gate vouches for
+  (`coverage.diagnose_base_advance_transfer`). Composition itself is unchanged;
+  the transfer sits beside it, not inside it. The PR gate applies it to
+  merge-base tree → HEAD tree; the Stop gate applies it on its merge-base
+  FALLBACK span only (merge-base tree → working tree) — never to its own session
+  span, whose start node no base sync moves. A grant is recorded as its own
+  observable yield (`gates.record_transfer_grant`), by the authority paths only:
+  the session-start briefing reads the same verdict as advice and writes
+  nothing.
 
 [ASSUMPTION: tree-SHA keying via temp-index write-tree is viable in every
 supported topology (worktrees, containers, headless) — chunk 1 spikes it

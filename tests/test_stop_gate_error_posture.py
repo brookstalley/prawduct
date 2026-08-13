@@ -87,7 +87,7 @@ class TestGateErrorFailsClosedAndLoud:
         monkeypatch.setattr(
             gates,
             "session_review_verdict",
-            lambda project_dir: (_ for _ in ()).throw(RuntimeError("boom-XYZ")),
+            lambda project_dir, **_kw: (_ for _ in ()).throw(RuntimeError("boom-XYZ")),
         )
 
         rc = _hook.cmd_stop(repo, {})

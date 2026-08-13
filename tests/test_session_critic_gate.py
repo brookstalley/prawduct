@@ -296,7 +296,7 @@ class TestBaseFallbacks:
 
 
 def _write_test_evidence(repo: Path, *, tree: "str | None" = ...) -> None:
-    """A saved suite run in the shape ``gates.suite_vouches_for_current_tree``
+    """A saved suite run in the shape ``gates.suite_vouches_for_tree``
     accepts — recorded ``evidence_tree`` == the current working tree. Timing is
     deliberately not what the transfer's third condition reads, so pass an
     explicit ``tree`` to model a run that predates the base advance."""
@@ -377,9 +377,11 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         assert verdict["transferred"]["files"] == ["feature.py"]
 
     def test_the_grant_emits_the_same_yield_signal(self, tmp_path):
+        # `record_grants=True` is the AUTHORITY path — what the Stop hook passes
+        # at session end. See the sibling below for why it is not the default.
         repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
         _write_test_evidence(repo)
-        assert gates.session_review_verdict(repo)["status"] == "covered"
+        assert gates.session_review_verdict(repo, record_grants=True)["status"] == "covered"
         records = [
             f
             for f in evidence.read_facts(repo)["facts"]
@@ -389,14 +391,31 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         assert records[0]["body"]["guard"] == "base-advance-transfer"
         assert records[0]["body"]["gate"] == "session-review-verdict"
 
+    def test_the_advice_path_records_nothing(self, tmp_path):
+        """The same verdict is read twice: by the Stop gate (authority, session
+        END) and by the session-START briefing (advice), which wraps the call in
+        a broad `except`. Recording from the advice path would be a store write
+        on a session-start read whose fail-soft attribution is swallowed, filed
+        under a gate that did not run — and it would change the store
+        fingerprint at session start, evicting the verdict memo. Authority
+        records its own yield; advice observes and writes nothing."""
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        before = evidence.store_path(repo).read_bytes()
+        assert gates.session_review_verdict(repo)["status"] == "covered"
+        assert evidence.store_path(repo).read_bytes() == before
+
     def test_a_repeated_gate_call_leaves_the_store_byte_identical(self, tmp_path):
         repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
         _write_test_evidence(repo)
-        assert gates.session_review_verdict(repo)["status"] == "covered"
+        assert gates.session_review_verdict(repo, record_grants=True)["status"] == "covered"
         store = evidence.store_path(repo)
         after_first = store.read_bytes()
+        # The repeats must ALSO take the recording path, or this proves nothing:
+        # the advice path writes nothing by construction, so a loop without
+        # `record_grants=True` would pass whether or not the dedupe key works.
         for _ in range(3):
-            assert gates.session_review_verdict(repo)["status"] == "covered"
+            assert gates.session_review_verdict(repo, record_grants=True)["status"] == "covered"
         assert store.read_bytes() == after_first
 
     def test_an_unreviewed_judgeable_change_on_an_advanced_base_still_blocks(
@@ -789,7 +808,7 @@ class TestSupersededAdviceReachesTheStopHook:
         monkeypatch.setattr(
             gates,
             "session_review_verdict",
-            lambda project_dir: {
+            lambda project_dir, **_kw: {
                 "status": "blocked",
                 "unresolved": [
                     {

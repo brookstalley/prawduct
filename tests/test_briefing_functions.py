@@ -564,7 +564,7 @@ class TestCheckPreviousSessionGates:
         )
         monkeypatch.setattr(briefing.gates, "_has_build_plan_in_state", lambda d: False)
         monkeypatch.setattr(
-            briefing.gates, "session_review_verdict", lambda d: {"status": "uncovered", "reason": "no facts"}
+            briefing.gates, "session_review_verdict", lambda d, **_kw: {"status": "uncovered", "reason": "no facts"}
         )
 
     def test_no_changes_short_circuits(self, tmp_path, monkeypatch):

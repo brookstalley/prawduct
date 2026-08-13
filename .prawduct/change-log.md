@@ -3,6 +3,46 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: the cumulative's eight warnings, resolved
+
+<!-- prawduct: type=fix | scope=tactical-efficiency -->
+
+The branch cumulative (`rev-20260813T174223Z-0cc2fd49`) returned 0 blocking and 8 warnings. Three
+were real defects in what had already shipped, and all three came from the same place — a claim
+that was true when written and stopped being true later in the same bundle.
+
+**Condition 3 asked about the wrong tree at the PR gate.** `suite_vouches_for_current_tree`
+compared saved evidence against the *working* tree, but `check_cumulative_critic` vouches for
+`HEAD^{tree}`. With uncommitted judgeable edits the gate could print `satisfied (… suite current)`
+for a HEAD tree no suite run had met. It is now `suite_vouches_for_tree(project_dir, target_tree)`
+and each gate passes the tree it actually vouches for; the Stop gate's default stays the working
+tree, which is its own target.
+
+**The verdict memo's key omitted the code that computed the verdict.** It covered both trees and
+the store, but the verdict also depends on `coverage_algebra.is_judgeable_path`, and the cache
+persists in `.git/prawduct/` across plugin upgrades — so widening judgeability in a release would
+replay `covered` entries the new rules would not grant. `CACHE_SCHEMA` was the intended guard and
+is a hand bump nothing enforces; a maintainer changing judgeability has no reason to open a cache
+module. The plugin version is now in the key, derived rather than remembered.
+
+**A read path grew a store write.** `_merge_base_verdict` → `record_transfer_grant` appends a fact,
+and `session_review_verdict` has two callers: the Stop gate (authority, session end) and the
+session-start briefing (advice), which wraps it in a broad `except`. From the briefing the append
+was silent, its fail-soft attribution swallowed, filed under a gate that had not run — and it moved
+the store fingerprint at session start, evicting the memo the previous chunk had just built.
+Recording is now opt-in (`record_grants=`), taken only by the authority path. Advice observes and
+writes nothing, pinned by a test.
+
+Also: the `prior_dispositions` instruction was reachable only from Goal 2's section, so two of the
+three coordinator reviewers were never told about it — Chunk 03's own mechanism, unreachable for
+two thirds of its audience. It moved to `agents/critic-reviewer.md`, which every reviewer reads.
+`review-cycle.md` contradicted itself eleven lines apart on whether a rebase demands a fresh
+review. Both design artifacts still said only the PR gate transfers, which `243c7761` falsified in
+the same bundle. The memo now attributes its degraded states — an inert cache and a failed flush
+were both silent, and the symptom is every gate call back on the cold path with nothing to point
+at. Chunk 06's acceptance criterion was amended: it named "the scalar left pointing at the
+purpose-and-cession plan", which this branch's own pointer flip would have made pass vacuously.
+
 ## 2026-08-13: accepted findings stop being re-litigated, and one defect reads as one
 
 <!-- prawduct: type=feat | scope=tactical-efficiency -->
@@ -53,6 +93,7 @@ Both budgeted protocol files hit their ceilings. Raised once with the whole pass
 (`goals-1-3.md` 2000→2250, `review-protocol.md` 3620→3800) rather than three creeping raises across
 Chunks 03–05; deduping was attempted first and found nothing — the last edit had already squeezed
 both to 1–2 tokens of headroom, which their own budget comments record.
+
 ## 2026-08-13: syncing a base no longer clears the PR gate and blocks at session end
 
 <!-- prawduct: type=fix | scope=tactical-efficiency -->
@@ -8545,6 +8586,7 @@ Two things the review process caught that are worth keeping. `review-protocol.md
 redundant — `test_project_preferences_blocking` proved it load-bearing, and the tokens came from
 compressing Goal 7's close instead. And repointing the stale `active_build_plan` immediately failed a
 chunk-heading guard, which turned out to be a drifted *test* rather than a plan defect (TST-6K3D).
+
 ## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
 
 <!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
@@ -9128,6 +9170,7 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   an open-but-redirected item (the CRASH-2 window). Fake gains `seed_pull_requests`.
 
 **Classification:** structural
+
 ## 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)
 
 <!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
@@ -9530,6 +9573,7 @@ PR/commit text legitimately cite chunks). Installed at: Principle 13 (Coherent A
 Principle 10's construction-equipment metaphor); `methodology/building.md` builder rule;
 `methodology/session-digest.md` (product-facing carrier); Critic Goal 4 (`ephemeral-ref
 firewall` → WARNING). A deterministic grep tripwire was deliberately deferred (case-law-first; filed as `[GOV-3P8K]`).
+
 ## 2026-07-14: Stale remote-base diagnostics for the cumulative-critic gate (stale-remote-base-diagnostics)
 
 <!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->

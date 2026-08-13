@@ -120,7 +120,7 @@ LAST_MEASURED_TOKENS = {
     # blocking-remedy mechanics were each stated a second time here after the
     # composition bullets above already owned them, and the selective-commit
     # routing a third.
-    "skills/critic/review-cycle.md": 9597,
+    "skills/critic/review-cycle.md": 9599,
     "skills/critic/framework-checks.md": 1116,
 }
 

@@ -68,7 +68,7 @@ the remaining input.
 - [ ] Chunk 07: Advisory recommends union-merge for the append-only change-log
 Context: Plan authored 2026-08-13 by the Fable analysis session (Chunks 06–07 added same day
 after owner feedback: doctor is rarely run → advisory surface; active plan is branch state →
-Chunk 06). Nothing built yet. Executes on Opus. Parent evidence:
+Chunk 06). Chunks 01–03 built and committed; 04–07 outstanding. Executes on Opus. Parent evidence:
 `tactical-efficiency-analysis-2026-08-13.md` — read it before Chunk 01; each chunk cites its
 finding (F1–F7). Backlog: #565 is closed by Chunk 01 (shipped), #283 by Chunk 06 (archive in the
 closing PR, not after). Branch: build on `feat/tactical-efficiency-pass` off `develop`;
@@ -82,7 +82,11 @@ path — so `evidence.tree_diff` now sends `:(literal)` pathspecs and reads `-z`
 findings were filed rather than built, both deliberate scope calls with their reasons on the
 issues: **#654** (the Stop gate composes the same span and attempts no transfer, so a synced
 branch passes the PR gate and is then blocked at session end) and **#655** (a transferred pass
-emits no yield signal, against the standing control-observability norm).
+emits no yield signal, against the standing control-observability norm). **Both were then built by
+a worktree subagent at the owner's request and merged into this branch (`243c7761`), so they ship
+here rather than later** — the Stop gate transfers on its merge-base fallback span only, and a
+grant records its yield through a span-keyed `guard-refusal` fact that repeated polls do not
+duplicate.
 
 Chunk 02 landed 2026-08-13 (`65b37539`; review `rev-20260813T161546Z-20da8706` + verify pass,
 final state 0 findings). Profiled before building: the entire 29–120 s gate cost is
@@ -315,9 +319,19 @@ this repo after the change and reading the manifest/report surfaces. Chunk 06 by
   neither; ambiguity (two live plans, same `branch:`) errors loudly; archived plan with matching
   `branch:` is ignored; detached HEAD falls through; parity test still pins resolver and mirror;
   this plan's own file gains `branch: feat/tactical-efficiency-pass` as the first opt-in
-- **Acceptance criteria:** on this branch with the frontmatter added and the scalar left pointing
-  at the purpose-and-cession plan, every pointer-resolved surface (briefing, `infer-critic-mode`,
-  stop-hook gate trigger) resolves THIS plan; on develop nothing changes; suite green
+- **Acceptance criteria:** on this branch with the frontmatter added, every pointer-resolved
+  surface (briefing, `infer-critic-mode`, stop-hook gate trigger) resolves THIS plan by its
+  `branch:` **without consulting the scalar** — demonstrate precedence by pointing the scalar at a
+  DIFFERENT live plan for the check, not by relying on its incumbent value; on develop nothing
+  changes; suite green.
+  <!-- Amended 2026-08-13: the original said "the scalar left pointing at the purpose-and-cession
+       plan". This branch repointed it at THIS plan when the build session opened, so that form
+       would now pass vacuously — both routes would agree and precedence would go untested. -->
+  **Also verify the two consumers this pass found empirically:** `critic-begin` could not resolve
+  the plan from the branch name (`feat/tactical-efficiency-pass` does not match scope
+  `tactical-efficiency`) and fell back to the scalar with ledger scope `(none)`, and Chunk 03's
+  `prior_dispositions` work-scope filter is inert until a dispatch resolves a scope. Both should
+  start working when this chunk lands; if they do not, the chunk is not done.
 - **Critic mode:** final
   <!-- Override: every governance surface resolves through this pair — coherence check before
        the last chunk rides on it. -->

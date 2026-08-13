@@ -203,7 +203,9 @@ def _test_evidence_tree_valid(
     )
 
 
-def suite_vouches_for_current_tree(project_dir: Path) -> tuple[bool, str]:
+def suite_vouches_for_tree(
+    project_dir: Path, target_tree: "str | None" = None
+) -> tuple[bool, str]:
     """Did the saved suite run actually run against *this* tree?
 
     Deliberately STRICTER than :func:`tests_are_current`, and the difference is
@@ -227,6 +229,14 @@ def suite_vouches_for_current_tree(project_dir: Path) -> tuple[bool, str]:
     (:func:`_test_evidence_tree_valid`). Evidence with no ``evidence_tree`` —
     pre-clause records, and the ``--from-counts`` on-ramp — cannot answer the
     question at all, so it denies rather than falling back to timing.
+
+    **``target_tree`` is the tree the CALLING GATE vouches for, and the two
+    gates do not agree on it.** The PR gate composes to ``HEAD^{tree}``; the
+    Stop gate composes to the working tree. Defaulting to the working tree for
+    both looked harmless and is not: with a dirty tree they differ, so a suite
+    run that met the working tree would have vouched for HEAD at the PR gate
+    while never having seen it. Passing the target makes each gate check the
+    tree it is actually about. ``None`` means the working tree.
 
     Returns ``(vouches, reason)``; the reason is printed either way, because a
     denial here is the cheapest remedy the gate has to offer.
@@ -254,8 +264,26 @@ def suite_vouches_for_current_tree(project_dir: Path) -> tuple[bool, str]:
             "tree it ran against — re-run the suite (or restamp with "
             "`test-evidence record --no-rerun`) so the transfer has a tree to check"
         )
-    valid, reason = _test_evidence_tree_valid(project_dir, recorded_tree)
-    return valid, reason
+    if target_tree is None:
+        # No target named: the working tree, which is the Stop gate's own
+        # target. `_test_evidence_tree_valid` captures it itself.
+        return _test_evidence_tree_valid(project_dir, recorded_tree)
+    if target_tree == recorded_tree:
+        return True, f"the suite ran against this exact tree ({recorded_tree[:12]})"
+    changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
+    if changed is None:
+        return False, "tree diff unavailable (missing object or git failure)"
+    judgeable = coverage_algebra.judgeable_files(changed)
+    if judgeable:
+        preview = ", ".join(judgeable[:3]) + ("…" if len(judgeable) > 3 else "")
+        return False, (
+            f"{len(judgeable)} judgeable path(s) differ between the saved run and "
+            f"the tree this gate vouches for ({preview})"
+        )
+    return True, (
+        f"only non-judgeable paths differ between the saved run and "
+        f"{target_tree[:12]} ({len(changed)} metadata/doc file(s))"
+    )
 
 
 def _read_session_start(prawduct_dir: Path) -> str:
@@ -746,7 +774,7 @@ def record_transfer_grant(
     return recorded
 
 
-def session_review_verdict(project_dir: Path) -> dict:
+def session_review_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:
     """The Stop-hook Critic gate's question, answered by composition (Q2):
     does composed review coverage span this session's base tree → the current
     working tree, with zero unresolved blocking findings?
@@ -825,7 +853,9 @@ def session_review_verdict(project_dir: Path) -> dict:
     verdict = coverage_algebra.coverage_verdict(facts, base, target, diff_fn, key_fn)
     transfer_note: "str | None" = None
     if verdict["status"] != "covered" and base_source == "marker":
-        mb_verdict = _merge_base_verdict(project_dir, facts, target, diff_fn, key_fn)
+        mb_verdict = _merge_base_verdict(
+            project_dir, facts, target, diff_fn, key_fn, record_grants=record_grants
+        )
         if mb_verdict is not None:
             transfer_note = mb_verdict.pop("transfer_note", None)
         if mb_verdict is not None and (
@@ -847,7 +877,13 @@ def session_review_verdict(project_dir: Path) -> dict:
 
 
 def _merge_base_verdict(
-    project_dir: Path, facts: list[dict], target: str, diff_fn, key_fn
+    project_dir: Path,
+    facts: list[dict],
+    target: str,
+    diff_fn,
+    key_fn,
+    *,
+    record_grants: bool = False,
 ) -> "dict | None":
     """Coverage of merge-base tree → ``target`` — the session gate's
     unwedging fallback (see :func:`session_review_verdict`). ``None`` when
@@ -876,7 +912,7 @@ def _merge_base_verdict(
     exactly the branch diff. The substitution costs nothing in soundness —
     uncommitted judgeable work makes the required diff differ from any reviewed
     one and condition 1 denies — and condition 3 lands MORE squarely here than at
-    the PR gate, because :func:`suite_vouches_for_current_tree` asks about the
+    the PR gate, because :func:`suite_vouches_for_tree` defaults to the
     working tree, which is this gate's target.
 
     Attempted only on ``uncovered``: a ``blocked`` span is owed a blocker, and
@@ -917,7 +953,7 @@ def _merge_base_verdict(
             f"cheap check was unavailable"
         )
         return verdict
-    tests_ok, tests_reason = suite_vouches_for_current_tree(project_dir)
+    tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
     if not tests_ok:
         verdict["transfer_note"] = (
             f"this branch's own diff is byte-identical to the span review "
@@ -928,9 +964,18 @@ def _merge_base_verdict(
             f"record`, then re-run: the coverage transfers and no review is needed"
         )
         return verdict
-    record_transfer_grant(
-        project_dir, facts, transfer, mb_tree, target, "session-review-verdict"
-    )
+    # Recording is OPT-IN, and the reason is the second caller. This verdict is
+    # read by the Stop gate (authority, session end) and by the session-start
+    # briefing (advice), and the briefing wraps the call in a broad `except` —
+    # so an append from that path would be a store write on a session-START read
+    # path whose fail-soft attribution is swallowed, filed under a gate that did
+    # not run. It would also change the store fingerprint at session start,
+    # evicting the very memo the previous chunk built. Authority records its own
+    # yield; advice observes and writes nothing.
+    if record_grants:
+        record_transfer_grant(
+            project_dir, facts, transfer, mb_tree, target, "session-review-verdict"
+        )
     return {
         "status": "covered",
         # No composed path exists over THIS span — the coverage was computed,
@@ -1294,7 +1339,7 @@ def check_cumulative_critic(project_dir: Path) -> int:
     One computed exception precedes that verdict: when the span went uncovered
     only because the BASE ADVANCED, coverage **transfers** — conditions and
     their rationale in :func:`coverage.diagnose_base_advance_transfer` and
-    :func:`suite_vouches_for_current_tree`, which own them. All hold → exit 0
+    :func:`suite_vouches_for_tree`, which own them. All hold → exit 0
     with the transfer named, and the firing recorded
     (:func:`record_transfer_grant` — the transfer's yield has to be countable).
     Any unverifiable → no transfer and the remedy above stands unchanged,
@@ -1312,7 +1357,26 @@ def check_cumulative_critic(project_dir: Path) -> int:
     try:
         return _cumulative_critic_verdict(project_dir, read, cache)
     finally:
-        cache.flush()
+        # A memo that silently stops working is indistinguishable from one that
+        # was never built, and the symptom — every call back on the ~17 s cold
+        # path — reads as "the gate is slow again" with nothing to point at.
+        # Attributed on the DEGRADED paths only: a working memo says nothing,
+        # because a line printed on every successful gate call is noise that
+        # trains the reader to skip the block where real remedies live.
+        if not cache.enabled:
+            print(
+                "NOTE: the coverage-verdict memo is inert (no readable evidence "
+                "store), so this verdict was computed cold and the next call will "
+                "be too.",
+                file=sys.stderr,
+            )
+        elif not cache.flush() and cache.misses:
+            print(
+                "NOTE: the coverage-verdict memo could not be saved, so the "
+                f"{cache.misses} verdict(s) computed here will be recomputed on "
+                "the next call. The verdict itself is unaffected.",
+                file=sys.stderr,
+            )
 
 
 def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
@@ -1406,7 +1470,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     )
     transfer_stale: "str | None" = None
     if transfer is not None and transfer.get("status") == "match":
-        tests_ok, tests_reason = suite_vouches_for_current_tree(project_dir)
+        tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
         if tests_ok:
             record_transfer_grant(
                 project_dir,

@@ -65,8 +65,26 @@ def cache_path(project_dir: Path) -> "Path | None":
 
 
 def _key(base_tree: str, target_tree: str, fingerprint: str) -> str:
+    """The memo key covers every input the verdict is a function of — including
+    the CODE that computed it.
+
+    The plugin version is in here because the cache outlives the plugin: it
+    persists in `.git/prawduct/` across upgrades, and the verdict depends on
+    `coverage_algebra.is_judgeable_path`, which decides which files need review
+    at all. Widen that predicate in a release and every entry written by the
+    older one becomes a `covered` the new rules would not grant. `CACHE_SCHEMA`
+    was the intended guard and is a hand bump that nothing enforces — a
+    maintainer changing judgeability has no reason to look at a cache module.
+    The version is derived, so it cannot be forgotten.
+    """
     return hashlib.sha256(
-        "\0".join((str(CACHE_SCHEMA), base_tree, target_tree, fingerprint)).encode()
+        "\0".join((
+            str(CACHE_SCHEMA),
+            evidence._plugin_version() or "unversioned",
+            base_tree,
+            target_tree,
+            fingerprint,
+        )).encode()
     ).hexdigest()
 
 

@@ -382,7 +382,7 @@ def diagnose_base_advance_transfer(
     transfers to the required one when the two spans hold *the same branch diff*.
 
     Conditions 1 and 2 are this function's; condition 3 is the caller's
-    (:func:`gates.suite_vouches_for_current_tree`, which owns the evidence and
+    (:func:`gates.suite_vouches_for_tree`, which owns the evidence and
     states what it requires)::
 
         1. the two spans' judgeable changed-file sets are identical

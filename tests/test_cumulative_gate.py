@@ -134,7 +134,7 @@ def _advanced_base_repo(
 def _write_test_evidence(
     repo: Path, *, failed: int = 0, tree: "str | None" = ..., omit_tree: bool = False
 ) -> None:
-    """Saved test evidence in the shape ``gates.suite_vouches_for_current_tree``
+    """Saved test evidence in the shape ``gates.suite_vouches_for_tree``
     accepts: a run whose recorded ``evidence_tree`` is the CURRENT working tree.
 
     Timing is deliberately not what the transfer's condition 3 reads, so these
@@ -589,7 +589,7 @@ class TestBaseAdvanceTransfer:
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 1
         assert "transferred" not in err
-        assert "judgeable path(s) changed since the run" in err
+        assert "differ between the saved run and the tree this gate vouches for" in err
 
     def test_evidence_without_a_recorded_tree_denies(self, tmp_path, capsys):
         # A `--from-counts` record cannot say which tree it ran against, so it

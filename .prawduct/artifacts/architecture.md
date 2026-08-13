@@ -180,10 +180,12 @@ CRT-8L3Q.
   tree, so a review recorded before commit still vouches for the eventual commit from any checkout.
   Gates answer coverage by *composition over trees*: a squash-merge (same tree) stays covered, and a
   rebase or amend (new tree) opens a coverage gap that composition alone cannot close. This is what
-  makes governance survive normal git workflows instead of fighting them. The PR gate closes one
+  makes governance survive normal git workflows instead of fighting them. Both review gates close one
   case of that gap by a separate *computed* route rather than by composition — a base advance (merge
   or rebase) that leaves the branch's own diff byte-identical transfers its coverage, subject to a
-  suite run that has met the resulting tree (`coverage.diagnose_base_advance_transfer`).
+  suite run that has met the tree that gate vouches for
+  (`coverage.diagnose_base_advance_transfer`). Only the authority paths record a grant; the
+  session-start briefing reads the same verdict as advice and writes nothing.
 - **The evidence store is shared across all worktrees of a clone**, because it lives inside the
   shared `.git` common dir. Every worktree appends to and reads the same log, so review coverage
   composes across worktrees — while unrelated clones are isolated by construction.

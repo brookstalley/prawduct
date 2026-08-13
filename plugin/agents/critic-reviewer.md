@@ -47,8 +47,14 @@ project directory, so join a relative one onto the project directory your prompt
    from "reviewer never started" for the minutes before your partial lands. Skipping it makes your whole run indistinguishable from a dead dispatch.
 2. Read the goal definitions for YOUR goals from `review-protocol.md` (in the Critic skill
    directory). Review ONLY your assigned goals — the other reviewers cover the rest.
-3. Read the changed files and inspect the diff (read-only git). Do NOT run tests or builds.
-4. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
+3. Read the manifest's **`prior_dispositions`** — findings already accepted or filed for this work,
+   with reasons. **Do not re-raise one absent material change in its cited files**; acknowledge it
+   in one line under a `priors:` note instead. It is here rather than in a goal's section because
+   it binds every reviewer: a re-raised accepted finding costs the builder a disposition and buys a
+   round, whichever goal noticed it. (`truncated` = older answers dropped; `unavailable` = the join
+   failed, so you know nothing.)
+4. Read the changed files and inspect the diff (read-only git). Do NOT run tests or builds.
+5. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
    (definitions in `review-protocol.md`). A clean pass has zero findings — that is normal and
    correct; do not invent findings to fill space.
 

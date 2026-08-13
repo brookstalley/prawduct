@@ -2003,7 +2003,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     ):
         critic_would_block = True
         try:
-            critic_verdict = _gates().session_review_verdict(project_dir)
+            critic_verdict = _gates().session_review_verdict(
+                project_dir, record_grants=True
+            )
             critic_would_block = critic_verdict.get("status") != "covered"
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             # Fail closed AND loud (C3): carry the crash into the verdict so
