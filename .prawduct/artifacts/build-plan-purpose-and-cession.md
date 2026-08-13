@@ -11,7 +11,11 @@ governed_by:
       - "every fact has one home → conforms — purpose.md becomes the single home for the framework's purpose; the six artifact-frontmatter 'vision lives in README.md + CLAUDE.md' comments and CLAUDE.md's opening line become references to it, and purpose.md restates no fact another file owns (principles stay in principles.md)"
       - "guides, never implements → conforms — prose-only cycle, no product code or tooling"
       - "goals and verification bind; prescribed method is advice → conforms — this plan's Deliverables read as advisory per the norm"
-      - "reviewer non-mutation / authority-fails-closed / local-first / least-authority-writes / never-Python-specific → inapplicable because this cycle changes no mechanism, gate, reviewer, or plugin writer"
+      - "an independent reviewer never mutates the session it reviews → inapplicable because this cycle changes no reviewer or mutation site"
+      - "authority fails closed; advice fails soft → inapplicable because this cycle produces no gate or verdict code"
+      - "local-first governance coordination → inapplicable because this cycle adds no network, daemon, or dependency"
+      - "the plugin writes nothing into a governed repo except its own state and reconciled seams → inapplicable because no plugin writer changes; the CLAUDE.md edited here is prawduct-the-product's own file"
+      - "prawduct is written in Python and must never be specific to Python → inapplicable because this cycle ships prose and test-contract updates only"
 last_validated: 2026-08-13
 ---
 
@@ -30,9 +34,9 @@ last_validated: 2026-08-13
 
 ## Status
 
-- [ ] Chunk 01: documentation/purpose.md — the framework's own north star
+- [x] Chunk 01: documentation/purpose.md — the framework's own north star
 - [ ] Chunk 02: Principles 25 and 26 with their cascade
-Context: Plan authored 2026-08-13 from the ratified program in `.prawduct/.handoff-notes.md` (owner approved 2026-08-12). This is Cycle 1 of a four-cycle program; Cycle 2 is backlog #181 (GOV-6D4Q), the deletion-only pass — this plan deliberately precedes it so the pass's "why" is on disk first. Nothing built yet. Next: Chunk 01.
+Context: Plan authored 2026-08-13 from the ratified program in `.prawduct/.handoff-notes.md` (owner approved 2026-08-12). This is Cycle 1 of a four-cycle program; Cycle 2 is backlog #181 (GOV-6D4Q), the deletion-only pass — this plan deliberately precedes it so the pass's "why" is on disk first. Chunk 01 committed 2026-08-13 (suite 4388 green, evidence recorded; Critic data plane ruled the doc-only diff a free edge — no review fact owed). Mid-cycle owner decisions landed alongside: the model-floor norm (project-preferences.md) and the change-log seeded as a #181 disposition-list row (.handoff-notes.md). Next: Chunk 02 — principles 25/26 go under a NEW `## Evolution` section (roster test requires document-order numbering, so they follow #24; Evolution is the honest grouping and CLAUDE.md's roster gains the matching group header).
 
 ## Verification Strategy
 
@@ -62,6 +66,7 @@ Prose deliverables: verification is coherence, not execution. Each chunk closes 
 - **Deliverables:** amended `plugin/docs/principles.md`, updated `tests/test_v5_methodology.py` roster, amended `CLAUDE.md` (roster + pointer, net ≤ 150 lines)
 - **Tests:** updated roster/count contract in `TestPrinciplesDoc`; full suite green including every budget pin
 - **Acceptance criteria:** `### 25.` and `### 26.` present in principles.md matching house format; roster test asserts 1..26; CLAUDE.md ≤ 150 lines with both roster lines and the purpose.md pointer; digests unchanged or pointer-only; suite green
+  - *Reconciled at build (goals-bind norm — better route, recorded):* the full digest already enumerates the roster by group, so "unchanged or pointer-only" would have left it FALSE against principles.md — the one incoherence this plan exists to avoid. The Evolution roster line was added instead, paid in-file (net −2 chars); the slim digest carries no roster and is untouched, exactly as the AC anticipated.
 - **Type:** cumulative-final
 - **Done when:**
   1. Acceptance criteria met, suite green

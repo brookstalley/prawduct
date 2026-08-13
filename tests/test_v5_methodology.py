@@ -1623,12 +1623,12 @@ class TestMethodologyPBT:
 
 
 # =============================================================================
-# docs/principles.md — the 24 principles (canonical source)
+# docs/principles.md — the 26 principles (canonical source)
 # =============================================================================
 
 
 class TestPrinciplesDoc:
-    """All 24 principles are present, named, and numbered in the canonical source.
+    """All 26 principles are present, named, and numbered in the canonical source.
 
     Before M4 this contract was held by `test_v5_templates.py::TestProductClaudePrinciples`
     against the file-sync `product-claude.md` template *copy*. Chunk 4 deleted that
@@ -1671,7 +1671,7 @@ class TestPrinciplesDoc:
         principles = read_file("docs/principles.md")
         assert f"### {num}. {name}" in principles, (
             f"docs/principles.md is missing the `### {num}. {name}` heading — "
-            "the 24 principles are the framework's foundation; a drop or renumber must fail loud."
+            "the 26 principles are the framework's foundation; a drop or renumber must fail loud."
         )
 
     def test_exactly_26_numbered_principles(self):
