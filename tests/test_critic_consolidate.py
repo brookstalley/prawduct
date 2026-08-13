@@ -3103,6 +3103,13 @@ class TestVerifyResolutionsDispatch:
         # The judgeable-WIP "uncovered until you commit" WARNING fires so the
         # working-tree-vs-committed-HEAD mismatch is surfaced, not silent.
         assert "vouches for the WORKING tree" in result.stderr
+        # And it must prescribe the verbatim commit rather than another pass.
+        # The half above survived an edit that replaced "commit (or stash) the
+        # fix and re-run verify-resolutions" — a superfluous round, and wrong on
+        # the merits, since the commit carries the very tree this pass vouched
+        # for. An unpinned rule is what the next trim deletes first.
+        assert "Commit this tree VERBATIM and no further pass is needed" in result.stderr
+        assert "Only a selective or further-edited commit leaves a gap" in result.stderr
 
     def _seed_dirty_tree_review_with_blocker(
         self, repo: Path

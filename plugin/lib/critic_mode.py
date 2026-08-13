@@ -316,7 +316,7 @@ def _plan_relation_note(plan) -> str:
     plan" (`nonfunctional-requirements.md` § Direction: a control emits its
     yield observably or it can only be defended on principle).
     """
-    if plan.source == "scope-named":
+    if plan.source == buildplan_refs.SOURCE_SCOPE_NAMED:
         return f"build plan {plan.rel} declares this branch's scope {plan.scope!r}"
     return (
         f"active build plan {plan.rel or '(unresolved)'}, assumed related — this "

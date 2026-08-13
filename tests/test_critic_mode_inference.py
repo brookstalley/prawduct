@@ -1057,6 +1057,119 @@ class TestRule4ChunkDefault:
         _git(tmp_path, "checkout", "-b", "fix/live", "--quiet")
         assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "live"
 
+    def test_a_declared_branch_resolves_a_scope_no_name_rule_could(self, tmp_path: Path):
+        """The observed miss this closes, in its real shape.
+
+        `feat/tactical-efficiency-pass` matches the scope `tactical-efficiency`
+        under neither candidate rule (whole name, last segment), so every
+        dispatch from such a branch resolved NO scope — the ledger row said
+        `(none)` and every scope-filtered consumer stayed inert. The plan's own
+        `branch:` declaration is a statement, not a guess, so it answers.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feat/tactical-efficiency-pass")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-te.md").write_text(
+            "---\nartifact: build-plan\nscope: tactical-efficiency\n"
+            "branch: feat/tactical-efficiency-pass\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == (
+            "tactical-efficiency"
+        )
+
+        # The paired negative: strip the declaration and the name rules are back
+        # in charge, which is exactly what could not resolve this branch.
+        (artifacts / "build-plan-te.md").write_text(
+            "---\nartifact: build-plan\nscope: tactical-efficiency\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+
+    def test_a_declared_branch_beats_a_name_match_on_another_plan(self, tmp_path: Path):
+        """Precedence, where the two routes disagree — otherwise the ordering is
+        untested and either arrangement passes."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "fix/guessable")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-guessable.md").write_text(
+            "---\nartifact: build-plan\nscope: guessable\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        (artifacts / "build-plan-declared.md").write_text(
+            "---\nartifact: build-plan\nscope: declared\nbranch: fix/guessable\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "declared"
+
+    def test_a_finished_declared_plan_still_claims_its_branch(self, tmp_path: Path):
+        """The liveness narrowing does NOT apply to a declaration.
+
+        It exists to keep a *guess* from attributing work to a plan that shipped
+        long ago. A plan that names this branch is not guessing, and the window
+        the narrowing opens — every box ticked, branch not yet merged — is
+        exactly when the `cumulative` review and the last gate run happen.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feat/all-done")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-done.md").write_text(
+            "---\nartifact: build-plan\nscope: done\nbranch: feat/all-done\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: done\n"
+        )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "done"
+
+    def test_two_plans_claiming_one_branch_infer_no_scope(self, tmp_path: Path):
+        """Advice declines rather than picking; the resolver is where the refusal
+        is raised, and a scope inference that failed closed would block advice on
+        a condition authority already blocks on."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feat/contested")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        for name in ("a", "b"):
+            (artifacts / f"build-plan-{name}.md").write_text(
+                f"---\nartifact: build-plan\nscope: {name}\nbranch: feat/contested\n---\n\n"
+                "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+            )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+
+    def test_a_declared_plan_with_no_scope_infers_nothing(self, tmp_path: Path):
+        """A branch claim is not a scope. Inventing one would tag a change-log
+        entry and a ledger row with a string no plan declares."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feat/scopeless")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-scopeless.md").write_text(
+            "---\nartifact: build-plan\nbranch: feat/scopeless\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+
     def test_archived_plans_do_not_shadow_their_live_siblings(self, tmp_path: Path):
         """Discovery went recursive; `archive/` had to stop being discoverable.
 

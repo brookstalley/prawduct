@@ -44,7 +44,7 @@ Between phases, review what you've produced through the review perspectives (Pro
 
 ### Where Artifacts Live
 
-Write all generated artifacts to `.prawduct/artifacts/` — the Critic reads from it and the build cycle references it. The stop hook triggers the Critic gate when it detects the active build plan (the `active_build_plan` pointer; default `artifacts/build-plan.md`). Name files by artifact type (`product-brief.md`, `data-model.md`, …). Existing specifications elsewhere can stay; Prawduct-generated artifacts go here.
+Write all generated artifacts to `.prawduct/artifacts/` — the Critic reads from it and the build cycle references it. The stop hook triggers the Critic gate when it detects the active build plan — resolved as described below, not from any one pointer. Name files by artifact type (`product-brief.md`, `data-model.md`, …). Existing specifications elsewhere can stay; Prawduct-generated artifacts go here.
 
 ### Proportionality
 
@@ -56,7 +56,9 @@ The **strategy-class** artifacts (data model, security model, non-functional req
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
 
-**Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live and `active_build_plan` pointing at it until the release ships. Write the new plan under a scope-named file (`build-plan-<scope>.md`) and repoint after the release (see `/prawduct:pr` merge-flow step 7). Build plans are tracked artifacts — commit them, archived ones included.
+**Which plan is active is branch state — let the plan say so.** A plan's frontmatter may declare `branch: <name>`; while that branch is checked out, every governance surface resolves that plan, ahead of the `active_build_plan:` scalar. Prefer it: the scalar is one product-level line that two concurrent branches conflict on every time, and after a merge one of the two plans is invisible to every surface that reads it. Opt in per plan — a plan declaring no `branch:` resolves by the scalar exactly as before. Two *live* plans declaring the same branch is a refusal, not a coin-flip: resolution stops and names both, because governing by the wrong plan looks exactly like governing correctly.
+
+**Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. Archiving also ends a `branch:` claim, so for a branch-declaring plan the move is the whole retirement — there is no pointer left naming it. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live until the release ships; a branch-declaring plan needs nothing further, since its merged branch is gone and it simply reads live-but-inactive, while a scalar-pointed one keeps `active_build_plan` aimed at it and is repointed after the release (see `/prawduct:pr` merge-flow step 7). Build plans are tracked artifacts — commit them, archived ones included.
 
 ### Requirements Confidence
 

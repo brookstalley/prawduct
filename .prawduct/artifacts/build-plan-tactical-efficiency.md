@@ -2,6 +2,7 @@
 artifact: build-plan
 version: 2
 scope: tactical-efficiency
+branch: feat/tactical-efficiency-pass
 depends_on:
   - artifact: tactical-efficiency-analysis-2026-08-13
   - artifact: kernel-v3-evidence-design
@@ -64,7 +65,7 @@ the remaining input.
 - [x] Chunk 03: Disposition-aware reviews — accepted findings stop being re-litigated
 - [x] Chunk 04: Prose findings priced honestly — severity ceilings, deletion-first remedies, no archaeology
 - [x] Chunk 05: Verify-resolutions golden path at every point of action
-- [ ] Chunk 06: The plan declares its branch — active-plan resolution goes branch-scoped
+- [x] Chunk 06: The plan declares its branch — active-plan resolution goes branch-scoped
 - [ ] Chunk 07: Advisory recommends union-merge for the append-only change-log
 Context: Plan authored 2026-08-13 by the Fable analysis session (Chunks 06–07 added same day
 after owner feedback: doctor is rarely run → advisory surface; active plan is branch state →
@@ -127,9 +128,31 @@ instruction, on its first live run), and Chunk 05 closed by committing the vouch
 verbatim rather than fixing the two demoted observations and buying a round — which is the golden
 path the chunk installs, taken by the chunk itself.
 
-Next: Chunk 06, starting with the two carried items above. Note Chunks 03–05 all edit the
-Critic/PR protocol prose, and every one of those files sits within ~30 tokens of a guardrail
-ceiling; `goals-1-3.md` now has 7.
+Chunk 06 landed 2026-08-13 (review `rev-20260813T224220Z-535e6351` + two verify passes, final state
+0 findings). It also discharged Chunk 05's two carried items. **Both its blocking findings were one
+defect, found independently by two reviewers: the fail-closed refusal failing OPEN at the Stop
+hook.** `main()` rendered every refusal as exit 1, but `stop` is a harness hook whose recorded error
+model gives it two outcomes — 0 clean, 2 block — so a repo with two plans claiming one branch would
+have ended its session CLEAN with no gate having run. `cmd_stop` now probes resolution once, before
+any gate and before the background-work deferral (which returns 0, and which nothing about
+background work could ever clear). Guarding the individual call sites was tried first and only moved
+which line raised: three resolve independently, which is the finding's own point.
+
+The second verify pass caught the fix's own fix untested — the one-line `_has_unfinished_chunk`
+filter that silences the new advisory across the gitflow retention window, where all six sibling
+tests used an unfinished plan and so passed with it deleted.
+
+Two departures from this plan's prescribed method, both recorded inline under the chunk: there was
+no resolver "pair" to change (the hook's mirror had no caller and was deleted), and the resolver
+alone did not satisfy the acceptance criterion — `infer_scope_from_branch` had to consult the
+`branch:` declaration too, because `critic-begin`'s ledger scope is derived from the branch NAME.
+
+Note Chunks 03–05 all edit the Critic/PR protocol prose, and every one of those files sits within
+~30 tokens of a guardrail ceiling; `goals-1-3.md` now has 7. Chunk 06 touched none of them.
+
+Next: Chunk 07, which is independent of everything before it. One accepted debt rides its commit —
+R-17's relational sweep of the ~dozen `active_build_plan pointer` narratives this chunk falsified
+but did not edit; the list is in `.prawduct/.handoff-notes.md`.
 
 ## Scaffolding
 
@@ -353,14 +376,39 @@ chunk exists to remove. Riding a commit Chunk 06 is making anyway buys none. **D
   to every pointer-resolved surface. Invert the pointer: build plans gain optional frontmatter
   `branch: <name>`, and the resolver pair (`core.resolve_build_plan_path` + the parity-tested
   `bin/prawduct-hook` mirror — change BOTH, the parity test pins them) resolves in precedence
-  order: (1) the live (non-archived) plan under `artifacts/` whose `branch:` matches
+  <!-- Amended during the build 2026-08-13: there is no pair. The hook's mirror had NO caller —
+       `staleness_scan` was its last one and was rewritten onto `core.resolve_build_plan_path`
+       when it moved into `lib/briefing.py`, leaving only its own parity test to invoke it, and
+       voiding the import-light claim (that path reaches the resolver via `lib.briefing` and
+       loads `core` regardless). Extending it meant duplicating a directory walk and a git
+       subprocess into unreachable code on its fourth rework, so it was DELETED instead
+       (Principle 25; "goals and verification bind, prescribed method is advice"). The scalar
+       reader beside it stays — four live callers — and its parity cases are unchanged. The
+       parity test now pins the deletion, so the duplicate cannot quietly return. -->
+  <!-- Also added during the build, and NOT in the plan: `infer_scope_from_branch` consults the
+       `branch:` declaration before its name-matching rules. Without it the acceptance criterion's
+       first named consumer stays broken — the resolver alone does not fix `critic-begin`'s ledger
+       scope, which is derived from the branch NAME, not from the resolved plan. -->
+  <!-- Two more in-build departures, recorded to the same standard as the two above.
+       (1) `gitstate.current_branch` gained a HEAD-file fast path with the subprocess kept as
+       fallback. Not scope creep but its opposite: the branch probe made the session briefing
+       197 ms -> 494 ms (measured), which an efficiency pass does not get to ship. It reads
+       215 ms now, and the fast path is worktree-aware because reading the shared common dir
+       would report the primary checkout's branch to every gate, silently.
+       (2) `cmd_stop` probes resolution once, up front, and renders a refusal as a BLOCKED
+       report at exit 2. Found by the chunk's own review: `main`'s wrapper renders every
+       refusal as exit 1, which the harness-hook row of `api-contract.md` treats as neither
+       clean nor blocking, so the session ended CLEAN with no gate having run — the fail-OPEN
+       inverse of the posture, on the one state this chunk invents. -->
+  order: (1) the live (non-archived) plan under `.prawduct/artifacts/` whose `branch:` matches
   `git branch --show-current`; (2) the `active_build_plan` scalar; (3) the conventional default.
   Existing repos behave unchanged until a plan opts in. **Two live plans claiming the current
   branch is a loud error** surfaced by the resolver's callers, never a silent pick (authority
   fails closed). Detached HEAD or a non-matching `branch:` falls through to (2)/(3); the session
   briefing names a live plan whose `branch:` matches no existing branch (advice, fails soft).
-  Archive keeps working with less ceremony: moving a plan under `archive/` ends its claim, so
-  `archive-plan`'s pointer-clearing becomes unnecessary for frontmatter-resolved plans (keep it
+  Archive keeps working with less ceremony: moving a plan under `.prawduct/artifacts/archive/`
+  ends its claim, so `archive-plan`'s pointer-clearing becomes unnecessary for
+  frontmatter-resolved plans (keep it
   for the scalar). NOT in scope: removing the scalar, migrating consumer repos, or touching the
   release-side scope enumeration (already pointer-free). Frontmatter scanning may open every
   live `artifacts/*.md` header — keep it cheap (first-KB reads) and note that Chunk 02's memo

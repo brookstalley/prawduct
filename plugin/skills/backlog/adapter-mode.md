@@ -196,8 +196,9 @@ whole `update` op, not to any one field above.
 ### pick
 `prawduct-hook backlog pick --repo <r> [--limit N] [--include-working]` → the adapter returns
 ranked ready-work (blocker-aware; items carrying a `working-branch` are excluded). Render 1–3
-candidates + a one-line *why*. Keep the skill's framing on top: **build-plan overlap** (read
-`active_build_plan`, surface overlapping candidates first) and **stage-aware routing** (don't
+candidates + a one-line *why*. Keep the skill's framing on top: **build-plan overlap** (resolve the
+active plan as the skill says — `branch:` claim first, `active_build_plan` second — and surface
+overlapping candidates first) and **stage-aware routing** (don't
 present an early-stage item as buildable). `--include-working` adds back the items someone is on,
 each naming its branch, for when you deliberately want to see contested work.
 

@@ -33,6 +33,7 @@ DEFAULT_BUILD_PLAN_REL = _mod.DEFAULT_BUILD_PLAN_REL
 # test the parsers where they now live, not via the hook (which only keeps a
 # thin wrapper + the import-light resolver mirror, parity-tested below).
 from lib import buildplan_refs as _bpr  # noqa: E402
+from lib import plan_index as _plan_index  # noqa: E402
 
 # plugin-runtime inline mirror via SourceFileLoader (extensionless shebang script)
 _hook_loader = importlib.machinery.SourceFileLoader("prawduct_hook_res", str(_ROOT / "bin" / "prawduct-hook"))
@@ -105,6 +106,282 @@ class TestResolveBuildPlanPath:
         assert BUILD_PLAN_POINTER_KEY == "active_build_plan"
 
 
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args], cwd=str(repo), capture_output=True, text=True, check=True
+    )
+
+
+def _branch_repo(tmp_path: Path, branch: str, state: str = "") -> Path:
+    """A real git work tree on ``branch``, with a ``.prawduct/`` inside it.
+
+    Real git rather than a monkeypatch: the resolver asks git for the branch, and
+    the detached-HEAD and no-work-tree cases only exist in git.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", branch)
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "T")
+    (repo / "seed.txt").write_text("seed\n")
+    _git(repo, "add", "seed.txt")
+    _git(repo, "commit", "-qm", "seed")
+    prawduct = repo / ".prawduct"
+    (prawduct / "artifacts").mkdir(parents=True)
+    (prawduct / "project-state.yaml").write_text(state)
+    return repo
+
+
+def _plan(prawduct: Path, rel: str, *, branch: str | None = None, artifact: str | None = "build-plan") -> Path:
+    path = prawduct / "artifacts" / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fm = ["---"]
+    if artifact is not None:
+        fm.append(f"artifact: {artifact}")
+    if branch is not None:
+        fm.append(f"branch: {branch}")
+    fm.append("---")
+    path.write_text("\n".join(fm) + "\n\n## Status\n\n- [ ] Chunk 01: a chunk\n")
+    return path
+
+
+class TestBranchScopedResolution:
+    """Precedence (1) the live plan claiming the checked-out branch, (2) the
+    ``active_build_plan`` scalar, (3) the conventional default.
+
+    The pointer is branch state kept in a product-level scalar: two concurrent
+    branches conflict on that one line every time, and after the merge one plan
+    is invisible to every pointer-resolved surface. Inverting it — the plan
+    declares its branch — is what these pin.
+    """
+
+    def test_branch_claim_wins_over_the_scalar(self, tmp_path: Path):
+        # Precedence is demonstrated against a scalar pointing SOMEWHERE ELSE.
+        # Pointing it at the same plan would make both routes agree and test
+        # nothing.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other-plan.md")
+        claimed = _plan(prawduct, "branch-plan.md", branch="feat/x")
+        assert resolve_build_plan_path(prawduct) == claimed
+
+    def test_scalar_still_wins_when_no_plan_claims_the_branch(self, tmp_path: Path):
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other-plan.md")
+        _plan(prawduct, "branch-plan.md", branch="feat/somewhere-else")
+        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "other-plan.md"
+
+    def test_default_when_neither_claims_nor_points(self, tmp_path: Path):
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "branch-plan.md", branch="feat/other")
+        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
+
+    def test_a_repo_with_no_opt_in_is_unchanged(self, tmp_path: Path):
+        # The compatibility contract: existing repos behave identically until a
+        # plan opts in. Nothing here declares `branch:`, so both the scalar and
+        # the default routes must answer exactly as they did before.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/pointed-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "pointed-plan.md")
+        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "pointed-plan.md"
+
+    def test_two_live_plans_claiming_one_branch_is_a_loud_error(self, tmp_path: Path):
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other-plan.md")
+        _plan(prawduct, "a-plan.md", branch="feat/x")
+        _plan(prawduct, "b-plan.md", branch="feat/x")
+        with pytest.raises(_mod.AmbiguousPlanBranchError) as excinfo:
+            resolve_build_plan_path(prawduct)
+        # It must name BOTH candidates and the branch: an operator cannot act on
+        # "ambiguous" alone, and falling back to the scalar here would be the
+        # silent wrong-plan pick the refusal exists to prevent.
+        message = str(excinfo.value)
+        assert "feat/x" in message
+        assert "a-plan.md" in message and "b-plan.md" in message
+
+    def test_an_archived_plan_claims_nothing(self, tmp_path: Path):
+        # Archiving ends the claim, which is what makes the move the whole
+        # retirement step — no pointer to un-set afterwards.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "archive/old-plan.md", branch="feat/x")
+        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
+
+    def test_an_archived_twin_does_not_make_a_live_claim_ambiguous(self, tmp_path: Path):
+        # The pair of the case above: the live plan still resolves, rather than
+        # colliding with its own archived copy.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "archive/plan.md", branch="feat/x")
+        live = _plan(prawduct, "plan.md", branch="feat/x")
+        assert resolve_build_plan_path(prawduct) == live
+
+    def test_detached_head_falls_through_to_the_scalar(self, tmp_path: Path):
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other-plan.md")
+        _plan(prawduct, "branch-plan.md", branch="feat/x")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        _git(repo, "checkout", "-q", "--detach", head)
+        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "other-plan.md"
+
+    def test_outside_a_work_tree_falls_through_to_the_scalar(self, tmp_path: Path):
+        # No git at all: the claim cannot be evaluated, so the pre-existing
+        # route answers rather than the resolver failing.
+        prawduct = _prawduct(tmp_path, "active_build_plan: artifacts/other-plan.md\n")
+        _plan(prawduct, "branch-plan.md", branch="feat/x")
+        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "other-plan.md"
+
+    def test_a_non_plan_artifact_cannot_claim_a_branch(self, tmp_path: Path):
+        # `branch:` on a design note must not make that note the document every
+        # gate reads chunk Status from — it has no roster, so governance would
+        # go quiet rather than fail.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-design-note.md", branch="feat/x", artifact="design")
+        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
+
+    def test_a_plan_declaring_no_artifact_type_may_still_claim(self, tmp_path: Path):
+        # Inherits `plan_index`'s fail-safe direction: at least one real plan in
+        # this repo declares no `artifact:` at all, so absence reads as a plan.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        claimed = _plan(prawduct, "typeless-plan.md", branch="feat/x", artifact=None)
+        assert resolve_build_plan_path(prawduct) == claimed
+
+    def test_a_nested_plan_can_claim(self, tmp_path: Path):
+        # Discovery is recursive, as it is for `scope:` — repos that organize
+        # plans as `plans/<id>/build-plan.md` are a surveyed real shape.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        claimed = _plan(prawduct, "plans/007/build-plan.md", branch="feat/x")
+        assert resolve_build_plan_path(prawduct) == claimed
+
+    def test_long_frontmatter_still_yields_its_claim(self, tmp_path: Path):
+        # The bounded header read must not become a silent correctness knob: a
+        # plan whose frontmatter exceeds the probe is re-read whole.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        path = prawduct / "artifacts" / "verbose-plan.md"
+        filler = "\n".join(f"note_{i}: {'x' * 200}" for i in range(200))
+        path.write_text(f"---\nartifact: build-plan\n{filler}\nbranch: feat/x\n---\n\n# P\n")
+        assert len(path.read_text()) > _plan_index._FRONTMATTER_PROBE_CHARS
+        assert resolve_build_plan_path(prawduct) == path
+
+    def test_a_null_branch_claims_nothing(self, tmp_path: Path):
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other-plan.md")
+        _plan(prawduct, "opted-out.md", branch="null")
+        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "other-plan.md"
+
+    def test_a_nested_branch_key_does_not_claim(self, tmp_path: Path):
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts" / "nested.md").write_text(
+            "---\nartifact: build-plan\nwip:\n  branch: feat/x\n---\n\n# P\n"
+        )
+        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
+
+
+class TestTheCliRefusesRatherThanGuessing:
+    """The fail-closed posture, through the real binary.
+
+    A refused gate is a blocked gate — the intended end state — but a traceback
+    would be loud and unreadable, and the refusal already names its own remedy.
+    Subprocess because ``main``'s wrapper and the lazy ``_core()`` lookup in its
+    ``except`` clause exist only when the script is actually run.
+    """
+
+    _HOOK = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+
+    def _run(self, repo: Path, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(self._HOOK), *args],
+            cwd=str(repo), capture_output=True, text=True,
+        )
+
+    def test_a_contested_branch_exits_nonzero_with_the_remedy(self, tmp_path: Path):
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x")
+        _plan(prawduct, "b-plan.md", branch="feat/x")
+        result = self._run(repo, "infer-critic-mode")
+        assert result.returncode == 1, result.stdout
+        assert "REFUSING" in result.stderr
+        assert "a-plan.md" in result.stderr and "b-plan.md" in result.stderr
+        # No traceback: the refusal is a message, not a crash.
+        assert "Traceback" not in result.stderr
+
+    def test_the_same_command_succeeds_once_one_claim_is_withdrawn(self, tmp_path: Path):
+        # The control. Without it the assertion above is satisfied by any repo
+        # shape that makes the command exit 1.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x")
+        _plan(prawduct, "b-plan.md")
+        result = self._run(repo, "infer-critic-mode")
+        assert result.returncode == 0, result.stderr
+        assert "REFUSING" not in result.stderr
+
+
+class TestBranchClaimParsing:
+    def test_reads_the_claim(self):
+        assert _plan_index.parse_build_plan_frontmatter_branch(
+            "---\nartifact: build-plan\nbranch: feat/x\n---\n"
+        ) == "feat/x"
+
+    def test_strips_quotes_and_comments(self):
+        assert _plan_index.parse_build_plan_frontmatter_branch(
+            '---\nbranch: "feat/x"  # the branch this plan governs\n---\n'
+        ) == "feat/x"
+
+    def test_tolerates_a_leading_html_comment_header(self):
+        # A third of this repo's plans open with one, and the template does too.
+        assert _plan_index.parse_build_plan_frontmatter_branch(
+            "<!-- header -->\n---\nbranch: feat/x\n---\n"
+        ) == "feat/x"
+
+    def test_absent_key_reads_as_no_claim(self):
+        assert _plan_index.parse_build_plan_frontmatter_branch(
+            "---\nartifact: build-plan\n---\n"
+        ) is None
+
+    @pytest.mark.parametrize("literal", ["null", "~", "NULL", ""])
+    def test_null_literals_read_as_no_claim(self, literal: str):
+        assert _plan_index.parse_build_plan_frontmatter_branch(
+            f"---\nbranch: {literal}\n---\n"
+        ) is None
+
+    def test_a_key_merely_starting_with_branch_does_not_match(self):
+        assert _plan_index.parse_build_plan_frontmatter_branch(
+            "---\nbranches: feat/x\nbranch_base: develop\n---\n"
+        ) is None
+
+    def test_outside_the_frontmatter_does_not_claim(self):
+        assert _plan_index.parse_build_plan_frontmatter_branch(
+            "---\nartifact: build-plan\n---\n\nbranch: feat/x\n"
+        ) is None
+
+    def test_no_frontmatter_at_all(self):
+        assert _plan_index.parse_build_plan_frontmatter_branch("# Just a doc\n") is None
+
+
 class TestReadStrYamlKey:
     def test_reads_top_level_scalar(self, tmp_path: Path):
         p = tmp_path / "s.yaml"
@@ -160,28 +437,34 @@ class TestReadStrYamlKey:
 
 
 class TestProductHookMirrorParity:
-    """The inline prawduct-hook resolver must match the lib resolver on the same
-    inputs (same discipline as the GITIGNORE_ENTRIES mirror test)."""
+    """The inline prawduct-hook scalar reader must match the lib one on the same
+    inputs (same discipline as the GITIGNORE_ENTRIES mirror test).
 
-    def test_constants_match(self):
-        assert _hook._BUILD_PLAN_POINTER_KEY == BUILD_PLAN_POINTER_KEY
-        assert _hook._DEFAULT_BUILD_PLAN_REL == DEFAULT_BUILD_PLAN_REL
+    The RESOLVER half of this mirror is gone. ``_resolve_build_plan_path`` lost
+    its last caller when ``staleness_scan`` moved to ``lib/briefing.py`` and was
+    rewritten onto ``core.resolve_build_plan_path``, so the cases deleted here
+    pinned two implementations of which only one was ever run — and branch-scoped
+    resolution would have meant duplicating a directory walk and a git subprocess
+    into the unreachable one. What is asserted instead is that the mirror is
+    really gone, so a future edit cannot quietly restore the duplicate.
 
-    def test_pointer_set_parity(self, tmp_path: Path):
-        prawduct = _prawduct(tmp_path, "active_build_plan: artifacts/v1.6.0-foo-plan.md\n")
-        assert _hook._resolve_build_plan_path(prawduct) == resolve_build_plan_path(prawduct)
+    ``_read_str_yaml_key`` STAYS: it has four live callers in the hook, and its
+    parity cases below are unchanged.
+    """
 
-    def test_pointer_absent_parity(self, tmp_path: Path):
-        prawduct = _prawduct(tmp_path, "coverage_required: true\n")
-        assert _hook._resolve_build_plan_path(prawduct) == resolve_build_plan_path(prawduct)
+    def test_the_resolver_mirror_is_retired(self):
+        # Deletion is the contract now. A reinstated inline resolver is a second
+        # implementation of branch precedence that nothing calls and nothing
+        # would notice drifting.
+        assert not hasattr(_hook, "_resolve_build_plan_path")
+        assert not hasattr(_hook, "_BUILD_PLAN_POINTER_KEY")
+        assert not hasattr(_hook, "_DEFAULT_BUILD_PLAN_REL")
 
-    def test_repo_relative_pointer_parity(self, tmp_path: Path):
-        # STH-5P2W: both resolvers strip the leading ".prawduct/" identically.
-        prawduct = _prawduct(
-            tmp_path, "active_build_plan: .prawduct/artifacts/v1.6.0-foo-plan.md\n"
-        )
-        assert _hook._resolve_build_plan_path(prawduct) == resolve_build_plan_path(prawduct)
-        assert _hook._resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "v1.6.0-foo-plan.md"
+    def test_the_lib_constants_are_still_the_contract(self):
+        # They were asserted through the mirror; they are still the public names
+        # every consumer reads, so they keep a home here.
+        assert DEFAULT_BUILD_PLAN_REL == "artifacts/build-plan.md"
+        assert BUILD_PLAN_POINTER_KEY == "active_build_plan"
 
     def test_str_key_parity(self, tmp_path: Path):
         p = tmp_path / "s.yaml"
@@ -197,11 +480,6 @@ class TestProductHookMirrorParity:
             assert _hook._read_str_yaml_key(p, "active_build_plan") == read_str_yaml_key(
                 p, "active_build_plan"
             )
-
-    def test_null_pointer_resolve_parity(self, tmp_path: Path):
-        prawduct = _prawduct(tmp_path, "active_build_plan: null\n")
-        assert _hook._resolve_build_plan_path(prawduct) == resolve_build_plan_path(prawduct)
-        assert _hook._resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
 
 
 class TestSessionGitignoreMirror:

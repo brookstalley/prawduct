@@ -3,6 +3,86 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: the plan declares its branch
+
+<!-- prawduct: type=feature | scope=tactical-efficiency -->
+
+Which build plan is active is **branch state**, and it was stored in `active_build_plan:` — one
+scalar, at product level, in a file both of two concurrent branches edit. Two branches therefore
+guarantee a same-line conflict every time, and after the merge exactly one plan wins the line while
+the other becomes invisible to every surface that resolves through it: the briefing, mode
+inference, chunk-ref verification, the Stop gate.
+
+**The pointer is inverted.** A build plan may declare `branch: <name>` in its frontmatter, and
+`core.resolve_build_plan_path` now resolves in precedence order: the live plan claiming the
+checked-out branch, then the scalar, then the conventional default. Nothing migrates — a repo whose
+plans declare no `branch:` resolves exactly as before, and the scalar keeps working as the fallback
+it now is. Archiving a plan ends its claim, because the scan prunes `archive/` at directory level,
+so for a branch-declaring plan the archive move is the whole retirement with no pointer left over.
+
+**Two live plans claiming one branch is a refusal, not a coin-flip.** Either could be the one its
+author meant, and governing a session by the wrong plan looks exactly like governing correctly, so
+resolution raises rather than picking the one that sorts first. Authority inherits that by
+propagating it — a refused gate is a blocked gate, and the hook prints the refusal and its remedy
+instead of a traceback. Advice inherits it by reporting: the briefing names both plans at the top
+of the session, and is still produced.
+
+**The chunk's own acceptance criterion named two consumers that were observably broken**, and one
+of them needed more than the resolver. `critic-begin` derives its ledger scope by matching the
+branch NAME against declared scopes — `feat/tactical-efficiency-pass` matches the scope
+`tactical-efficiency` under no rule, so every dispatch from this branch recorded scope `(none)`,
+which in turn left the disposition work-scope filter shipped earlier in this pass inert. Scope
+inference now consults the plan's `branch:` declaration first. It is the only route there that is
+not a guess, so neither narrowing applies to it: not the name-candidate rules, and not the
+liveness check that rejects a fully-ticked plan — that check exists to stop a *guess* attributing
+work to a plan that shipped, and it opens a window at exactly end-of-plan, when the `cumulative`
+review and the last gate run happen.
+
+**Session start got faster, not slower.** The branch resolution adds a walk of `artifacts/` — the
+one the scope map already pays for — but it also asks git for the current branch, and the briefing
+asks five times. Measured on this repo the briefing went 197 ms → 494 ms, which is not a cost this
+pass gets to ship. `gitstate.current_branch` now reads git's `HEAD` file directly and shells out
+only when it cannot answer, which is a fast path for every one of its callers rather than for the
+new one: 215 ms, +18 ms over baseline for the walk the feature actually needs. The reader is
+worktree-aware because that is where it runs most — a linked worktree's `HEAD` is its own, and
+reading the shared common dir would have reported the primary checkout's branch to every gate,
+silently.
+
+**The review found the refusal failing OPEN at the one gate that matters, and both blockers were
+that.** `main()` rendered every refusal as exit 1 — but `stop` is a harness hook, and the recorded
+error model gives its row exactly two outcomes: 0 clean, 2 block. Exit 1 is neither, so on a repo
+with two plans claiming the branch the session would have ended **clean**, with the reflection,
+coverage and PR gates never having run: the precise inverse of the posture the feature documents,
+reachable only through the state the feature invents. `cmd_stop` now probes resolution once, before
+any gate and before the background-work deferral (which returns 0, and which no amount of background
+work could ever clear), and renders a refusal as a BLOCKED report at 2. Guarding the individual call
+sites was tried first and only moved which line raised — three of them resolve independently, which
+is the finding's own point: every gate resolves a plan.
+
+The same review caught the new "plan claims a branch this repo does not have" advisory firing across
+the whole gitflow merged-but-unreleased window — recommending the one action `/prawduct:pr` forbids
+there, and falsifying two doc paragraphs added in this same commit. It now fires only for a plan with
+an **unfinished** chunk, which is the case with yield: the author believes their plan governs this
+work and it silently resolves for nobody. A finished plan claiming a deleted branch is the documented
+end state, and says nothing.
+
+**A dead mirror was deleted rather than duplicated into.** `bin/prawduct-hook` carried an inline
+copy of the resolver for an import-light hot path. Its last caller went away when `staleness_scan`
+moved into `lib/briefing.py` and was rewritten onto the canonical resolver, after which the only
+thing invoking it was its own parity test — and the import-light claim was void, since that path
+reaches the resolver through `lib.briefing` and pays for `core` anyway. Extending it would have
+meant duplicating a directory walk and a git subprocess into code nothing calls, on its fourth
+rework (Principle 25). The scalar reader beside it stays: it has four live callers, and its parity
+cases are unchanged.
+
+Two prose corrections carried from the previous chunk ride here, both deliberately held back so
+that chunk could commit a verify-vouched tree verbatim: `gates.py`'s `uncovered` remedy still told
+a builder whose verify fact anchored the working tree to "commit (or stash) the WIP and re-run",
+and the corrected half of `critic-consolidate`'s twin had no test pinning it.
+
+Not in scope, and stated so the next reader does not go looking: removing the scalar, migrating
+consumer repos, and the release-side scope enumeration (already pointer-free).
+
 ## 2026-08-13: the batch-fix golden path, stated at the point of action
 
 <!-- prawduct: type=feature | scope=tactical-efficiency -->

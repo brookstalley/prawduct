@@ -3758,3 +3758,34 @@ had the thought that the subject was wider than the feature.
 **The bound is a test-design fact, not a diligence fact.** A test suite explores the space its
 author already conceived. Running the real command against real inputs samples a space someone else
 populated — which is the only cheap way to discover that your subject widened without you noticing.
+
+## A rule that LOWERS a severity outranks every rule that raises one — 2026-08-13 (tactical-efficiency ch.04)
+
+A prose severity ceiling ("comment and doc wording is NOTE unless load-bearing") was written with
+only an upward exit: the conditions under which a finding could climb back out of the cap. Two
+bullets above it in the same file, an **actively misleading README instruction is BLOCKING**.
+
+A reviewer who correctly identified a wrong command in a README would have read the ceiling,
+found no exit that fit, and landed on WARNING — which gates nothing. The wrong command ships,
+and every control involved reports success.
+
+**The exits that LIFT a ceiling are not the same as the severities it must never touch.** Writing
+only the exits leaves the ceiling outranking every promotion rule in the file, silently, because
+nothing in the ceiling's own text says otherwise. The fix is a floor clause in the same sentence:
+the ceiling never lowers a severity another rule assigns explicitly.
+
+Caught by the chunk's own second verify pass, on the rule the chunk existed to add.
+
+## Scrub the WHOLE diff before dispatching a review — 2026-08-13 (tactical-efficiency ch.04)
+
+A provenance ban — review ids and finding ids never ship in comments — shipped with a violation
+**inside the test that pins that ban**. The scrub before dispatch had covered the four protocol
+surfaces the chunk was "about" and skipped the file the chunk had just added.
+
+The reflex it caught is the general one: under review pressure the instinct is to record *why the
+reviewer was right*, in the artifact, where it reads as documentation and decays into archaeology
+the moment the plan is renumbered or archived.
+
+Third defect of this shape on one branch, and the countermeasure was the same each time: when you
+install a rule, grep for every place that states the old one — including the places the chunk
+itself created.

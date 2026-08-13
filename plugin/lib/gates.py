@@ -1643,7 +1643,9 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         "reviews that delta and closes the gap. If verify-resolutions already ran "
         "but the working tree still holds an uncommitted fix with no committed "
         "delta, its fact anchored the WORKING tree, not committed HEAD — commit "
-        "(or stash) the WIP and re-run so the fact ends at the tree this gate targets.",
+        "that tree VERBATIM and the fact ends at the tree this gate targets, so "
+        "no further pass is owed. Only a selective or further-edited commit "
+        "leaves a gap to close.",
         file=sys.stderr,
     )
     return 1

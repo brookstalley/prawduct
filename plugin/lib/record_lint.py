@@ -713,7 +713,7 @@ def _check_chunk_refs(
             "dispatch carried no chunk — Status names the first UNCHECKED chunk, "
             "so this may be the next chunk rather than the reviewed one"
         )
-    if plan.source == "active-pointer" and plan.gap:
+    if plan.source == buildplan_refs.SOURCE_ACTIVE_PLAN and plan.gap:
         assumptions.append(plan.gap)
     gap = None
     if assumptions:
