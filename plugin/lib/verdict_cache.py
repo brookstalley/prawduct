@@ -1,4 +1,4 @@
-"""Memoization of the composed coverage verdict (tactical-efficiency Chunk 02).
+"""Memoization of the composed coverage verdict.
 
 ``coverage_algebra.coverage_verdict`` is a pure function, and an expensive one:
 its free-edge search keys every tree the store mentions, which is one

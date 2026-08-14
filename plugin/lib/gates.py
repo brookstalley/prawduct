@@ -85,6 +85,40 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
 }
 
 
+def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
+    """The saved test-evidence record, or ``(None, reason)`` saying why not.
+
+    The prologue both evidence readers need: on disk, parseable, an object, a
+    valid schema, and no failures. It lives here rather than in each because the
+    two gates that read it — session-freshness and the base-advance transfer —
+    must agree about what a saved run SAYS before they can disagree about what
+    it vouches FOR; a new schema field or a different reading of ``failed``
+    landing in one reader and not the other is how they come to answer
+    differently about the same file.
+
+    The schema check catches writer typos (``ran_at`` for ``timestamp``,
+    ``num_passed`` for ``passed``): without it a missing field falls through
+    ``.get()`` and the record parses as "no failures, no timestamp", which the
+    caller then rejects for the wrong reason.
+    """
+    evidence_path = prawduct_dir / ".test-evidence.json"
+    if not evidence_path.is_file():
+        return None, "no .test-evidence.json on disk"
+    try:
+        record = json.loads(evidence_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return None, f"unreadable evidence ({exc})"
+    if not isinstance(record, dict):
+        return None, "evidence is not a JSON object"
+    schema_ok, schema_err = _validate_evidence_schema(record)
+    if not schema_ok:
+        return None, schema_err
+    failed = record.get("failed")
+    if isinstance(failed, int) and failed > 0:
+        return None, f"{failed} test(s) failing in saved evidence"
+    return record, ""
+
+
 def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     """Decide whether saved test evidence is fresh enough to trust.
 
@@ -112,31 +146,9 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     for printing back to the agent.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    evidence_path = prawduct_dir / ".test-evidence.json"
-    if not evidence_path.is_file():
-        return False, "no .test-evidence.json on disk"
-
-    try:
-        evidence = json.loads(evidence_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        return False, f"unreadable evidence ({exc})"
-
-    if not isinstance(evidence, dict):
-        return False, "evidence is not a JSON object"
-
-    # Schema check — catches writer typos like ``ran_at`` for ``timestamp`` or
-    # ``num_passed`` for ``passed``. Without this, missing fields silently fall
-    # through ``.get()`` calls and the evidence parses as "no failures, no
-    # timestamp" which the freshness check below would reject for the wrong
-    # reason. Loud failure makes the writer bug obvious.
-    schema_ok, schema_err = _validate_evidence_schema(evidence)
-    if not schema_ok:
-        return False, schema_err
-
-    # Test pass/fail check — fail counts make evidence stale regardless of timing.
-    failed = evidence.get("failed")
-    if isinstance(failed, int) and failed > 0:
-        return False, f"{failed} test(s) failing in saved evidence"
+    evidence, why_not = _load_test_evidence(prawduct_dir)
+    if evidence is None:
+        return False, why_not
 
     # Timestamp check — evidence must have been written during this session.
     evidence_ts = evidence.get("timestamp")
@@ -165,9 +177,17 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
 
 
 def _test_evidence_tree_valid(
-    project_dir: Path, recorded_tree: str
+    project_dir: Path, recorded_tree: str, target_tree: "str | None" = None
 ) -> tuple[bool, str]:
     """Additive tree-validity clause for :func:`tests_are_current` (clause 2).
+
+    ``target_tree`` names the tree the recorded run is compared AGAINST;
+    ``None`` (the default, and every ``tests_are_current`` call) captures the
+    current working tree. :func:`suite_vouches_for_tree` passes the tree its
+    calling gate composes to, which is not always the working tree — so the two
+    differ only in *which* tree, and share this one body. They read the same
+    comparison because it is the same comparison; the wording differs because
+    the reason is printed to a builder who needs to know which tree was meant.
 
     Test evidence is *tree-valid* when the judgeable-scoped diff between the
     working tree the recorded run ran against (``recorded_tree``) and the
@@ -184,23 +204,31 @@ def _test_evidence_tree_valid(
     the tree cannot be captured or diffed, so a git failure can only leave
     evidence stale — never flip it fresh. Returns ``(is_valid, reason)``.
     """
-    capture = evidence.capture_tree(project_dir)
-    if capture.get("status") != "ok":
-        return False, f"cannot capture the working tree ({capture.get('reason', 'unknown')})"
-    current_tree = capture["tree"]
-    if current_tree == recorded_tree:
-        return True, f"working tree identical to the recorded run ({recorded_tree[:12]})"
-    changed = evidence.tree_diff(project_dir, recorded_tree, current_tree)
+    if target_tree is None:
+        capture = evidence.capture_tree(project_dir)
+        if capture.get("status") != "ok":
+            return False, f"cannot capture the working tree ({capture.get('reason', 'unknown')})"
+        target_tree = capture["tree"]
+        same = f"working tree identical to the recorded run ({recorded_tree[:12]})"
+        differ = "changed since the run"
+        clean = "only non-judgeable paths changed since the run"
+    else:
+        same = f"the suite ran against this exact tree ({recorded_tree[:12]})"
+        differ = "differ between the saved run and the tree this gate vouches for"
+        clean = (
+            "only non-judgeable paths differ between the saved run and "
+            f"{target_tree[:12]}"
+        )
+    if target_tree == recorded_tree:
+        return True, same
+    changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
         return False, "tree diff unavailable (missing object or git failure)"
     judgeable = coverage_algebra.judgeable_files(changed)
     if judgeable:
         preview = ", ".join(judgeable[:3]) + ("…" if len(judgeable) > 3 else "")
-        return False, f"{len(judgeable)} judgeable path(s) changed since the run ({preview})"
-    return True, (
-        f"only non-judgeable paths changed since the run "
-        f"({len(changed)} metadata/doc file(s))"
-    )
+        return False, f"{len(judgeable)} judgeable path(s) {differ} ({preview})"
+    return True, f"{clean} ({len(changed)} metadata/doc file(s))"
 
 
 def suite_vouches_for_tree(
@@ -242,21 +270,9 @@ def suite_vouches_for_tree(
     denial here is the cheapest remedy the gate has to offer.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    evidence_path = prawduct_dir / ".test-evidence.json"
-    if not evidence_path.is_file():
-        return False, "no .test-evidence.json on disk"
-    try:
-        record = json.loads(evidence_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        return False, f"unreadable evidence ({exc})"
-    if not isinstance(record, dict):
-        return False, "evidence is not a JSON object"
-    schema_ok, schema_err = _validate_evidence_schema(record)
-    if not schema_ok:
-        return False, schema_err
-    failed = record.get("failed")
-    if isinstance(failed, int) and failed > 0:
-        return False, f"{failed} test(s) failing in saved evidence"
+    record, why_not = _load_test_evidence(prawduct_dir)
+    if record is None:
+        return False, why_not
     recorded_tree = record.get("evidence_tree")
     if not isinstance(recorded_tree, str) or not recorded_tree:
         return False, (
@@ -264,26 +280,9 @@ def suite_vouches_for_tree(
             "tree it ran against — re-run the suite (or restamp with "
             "`test-evidence record --no-rerun`) so the transfer has a tree to check"
         )
-    if target_tree is None:
-        # No target named: the working tree, which is the Stop gate's own
-        # target. `_test_evidence_tree_valid` captures it itself.
-        return _test_evidence_tree_valid(project_dir, recorded_tree)
-    if target_tree == recorded_tree:
-        return True, f"the suite ran against this exact tree ({recorded_tree[:12]})"
-    changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
-    if changed is None:
-        return False, "tree diff unavailable (missing object or git failure)"
-    judgeable = coverage_algebra.judgeable_files(changed)
-    if judgeable:
-        preview = ", ".join(judgeable[:3]) + ("…" if len(judgeable) > 3 else "")
-        return False, (
-            f"{len(judgeable)} judgeable path(s) differ between the saved run and "
-            f"the tree this gate vouches for ({preview})"
-        )
-    return True, (
-        f"only non-judgeable paths differ between the saved run and "
-        f"{target_tree[:12]} ({len(changed)} metadata/doc file(s))"
-    )
+    # `None` means the working tree, which is the Stop gate's own target and
+    # which the comparison captures for itself.
+    return _test_evidence_tree_valid(project_dir, recorded_tree, target_tree)
 
 
 def _read_session_start(prawduct_dir: Path) -> str:
@@ -947,22 +946,11 @@ def _merge_base_verdict(
     if transfer is None:
         return verdict
     if transfer.get("status") == "unavailable":
-        verdict["transfer_note"] = (
-            f"the base-advance transfer check could not run ({transfer['reason']}) — "
-            f"that is not a finding that this gap is genuine work, only that the "
-            f"cheap check was unavailable"
-        )
+        verdict["transfer_note"] = transfer_remedy(transfer, None)
         return verdict
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
     if not tests_ok:
-        verdict["transfer_note"] = (
-            f"this branch's own diff is byte-identical to the span review "
-            f"{transfer['prior_fact_id']} already covered ({len(transfer['files'])} "
-            f"judgeable file(s)), and the base advance touched none of them — the ONLY "
-            f"condition denying the transfer is that no saved suite run has met this "
-            f"tree ({tests_reason}). Run the suite and `prawduct-hook test-evidence "
-            f"record`, then re-run: the coverage transfers and no review is needed"
-        )
+        verdict["transfer_note"] = transfer_remedy(transfer, tests_reason)
         return verdict
     # Recording is OPT-IN, and the reason is the second caller. This verdict is
     # read by the Stop gate (authority, session end) and by the session-start
@@ -1245,6 +1233,48 @@ def validate_evidence(project_dir: Path) -> int:
         return 1
     print("valid")
     return 0
+
+
+def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
+    """The remedy prose for a base-advance transfer that did not grant.
+
+    Both gates that attempt the transfer render this — the PR gate's `uncovered`
+    block and the Stop gate's ``transfer_note`` — so the wording has one home
+    and cannot drift at one site only, the same rule
+    :func:`blocking_remedy_lines` states for the blocking remedy. It drifted
+    before this had one home: the Stop-gate copy lost the closing sentence, so
+    the same builder blocked at session end was told less than the one blocked
+    at `/prawduct:pr create`, for the identical condition.
+
+    Two conditions, and they prescribe opposite things:
+
+    - ``tests_reason`` given → every transfer condition held except that no
+      saved suite run has met this tree. The remedy is a suite run, which is the
+      cheapest route the gate has; it names why timing is not the question.
+    - ``tests_reason`` None → the check itself could not run. That is not
+      evidence the gap is genuine work, and saying so is the whole point: an
+      unavailable check reading as a finding is the fail-open shape inverted.
+
+    Returned as one paragraph without a severity prefix or indentation — each
+    caller owns how it announces the line.
+    """
+    if tests_reason is None:
+        return (
+            f"the base-advance transfer check could not run ({transfer['reason']}) — "
+            "that is not a finding that this gap is genuine work, only that the "
+            "cheap check was unavailable"
+        )
+    return (
+        f"the branch's own diff is byte-identical to the span review "
+        f"{transfer['prior_fact_id']} already covered ({len(transfer['files'])} "
+        "judgeable file(s)), and the base advance touched none of them — the ONLY "
+        "condition denying the transfer is that no saved suite run has met this "
+        f"tree ({tests_reason}). Run the suite and `prawduct-hook test-evidence "
+        "record`, then re-run: the coverage transfers and no review is needed. The "
+        "suite is what vouches for the reviewed diff meeting the advanced base — a "
+        "run from earlier in this session does not, which is why timing is not what "
+        "is checked here."
+    )
 
 
 def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
@@ -1536,25 +1566,9 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     # meet, and this is the cheapest of all of them — a suite run against a
     # review round.
     if transfer_stale is not None:
-        print(
-            f"NOTE: the branch's own diff is byte-identical to the span review "
-            f"{transfer['prior_fact_id']} already covered ({len(transfer['files'])} "
-            f"judgeable file(s)), and the base advance touched none of them — the "
-            f"ONLY condition denying the transfer is that no saved suite run has "
-            f"met this tree ({transfer_stale}). Run the suite and `prawduct-hook "
-            f"test-evidence record`, then re-run this gate: the coverage transfers "
-            f"and no review is needed. The suite is what vouches for the reviewed "
-            f"diff meeting the advanced base — a run from earlier in this session "
-            f"does not, which is why timing is not what is checked here.",
-            file=sys.stderr,
-        )
+        print(f"NOTE: {transfer_remedy(transfer, transfer_stale)}", file=sys.stderr)
     elif transfer is not None and transfer.get("status") == "unavailable":
-        print(
-            f"NOTE: the base-advance transfer check could not run "
-            f"({transfer['reason']}) — this is not a finding that your gap is "
-            f"genuine work, only that the cheap check was unavailable.",
-            file=sys.stderr,
-        )
+        print(f"NOTE: {transfer_remedy(transfer, None)}", file=sys.stderr)
     # COV-7K4N: a stale remote base (origin/<b> behind an ancestor-of-HEAD local
     # <b>) drags already-reviewed work into the required span and reads as
     # uncovered — the cheap, correct remedy is `git push origin <b>`, not a full

@@ -1000,6 +1000,54 @@ class TestPriorDispositions:
         assert entry["title"] == "finding R-1"
         assert entry["files"] == ["lib/a.py"]
 
+    def test_an_unreadable_store_says_so_instead_of_reading_empty(self, tmp_path):
+        """A block with no ``unavailable`` tells every reviewer that nothing was
+        dispositioned. For a store this reader could not read, that is false —
+        and false in the case where the accepted answers are most likely to be
+        re-raised, because they exist and are simply unreachable."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        store = evidence.read_facts(repo)
+        store["status"] = "error"
+        store["reason"] = "store is a directory"
+        block = dispositions.prior_dispositions(store, ["lib/a.py"])
+        assert block["entries"] == [] and block["matched"] == 0
+        assert "store is a directory" in block["unavailable"]
+
+    def test_a_schema_ahead_store_says_so_instead_of_reading_empty(self, tmp_path):
+        """Same reason, the other degraded state: records a newer plugin wrote
+        are filtered out of ``facts``, so the dispositions they carry are
+        invisible — which is not the same fact as their absence."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        with open(evidence.store_path(repo), "a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "schema": 99,
+                        "kind": "disposition",
+                        "id": "rev-future",
+                        "ts": "2030-01-01T00:00:00Z",
+                        "body": {},
+                    }
+                )
+                + "\n"
+            )
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert block["entries"] == [] and block["matched"] == 0
+        assert "newer schema" in block["unavailable"]
+
+    def test_a_healthy_store_carries_no_unavailable_key(self, tmp_path):
+        # The control for the two above: the key's PRESENCE is the whole signal,
+        # so a block that always carried it would say nothing.
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert "unavailable" not in block
+
     def test_a_disposition_about_other_files_is_not_carried(self, tmp_path):
         # The scope rule is what keeps a store shared by every worktree of a
         # clone (652 dispositions on this repo) from becoming a second document

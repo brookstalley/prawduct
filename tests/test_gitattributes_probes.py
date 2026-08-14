@@ -1,4 +1,4 @@
-"""Tests for the change-log merge-attribute advisory probe (analysis F6).
+"""Tests for the change-log merge-attribute advisory probe.
 
 Two surfaces, both covered here:
 
@@ -65,7 +65,9 @@ def _repo(
     change_log: str = "committed",  # "committed" | "untracked" | "ignored" | "absent"
     attribute: str | None = None,  # a .gitattributes line to commit, or None
 ) -> Path:
-    """Build a repo in the F6 shape: a change-log, optionally attributed."""
+    """A repo with a change log, in one of the four states the probe sorts on:
+    committed, present-but-untracked, gitignored, or absent — optionally carrying
+    a ``.gitattributes`` line."""
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "main")

@@ -220,11 +220,12 @@ build_state:
 # `artifacts/build-plan.md` — scope-named plans (`artifacts/build-plan-<scope>.md`)
 # keep release-pending plans distinct under gitflow. The value is a path
 # relative to `.prawduct/` (a repo-relative `.prawduct/...` spelling is
-# tolerated). The Critic gate, plan-aware mode inference, and chunk-ref
-# verification all resolve the plan through this pointer; unset →
-# `artifacts/build-plan.md`. A pointer to a file that doesn't exist means
-# governance sees NO active plan — the session briefing warns loudly until
-# it's fixed (STH-5P2W).
+# tolerated). It is the FALLBACK, not the first answer: a plan that declares
+# `branch:` in its frontmatter claims the branch it names, and this scalar
+# answers for every branch no live plan claims (the build-plan template's
+# `branch:` comment states the order). Unset → `artifacts/build-plan.md`.
+# A pointer to a file that doesn't exist means governance sees no active plan
+# by this route — the session briefing warns when resolution actually took it.
 #
 # active_build_plan: artifacts/build-plan-my-scope.md
 

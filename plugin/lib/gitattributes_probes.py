@@ -21,12 +21,14 @@ prawduct command precisely because ``.gitignore`` *is* in the reconcile set.
 conflicts, so a genuine two-sided edit to the *same* entry survives as both
 versions of the line rather than as a conflict to resolve: stamping ``release=``
 on one side while the other side edits the same tag line yields two tag lines.
-That shape is caught downstream — ``change_log.validate_change_log_tags`` errors
-on tag lines that set one key to different values, which is what the release
-gate reads — so the failure mode is a loud gate rather than a silent wrong
-answer. For a log whose normal traffic is "each branch prepends its own entry,"
-that trade is worth taking; a file with genuine concurrent in-place edits would
-not want this attribute at all.
+That shape is surfaced downstream rather than silently believed: the release
+gate runs ``change_log.validate_change_log_tags``, which fails closed when two
+tag lines set one key to different values and warns when an entry merely carries
+two. For a log whose normal traffic is "each branch prepends its own entry,"
+that trade is worth taking — verified, not assumed: two branches prepending
+tagged entries merge with each entry's tag line still under its own header,
+because the union driver concatenates whole hunks and never crosses them. A file
+with genuine concurrent in-place edits would not want this attribute at all.
 
 **Self-resolving, and resolution reads git's own answer.** The trigger and the
 resolution are the same observable state — ``git check-attr merge`` — so adding

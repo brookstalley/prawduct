@@ -1636,9 +1636,10 @@ def begin_review(
         # A block that cannot be built must not cost a review its dispatch. Loud,
         # though: an empty block and an unbuilt one are different facts about the
         # world, and a reviewer told "nothing was dispositioned here" when the
-        # join failed would be told something false.
-        priors = {"entries": [], "matched": 0, "shown": 0, "truncated": 0,
-                  "unavailable": f"{type(exc).__name__}: {exc}"}
+        # join failed would be told something false. This catches an unexpected
+        # shape; the two DEGRADED store states are returned rather than raised,
+        # so `prior_dispositions` answers those itself, in the same words.
+        priors = dispositions._unavailable(f"{type(exc).__name__}: {exc}")
 
     manifest = {
         "id": review_id,

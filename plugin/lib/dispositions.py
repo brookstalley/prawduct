@@ -134,6 +134,12 @@ def disposition_index(store: dict) -> dict[tuple[str, str], dict]:
 PRIOR_DISPOSITION_LIMIT = 15
 
 
+def _unavailable(reason: str) -> dict:
+    """An empty prior-dispositions block that SAYS it is empty for want of a
+    readable store, rather than because nothing was dispositioned."""
+    return {"entries": [], "matched": 0, "shown": 0, "truncated": 0, "unavailable": reason}
+
+
 def prior_dispositions(
     store: dict,
     files_changed: "list[str] | None",
@@ -180,11 +186,33 @@ def prior_dispositions(
 
         {"entries": [{"review_id", "fid", "title", "severity", "action",
                       "reason", "backlog_id", "files"}, ...],
-         "matched": int, "shown": int, "truncated": int}
+         "matched": int, "shown": int, "truncated": int,
+         "unavailable"?: str}
 
     ``entries`` is newest-first, so a truncated block keeps the answers most
     likely to still be live.
+
+    **A degraded store answers ``unavailable``, never an empty block.** The
+    reviewer protocol reads a block with no ``unavailable`` as "nothing was
+    dispositioned here", so returning ``entries: []`` for a store this reader
+    could not fully see states a falsehood — and states it in the one case where
+    re-litigating an accepted finding is most likely, because the answers are
+    there and simply unreadable. Both degraded states are *returned* by
+    ``evidence.read_facts`` rather than raised, so a caller's ``except`` cannot
+    catch them; they are answered here, the same way ``record_disposition`` and
+    the census reader refuse loudly on the identical two fields.
     """
+    if store.get("status") == "error":
+        return _unavailable(
+            store.get("reason") or "the evidence store could not be read"
+        )
+    if store.get("schema_ahead"):
+        return _unavailable(
+            f"{len(store['schema_ahead'])} evidence record(s) carry a newer "
+            "schema than this reader — the dispositions they record are "
+            "invisible here. Update the plugin (/reload-plugins or restart "
+            "Claude Code) to see them."
+        )
     in_scope_files = {f for f in (files_changed or []) if isinstance(f, str) and f}
     findings = evidence.findings_index(store)
     # (review id) → the scope that review recorded, so the work filter costs one

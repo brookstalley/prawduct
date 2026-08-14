@@ -1763,15 +1763,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # decides whether the others run at all. Falls back to the pointer whenever
     # the branch names no declared scope, so repos whose branch names differ from
     # their scopes are unaffected.
-    #
-    # Plan resolution REFUSES when two live plans declare the same `branch:`,
-    # and that refusal arrives here — before a single gate has run. It must not
-    # escape to `main`, which renders it as exit 1: this is a harness hook, and
-    # `api-contract.md` § Error Model gives the hook row exactly two outcomes,
-    # 0 clean and 2 block. Exit 1 is neither, so the session would END CLEAN with
-    # the reflection, coverage and PR gates never having fired — the fail-OPEN
-    # inverse of what the refusal is for. Rendered as a blocker instead, it
-    # leaves through the normal BLOCKED report at 2, carrying its own remedy.
     gate_plan = _buildplan_refs().resolve_branch_plan(project_dir, prawduct_dir).path
     has_build_plan = (
         _gates()._has_active_build_plan_file(prawduct_dir, gate_plan)
