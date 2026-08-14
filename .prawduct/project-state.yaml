@@ -508,14 +508,22 @@ build_state:
 # (rev-20260813T042938Z-81decaea): plan-backfill refuses names already in archive/.
 #
 # DEMOTED TO SECOND 2026-08-13 (tactical-efficiency Chunk 06). A build plan may
-# now declare `branch: <name>` in its frontmatter, and resolution takes the live
+# now declare `branch: <name>` in its frontmatter, and resolution takes a live
 # plan claiming the checked-out branch BEFORE this scalar, falling back to
-# artifacts/build-plan.md after it. The plan below declares this branch and is
-# the repo's first opt-in, so on feat/tactical-efficiency-pass it is resolved by
-# its own frontmatter and this line is not consulted. The scalar is deliberately
-# kept and kept current: it is the answer on every other branch, and retiring it
-# is out of that pass's scope.
-active_build_plan: .prawduct/artifacts/build-plan-tactical-efficiency.md
+# artifacts/build-plan.md after it. Several plans may claim one branch; the
+# scalar's remaining job is to break that tie, which is why it is kept.
+#
+# UNSET 2026-08-13, and the absence is the state rather than an oversight. It
+# named build-plan-tactical-efficiency.md, which declares its own (now merged and
+# deleted) branch. Keeping it aimed there put a finished plan back in force on
+# every branch with no plan of its own — including develop — where governance
+# then advised archiving a plan the gitflow RETAIN rule says to keep until the
+# release. That advisory had no correct action, which is the state a
+# branch-declaring plan exists to avoid; pr/SKILL.md merge-flow step 7 now says
+# to clear the pointer for this case. The plan is untouched: still live, still
+# findable, archived by scope at the release.
+#
+# active_build_plan:
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

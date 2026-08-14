@@ -70,9 +70,52 @@ def _plan(prawduct: Path, rel: str, body: str) -> Path:
 class TestBranchScopedPlanBriefing:
     """What the briefing says about `branch:`-declaring plans.
 
-    All three are advice — the briefing must still be produced. The refusal that
-    stops the GATES is reported here rather than met later as a failed command.
+    All of it is advice — the briefing must still be produced whatever it finds.
     """
+
+    def test_a_retained_plan_with_its_pointer_cleared_says_nothing(self, tmp_path: Path):
+        """The gitflow retention window, after a branch-declaring plan merges.
+
+        Its branch is deleted, so the claim resolves for nobody; with the pointer
+        cleared, nothing resolves the finished plan and the briefing is silent.
+        Leaving the pointer aimed at it is what produced an "archive the plan"
+        advisory during the one window the PR skill says to retain it — an
+        advisory whose only correct action was to ignore it.
+        """
+        _init_git_repo(tmp_path, branch="develop")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")  # pointer cleared
+        _plan(
+            prawduct,
+            "build-plan-shipped.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: shipped\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert not any("archive the plan" in f for f in findings), findings
+        assert "== SESSION BRIEFING ==" in briefing.assemble_session_briefing(
+            tmp_path, findings
+        )
+
+    def test_the_same_plan_still_nags_when_the_pointer_names_it(self, tmp_path: Path):
+        """The control, and the pointer-resolved case the rule keeps.
+
+        Without it the assertion above passes on any repo where the advisory is
+        broken rather than on one where the pointer was cleared.
+        """
+        _init_git_repo(tmp_path, branch="develop")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-shipped.md\n"
+        )
+        _plan(
+            prawduct,
+            "build-plan-shipped.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: shipped\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert any("archive the plan" in f for f in findings), findings
 
     def test_a_plan_claiming_a_missing_branch_is_reported(self, tmp_path: Path):
         _init_git_repo(tmp_path, branch="work")

@@ -3,6 +3,53 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: a merged-away change-log tag stops disappearing quietly
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+The union-merge advisory told operators that a two-sided edit to one entry's tag line "is surfaced
+downstream rather than silently believed," naming the release gate's tag validator as the catch.
+Writing the test that was supposed to pin that claim disproved it.
+
+`merge=union` concatenates whole **hunks**, so the second version of an edited tag line lands
+*after* the first version's prose — not beside it. Entry parsing ends its tag block at the first
+prose line, by design, so that second tag line was metadata to nobody: its pairs reached no `tags`
+dict and no validator ever saw them. A `release=` stamped on one side while the other side edited
+the same line could vanish in a merge, under a caveat asserting it would be caught.
+
+Parsing now counts tag lines past the prose (`ChangeLogEntry.unconsumed_tag_lines`) and
+`validate_change_log_tags` warns that they are read by nothing. Counted rather than merged,
+deliberately: merging would let a merge driver decide which `release=` wins, and the failure worth
+preventing is not that the value is wrong but that nothing says it is there.
+
+The detector needs both of its conditions, and the corpus proves it — a tag line must *begin* its
+line and parse to at least one real `key=value`. `TAG_LINE_RE` alone also matches a sentence
+quoting the format, and this change log contains one, so the looser rule reports the file that
+documents the format as malformed. Zero of 306 existing entries trip the strict form.
+
+**The finding this chunk was written for did not exist.** The claim under review was that union
+keeps duplicate whole entries; constructing the merge showed identical hunks are not conflicting, so
+a twice-landed entry is kept once. The chunk was rescoped from fixing prose to pinning it — and the
+pin is what found the real defect one layer down. Both shapes are now fixtures, alongside the
+existing no-attribute conflict control.
+
+## 2026-08-13: a branch-declaring plan retires by archiving alone
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+`planning.md` and `/prawduct:pr` both promised that a merged branch-declaring plan "reads
+live-but-inactive with no advisory to ignore." It did not, and this repo's own `develop` was the
+counter-example: the gitflow RETAIN rule says to keep `active_build_plan` aimed at a merged plan, so
+resolution fell through to the scalar and the archive-the-plan advisory fired exactly as before —
+against a plan the same rule says to retain until the release. An advisory with no correct action.
+
+The RETAIN bullet now splits on how the plan resolves. A plan that declares `branch:` gets its
+pointer **cleared** at the closing merge: its branch is gone, so the declaration resolves for
+nobody, the plan reads live-but-inactive, and the release still archives it by scope. A
+pointer-resolved plan keeps the pointer, because clearing it is what makes governance blind. This
+repo's own scalar is now unset, and the absence is annotated as the state rather than left to read
+as an oversight.
+
 ## 2026-08-13: several plans may claim one branch
 
 <!-- prawduct: type=fix | scope=branch-claim-multiplicity -->

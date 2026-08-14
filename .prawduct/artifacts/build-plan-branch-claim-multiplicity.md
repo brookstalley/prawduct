@@ -58,10 +58,29 @@ data, not inferred: discodon's `.prawduct/artifacts/` carries five build plans t
 
 ## Status
 
-- [ ] Chunk 01: Several plans may claim one branch — resolve and attribute, never refuse
-- [ ] Chunk 02: A branch-declaring plan retires by archiving alone — no pointer left to ignore
-- [ ] Chunk 03: Pin what union-merge does with a twice-landed entry
+- [x] Chunk 01: Several plans may claim one branch — resolve and attribute, never refuse
+- [x] Chunk 02: A branch-declaring plan retires by archiving alone — no pointer left to ignore
+- [x] Chunk 03: Pin what union-merge does with a twice-landed entry
 - [ ] Chunk 04: Release notes and a develop-track dogfooding path for sibling repos
+
+Chunk 01 landed 2026-08-13 (`9e66c88e` + `9f933285`; review `rev-20260814T033741Z-ba15c001`, 0
+blocking / 10 warnings / 13 notes, all ten warnings fixed in one batch and six notes accepted as
+facts). **Three reviewers independently found the same defect**, and it was in the one sentence that
+replaces the deleted refusal: the `order` reason asserted "no single plan has chunks left" in a state
+where several do — the shipped headline case. Derived from the state now, with each rendered reason
+pinned; none of the three wordings had been asserted anywhere before.
+
+Two findings reached past the files the chunk was about: three skill files still spelled
+one-claimant resolution (the `/prawduct:pr` one feeds `archive-plan`, so a discretionary pick could
+retire a live sibling plan), and the contested-claim line failed silent inside a broad `except` —
+the only surface that says a branch is contested, with the fail-closed backstop deliberately gone.
+An existing guardrail test caught the fix's own gap: the PR skill was told to run a command it was
+not granted.
+
+R-11's better shape — moving the Status-roster predicate down into `plan_index` so `core`'s
+dependencies stay downward — was **not taken here** and is filed rather than smuggled in: it is a
+refactor of the parser's home, not a line. The laziness that holds the graph acyclic is documented as
+a constraint at both ends meanwhile.
 
 Context: Authored 2026-08-13 after a review of the tactical-efficiency pass against its own analysis
 and build plan. Chunks 01–03 fix defects that review found; Chunk 04 is the release work the pass
