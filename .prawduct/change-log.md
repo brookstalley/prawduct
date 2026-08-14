@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: develop becomes a track you can actually run on
+
+<!-- prawduct: type=feature | scope=branch-claim-multiplicity -->
+
+`develop` reaches consumers through nothing, which is correct and made it impossible to run
+unreleased governance against real work before promoting it. It is now a track one repo of yours can
+opt onto: a second marketplace entry (`prawduct-dev`, same repo, `ref: develop`) in that repo's
+per-machine `.claude/settings.local.json`. Nothing is pushed to `main`, the repo's committed install
+reference never changes, and the way back off is deleting the block.
+
+**The version is the cache key, and that is what makes this work at all.** The plugin cache is one
+directory per version (`~/.claude/plugins/cache/prawduct/prawduct/<version>/`), so a `develop` whose
+version still matched the released string resolved to the *released* cache entry — you would
+dogfood nothing while believing otherwise. `develop` now carries a prerelease of the version it is
+heading for (`3.4.0-rc.1`), bumped as work lands.
+
+**Which the repo's own tooling then rejected, in three places.** The manifest check demanded exactly
+three numeric parts; the changelog check demanded a section named for the exact running version; and
+`banner.version_tuple` parsed any suffix as "older than everything", so a dogfooding repo would have
+seen no banner and the next real release would have replayed every headline in the file. All three
+understand a prerelease now: it sorts below its own release, and it is satisfied by that release's
+changelog section — an rc bump does not owe a changelog entry for a version nobody ships.
+
+The consumer-facing narrative for the pass ships in `plugin/CHANGELOG.md` under `v3.4.0` — the two
+surfaces a consumer actually meets are the new change-log union-merge advisory (what it is, that it
+is advice, how to make it stop) and the `branch:` opt-in (what it buys, that nothing migrates, and
+that several plans may claim one branch). `.prawduct/release-notes.md` was NOT touched: it is a
+frozen archive of a retired derived view, and writing there would revive it.
+
 ## 2026-08-13: a merged-away change-log tag stops disappearing quietly
 
 <!-- prawduct: type=fix | scope=branch-claim-multiplicity -->

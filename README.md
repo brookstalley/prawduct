@@ -281,7 +281,14 @@ See [`docs/principles.md`](plugin/docs/principles.md) for the full principles wi
 
 ## Recent Changes
 
-Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.3** line is what has been built on top of them:
+Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.4** line is what has been built on top of them:
+
+### 3.4 — Reviews you did not choose to buy
+- **Syncing your base no longer voids your review** — when your own diff is byte-identical and the advance touched none of your files, coverage transfers instead of buying a fresh cumulative. Byte equality across contexts, never content equivalence within one, with a current suite run as the third condition; measured as roughly half the review rounds on the busiest repo observed
+- **The coverage gate answers in about a second** (20.0 s → 0.35 s), memoized on a content hash of every input including the plugin version, so an upgrade can never replay a verdict computed under older judgeability rules
+- **Findings you already answered stay answered** — dispatches carry prior dispositions, and one defect found by three reviewers is presented once with three attributions
+- **Prose is priced honestly** — wording, counts and phrasing are NOTE unless something reads them; stale prose gets deleted, made relational, or pinned with a test, never renarrated, and review ids never ship in comments
+- **A build plan can declare the branch it governs** (`branch:` in frontmatter), so two concurrent branches stop conflicting on one line of `project-state.yaml`. Several plans may claim one branch — the briefing says which one governs and why. Entirely opt-in: a plan without it resolves exactly as before
 
 ### 3.1–3.3 — Governance that reports its own state
 - **Norms bind, descriptions track** — `## Direction` statements in governing artifacts carry normative authority, with an owner-ratification flow and time-domain health sweeps; enforcement is scoped to adoption, so a repo with no ratified norms gets NOTEs and is never blocked

@@ -217,15 +217,32 @@ def read_version(root: Path) -> str:
 def version_tuple(v: str) -> tuple:
     """Parse a semver string into a comparable tuple. Tolerant: a non-numeric
     or malformed value sorts below any real version so it never wins a range
-    comparison (an unparseable marker is treated as 'older than everything')."""
-    parts = v.strip().lstrip("v").split(".")
+    comparison (an unparseable marker is treated as 'older than everything').
+
+    **A prerelease suffix parses and sorts below its own release**, per semver:
+    ``3.4.0-rc.1`` < ``3.4.0``. That is what the develop track runs on
+    (`documentation/release-process.md`), and without it every rc parsed as
+    "older than everything" — so a repo dogfooding develop got no banner at all,
+    and the first real release after it would replay every headline in the file.
+    The suffix's own parts sort as numbers where they are numeric and as strings
+    otherwise, which orders ``rc.1`` before ``rc.2``; a released version is
+    ``(…, 1)`` against a prerelease's ``(…, 0, …)`` so the release always wins.
+    """
+    raw = v.strip().lstrip("v")
+    base, _, pre = raw.partition("-")
     out: list[int] = []
-    for p in parts:
+    for p in base.split("."):
         if p.isdigit():
             out.append(int(p))
         else:
             return (-1,)
-    return tuple(out) if out else (-1,)
+    if not out:
+        return (-1,)
+    if not pre:
+        # Sorts ABOVE any prerelease of the same base — semver's rule, and the
+        # reason this marker is a plain 1 rather than the absence of a field.
+        return (*out, 1)
+    return (*out, 0, tuple((0, int(p)) if p.isdigit() else (1, p) for p in pre.split(".")))
 
 
 def read_marker(prawduct_dir: Path) -> str | None:

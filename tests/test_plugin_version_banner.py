@@ -79,9 +79,21 @@ def _repo(tmp_path: Path) -> Path:
 
 class TestBundledData:
     def test_changelog_has_current_version_entry(self, banner):
+        """The shipped version's headline must exist — and a PRERELEASE is
+        satisfied by the release it is a prerelease OF.
+
+        `develop` runs on `X.Y.Z-rc.N` so the version-keyed plugin cache
+        re-fetches as it advances. Its content is the upcoming release's, so
+        demanding a `## vX.Y.Z-rc.N` section would add a changelog edit to every
+        rc bump and leave the file carrying sections for versions nobody ever
+        released.
+        """
         pairs = dict(banner.parse_changelog(ROOT))
-        assert PLUGIN_VERSION in pairs, f"CHANGELOG.md must carry the current version {PLUGIN_VERSION}"
-        assert pairs[PLUGIN_VERSION], "the current version's changelog headline must be non-empty"
+        base = PLUGIN_VERSION.partition("-")[0]
+        assert base in pairs, (
+            f"CHANGELOG.md must carry {base} (the version {PLUGIN_VERSION} ships as)"
+        )
+        assert pairs[base], "the current version's changelog headline must be non-empty"
 
     def test_gates_json_well_formed(self):
         data = json.loads(GATES_JSON.read_text())
@@ -107,6 +119,24 @@ class TestVersionMath:
         assert banner.version_tuple("1.8.0") < banner.version_tuple("1.8.1")
         assert banner.version_tuple("1.8.1") < banner.version_tuple("2.0.0")
         assert banner.version_tuple("garbage") == (-1,)  # sorts below everything
+
+    def test_a_prerelease_sorts_below_its_own_release(self, banner):
+        """The develop track's ordering. A prerelease parsed as unorderable made
+        a dogfooding repo get no banner at all, and made the first real release
+        after it replay every headline in the file."""
+        vt = banner.version_tuple
+        assert vt("3.3.4") < vt("3.4.0-rc.1") < vt("3.4.0-rc.2") < vt("3.4.0")
+        assert vt("3.4.0") < vt("3.4.1-rc.1")
+        assert vt("3.4.0-rc.1") != (-1,), "a prerelease must PARSE, not fall back"
+
+    def test_a_prerelease_shows_only_the_headlines_it_crossed(self, banner):
+        """The consequence the ordering exists for: moving 3.3.4 → 3.4.0-rc.1
+        crosses 3.4.0's section (it is the release being prepared) and nothing
+        older, and moving on to the real 3.4.0 crosses nothing new."""
+        log = [("3.4.0", "the new one"), ("3.3.4", "the old one"), ("3.3.3", "older")]
+        assert [v for v, _ in banner.highlights_in_range(log, "3.3.4", "3.4.0-rc.1")] == []
+        assert [v for v, _ in banner.highlights_in_range(log, "3.3.3", "3.4.0-rc.1")] == ["3.3.4"]
+        assert [v for v, _ in banner.highlights_in_range(log, "3.4.0-rc.1", "3.4.0")] == ["3.4.0"]
 
     def test_highlights_select_open_lower_closed_upper(self, banner):
         cl = [("1.8.1", "patch"), ("1.8.0", "minor"), ("1.7.0", "old")]

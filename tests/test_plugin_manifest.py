@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -58,10 +59,24 @@ class TestPluginManifest:
         )
 
     def test_version_is_semver(self, manifest):
-        parts = manifest["version"].split(".")
+        """major.minor.patch, optionally with a prerelease suffix.
+
+        The suffix is what the develop track runs on — `develop` carries a
+        prerelease of the version it is heading for so the plugin cache, which is
+        keyed by version string, actually re-fetches as develop advances
+        (`documentation/release-process.md`). A RELEASE still must not carry one;
+        that is the release checklist's job, not this test's, because this file
+        is read on every branch and `develop` is a branch.
+        """
+        base, _, pre = manifest["version"].partition("-")
+        parts = base.split(".")
         assert len(parts) == 3 and all(p.isdigit() for p in parts), (
             f"version must be semver major.minor.patch, got {manifest['version']!r}"
         )
+        if pre:
+            assert re.fullmatch(r"[0-9A-Za-z.]+", pre), (
+                f"prerelease suffix must be alphanumeric/dot, got {pre!r}"
+            )
 
 
 class TestHooksJson:

@@ -16,6 +16,44 @@ is invisible to them. Pinning `main` explicitly — rather than the bare repo �
 footgun: a bare repo silently follows GitHub's *default-branch* setting, which would ship
 `develop` if that default ever changed.
 
+## Dogfooding the develop track (without shipping anything)
+
+`develop` reaches consumers through nothing — but you can put **one** repo of your own on it, to
+run unreleased governance against real work before promoting. Nothing is pushed to `main` and no
+other repo is affected.
+
+A marketplace is keyed by **name** in `~/.claude/plugins/known_marketplaces.json`, each with its
+own checkout, so a second entry pointing at the same repo on a different ref coexists with the
+released one. Put it in the sibling repo's **`.claude/settings.local.json`** — per-machine and
+gitignored, so it never lands in the repo's committed install reference:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "prawduct-dev": {
+      "source": { "source": "github", "repo": "brookstalley/prawduct", "ref": "develop" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": { "prawduct@prawduct-dev": true, "prawduct@prawduct": false }
+}
+```
+
+**`develop` must carry a prerelease version, or the track does nothing.** The plugin cache is laid
+out one directory per version (`~/.claude/plugins/cache/prawduct/prawduct/<version>/`), so a
+`develop` whose `version` still matches the released string resolves to the *released* cache entry
+and you dogfood nothing while believing otherwise. Keep `develop` on a prerelease of the version it
+is heading for — `3.4.0-rc.1` — bumping the rc as you promote work into it. The release then sets
+the final version in the same three files (below), which is a new cache key again.
+
+**Getting back off the track:** delete the `prawduct-dev` block from `settings.local.json` and
+re-enable `prawduct@prawduct`. Nothing else is touched — the repo's committed `.claude/settings.json`
+never changed, so any other clone of it was always on `main`.
+
+**Do not put a shared repo on the develop track** without saying so: the marketplace entry is
+per-machine, so a collaborator on the same repo silently runs a different governance version than
+you do, and a gate that behaves differently between two people is worse than one that is behind.
+
 ## The version is the release trigger — not cosmetic
 
 Claude Code resolves a plugin's version from `plugin.json` `version` first. With

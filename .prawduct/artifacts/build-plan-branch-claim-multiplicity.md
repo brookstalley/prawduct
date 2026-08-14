@@ -222,7 +222,22 @@ sibling repo at the develop track and opening a session there.
 - **Tests:** none beyond the suite — this is documentation plus a version string; the recipe's
   verification is the live install below
 - **Acceptance criteria:** one sibling repo is actually running the develop track and its session
-  briefing reports the new version; `main` is untouched; the way back off the track is written down
+  briefing reports the new version; `main` is untouched; the way back off the track is written down.
+  <!-- Amended 2026-08-13 during the build: the live half CANNOT be met from this branch. The
+       marketplace source is `{source: github, ref: develop}`, so a sibling repo fetches develop from
+       GitHub — this work has to be merged and pushed there before any install can see it. Stated
+       rather than quietly satisfied by installing from a local path, which would verify a different
+       recipe than the one documented. The doc half (CHANGELOG, README, version bump, the recipe and
+       the way back off it) is complete; the chunk stays UNTICKED until a sibling repo has actually
+       run a session on the track. -->
+- **In-build discovery — the repo's own tooling rejected the prerelease.** The version-as-cache-key
+  assumption held, and its consequence did not: `plugin.json`'s semver check demanded exactly three
+  numeric parts, the changelog check demanded a section named for the exact running version, and
+  `banner.version_tuple` parsed any suffix as "older than everything" — so a dogfooding repo would
+  have got no banner at all and the next real release would have replayed every headline in the
+  file. All three now understand a prerelease: it sorts below its own release (semver), and a
+  prerelease is satisfied by the changelog section of the release it is a prerelease OF, so an rc
+  bump does not owe a changelog edit for a version nobody will ship.
 - **Type:** cumulative-final
   <!-- Last chunk: its review IS the one `/prawduct:critic cumulative` over the branch. -->
 - **Done when:**

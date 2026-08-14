@@ -10,6 +10,42 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.4.0
+
+**Reviews stop being re-bought by things that changed nothing.** A branch that merges an advanced base, a gate that took two minutes to answer, three reviewers filing one defect, and comment-wording findings that gate nothing — measured across four governed repos, those four accounted for most of the review rounds nobody chose. This release removes them, and adds one thing you may want to opt into: a build plan can now declare the branch it governs.
+
+### What you will notice first
+
+**Syncing your base no longer voids your review.** When the only thing that moved is the base branch — your own diff byte-identical, none of your files touched by the advance — the coverage gate transfers the review you already have instead of demanding a fresh one, and prints that it did. It is byte equality across two contexts, never content equivalence within one: any edit at all to one of your files, comments included, denies the transfer. A current test run is the third condition, because the suite (not the transferred review) is what vouches for your code meeting the advanced base. The Stop gate transfers on the same terms.
+
+**The gate answers in about a second.** Composing the coverage verdict was taking 29–120 seconds on a busy repo and hitting the 2-minute shell ceiling; it is memoized on a content hash of every input, including the plugin version, so an upgrade can never replay a verdict computed under older rules. Measured 20.0 s → 0.35 s.
+
+**Reviews stop re-litigating answers you already gave.** A dispatch now carries the findings you accepted or filed for the work in hand, and the protocols tell reviewers not to raise one again absent material change. Three reviewers describing one defect are grouped and presented as one defect with three attributions, so you dispose of it once.
+
+**Prose findings are priced honestly.** Comment, docstring and doc wording, counts and phrasing are NOTE unless something reads them or a reviewer can name the wrong action a maintainer takes. For stale prose there are three permitted remedies — delete the claim, make it relational, or pin it with a test — and never "reword the narration." Review ids, chunk numbers and review history never belong in a shipped comment; one narrating history is a deletion finding.
+
+**The fix-verify loop states its own golden path** where you act on it: fix everything in the working tree, do not commit between fixes, run one `verify-resolutions`, commit the verified tree verbatim. Verify-mode observations arrive pre-priced — accepting is the default, and fixing one costs a round.
+
+### Opt in if you want it: a plan can declare its branch
+
+Add `branch: <name>` to a build plan's frontmatter and every governance surface resolves that plan while that branch is checked out, ahead of `active_build_plan`. Two concurrent branches stop fighting over one line in `project-state.yaml`, and archiving the plan (or deleting the merged branch) ends the claim with nothing to un-point.
+
+**Several plans may declare one branch** — a release branch carrying two workstreams is ordinary. Governance picks the sole claimant, else the one with chunks left, else the plan `active_build_plan` names, else path order; the session briefing tells you which it chose, why, and what else claimed the branch. The scalar keeps a job: it is how you break that tie.
+
+**Nothing migrates and nothing is required.** A plan that declares no `branch:` resolves exactly as it did before. If your plans already carry a `branch:` field written as documentation, it becomes meaningful — inert wherever its value is not a real branch name, and never a reason to refuse.
+
+### One new advisory, and how to make it stop
+
+Every branch writes its change-log entry at the top of the same file, so merging an advanced base conflicts there every time while the two sides never actually disagree. A session-start advisory now recommends one line:
+
+```
+.prawduct/change-log.md merge=union
+```
+
+It recommends and never writes — `.gitattributes` is your committed configuration, not the plugin's. Add the line and commit it; the advisory resolves itself on the next sync. Declining is a legitimate answer and `/prawduct:doctor` will not grade your repo degraded for it.
+
+The trade is stated because it is real: union never conflicts, so a genuine two-sided edit to one entry's tag line survives as both versions. A twice-landed entry is *not* duplicated. Entry parsing now counts tag lines that end up past an entry's prose — where a union merge puts the second version — and warns that nothing reads them, so a merged-away `release=` cannot disappear quietly.
+
 ## v3.3.4
 
 **An archived plan now says whether it actually finished.** `archive-plan` stamps `unbuilt_at_archive:` into the frontmatter, naming the chunks that stopped it — so filing a plan away no longer erases the difference between work that completed and work that was abandoned mid-chunk.
