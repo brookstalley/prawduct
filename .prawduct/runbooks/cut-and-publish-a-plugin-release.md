@@ -391,23 +391,17 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > *Adjudicated, not derived: the file's own comment asks for this bump;
    > `documentation/release-process.md` step 2 didn't name it until v3.1.1.*
 
-10. In `plugin/CHANGELOG.md`, add a `## vX.Y.Z` section directly above the previous release,
-    with the consumer-facing headline as the first non-empty line under it.
+10. In `plugin/CHANGELOG.md`, **check whether a `## vX.Y.Z` section already exists** — then add one
+    directly above the previous release only if it does not, with the consumer-facing headline as
+    the first non-empty line under it. If it exists, bring it up to date instead.
 
-    > *Why: the version-delta banner shows exactly that first line to every repo
+    > *Why check first: `develop` runs on a prerelease of the version it is heading for, and its
+    > section is written under the FINAL number, not the rc — so on any release that was dogfooded,
+    > the section is already there and adding one blindly yields two sections for one version. The
+    > banner reads the first it finds.*
+
+    > *Why a headline at all: the version-delta banner shows exactly that first line to every repo
     > crossing this version.*
-
-    **On a minor or major bump — not a patch — also refresh `README.md`'s `## Recent
-    Changes`** so the current line is represented there. Rewrite the section; do not
-    append a per-release bullet. A patch has nothing to say on that surface, so skipping
-    it is the correct outcome and not an omission.
-
-    > *Why it is conditional, and why it lives here: the README is the first thing a
-    > prospective user reads, and no release had ever updated it — it sat two minor
-    > versions and eight releases stale (3.1.0 through 3.2.4) because no release document
-    > named the file. A per-release step would no-op on every patch, and a step that
-    > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
-    > and has something to say every time it does.*
 
 11. **Clear the pointer if one is still set, then archive the plans this release shipped.**
     On gitflow the closing PR deliberately RETAINS each plan — the work is not released yet
@@ -684,6 +678,21 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > there. It is avoided because **one call leaves no instant at which the tag exists without
     > its Release**, so the push-triggered job cannot observe the absence it would go red on.
     > v3.2.4 won that race by ~9 seconds of typing speed; v3.2.5 could not have lost it.*
+
+22. **Re-open the next prerelease on `develop`, or decide not to — the develop track goes silent
+    either way and only one of the two is visible.** The promotion left `develop` carrying the
+    version you just released, which is the string `main` now uses too, so any repo dogfooding the
+    develop track resolves the *released* plugin from cache and runs it believing otherwise
+    (`documentation/release-process.md` § Dogfooding the develop track).
+
+    - **Nothing is queued for the next release yet:** leave it. There is genuinely nothing
+      unreleased to dogfood, and the first work merged into `develop` re-opens the rc.
+    - **A sibling repo is pointed at the track and you want it live now:** bump the three version
+      files on `develop` to `X.Y.(Z+1)-rc.1` — the same three as step 7-9, in one commit.
+
+    **Expected:** either a commit on `develop` bumping to an rc, or a line in your handoff saying
+    the track is parked until the next merge. What is not acceptable is neither, with someone still
+    on the track.
 
 ---
 
