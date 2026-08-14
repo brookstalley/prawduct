@@ -38,8 +38,8 @@ is where most hand-authored claims live, so ``.md`` anywhere in the repo is a
 record. But it is not where they *all* live, and the gap was not hypothetical:
 this module's suite-total tripwire swept the plugin's markdown clean while ten
 governed products carried a hand-maintained test count in
-``.prawduct/project-state.yaml`` — one of them on a 51,992-character line — and
-markdown-only could not see any of it. So a YAML file **directly under a
+``.prawduct/project-state.yaml`` — one of them on a single line of roughly 52 KB
+— and markdown-only could not see any of it. So a YAML file **directly under a
 ``.prawduct/`` directory** is a record too: that file is hand-authored, it is
 asserted as a product's source of truth, and it is exactly as prone to a claim
 that drifts. Classification stays by path and suffix — no content is read and no
