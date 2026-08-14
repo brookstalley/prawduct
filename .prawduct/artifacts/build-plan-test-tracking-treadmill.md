@@ -54,9 +54,13 @@ whose direction — *delete the field, do not check it* — was ruled 2026-08-11
   `assertion_count` and `tests_added`: zero hits. `test_files`: six hits, all a local variable in
   `bin/test-reference-verify`. `source_root` (10 hits) is a **sibling** under `build_state`, never
   inside `test_tracking`, so the parent mapping is never left empty in any measured repo.
-- The existing `record_lint._SUITE_TOTAL_RE` matches discodon's line 587 **33 times**
-  (`'27064 passed'`, `'27062 passed'`, …) with **no pattern change**. That line is 51,992
-  characters — 33% of a 159 KB state file.
+- The existing `record_lint._SUITE_TOTAL_RE` matches discodon's line 587 **33 times** with **no
+  pattern change** — each match a five-digit count abutting a pass-word. That line is 51,992
+  characters, 33% of a 159 KB state file. (The matched fragments are deliberately *not* quoted
+  verbatim here: once Chunk 02 lands, this plan is itself a linted record, and a quotation of the
+  defect is indistinguishable from the defect to any check that scans text. The falsifying command
+  is what belongs in a record — re-derive with
+  `python3 -c "import sys;sys.path.insert(0,'plugin');from lib import record_lint as r;print(len(r._SUITE_TOTAL_RE.findall(open(P).read().splitlines()[586])))"`.)
 
 **Decision taken with the owner, 2026-08-14:** the strip removes the **whole `test_tracking`
 block**, superseding #633's earlier acceptance criterion *"does not touch a `test_tracking` block
@@ -81,7 +85,7 @@ match rather than departed from silently (Principle 6).
 
 ## Status
 
-- [ ] Chunk 01: The strip — one nested-key removal, reached through both doctor and migrate
+- [x] Chunk 01: The strip — one nested-key removal, reached through both doctor and migrate
 - [ ] Chunk 02: The tripwire that keeps it gone, and the rule stated where it bites
 
 Context: Plan authored 2026-08-14. Parent: `brookstalley/prawduct#633` (amended same day).
@@ -235,8 +239,12 @@ state file in the fleet and the invariants hold on each — block gone, `build_s
 
 **Acceptance criteria**
 
-1. `is_record(".prawduct/project-state.yaml")` is true; `is_record(".prawduct/archive/x.yaml")` is
-   false; a YAML outside `.prawduct/` is false.
+1. A product's state YAML directly under a `.prawduct/` directory classifies as a record; the same
+   same file under an archive path does not; and YAML anywhere outside a `.prawduct/` directory —
+   a product's CI config, its own app config, the plugin's own template — does not.
+   (Paths described rather than written as backticked literals: `chunk-ref-missing` reads a
+   backticked path in a chunk body as a *declared deliverable* and reports it missing, which is
+   the check working — the criterion is what needed rewording, not the check.)
 2. A `test_tracking` block re-introduced into `project-state.yaml` produces exactly one
    `suite-total-claim` finding for the offending line (one per line, not one per match).
 3. The learnings-shape and `governed-by` checks produce no findings when a YAML path is in the

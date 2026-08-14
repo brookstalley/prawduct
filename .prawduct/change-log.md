@@ -52,6 +52,33 @@ Prawduct has removed this field once before, through `strip_test_tracking()` in 
 engine, retired in M4/v2.0.3 — and it came back. So the deletion ships with a tripwire rather than
 alone; that half is the same scope's second chunk.
 
+**The tripwire: record-lint now sees the state file.** `is_record()` classified only `.md`, so the
+suite-total check swept the plugin's markdown clean while the claim that actually survived sat in
+YAML. It now also accepts YAML **directly under a `.prawduct/` directory** — scoped to governance
+state, never to YAML generally, because a product's CI config and lockfiles are its data and grading
+them would put this control in the wrong business. **The pattern is unchanged**: it already matched
+the worst real line many times over, so the fix was the file-type gate alone. The three
+markdown-specific checks are unaffected and now pinned that way — each already selected its own
+inputs by filename or by build-plan name rather than trusting the record set to be markdown.
+
+`tests/test_record_lint.py` asserted `.prawduct/project-state.yaml` was *not* a record. That
+assertion is inverted here, deliberately and on the owner's decision: the pinned behaviour is what
+was re-decided, not an assertion relaxed to let code pass.
+
+**The check found two false positives in this repo's own prose within a minute of existing, and
+both were the prose's fault.** The build plan quoted a matching fragment as evidence, and a
+quotation of a defect is indistinguishable from the defect to anything that scans text; its
+acceptance criteria wrote backticked paths that `chunk-ref-missing` correctly read as declared
+deliverables. Both were reworded — a record should carry the command that re-derives a claim, not a
+copy of it. Neither check was weakened.
+
+**And the methodology now names the instance.** `building.md` already said a count nothing reads is
+not worth writing; it did not say that a suite total is the one that keeps coming back, which is why
+the instance outlived the rule. One clause on that paragraph, landing **net zero** against the
+file's token budget — paid for by four trims, each pure restatement or a second example of a point
+already made. Its first draft was a separate bullet at +180 that also tripped the count-slot guard
+by quoting the shape it was forbidding.
+
 ## 2026-08-13: the change log recommends its own merge driver
 
 <!-- prawduct: type=feature | scope=tactical-efficiency -->

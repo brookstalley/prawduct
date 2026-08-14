@@ -422,6 +422,25 @@ def test_a_state_file_with_no_retired_keys_is_left_alone(tmp_path: Path):
     assert state.read_text().startswith(original), "rewrote a file it had nothing to fix"
 
 
+def test_a_repo_with_no_state_file_does_not_error(tmp_path: Path):
+    """Carried from Chunk 01's Critic review (R-4), closing AC9's second half.
+
+    The path is already safe twice over — both `strip_state_file` and
+    `retired_state_keys` check `is_file()` *and* catch `OSError` — so this pins a
+    guard rather than fixing a defect. It rides this chunk's commit because a
+    deferral to a later review round costs a round, and riding a commit already
+    being made costs none.
+    """
+    root = make_filesync_repo(tmp_path)
+    (root / ".prawduct" / "project-state.yaml").unlink()
+
+    result = run_migrate(root, "--apply")
+
+    assert result["state_keys_removed"] == []
+    # `record_distribution` creates the file, so the cutover still completes.
+    assert (root / ".prawduct" / "project-state.yaml").is_file()
+
+
 def test_the_cutover_owns_no_copy_of_what_a_retired_key_is(repo: Path):
     """One home for the fact, checked mechanically rather than by convention.
 

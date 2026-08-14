@@ -124,11 +124,39 @@ class TestRecordClassification:
     def test_non_markdown_is_not_a_record(self):
         assert not record_lint.is_record("plugin/lib/gates.py")
         assert not record_lint.is_record("plugin/lib/Foo.swift")
-        assert not record_lint.is_record(".prawduct/project-state.yaml")
+
+    def test_governance_state_yaml_is_a_record(self):
+        """The boundary this file used to pin the other way.
+
+        ``.prawduct/project-state.yaml`` was excluded while "a record is
+        markdown" was the whole rule, and the suite-total claim it excluded is
+        exactly the one that survived: ten products carry a hand-maintained test
+        count in that file, one of them on a 52 KB line the markdown-only sweep
+        could not see. The state file is hand-authored governance too, so it is
+        linted as one. Changed deliberately, on the owner's decision — the
+        pinned behaviour is what was re-decided, not an assertion relaxed to let
+        code pass.
+        """
+        assert record_lint.is_record(".prawduct/project-state.yaml")
+        assert record_lint.is_record(".prawduct/some-config.yml")
+
+    def test_yaml_outside_the_governance_dir_is_not_a_record(self):
+        """The widening is scoped to governance state, not to YAML.
+
+        A product's CI config, its dependency lockfiles and its own app config
+        are not governance records, and linting them would put this control in
+        the business of reviewing product data.
+        """
+        assert not record_lint.is_record(".github/workflows/ci.yaml")
+        assert not record_lint.is_record("config/settings.yaml")
+        assert not record_lint.is_record("plugin/templates/project-state.yaml")
 
     def test_archived_history_is_excluded(self):
         assert not record_lint.is_record(".prawduct/archive/artifacts/old-plan.md")
         assert not record_lint.is_record("archive/notes.md")
+        # The exclusion reaches the newly-included suffix too — archived state is
+        # not being asserted any more, whatever its file type.
+        assert not record_lint.is_record(".prawduct/archive/project-state.yaml")
 
     def test_records_in_preserves_order_and_is_none_safe(self):
         assert record_lint.records_in(None) == []
@@ -325,6 +353,88 @@ class TestSuiteTotalClaim:
             "The migration moved 295 items in total.",
         ):
             assert not self._fires(tmp_path, text), f"unexpected finding for {text!r}"
+
+
+class TestTheStateFileIsLintedToo:
+    """The tripwire that keeps `build_state.test_tracking` from coming back.
+
+    It has come back once already: prawduct removed the block through the
+    file-sync engine's `strip_test_tracking()`, that engine was retired, and the
+    block is live in ten products today. Deleting a field does not delete the
+    habit that writes it — so the deletion ships with a check that sees the file
+    the habit writes into.
+
+    Nothing about the PATTERN changes here; it already matched the real offending
+    line many times over. What changed is which files the check is allowed to
+    look at.
+    """
+
+    def _findings(self, tmp_path, rel: str, added: str, name: str) -> list[dict]:
+        repo = _make_repo(tmp_path, name=name)
+        doc = repo / rel
+        doc.parent.mkdir(parents=True, exist_ok=True)
+        doc.write_text("seed: 1\n")
+        base = _commit(repo, "seed")
+        doc.write_text(f"seed: 1\n{added}\n")
+        head = _commit(repo, "add")
+        return _lint(repo, [rel], base, head)
+
+    def test_a_reintroduced_test_count_is_caught(self, tmp_path):
+        """The shape that actually recurs: the block, with its provenance."""
+        block = (
+            "build_state:\n"
+            "  test_tracking:\n"
+            "    test_count: 27414  # post-Stage-4 GREEN: recorder line "
+            "27064 passed / 0 failed / 33 skipped"
+        )
+        found = _checks(
+            self._findings(tmp_path, ".prawduct/project-state.yaml", block, "reintro"),
+            "suite-total-claim",
+        )
+        assert found, "the state file's suite-total claim went unseen"
+
+    def test_one_finding_per_line_not_one_per_match(self, tmp_path):
+        """The real line matched the pattern 33 times.
+
+        A finding per match would bury a reviewer in one line's worth of noise
+        and make the check's own yield unreadable.
+        """
+        crowded = "  note: 27064 passed, then 27062 passed, then 27059 passed"
+        found = _checks(
+            self._findings(tmp_path, ".prawduct/project-state.yaml", crowded, "crowded"),
+            "suite-total-claim",
+        )
+        assert len(found) == 1, f"expected one finding, got {len(found)}"
+
+    def test_a_products_own_yaml_is_not_linted(self, tmp_path):
+        """Scoped to governance state, not to YAML.
+
+        A product's CI config legitimately says "1200 tests"; this control has no
+        business grading it.
+        """
+        found = _checks(
+            self._findings(
+                tmp_path, ".github/workflows/ci.yaml", "  # 1200 tests pass", "ci"
+            ),
+            "suite-total-claim",
+        )
+        assert not found, "linted a product file this control does not own"
+
+    def test_the_markdown_only_checks_stay_markdown_only(self, tmp_path):
+        """The other three checks must not start firing on a YAML path.
+
+        Each already self-filters — `learnings-entry-shape` guards on the
+        filename, `governed-by-gap` runs only over paths matching a build-plan
+        name — so this pins the guards rather than adding new ones. Without it,
+        widening the record set is a silent widening of three unrelated checks.
+        """
+        result = self._findings(
+            tmp_path, ".prawduct/project-state.yaml", "  harmless: true", "guards"
+        )
+        for check in ("learnings-entry-shape", "governed-by-gap"):
+            assert not _checks(result, check), (
+                f"{check} fired on a YAML path — it is a markdown check"
+            )
 
 
 # ---------------------------------------------------------------------------

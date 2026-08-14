@@ -33,10 +33,29 @@ review **fact**, so "how often did record-lint fire, and on what" is a query
 over the evidence store rather than an argument. The yield *query* is the
 janitor's Norm Health sweep, deliberately not here.
 
-**Records are markdown.** A record is a ``.md`` file — prose is where
-hand-authored claims live, and classifying by suffix keeps this language-neutral
-(``architecture.md`` § Direction: Python-implemented, never Python-specific).
-Archived history is excluded: it is not being asserted any more.
+**Records are markdown, plus the governance state under ``.prawduct/``.** Prose
+is where most hand-authored claims live, so ``.md`` anywhere in the repo is a
+record. But it is not where they *all* live, and the gap was not hypothetical:
+this module's suite-total tripwire swept the plugin's markdown clean while ten
+governed products carried a hand-maintained test count in
+``.prawduct/project-state.yaml`` — one of them on a 51,992-character line — and
+markdown-only could not see any of it. So a YAML file **directly under a
+``.prawduct/`` directory** is a record too: that file is hand-authored, it is
+asserted as a product's source of truth, and it is exactly as prone to a claim
+that drifts. Classification stays by path and suffix — no content is read and no
+language is classified (``architecture.md`` § Direction: Python-implemented,
+never Python-specific).
+
+**Scoped to governance state, never to YAML generally.** A product's CI config,
+its lockfiles and its own app config are its data, not governance records;
+linting them would put this control in the business of grading product content.
+The three markdown-specific checks are unaffected because each already selects
+its own inputs — ``learnings-entry-shape`` by filename, ``governed-by-gap`` by
+build-plan name (``.md$``) — rather than trusting the record set to be markdown;
+tests pin that, so widening the set here cannot silently widen them.
+
+Archived history is excluded whatever its suffix: it is not being asserted any
+more.
 """
 
 from __future__ import annotations
@@ -127,13 +146,22 @@ _BUILD_PLAN_RE = re.compile(r"(^|/)(?:build-plan[^/]*|[^/]*-plan)\.md$")
 # ---------------------------------------------------------------------------
 
 
+#: Governance state files: YAML sitting directly inside a ``.prawduct/`` dir.
+#: Anchored on the directory rather than on the name so a product that adds a
+#: second state file is covered, while a YAML one level deeper — under
+#: ``.prawduct/artifacts/`` or a product's own tree — is not: nesting is how
+#: this stays a check on a repo's declared state rather than on its data.
+_STATE_RECORD_RE = re.compile(r"(^|/)\.prawduct/[^/]+\.ya?ml$")
+
+
 def is_record(path: str) -> bool:
     """True when ``path`` is a governance record this module lints.
 
-    Markdown, and not archived. Suffix-only by design: no content is read to
-    decide, and no language is classified.
+    Markdown anywhere, or YAML directly under a ``.prawduct/`` directory; never
+    archived. Path and suffix only by design: no content is read to decide, and
+    no language is classified.
     """
-    if not path.endswith(".md"):
+    if not (path.endswith(".md") or _STATE_RECORD_RE.search(path)):
         return False
     return not any(marker in f"/{path}" for marker in _ARCHIVE_MARKERS)
 
