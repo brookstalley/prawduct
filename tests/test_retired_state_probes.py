@@ -134,11 +134,15 @@ class TestWhenItFires:
 
 
 class TestWhenItCannotAnswer:
-    """Fail soft and stay quiet — an advisory that guesses is worse than none.
+    """Fail soft — raise no advisory — but do not fail SILENT.
 
-    This is the *advice* half of `architecture.md` § Direction's
+    The *advice* half of `architecture.md` § Direction's
     authority-fails-closed / advice-fails-soft split: nagging a repo whose state
-    file could not be read would be a confident claim about something unread.
+    file could not be read would be a confident claim about something unread, so
+    no advisory is raised. The three inputs are not one answer, though. An
+    ABSENT state file genuinely has nothing to report and says nothing; a file
+    that EXISTS and could not be read is a different answer, and saying nothing
+    there is indistinguishable from a clean repo.
     """
 
     def test_no_state_file(self, tmp_path: Path) -> None:
@@ -151,6 +155,29 @@ class TestWhenItCannotAnswer:
         repo = _repo(tmp_path, WITH_BLOCK)
         (repo / ".prawduct" / "project-state.yaml").write_bytes(b"\xff\xfe\x80 bad")
         assert _probe(repo) == []
+
+    def test_an_unreadable_state_file_is_SAID_not_merely_survived(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """Fail soft, never fail silent — the sibling probes' contract.
+
+        Verified rather than assumed that this is needed: nothing else at
+        session start reports an undecodable `project-state.yaml`. Every reader
+        fails soft to a default, and `core.read_str_yaml_key` — the last one that
+        raised — was deliberately made fail-soft so an unreadable state file
+        could not abort a cutover. A session start over a corrupted state file
+        prints nothing, so without this line the repo whose source of truth is
+        unreadable gets no signal at all.
+        """
+        repo = _repo(tmp_path, WITH_BLOCK)
+        (repo / ".prawduct" / "project-state.yaml").write_bytes(b"\xff\xfe\x80 bad")
+
+        assert _probe(repo) == []
+
+        said = capsys.readouterr()
+        assert "could not be read" in (said.out + said.err), (
+            "an unreadable state file was skipped silently"
+        )
 
 
 # ---------------------------------------------------------------------------

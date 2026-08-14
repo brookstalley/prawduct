@@ -61,6 +61,7 @@ from __future__ import annotations
 
 from . import lifecycle_repair
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
+from .core import log
 
 FEATURE = "test-tracking"
 PROBE_VERSION = 1
@@ -82,11 +83,16 @@ REPAIR_COMMAND = "prawduct-hook lifecycle-repair --apply"
 def probe_retired_test_tracking(state: ProjectState, codebase: Codebase):
     """Raise one advisory when the retired test-count block is still present.
 
-    Quiet on every input it cannot read: an absent, unreadable or undecodable
-    state file yields ``[]`` rather than a guess. This is the *advice fails
-    soft* half of ``architecture.md`` § Direction — nagging a repo about a file
-    that was never read would be a confident claim about something unexamined,
-    and unlike a gate there is no caller here to fail closed on.
+    Raises nothing on any input it cannot read: an absent, unreadable or
+    undecodable state file yields ``[]`` rather than a guess. This is the
+    *advice fails soft* half of ``architecture.md`` § Direction — nagging a repo
+    about a file that was never read would be a confident claim about something
+    unexamined, and unlike a gate there is no caller here to fail closed on.
+
+    **Soft is not silent, and only one of the three is silent.** An *absent*
+    state file is a real answer — nothing to report — so it says nothing. A file
+    that exists and could not be read is not that answer, and it prints a
+    ``NOTE:`` naming what went unchecked.
 
     ``state`` is unused: :class:`ProjectState` exposes top-level scalars, and
     this key is nested, so the file is read directly.
@@ -96,7 +102,18 @@ def probe_retired_test_tracking(state: ProjectState, codebase: Codebase):
         return []
     try:
         text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as exc:
+        # Fail soft, never fail SILENT — the sibling contract in
+        # ``gitattributes_probes``. A file that exists and cannot be read is not
+        # the same answer as a file with nothing to report, and collapsing them
+        # here would report a clean repo over a state file nothing opened.
+        # No other session-start reader speaks up about this: they all fail soft
+        # to a default, so this line is the only signal a repo whose source of
+        # truth is unreadable gets.
+        log(
+            f"NOTE: {path} could not be read ({exc}) — this session did not "
+            "check it for retired governance keys."
+        )
         return []
 
     if not any(item["key"] == RETIRED_KEY for item in lifecycle_repair.state_removals(text)):

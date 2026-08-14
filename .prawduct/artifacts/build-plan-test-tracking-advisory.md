@@ -9,7 +9,7 @@ governed_by:
   - artifact: architecture
     dispositions:
       - "an independent reviewer never mutates the session it reviews → inapplicable: no reviewer path is touched"
-      - "authority fails closed; advice fails soft → engaged and it is the whole design: this is an advisory probe. It never gates, never blocks a session, and a repo is free to dismiss it. When it cannot read the state file it stays quiet rather than guessing"
+      - "authority fails closed; advice fails soft → engaged and it is the whole design: this is an advisory probe. It never gates, never blocks a session, and a repo is free to dismiss it. When it cannot read the state file it raises no advisory rather than guessing — but it is not SILENT there: an absent file is a real answer (nothing to report) and says nothing, while a file that exists and could not be read prints a `NOTE:` naming what went unchecked. Verified that this is needed rather than assumed: nothing else at session start reports an undecodable `project-state.yaml`, because every reader of it fails soft to a default"
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state, the evidence store, and the named reconcile files → conforms: the probe READS one file and writes nothing at all. Its remedy is a command the operator runs"
       - "prawduct is Python but never Python-specific → conforms: reads YAML text, no language assumption"
       - "prawduct guides and reviews; it never implements → conforms"
@@ -23,7 +23,7 @@ governed_by:
       - "a governed product's content never leaves its own repo and owner → conforms: reads one local file"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "proportionality ratchets both ways; adding a control names the yield it expects and emits it observably → engaged. **Expected yield: every governed repo that still carries the block, warned at session start without anyone deciding to act.** Measured at authoring: 9 of the fleet's repos carry it. Observable through the advisory store — `prawduct-hook advisory list` per repo, and the probe self-resolves, so the count going to zero IS the yield curve"
+      - "proportionality ratchets both ways; adding a control names the yield it expects and emits it observably → engaged. **Expected yield: every governed repo that still carries the block, warned at session start without anyone deciding to act.** Measured at authoring: 9 of the fleet's repos carry it, of which **7 are plugin-governed and so reachable by this probe at all** — the other 2 are not onboarded, and this instrument can never fire there, so the honest baseline is 7 and the curve cannot reach 0 through this alone. Observable through the advisory store — `prawduct-hook advisory list` per repo, and the probe self-resolves, so that count falling IS the yield curve"
       - "state-file growth is an advisory warning, never a hard block → consistent: this is the same posture for the same file"
       - "review wall-clock is P0 → engaged: one probe, no new review surface for consumers"
   - artifact: api-contract
@@ -94,7 +94,10 @@ meets the stale count is obliged to fix it.
 
 **Deliverables**
 
-- `plugin/lib/test_tracking_probes.py` — one probe, `retired-test-tracking`:
+- `plugin/lib/retired_state_probes.py` — one probe, `retired-test-tracking`. **Named for the
+  family, not the key:** a module starting with `test_` reads as a test file to pytest's
+  collector and would be silently skipped under `testpaths=["tests"]`; a preferences test
+  enforces this and caught the first name. The deliverables below are its content:
   - Reads `.prawduct/project-state.yaml` from `codebase.root`; returns `[]` when the file is
     absent, unreadable, or carries no block.
   - **Detection delegates to `lifecycle_repair.state_removals`** rather than re-deriving the key
@@ -107,7 +110,9 @@ meets the stale count is obliged to fix it.
   - `evidence` is **value- and count-independent** — the advisory id hashes it, so it must not move
     when the block's contents change underneath (that file is edited by its own sessions).
   - `priority="info"`.
-- Register it in `lib/probe_families.register_all()` with a one-line reason, matching the siblings.
+- `plugin/lib/probe_families.py` — register it in `register_all()` with a one-line reason,
+  matching the siblings. (A path, not a function reference — the deliverable
+  check resolves paths.)
 
 **Acceptance criteria**
 
@@ -115,7 +120,11 @@ meets the stale count is obliged to fix it.
    a repo without it produces none.
 2. A `test_tracking` under a foreign parent, or at top level, produces none — inherited free from
    `state_removals`, and pinned so the delegation cannot be silently replaced by a looser match.
-3. Absent, unreadable, and undecodable state files each produce none and raise nothing.
+3. Absent, unreadable, and undecodable state files each produce no advisory and raise nothing —
+   and the two that are not the same answer are not reported the same way: an absent file says
+   nothing, while a file that exists and could not be read prints a `NOTE:` naming what went
+   unchecked. Nothing else at session start reports that, so silence there would be
+   indistinguishable from a clean repo.
 4. The advisory **self-resolves**: after `lifecycle-repair --apply`, a re-probe returns `[]`.
 5. The id is stable across edits to the block's contents (same evidence → same id).
 6. `views_enabled` / `scope_rollups` alone do **not** trigger it.
