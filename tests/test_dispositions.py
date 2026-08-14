@@ -973,7 +973,7 @@ class TestCli:
 
 
 # ---------------------------------------------------------------------------
-# Prior dispositions on the dispatch manifest (tactical-efficiency Chunk 03)
+# Prior dispositions on the dispatch manifest
 # ---------------------------------------------------------------------------
 
 

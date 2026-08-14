@@ -106,8 +106,8 @@ LAST_MEASURED_TOKENS = {
     # own budget comment: at 1 token of headroom the file cannot afford to carry one,
     # which is itself the honest reading of how tight this ceiling now is.
     # +45 on 2026-08-13, ceiling 3620 -> 3800: the tactical-efficiency pass adds
-    # point-of-action rules to this file in three chunks (03 prior_dispositions,
-    # 04 the prose severity ceiling and remedy constraint). The file had 1 token
+    # point-of-action rules to this file — prior_dispositions, the prose
+    # severity ceiling and remedy constraint. The file had 1 token
     # of headroom and nothing left to dedupe — its own budget comment already
     # records that. Raising ONCE with the whole pass named beats three creeping
     # raises that each look local; the reading below still fails on any drift, so
@@ -127,9 +127,9 @@ LAST_MEASURED_TOKENS = {
     "skills/critic/review-protocol.md": 3799,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
-    # volume-cutting instructions have to live: chunk 03 adds prior_dispositions
-    # (don't re-litigate an accepted finding), 04 the prose severity ceiling, 05
-    # the pre-priced verify observations. Each is shorter than the review round
+    # volume-cutting instructions have to live: prior_dispositions (don't
+    # re-litigate an accepted finding), the prose severity ceiling, and the
+    # pre-priced verify observations. Each is shorter than the review round
     # it prevents. Deduped first and found nothing: the file was squeezed to 2
     # tokens of headroom by its last edit.
     # +142 on 2026-08-13: the same two rules plus the floor clause (the

@@ -780,7 +780,7 @@ class TestTransferYieldSignal:
     nothing can falsify is not a yield claim. Its sibling in this subsystem
     (``critic-begin``'s free-interval refusal) satisfies the norm through the
     same sink; these pin that the transfer does too, and that emitting it costs
-    the Chunk 02 verdict memo nothing after the first grant.
+    the verdict memo nothing after the first grant.
     """
 
     def test_a_grant_records_one_firing(self, tmp_path, capsys):
