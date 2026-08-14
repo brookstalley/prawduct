@@ -30,15 +30,18 @@ write the pair it had been handed. So the *fact* here is what the repair does, n
 weighed on one afternoon; re-derive the current figure rather than trusting this sentence:
 
 ```
-python3 - <<'PY'
+python3 - ../SOME-PRODUCT/.prawduct/project-state.yaml <<'PY'
 import sys, shutil, tempfile; from pathlib import Path
 sys.path.insert(0, 'plugin'); from lib import lifecycle_repair as lr
 tmp = Path(tempfile.mkdtemp()); (tmp/'.prawduct'/'artifacts').mkdir(parents=True)
-shutil.copy(SRC_STATE_FILE, tmp/'.prawduct'/'project-state.yaml')
+shutil.copy(sys.argv[1], tmp/'.prawduct'/'project-state.yaml')
 sp = tmp/'.prawduct'/'project-state.yaml'; before = sp.stat().st_size
 lr.apply_repair(tmp, lr.plan_repair(tmp)); print(before, '->', sp.stat().st_size)
 PY
 ```
+
+(It copies first and never touches the product's own file. Run from this repo's
+root, since it imports the plugin's `lib` from a relative path.)
 
 A durable record carrying a live measurement is the same defect as the field this change removes,
 one level up — which is why the correction is a re-derivation command and not a fresher number.
