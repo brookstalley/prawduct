@@ -3367,6 +3367,43 @@ class TestVerifyResolutionsDispatch:
         assert "another lineage" in result.stderr, result.stderr
         assert prior_id in result.stderr
 
+    def test_an_unreadable_store_is_not_reported_as_a_missing_anchor(self, tmp_path):
+        """"I could not read the store" and "the fact is not there" are different
+        facts, and only one of them means re-run the review.
+
+        Both readers on the dispatch's one shared store read must answer the
+        degraded case. `prior_dispositions` always did; this one iterated a store
+        it never graded, so an unreadable file yielded no facts and was reported
+        as "not found in the evidence store" — a confident claim about something
+        nothing parsed, pointing its reader at the wrong repair.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        # Real SHAs, so the dispatch resolves the anchor through git rather than
+        # tripping the fake-tree guard — the fixture has to REACH the store read
+        # for its corruption to be what refuses.
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        # Baseline: this dispatch succeeds while the store is readable, so the
+        # refusal below is the corruption and not some other guard. Abandoned
+        # through the real lifecycle step, or the in-flight guard refuses the
+        # second dispatch before it ever reaches the store read.
+        assert _run_begin(repo, "--mode", "verify-resolutions").returncode == 0
+        _abandon(repo)
+
+        evidence.store_path(repo).write_bytes(b"\xff\xfe not utf-8\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 1
+        assert "could not be read" in result.stderr, result.stderr
+        # The precise regression: it must NOT claim the fact is absent.
+        assert "not found in the evidence store" not in result.stderr
+
     def test_a_dirty_tree_fact_falling_back_to_dispatch_commit_is_not_refused(
         self, tmp_path
     ):

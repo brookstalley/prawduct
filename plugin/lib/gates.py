@@ -953,7 +953,7 @@ def _merge_base_verdict(
     # agreeing by coincidence. A fourth status added to the diagnosis would
     # reach the PR gate's remedy path and this gate's GRANT path, which is the
     # one direction a fail-closed control must never drift in.
-    if transfer.get("status") != "match":
+    if transfer.get("status") != coverage.TRANSFER_MATCH:
         # `unavailable` alone carries a `reason`, and it is the only shape whose
         # remedy is worth naming: the check could not run. An unrecognized
         # status denies silently rather than being rendered as a near miss it
@@ -1523,7 +1523,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         verdict_fn,
     )
     transfer_stale: "str | None" = None
-    if transfer is not None and transfer.get("status") == "match":
+    if transfer is not None and transfer.get("status") == coverage.TRANSFER_MATCH:
         tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
         if tests_ok:
             record_transfer_grant(

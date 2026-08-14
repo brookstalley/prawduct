@@ -225,6 +225,32 @@ class TestEnvelope:
 
 
 class TestErrorPosture:
+    def test_an_undecodable_store_is_returned_as_error_never_raised(self, tmp_path):
+        """`read_facts` promises a status dict for a degraded store — for EVERY
+        degraded store, including one that is not UTF-8.
+
+        `UnicodeDecodeError` is a `ValueError`, so `except OSError` let it
+        escape, and escaping is the one thing this contract forbids:
+        `dispositions.prior_dispositions` documents that a caller's `except`
+        cannot catch these states, and `critic_consolidate.begin_review` reaches
+        the store on a path with no guard at all. The identical hole was closed
+        in `core.read_str_yaml_key` and `core.read_bool_yaml_key` this cycle;
+        this reader is their sibling.
+        """
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {})
+        _store_file(repo).write_bytes(b"\xff\xfe not utf-8 at all\n")
+
+        read = evidence.read_facts(repo)  # must not raise
+
+        assert read["status"] == "error"
+        assert "unreadable" in read["reason"]
+        # The degraded shape is fully formed, not a bare status: every consumer
+        # field is present, so a reader that grades the dict before checking
+        # `status` gets the empty answer rather than a KeyError.
+        assert read["facts"] == [] and read["schema_ahead"] == []
+        assert read["fingerprint"] is None
+
     def test_torn_tail_excluded_loudly_then_healed_by_next_append(
         self, tmp_path, capsys
     ):

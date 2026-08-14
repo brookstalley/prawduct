@@ -1209,6 +1209,26 @@ def _prior_review_fact(
             "prior findings cache carries no fact_id — it predates the "
             "evidence store (a fresh review re-establishes coverage)"
         )
+    # A DEGRADED store is not an absent fact, and this reader could not tell the
+    # two apart: `facts_of_kind` yields nothing either way, so an unreadable
+    # store reported "not found in the evidence store" — a confident claim about
+    # a file nothing parsed, and the one that sends its reader to re-run a review
+    # rather than to fix the store. The sibling reader on this same shared read
+    # (`dispositions.prior_dispositions`) has always answered both states; this
+    # one now says the same two things in the same words.
+    if store.get("status") == "error":
+        return None, (
+            f"the evidence store could not be read ({store.get('reason', 'unknown')}) "
+            "— this says nothing about whether the prior review fact exists, only "
+            "that nothing could look"
+        )
+    if store.get("schema_ahead"):
+        return None, (
+            f"{len(store['schema_ahead'])} evidence record(s) carry a newer schema "
+            "than this reader, so the prior review may be among the records it "
+            "cannot see. Update the plugin (/reload-plugins or restart Claude "
+            "Code) before treating the anchor as missing"
+        )
     for fact in evidence.facts_of_kind(store, "review"):
         if fact.get("id") != fact_id:
             continue
@@ -1356,19 +1376,29 @@ def begin_review(
     # conjunct that keeps the gate from deadlocking.
     pending_actionable = 0
 
-    # ONE read of the store, shared by the two readers below it — the
+    # ONE read of the store, shared by the two readers that need it — the
     # verify-resolutions anchor lookup and the prior-dispositions block. They
     # used to open it separately, which is two parses of a store that reaches
-    # thousands of facts and, more to the point, two MOMENTS: the store is shared
-    # by every worktree of the clone, so a sibling's `critic-consolidate` landing
-    # between them would let one dispatch anchor to a fact the other's block was
-    # not built from. Taking both from one read makes the pairing structural,
-    # which is the reason `verdict_cache.VerdictCache.for_read` is built the same
-    # way. Read HERE — before the mode branch — because the anchor lookup is
-    # inside it; the only store WRITE this function makes (the free-interval
-    # refusal) returns without reaching either reader, so nothing appends behind
-    # this read.
-    store = evidence.read_facts(project_dir)
+    # thousands of facts (2,853 and rising on this repo, ~71 ms a parse) and,
+    # more to the point, two MOMENTS: the store is shared by every worktree of
+    # the clone, so a sibling's `critic-consolidate` landing between them would
+    # let one dispatch anchor to a fact the other's block was not built from.
+    # Taking both from one read makes the pairing structural, which is why
+    # `verdict_cache.VerdictCache.for_read` is built the same way.
+    #
+    # LAZY, not eager, and the free-interval refusal is why. That path declines a
+    # dispatch after one git diff and returns before either reader — charging it
+    # a store parse would put a growing cost on the one route whose entire
+    # purpose is to refuse cheaply. A closure over a one-slot cache, the idiom
+    # `gates._cached_diff_fn` already uses for a memo scoped to one invocation.
+    # Nothing appends behind it: the only store WRITE here is that refusal's own,
+    # and it returns without reaching a reader.
+    _store_slot: "list[dict]" = []
+
+    def read_store() -> dict:
+        if not _store_slot:
+            _store_slot.append(evidence.read_facts(project_dir))
+        return _store_slot[0]
 
     if mode_token in ("chunk", "final"):
         base_commit = dispatch_commit
@@ -1392,7 +1422,7 @@ def begin_review(
                 "changes are NOT in the reviewed scope"
             )
     else:  # verify-resolutions
-        prior, reason = _prior_review_fact(project_dir, prawduct_dir, store)
+        prior, reason = _prior_review_fact(project_dir, prawduct_dir, read_store())
         if prior is None:
             return {"status": "error", "reason": f"no prior review to verify: {reason}"}
         prior_body = prior.get("body") or {}
@@ -1652,7 +1682,7 @@ def begin_review(
 
     try:
         priors = dispositions.prior_dispositions(
-            store, files_changed, scope=scope
+            read_store(), files_changed, scope=scope
         )
     except (OSError, ValueError, TypeError) as exc:  # pragma: no cover - defensive
         # A block that cannot be built must not cost a review its dispatch. Loud,

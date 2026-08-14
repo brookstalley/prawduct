@@ -100,10 +100,16 @@ def store_path(project_dir: Path) -> Path | None:
 
 
 def _plugin_version() -> str | None:
-    """The bundled VERSION, nullable — never invented."""
+    """The bundled VERSION, nullable — never invented.
+
+    ``UnicodeDecodeError`` beside ``OSError`` for the reason
+    :func:`read_facts` states: undecodable IS unreadable, and this one has a
+    caller that makes it sharp — ``verdict_cache._key`` derives the memo key
+    from it, so a raise here would crash the gate rather than nulling a field.
+    """
     try:
         text = (Path(__file__).resolve().parent.parent / "VERSION").read_text()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     return text.strip() or None
 
@@ -397,7 +403,15 @@ def read_facts(project_dir: Path) -> dict:
         }
     try:
         raw_text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        # `UnicodeDecodeError` is a `ValueError`, so `except OSError` let it
+        # escape — and escaping is the one thing this function promises not to
+        # do. Its whole contract is that a degraded store comes back as a status
+        # dict, which is what lets `dispositions.prior_dispositions` state that
+        # a caller's `except` cannot catch these; that claim was false for
+        # exactly one input. The same hole was closed in `core.read_str_yaml_key`
+        # and `core.read_bool_yaml_key` this cycle; this reader is their sibling
+        # and the sweep missed it.
         return {
             "status": "error",
             "reason": f"store unreadable ({exc})",

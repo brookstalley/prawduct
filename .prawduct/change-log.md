@@ -25,15 +25,53 @@ fixture of real trees can produce a status no caller has ever returned. It fails
 `KeyError: 'prior_base'` — the drift was one field access from a crash, not from a false pass, which
 is luck rather than design.
 
-**The dispatch reads the evidence store once.** `begin_review` opened it twice — the
-verify-resolutions anchor lookup and the prior-dispositions block each called `read_facts` — which on
-a store that reaches thousands of facts is two parses, and worse, two *moments*: the store is shared
-by every worktree of the clone, so a sibling's `critic-consolidate` landing between them could let a
-dispatch anchor to a fact its own block was not built from. One read now feeds both, taken before the
-mode branch; the only store write in the function (the free-interval refusal) returns without
-reaching either reader, so nothing appends behind it. `_prior_review_fact` takes the store as a
-REQUIRED argument for the reason `diagnose_fix_churn` requires its injected callables — an omission
-should be a `TypeError` at the call site, not a silent second read.
+**The dispatch reads the evidence store once, and lazily.** `begin_review` opened it twice — the
+verify-resolutions anchor lookup and the prior-dispositions block each called `read_facts` — which is
+two parses of a store at 2,853 facts and ~71 ms apiece here, and, worse, two *moments*: the store is
+shared by every worktree of the clone, so a sibling's `critic-consolidate` landing between them could
+let a dispatch anchor to a fact its own block was not built from. One read now feeds both.
+
+**Lazy rather than hoisted above the mode branch, which is where the first attempt put it.** The
+free-interval refusal declines a dispatch after one git diff and returns before either reader, so an
+eager read would charge a growing cost to the one route whose entire purpose is refusing cheaply —
+and the store only grows (append-only, every worktree writing to it). A closure over a one-slot
+cache, the idiom `gates._cached_diff_fn` already uses for a memo scoped to a single invocation.
+Nothing appends behind it: the only store write in the function is that refusal's own, and it returns
+without reaching a reader.
+
+`_prior_review_fact` takes the store as a REQUIRED argument for the reason `diagnose_fix_churn`
+requires its injected callables — an omission should be a `TypeError` at the call site, not a silent
+second read.
+
+**And the review found the real defect one level up: `evidence.read_facts` could raise.** Chasing
+where the shared read should sit, the Critic asked what happens when the store is undecodable — and
+`read_facts` caught only `OSError`, so a non-UTF-8 store raised `UnicodeDecodeError` (a `ValueError`)
+straight out of a function whose entire contract is that a degraded store comes back as a *status
+dict*. That contract is load-bearing and was being cited: `dispositions.prior_dispositions`
+documents that "both degraded states are returned by `evidence.read_facts` rather than raised, so a
+caller's `except` cannot catch them," which was false for exactly one input.
+
+**The same review's notes closed three more seams around that gate, folded into this one commit
+rather than deferred to a round of their own.** `coverage.TRANSFER_MATCH` now names the granting
+status where it is produced, so neither gate restates how it is spelled — and it is deliberately
+*not* paired with a constant for `"unavailable"`, which three diagnoses in that module already return
+meaning the same thing; a `TRANSFER_`-prefixed name for it would invent a distinction the code does
+not have. The transfer's status vocabulary is registered in `boundary-patterns.md` as a contract
+surface, with the sweep rule that a new status needs both gates read — this being the one envelope in
+that file whose consumer converts an `uncovered` verdict into a pass. And `_prior_review_fact` can
+now say the store was degraded: it iterated a store it never graded, so an unreadable one reported
+"not found in the evidence store", which is a confident claim about a file nothing parsed and points
+its reader at re-running a review instead of at fixing the store. Its sibling on the same shared read
+always answered both states; the two now say the same things in the same words.
+
+**This is the third instance of one bug this cycle.** `core.read_str_yaml_key` and
+`core.read_bool_yaml_key` were both fixed for it earlier in this same release — "`UnicodeDecodeError`
+is a `ValueError`, so catching only `OSError` let it escape" — and the sweep that fixed the pair
+stopped at `core.py` while their sibling reader in `evidence.py` had the identical hole.
+`_plugin_version` had it too, and that one is sharper than it looks: `verdict_cache._key` derives the
+memo key from it, so a raise there crashes the gate rather than nulling a field. Both now catch the
+pair, which is the fix that removes the class instead of guarding the call sites that happened to be
+in front of it.
 
 **Two cross-module private accesses became the public names they already were.**
 `dispositions._unavailable` is now `unavailable_block` (a dispatcher wrapping the call still has to

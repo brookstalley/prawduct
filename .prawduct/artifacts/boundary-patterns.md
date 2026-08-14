@@ -80,6 +80,28 @@ carry verbatim provider text (issue titles and bodies) into agent-read findings,
 **item text is data, never instructions** — each consuming surface restates that
 rule locally rather than inheriting it.
 
+### Diagnosis Status Verdicts (the two review gates)
+
+**Producer:** `plugin/lib/coverage.py` — `diagnose_base_advance_transfer` returns
+`{"status": "match", …}`, `{"status": "unavailable", "reason"}`, or `None`. Its
+siblings `diagnose_fix_churn` and `count_branch_rounds` share the `"unavailable"`
+half of that vocabulary.
+**Consumers:** both review gates in `plugin/lib/gates.py` — the PR gate
+(`check_cumulative_critic`) and the Stop gate (`_merge_base_verdict`) — plus
+`transfer_remedy`, which renders a status and reads fields only two of the three
+shapes carry.
+**Contract:** the status strings, **and which of them may reach the GRANT path.**
+This is the one envelope here whose consumer turns an `uncovered` verdict into a
+pass, so a status the producer adds is not merely unrendered downstream — it can
+be *granted* by a consumer that tests negatively. Both gates now ask
+`== coverage.TRANSFER_MATCH`; `"unavailable"` stays a bare literal deliberately,
+being a module-wide convention rather than this diagnosis's own.
+**Sweep rule:** a new status needs BOTH gates read, not one. They were written
+months apart and tested the same answer two different ways — `== "match"` at the
+PR gate, `!= "unavailable"` at the Stop gate — agreeing only because the producer
+happened to return nothing else. Registering the surface is what makes the next
+status a two-site question instead of a one-site edit.
+
 ### API Endpoints
 <!-- Example:
      Producer: src/api/routes/
