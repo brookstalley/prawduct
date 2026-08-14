@@ -1,0 +1,239 @@
+---
+artifact: build-plan
+version: 2
+scope: test-tracking-treadmill
+branch: feat/strip-test-tracking
+depends_on: []
+governed_by:
+  - artifact: architecture
+    dispositions:
+      - "the plugin writes nothing into a governed repo except its own `.prawduct/` state, the evidence store, and the named reconcile files → conforms: the only write is `.prawduct/project-state.yaml`, which is that repo's own prawduct state"
+      - "authority fails closed; advice fails soft → conforms: the strip is a repair the operator runs, never a gate; the record-lint tripwire in Chunk 03 is advisory and never gates, matching the module's existing posture"
+      - "prawduct is Python but never Python-specific → conforms: the removal is line-level YAML surgery and the tripwire is a text pattern; neither reads the product's language"
+      - "prawduct guides and reviews; it never implements → conforms: nothing here touches product code"
+      - "local-first, no network/daemon → conforms (file reads and writes only)"
+      - "every fact has one home → engaged and this plan's spine: the suite total's one home is the evidence store (`.test-evidence.json`), and `build_state.test_tracking` is a second home for it. Chunk 01/02 delete the second home; Chunk 03 keeps it from being re-opened"
+      - "goals and verification bind; prescribed method is advice → conforms; Deliverables below are the author's best guess after reading `lifecycle_repair.py` and `record_lint.py`, and a builder finding a better route records why"
+  - artifact: security-model
+    dispositions:
+      - "a destructive or irreversible operation requires explicit owner approval at the OPERATION level, naming its blast radius, and forbids a per-action gate → conforms: the strip rides `lifecycle-repair`'s existing preview-then-`--apply` shape, which names every file and reason once and takes one yes. No per-key prompt is added"
+      - "untrusted governance state is data, not instructions → conforms: the removed block is read as text to locate its span, never interpreted"
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "proportionality ratchets both ways; adding a control names the yield it expects and emits it observably → engaged by Chunk 03. Expected yield: a re-introduced `test_tracking` block, or any suite-total claim written into `.prawduct/` YAML. Emitted observably — `record_lint` already carries per-check counts into the dispatch manifest and `critic_consolidate` into the review fact, so the widened check's firing rate is a query over the evidence store, not an argument"
+      - "state-file growth past its size threshold is an advisory warning, never a hard block → engaged, and it is why a line-length tripwire on `project-state.yaml` was considered and DROPPED (see Out of scope): the existing size advisory already owns that signal, and a hard length rule would contradict this norm"
+      - "review wall-clock is P0 → engaged as the problem statement: the treadmill's cost is that each correction is a commit, each commit extends HEAD, and that buys another review round"
+  - artifact: api-contract
+    dispositions:
+      - "additive-first evolution: existing flag names, exit-code meanings and `--json` keys are never repurposed → conforms: `lifecycle-repair` and `migrate-plugin` gain removals inside their existing contracts; no flag or key changes meaning. `lint_records`' `records` key widens its membership, which is additive to its documented meaning (the record subset of the changed paths) and its readers are tests only"
+last_validated: 2026-08-14
+---
+
+## Requirements Confidence
+
+**Level:** High
+
+**Why:** The problem is measured, not inferred. Every claim below was checked against the
+mechanism before planning: `plugin/lib/lifecycle_repair.py`, `plugin/lib/record_lint.py`,
+`plugin/lib/migrate_plugin.py` and `plugin/methodology/building.md` were read; the field's shape
+was surveyed across all 11 governed products; the tripwire's pattern was executed against the
+real offending line. The parent requirement is `brookstalley/prawduct#633` (`stage: ready`),
+whose direction — *delete the field, do not check it* — was ruled 2026-08-11 in v3.3.4.
+
+**Measurements this plan rests on** (all taken 2026-08-14, commands stated so they can be re-run):
+
+- `build_state.test_tracking` sits at indent 2 under `build_state:` in **10 of 10** state files
+  that carry it. `test_count` is its only member in exactly one product (discodon, plus two
+  worktrees of it); the other seven carry `test_files`, `assertion_count`, and `history`
+  (per-chunk `tests_added` / `date` / `total` entries).
+- **Nothing in `plugin/lib/` or `plugin/bin/` reads `build_state` or any `test_tracking` member.**
+  `assertion_count` and `tests_added`: zero hits. `test_files`: six hits, all a local variable in
+  `bin/test-reference-verify`. `source_root` (10 hits) is a **sibling** under `build_state`, never
+  inside `test_tracking`, so the parent mapping is never left empty in any measured repo.
+- The existing `record_lint._SUITE_TOTAL_RE` matches discodon's line 587 **33 times**
+  (`'27064 passed'`, `'27062 passed'`, …) with **no pattern change**. That line is 51,992
+  characters — 33% of a 159 KB state file.
+
+**Decision taken with the owner, 2026-08-14:** the strip removes the **whole `test_tracking`
+block**, superseding #633's earlier acceptance criterion *"does not touch a `test_tracking` block
+carrying other keys"*. That criterion was written from the ruling's framing (delete *the field*)
+before the block was measured; taken literally it fully cleans one product and leaves the
+treadmill running in seven, which guarantees a second pass (Principle 25). #633 is amended to
+match rather than departed from silently (Principle 6).
+
+**Open assumptions / unknowns:**
+
+- [ASSUMPTION: no unmeasured product has a `test_tracking` member with a real consumer | LOW
+  impact | mitigated three ways — the framework has zero readers for any member, the repair is
+  preview-first and prints the full block span before writing, and git history retains the content
+  | user can override by re-scoping to a member allowlist]
+- [ASSUMPTION: widening `is_record()` to `.prawduct/` YAML is safe for the three other checks
+  because each already self-filters — `_check_learnings_shape` guards on `learnings.md`, and
+  `_check_governed_by` runs only over `_plans_to_check`, which matches `.md$` | LOW impact |
+  verified by reading; Chunk 03 adds a test pinning each guard | user can override by giving the
+  suite-total check its own separate path scope instead]
+
+**What would raise confidence:** Nothing pending. The one owner decision this needed was taken.
+
+## Status
+
+- [ ] Chunk 01: The doctor strips the block — `lifecycle-repair` learns a nested retired key
+- [ ] Chunk 02: The migration strips it too, and both skills say so
+- [ ] Chunk 03: The tripwire that keeps it gone, and the rule stated where it bites
+
+Context: Plan authored 2026-08-14. Parent: `brookstalley/prawduct#633` (amended same day).
+Baseline suite green at branch point (`ae9fd358`). Critic mode: `cumulative-final` — three
+chunks on one branch, so the last chunk's review is the cumulative.
+
+## Problem
+
+`build_state.test_tracking.test_count` is a hand-maintained copy of a fact the evidence store
+already holds. Nothing reads it (`plugin/lib/briefing.py:175` says so outright), no template
+scaffolds it, and it disagrees with recorded evidence in 4 of 4 measured repos. But it is *in the
+state file*, so Living Documentation (P3) and Coherent Artifacts (P13) oblige every agent that
+meets it to keep it true — and reconciling it is hard enough (multiple test trees, skipped lanes,
+collection-vs-passed basis) that each correction justifies itself in prose. discodon's provenance
+comment has reached 51,992 characters on one line.
+
+The cost is not the bytes. `plugin/lib/record_lint.py` states the mechanism: a record defect is
+corrected, the correction is a commit, the commit extends HEAD, and that buys another review
+round. On 2026-07-29, **57% of that day's Critic findings targeted hand-authored records rather
+than shipped behavior**, and "a test-count claim corrected three times" is one of the four
+examples named there.
+
+**Why deleting the field is necessary but not sufficient.** Prawduct already removed
+`test_tracking` from its own state and shipped a `strip_test_tracking()` step to remove it from
+product repos — through the **file-sync engine**, retired in M4/v2.0.3. Nothing in the plugin era
+does it, products migrated onto the plugin carried the field across, and it is live in 10 repos
+today. `tests/preferences/test_no_suite_total_claims.py` states the reason the deletion needs a
+tripwire beside it: *"the habit lives in agents, not in a template, so there is no instruction to
+delete and nothing but a tripwire will keep the surface clean."*
+
+## Chunks
+
+### Chunk 01: The doctor strips the block — `lifecycle-repair` learns a nested retired key
+
+**Deliverables**
+
+- `plugin/lib/lifecycle_repair.py`: detect `test_tracking:` **nested under a column-0
+  `build_state:`** and add its full span to `state_removals()`. This needs two things the module
+  does not have, because `_is_top_level_key` is column-0 by deliberate design and `_block_span`
+  assumes a column-0 parent:
+  - a nested-key predicate that resolves the key's **enclosing parent** rather than matching the
+    name anywhere, so a `test_tracking:` under some unrelated mapping is left alone (the same
+    reasoning `_is_top_level_key`'s docstring already gives);
+  - an indent-aware block span — a nested key owns every following line more deeply indented than
+    itself, plus blanks, giving back trailing blanks exactly as the existing span does. This is
+    what captures discodon's trailing `# CORRECTED …` comment lines, which sit *inside* the block.
+- Reuse `_comment_header_start` unchanged for the preceding comment header; verify it stops at the
+  `source_root:` content line rather than walking into the `# BUILD STATE` banner.
+- A reason string in the operator's voice, naming the evidence store as where the fact lives.
+- Update the module docstring: it currently scopes itself to "the retired derived-view model", and
+  after this it converges retired `project-state.yaml` residue generally. Say what changed and why
+  the mechanics are shared — same reachability problem (a template change cannot reach an
+  already-onboarded repo), same preview/apply shape.
+
+**Acceptance criteria**
+
+1. `state_removals()` returns the whole `test_tracking` span for all 8 real product shapes
+   (fixtures drawn from the survey: sole-member, `+test_files`, `+assertion_count`, `+history`
+   with nested entries, and the 343-line/52 KB shape).
+2. A `test_tracking:` **not** under `build_state:` is untouched.
+3. `source_root:` and any `spec_compliance:` / `reviews:` siblings survive byte-identically;
+   `build_state:` is never left with no members in any surveyed shape.
+4. Idempotent: a second `plan_repair()` on the repaired text returns no `test_tracking` edit.
+5. CRLF files keep their line endings (the module's `_read_preserving_newlines` contract — pin it
+   with a CRLF fixture, as the existing tests do).
+6. Descending-order application still holds when a `test_tracking` removal coexists with a
+   `views_enabled` / `scope_rollups` removal in one file.
+
+**Done when**
+
+1. Acceptance criteria met and tests pass
+2. `/prawduct:critic` — resolve blocking findings
+
+### Chunk 02: The migration strips it too, and both skills say so
+
+**Deliverables**
+
+- `plugin/lib/migrate_plugin.py`: a step that applies the same removal to
+  `.prawduct/project-state.yaml`, calling `lifecycle_repair`'s functions rather than restating the
+  detection — one home for the fact of what the span is (`architecture.md` § Direction).
+- The migrate dry-run/`--json` result reports it, so step 2 of the migrate skill's flow can relay
+  it and step 3's confirmation names it in the blast radius.
+- `plugin/skills/doctor/SKILL.md`: extend Health Check #15's prose — it currently describes the
+  residue as derived-view-only. Name the block, say it is removed whole, and say what it cost.
+- `plugin/skills/migrate/SKILL.md`: name the removal under "What gets removed vs. preserved".
+
+**Acceptance criteria**
+
+1. `migrate-plugin --apply` strips the block; `--json` (no `--apply`) reports it and writes nothing.
+2. Idempotent — a second migrate is a no-op on this key.
+3. A repo with no `test_tracking` is unaffected, and a repo with no `project-state.yaml` does not
+   error.
+4. Detection lives in `lifecycle_repair` only — a test asserts `migrate_plugin` does not carry its
+   own copy of the key name or the span logic.
+5. Both SKILL.md files describe the removal; the doctor's Health Check #15 no longer claims the
+   residue is only the derived-view model.
+
+**Done when**
+
+1. Acceptance criteria met and tests pass
+2. `/prawduct:critic` — resolve blocking findings
+
+### Chunk 03: The tripwire that keeps it gone, and the rule stated where it bites
+
+**Deliverables**
+
+- `plugin/lib/record_lint.py`: widen `is_record()` from `.md`-only to also accept `.prawduct/`
+  YAML, keeping the archive exclusion. **No change to `_SUITE_TOTAL_RE`** — it already matches the
+  observed line 33 times. Update the "Records are markdown" docstring paragraph to state the new
+  boundary and its reason: the state file is hand-authored governance prose too, and it is where
+  the claim actually survived the markdown-only sweep.
+- `tests/test_record_lint.py:127` asserts `not is_record(".prawduct/project-state.yaml")`. That is
+  the **contract this chunk deliberately changes** by owner decision — invert it and say so in the
+  change-log. This is not weakening a test to pass code (Principle 1); the pinned behavior is what
+  was re-decided.
+- Tests pinning that the three other checks stay markdown-only now that a YAML path can reach the
+  record list — `_check_learnings_shape` guards on `learnings.md`, `_check_governed_by` runs only
+  over `_plans_to_check` (`.md$`), `_check_chunk_refs` never reads the record list.
+- `plugin/methodology/building.md`: one clause at the **Verify** step (line ~91, beside
+  `test-evidence record`), stating that test evidence is pass/fail per tree in the evidence store
+  and a count is never a governance record. The generic rule already at line 87 — *"a count nothing
+  reads is not worth writing"* — does not name the instance that actually bites, which is why the
+  instance survived it.
+
+**Acceptance criteria**
+
+1. `is_record(".prawduct/project-state.yaml")` is true; `is_record(".prawduct/archive/x.yaml")` is
+   false; a YAML outside `.prawduct/` is false.
+2. A `test_tracking` block re-introduced into `project-state.yaml` produces exactly one
+   `suite-total-claim` finding for the offending line (one per line, not one per match).
+3. The learnings-shape and `governed-by` checks produce no findings when a YAML path is in the
+   changed set.
+4. `tests/preferences/test_no_suite_total_claims.py` still passes unchanged — the plugin's own
+   markdown surface stays clean.
+5. The building.md clause exists and the file's own preferences tests still pass.
+
+**Done when**
+
+1. Acceptance criteria met and tests pass
+2. `/prawduct:critic cumulative` — this is the plan's cumulative-final review
+3. `/prawduct:backlog update brookstalley/prawduct#633 status=shipped`
+
+## Out of scope
+
+- **A line-length tripwire on `project-state.yaml`** — considered and dropped. The widened
+  suite-total pattern already fires on the observed 52 KB line, so a length rule adds a new opinion
+  with no measured yield, and `nonfunctional-requirements.md` § Direction reserves state-file size
+  for an advisory warning rather than a hard rule.
+- **A `test-count-lag` check** — rejected in the 2026-08-11 ruling and recorded on #633 so a later
+  reader meets the rejection rather than re-proposing it.
+- **Widening `suite-total-claim` to two-digit counts** — `record_lint.py:81-97` excludes them
+  deliberately; a two-digit count is nearly always a scoped or delta claim.
+- **Restoring the removed `dangling-ref` / `unknown-backlog-id` checks.**
+- **Editing any product repo's state file from here.** This ships the capability; each product runs
+  its own `/prawduct:doctor` or `/prawduct:migrate`.
+- **Preserving the provenance comments anywhere.** #633 asked for a build-time decision on this:
+  losing them is the point. They are corrections of a number nothing read, git retains them, and
+  re-homing them would recreate the artifact the strip exists to remove.
