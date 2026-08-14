@@ -47,6 +47,7 @@ def register_all() -> None:
     from .coverage_probes import register as register_coverage
     from .stale_base_probes import register as register_stale_base
     from .gitattributes_probes import register as register_gitattributes
+    from .retired_state_probes import register as register_retired_state
 
     register_backlog()  # the backlog feature's probes (incl. legacy-backlog-format)
     register_upstream()  # upstream-bug-reporting receiving-side probe
@@ -57,3 +58,4 @@ def register_all() -> None:
     register_coverage()  # structural-coverage strategy-class artifact probe
     register_stale_base()  # stale remote-base / unpromoted-release-prep nudge (COV-7K4N)
     register_gitattributes()  # change-log merge=union recommendation (top-append conflicts)
+    register_retired_state()  # retired build_state.test_tracking strip nudge
