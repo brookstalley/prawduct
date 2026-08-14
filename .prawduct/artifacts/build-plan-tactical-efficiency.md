@@ -66,7 +66,7 @@ the remaining input.
 - [x] Chunk 04: Prose findings priced honestly — severity ceilings, deletion-first remedies, no archaeology
 - [x] Chunk 05: Verify-resolutions golden path at every point of action
 - [x] Chunk 06: The plan declares its branch — active-plan resolution goes branch-scoped
-- [ ] Chunk 07: Advisory recommends union-merge for the append-only change-log
+- [x] Chunk 07: Advisory recommends union-merge for the append-only change-log
 Context: Plan authored 2026-08-13 by the Fable analysis session (Chunks 06–07 added same day
 after owner feedback: doctor is rarely run → advisory surface; active plan is branch state →
 Chunk 06). Chunks 01–04 built and committed; 05–07 outstanding. Executes on Opus. Parent evidence:
@@ -150,9 +150,30 @@ alone did not satisfy the acceptance criterion — `infer_scope_from_branch` had
 Note Chunks 03–05 all edit the Critic/PR protocol prose, and every one of those files sits within
 ~30 tokens of a guardrail ceiling; `goals-1-3.md` now has 7. Chunk 06 touched none of them.
 
-Next: Chunk 07, which is independent of everything before it. One accepted debt rides its commit —
-R-17's relational sweep of the ~dozen `active_build_plan pointer` narratives this chunk falsified
-but did not edit; the list is in `.prawduct/.handoff-notes.md`.
+Chunk 07 landed 2026-08-13 (`c5d5f044` + `713e719b`; the branch's one `cumulative`,
+`rev-20260813T235433Z-5eeb8918`, 0 blocking / 4 warnings / 9 notes). It discharged Chunk 06's
+carried R-17 debt in its own commit: eight docstrings that still called active-plan resolution "the
+`active_build_plan` pointer" now name the repo's active build plan and point at the function that
+owns the rule.
+
+**The chunk verified its own advice rather than shipping it.** The recommendation goes into a
+user's repository, so "union-merge is safe for an append-only entry log" was tested before being
+printed: two branches prepending tagged entries conflict without the attribute and merge cleanly
+with it, each entry's tag line still under its own header. That produced the caveat now stated
+where the probe lives — union never conflicts, so a two-sided edit to the same line survives as
+both versions, which the release gate's tag validator surfaces. The test carries the no-attribute
+conflict as its control.
+
+**All four cumulative warnings were fixed in one batch**, none of them about the new probe: the
+prior-dispositions block could not report a degraded store (its `except` covered a path
+`read_facts` never takes, while both states it *returns* produced a silent empty block); the
+shipped `project-state.yaml` template still described pointer-first resolution and contradicted the
+`build-plan.md` template beside it; and two duplications inside Chunk 01's gates code, one of which
+had already drifted so that the Stop gate offered less remedy than the PR gate for the identical
+condition.
+
+This repo now carries the `.gitattributes` line its own advisory recommends — a framework that nags
+its repo about advice it has not taken is the wrong first impression, and the probe is inert here.
 
 ## Scaffolding
 
