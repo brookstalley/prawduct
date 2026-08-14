@@ -64,6 +64,15 @@ now say the store was degraded: it iterated a store it never graded, so an unrea
 its reader at re-running a review instead of at fixing the store. Its sibling on the same shared read
 always answered both states; the two now say the same things in the same words.
 
+**One of those two states BROADENS a refusal, which is worth recording as more than a message fix.**
+Newer-plugin records are filtered out of `facts` while the store still reads `ok`, so before the
+schema-ahead guard a sibling worktree appending one such record left the anchor lookup succeeding on
+a partial view. Failing closed is right — this pass records the resolution facts that lift BLOCKING
+findings, so operating on records it cannot see is unsound — but it changes *when
+verify-resolutions dispatches at all*, on the one control whose only remedy for a `blocked` verdict
+is that pass. The verify round caught it as BLOCKING on the plainest possible evidence: delete the
+branch and no test failed. It now has the test its sibling in `test_dispositions.py` already had.
+
 **This is the third instance of one bug this cycle.** `core.read_str_yaml_key` and
 `core.read_bool_yaml_key` were both fixed for it earlier in this same release — "`UnicodeDecodeError`
 is a `ValueError`, so catching only `OSError` let it escape" — and the sweep that fixed the pair

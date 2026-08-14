@@ -3888,13 +3888,23 @@ the comment above that guard states the requirement perfectly: *an empty block a
 are different facts about the world, and a reviewer told "nothing was dispositioned here" when the
 join failed would be told something false.*
 
-The single producer of its input is `evidence.read_facts`, which never raises for either degraded
-case. It **returns** `{"status": "error", ...}` for an unreadable store, and it filters
-newer-plugin records into `schema_ahead` while returning `status: "ok"`. So the guard covered a
+The single producer of its input is `evidence.read_facts`, which **returns** its two documented
+degraded cases rather than raising them: `{"status": "error", ...}` for an unreadable store, and
+newer-plugin records filtered into `schema_ahead` alongside `status: "ok"`. So the guard covered a
 path that does not occur and missed both that do — and the manifest carried an empty block, which
 the reviewer protocol reads as "nothing was dispositioned." Worst in exactly the case the control
 exists for: the answers were there and simply unreadable, so every accepted finding was available
 to be re-raised.
+
+> **Correction, 2026-08-14.** This entry originally said `read_facts` "never raises." That was
+> false, and it is worth leaving the correction visible rather than editing the sentence away,
+> because the falsehood is a second instance of this very rule one level up. `read_facts` caught
+> only `OSError`, so a store that was not decodable as UTF-8 raised `UnicodeDecodeError` — a
+> `ValueError` — straight out of the function. The lesson the entry teaches was right; the fact it
+> rested on had a hole, and *nobody reading the entry would have found it*, because the entry
+> asserted the callee's bad-path behaviour instead of sending you to look. Read the callee — which
+> is what the rule says, and what writing "never raises" in a durable record quietly discourages.
+> `read_facts` now catches the pair, so the sentence above is true as written for the first time.
 
 What makes this hard to see is that everything *looks* right. The requirement is stated. A guard
 exists. Tests pass, because the tests build well-formed stores. And the same module already had the

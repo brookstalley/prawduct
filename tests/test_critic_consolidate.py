@@ -3404,6 +3404,57 @@ class TestVerifyResolutionsDispatch:
         # The precise regression: it must NOT claim the fact is absent.
         assert "not found in the evidence store" not in result.stderr
 
+    def test_a_schema_ahead_store_refuses_rather_than_anchoring_on_a_partial_view(
+        self, tmp_path
+    ):
+        """The other degraded state, and the one that BROADENS a refusal.
+
+        A newer plugin's records are filtered out of `facts` while the store
+        still reads `ok`, so before this guard a sibling worktree appending one
+        newer-schema fact left the anchor lookup succeeding on a partial view.
+        Failing closed is right — this pass records the resolution facts that
+        lift BLOCKING findings, so operating on records it cannot see is unsound
+        — but it is a real broadening of when verify-resolutions refuses at all,
+        on the one control whose only remedy for a `blocked` verdict is this
+        pass. Untested, deleting the branch broke nothing.
+
+        The appended fact is a `disposition`, deliberately: the anchor itself
+        stays a normal-schema review fact that the lookup WOULD find, so this
+        pins the guard rather than the absence of a resolvable anchor.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        # Baseline: the anchor resolves and dispatch succeeds, so the refusal
+        # below is the newer-schema record and not a missing anchor.
+        assert _run_begin(repo, "--mode", "verify-resolutions").returncode == 0
+        _abandon(repo)
+
+        with open(evidence.store_path(repo), "a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps({
+                    "schema": 99,
+                    "kind": "disposition",
+                    "id": "rev-future",
+                    "ts": "2030-01-01T00:00:00Z",
+                    "body": {},
+                })
+                + "\n"
+            )
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 1
+        assert "newer schema" in result.stderr, result.stderr
+        # The same regression the unreadable-store case pins: a store this
+        # reader cannot fully see must not be reported as an absent anchor.
+        assert "not found in the evidence store" not in result.stderr
+
     def test_a_dirty_tree_fact_falling_back_to_dispatch_commit_is_not_refused(
         self, tmp_path
     ):
