@@ -3790,6 +3790,14 @@ Third defect of this shape on one branch, and the countermeasure was the same ea
 install a rule, grep for every place that states the old one — including the places the chunk
 itself created.
 
+**Fourth occurrence, at the PR boundary, after this rule was already filed.** The release-readiness
+reviewer found three more anchors in three test files. The rule above had named the countermeasure
+— *grep* — and the scrub that missed them was another careful re-read. A ban stated as a literal
+string (`chunk 0`, a review id's shape) is decidable by `git diff | grep`; re-reading is how you
+check a rule that has no literal form, and spending it on one that does is the whole failure. The
+reviewer's list is also a sample, not a census: applying its three-line remedy with a grep surfaced
+a fourth anchor in a file it had already cited, which its own enumeration had passed over.
+
 ## "Fail closed" means the channel's blocking value — 2026-08-13 (tactical-efficiency ch.06)
 
 A new plan-resolution refusal was written to fail closed: rather than guess between two build plans

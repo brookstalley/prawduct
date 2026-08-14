@@ -537,7 +537,7 @@ never by dropping them.
 
 ## A rule that LOWERS a severity outranks every rule that raises one unless you say so — state the floor with the ceiling, in one sentence, or the suppression quietly becomes the file's highest authority. The exits that LIFT a ceiling are not the severities it must never touch. Tell: your new rule caps a severity and all you wrote next was how to escape the cap — [learnings-detail.md]
 
-## Scrub the WHOLE diff before dispatching a review, tests and their comments included — a rule you just wrote is a rule you are still violating elsewhere in the same commit, and the reviewer will find it in the place you were not looking. Tell: you scrubbed the files the chunk is "about" and not the ones it added — [learnings-detail.md]
+## Scrub the WHOLE diff before dispatching a review, tests and their comments included — a rule you just wrote is a rule you are still violating elsewhere in the same commit, and the reviewer will find it in the place you were not looking. A ban you can grep, grep — reading the diff for it failed twice on one branch, and the reviewer's list of instances is a sample, not a census (it named three; a fourth sat in a file it had already cited). Tell: you scrubbed by re-reading — [learnings-detail.md]
 
 ## "Fail closed" means the CHANNEL's blocking value, not merely a non-zero one — mapping every refusal to a generic error code fails OPEN wherever the contract reads a SPECIFIC code as "block". Check the contract for the surface the refusal can REACH, not the one you were writing. Tell: you wrote "a refused gate is a blocked gate" and never opened the exit-code table — [learnings-detail.md]
 
