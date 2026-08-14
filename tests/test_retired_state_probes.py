@@ -161,13 +161,11 @@ class TestWhenItCannotAnswer:
     ) -> None:
         """Fail soft, never fail silent — the sibling probes' contract.
 
-        Verified rather than assumed that this is needed: nothing else at
-        session start reports an undecodable `project-state.yaml`. Every reader
-        fails soft to a default, and `core.read_str_yaml_key` — the last one that
-        raised — was deliberately made fail-soft so an unreadable state file
-        could not abort a cutover. A session start over a corrupted state file
-        prints nothing, so without this line the repo whose source of truth is
-        unreadable gets no signal at all.
+        Nothing else at session start reports an undecodable
+        `project-state.yaml`: every reader of it fails soft to a default,
+        `core.read_str_yaml_key` included. A session start over a corrupted
+        state file therefore prints nothing, so without this line the repo whose
+        source of truth is unreadable gets no signal at all.
         """
         repo = _repo(tmp_path, WITH_BLOCK)
         (repo / ".prawduct" / "project-state.yaml").write_bytes(b"\xff\xfe\x80 bad")

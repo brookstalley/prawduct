@@ -58,5 +58,4 @@ def register_all() -> None:
     register_coverage()  # structural-coverage strategy-class artifact probe
     register_stale_base()  # stale remote-base / unpromoted-release-prep nudge (COV-7K4N)
     register_gitattributes()  # change-log merge=union recommendation (top-append conflicts)
-    register_retired_state()  # retired build_state.test_tracking nudge — the strip's
-    # two entry points both need someone to RUN them, and nothing said so
+    register_retired_state()  # retired build_state.test_tracking strip nudge
