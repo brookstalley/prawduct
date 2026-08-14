@@ -188,7 +188,15 @@ class BranchClaim(NamedTuple):
     step that decided it (see :func:`resolve_branch_claim`), so a surface can
     say *why* this plan and not the others.
 
-    The pair exists because attribution is what a multi-claim branch is owed.
+    ``open_claimants`` is the subset still holding unticked chunks — carried
+    rather than recomputed because the sentence a reader gets **must be derived
+    from the state, not asserted about it**: the ``order`` basis is reached both
+    when nothing has open work and when several plans do, and one sentence
+    covering both tells half its readers the opposite of the truth. ``None``
+    means *not computed* (the uncontested path never asks), which is different
+    from an empty tuple and is why it is not one.
+
+    This tuple exists because attribution is what a multi-claim branch is owed.
     Returning the winner alone would make governing by one of three plans look
     exactly like governing by the only one — which is the failure mode the
     branch declaration was supposed to remove, not introduce.
@@ -198,6 +206,7 @@ class BranchClaim(NamedTuple):
     claimants: "list[Path]"
     branch: str
     basis: str
+    open_claimants: "list[Path] | None" = None
 
     @property
     def contested(self) -> bool:
@@ -291,9 +300,12 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
 def pointer_plan_path(prawduct_dir: Path) -> Path | None:
     """The ``active_build_plan:`` scalar as a path, or ``None`` when unset.
 
-    One reader, because two would drift on the prefix rule below and the
-    tie-break would then resolve a different file than the fallback does — the
-    two places a repo's pointer is read must agree about what it points AT.
+    The one place the scalar becomes a PATH. Two spellings of the prefix rule
+    below would let the tie-break in :func:`resolve_branch_claim` and the
+    fallback in :func:`resolve_build_plan_path` resolve different files from one
+    line of YAML, and the briefing's dangling-pointer warning compares against a
+    third. (The raw string is still read directly wherever a message quotes what
+    the operator actually wrote — that is the value, not the path.)
 
     The pointer is ``.prawduct/``-relative, but the natural repo-relative
     spelling (``.prawduct/artifacts/x-plan.md``) is accepted by stripping the
@@ -360,16 +372,26 @@ def resolve_branch_claim(prawduct_dir: Path) -> BranchClaim | None:
     if not matched:
         return None
     if len(matched) == 1:
-        return BranchClaim(matched[0], matched, branch, "sole")
+        return BranchClaim(matched[0], matched, branch, "sole")  # open set not asked
 
-    # Only the contested path pays for this import: `buildplan_refs` pulls in
-    # the Status parser and its own dependency graph, and the overwhelmingly
-    # common shape — nobody claims, or one plan claims — is answered above.
-    from . import buildplan_refs  # noqa: PLC0415 — lazy, and only when contested
+    # **Lazy is load-bearing here, not an optimization.** `buildplan_refs`
+    # imports THIS module at module scope, so hoisting this to the top would be
+    # an import cycle at plugin load — unlike the `plan_index` import in that
+    # module, which was hoisted on measured cost precisely because it could be.
+    # A maintainer applying that same reasoning here breaks the install, so the
+    # reason is the constraint and not the cost. (The cost is real too: only a
+    # contested branch pays it, and the common shapes are answered above.)
+    #
+    # It also reaches a private, which is the honest cost of putting the choice
+    # here. Considered and not taken: moving the Status-roster predicate down
+    # into `plan_index`, which would keep core's dependencies pointing downward.
+    # That is the better shape and it is a refactor of the parser's home, not a
+    # line — filed rather than smuggled into a fix for something else.
+    from . import buildplan_refs  # noqa: PLC0415 — lazy is REQUIRED: buildplan_refs imports core
 
     unfinished = [p for p in matched if buildplan_refs._has_unfinished_chunk(p)]
     if len(unfinished) == 1:
-        return BranchClaim(unfinished[0], matched, branch, "unfinished")
+        return BranchClaim(unfinished[0], matched, branch, "unfinished", unfinished)
     # An empty `unfinished` means every claimant reads finished, which is the
     # post-tick window rather than an absence of candidates — fall back to the
     # full claimant set rather than to the pointer, so a branch whose plans are
@@ -377,17 +399,20 @@ def resolve_branch_claim(prawduct_dir: Path) -> BranchClaim | None:
     pool = unfinished or matched
     pointed = pointer_plan_path(prawduct_dir)
     if pointed is not None and pointed in pool:
-        return BranchClaim(pointed, matched, branch, "pointer")
-    return BranchClaim(pool[0], matched, branch, "order")
+        return BranchClaim(pointed, matched, branch, "pointer", unfinished)
+    return BranchClaim(pool[0], matched, branch, "order", unfinished)
 
 
 def describe_branch_claim(claim: BranchClaim, artifacts_dir: Path) -> str:
     """One sentence naming the governing plan and what else claimed the branch.
 
-    Rendered by every surface that reports which plan is in force, so the
-    wording is written once: a reader who meets it in the briefing and again in
-    a gate is reading the same sentence about the same decision, and a change to
-    how the choice is explained cannot land on one surface only.
+    **One caller today: the session briefing.** That is deliberate, not an
+    accident waiting to be spread — the gates already name the plan they graded
+    (``record-lint``'s ``plan_graded``), so what a gate is missing is not the
+    choice but the context for it, which is session-scoped and arrives before
+    any gate runs. It lives here rather than inline in the briefing so a second
+    caller inherits the wording instead of paraphrasing it; the wording is not
+    yet shared, and this docstring does not get to claim it is.
 
     Empty for an uncontested claim — there is nothing to disambiguate, and a
     sentence printed on every ordinary session is a sentence nobody reads by the
@@ -402,14 +427,29 @@ def describe_branch_claim(claim: BranchClaim, artifacts_dir: Path) -> str:
         for p in claim.claimants
         if p != claim.chosen
     ]
-    why = {
-        "unfinished": "it is the only one with chunks left",
-        "pointer": "`active_build_plan` names it",
-        "order": (
-            "nothing distinguishes them — no single plan has chunks left and the "
-            "pointer names none of them — so this is path order, not a judgement"
-        ),
-    }.get(claim.basis, "it claims this branch")
+    if claim.basis == "unfinished":
+        why = "it is the only one with chunks left"
+    elif claim.basis == "pointer":
+        why = "`active_build_plan` names it"
+    else:
+        # The `order` case is arbitrary, so it says so AND names the remedy. Its
+        # first clause is DERIVED, because this basis is reached from two states
+        # that want opposite sentences: several plans still holding open work
+        # (the shipped headline case — a release branch with two live
+        # workstreams and no pointer set), and none of them holding any (the
+        # post-tick window). Asserting either one tells the other's reader the
+        # opposite of the truth about their own repo.
+        open_count = len(claim.open_claimants or ())
+        distinguish = (
+            f"{open_count} of them still hold open work"
+            if open_count > 1
+            else "none of them has chunks left"
+        )
+        why = (
+            f"{distinguish} and `active_build_plan` names none of them, so this "
+            "is path order rather than a judgement — point the scalar at the plan "
+            "you are building to decide it"
+        )
     return (
         f"{len(claim.claimants)} live plans declare `branch: {claim.branch}` — "
         f"governing by {plan_index.display_path(claim.chosen, artifacts_dir)} "

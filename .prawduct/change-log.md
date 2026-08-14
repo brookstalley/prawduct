@@ -32,6 +32,15 @@ meaning — three of them naming one branch, one of them holding prose (`feature
 that is not a branch name at all. The key was declared collision-free on a grep of *this* repo and
 the shipped templates; the population it ships to was never asked. Its shapes are now a test.
 
+**The attribution sentence is derived, because it is the whole replacement for the deleted
+control.** Three reviewers independently found the same defect in it: the `order` basis is reached
+from two opposite states — several claimants still holding open work (the shipped headline case: a
+release branch with two live workstreams and no pointer set) and none of them holding any — and one
+sentence covering both told half its readers their open plans were finished. The clause now counts
+the claimants still holding open work, and ends with the act that decides it: point the scalar. Each
+rendered reason is pinned by a test, including a three-claimant render; before, none of the three
+wordings was asserted anywhere and any of them could have been falsified with the suite green.
+
 **Attribution has one home: the session briefing.** The gates already name the plan they graded
 (`record-lint`'s `plan_graded`), so what is missing at a gate is not the choice but the context for
 it — which is session-scoped, arrives before any gate runs, and would be a fourth copy of one
@@ -43,6 +52,15 @@ nothing can produce (Principle 25). Their tests are redirected, not dropped: eac
 contested branch reaches the same gates an uncontested one does. `_scope_of_branch_claiming_plan`
 stopped declining on the second claimant too — it asks the same resolver, so a dispatch's ledger
 scope names the plan the gates actually graded.
+
+**Two ripples the review caught, both outside the files the change was "about".** Three skill files
+(`pr/SKILL.md`, `backlog/SKILL.md`, `backlog/adapter-mode.md`) still spelled a one-claimant
+resolution rule in the same commit that declared multiplicity ordinary — and the PR one feeds
+`archive-plan`, so an agent picking by eye on a contested branch could retire a sibling plan that is
+still live work. They now point at the resolver rather than restating a rule with four steps. And
+the briefing's contested-claim line sat inside a broad `except: … pass`, which — with the
+fail-closed route deliberately gone — meant the only surface that ever says a branch is contested
+could vanish with no output at all. It is attributed now: advice fails soft, not silent.
 
 ## 2026-08-13: the change log recommends its own merge driver
 

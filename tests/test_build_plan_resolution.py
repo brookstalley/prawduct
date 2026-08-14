@@ -225,6 +225,64 @@ class TestBranchScopedResolution:
         described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
         assert "a-plan.md" in described and "b-plan.md" in described
         assert "feat/x" in described
+        # BOTH plans have chunks left here, so the sentence must not claim
+        # otherwise — and it must name the act that would decide it.
+        assert "2 of them still hold open work" in described
+        assert "none of them has chunks left" not in described
+        assert "point the scalar" in described
+
+    def test_the_order_sentence_tracks_the_state_it_describes(self, tmp_path: Path):
+        # The `order` basis is reached from two opposite states, and one sentence
+        # for both tells half its readers something false about their own repo.
+        # This is the other state: every claimant ticked.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
+        assert claim.basis == "order"
+        assert "none of them has chunks left" in described
+        assert "still hold open work" not in described
+
+    def test_each_basis_renders_its_own_reason(self, tmp_path: Path):
+        # The whole replacement for the deleted refusal is this sentence, so each
+        # branch of it is pinned — otherwise the wordings can be swapped or
+        # falsified and the suite stays green.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/b-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        pointer_claim = _mod.resolve_branch_claim(prawduct)
+        assert "`active_build_plan` names it" in _mod.describe_branch_claim(
+            pointer_claim, prawduct / "artifacts"
+        )
+
+        # ...and the unfinished basis, on the same repo, once one plan is ticked.
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        open_claim = _mod.resolve_branch_claim(prawduct)
+        assert open_claim.basis == "unfinished"
+        assert "the only one with chunks left" in _mod.describe_branch_claim(
+            open_claim, prawduct / "artifacts"
+        )
+
+    def test_three_claimants_are_all_named(self, tmp_path: Path):
+        # The plan's acceptance criterion, asserted rather than assumed: three
+        # plans claiming one branch resolve to one, and the reader is told about
+        # the other two by name.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        for name in ("a", "b", "c"):
+            _plan(prawduct, f"{name}-plan.md", branch="feat/x",
+                  chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
+        assert "3 live plans declare `branch: feat/x`" in described
+        for name in ("a", "b", "c"):
+            assert f"{name}-plan.md" in described
+        assert "3 of them still hold open work" in described
 
     def test_the_claimant_with_open_chunks_wins(self, tmp_path: Path):
         repo = _branch_repo(tmp_path, "feat/x")

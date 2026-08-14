@@ -9,12 +9,24 @@ depends_on:
 governed_by:
   - artifact: architecture
     dispositions:
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no chunk touches a reviewer write path or the `clear` refusal"
       - "authority fails closed; advice fails soft → [DECISION: Chunk 01 STOPS treating multiple branch claims as an authority failure. Fail-closed protects against *governing by a plan nobody chose*; it was pointed at a proposition that is simply false — a branch can legitimately carry several plans (owner, 2026-08-13; discodon carries three on one branch). The posture is preserved where it belongs: resolution still never picks silently, it reports what claimed the branch and what it chose | engages the norm's why: a wrong plan governing must not look like a right one — met by loud attribution rather than by refusal | user can veto and keep the refusal]"
+      - "local-first: no network, no daemon, no third-party runtime dependency → conforms (file reads and one git probe; Chunk 04 adds a doc and a version string)"
       - "the plugin writes nothing into a governed repo except its own .prawduct/ state → conforms; Chunk 04's dogfooding recipe is per-machine `.claude/settings.local.json`, written by the operator, never by the plugin"
-      - "every fact has one home → conforms: which plan governs stays computed at resolution; nothing new is stored"
+      - "prawduct is Python but never Python-specific → conforms; frontmatter, git and prose only"
+      - "prawduct guides and reviews; it never implements → conforms; no product code is written by any chunk"
+      - "goals and verification bind; prescribed method is advice → engaged and exercised: Chunk 03's prescribed method (fix the probe's prose) was falsified by its own verification step and the chunk was rescoped to a test, with the reason recorded inline rather than silently dropped"
+      - "every fact has one home → conforms: which plan governs stays computed at resolution, nothing new is stored, and the contested-claim sentence is rendered by one function (`core.describe_branch_claim`) rather than restated per surface"
   - artifact: data-model
     dispositions:
+      - "verdicts computed from the append-only fact ledger, never from mutable model-written state → inapplicable, because no chunk touches the Critic data plane"
+      - "facts are immutable and append-only → inapplicable, same reason: no fact kind is added, edited or read here"
+      - "derived views are disposable and never authoritative → conforms; `BranchClaim` is a return value computed per call, never persisted, so no gate can read a stale one"
       - "a governance document reaches a terminal state, never deleted; live outranks archived → engaged by Chunk 02, which moves the retention signal off the `active_build_plan` scalar for a branch-declaring plan. Archiving is unchanged and still happens at the release."
+      - "every issue written to the backlog store conforms to the issue standard's §1 title rules → inapplicable, because no chunk writes a backlog item (the `plan_index` refactor R-11 names is filed by hand through `/prawduct:backlog`, which enforces it)"
+      - "a newer-schema fact surfaces as a loud block → inapplicable, because no chunk reads the evidence store"
+      - "two stores, two lifetimes → inapplicable, because no chunk writes to either store"
+      - "`backlog_service_repo` selects the authoritative backlog store → conforms; nothing here reads or writes `.prawduct/backlog.md`"
 last_validated: 2026-08-13
 ---
 
@@ -34,9 +46,13 @@ data, not inferred: discodon's `.prawduct/artifacts/` carries five build plans t
 - [ASSUMPTION: the plugin version is the marketplace cache key, so dogfooding off `develop` needs a
   prerelease bump rather than only a ref change | MED impact | verified at first install attempt;
   if wrong, the recipe loses one step]
-- [ASSUMPTION: Chunk 01 keeps `AmbiguousPlanBranchError` and its Stop-hook exit-2 handling alive for
-  the residual unresolvable case rather than deleting them | MED impact | user can widen to full
-  deletion if nothing can raise]
+- ~~[ASSUMPTION: Chunk 01 keeps `AmbiguousPlanBranchError` and its Stop-hook exit-2 handling alive
+  for the residual unresolvable case rather than deleting them]~~ — **RESOLVED THE OTHER WAY during
+  the build.** The precedence leaves no unresolvable case, so the class, the hook's `main()`
+  classifier and the `cmd_stop` probe had no route that could raise them. Kept, they would have been
+  handling for a condition no code can produce — the residue Principle 25 names — so all three were
+  deleted and their tests redirected. Recorded rather than quietly satisfied: an assumption that
+  resolves against itself is the one worth seeing.
 
 **What would raise confidence:** Nothing pending.
 

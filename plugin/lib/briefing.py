@@ -241,7 +241,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
     # in `assemble_session_briefing`. Reported there and not here because it is
     # context for the whole session rather than a staleness finding, and saying
     # it twice in one briefing is how a reader learns to skip both.
-    build_plan_path: Path | None = resolve_build_plan_path(prawduct_dir)
+    build_plan_path: Path = resolve_build_plan_path(prawduct_dir)
 
     # 4b. A plan with work left, claiming a branch this repo does not have —
     # advice, fails soft.
@@ -285,11 +285,8 @@ def staleness_scan(project_dir: Path) -> list[str]:
     except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
         pass
 
-    if build_plan_path is None:
-        build_plan_label = ""
-    else:
-        build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
-    if build_plan_path is not None and build_plan_path.is_file():
+    build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
+    if build_plan_path.is_file():
         try:
             status = buildplan_refs._parse_build_plan_status(project_dir)
             if status.get("current_chunk"):
@@ -336,7 +333,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
             pass
 
     # 5. Completed but uncleaned build plan in state
-    if build_plan_path is not None and not build_plan_path.is_file():
+    if not build_plan_path.is_file():
         try:
             if "\n  strategy:" in state_content:
                 strategy_match = re.search(r"\n  strategy:\s*(.+)", state_content)
@@ -696,8 +693,18 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                     "Fix the pointer in project-state.yaml — it is .prawduct/-relative "
                     "(e.g. artifacts/build-plan-<scope>.md) — or unset it."
                 )
-    except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
-        pass
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- briefing must never block session start; attributed below
+        # Swallowed WITH ATTRIBUTION. This block holds the only surface that
+        # ever says a branch was contested — and the only place the arbitrary
+        # `order` basis is named — so a silent failure here leaves an operator
+        # governed by one of several plans with nothing anywhere saying so. The
+        # fail-closed route that used to backstop this is gone, deliberately, so
+        # nothing downstream notices either. Advice fails soft; it does not fail
+        # silent (`architecture.md`: swallowed *with attribution*).
+        lines.append(
+            f"⚠ build-plan resolution could not be reported ({type(exc).__name__}: {exc}) "
+            "— if several plans declare this branch, nothing here says which one governs."
+        )
 
     # Work context and current chunk (resolved above; build plan Status
     # preferred, falling back to WIP)
