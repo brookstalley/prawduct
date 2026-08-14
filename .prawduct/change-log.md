@@ -17,9 +17,31 @@ extends HEAD, and that is how a record defect buys a review round; the mechanism
 corrected three times.
 
 The cost is visible rather than theoretical. In the worst repo the field's provenance comment had
-grown to one 51,992-character YAML line — a third of a 159 KB state file — nesting its own
+grown to a single YAML line of ~52,000 characters — about a third of the file — nesting its own
 correction history, including a note recording that three successive edits had used the wrong basis.
-Running the repair over that file takes it from 159,382 bytes to 78,117.
+Running the repair over a copy of that file removed roughly 80 KB (measured 2026-08-14).
+
+**Those figures are a dated snapshot and are deliberately not stated as exact, which this entry owes
+an explanation for, because the exactness is what the entry is about.** The first draft recorded a
+precise before/after pair. It was true when taken and had stopped reproducing within ninety minutes
+— that repo's own session edited the file mid-measurement, trimming ~52 KB from inside the very
+block under discussion. A second party re-measuring found different numbers and correctly refused to
+write the pair it had been handed. So the *fact* here is what the repair does, not what one file
+weighed on one afternoon; re-derive the current figure rather than trusting this sentence:
+
+```
+python3 - <<'PY'
+import sys, shutil, tempfile; from pathlib import Path
+sys.path.insert(0, 'plugin'); from lib import lifecycle_repair as lr
+tmp = Path(tempfile.mkdtemp()); (tmp/'.prawduct'/'artifacts').mkdir(parents=True)
+shutil.copy(SRC_STATE_FILE, tmp/'.prawduct'/'project-state.yaml')
+sp = tmp/'.prawduct'/'project-state.yaml'; before = sp.stat().st_size
+lr.apply_repair(tmp, lr.plan_repair(tmp)); print(before, '->', sp.stat().st_size)
+PY
+```
+
+A durable record carrying a live measurement is the same defect as the field this change removes,
+one level up — which is why the correction is a re-derivation command and not a fresher number.
 
 **The block goes whole, which is a decision the survey forced.** Measured across every governed
 product: `test_tracking` sits under `build_state` in 10 of 10 that carry it, and the field the

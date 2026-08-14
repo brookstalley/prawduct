@@ -55,8 +55,9 @@ whose direction — *delete the field, do not check it* — was ruled 2026-08-11
   `bin/test-reference-verify`. `source_root` (10 hits) is a **sibling** under `build_state`, never
   inside `test_tracking`, so the parent mapping is never left empty in any measured repo.
 - The existing `record_lint._SUITE_TOTAL_RE` matches discodon's line 587 **33 times** with **no
-  pattern change** — each match a five-digit count abutting a pass-word. That line is 51,992
-  characters, 33% of a 159 KB state file. (The matched fragments are deliberately *not* quoted
+  pattern change** — each match a five-digit count abutting a pass-word. That line ran to roughly
+  52,000 characters, about a third of the whole state file (measured 2026-08-14; that repo edits the
+  file itself, so re-derive rather than trusting the figure). (The matched fragments are deliberately *not* quoted
   verbatim here: once Chunk 02 lands, this plan is itself a linted record, and a quotation of the
   defect is indistinguishable from the defect to any check that scans text. The falsifying command
   is what belongs in a record — re-derive with
@@ -103,7 +104,7 @@ scaffolds it, and it disagrees with recorded evidence in 4 of 4 measured repos. 
 state file*, so Living Documentation (P3) and Coherent Artifacts (P13) oblige every agent that
 meets it to keep it true — and reconciling it is hard enough (multiple test trees, skipped lanes,
 collection-vs-passed basis) that each correction justifies itself in prose. discodon's provenance
-comment has reached 51,992 characters on one line.
+comment had reached roughly 52,000 characters on one line when measured (2026-08-14).
 
 The cost is not the bytes. `plugin/lib/record_lint.py` states the mechanism: a record defect is
 corrected, the correction is a commit, the commit extends HEAD, and that buys another review
