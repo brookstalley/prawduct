@@ -3,6 +3,50 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-14: the retired test count now announces itself
+
+<!-- prawduct: type=feature | scope=test-tracking-advisory -->
+
+Removing `build_state.test_tracking` shipped with two entry points and one gap: **both need someone
+to decide to run them.** `/prawduct:doctor` repairs an already-onboarded repo and the cutover
+removes it from one crossing over, but nothing told any owner there was anything to run — and the
+correct route differs per repo. Measured the day the removal shipped: nine repos still carried the
+block, four of which needed `migrate` rather than `doctor`. Expecting each owner to work that out
+unprompted is not a plan.
+
+A post-sync advisory probe now fires at session start when the block is present. It **recommends and
+never writes**: unlike `.gitattributes`, `project-state.yaml` *is* inside the plugin's permitted
+write set, so the write-set norm would allow an automatic strip — what forbids it is the
+operation-level approval rule, because a framework silently deleting from a product's hand-authored
+state file is the trust breach that rule exists for.
+
+**The message leads with the instruction, not the diagnosis, and that is the whole design.** This
+block's harm was never its bytes; it is that an agent meeting a stale count in a product's source of
+truth is *obliged* to correct it, and each correction buys a review round. "Retired — do not
+maintain it" reaches the agent before it edits anything, so the advisory does most of its work on
+the first session whether or not the repair is ever run. A nudge that merely reported the condition
+would leave the treadmill turning until someone acted.
+
+Scoped to this block alone. `views_enabled` and `scope_rollups` are the other retired state keys and
+are deliberately excluded: nobody maintains them, so they carry no behavioural cost, and doctor's
+health check already covers their cleanup — an ambient nudge about inert residue is the control
+`nonfunctional-requirements.md` says to remove by default.
+
+Detection delegates to `lifecycle_repair.state_removals`, making this its third caller after the
+doctor repair and the cutover; the key name and span have one home. The probe self-resolves — the
+trigger and the resolution are the same observable state — and its evidence deliberately carries no
+count or size, because these files are edited by their own sessions and evidence that moved with the
+contents would re-issue the advisory under a new id, silently un-dismissing one the owner had
+already decided about.
+
+Verified end to end against a copy of a real product's state: the advisory fires unprompted, its
+recommended command previews and applies, the advisory returns zero on the next probe, and
+`source_root` survives.
+
+A preferences test caught the module's first name. `plugin/lib/test_tracking_probes.py` starts with
+`test_`, which reads as a test file to pytest's collector and would be silently skipped under
+`testpaths=["tests"]`; it is `retired_state_probes.py`.
+
 ## 2026-08-14: the test count ten products maintain and nothing reads
 
 <!-- prawduct: type=fix | scope=test-tracking-treadmill -->
