@@ -245,6 +245,76 @@ class TestBranchScopedResolution:
         assert "none of them has chunks left" in described
         assert "still hold open work" not in described
 
+    def test_the_order_sentence_derives_the_pointer_clause_in_every_state(
+        self, tmp_path: Path
+    ):
+        """The `order` sentence has TWO derived clauses, and each has its own
+        states. This is the class that had to be fixed twice: the first fix
+        derived the open-work count and left the pointer clause asserted, which
+        then read "names none of them" on a repo whose scalar named one. Every
+        combination the basis can be reached in is enumerated here so a third
+        state cannot be added without a failing test.
+        """
+        def _claim(case: str, state: str, plans: dict) -> tuple:
+            repo = _branch_repo(tmp_path / case, "feat/x", state)
+            prawduct = repo / ".prawduct"
+            for name, chunks in plans.items():
+                _plan(prawduct, name, branch="feat/x", chunks=chunks)
+            claim = _mod.resolve_branch_claim(prawduct)
+            return claim, _mod.describe_branch_claim(claim, prawduct / "artifacts")
+
+        open_, done = "- [ ] Chunk 01: open\n", "- [x] Chunk 01: shipped\n"
+
+        # (a) two open, scalar unset.
+        claim, text = _claim("a", "", {"a-plan.md": open_, "b-plan.md": open_})
+        assert claim.basis == "order"
+        assert "2 of them still hold open work" in text
+        assert "`active_build_plan` is unset" in text
+
+        # (b) two open, scalar names something that is not on this branch.
+        claim, text = _claim(
+            "b",
+            "active_build_plan: artifacts/elsewhere.md\n",
+            {"a-plan.md": open_, "b-plan.md": open_},
+        )
+        assert claim.basis == "order"
+        assert "names no plan on this branch" in text
+
+        # (c) THE RECURRENCE: two open, scalar names a claimant that is finished.
+        # Step 3 rules it out (it is not in the pool), so the basis is `order` —
+        # and the sentence must not then claim the scalar names nothing.
+        claim, text = _claim(
+            "c",
+            "active_build_plan: artifacts/c-plan.md\n",
+            {"a-plan.md": open_, "b-plan.md": open_, "c-plan.md": done},
+        )
+        assert claim.basis == "order"
+        assert claim.chosen.name in ("a-plan.md", "b-plan.md")
+        assert "c-plan.md" in text and "its chunks are all ticked" in text
+        assert "names none of them" not in text
+        assert "names no plan on this branch" not in text
+
+        # (d) none open, scalar unset — the post-tick window.
+        claim, text = _claim("d", "", {"a-plan.md": done, "b-plan.md": done})
+        assert claim.basis == "order"
+        assert "none of them has chunks left" in text
+
+    def test_the_pointer_does_not_resurrect_a_finished_plan(self, tmp_path: Path):
+        """Step 3's narrowing, as behaviour rather than as wording. The scalar is
+        the operator's choice among plans still in contention; a plan whose boxes
+        are all ticked is not in contention, and live evidence outranks a stale
+        scalar."""
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/done-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "done-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "open-a.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "open-b.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name != "done-plan.md"
+        assert claim.basis == "order"
+
     def test_each_basis_renders_its_own_reason(self, tmp_path: Path):
         # The whole replacement for the deleted refusal is this sentence, so each
         # branch of it is pinned — otherwise the wordings can be swapped or

@@ -26,6 +26,18 @@ never by dropping them.
 ## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
+## When a review finds the SAME class twice, stop fixing instances and enumerate the domain — two spot fixes in two rounds is one missing act, not two mistakes. List every state the thing can be in and make each a case. Tell: your fix cites the reviewer's example — [learnings-detail.md]
+
+## Hand-verifying at the terminal leaves nothing behind — the corpus you ran the grep against IS a fixture, so make it one in the same breath. A guard warning over every repo's real data shipped with only its positive case asserted. Tell: "I checked it against the real file" with no test naming it — [learnings-detail.md]
+
+## A docstring written in the same keystroke as its code describes the design you INTEND, not the code you shipped — "the one reader", "every surface", "always". Twice in one session, both wrong when written. Before a sentence claims reach, grep for the callers; a claim about scope is checkable in seconds and unfalsifiable once it ships — [learnings-detail.md]
+
+## The prose that REPLACES a deleted control is load-bearing logic — pin every rendered branch of it. A message covering two states must be DERIVED from the state, never written for the one in mind: a sentence asserting "no plan has chunks left" met an operator whose plans had them. Tell: you changed a user-facing string and no assertion names it — [learnings-detail.md]
+
+## When prose asserts what a system DOES, make the system do it — the pin is the check, not a formality. One pass here disproved the finding that opened it, then failed against the shipped docstring and exposed a `release=` tag that merged away read by nothing. Reading cannot find either. Tell: a caveat naming a downstream catch nobody has run — [learnings-detail.md]
+
+## A zero from a scan is suspicious until the scan is shown able to return non-zero — `getattr(x, "body", "")` on a field the dataclass lacks measured nothing and reported clean. Before believing a count, feed it a case you know it should catch. Tell: a survey that confirms exactly what you hoped — [learnings-detail.md]
+
 ## When you retire a MECHANISM, sort its rules into three piles before deleting any — died / rewritten / **INVERTED**. "The tool is gone" reads like a licence to drop the lot, and the lesson usually outlived the tool. The third pile is the one nobody looks for and the only one that leaves a harmful rule standing. Tell: the rule is a prohibition whose reason was the tool — [learnings-detail.md]
 <!-- anchor: the-derived-views-retirement -->
 

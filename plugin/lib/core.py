@@ -207,6 +207,13 @@ class BranchClaim(NamedTuple):
     branch: str
     basis: str
     open_claimants: "list[Path] | None" = None
+    #: What ``active_build_plan`` resolved to when the tie-break consulted it,
+    #: or ``None`` for unset — and also ``None`` on the paths that never asked
+    #: (a sole claimant, or one claimant with chunks left). Carried for the same
+    #: reason as ``open_claimants``: the sentence a reader gets must be derived
+    #: from what the scalar actually says, and "names none of them" was asserted
+    #: on a repo whose scalar named one.
+    pointer: "Path | None" = None
 
     @property
     def contested(self) -> bool:
@@ -340,10 +347,17 @@ def resolve_branch_claim(prawduct_dir: Path) -> BranchClaim | None:
        with it.
     2. **The one claimant with unfinished chunks** — of several plans on a
        branch, the one still holding open work is the one governance is about.
-    3. **The ``active_build_plan`` pointer**, when it names a claimant. This is
-       what the scalar is *for* once branches carry their own plans: the
-       operator's explicit choice, used to break a tie within a branch rather
-       than to name one plan for a whole product.
+    3. **The ``active_build_plan`` pointer**, when it names a plan **still in
+       contention** — that is, one of the claimants step 2 left standing, not
+       merely any claimant. This is what the scalar is *for* once branches carry
+       their own plans: the operator's explicit choice, used to break a tie
+       within a branch rather than to name one plan for a whole product. The
+       narrowing is deliberate and is the case to keep in mind: with two plans
+       still open and the scalar naming a third whose boxes are all ticked, the
+       scalar is stale evidence and the open ones are live evidence, so the
+       pointer does not resurrect a finished plan. The reader is told that is
+       what happened — see :func:`describe_branch_claim`, which derives the
+       pointer's clause rather than asserting one.
     4. **Path order**, as the last resort. Arbitrary, so it is never silent —
        ``basis`` says ``order`` and the caller names the plans it passed over.
 
@@ -399,8 +413,8 @@ def resolve_branch_claim(prawduct_dir: Path) -> BranchClaim | None:
     pool = unfinished or matched
     pointed = pointer_plan_path(prawduct_dir)
     if pointed is not None and pointed in pool:
-        return BranchClaim(pointed, matched, branch, "pointer", unfinished)
-    return BranchClaim(pool[0], matched, branch, "order", unfinished)
+        return BranchClaim(pointed, matched, branch, "pointer", unfinished, pointed)
+    return BranchClaim(pool[0], matched, branch, "order", unfinished, pointed)
 
 
 def describe_branch_claim(claim: BranchClaim, artifacts_dir: Path) -> str:
@@ -445,10 +459,24 @@ def describe_branch_claim(claim: BranchClaim, artifacts_dir: Path) -> str:
             if open_count > 1
             else "none of them has chunks left"
         )
+        # The pointer's clause is derived for the same reason the count is, and
+        # it is the reason this sentence needed fixing twice: "names none of
+        # them" was asserted, and it is false on the repo whose scalar names a
+        # claimant that step 2 had already ruled out for being finished.
+        if claim.pointer is None:
+            scalar = "`active_build_plan` is unset"
+        elif claim.pointer in claim.claimants:
+            scalar = (
+                f"`active_build_plan` names "
+                f"{plan_index.display_path(claim.pointer, artifacts_dir)}, which is "
+                "not among them — its chunks are all ticked, so the plans still "
+                "holding work outrank it"
+            )
+        else:
+            scalar = "`active_build_plan` names no plan on this branch"
         why = (
-            f"{distinguish} and `active_build_plan` names none of them, so this "
-            "is path order rather than a judgement — point the scalar at the plan "
-            "you are building to decide it"
+            f"{distinguish} and {scalar}, so this is path order rather than a "
+            "judgement — point the scalar at the plan you are building to decide it"
         )
     return (
         f"{len(claim.claimants)} live plans declare `branch: {claim.branch}` — "

@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-14: the derived-sentence defect, found twice, closed by enumeration
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+The branch's cumulative review found the *same class* its predecessor did, surviving in a state the
+first fix did not reach — and that recurrence is the finding, not the sentence.
+
+Precedence step 3 reads "the pointer, when it names a claimant" in prose and `pointed in pool` in
+code, and those differ exactly when the scalar names a claimant whose boxes are all ticked while
+others are open. The code is right — live evidence outranks a stale scalar, and the pointer must not
+resurrect a finished plan — but the `order` sentence then told an operator "`active_build_plan` names
+none of them" about a repo whose scalar named one. The docstring now states the narrowing and why
+it exists; the sentence derives its pointer clause the way it already derived its open-work count.
+
+**The fix is enumeration rather than another correction.** Every state the `order` basis can be
+reached in — pointer unset, pointer naming a non-claimant, pointer naming a ticked claimant, no
+claimant open — is now a case in one test, so a fifth state cannot be added without a failing
+assertion. Two spot fixes in two rounds is the signal that the states were never listed.
+
+**Two guards this bundle added were themselves unpinned**, in the same round that fixed unpinned
+prose. `_is_standalone_tag_line` feeds a release-gate warning over every governed repo's real change
+log and only its positive case was asserted — both conditions now carry the corpus case that forces
+them, and the repo's own 306-entry log is a fixture. The briefing's attributed swallow, which *was*
+the fix for a prior review's silent `except: pass`, had nothing asserting it, so a refactor back to
+`pass` would have restored the silence invisibly.
+
+**The develop track gained the lifecycle it was missing.** Promotion sets the final version on
+`main` — and on `develop`, which was promoted — so the two match and every dogfooding repo silently
+resolves the released cache entry while believing it is on develop. The first work merged after a
+release re-opens the next rc; until then there is nothing unreleased to dogfood, and the equality is
+honest rather than a trap.
+
+Also: the retention rule Chunk 02 reversed was still stated in the release process and its runbook,
+one of them citing as authority the bullet that had changed; `planning.md` contradicted itself on
+whether a branch-declaring plan has a pointer at all; the PR skill pointed at a command that does
+not print the resolved plan in the modes that fire at PR close (`verify-records` does, in every
+mode); and the precedence was restated in four places, two of them already partial — it now lives in
+one, with the others pointing.
+
 ## 2026-08-13: develop becomes a track you can actually run on
 
 <!-- prawduct: type=feature | scope=branch-claim-multiplicity -->

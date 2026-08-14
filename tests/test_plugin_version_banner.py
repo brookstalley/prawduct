@@ -130,9 +130,15 @@ class TestVersionMath:
         assert vt("3.4.0-rc.1") != (-1,), "a prerelease must PARSE, not fall back"
 
     def test_a_prerelease_shows_only_the_headlines_it_crossed(self, banner):
-        """The consequence the ordering exists for: moving 3.3.4 → 3.4.0-rc.1
-        crosses 3.4.0's section (it is the release being prepared) and nothing
-        older, and moving on to the real 3.4.0 crosses nothing new."""
+        """The consequence the ordering exists for, and it is a *withholding*.
+
+        Moving 3.3.4 → 3.4.0-rc.1 crosses **nothing**: 3.4.0's section describes
+        a release that has not happened, and an rc is below it. The dogfooder is
+        told about it when 3.4.0 actually ships. What the rc does cross is
+        everything genuinely released before it — a repo joining the track from
+        3.3.3 still gets 3.3.4's headline, which is the half that broke when a
+        prerelease parsed as older than everything.
+        """
         log = [("3.4.0", "the new one"), ("3.3.4", "the old one"), ("3.3.3", "older")]
         assert [v for v, _ in banner.highlights_in_range(log, "3.3.4", "3.4.0-rc.1")] == []
         assert [v for v, _ in banner.highlights_in_range(log, "3.3.3", "3.4.0-rc.1")] == ["3.3.4"]

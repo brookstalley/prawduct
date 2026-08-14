@@ -24,9 +24,10 @@ scope: pantry-v1
 # scalar keeps working exactly as before.
 #
 # Several plans MAY declare one branch — a release branch carrying two workstreams
-# is ordinary, not an error. Governance resolves the claimant with chunks left,
-# falling back to whichever one `active_build_plan` names, and the session briefing
-# says which plan it chose and what else claimed the branch.
+# is ordinary, not an error. Governance picks one by a stated precedence and the
+# session briefing says which it chose, why, and what else claimed the branch.
+# The precedence itself lives in ONE place: methodology/planning.md, "Which plan
+# is active is branch state".
 # branch: feature/pantry-v1
 depends_on:
   - artifact: product-brief

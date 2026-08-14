@@ -46,6 +46,15 @@ and you dogfood nothing while believing otherwise. Keep `develop` on a prereleas
 is heading for — `3.4.0-rc.1` — bumping the rc as you promote work into it. The release then sets
 the final version in the same three files (below), which is a new cache key again.
 
+**The rc must be re-opened at the release, or the track goes quietly dead.** Promotion sets the
+final `3.4.0` on `main` — and `develop`, having been promoted, now carries `3.4.0` too. That is the
+*same string* the released plugin uses, so every dogfooding repo silently resolves the released
+cache entry and runs `main`'s code while believing it is on develop: the exact failure the
+prerelease exists to prevent, arriving at the moment nobody is looking for it. **The first work
+merged into `develop` after a release re-opens the next rc** (`3.4.1-rc.1`, or `3.5.0-rc.1`) in the
+same three files. Until then there is nothing unreleased to dogfood, so the two being equal is
+honest — it is only a trap if you leave a repo pointed at develop expecting otherwise.
+
 **Getting back off the track:** delete the `prawduct-dev` block from `settings.local.json` and
 re-enable `prawduct@prawduct`. Nothing else is touched — the repo's committed `.claude/settings.json`
 never changed, so any other clone of it was always on `main`.
@@ -223,11 +232,14 @@ When `develop` is ready to release as `vX.Y.Z`:
   commit forced consumers with protected integration branches into a second,
   bookkeeping-only PR, so it was retired). `check-releasability` enumerates the entry's
   `scope=` as pending and advises when that scope resolves to no plan file — work shipping
-  with nothing describing it. The plan and the `active_build_plan` pointer are **retained**
-  until the release, because that pairing is what the gate reads; the `/prawduct:pr` merge
-  flow honors this (a feature→`develop` merge retains both — merge-flow step 7), while on a
-  trunk repo the closing PR itself carries the `release=`-tagged entry and the plan
-  retirement (create-flow Step 1d).
+  with nothing describing it. **The PLAN is retained until the release**; what happens to the
+  `active_build_plan` pointer depends on how the plan resolves, and `/prawduct:pr` merge-flow
+  step 7 owns that split — a plan declaring `branch:` has its pointer cleared at the merge
+  (its branch is gone, so it resolves for nobody and reads live-but-inactive), while a
+  pointer-resolved plan keeps it, because clearing that one is what makes governance blind.
+  The gate reads the plan by scope either way, which is why it does not depend on the
+  pointer. On a trunk repo the closing PR itself carries the `release=`-tagged entry and the
+  plan retirement (create-flow Step 1d).
 - **Shipped** — `release=vX.Y.Z` present. Step 3 adds it, and adding it is the whole
   transition.
 

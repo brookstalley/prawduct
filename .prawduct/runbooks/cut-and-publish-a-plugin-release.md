@@ -409,10 +409,14 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
     > and has something to say every time it does.*
 
-11. **Clear the pointer, then archive the plans this release shipped.** On gitflow the
-    closing PR deliberately RETAINS each plan and the `active_build_plan` pointer — the
-    work is not released yet — so this is where that retention ends. Skip it and the live
-    artifacts directory re-accumulates the pile the archive exists to prevent.
+11. **Clear the pointer if one is still set, then archive the plans this release shipped.**
+    On gitflow the closing PR deliberately RETAINS each plan — the work is not released yet
+    — so this is where that retention ends. The pointer may already be unset: a plan that
+    declares `branch:` has it cleared at its own merge (`/prawduct:pr` merge-flow step 7),
+    because its branch is gone and the declaration resolves for nobody; only a
+    pointer-resolved plan still has one to clear here. Archiving is what ends retention in
+    both cases. Skip it and the live artifacts directory re-accumulates the pile the
+    archive exists to prevent.
 
     First set `active_build_plan:` to `null` in `.prawduct/project-state.yaml`.
 

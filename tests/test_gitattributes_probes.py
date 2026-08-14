@@ -330,6 +330,47 @@ class TestUnionMergeRecommendation:
         assert [e.tags.get("scope") for e in entries] == ["dev", "feat", None]
         assert change_log_mod.validate_change_log_tags(entries) == ([], [])
 
+    def test_the_tag_line_detector_needs_both_of_its_conditions(self):
+        """Each condition, with the corpus case that forces it.
+
+        This detector feeds a release-gate warning over every governed repo's
+        real change log, so a false positive is a warning nobody can act on. Both
+        conditions were verified by hand against this repo's 306 entries and
+        neither was pinned — which is how the looser rule comes back in a
+        refactor that "simplifies" it to the regex alone.
+        """
+        from lib import change_log as cl
+
+        # Positive: a real tag line.
+        assert cl._is_standalone_tag_line("<!-- prawduct: type=fix | scope=x -->")
+        assert cl._is_standalone_tag_line("  <!-- prawduct: scope=x -->  ")
+
+        # Condition 1 — must BEGIN the line. This repo's own change log contains
+        # a sentence quoting the format mid-prose, and `TAG_LINE_RE` matches it.
+        prose = "each entry's `<!-- prawduct: scope=x -->` line still sits under its header"
+        assert cl.TAG_LINE_RE.search(prose), "guarding the wrong thing if this stops matching"
+        assert not cl._is_standalone_tag_line(prose)
+
+        # Condition 2 — must carry a real key=value. An illustration of the
+        # format parses to no pairs and is documentation, not metadata.
+        assert cl.TAG_LINE_RE.search("<!-- prawduct: … -->")
+        assert not cl._is_standalone_tag_line("<!-- prawduct: … -->")
+
+        # And an ordinary comment is not one at all.
+        assert not cl._is_standalone_tag_line("<!-- just a note -->")
+
+    def test_the_real_change_log_trips_no_stray_tag_warning(self):
+        """The corpus itself is the fixture. The detector was measured clean on
+        all 306 entries before it shipped; this keeps it that way, because the
+        cost of a regression is a warning on every session of every repo."""
+        from lib import change_log as cl
+
+        log = Path(__file__).resolve().parent.parent / ".prawduct" / "change-log.md"
+        entries = cl.parse_change_log(log.read_text(encoding="utf-8"))
+        assert len(entries) > 100, "fixture must actually reach the corpus"
+        stray = [e.title for e in entries if e.unconsumed_tag_lines]
+        assert not stray, f"detector fires on real entries: {stray[:3]}"
+
     def test_the_same_entry_on_both_sides_is_kept_once(self, tmp_path):
         """The shape a cherry-pick or a twice-landed entry makes.
 

@@ -188,12 +188,23 @@ sibling repo at the develop track and opening a session there.
   with a test"), and it is the third of the three.
 - **Depends on:** none
 - **Artifacts consumed:** `tactical-efficiency-analysis-2026-08-13.md` §F6
-- **Deliverables:** `tests/test_gitattributes_probes.py` only — no prose change; the docstring
-  already says what git does
-- **Tests:** the identical-entry shape (merges to one copy) and the reworded-entry shape (both body
-  lines, one header), alongside the existing no-attribute conflict control
+- **Deliverables:** amended during the build, and the amendment is the chunk's actual finding.
+  Planned: `tests/test_gitattributes_probes.py` only. **Shipped: also `plugin/lib/change_log.py`**
+  (`ChangeLogEntry.unconsumed_tag_lines`, `_is_standalone_tag_line`, a
+  `validate_change_log_tags` warning) and the probe's docstring — because writing the pin
+  **falsified the caveat it was meant to pin**. Union concatenates whole *hunks*, so the second
+  version of a two-sided tag-line edit lands past the entry's prose, where the head-of-body tag
+  block has already stopped: it was metadata to nobody and no validator saw it, under a caveat
+  asserting the release gate caught it. A pin cannot be written against a false claim, so the
+  requirement grew a parent here rather than the code shipping without one — the shape is
+  *the advice this framework prints into a user's repository must be true*, which is the same
+  requirement Chunk 07 of the parent pass acted on when it tested union-merge before recommending it.
+- **Tests:** the identical-entry shape (merges to one copy), the reworded-entry shape (both body
+  lines, one header, and the stray now counted), both conditions of the detector with the corpus
+  case that forces each, and the real 306-entry change log as its own fixture — alongside the
+  existing no-attribute conflict control
 - **Acceptance criteria:** the probe's stated caveat is pinned by a constructed merge rather than by
-  a claim; suite green
+  a claim, and says only what the merge actually does; the detector fires on no real entry; suite green
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. Change-log entry added
@@ -215,12 +226,18 @@ sibling repo at the develop track and opening a session there.
   `develop` carries a prerelease version (e.g. `3.4.0-rc.1`) so the cache actually refreshes.
   Document the recipe where a maintainer will find it, and state how to get back off the track.
 - **Depends on:** Chunks 01–03 (the notes describe their shipped state)
-- **Artifacts consumed:** `.prawduct/release-notes.md`, `documentation/release-process.md`
-- **Deliverables:** `.prawduct/release-notes.md` entry; the dogfooding recipe in
-  `documentation/` (release process or a sibling doc); a prerelease version bump on `develop` if the
-  cache-key assumption holds
-- **Tests:** none beyond the suite — this is documentation plus a version string; the recipe's
-  verification is the live install below
+- **Artifacts consumed:** `documentation/release-process.md`,
+  `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`
+- **Deliverables:** amended during the build. Planned: an entry in `.prawduct/release-notes.md`.
+  **Not written, deliberately** — that file is a FROZEN ARCHIVE of a derived view retired at
+  v3.2.7, and it says so in its own header; adding an entry would revive the thing that was
+  retired. The consumer-facing surface is `plugin/CHANGELOG.md` (a `## vX.Y.Z` section) plus
+  `README.md` § Recent Changes on a minor bump, published as a GitHub Release from that section.
+  Shipped: those two, the dogfooding recipe and its lifecycle in `documentation/release-process.md`,
+  the prerelease bump in all three version files, and — not planned — prerelease support in
+  `banner.version_tuple` and the two version checks that rejected it.
+- **Tests:** the prerelease ordering and its banner consequence, which were not planned either:
+  the bump is a version *string*, but three checks read that string and all three refused it
 - **Acceptance criteria:** one sibling repo is actually running the develop track and its session
   briefing reports the new version; `main` is untouched; the way back off the track is written down.
   <!-- Amended 2026-08-13 during the build: the live half CANNOT be met from this branch. The

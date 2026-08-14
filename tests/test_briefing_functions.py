@@ -73,6 +73,30 @@ class TestBranchScopedPlanBriefing:
     All of it is advice — the briefing must still be produced whatever it finds.
     """
 
+    def test_a_failed_resolution_is_attributed_not_swallowed(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Advice fails soft; it does not fail silent.
+
+        The contested-claim line is the ONLY surface that ever says a branch is
+        contested, and the fail-closed route that used to backstop it is gone by
+        design. It is emitted from inside a broad `except`, so without this test
+        a refactor back to a bare `pass` restores the silence and nothing
+        notices — which is the defect a previous review found here.
+        """
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+
+        def _boom(_prawduct_dir):
+            raise OSError("the plan directory could not be read")
+
+        monkeypatch.setattr(briefing, "resolve_branch_claim", _boom)
+        text = briefing.assemble_session_briefing(tmp_path, [])
+        assert "== SESSION BRIEFING ==" in text, "the briefing must still be produced"
+        assert "could not be reported" in text
+        assert "OSError" in text, "the reader is owed what actually failed"
+
     def test_a_retained_plan_with_its_pointer_cleared_says_nothing(self, tmp_path: Path):
         """The gitflow retention window, after a branch-declaring plan merges.
 
