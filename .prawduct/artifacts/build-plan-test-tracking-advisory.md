@@ -68,7 +68,7 @@ inert residue is exactly the control `nonfunctional-requirements.md` § Directio
 
 ## Status
 
-- [ ] Chunk 01: The advisory that arrives without being asked for
+- [x] Chunk 01: The advisory that arrives without being asked for
 
 Context: Plan authored 2026-08-14, immediately after `test-tracking-treadmill` merged to `develop`
 (PR #659, merge `f9f121c3`). Single chunk, so it is `Type: cumulative-final` — its review is one
