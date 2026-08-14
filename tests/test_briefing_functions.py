@@ -96,7 +96,7 @@ class TestBranchScopedPlanBriefing:
         says to RETAIN it there until the release archives it. Firing would nag
         every session for weeks with the one remedy that flow forbids.
 
-        This is the test that fails if the `_has_unfinished_chunk` filter is
+        This is the test that fails if the `has_unfinished_chunk` filter is
         deleted; the sibling above passes either way, because its plan has an
         open chunk.
         """

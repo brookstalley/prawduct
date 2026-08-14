@@ -945,8 +945,21 @@ def _merge_base_verdict(
     )
     if transfer is None:
         return verdict
-    if transfer.get("status") == "unavailable":
-        verdict["transfer_note"] = transfer_remedy(transfer, None)
+    # Gated on a POSITIVE test for `match`, exactly as the PR gate is
+    # (:func:`check_cumulative_critic`), and not on "anything but unavailable".
+    # The two readings coincide today — the diagnosis returns `match`,
+    # `unavailable` or ``None`` and nothing else — so this is not a bug fix; it
+    # is the difference between the two gates agreeing by construction and
+    # agreeing by coincidence. A fourth status added to the diagnosis would
+    # reach the PR gate's remedy path and this gate's GRANT path, which is the
+    # one direction a fail-closed control must never drift in.
+    if transfer.get("status") != "match":
+        # `unavailable` alone carries a `reason`, and it is the only shape whose
+        # remedy is worth naming: the check could not run. An unrecognized
+        # status denies silently rather than being rendered as a near miss it
+        # was never measured to be.
+        if transfer.get("status") == "unavailable":
+            verdict["transfer_note"] = transfer_remedy(transfer, None)
         return verdict
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
     if not tests_ok:

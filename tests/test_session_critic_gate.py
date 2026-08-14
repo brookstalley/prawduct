@@ -526,6 +526,36 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
         assert "transfer_note" not in gates.session_review_verdict(repo)
 
+    def test_only_a_match_grants_the_transfer(self, tmp_path, monkeypatch):
+        """A status this gate does not recognize must DENY, not grant.
+
+        Both gates attempt the same diagnosis, and they used to read its answer
+        differently: the PR gate tested for `match`, this one for "anything but
+        `unavailable`". The readings coincide for the three shapes the diagnosis
+        returns today, so this pins the property rather than a bug — a fourth
+        status must reach the deny path here, the same way it reaches the PR
+        gate's. Fabricated deliberately: the point is a status no caller has
+        ever seen, which no fixture of real trees can produce.
+        """
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        # Baseline: this fixture DOES transfer, so a denial below is the new
+        # status doing it and not the fixture failing some other condition.
+        assert gates.session_review_verdict(repo)["status"] == "covered"
+
+        monkeypatch.setattr(
+            gates.coverage,
+            "diagnose_base_advance_transfer",
+            lambda *a, **k: {"status": "partial", "reason": "from the future"},
+        )
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered"
+        assert "transferred" not in verdict
+        # ...and it denies SILENTLY. `transfer_remedy` reads fields only a
+        # `match` or an `unavailable` carries, and rendering an unmeasured
+        # status as a near miss would tell the builder a suite run fixes it.
+        assert "transfer" not in verdict.get("reason", "")
+
 
 class TestFailClosed:
     def test_schema_ahead_fact_blocks_with_remedy(self, tmp_path):

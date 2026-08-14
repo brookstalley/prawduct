@@ -134,9 +134,17 @@ def disposition_index(store: dict) -> dict[tuple[str, str], dict]:
 PRIOR_DISPOSITION_LIMIT = 15
 
 
-def _unavailable(reason: str) -> dict:
+def unavailable_block(reason: str) -> dict:
     """An empty prior-dispositions block that SAYS it is empty for want of a
-    readable store, rather than because nothing was dispositioned."""
+    readable store, rather than because nothing was dispositioned.
+
+    Public because the block has a caller outside this module and only one
+    correct spelling. :func:`prior_dispositions` answers the two degraded store
+    states itself, but a dispatcher wrapping the call still has to say
+    *unavailable* when the join fails for a reason neither of them covers — and
+    a hand-built dict there would be one field-name typo away from a block the
+    reviewer protocol reads as "nothing was dispositioned here", which is the
+    single falsehood this shape exists to prevent."""
     return {"entries": [], "matched": 0, "shown": 0, "truncated": 0, "unavailable": reason}
 
 
@@ -203,11 +211,11 @@ def prior_dispositions(
     the census reader refuse loudly on the identical two fields.
     """
     if store.get("status") == "error":
-        return _unavailable(
+        return unavailable_block(
             store.get("reason") or "the evidence store could not be read"
         )
     if store.get("schema_ahead"):
-        return _unavailable(
+        return unavailable_block(
             f"{len(store['schema_ahead'])} evidence record(s) carry a newer "
             "schema than this reader — the dispositions they record are "
             "invisible here. Update the plugin (/reload-plugins or restart "

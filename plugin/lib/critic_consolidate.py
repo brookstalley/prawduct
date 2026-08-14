@@ -1176,11 +1176,20 @@ def _derive_roster(
     )
 
 
-def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | None, str]:
+def _prior_review_fact(
+    project_dir: Path, prawduct_dir: Path, store: dict
+) -> tuple[dict | None, str]:
     """The review fact a verify-resolutions pass anchors to, located via the
     derived cache's ``fact_id`` pointer (D7 — this is what the pointer is
     for). Returns ``(fact, "")`` or ``(None, reason)`` — the caller fails
     loud and the skill demotes to chunk/final.
+
+    ``store`` is the caller's ``read_facts`` result, and it is REQUIRED rather
+    than defaulted for the reason ``coverage.diagnose_fix_churn`` states about
+    its own injected callables: an omitted argument should be a ``TypeError`` at
+    the call site, not a silent second read. The silence would cost more than a
+    parse — the dispatch's other store reader must see the same moment as this
+    one, and a default here is how the two quietly come apart again.
 
     **The anchor must be an ancestor of HEAD.** The single-slot cache survives a
     branch switch, and a sibling branch's anchor still *resolves* in the shared
@@ -1200,7 +1209,6 @@ def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | No
             "prior findings cache carries no fact_id — it predates the "
             "evidence store (a fresh review re-establishes coverage)"
         )
-    store = evidence.read_facts(project_dir)
     for fact in evidence.facts_of_kind(store, "review"):
         if fact.get("id") != fact_id:
             continue
@@ -1348,6 +1356,20 @@ def begin_review(
     # conjunct that keeps the gate from deadlocking.
     pending_actionable = 0
 
+    # ONE read of the store, shared by the two readers below it — the
+    # verify-resolutions anchor lookup and the prior-dispositions block. They
+    # used to open it separately, which is two parses of a store that reaches
+    # thousands of facts and, more to the point, two MOMENTS: the store is shared
+    # by every worktree of the clone, so a sibling's `critic-consolidate` landing
+    # between them would let one dispatch anchor to a fact the other's block was
+    # not built from. Taking both from one read makes the pairing structural,
+    # which is the reason `verdict_cache.VerdictCache.for_read` is built the same
+    # way. Read HERE — before the mode branch — because the anchor lookup is
+    # inside it; the only store WRITE this function makes (the free-interval
+    # refusal) returns without reaching either reader, so nothing appends behind
+    # this read.
+    store = evidence.read_facts(project_dir)
+
     if mode_token in ("chunk", "final"):
         base_commit = dispatch_commit
         base_tree = capture["head_tree"]
@@ -1370,7 +1392,7 @@ def begin_review(
                 "changes are NOT in the reviewed scope"
             )
     else:  # verify-resolutions
-        prior, reason = _prior_review_fact(project_dir, prawduct_dir)
+        prior, reason = _prior_review_fact(project_dir, prawduct_dir, store)
         if prior is None:
             return {"status": "error", "reason": f"no prior review to verify: {reason}"}
         prior_body = prior.get("body") or {}
@@ -1630,7 +1652,7 @@ def begin_review(
 
     try:
         priors = dispositions.prior_dispositions(
-            evidence.read_facts(project_dir), files_changed, scope=scope
+            store, files_changed, scope=scope
         )
     except (OSError, ValueError, TypeError) as exc:  # pragma: no cover - defensive
         # A block that cannot be built must not cost a review its dispatch. Loud,
@@ -1639,7 +1661,7 @@ def begin_review(
         # join failed would be told something false. This catches an unexpected
         # shape; the two DEGRADED store states are returned rather than raised,
         # so `prior_dispositions` answers those itself, in the same words.
-        priors = dispositions._unavailable(f"{type(exc).__name__}: {exc}")
+        priors = dispositions.unavailable_block(f"{type(exc).__name__}: {exc}")
 
     manifest = {
         "id": review_id,

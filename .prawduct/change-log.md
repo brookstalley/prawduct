@@ -3,6 +3,76 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-14: the two review gates read one transfer answer the same way
+
+<!-- prawduct: type=fix | scope=tactical-efficiency -->
+
+Both gates attempt the base-advance transfer against the same diagnosis, and they read its answer
+differently. The PR gate tested for `status == "match"`; the Stop gate tested for *anything but*
+`unavailable` and then granted. The two coincide for the three shapes
+`diagnose_base_advance_transfer` returns today — `match`, `unavailable`, `None` — so nothing was
+broken, and that is the whole reason this is worth a commit before the release rather than after
+one: the gates agreed **by coincidence**, and a fourth status added to the diagnosis would have
+reached the PR gate's remedy path and the Stop gate's *grant* path. For a control whose entire job
+is to fail closed, that is the one direction the drift could not be allowed to run.
+
+The Stop gate now tests for `match` positively, and an unrecognized status denies **silently** —
+`transfer_remedy` reads fields only `match` and `unavailable` carry, and rendering an unmeasured
+status as a near miss would tell a builder that a suite run clears it.
+
+Pinned by a test that fabricates the fourth status, which is the only way to reach the property: no
+fixture of real trees can produce a status no caller has ever returned. It fails on the old code with
+`KeyError: 'prior_base'` — the drift was one field access from a crash, not from a false pass, which
+is luck rather than design.
+
+**The dispatch reads the evidence store once.** `begin_review` opened it twice — the
+verify-resolutions anchor lookup and the prior-dispositions block each called `read_facts` — which on
+a store that reaches thousands of facts is two parses, and worse, two *moments*: the store is shared
+by every worktree of the clone, so a sibling's `critic-consolidate` landing between them could let a
+dispatch anchor to a fact its own block was not built from. One read now feeds both, taken before the
+mode branch; the only store write in the function (the free-interval refusal) returns without
+reaching either reader, so nothing appends behind it. `_prior_review_fact` takes the store as a
+REQUIRED argument for the reason `diagnose_fix_churn` requires its injected callables — an omission
+should be a `TypeError` at the call site, not a silent second read.
+
+**Two cross-module private accesses became the public names they already were.**
+`dispositions._unavailable` is now `unavailable_block` (a dispatcher wrapping the call still has to
+say *unavailable* when the join fails for a reason the two degraded store states do not cover, and a
+hand-built dict there is one typo away from a block the reviewer protocol reads as "nothing was
+dispositioned here"), and `buildplan_refs._has_unfinished_chunk` is now `has_unfinished_chunk`, which
+the session briefing's branch-claim advisory calls.
+
+## 2026-08-14: the ephemeral guard's assumption, checked
+
+<!-- prawduct: type=docs | scope=durable-agent-worktrees -->
+
+#648 narrowed the disposable-worktree guard so an `agent-<hex>` tree on a real named branch is
+governed normally, on the stated ground that the branch carries the code commit and the `.prawduct/`
+write together. That ground shipped labelled **ASSUMED, not measured**, because measuring it looked
+like it needed a probe agent and that session had been asked not to dispatch one. It did not: the
+worktree tool contract answers it, and so does this repo's own history.
+
+- `ExitWorktree` has **no merge operation**. Its two actions are `keep` (worktree and branch both
+  stay) and `remove` (worktree and branch both go). Landing the work is then ordinary git in the
+  parent session, which necessarily goes *through* the branch.
+- `remove` **refuses by default on exactly the separable case** — uncommitted files, or commits not
+  on the original branch — and requires an explicit `discard_changes`. Overridden, it destroys the
+  code along with the branch, which is the assumption's other half and not its falsifier.
+- A subagent's `isolation: "worktree"` tree is auto-cleaned *only if unchanged*, so a tree that wrote
+  anything is retained rather than reaped.
+
+Confirmed against a real instance rather than only the contract: the durable `agent-` worktree that
+built this repo's own base-advance transfer sat on `feat/stop-gate-transfer-and-yield-signal`, wrote
+`.prawduct/change-log.md` from inside it, and reached `develop` through an ordinary merge of that
+branch — governance write included.
+
+The falsifier is unchanged and still worth re-checking when worktree handling changes, so it stays
+written down: *if the harness ever merges a code commit off a named branch while discarding that
+branch*, the guard stops covering that case. And `discard_changes: true` does lose a governance
+write — but loudly, operator-initiated, after being shown what it will destroy, and taking the code
+with it. That is categorically not the silent strand #594 named, which is the distinction the guard
+exists to draw.
+
 ## 2026-08-14: the retired test count now announces itself
 
 <!-- prawduct: type=feature | scope=test-tracking-advisory -->
