@@ -534,3 +534,13 @@ never by dropping them.
 ## Copying a fix into a sibling procedure is a NEW change needing its own analysis — two documents share a paragraph, not their invariants, so one edit can repair one and break the other. Ask which invariant made the original wrong and whether it holds next door. Tell: you fixed one file and grep found the same lines elsewhere — [learnings-detail.md]
 
 ## Unit tests built from a feature's OWN subject cannot catch a WIDENED subject — every fixture is an instance of the thing the feature is about, so the input that breaks it is the one you had no reason to construct. Run the real command against the real repo before believing green. Tell: your feature reads whatever it is pointed at — [learnings-detail.md]
+
+## A rule that LOWERS a severity outranks every rule that raises one unless you say so — state the floor with the ceiling, in one sentence, or the suppression quietly becomes the file's highest authority. The exits that LIFT a ceiling are not the severities it must never touch. Tell: your new rule caps a severity and all you wrote next was how to escape the cap — [learnings-detail.md]
+
+## Scrub the WHOLE diff before dispatching a review, tests and their comments included — a rule you just wrote is a rule you are still violating elsewhere in the same commit, and the reviewer will find it in the place you were not looking. Tell: you scrubbed the files the chunk is "about" and not the ones it added — [learnings-detail.md]
+
+## "Fail closed" means the CHANNEL's blocking value, not merely a non-zero one — mapping every refusal to a generic error code fails OPEN wherever the contract reads a SPECIFIC code as "block". Check the contract for the surface the refusal can REACH, not the one you were writing. Tell: you wrote "a refused gate is a blocked gate" and never opened the exit-code table — [learnings-detail.md]
+
+## A recommendation an advisory prints ships to every consumer's repo, so test its EFFECT, not just that it fires — make the change on a fixture, observe the promised outcome, and keep the un-made case as the control. Tell: every test you wrote asserts on the advisory object and none on what following it does — [learnings-detail.md]
+
+## A `try/except` around a producer that RETURNS its degraded states guards nothing — and the comment above it will read as if it does, so the intent survives while the mechanism does not. Read what the callee actually does on its bad paths before writing the guard, and answer the returned states where the read already is. Tell: your `except` names exception types the producer's docstring never mentions raising — [learnings-detail.md]

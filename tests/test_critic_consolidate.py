@@ -3103,6 +3103,13 @@ class TestVerifyResolutionsDispatch:
         # The judgeable-WIP "uncovered until you commit" WARNING fires so the
         # working-tree-vs-committed-HEAD mismatch is surfaced, not silent.
         assert "vouches for the WORKING tree" in result.stderr
+        # And it must prescribe the verbatim commit rather than another pass.
+        # The half above survived an edit that replaced "commit (or stash) the
+        # fix and re-run verify-resolutions" — a superfluous round, and wrong on
+        # the merits, since the commit carries the very tree this pass vouched
+        # for. An unpinned rule is what the next trim deletes first.
+        assert "Commit this tree VERBATIM and no further pass is needed" in result.stderr
+        assert "Only a selective or further-edited commit leaves a gap" in result.stderr
 
     def _seed_dirty_tree_review_with_blocker(
         self, repo: Path
@@ -3688,6 +3695,108 @@ class TestRecordLintInManifest:
         assert set(lint["counts"]) == set(record_lint.CHECKS)
 
 
+    def test_manifest_carries_a_prior_dispositions_block(self, tmp_path):
+        """The wiring, not the pure function. Every other test of this feature
+        exercises `dispositions.prior_dispositions` directly; this is the only
+        path a REVIEWER ever sees, and the protocol text teaches them to read
+        these exact keys."""
+        _repo, manifest, _res = self._dispatch(tmp_path)
+        priors = manifest["prior_dispositions"]
+        assert set(priors) >= {"entries", "matched", "shown", "truncated"}
+        # A repo with no dispositions yields an EMPTY block, not a missing key —
+        # the protocol tells reviewers `unavailable` means the join failed, so
+        # absence has to be distinguishable from failure.
+        assert priors["entries"] == []
+        assert priors["matched"] == 0
+        assert "unavailable" not in priors
+
+    def test_a_dispositioned_finding_in_scope_reaches_the_manifest(self, tmp_path):
+        """End to end: a recorded ACCEPT on a finding citing a file this
+        dispatch changes comes back on the manifest, through the real
+        `begin_review` path."""
+        from lib import dispositions as _d
+
+        repo, manifest, _res = self._dispatch(tmp_path)
+        changed = manifest["files_changed"][0]
+        scope = "tactical-scope"
+        evidence.append_fact(
+            repo, "review", "rev-prior-1",
+            {
+                "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": "final",
+                "scope": scope,
+                "findings": [{
+                    "fid": "R-9", "severity": "warning", "goal": "Nothing Is Broken",
+                    "title": "an answered question", "files": [changed],
+                }],
+            },
+        )
+        _d.record(repo, "rev-prior-1", "R-9", _d.ACCEPT, reason="by design")
+        _abandon(repo)
+        result = _run_begin(repo, "--mode", "chunk", "--scope", scope)
+        assert result.returncode == 0, result.stderr
+        priors = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())[
+            "prior_dispositions"
+        ]
+        assert [e["fid"] for e in priors["entries"]] == ["R-9"]
+        assert priors["entries"][0]["reason"] == "by design"
+
+    def test_a_disposition_from_another_scope_does_not_reach_the_manifest(self, tmp_path):
+        """The filter that keeps the block from becoming 91% of the manifest.
+        Measured on a live dispatch before it existed: 92 entries, ~5,700
+        tokens, 2.7x the protocol file the block exists to shorten — because a
+        repo's hottest files are cited by nearly every finding it has ever
+        recorded."""
+        from lib import dispositions as _d
+
+        repo, manifest, _res = self._dispatch(tmp_path)
+        changed = manifest["files_changed"][0]
+        evidence.append_fact(
+            repo, "review", "rev-other-1",
+            {
+                "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": "final",
+                "scope": "some-unrelated-scope",
+                "findings": [{
+                    "fid": "R-9", "severity": "warning", "goal": "Nothing Is Broken",
+                    "title": "answered for other work", "files": [changed],
+                }],
+            },
+        )
+        _d.record(repo, "rev-other-1", "R-9", _d.ACCEPT, reason="different work")
+        _abandon(repo)
+        result = _run_begin(repo, "--mode", "chunk", "--scope", "tactical-scope")
+        assert result.returncode == 0, result.stderr
+        priors = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())[
+            "prior_dispositions"
+        ]
+        assert priors["entries"] == []
+
+    def test_a_review_recorded_without_a_scope_matches_nothing(self, tmp_path):
+        """The docstring makes this normative — "reviews recorded without a
+        scope match nothing rather than everything" — because an unscoped fact
+        cannot claim to be about this work, and an advisory block whose failure
+        mode is drowning the review should fail toward carrying less."""
+        from lib import dispositions as _d
+
+        repo, manifest, _res = self._dispatch(tmp_path)
+        changed = manifest["files_changed"][0]
+        evidence.append_fact(
+            repo, "review", "rev-unscoped-1",
+            {
+                "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": "final",
+                "scope": None,
+                "findings": [{
+                    "fid": "R-9", "severity": "warning", "goal": "Nothing Is Broken",
+                    "title": "answered, but for unknown work", "files": [changed],
+                }],
+            },
+        )
+        _d.record(repo, "rev-unscoped-1", "R-9", _d.ACCEPT, reason="no scope recorded")
+        store = evidence.read_facts(repo)
+        assert _d.prior_dispositions(store, [changed], scope="tactical-scope")["entries"] == []
+        # ...and the same fact IS carried when the caller asks unscoped, so this
+        # is the scope axis filtering, not the file axis silently dropping it.
+        assert _d.prior_dispositions(store, [changed], scope=None)["matched"] == 1
+
     def test_a_missing_declared_deliverable_lands_in_the_manifest(self, tmp_path):
         plan = (
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
@@ -4018,6 +4127,109 @@ class TestLikelyDuplicateGroups:
         groups = cc.likely_duplicate_groups(findings)
         assert groups == [["R-1", "R-2", "R-3"]]
         assert cc.distinct_finding_count(findings, groups) == 1
+
+    def test_the_observed_triplicate_now_groups(self):
+        """The case the Jaccard bar missed. Three reviewers met ONE defect on
+        one file and described it at three levels of detail; `[]` came back,
+        and the builder dispositioned it three times.
+
+        Jaccard divides by the union, so a terse title inside a verbose one
+        scores low while sharing every word it has. Same files + overlap
+        coefficient is the length-insensitive form of the same question.
+        """
+        files = ["plugin/lib/gates.py"]
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "Gate remedy omits the batch instruction", files),
+            self._f(
+                "R-5",
+                "The Design Is Sound",
+                "The gate remedy omits the batch instruction that consolidate "
+                "prints, so an agent reading stderr fixes one finding at a time",
+                files,
+            ),
+            self._f(
+                "R-11",
+                "Everything Is Coherent",
+                "Gate remedy text omits the batch instruction stated in "
+                "building.md and in consolidate output",
+                files,
+            ),
+        ]
+        groups = cc.likely_duplicate_groups(findings)
+        assert groups == [["R-1", "R-5", "R-11"]]
+        assert cc.distinct_finding_count(findings, groups) == 1
+
+    def test_containment_needs_identical_files_not_merely_overlapping(self):
+        """The containment path is gated on the file sets MATCHING — the same
+        two titles that group above must not group when the attributions
+        differ. Two findings about one subsystem in different files are two
+        findings, and a contained title is not evidence otherwise.
+
+        These titles sit at Jaccard ~0.38, below the similarity bar, so only
+        the containment path could group them: this isolates that path rather
+        than re-testing the one that already existed.
+        """
+        findings = [
+            self._f(
+                "R-1", "Nothing Is Broken", "Gate remedy omits the batch instruction", ["a.py"]
+            ),
+            self._f(
+                "R-2",
+                "The Design Is Sound",
+                "The gate remedy omits the batch instruction that consolidate "
+                "prints, so an agent reading stderr fixes one finding at a time",
+                ["a.py", "b.py"],
+            ),
+        ]
+        assert cc.likely_duplicate_groups(findings) == []
+
+    def test_a_short_title_is_not_trivially_contained(self):
+        """The degenerate case the containment rule invites: a one-word title
+        is contained in ANY title sharing that word, at a coefficient of 1.0.
+        Without a floor on the shorter title, every terse finding would join
+        whichever neighbour happened to use the same noun — caught by this test
+        before it shipped."""
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "Ordering", ["x.py"]),
+            self._f(
+                "R-2",
+                "The Design Is Sound",
+                "Ordering between the precheck and the cache read is unpinned",
+                ["x.py"],
+            ),
+        ]
+        assert cc.likely_duplicate_groups(findings) == []
+
+    def test_a_group_renders_as_one_defect_with_every_fid_named(self):
+        """The count told the builder there were 2; the LIST is what gets
+        worked, and three separately-worded lines read as three jobs. Every fid
+        stays visible — this is presentation, never a merge, which is why a
+        wrong group can cost clarity but never hide a finding."""
+        files = ["plugin/lib/gates.py"]
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "Gate remedy omits the batch instruction", files),
+            self._f(
+                "R-5",
+                "The Design Is Sound",
+                "The gate remedy omits the batch instruction that consolidate prints",
+                files,
+            ),
+        ]
+        # The SHORTEST title carries the LOWEST severity — the shape that made
+        # a group containing a BLOCKING print as [NOTE], above an instruction to
+        # dispose of the group once. Lead is chosen for wording; severity is the
+        # group's maximum, and wording has nothing to do with severity.
+        findings[0]["severity"] = "note"
+        findings[1]["severity"] = "blocking"
+        rendered = cc._render_duplicate_groups(findings, cc.likely_duplicate_groups(findings))
+        assert "R-1+R-5" in rendered
+        # The shortest title leads: it is the claim the reviewers agree on.
+        assert "Gate remedy omits the batch instruction" in rendered
+        assert "[BLOCKING]" in rendered and "[NOTE]" not in rendered
+        assert "Nothing Is Broken" in rendered and "The Design Is Sound" in rendered
+
+    def test_no_groups_renders_nothing(self):
+        assert cc._render_duplicate_groups([], []) == ""
 
     def test_nothing_is_dropped_or_reordered(self):
         """The advisory contract: detection must not mutate the finding list."""

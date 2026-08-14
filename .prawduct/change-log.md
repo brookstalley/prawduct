@@ -3,6 +3,452 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: the change log recommends its own merge driver
+
+<!-- prawduct: type=feature | scope=tactical-efficiency -->
+
+On both forced base syncs measured on a consumer repo, **100% of the merge conflicts were
+prawduct's own record files**, led by this one. Every branch writes its entry at the TOP of the
+change log, so two branches always edit the same first lines and merging an advanced base conflicts
+there every single time — a manual resolution and a reconcile commit for a file whose two sides
+never actually disagree.
+
+A post-sync advisory now recommends `.prawduct/change-log.md merge=union` when the committed log
+resolves no such gitattribute, and self-resolves once it does. It **recommends and never writes**:
+`.gitattributes` is not in the plugin's write set, and unexpected framework writes to a repo's
+committed configuration are the trust breach that set exists to prevent. The advisory surface is
+the one that runs every session; `/prawduct:doctor` lists the same check as the secondary surface,
+where it is a recommendation and does not grade a repo degraded — a repo is free to decline advice.
+
+**The recommendation is verified, not assumed.** Two branches prepending tagged entries conflict
+without the attribute and merge cleanly with it, each entry's `<!-- prawduct: … -->` line still
+under its own header, because the union driver concatenates whole hunks and never crosses them. The
+trade it makes is real and stated where the probe lives: union never conflicts, so a genuine
+two-sided edit to the *same* line survives as both versions rather than as a conflict — caught
+downstream by the release gate's tag validator, which errors on one key set two ways.
+
+**Three answers, not two, at the git boundary.** `git check-attr` returning nothing and git being
+unaskable are the same empty answer unless the code keeps them apart, so `gitstate` gained a
+tri-state pair (`git_merge_attribute`, `git_path_is_tracked`) that returns `None` for "could not
+ask". The probe raises no advisory on `None` — nagging a repo that may already be fixed is the
+wrong error — and prints a `NOTE` naming what went unchecked when the log is committed, which is
+when the harm is live. Where git cannot be asked at all it stays fully quiet: nothing that cannot
+merge can conflict.
+
+Also here, riding the commit rather than a later round: the ~dozen docstrings that still described
+active-plan resolution as "the `active_build_plan` pointer" now say "this repo's active build plan"
+and point at the function that owns the rule, so the precedence has one home instead of a ninth
+copy that goes stale on the next change.
+
+## 2026-08-13: the plan declares its branch
+
+<!-- prawduct: type=feature | scope=tactical-efficiency -->
+
+Which build plan is active is **branch state**, and it was stored in `active_build_plan:` — one
+scalar, at product level, in a file both of two concurrent branches edit. Two branches therefore
+guarantee a same-line conflict every time, and after the merge exactly one plan wins the line while
+the other becomes invisible to every surface that resolves through it: the briefing, mode
+inference, chunk-ref verification, the Stop gate.
+
+**The pointer is inverted.** A build plan may declare `branch: <name>` in its frontmatter, and
+`core.resolve_build_plan_path` now resolves in precedence order: the live plan claiming the
+checked-out branch, then the scalar, then the conventional default. Nothing migrates — a repo whose
+plans declare no `branch:` resolves exactly as before, and the scalar keeps working as the fallback
+it now is. Archiving a plan ends its claim, because the scan prunes `archive/` at directory level,
+so for a branch-declaring plan the archive move is the whole retirement with no pointer left over.
+
+**Two live plans claiming one branch is a refusal, not a coin-flip.** Either could be the one its
+author meant, and governing a session by the wrong plan looks exactly like governing correctly, so
+resolution raises rather than picking the one that sorts first. Authority inherits that by
+propagating it — a refused gate is a blocked gate, and the hook prints the refusal and its remedy
+instead of a traceback. Advice inherits it by reporting: the briefing names both plans at the top
+of the session, and is still produced.
+
+**The chunk's own acceptance criterion named two consumers that were observably broken**, and one
+of them needed more than the resolver. `critic-begin` derives its ledger scope by matching the
+branch NAME against declared scopes — `feat/tactical-efficiency-pass` matches the scope
+`tactical-efficiency` under no rule, so every dispatch from this branch recorded scope `(none)`,
+which in turn left the disposition work-scope filter shipped earlier in this pass inert. Scope
+inference now consults the plan's `branch:` declaration first. It is the only route there that is
+not a guess, so neither narrowing applies to it: not the name-candidate rules, and not the
+liveness check that rejects a fully-ticked plan — that check exists to stop a *guess* attributing
+work to a plan that shipped, and it opens a window at exactly end-of-plan, when the `cumulative`
+review and the last gate run happen.
+
+**Session start got faster, not slower.** The branch resolution adds a walk of `artifacts/` — the
+one the scope map already pays for — but it also asks git for the current branch, and the briefing
+asks five times. Measured on this repo the briefing went 197 ms → 494 ms, which is not a cost this
+pass gets to ship. `gitstate.current_branch` now reads git's `HEAD` file directly and shells out
+only when it cannot answer, which is a fast path for every one of its callers rather than for the
+new one: 215 ms, +18 ms over baseline for the walk the feature actually needs. The reader is
+worktree-aware because that is where it runs most — a linked worktree's `HEAD` is its own, and
+reading the shared common dir would have reported the primary checkout's branch to every gate,
+silently.
+
+**The review found the refusal failing OPEN at the one gate that matters, and both blockers were
+that.** `main()` rendered every refusal as exit 1 — but `stop` is a harness hook, and the recorded
+error model gives its row exactly two outcomes: 0 clean, 2 block. Exit 1 is neither, so on a repo
+with two plans claiming the branch the session would have ended **clean**, with the reflection,
+coverage and PR gates never having run: the precise inverse of the posture the feature documents,
+reachable only through the state the feature invents. `cmd_stop` now probes resolution once, before
+any gate and before the background-work deferral (which returns 0, and which no amount of background
+work could ever clear), and renders a refusal as a BLOCKED report at 2. Guarding the individual call
+sites was tried first and only moved which line raised — three of them resolve independently, which
+is the finding's own point: every gate resolves a plan.
+
+The same review caught the new "plan claims a branch this repo does not have" advisory firing across
+the whole gitflow merged-but-unreleased window — recommending the one action `/prawduct:pr` forbids
+there, and falsifying two doc paragraphs added in this same commit. It now fires only for a plan with
+an **unfinished** chunk, which is the case with yield: the author believes their plan governs this
+work and it silently resolves for nobody. A finished plan claiming a deleted branch is the documented
+end state, and says nothing.
+
+**A dead mirror was deleted rather than duplicated into.** `bin/prawduct-hook` carried an inline
+copy of the resolver for an import-light hot path. Its last caller went away when `staleness_scan`
+moved into `lib/briefing.py` and was rewritten onto the canonical resolver, after which the only
+thing invoking it was its own parity test — and the import-light claim was void, since that path
+reaches the resolver through `lib.briefing` and pays for `core` anyway. Extending it would have
+meant duplicating a directory walk and a git subprocess into code nothing calls, on its fourth
+rework (Principle 25). The scalar reader beside it stays: it has four live callers, and its parity
+cases are unchanged.
+
+Two prose corrections carried from the previous chunk ride here, both deliberately held back so
+that chunk could commit a verify-vouched tree verbatim: `gates.py`'s `uncovered` remedy still told
+a builder whose verify fact anchored the working tree to "commit (or stash) the WIP and re-run",
+and the corrected half of `critic-consolidate`'s twin had no test pinning it.
+
+Not in scope, and stated so the next reader does not go looking: removing the scalar, migrating
+consumer repos, and the release-side scope enumeration (already pointer-free).
+
+## 2026-08-13: the batch-fix golden path, stated at the point of action
+
+<!-- prawduct: type=feature | scope=tactical-efficiency -->
+
+Five consecutive 0/0/0 verify passes on one branch, 1,270 seconds, each one bought by the builder
+electing to fix the previous pass's demoted observations. The discipline that prevents this already
+existed in `building.md` and in `critic-consolidate`'s output — but neither is open at the moment
+the decision gets made. The builder is reading a gate's stderr, or a verify report, or the PR
+update step, and all three said less than they needed to.
+
+**The PR/Stop gates' blocking remedy now prescribes the whole golden path**, not just the command:
+fix ALL of them in the working tree, do not commit between fixes, run ONE `verify-resolutions`
+(it reads the dirty tree), and commit that verified tree verbatim. The failure mode it names is
+fix-commit-verify per finding — each commit extends HEAD, so each one buys a fresh round whose
+demoted observations tempt the next fix. Superseded-blocker routing is untouched: the spanning
+review still leads when every blocker is one, since that is a routing question and this is a
+batching one.
+
+**Verify-mode observations arrive pre-priced.** `goals-1-3.md` now delivers them with the
+disposition attached — ACCEPT is the default, fixing one re-opens the gate and costs a round,
+batch any survivor into an already-planned commit. Placement is the point: the builder decides
+while reading the report, so the price has to be in the report. It spends the last of the ceiling
+raise this pass declared for exactly this addition, leaving 7 tokens.
+
+**`/prawduct:pr` Update defines "substantive"** — at least one judgeable path in the delta since
+the reviewed commit — and gives a command for each non-substantive shape rather than leaving it to
+the eye: `cost-of-commit` for a records-only delta, `check-cumulative-critic` for a base sync that
+exits 0 by transfer. **It closes half the observed 520-second re-review, not all of it**, and says
+so: the `.prawduct` records are non-judgeable, but a CI workflow is config, so a comment-only edit
+to it stays judgeable. The content-equivalence exception that would close the rest was built and
+reverted as unsound (COV-3M8Q) — the rule states its limit instead of overreaching to match the
+evidence that motivated it.
+
+The chunk's review caught a fail-open in its own new rule, and it is the reason the `cost-of-commit`
+bullet is as long as it is. `cost-of-commit` with no arguments — or with a directory — prices the
+**working tree**, and at that point in the Update flow the working tree is clean because the delta
+is already pushed. It returns an empty `judgeable` list having examined none of the delta, and an
+agent testing only for that emptiness skips the independent PR review entirely. The paths are now
+passed explicitly, "not substantive" requires a non-empty priced set as well as an empty judgeable
+one, and an unreadable or empty result is substantive: unknown is never free.
+
+One consequence of the golden path reached further than the three surfaces. `critic-consolidate`'s
+dirty-tree note told the builder the gate would read `uncovered` "until you commit (or stash) the
+fix **and re-run verify-resolutions**" — the extra round the new remedy exists to remove, and
+wrong besides: a verify pass over a dirty tree vouches for that tree, so committing it verbatim
+carries the very tree the pass vouched for and the gate composes with nothing further. The note now
+says so, and names the actual exception — a selective or further-edited commit.
+
+Two things were analyzed and deliberately not built, both from the parent analysis: a sincerity
+flag (`--im-really-done`), which cannot catch an error that is not insincerity, and refusing verify
+dispatch when the delta is "only fixes", which is unsound because the fixes live in judgeable files
+and refusing would strand the gate uncovered.
+
+## 2026-08-13: prose findings priced honestly
+
+<!-- prawduct: type=feature | scope=tactical-efficiency -->
+
+Comment and doc wording is 42% of finding volume, and the mechanism that produced it was a gap
+between two rules. Goal 4 rated any comment/code contradiction WARNING; the NOTE ceiling for
+record prose covered change-logs and plans but not code comments. Nothing constrained the
+*remedy*, so "update the narration" was a legal recommendation — which is how one wall-time figure
+became nine findings across five rounds on three branches, the tenth edit missing and buying the
+round after that.
+
+**Prose is NOTE unless load-bearing** — a test or a gate reads it, or the reviewer names the
+concrete wrong action a maintainer takes because of it. That is the existing WARNING bar, now
+applied to comment, docstring and doc wording, counts and phrasing rather than only to record
+prose. **Stale prose gets one of three remedies**: delete the claim, make it relational, or pin it
+with a test. The list is closed — rewording the narration is what ships the sentence the next
+round finds stale. And **review history never enters a shipped comment**: ids dangle, so a comment
+recounting history is a deletion rather than a correction, since a corrected id goes stale too.
+`building.md` carries the builder-side half — history's one home is commits and the change-log.
+
+The ceiling has a floor, which the chunk's own review caught missing: **it never lowers a severity
+another rule assigns explicitly.** Without that clause a rule written to suppress findings also
+suppresses promoted ones — Goal 4 rates an actively misleading README instruction BLOCKING, and a
+reviewer who dutifully named that wrong action would have landed on WARNING, which gates nothing,
+shipping the wrong command.
+
+The policy is stated on all three severity surfaces rather than pointed at from two, because their
+audiences are disjoint: `goals-1-3.md` is chunk mode's payload, `review-protocol.md` is the
+final/cumulative payload, and the PR reviewer reads neither. `test_prose_severity_ceiling.py` pins
+all three — the rule's own second remedy, applied to itself, on files under standing pressure to be
+trimmed.
+
+**No ceiling was raised.** The `review-protocol.md` and `goals-1-3.md` additions spend the raises
+this pass declared in advance; `review-protocol.md` paid 41 tokens of that back by deleting a
+model-override rule stated in both the Assess and Dispatch steps. `building.md` had 3 tokens of
+headroom and funded the whole addition in place, landing a token *below* where it started: its
+Blocking-findings paragraph restated the disposition menu that "Resolve findings" already owns,
+the Critic step said "runs as a separate agent" twice, and the seven goal names were spelled out
+beside the pointer to the file that defines them.
+
+Not added: any new control. This is a ceiling and a remedy constraint on findings that already
+exist, so it is net-subtractive and the observable-yield obligation does not attach.
+
+## 2026-08-13: the cumulative's eight warnings, resolved
+
+<!-- prawduct: type=fix | scope=tactical-efficiency -->
+
+The branch cumulative (`rev-20260813T174223Z-0cc2fd49`) returned 0 blocking and 8 warnings. Three
+were real defects in what had already shipped, and all three came from the same place — a claim
+that was true when written and stopped being true later in the same bundle.
+
+**Condition 3 asked about the wrong tree at the PR gate.** `suite_vouches_for_current_tree`
+compared saved evidence against the *working* tree, but `check_cumulative_critic` vouches for
+`HEAD^{tree}`. With uncommitted judgeable edits the gate could print `satisfied (… suite current)`
+for a HEAD tree no suite run had met. It is now `suite_vouches_for_tree(project_dir, target_tree)`
+and each gate passes the tree it actually vouches for; the Stop gate's default stays the working
+tree, which is its own target.
+
+**The verdict memo's key omitted the code that computed the verdict.** It covered both trees and
+the store, but the verdict also depends on `coverage_algebra.is_judgeable_path`, and the cache
+persists in `.git/prawduct/` across plugin upgrades — so widening judgeability in a release would
+replay `covered` entries the new rules would not grant. `CACHE_SCHEMA` was the intended guard and
+is a hand bump nothing enforces; a maintainer changing judgeability has no reason to open a cache
+module. The plugin version is now in the key, derived rather than remembered.
+
+**A read path grew a store write.** `_merge_base_verdict` → `record_transfer_grant` appends a fact,
+and `session_review_verdict` has two callers: the Stop gate (authority, session end) and the
+session-start briefing (advice), which wraps it in a broad `except`. From the briefing the append
+was silent, its fail-soft attribution swallowed, filed under a gate that had not run — and it moved
+the store fingerprint at session start, evicting the memo the previous chunk had just built.
+Recording is now opt-in (`record_grants=`), taken only by the authority path. Advice observes and
+writes nothing, pinned by a test.
+
+Also: the `prior_dispositions` instruction was reachable only from Goal 2's section, so two of the
+three coordinator reviewers were never told about it — Chunk 03's own mechanism, unreachable for
+two thirds of its audience. It moved to `agents/critic-reviewer.md`, which every reviewer reads.
+`review-cycle.md` contradicted itself eleven lines apart on whether a rebase demands a fresh
+review. Both design artifacts still said only the PR gate transfers, which `243c7761` falsified in
+the same bundle. The memo now attributes its degraded states — an inert cache and a failed flush
+were both silent, and the symptom is every gate call back on the cold path with nothing to point
+at. Chunk 06's acceptance criterion was amended: it named "the scalar left pointing at the
+purpose-and-cession plan", which this branch's own pointer flip would have made pass vacuously.
+
+## 2026-08-13: accepted findings stop being re-litigated, and one defect reads as one
+
+<!-- prawduct: type=feat | scope=tactical-efficiency -->
+
+**Dispositions have been facts for a while; nothing put one where a REVIEWER could see it.** A
+cumulative dispatched after an `--accept` handed its reviewers a diff and no memory, so they found
+the same true thing again — measured on one consumer branch, round 9 re-raised six of round 7's
+findings verbatim, several already accepted.
+
+`critic-begin` now writes a `prior_dispositions` block into the dispatch manifest: findings already
+accepted or filed, with their reasons. Only the live answer appears (re-disposition appends, so a
+finding can carry a superseded predecessor); truncation is reported, never silent; a failed join
+says `unavailable` rather than reading as "no priors". Both reviewer protocol files carry the
+instruction, mirroring the existing `record_lint` "already answered, don't recount" pattern.
+
+**Scoping it by cited file alone did not work, and the measurement is the reason it changed.** That
+first cut carried 92 entries on a live dispatch — **22,703 of 25,001 manifest bytes (91%), ~5,700
+tokens, 2.7× the protocol file the block exists to shorten** — because a repo's hottest files are
+cited by nearly every finding it has ever recorded, so the filter was weakest exactly where reviews
+concentrate. A control that costs more attention than it saves is not a control. The block is now
+scoped by build-plan **scope** as well as by cited file (answers about *this* body of work, which is
+what "already answered" always meant), and the entry limit dropped 40 → 15. Re-measured on the next
+dispatch: 8,412 of 12,263 bytes (69%).
+
+**Caveat, because the two fixes are not equally proven:** `scope_chosen_by` was `not-resolved` on
+that dispatch, so the re-measured drop comes from the limit alone — the scope axis is built and
+tested but does not engage until a dispatch resolves a scope, which is what Chunk 06's branch-scoped
+plan resolution supplies. A review recorded with no scope matches nothing rather than everything:
+an unscoped fact cannot claim to be about this work, and an advisory block whose failure mode is
+drowning the review should fail toward carrying less.
+
+**The grouping that was supposed to catch a triplicate reported `[]`.** Three reviewers filed one
+defect on one file (R-1/R-5/R-11) and `likely_duplicate_groups` grouped none of them. Cause: Jaccard
+divides by the union, so a terse title wholly contained in a verbose one scores low while sharing
+every word it has — exactly what happens when three reviewers describe one defect at three levels
+of detail. Added a second qualifying path: identical file attributions plus overlap coefficient
+(the length-insensitive form of the same question) ≥ 0.6. A floor of 3 significant words on the
+shorter title stops the degenerate case a one-word title would create — caught by a test before it
+shipped, not after.
+
+Consolidation now also **renders** each group as one defect line with every fid named. The count
+already said "~N distinct"; the list is what gets worked, and three separately-worded findings read
+as three jobs whatever the count claimed. Presentation only — `merge_findings` still keys exactly
+and every finding survives in the fact and the derived view, so a wrong group costs one confusing
+line and can never hide a finding. That asymmetry is what lets the bar sit low.
+
+Both budgeted protocol files hit their ceilings. Raised once with the whole pass named
+(`goals-1-3.md` 2000→2250, `review-protocol.md` 3620→3800) rather than three creeping raises across
+Chunks 03–05; deduping was attempted first and found nothing — the last edit had already squeezed
+both to 1–2 tokens of headroom, which their own budget comments record.
+
+## 2026-08-13: syncing a base no longer clears the PR gate and blocks at session end
+
+<!-- prawduct: type=fix | scope=tactical-efficiency -->
+
+**Two gates asked the same composition question and only one could answer it by transfer.**
+`/prawduct:pr` Step 1 prescribes syncing the base before the review gates; that span passes the PR
+gate by base-advance transfer, and the *same tree* was then blocked at session end — sending the
+builder to run exactly the cumulative round the transfer exists to remove. The Stop gate's
+merge-base fallback (`gates.session_review_verdict` → `_merge_base_verdict`) now attempts the same
+transfer under the same three conditions.
+
+**Which span, and why only that one.** The Stop gate's own span is the session base tree → the
+working tree, and its start node is the tree HEAD sat at when the session opened — no base sync
+moves it, and after a sync the diff across it *is* the advance rather than the branch's own work,
+so the transfer's first condition could not hold. The merge-base span is the PR gate's span with
+the working tree in place of HEAD's tree, which is the shape the diagnosis was written for. The
+substitution costs nothing in soundness — uncommitted judgeable work lands in the required diff, so
+no reviewed span matches it and the transfer denies with no special case — and condition 3
+(`suite_vouches_for_current_tree`) lands more squarely here than at the PR gate, because it asks
+about the working tree, which is this gate's target. Attempted on `uncovered` only: a `blocked`
+span is owed a blocker and no transfer discharges it. Every unverifiable condition still denies.
+
+**The near miss now reaches the builder.** This gate has no stderr of its own — the Stop hook
+renders its verdict — so the "byte-identical, only the suite is stale, run it and re-run" sentence
+rides on the verdict's `reason`, and is carried onto whichever verdict is returned. Without that
+the fallback's verdict is discarded whenever the primary one already blocks, dropping the cheapest
+remedy on exactly the sessions that need it.
+
+**A granted transfer now emits its yield.** The standing norm is that a control names the yield it
+expects AND emits that yield observably; the transfer's justification is a measured claim about
+review rounds saved, and a yield claim nothing can falsify is not a yield claim. Both gates now
+append a `guard-refusal` fact under guard `base-advance-transfer` — the same sink and the same
+norm as `critic-begin`'s free-interval refusal — surfaced by
+`prawduct-hook evidence list --kind guard-refusal`. No new fact kind, no schema change.
+
+**Why the record is keyed and not timestamped.** `verdict_cache` keys the composed verdict on a
+content hash of the whole evidence store, and the gates are polled several times a session, so a
+record per *poll* would evict every memoized verdict on every poll and hand back the ~17 s cold
+path the memo was built to remove. `evidence.append_guard_refusal` gained an optional `dedupe_key`:
+the id becomes a digest of `(guard, key)` with no timestamp and no uuid, a second observation
+returns `duplicate` and writes nothing, and the store stays byte-identical across repeated gate
+calls (pinned by test at both gates). The probe reads the caller's already-parsed facts rather than
+re-opening a 7 MB store — the same one-read/one-moment pairing `VerdictCache.for_read` makes
+structural. The residual, stated: the *first* grant does append, so the poll after it recomputes
+cold — once per transferred span, against a review round saved.
+
+The key is the span (`base_tree`, `head_tree`, `prior_base`, `prior_head`) and deliberately not the
+gate, which rides in the body instead. When the two gates coincide on one span they describe one
+base sync that one cumulative would have paid off, and counting it twice would inflate the yield of
+the control the record exists to audit — `count_branch_rounds` states the same preference for the
+same reason. Recording is fail-soft like its sibling and never silent: a store failure is
+attributed on stderr and the correct verdict stands.
+
+## 2026-08-13: the PR gate answers in constant time
+
+<!-- prawduct: type=perf | scope=tactical-efficiency -->
+
+**Asking whether a review was needed cost more than some reviews.** Nine `check-cumulative-critic`
+invocations in one consumer session ran 29–120 s each; two hit the 2-minute Bash ceiling (one
+`Exit code 143`) and the agent resorted to `timeout 200`. Profiled on this repo before building
+anything: `read_facts` is 0.06 s and merge-base resolution 0.07 s, while
+`coverage_algebra.coverage_verdict` is **17.4 s cold and 0.01 s with the per-invocation key cache
+warm** — the whole cost is the free-edge search keying every tree the store mentions, one
+`git ls-tree` each (701 trees here, and the store only grows).
+
+`verdict_cache.VerdictCache` memoizes the composed verdict, keyed on a content hash covering every
+input: both endpoint trees and a SHA-256 of the entire evidence store. Measured end to end on this
+repo: **20.0 s → 0.35 s.** The three call sites that need a composed verdict — the span itself,
+the fix-churn diagnosis and the base-advance transfer — now share one cache; both diagnoses take a
+`verdict_fn` in place of the `diff_fn`/`key_fn` pair they only ever used for that call.
+
+**Why this is a memo and not a second home for a fact** (`data-model.md`: *derived views are
+disposable and never authoritative*): the key covers every input the verdict is a function of, so
+a hit replays a computation whose inputs are provably unchanged. Miss, unreadable cache, corrupt
+entry, foreign schema or unreadable store all recompute. **And a cached verdict can never be a
+false PASS:** git objects are immutable and content-addressed, so they are not in the key and do
+not need to be — `coverage_verdict` grants `covered` only through review edges (from facts, which
+ARE keyed) and free edges (tree-key equality), and a missing object makes `key_fn` return `None`,
+which denies a free edge and can never manufacture one. Git-side degradation therefore moves the
+verdict only toward denial. The residual, stated rather than implied: an `uncovered` computed while
+an object was transiently unreadable is replayed until the store's next append.
+
+The flush is unconditional (a `try/finally` wrapper), because the gate has four exit paths, three
+of them failures — and polling happens most when the gate is *not* passing, so a memo that only
+persisted on success would leave exactly its motivating case uncached. Cache lives beside the
+evidence store in the per-clone `.git/prawduct/` area, bounded at 64 entries.
+
+One test changed rather than being added to: the pin that `diagnose_fix_churn`'s injected functions
+carry no defaults now names `verdict_fn`, which carries both properties a forgotten argument would
+cost. Same contract, same direction, applied to the parameter that now holds it.
+
+## 2026-08-13: a clean base sync no longer voids review coverage
+
+<!-- prawduct: type=feat | scope=tactical-efficiency -->
+
+**A base advance moved the PR span's start node, so a branch whose own diff had not moved a byte
+read `uncovered` and bought a full re-review.** Measured in the busiest consumer repo (which merges
+its base ~20×/day): two of three cumulative rounds on one branch existed only for this reason, and
+the round after a sync re-raised six of the previous round's findings verbatim — ~30 of 60 review
+minutes on a 6-fix branch were base tax. In both observed forced syncs, every merge conflict was in
+prawduct's own non-judgeable record files.
+
+`check-cumulative-critic` now attempts a computed **transfer** before reporting `uncovered`
+(`coverage.diagnose_base_advance_transfer`): a span already covered transfers to the required one
+when the two spans' judgeable changed-file sets are identical, every one of those files is
+byte-identical on both ends, and a saved suite run has met the resulting tree. Computed, never
+stored — the free-edge philosophy. Any condition unverifiable denies the transfer and today's
+remedy stands, because authority fails closed.
+
+**The third condition is `gates.suite_vouches_for_current_tree`, deliberately stricter than
+`tests_are_current`.** That function is a disjunction whose first clause asks only *when* a run
+happened — the right question for "should this session re-run the suite", and the wrong one here: a
+suite at 09:00, a base merged at 11:00 and a gate at 11:05 satisfies session-freshness while no run
+has ever seen the merged tree, which is precisely the exposure condition 3 exists to price. Only
+the tree-validity clause counts for a transfer, and evidence carrying no `evidence_tree` (the
+`--from-counts` on-ramp) denies rather than falling back to timing.
+
+`evidence.tree_diff` gained an optional pathspec, and a path this function REPORTS must be one it
+can be asked back about — the transfer feeds the returned list straight back in as a pathspec. Two
+git conventions break that round trip, and both are answered at the boundary. **`-z`, because
+`--name-only` honours `core.quotepath`:** a non-ASCII filename came back C-quoted
+(`"caf\303\251.py"`, quotes included), matched nothing as a pathspec, and the empty answer read as
+agreement — a genuine fail-OPEN that granted a transfer over an *edited* branch file, caught by the
+verify pass and now pinned by a fixture that fails loudly without `-z`. (`core.quotepath=false` is
+insufficient: names holding `"` or `\` stay quoted regardless.) **`:(literal)` on each pathspec,**
+because pathspecs are wildmatch patterns. Measured rather than assumed: git compares literally as
+well, so a path does select its own spelling — but `x[a].py` also selects `xa.py`, letting an
+unrelated file answer a question asked about this one. That direction is a silent spurious denial
+rather than a wrong pass; `:(literal)` removes the class instead of resting on git's match order.
+
+**The soundness boundary is byte equality ACROSS contexts, not content equivalence WITHIN one** —
+the 2026-07-29 ruling (COV-3M8Q) is untouched, and any edit at all to a branch file, comments
+included, denies the transfer. Candidates are selected by content rather than commit ancestry, which
+is what makes the rebase case work at all: rebasing rewrites the very commits a branch's facts
+anchor to while leaving the trees they vouch for identical. The one new exposure — a reviewed diff
+meeting advanced context in disjoint files — is what the test-evidence condition prices, and a
+transfer denied ONLY by stale evidence says so, naming a suite run rather than a review round.
+
+Riders: `/prawduct:pr` Step 1 now syncs the base BEFORE the review gates (#565's ordering fix), and
+the Update flow states that a base-sync merge introducing no judgeable authored content is not
+substantive and does not re-run the PR reviewer.
+
 ## 2026-08-13: a model floor, and a frontier coherence pass over every cycle
 
 <!-- prawduct: type=docs | scope=purpose-and-cession -->
@@ -8353,6 +8799,7 @@ Two things the review process caught that are worth keeping. `review-protocol.md
 redundant — `test_project_preferences_blocking` proved it load-bearing, and the tokens came from
 compressing Goal 7's close instead. And repointing the stale `active_build_plan` immediately failed a
 chunk-heading guard, which turned out to be a drifted *test* rather than a plan defect (TST-6K3D).
+
 ## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
 
 <!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
@@ -8936,6 +9383,7 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   an open-but-redirected item (the CRASH-2 window). Fake gains `seed_pull_requests`.
 
 **Classification:** structural
+
 ## 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)
 
 <!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
@@ -9338,6 +9786,7 @@ PR/commit text legitimately cite chunks). Installed at: Principle 13 (Coherent A
 Principle 10's construction-equipment metaphor); `methodology/building.md` builder rule;
 `methodology/session-digest.md` (product-facing carrier); Critic Goal 4 (`ephemeral-ref
 firewall` → WARNING). A deterministic grep tripwire was deliberately deferred (case-law-first; filed as `[GOV-3P8K]`).
+
 ## 2026-07-14: Stale remote-base diagnostics for the cumulative-critic gate (stale-remote-base-diagnostics)
 
 <!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->

@@ -3758,3 +3758,116 @@ had the thought that the subject was wider than the feature.
 **The bound is a test-design fact, not a diligence fact.** A test suite explores the space its
 author already conceived. Running the real command against real inputs samples a space someone else
 populated — which is the only cheap way to discover that your subject widened without you noticing.
+
+## A rule that LOWERS a severity outranks every rule that raises one — 2026-08-13 (tactical-efficiency ch.04)
+
+A prose severity ceiling ("comment and doc wording is NOTE unless load-bearing") was written with
+only an upward exit: the conditions under which a finding could climb back out of the cap. Two
+bullets above it in the same file, an **actively misleading README instruction is BLOCKING**.
+
+A reviewer who correctly identified a wrong command in a README would have read the ceiling,
+found no exit that fit, and landed on WARNING — which gates nothing. The wrong command ships,
+and every control involved reports success.
+
+**The exits that LIFT a ceiling are not the same as the severities it must never touch.** Writing
+only the exits leaves the ceiling outranking every promotion rule in the file, silently, because
+nothing in the ceiling's own text says otherwise. The fix is a floor clause in the same sentence:
+the ceiling never lowers a severity another rule assigns explicitly.
+
+Caught by the chunk's own second verify pass, on the rule the chunk existed to add.
+
+## Scrub the WHOLE diff before dispatching a review — 2026-08-13 (tactical-efficiency ch.04)
+
+A provenance ban — review ids and finding ids never ship in comments — shipped with a violation
+**inside the test that pins that ban**. The scrub before dispatch had covered the four protocol
+surfaces the chunk was "about" and skipped the file the chunk had just added.
+
+The reflex it caught is the general one: under review pressure the instinct is to record *why the
+reviewer was right*, in the artifact, where it reads as documentation and decays into archaeology
+the moment the plan is renumbered or archived.
+
+Third defect of this shape on one branch, and the countermeasure was the same each time: when you
+install a rule, grep for every place that states the old one — including the places the chunk
+itself created.
+
+## "Fail closed" means the channel's blocking value — 2026-08-13 (tactical-efficiency ch.06)
+
+A new plan-resolution refusal was written to fail closed: rather than guess between two build plans
+claiming one branch, raise. The CLI wrapper caught it and returned **1** for every command, with a
+docstring stating "a refused gate is a blocked gate, which is the intended posture."
+
+`stop` is a harness hook. `api-contract.md` § Error Model — a recorded decision — gives its row
+exactly two outcomes: **0 allow/clean, 2 block**. Exit 1 is in neither column, so on the one state
+the feature invents, the session ended **clean** with the reflection gate, the composed-coverage
+Critic gate and the PR gate never having run. The wrapper written to fail closed was the thing that
+failed open, and the docstring asserting the posture was the reason nobody looked.
+
+**The generalizable error is checking the contract for the surface you are writing rather than the
+surface the refusal can REACH.** A refusal raised deep in a resolver surfaces at every command that
+resolves — CLI, hook, library caller — and those speak different protocols. Non-zero is a
+convention; blocking is a specific value in a specific table.
+
+Two follow-ons, both found while fixing it:
+
+1. **Guarding call sites is whack-a-mole when the raise is deep.** Three sites in `cmd_stop` resolve
+   a plan independently, and guarding each one only moved which line raised. The fix is one probe at
+   the entry point, before any gate runs — which is also what the rendered message claims ("every
+   gate resolves a plan, so none of them ran").
+2. **The probe must precede any early `return 0`.** A background-work deferral returned 0 further
+   down; deferring a refusal would have ended the session clean by a second route, and no amount of
+   background work resolves two plans claiming one branch.
+
+---
+
+## A recommendation an advisory prints ships to every consumer's repo, so test its EFFECT, not just that it fires
+
+A probe is easy to test into a false sense of completeness. Fires on the bad state, inert on the
+good state, stable id, wired into the roster — six or eight green tests, and not one of them touches
+the question the advisory actually raises with the user: *does doing this do what you say it does?*
+
+The change-log union-merge advisory tells an operator to add a line to `.gitattributes` in a repo
+prawduct does not own. The claim behind it — "union-merge is safe for an append-only entry log" —
+came from an analysis document and read as obviously true. It is true, and checking took four
+minutes: two branches each prepending a tagged entry, merged with the attribute and without it. The
+control conflicts; the attributed merge succeeds with both entries present and each
+`<!-- prawduct: … -->` line still under its own header, because the union driver concatenates whole
+hunks and never crosses them.
+
+The check paid for itself twice over. It converted an assertion into a test with a control, and it
+surfaced the honest caveat that belonged in the shipped text: union **never** conflicts, so a
+genuine two-sided edit to the same line survives as both versions rather than as a conflict to
+resolve. That is fine for this file — the release gate's tag validator errors on one key set two
+ways — but a reader deciding whether to take the advice deserves to know it, and nobody would have
+written it without having watched the driver work.
+
+The general shape: when a mechanism's output is *advice*, the advice is the deliverable, and a test
+that only exercises the mechanism has tested the packaging. The recommendation needs a fixture where
+it is followed and one where it is not.
+
+---
+
+## A `try/except` around a producer that RETURNS its degraded states guards nothing
+
+The prior-dispositions block is built inside `try: ... except (OSError, ValueError, TypeError)`, and
+the comment above that guard states the requirement perfectly: *an empty block and an unbuilt one
+are different facts about the world, and a reviewer told "nothing was dispositioned here" when the
+join failed would be told something false.*
+
+The single producer of its input is `evidence.read_facts`, which never raises for either degraded
+case. It **returns** `{"status": "error", ...}` for an unreadable store, and it filters
+newer-plugin records into `schema_ahead` while returning `status: "ok"`. So the guard covered a
+path that does not occur and missed both that do — and the manifest carried an empty block, which
+the reviewer protocol reads as "nothing was dispositioned." Worst in exactly the case the control
+exists for: the answers were there and simply unreadable, so every accepted finding was available
+to be re-raised.
+
+What makes this hard to see is that everything *looks* right. The requirement is stated. A guard
+exists. Tests pass, because the tests build well-formed stores. And the same module already had the
+correct posture twice over — `record_disposition` and the census reader both test `status ==
+"error"` and `schema_ahead` explicitly and refuse loudly. The new sibling in the same file did
+neither, and nothing in the file's shape objected.
+
+The check is one question, asked before writing the guard: **what does this callee do on its bad
+paths?** If it returns them, an `except` is decoration; answer the returned states where the read
+already is. A tell that costs nothing to look for: your `except` clause names exception types the
+producer's own docstring never mentions raising.

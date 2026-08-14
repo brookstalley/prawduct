@@ -506,7 +506,16 @@ build_state:
 # rule, pr/SKILL.md) and is archived by the develop->main release, which stamps its
 # release=. An early archive here was made and reverted on a blocking Critic finding
 # (rev-20260813T042938Z-81decaea): plan-backfill refuses names already in archive/.
-active_build_plan: .prawduct/artifacts/build-plan-purpose-and-cession.md
+#
+# DEMOTED TO SECOND 2026-08-13 (tactical-efficiency Chunk 06). A build plan may
+# now declare `branch: <name>` in its frontmatter, and resolution takes the live
+# plan claiming the checked-out branch BEFORE this scalar, falling back to
+# artifacts/build-plan.md after it. The plan below declares this branch and is
+# the repo's first opt-in, so on feat/tactical-efficiency-pass it is resolved by
+# its own frontmatter and this line is not consulted. The scalar is deliberately
+# kept and kept current: it is the answer on every other branch, and retiring it
+# is out of that pass's scope.
+active_build_plan: .prawduct/artifacts/build-plan-tactical-efficiency.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

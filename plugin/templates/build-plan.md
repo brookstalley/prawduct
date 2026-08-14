@@ -12,6 +12,17 @@ version: 2
 # entries carrying the same `scope=`. Use your in-flight chunks' tag; null is fine
 # for single-version products.
 scope: pantry-v1
+# branch: the branch this plan governs. UNCOMMENT IT with your real branch name —
+# it is left commented rather than filled in like the fields around it because a
+# placeholder branch is one no repo has, and the session briefing correctly
+# reports a plan claiming a branch that does not exist.
+#
+# Declaring it makes every governance surface resolve THIS plan while that branch
+# is checked out, ahead of the `active_build_plan` scalar — so two concurrent
+# branches stop fighting over one line, and archiving the plan (or deleting the
+# merged branch) ends the claim with nothing to un-point. Leave it out and the
+# scalar keeps working exactly as before.
+# branch: feature/pantry-v1
 depends_on:
   - artifact: product-brief
   - artifact: data-model

@@ -82,6 +82,87 @@ def _branch_repo(tmp_path: Path) -> Path:
     return repo
 
 
+def _head(repo: Path) -> str:
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _advance_and_merge(repo: Path, *, merge: bool = True) -> None:
+    """Move ``main`` forward by one commit touching a file the feature branch
+    never saw, then bring it into the branch — by merge (the common shape) or
+    by rebase (which rewrites the very commits the branch's facts anchor to)."""
+    branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    _git(repo, "checkout", "-q", "main")
+    _commit(repo, "upstream.py", "u = 1\n", "u1")
+    _git(repo, "checkout", "-q", branch)
+    if merge:
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+    else:
+        _git(repo, "rebase", "-q", "main")
+
+
+def _advanced_base_repo(
+    tmp_path: Path, *, merge: bool = True, branch_file: str = "feature.py"
+) -> tuple[Path, str, str]:
+    """The F1 shape: a feature branch reviewed at its tip, then the base
+    advances into it touching nothing the branch changed. Returns the repo and
+    the reviewed span's endpoints. ``branch_file`` names the branch's one
+    judgeable file, so a test can put a hostile name on the path condition 2
+    compares."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _commit(repo, "code.py", "x = 1\n", "c1")
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _commit(repo, branch_file, "y = 2\n", "f1")
+    prior_base, prior_head = _tree(repo, "main"), _tree(repo)
+    # The fact's `files_changed` snapshot comes from `evidence.tree_diff`, the
+    # way `begin_review` produces it — not from a hand-written literal. With a
+    # hostile filename the two differ (a hand-written raw name would be pruned
+    # out before the check under test is ever reached), and a fixture that
+    # cannot reach the subject passes forever.
+    _fact(
+        repo,
+        prior_base,
+        prior_head,
+        evidence.tree_diff(repo, prior_base, prior_head),
+        head_commit=_head(repo),
+    )
+    _advance_and_merge(repo, merge=merge)
+    return repo, prior_base, prior_head
+
+
+def _write_test_evidence(
+    repo: Path, *, failed: int = 0, tree: "str | None" = ..., omit_tree: bool = False
+) -> None:
+    """Saved test evidence in the shape ``gates.suite_vouches_for_tree``
+    accepts: a run whose recorded ``evidence_tree`` is the CURRENT working tree.
+
+    Timing is deliberately not what the transfer's condition 3 reads, so these
+    fixtures cannot be satisfied by a plausible-looking timestamp — pass
+    ``tree=<some other tree>`` to model the run that happened before the base
+    advance, or ``omit_tree=True`` to model a record that cannot answer at all.
+    """
+    prawduct = repo / ".prawduct"
+    prawduct.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp": "2026-08-13T12:00:00Z",
+        "passed": 12,
+        "failed": failed,
+        "skipped": 0,
+        "duration_seconds": 3,
+        "command": "pytest",
+        "verifier": "test-reference-verify (floor: symbol-grep)",
+        "tests_executed": ["tests/test_x.py"],
+        "changes_referenced": ["feature.py"],
+        "coverage_level": "referenced",
+    }
+    if not omit_tree:
+        record["evidence_tree"] = (
+            evidence.capture_tree(repo)["tree"] if tree is ... else tree
+        )
+    (prawduct / ".test-evidence.json").write_text(json.dumps(record))
+
+
 def _stale_origin_repo(
     tmp_path: Path, *, push_after_prep: bool = False, feature_on_local: bool = True
 ) -> Path:
@@ -404,6 +485,415 @@ class TestStaleBaseHint:
         assert "behind local" not in err
 
 
+class TestBaseAdvanceTransfer:
+    """A base sync moves the span's START node, so a branch whose own diff did
+    not move a byte reads ``uncovered`` and buys a full re-review. Coverage
+    **transfers** across the advance when the branch diff is byte-identical in
+    both spans, the advance touched none of its files, and the suite is current.
+
+    Every denial fixture here is the point of the class as much as the grant is:
+    the transfer is byte equality across contexts, never content equivalence
+    within one (COV-3M8Q stands), so any edit at all to a branch file — and any
+    check that cannot be computed — denies it.
+    """
+
+    def test_clean_base_merge_transfers(self, tmp_path, capsys):
+        repo, prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "transferred across base advance" in out
+        assert prior_base[:12] in out
+        assert "byte-identical" in out
+
+    def test_transfer_survives_a_verify_pass_between_review_and_sync(
+        self, tmp_path, capsys
+    ):
+        # The covered span is composed, not carried by one fact: a cumulative
+        # (merge-base → tip) then a verify pass (tip → fixed tip). Its endpoints
+        # live on DIFFERENT facts, so a per-fact candidate search misses it.
+        repo = _branch_repo(tmp_path)
+        prior_base, reviewed = _tree(repo, "main"), _tree(repo)
+        _fact(repo, prior_base, reviewed, ["feature.py"], head_commit=_head(repo))
+        _commit(repo, "feature.py", "y = 2\nz = 3\n", "fix")
+        _fact(repo, reviewed, _tree(repo), ["feature.py"], head_commit=_head(repo))
+        _advance_and_merge(repo)
+        _write_test_evidence(repo)
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "transferred across base advance" in out
+        assert "2 review fact(s)" in out
+
+    def test_rebase_onto_the_advanced_base_transfers(self, tmp_path, capsys):
+        # Rebasing rewrites the commits the branch's facts anchor to, so a
+        # commit-ancestry candidate filter would exclude every one of them —
+        # while the trees they vouch for are untouched and the branch diff is
+        # still byte-identical.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path, merge=False)
+        _write_test_evidence(repo)
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "transferred across base advance" in out
+
+    def test_edit_to_a_branch_file_during_the_merge_denies(self, tmp_path, capsys):
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _commit(repo, "feature.py", "y = 2  # touched up\n", "tweak after merge")
+        _write_test_evidence(repo)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "transferred" not in err
+
+    def test_upstream_touching_a_branch_file_denies(self, tmp_path, capsys):
+        # The advance moved a file the branch also changed, so blob(base, f) !=
+        # blob(base', f) — the branch diff is no longer the one that was
+        # reviewed, whether or not git had to raise a conflict about it.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _commit(repo, "code.py", "a = 1\n\n\n\n\n\nz = 9\n", "c1")
+        _git(repo, "checkout", "-q", "-b", "feature")
+        _commit(repo, "code.py", "a = 2\n\n\n\n\n\nz = 9\n", "f1")
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["code.py"], head_commit=_head(repo))
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "code.py", "a = 1\n\n\n\n\n\nz = 10\n", "u1")
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+        _write_test_evidence(repo)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "transferred" not in err
+
+    def test_stale_test_evidence_denies_and_names_the_cheap_remedy(
+        self, tmp_path, capsys
+    ):
+        # Condition 3 alone missing is the near miss worth naming: running the
+        # suite is minutes, and the alternative the generic block prescribes is
+        # a full cumulative.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "ONLY condition denying the transfer" in err
+        assert "no .test-evidence.json on disk" in err
+        assert "test-evidence record" in err
+
+    def test_a_suite_run_predating_the_advance_denies(self, tmp_path, capsys):
+        # The hole `tests_are_current` would have left open: a run from earlier
+        # in the same session satisfies session-freshness while having never
+        # seen the merged tree — which is the ONE exposure condition 3 exists to
+        # price. Timing must not be able to answer this question.
+        repo, _prior_base, prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo, tree=prior_head)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "transferred" not in err
+        assert "differ between the saved run and the tree this gate vouches for" in err
+
+    def test_a_run_that_met_only_the_dirty_tree_denies(self, tmp_path, capsys):
+        # The shape that made condition 3 ask the wrong question: the suite ran
+        # against the WORKING tree, which carries uncommitted judgeable work, so
+        # it never met the HEAD tree this gate vouches for. Before the retarget
+        # the gate printed `satisfied (… suite current)` here.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        (repo / "wip.py").write_text("scratch = 1\n")
+        _write_test_evidence(repo)  # evidence_tree = the working tree, WIP included
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 1, out
+        assert "transferred" not in out
+        assert "differ between the saved run and the tree this gate vouches for" in err
+
+    def test_evidence_without_a_recorded_tree_denies(self, tmp_path, capsys):
+        # A `--from-counts` record cannot say which tree it ran against, so it
+        # cannot answer condition 3 — deny rather than fall back to timing.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo, omit_tree=True)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "records no evidence_tree" in err
+
+    def test_a_glob_metacharacter_filename_is_compared_as_itself(
+        self, tmp_path, capsys
+    ):
+        # Condition 2 asks git "do these trees differ on THESE paths", and a
+        # pathspec is a wildmatch pattern. Git matches literally as well, so the
+        # branch's own `x[a].py` is never MISSED — but as a pattern it also
+        # selects `xa.py`, and here the base advance changed exactly that file.
+        # Without `:(literal)` an unrelated file answers the question, the base
+        # endpoint is rejected, and a sound transfer is silently denied.
+        #
+        # This is the assertion that distinguishes the two spellings: the
+        # edited-file DENIAL passes either way, so it pins nothing.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _commit(repo, "xa.py", "unrelated = 1\n", "c1")
+        _git(repo, "checkout", "-q", "-b", "feature")
+        _commit(repo, "x[a].py", "route = 1\n", "f1")
+        _fact(repo, _tree(repo, "main"), _tree(repo), ["x[a].py"], head_commit=_head(repo))
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "xa.py", "unrelated = 2\n", "u1")  # the advance, in the glob's shadow
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+        _write_test_evidence(repo)
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "transferred across base advance" in out
+
+    def test_a_non_ascii_branch_filename_is_compared_as_itself(
+        self, tmp_path, capsys
+    ):
+        # `git diff --name-only` honours core.quotepath (on by default), so a
+        # non-ASCII path comes back C-quoted — `"caf\303\251.py"`, quotes and
+        # all. Sent back as a pathspec that string matches nothing, git reports
+        # "no difference" over a file it never compared, and condition 2 passes
+        # vacuously: a fail-OPEN that `:(literal)` alone does not close, because
+        # the corruption happens on the way OUT. Hence `-z`.
+        repo, _prior_base, _prior_head = _advanced_base_repo(
+            tmp_path, branch_file="café.py"
+        )
+        _commit(repo, "café.py", "y = 2  # edited after the review\n", "tweak")
+        _write_test_evidence(repo)
+        rc, out, _err = _run_gate(repo, capsys)
+        assert rc == 1, out
+        assert "transferred" not in out
+
+    def test_a_non_ascii_branch_filename_still_transfers_when_untouched(
+        self, tmp_path, capsys
+    ):
+        repo, _prior_base, _prior_head = _advanced_base_repo(
+            tmp_path, branch_file="café.py"
+        )
+        _write_test_evidence(repo)
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "transferred across base advance" in out
+
+    def test_a_glob_metacharacter_filename_still_denies_when_edited(
+        self, tmp_path, capsys
+    ):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _commit(repo, "code.py", "x = 1\n", "c1")
+        _git(repo, "checkout", "-q", "-b", "feature")
+        _commit(repo, "app/[id]/page.py", "route = 1\n", "f1")
+        _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["app/[id]/page.py"],
+            head_commit=_head(repo),
+        )
+        _advance_and_merge(repo)
+        _commit(repo, "app/[id]/page.py", "route = 2\n", "edit after review")
+        _write_test_evidence(repo)
+        rc, out, _err = _run_gate(repo, capsys)
+        assert rc == 1, out
+        assert "transferred" not in out
+
+    def test_failing_saved_tests_deny(self, tmp_path, capsys):
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo, failed=2)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "2 test(s) failing" in err
+
+    def test_unreadable_git_object_fails_closed_and_says_so(self, tmp_path, capsys):
+        # A candidate tree git cannot read must deny the transfer, and the
+        # degraded check must say it never ran — "advice fails soft" is not
+        # "advice fails silent".
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        store = evidence.store_path(repo)
+        lines = [json.loads(line) for line in store.read_text().splitlines()]
+        for line in lines:
+            if line.get("kind") == "review":
+                line["body"]["head_tree"] = "0" * 40  # well-formed, absent
+        store.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "base-advance transfer check could not run" in err
+
+    def test_a_blocked_prior_span_transfers_nothing(self, tmp_path, capsys):
+        repo = _branch_repo(tmp_path)
+        _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            head_commit=_head(repo),
+            findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "unsound"}],
+        )
+        _advance_and_merge(repo)
+        _write_test_evidence(repo)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "transferred" not in err
+
+    def test_no_prior_review_leaves_uncovered_untouched(self, tmp_path, capsys):
+        # The still-blocks regression: an unreviewed branch on an advanced base
+        # gets exactly today's message, transfer machinery or not.
+        repo = _branch_repo(tmp_path)
+        _advance_and_merge(repo)
+        _write_test_evidence(repo)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "/prawduct:critic cumulative" in err
+        assert "transfer" not in err
+
+    def test_new_work_alongside_the_sync_denies(self, tmp_path, capsys):
+        # The file set grew, so the reviewed span is not this span — set
+        # equality, not the containment the blob checks already force.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _commit(repo, "extra.py", "w = 4\n", "new work")
+        _write_test_evidence(repo)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "transferred" not in err
+
+    def test_non_judgeable_conflict_resolution_does_not_deny(self, tmp_path, capsys):
+        # The measured case: on both observed forced syncs, 100% of the
+        # conflicts were prawduct's own record files — non-judgeable paths that
+        # must not cost a review round.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _commit(repo, ".prawduct/change-log.md", "reconciled\n", "chore: reconcile")
+        _write_test_evidence(repo)
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "transferred across base advance" in out
+
+
+def _guard_records(repo: Path) -> list[dict]:
+    read = evidence.read_facts(repo)
+    return [f for f in read["facts"] if f.get("kind") == "guard-refusal"]
+
+
+class TestTransferYieldSignal:
+    """A control names the yield it expects AND emits that yield observably.
+
+    The transfer's justification is a measured claim — it removes a review round
+    whenever a branch syncs a base it does not collide with — and a yield claim
+    nothing can falsify is not a yield claim. Its sibling in this subsystem
+    (``critic-begin``'s free-interval refusal) satisfies the norm through the
+    same sink; these pin that the transfer does too, and that emitting it costs
+    the verdict memo nothing after the first grant.
+    """
+
+    def test_a_grant_records_one_firing(self, tmp_path, capsys):
+        repo, prior_base, prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        records = _guard_records(repo)
+        assert len(records) == 1
+        body = records[0]["body"]
+        assert body["guard"] == "base-advance-transfer"
+        assert body["gate"] == "check-cumulative-critic"
+        # Nested, never at the body's top level: a bare base_tree/head_tree pair
+        # is the shape a coverage EDGE has, and no reader that walks bodies
+        # looking for edges may mistake an observational record for one.
+        assert body["interval"]["base_tree"] == _tree(repo, "main")
+        assert body["interval"]["head_tree"] == _tree(repo)
+        assert body["prior_interval"] == {
+            "base_tree": prior_base,
+            "head_tree": prior_head,
+        }
+        assert body["files"] == ["feature.py"]
+        assert "base_tree" not in body and "head_tree" not in body
+
+    def test_a_repeated_poll_leaves_the_store_byte_identical(self, tmp_path, capsys):
+        # The interaction that would have undone the verdict memo: the memo keys
+        # on a content hash of the whole store, and the gate is polled several
+        # times a session. A record per POLL evicts every cached verdict on every
+        # poll and puts the gate back on its ~17 s cold path.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        store = evidence.store_path(repo)
+        after_first = store.read_bytes()
+        for _ in range(3):
+            assert _run_gate(repo, capsys)[0] == 0
+        assert store.read_bytes() == after_first
+        assert len(_guard_records(repo)) == 1
+
+    def test_the_memo_still_hits_on_the_poll_after_a_grant(self, tmp_path, capsys):
+        # The residual, pinned as bounded: the FIRST grant appends, so the next
+        # poll recomputes cold — once per transferred span. Every poll after
+        # that must hit the memo again, or the dedupe bought nothing.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        assert _run_gate(repo, capsys)[0] == 0  # the one cold re-run
+        read = evidence.read_facts(repo)
+        cache = gates.verdict_cache.VerdictCache.for_read(repo, read)
+        assert cache.enabled
+        cache.verdict(
+            read["facts"],
+            _tree(repo, "main"),
+            _tree(repo),
+            gates._cached_diff_fn(repo),
+            gates._tree_key_fn(repo),
+        )
+        assert (cache.hits, cache.misses) == (1, 0)
+
+    def test_a_moved_span_is_a_new_firing(self, tmp_path, capsys):
+        # Dedupe on identity, not on "already recorded once ever": a second base
+        # advance is a second saved round and must be countable as one.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "upstream2.py", "u = 2\n", "u2")
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge main again", "main")
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        assert len(_guard_records(repo)) == 2
+
+    def test_a_denied_transfer_records_nothing(self, tmp_path, capsys):
+        # The still-emits-nothing regression: a record on a DENIAL would make
+        # the yield query count rounds the control never saved.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        rc, _out, err = _run_gate(repo, capsys)  # no test evidence → condition 3 denies
+        assert rc == 1, err
+        assert _guard_records(repo) == []
+
+    def test_an_unwritable_store_degrades_loudly_and_still_passes(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        # Fail-soft like its sibling: the transfer is correct whether or not the
+        # record lands, so a store error must not convert a granted pass into a
+        # gate failure — and must not be silent, or the yield query reads as a
+        # lower bound with nothing saying so.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        monkeypatch.setattr(
+            evidence,
+            "append_guard_refusal",
+            lambda *a, **k: {"status": "error", "reason": "store unwritable (simulated)"},
+        )
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "transferred across base advance" in out
+        assert "NOT" in err and "recorded" in err
+        assert "lower bound" in err
+
+    def test_the_firing_is_surfaced_by_the_yield_query(self, tmp_path, capsys):
+        # The acceptance criterion is a QUERY, not a file: `evidence list --kind
+        # guard-refusal` is what a maintainer runs to ask whether this control
+        # has ever fired.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        assert _run_gate(repo, capsys)[0] == 0
+        capsys.readouterr()
+        assert evidence.evidence_cmd(repo, ["list", "--kind", "guard-refusal"]) == 0
+        assert "base-advance-transfer" in capsys.readouterr().out
+
+
 class TestFixChurnDiagnosis:
     """An ``uncovered`` gap whose whole content is the builder's own
     non-blocking fixes must SAY so and name ``disposition`` — otherwise the
@@ -457,13 +947,24 @@ class TestFixChurnDiagnosis:
 
         from lib import coverage
 
-        for fn in (coverage.diagnose_fix_churn, gates._merge_base_verdict):
+        # The injected names changed when the verdict gained a memo — the two
+        # diagnoses now receive `verdict_fn`, which carries BOTH properties a
+        # forgotten argument would cost: the n-key free-edge form and the
+        # cross-call cache. Same contract, same direction, applied to whichever
+        # parameter now holds it; nothing here is relaxed.
+        pinned = {
+            coverage.diagnose_fix_churn: ("verdict_fn",),
+            coverage.diagnose_base_advance_transfer: ("diff_fn", "verdict_fn"),
+            gates._merge_base_verdict: ("diff_fn", "key_fn"),
+        }
+        for fn, names in pinned.items():
             params = inspect.signature(fn).parameters
-            for name in ("diff_fn", "key_fn"):
+            for name in names:
                 assert params[name].default is inspect.Parameter.empty, (
                     f"{fn.__name__}'s {name} has a default again. A missing "
                     "argument then silently selects the pairwise free-edge "
                     "branch (~5.6k `git diff` subprocesses on this repo's "
+                    "store) or an uncached recomputation (17 s on this repo's "
                     "store) on the interactive PR path, instead of raising a "
                     "TypeError the caller can see."
                 )
@@ -770,7 +1271,7 @@ class TestFixChurnDiagnosis:
         }
         out = coverage.diagnose_fix_churn(
             repo, [bogus], head_tree, "1" * 40, "2" * 40,
-            diff_fn=lambda *a, **k: [], key_fn=lambda f: f.get("id"),
+            verdict_fn=lambda *a: {"status": "uncovered"},
         )
         assert out is not None, (
             "the producer went silent on a git failure — `None` here is read by "
@@ -789,7 +1290,7 @@ class TestFixChurnDiagnosis:
         repo = _branch_repo(tmp_path)
         out = coverage.diagnose_fix_churn(
             repo, [], "", "b" * 40, "c" * 40,
-            diff_fn=lambda *a, **k: [], key_fn=lambda f: f.get("id"),
+            verdict_fn=lambda *a: {"status": "uncovered"},
         )
         assert out == {"status": "unavailable", "reason": "missing span endpoints"}
 
@@ -1125,13 +1626,26 @@ class TestBlockingRemedyLines:
             assert "Superseded" not in text, reachable
             assert "/prawduct:critic cumulative" not in text, reachable
 
+    def test_standard_remedy_prescribes_the_batch_golden_path(self):
+        """Naming the command alone leaves the batching to the operator, and the
+        loop that costs rounds is fix-commit-verify per finding: every commit
+        extends HEAD, so every one buys a fresh round. All four moves have to be
+        in the text an operator acts on — batch the fixes, hold the commit, run
+        exactly one verify, commit the tree that passed."""
+        text = self._text([{"fid": "R-1"}])
+        assert "Fix ALL of them in the working tree" in text
+        assert "do not commit between fixes" in text
+        assert "run ONE /prawduct:critic verify-resolutions" in text
+        assert "commit that verified tree verbatim" in text
+
     def test_mixed_set_keeps_the_standard_remedy_and_adds_the_exception(self):
         lines = gates.blocking_remedy_lines(
             [{"superseded": True}, {"superseded": False}, {"superseded": True}]
         )
         text = " ".join(lines)
         # The standard route still leads — one of the three IS reachable by it.
-        assert lines[0].startswith("Fix them, then run /prawduct:critic verify-resolutions")
+        assert lines[0].startswith("Fix ALL of them in the working tree")
+        assert "run ONE /prawduct:critic verify-resolutions" in text
         assert "Superseded: 2 findings" in text
         assert "/prawduct:critic cumulative" in text
 
@@ -1145,7 +1659,10 @@ class TestBlockingRemedyLines:
             assert lines[0].startswith("Superseded:"), lines
             assert "/prawduct:critic cumulative" in text
             # The unreachable route is never prescribed as the action to take.
-            assert "run /prawduct:critic verify-resolutions" not in text, lines
+            # Matched on the SLASH-COMMAND form, not on "run …": the lead says
+            # "no verify-resolutions pass will name again", which is the mode as
+            # a noun, and only the invocation is the prescription.
+            assert "/prawduct:critic verify-resolutions" not in text, lines
 
     def test_reads_naturally_for_one_and_for_many(self):
         assert "the blocker above sits" in self._text([{"superseded": True}])

@@ -84,7 +84,20 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
 LAST_MEASURED_TOKENS = {
-    "methodology/building.md": 4808,
+    # -1 on 2026-08-13: the evidence-model paragraph said a rebase/amend
+    # "demands a fresh look", which the base-advance transfer falsified — the PR
+    # gate can now close one case of that gap by computation. Narrowed to "opens
+    # a gap", which is what stayed true, and which costs a word less than the
+    # remedy it used to name.
+    # -1 on 2026-08-13 (net): the comment policy gained the archaeology rule —
+    # review/finding ids never ship, and a comment recounting history is a
+    # deletion rather than a rewrite. Paid for entirely inside the file, and
+    # a token over: the Blocking-findings paragraph restated the disposition
+    # menu and the disagreement rule that "Resolve findings" already owns
+    # (only "warnings and notes gate nothing" was its own), the Critic-review
+    # step said "runs as a separate agent" a second time, and the seven goal
+    # names were spelled out beside the pointer to the file that defines them.
+    "methodology/building.md": 4806,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -92,9 +105,53 @@ LAST_MEASURED_TOKENS = {
     # dropping the worked example. The narration lives HERE rather than in the file's
     # own budget comment: at 1 token of headroom the file cannot afford to carry one,
     # which is itself the honest reading of how tight this ceiling now is.
-    "skills/critic/review-protocol.md": 3619,
-    "skills/critic/goals-1-3.md": 1998,
-    "skills/critic/review-cycle.md": 9588,
+    # +45 on 2026-08-13, ceiling 3620 -> 3800: the tactical-efficiency pass adds
+    # point-of-action rules to this file — prior_dispositions, the prose
+    # severity ceiling and remedy constraint. The file had 1 token
+    # of headroom and nothing left to dedupe — its own budget comment already
+    # records that. Raising ONCE with the whole pass named beats three creeping
+    # raises that each look local; the reading below still fails on any drift, so
+    # the ceiling buys room while the pin keeps the accounting honest.
+    # +135 on 2026-08-13: the prose severity ceiling and the three permitted
+    # remedies, the pass's answer to comment/doc wording being the largest
+    # category of finding volume. Spends the ceiling raised above for exactly
+    # this, and pays 41 of it back in place: the model-override rule was stated
+    # in both Assess and Dispatch (kept at Dispatch, where the Agent calls are),
+    # and the drift bullet named the chunk-number case twice and re-derived
+    # "archiving moves the file" from "archived, not deleted". The last 18 are
+    # the floor clause — without it the ceiling silently outranks the
+    # README bullet's actively-misleading BLOCKING two entries above, so a wrong
+    # command ships as a WARNING that gates nothing. This file is now at ONE
+    # token of headroom: the next addition trims or relocates, and there is no
+    # third raise coming.
+    "skills/critic/review-protocol.md": 3799,
+    # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
+    # is the one every chunk and verify reviewer reads, so it is where the
+    # volume-cutting instructions have to live: prior_dispositions (don't
+    # re-litigate an accepted finding), the prose severity ceiling, and the
+    # pre-priced verify observations. Each is shorter than the review round
+    # it prevents. Deduped first and found nothing: the file was squeezed to 2
+    # tokens of headroom by its last edit.
+    # +142 on 2026-08-13: the same two rules plus the floor clause (the
+    # ceiling never lowers a severity another rule assigns explicitly), in chunk
+    # mode's payload — the ceiling raised above named this addition. Nothing paid
+    # it back here: the file was already deduped to 2 tokens of headroom by its
+    # prior edit, so this is the raise being spent as declared, not fat traded.
+    # +32 on 2026-08-13: the last of the three additions the raise above named —
+    # verify-mode observations are delivered pre-priced (ACCEPT is the default,
+    # fixing one costs a round, batch survivors). It goes in the sentence that
+    # already defines what an observation IS, so it costs the rule and no
+    # framing. The raise is now fully spent: 7 tokens of headroom, and the next
+    # addition trims.
+    "skills/critic/goals-1-3.md": 2243,
+    # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
+    # a computed pass the gate can now print, which a reader who only knows
+    # "uncovered means run a cumulative" will otherwise re-review straight
+    # through. Paid for three times over inside the section: the gate's span and
+    # blocking-remedy mechanics were each stated a second time here after the
+    # composition bullets above already owned them, and the selective-commit
+    # routing a third.
+    "skills/critic/review-cycle.md": 9599,
     "skills/critic/framework-checks.md": 1116,
 }
 
@@ -837,7 +894,7 @@ class TestCriticSkill:
         # every correctly-sequenced chunk. The PR reviewer's protocol carries it
         # instead, where the sequencing is finished.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3620, f"review-protocol.md is ~{tokens} tokens, should be <3620"
+        assert tokens < 3800, f"review-protocol.md is ~{tokens} tokens, should be <3800"
 
 
 # =============================================================================
@@ -880,7 +937,8 @@ class TestCriticGoals13:
         )
 
     def test_token_budget(self):
-        # Ceiling 2000. This file is the chunk / verify-resolutions payload and
+        # The ceiling is the number this test asserts, and nothing else should
+        # restate it. This file is the chunk / verify-resolutions payload and
         # orders its reader to open nothing else, so every pointer-chase it
         # would cause has to be inlined here instead -- which is why it is long,
         # and why the ceiling is the thing that governs rather than a line count.
@@ -1033,7 +1091,7 @@ class TestCriticGoals13:
         # THIS file is the only surface whose reader writes both, and they sat
         # eight lines apart with no cue. Three words in the schema example.
         tokens = estimate_tokens(self.content)
-        assert tokens < 2000, f"goals-1-3.md is ~{tokens} tokens, should be <2000"
+        assert tokens < 2250, f"goals-1-3.md is ~{tokens} tokens, should be <2250"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion

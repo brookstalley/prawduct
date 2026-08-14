@@ -82,7 +82,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
 
-**Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you.** A comment, docstring, or long-lived spec must not anchor itself to a chunk number — plans get renumbered, and the sentence stays wrong while reading as fact. Carry the reason inline: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: bookkeeping that records the work (backlog `closed-by:`, reflections, commit/PR text) — there the id is the record (Principle 13).
+**Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you, and never narrate history.** A comment, docstring, or long-lived spec must not anchor itself to a chunk number — plans get renumbered, and the sentence stays wrong while reading as fact. Review and finding ids never ship: history's one home is commits and the change-log, so a comment recounting it (`// Critic caught Y`) is a deletion, not a rewrite. Carry the present-tense reason inline instead: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`; `// callers kept passing null` states a live constraint and stays legal. Exception: bookkeeping that records the work (backlog `closed-by:`, reflections, commit/PR text) — there the id is the record (Principle 13).
 
 **Same decay: a count nothing reads is not worth writing.** Ask what gets decided differently if it is wrong by two; if nothing, omit it, make it relational ("the table's rows"), or cite the command that regenerates it. Numbers something *relies* on stay exact.
 
@@ -97,7 +97,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **In-flight background work auto-defers — don't waive.** When the gate would block only because harness-tracked background work (`Workflow`/`Task`) is still producing the diff, the Stop hook defers and re-arms when it lands. An *untrackable* wait (CI, a remote queue) still blocks.
 
-**Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. The Critic runs as a separate agent with restricted tools.
+**Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve.
 
 **Resolve findings.** After a **coordinator** review (`final`/`cumulative` given a three-reviewer roster), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — idempotent when the `SubagentStop` trigger already consolidated (single-pass reviews consolidate themselves). **Disposition them ALL in ONE pass — every fix in ONE commit, then ONE `/prawduct:critic verify-resolutions`** — fix-commit-verify per finding multiplies rounds (consolidate's own output says which writes stay free meanwhile). **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default; filing everything turns the backlog into a guilt pile. **Record it as a fact (`prawduct-hook disposition <review-id> <fid> --accept "<reason>"|--file <id>`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
@@ -191,13 +191,13 @@ Tests are the most important artifact you produce: contracts that define correct
 
 ## The Critic
 
-After medium+ work, invoke the Critic as a separate agent. It reasons from signals through seven prioritized goals: **Nothing Is Broken**, **Nothing Is Missing**, **Nothing Is Unintended**, **Everything Is Coherent**, **Decisions Were Deliberate**, **The System Can Be Understood**, **The Design Is Sound** (definitions: `skills/critic/review-protocol.md`).
+After medium+ work, invoke the Critic as a separate agent. It reasons from signals through seven prioritized goals, from **Nothing Is Broken** to **The Design Is Sound** (definitions: `skills/critic/review-protocol.md`).
 
 In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern — parallel subagents for correctness, design and sustainability. The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
 
 ### The evidence model
 
-Every consolidated review appends a **fact** to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`; inspect with `prawduct-hook evidence status|list`). Facts record *trees*, so nothing expires by time or session and the gates answer by **composing** them — mode labels don't matter, a pre-commit review vouches for the verbatim commit, a rebase/amend demands a fresh look, and blocking findings block until cleared (`verify-resolutions`, or a spanning review). `.critic-findings.json` is a derived view of the newest fact (no gate reads it), written by the lifecycle commands, never you. Full model: `skills/critic/review-cycle.md`.
+Every consolidated review appends a **fact** to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`; inspect with `prawduct-hook evidence status|list`). Facts record *trees*, so nothing expires by time or session and the gates answer by **composing** them — mode labels don't matter, a pre-commit review vouches for the verbatim commit, a rebase/amend opens a gap, and blocking findings block until cleared (`verify-resolutions`, or a spanning review). `.critic-findings.json` is a derived view of the newest fact (no gate reads it), written by the lifecycle commands, never you. Full model: `skills/critic/review-cycle.md`.
 
 ### Modes
 
@@ -214,7 +214,7 @@ If the mode is missing, unrecognized, or inference cannot make a confident call,
 
 **Never write Critic findings yourself** — writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent is slow, wait; if it fails, tell the user and re-invoke.
 
-**Blocking findings** must be resolved before proceeding. **Warnings and notes gate nothing** — disposition each (fix, accept, or file) rather than reflexively fixing: every fix commit extends HEAD, which is how a passing review buys another round. If you disagree with a finding, think carefully before dismissing — the Critic catches blind spots the builder can't see.
+**Warnings and notes gate nothing** — every fix commit extends HEAD, which is how a passing review buys another round. Think before dismissing one anyway: the Critic catches blind spots the builder can't see.
 
 ## Creating Pull Requests
 

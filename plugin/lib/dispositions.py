@@ -127,6 +127,144 @@ def disposition_index(store: dict) -> dict[tuple[str, str], dict]:
     return {_target(fact): fact for fact in disposition_facts(store)}
 
 
+#: Prior-disposition entries a dispatch manifest will carry. A reviewer reads
+#: this block before it reads the diff, so it competes with the review for
+#: attention — and the whole point is to SHORTEN the review, not to prepend a
+#: second document to it. Truncation is reported, never silent.
+PRIOR_DISPOSITION_LIMIT = 15
+
+
+def _unavailable(reason: str) -> dict:
+    """An empty prior-dispositions block that SAYS it is empty for want of a
+    readable store, rather than because nothing was dispositioned."""
+    return {"entries": [], "matched": 0, "shown": 0, "truncated": 0, "unavailable": reason}
+
+
+def prior_dispositions(
+    store: dict,
+    files_changed: "list[str] | None",
+    *,
+    scope: "str | None" = None,
+    limit: int = PRIOR_DISPOSITION_LIMIT,
+) -> dict:
+    """The answers already given about findings in the files this review will
+    look at — so a fresh review can decline to re-litigate them.
+
+    Dispositions are facts, but nothing put them where a REVIEWER could see one:
+    a cumulative dispatched after an ``--accept`` hands its reviewers a diff and
+    no memory, and they find the same true thing again. Measured on one consumer
+    branch, round 9 re-raised six of round 7's findings verbatim, several of
+    them already accepted.
+
+    **Scoped by work AND by cited file — the file alone is not a filter.** A
+    store shared across every worktree accumulates hundreds of dispositions (652
+    on this repo), and the first cut of this used the cited file alone. Measured
+    on a live dispatch it carried 92 entries and the block was **91% of the
+    manifest, ~5,700 tokens — 2.7× the protocol file it exists to shorten**,
+    because a repo's hottest files are cited by nearly every finding it has ever
+    recorded, so the filter was weakest exactly where reviews concentrate. A
+    control that costs more attention than it saves is not a control.
+
+    So ``scope`` (the build-plan scope the dispatch resolved) narrows it to
+    answers given about *this body of work*, which is what "already answered"
+    was ever supposed to mean — a disposition from another chunk that happens to
+    touch the same hot file is not an answer about this diff. Reviews recorded
+    without a scope match nothing rather than everything: an unscoped fact
+    cannot claim to be about this work, and failing toward carrying LESS is
+    right for an advisory block whose failure mode is drowning the review.
+    Passing ``scope=None`` disables that half and falls back to files alone.
+
+    The file test stays, because it is what makes the protocol instruction
+    checkable against the evidence the reviewer holds: *not re-raised absent
+    material change in its cited files*.
+
+    A finding whose disposition exists but whose review fact no longer records
+    it (a hand-edited store) is skipped: there is no title to show and nothing
+    a reviewer could match against.
+
+    Returns::
+
+        {"entries": [{"review_id", "fid", "title", "severity", "action",
+                      "reason", "backlog_id", "files"}, ...],
+         "matched": int, "shown": int, "truncated": int,
+         "unavailable"?: str}
+
+    ``entries`` is newest-first, so a truncated block keeps the answers most
+    likely to still be live.
+
+    **A degraded store answers ``unavailable``, never an empty block.** The
+    reviewer protocol reads a block with no ``unavailable`` as "nothing was
+    dispositioned here", so returning ``entries: []`` for a store this reader
+    could not fully see states a falsehood — and states it in the one case where
+    re-litigating an accepted finding is most likely, because the answers are
+    there and simply unreadable. Both degraded states are *returned* by
+    ``evidence.read_facts`` rather than raised, so a caller's ``except`` cannot
+    catch them; they are answered here, the same way ``record_disposition`` and
+    the census reader refuse loudly on the identical two fields.
+    """
+    if store.get("status") == "error":
+        return _unavailable(
+            store.get("reason") or "the evidence store could not be read"
+        )
+    if store.get("schema_ahead"):
+        return _unavailable(
+            f"{len(store['schema_ahead'])} evidence record(s) carry a newer "
+            "schema than this reader — the dispositions they record are "
+            "invisible here. Update the plugin (/reload-plugins or restart "
+            "Claude Code) to see them."
+        )
+    in_scope_files = {f for f in (files_changed or []) if isinstance(f, str) and f}
+    findings = evidence.findings_index(store)
+    # (review id) → the scope that review recorded, so the work filter costs one
+    # pass rather than a lookup per disposition.
+    review_scope = {
+        fact.get("id"): (fact.get("body") or {}).get("scope")
+        for fact in evidence.facts_of_kind(store, "review")
+    }
+    entries: list[dict] = []
+    # Newest-last in store order; reverse so the newest answer leads and any
+    # truncation drops the oldest. Re-disposition APPENDS rather than editing
+    # (see the module docstring), so a finding can appear more than once here —
+    # reversed order makes the first sighting the live answer and every later
+    # one a superseded predecessor to skip. Showing both would hand a reviewer
+    # two contradictory answers about one finding.
+    seen: set[tuple[str, str]] = set()
+    for fact in reversed(disposition_facts(store)):
+        key = _target(fact)
+        if key in seen:
+            continue
+        seen.add(key)
+        finding = findings.get(key)
+        if finding is None:
+            continue
+        if scope is not None and review_scope.get(key[0]) != scope:
+            continue
+        cited = [f for f in (finding.get("files") or []) if isinstance(f, str)]
+        if in_scope_files and not (in_scope_files & set(cited)):
+            continue
+        body = fact.get("body") or {}
+        entries.append(
+            {
+                "review_id": key[0],
+                "fid": key[1],
+                "title": finding.get("title") or finding.get("summary") or "",
+                "severity": finding.get("severity"),
+                "action": body.get("action"),
+                "reason": body.get("reason"),
+                "backlog_id": body.get("backlog_id"),
+                "files": cited,
+            }
+        )
+    matched = len(entries)
+    shown = entries[:limit]
+    return {
+        "entries": shown,
+        "matched": matched,
+        "shown": len(shown),
+        "truncated": matched - len(shown),
+    }
+
+
 def disposition_history(store: dict, review_id: str, fid: str) -> list[dict]:
     """Every disposition recorded for one finding, oldest first."""
     return [

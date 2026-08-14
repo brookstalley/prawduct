@@ -46,6 +46,13 @@ import re
 from dataclasses import dataclass, field
 
 
+# Where the log lives, relative to the product root. Homed here — the module
+# named for the file — because three unrelated readers (the PR-boundary entry
+# check, the release gate, the merge-attribute advisory) each need the literal,
+# and a path spelled independently in each is a path that can be corrected in
+# one place and stay wrong in the other two.
+CHANGE_LOG_REL_PATH = ".prawduct/change-log.md"
+
 TAG_LINE_RE = re.compile(r"<!--\s*prawduct:\s*(.+?)\s*-->")
 H2_RE = re.compile(r"^##\s+(.+?)\s*$")
 

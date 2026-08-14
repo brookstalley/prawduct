@@ -324,12 +324,63 @@ def git_status_output(project_dir: Path) -> str | None:
         return None
 
 
+def _branch_from_head_file(project_dir: Path) -> tuple[bool, str | None]:
+    """``(answered, branch)`` read straight out of git's ``HEAD`` file.
+
+    A fast path for :func:`current_branch`, whose subprocess costs ~70 ms of
+    process spawn to read one line — enough that the session briefing calls it
+    five times and pays a third of a second for it. This reads the same line.
+
+    ``(False, None)`` means **this reader could not answer**, never "no branch":
+    the caller falls back to ``git symbolic-ref``, which searches upward from a
+    subdirectory, understands ``.git`` layouts this does not, and is the
+    definition of correct. Only ``(True, …)`` is an answer — a detached HEAD
+    (raw object id) is ``(True, None)``, which is the same ``None`` the
+    subprocess reports, reached without spawning it.
+
+    Linked worktrees are handled because that is where this runs most: their
+    ``.git`` is a FILE naming the real git dir, and every worktree has its own
+    ``HEAD`` inside it, so reading the shared common dir would report the
+    primary checkout's branch — a silent wrong-branch answer, which is exactly
+    what :func:`current_branch` exists to prevent.
+    """
+    git_path = project_dir / ".git"
+    try:
+        if git_path.is_file():
+            pointer = git_path.read_text(encoding="utf-8").strip()
+            if not pointer.startswith("gitdir:"):
+                return (False, None)
+            git_dir = Path(pointer[len("gitdir:"):].strip())
+            if not git_dir.is_absolute():
+                git_dir = project_dir / git_dir
+        elif git_path.is_dir():
+            git_dir = git_path
+        else:
+            return (False, None)
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return (False, None)
+    prefix = "ref: refs/heads/"
+    if head.startswith(prefix):
+        return (True, head[len(prefix):].strip() or None)
+    if head.startswith("ref: "):
+        return (False, None)  # symbolic, but outside refs/heads — let git name it
+    return (True, None)  # a raw object id: detached HEAD
+
+
 def current_branch(project_dir: Path) -> str | None:
     """The current branch name, ``None`` on a detached HEAD or git failure.
 
     Used to make the tree a review resolved to VISIBLE (PDT-WT9K) — a silent
     wrong-tree review is the failure this surfaces, so a detached/failed probe
-    returns ``None`` rather than a misleading value."""
+    returns ``None`` rather than a misleading value.
+
+    Answers from git's ``HEAD`` file when it can (:func:`_branch_from_head_file`)
+    and shells out otherwise. One function, one contract — the fast path either
+    produces the same answer or declines to produce one."""
+    answered, branch = _branch_from_head_file(project_dir)
+    if answered:
+        return branch
     try:
         result = subprocess.run(
             ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
@@ -342,6 +393,29 @@ def current_branch(project_dir: Path) -> str | None:
             return None
         branch = result.stdout.strip()
         return branch or None
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
+        return None
+
+
+def local_branches(project_dir: Path) -> set[str] | None:
+    """Every local branch name, or ``None`` when git could not be asked.
+
+    ``None`` and ``set()`` are deliberately different answers, and the caller
+    must keep them apart: this exists to tell an operator that a plan claims a
+    branch nobody has, and "I could not list the branches" is not evidence that
+    the branch is missing. Treating the two alike would turn a failed probe into
+    a confident accusation on every repo where git is unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads/"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return None
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
     except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
         return None
 
@@ -689,6 +763,75 @@ def git_paths_ignored(project_dir: Path, rel_paths: "list[str]") -> "set[str]":
     if result.returncode != 0:
         return set()
     return {p for p in result.stdout.split("\0") if p}
+
+
+def git_path_is_tracked(project_dir: Path, rel_path: str) -> bool | None:
+    """True if ``rel_path`` is tracked, False if not, ``None`` if git could not
+    be asked.
+
+    Three answers, not two, for the same reason :func:`local_branches` returns
+    ``None``: "git says this path is untracked" and "I could not run git" are
+    different facts, and a caller that collapses them turns a failed probe into a
+    confident claim about the repository. Callers keep them apart.
+
+    ``git ls-files`` exits 0 whether or not anything matched — an empty stdout is
+    the "untracked" answer — so only a non-zero exit (no repo, no git, a broken
+    index) means unknown. The pathspec is sent ``:(literal)`` because ls-files
+    matches wildmatch by default: a path containing ``*``, ``?`` or ``[`` would
+    otherwise match some *other* file and report it tracked.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", f":(literal){rel_path}"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash a probe
+        return None
+    if result.returncode != 0:
+        return None
+    return any(p for p in result.stdout.split("\0"))
+
+
+def git_merge_attribute(project_dir: Path, rel_path: str) -> str | None:
+    """The ``merge`` gitattribute git resolves for ``rel_path``, or ``None``.
+
+    Returns git's own answer verbatim — a driver name such as ``union``, or
+    ``unspecified``/``unset`` when no attribute applies — so the caller compares
+    against the value it needs rather than re-implementing attribute precedence.
+    ``None`` means **git could not be asked** (no repo, no git, unparseable
+    output), which is not the same answer as ``unspecified`` and must not be
+    read as one.
+
+    Deliberately the *effective* answer for this working copy: it includes
+    ``.git/info/attributes`` and the global attributes file, not only the
+    committed ``.gitattributes``. What a caller wants to know is what git will
+    actually do at merge time here; a per-clone override genuinely protects this
+    clone, and only this one.
+
+    ``-z`` output is ``path NUL attr NUL value NUL``, which sidesteps both the
+    C-quoting of non-ASCII paths and the ambiguity of the plain format's
+    ``path: attr: value`` when the path itself contains a colon. ``check-attr``
+    takes pathnames rather than pathspecs, so nothing here is glob-expanded.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "check-attr", "-z", "merge", "--", rel_path],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash a probe
+        return None
+    if result.returncode != 0:
+        return None
+    fields = result.stdout.split("\0")
+    if len(fields) < 3:
+        return None
+    return fields[2]
 
 
 def _get_session_changed_files(project_dir: Path, status_output: str | None = None) -> list[str]:

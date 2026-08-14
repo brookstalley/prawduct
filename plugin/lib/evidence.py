@@ -48,6 +48,7 @@ converted here.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -207,7 +208,14 @@ def append_fact(
     return {"status": "appended", "path": str(path), "id": fact_id}
 
 
-def append_guard_refusal(project_dir: Path, guard: str, body: dict) -> dict:
+def append_guard_refusal(
+    project_dir: Path,
+    guard: str,
+    body: dict,
+    *,
+    dedupe_key: "str | None" = None,
+    known_facts: "list[dict] | None" = None,
+) -> dict:
     """Record that a pre-dispatch guard fired. One sink for the whole class.
 
     A guard that declines to spend something leaves no trace by default: its
@@ -262,11 +270,62 @@ def append_guard_refusal(project_dir: Path, guard: str, body: dict) -> dict:
     lands, so a store error must never convert it into an error exit. It must
     not be silent either (``learnings.md``: "'advice fails soft' is not 'advice
     fails silent'") — attribute it on stderr and carry on.
+
+    **``dedupe_key`` is for a guard that fires on a POLLED path**, where the
+    default one-record-per-firing shape is wrong twice over. ``critic-begin``
+    runs once per dispatch, so a fresh id per firing counts dispatches; a gate
+    is re-asked several times a session about an unchanged repo, so the same id
+    per *observation* is what counts events. It also has to be that way for a
+    reason outside this module: ``verdict_cache`` keys the composed coverage
+    verdict on a content hash of this whole store, so a record appended on every
+    poll would invalidate every memoized verdict on every poll and put the gate
+    back on its cold path. With a key, the id is a digest of ``(guard,
+    dedupe_key)`` — no timestamp, no uuid — and the second observation of the
+    same event appends nothing at all, leaving the store byte-identical.
+
+    A deduped call returns ``{"status": "duplicate", "id": ...}``, which is a
+    SUCCESS: the event is already on the record. Callers checking for a degraded
+    write must test for it (``status not in ("appended", "duplicate")``), not
+    for ``!= "appended"``.
+
+    ``known_facts`` is the probe's input when the caller has already read the
+    store — every gate caller has, and on a large store that read is a
+    substantial fraction of the gate's whole budget, so re-reading it here would
+    charge the transfer's observability to the latency the memo exists to
+    protect. Passing the same read the caller is acting on also keeps one moment
+    (the pairing :meth:`verdict_cache.VerdictCache.for_read` makes structural for
+    the same reason). Omit it and the probe reads the store itself. Either way
+    the failure direction is a redundant line, never a missing one: two
+    processes racing the same event can both append, and ``read_facts`` dedupes
+    ``(kind, id)`` on the way back out.
     """
     if not isinstance(guard, str) or not guard.strip():
         return {"status": "error", "reason": "guard name must be a non-empty string"}
     if not isinstance(body, dict):
         return {"status": "error", "reason": "fact body must be an object"}
+    if dedupe_key is not None:
+        if not isinstance(dedupe_key, str) or not dedupe_key.strip():
+            return {
+                "status": "error",
+                "reason": "dedupe key must be a non-empty string",
+            }
+        digest = hashlib.sha256(
+            "\0".join((guard.strip(), dedupe_key)).encode("utf-8", "surrogateescape")
+        ).hexdigest()[:16]
+        fact_id = f"guard-{guard.strip()}-{digest}"
+        already = (
+            any(
+                f.get("id") == fact_id and f.get("kind") == "guard-refusal"
+                for f in known_facts
+            )
+            if isinstance(known_facts, list)
+            else has_fact(project_dir, "guard-refusal", fact_id)
+        )
+        if already:
+            return {"status": "duplicate", "id": fact_id}
+        return append_fact(
+            project_dir, "guard-refusal", fact_id, {**body, "guard": guard.strip()}
+        )
     fact_id = "guard-{}-{}-{}".format(
         guard.strip(),
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
@@ -286,7 +345,29 @@ def read_facts(project_dir: Path) -> dict:
         {"status": "ok"|"empty"|"error", "reason"?: str,
          "facts": [envelope, ...],          # schema-supported, deduped, in order
          "schema_ahead": [{"line", "schema", "kind", "id"}, ...],
-         "excluded": int, "duplicates": int}
+         "excluded": int, "duplicates": int,
+         "fingerprint": str | None}
+
+    ``fingerprint`` is a SHA-256 over exactly the text these facts were parsed
+    from, and ``None`` whenever there was none to parse (no repo, no store,
+    unreadable). Deterministic over what was parsed rather than over the bytes
+    on disk: ``read_text`` applies universal-newline translation, so on a CRLF
+    store the digest is of the normalized text — which is the right subject,
+    since it is the parse the caller is keying a function of.
+
+    It exists so a caller memoizing a function OF these facts can key on it
+    without hashing the parsed structure — and, more to the point, without
+    opening the store a second time: the store is shared by every worktree of
+    the clone, so a separate read is a separate moment, and a sibling's append
+    between the two silently decouples the key from the facts it is supposed to
+    describe. Handing it back from the one read makes that impossible rather
+    than unlikely.
+
+    It covers the WHOLE file, not the returned ``facts``. That is deliberate and
+    is not the same set: ``schema_ahead`` lines are filtered out of what this
+    returns, so a fingerprint over the filtered view would be blind to a newer
+    plugin's appends — the exact writes a reader most needs to notice it has not
+    seen.
 
     ``schema_ahead`` records were written by a NEWER plugin than this reader —
     they are never silently dropped into ``excluded``: gate callers must treat
@@ -303,6 +384,7 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
+            "fingerprint": None,
         }
     if not path.is_file():
         return {
@@ -311,6 +393,7 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
+            "fingerprint": None,
         }
     try:
         raw_text = path.read_text(encoding="utf-8")
@@ -322,8 +405,10 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
+            "fingerprint": None,
         }
 
+    fingerprint = hashlib.sha256(raw_text.encode('utf-8')).hexdigest()
     raw_lines = raw_text.splitlines()
     facts: list[dict] = []
     schema_ahead: list[dict] = []
@@ -428,6 +513,7 @@ def read_facts(project_dir: Path) -> dict:
         "schema_ahead": schema_ahead,
         "excluded": excluded,
         "duplicates": duplicates,
+        "fingerprint": fingerprint,
     }
 
 
@@ -577,13 +663,53 @@ def capture_tree(project_dir: Path) -> dict:
             pass  # already absent — mkstemp file deleted above, git may not have recreated it
 
 
-def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None":
+def tree_diff(
+    project_dir: Path, tree_a: str, tree_b: str, paths: "list[str] | None" = None
+) -> "list[str] | None":
     """Paths changed between two tree objects (``git diff --name-only``),
     or ``None`` when the diff cannot be computed (missing object, git
     failure) — never guessed, matching ``coverage_algebra.DiffFn``'s
     contract. This is the diff the gates inject into the algebra and the
     dispatch side uses for its ``files_changed`` snapshot, so the recorded
     set and the composed edge-validity check agree by construction.
+
+    ``paths`` narrows the question to a pathspec: *do these two trees differ on
+    THESE files?* Asked of a whole tree the answer costs a full tree walk; asked
+    of a handful of paths it costs a pruned one, which is what makes a per-file
+    equality check affordable across many candidate trees
+    (``coverage.diagnose_base_advance_transfer``). The comparison stays git's
+    own, so a mode-only change (``chmod +x``, a file becoming a symlink at the
+    same blob) still reports as a difference — the fail-OPEN that a
+    ``(path, object id)`` comparison would introduce, and that
+    :func:`tree_entries` documents at length, never arises.
+
+    **A path this function reports must be a path it can be asked back about,
+    and two separate git conventions break that round trip.** Both matter here
+    because the returned list becomes the pathspec of the next call
+    (``coverage.diagnose_base_advance_transfer`` asks "do these trees differ on
+    the files you just told me changed?"), and both are answered at this
+    boundary rather than by each caller.
+
+    - ``-z``, so paths come back RAW. ``--name-only`` alone honours
+      ``core.quotepath``, which is on by default, so a non-ASCII filename is
+      returned C-quoted — ``"caf\\303\\251.py"``, surrounding quotes included.
+      Handed back as a pathspec that string matches nothing on disk, git
+      reports no difference over a file it never compared, and a caller reading
+      emptiness as agreement gets a fail-OPEN. ``-c core.quotepath=false`` is
+      NOT sufficient: a name containing ``"`` or ``\\`` stays quoted regardless
+      (pinned in ``tests/test_record_lint.py``), so only ``-z`` closes it. Same
+      reasoning, same fix as :func:`tree_entries`.
+    - ``:(literal)`` on each pathspec, because pathspecs are wildmatch patterns
+      and real filenames carry glob metacharacters (``app/[id]/page.tsx`` is an
+      ordinary route convention). Measured rather than assumed (2026-08-13):
+      git compares a pathspec literally *as well as* by wildmatch, so a path
+      does select its own spelling — but ``x[a].py`` ALSO selects ``xa.py``, so
+      an unrelated file can answer a question asked about this one. That
+      direction is a spurious *denial* rather than a wrong pass, but it is
+      silent, and ``:(literal)`` removes the class instead of leaving
+      correctness resting on git's match ORDER.
+
+    (``--`` stops option injection; it does nothing about either of these.)
 
     A tree id that is not a full-length object id never reaches git argv — it
     is a malformed fact, and a malformed fact yields no answer here for the
@@ -595,10 +721,13 @@ def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None"
         if not gitstate.is_object_id(value):
             _attribute_bad_tree(value)
             return None
-    rc, out, _err = run_git(project_dir, "diff", "--name-only", tree_a, tree_b)
+    pathspec = ["--", *(f":(literal){p}" for p in paths)] if paths else []
+    rc, out, _err = run_git(
+        project_dir, "diff", "--name-only", "-z", tree_a, tree_b, *pathspec
+    )
     if rc != 0:
         return None
-    return [line for line in out.splitlines() if line.strip()]
+    return [path for path in out.split("\0") if path]
 
 
 def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | None":

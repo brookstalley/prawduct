@@ -1459,8 +1459,10 @@ def begin_review(
                         "working tree dirty with judgeable uncommitted files and no "
                         "committed delta since the prior review — this fact vouches "
                         "for the WORKING tree, but the cumulative/PR gate targets "
-                        "committed HEAD, so it will read `uncovered` until you commit "
-                        "(or stash) the fix and re-run verify-resolutions"
+                        "committed HEAD, so it reads `uncovered` until you commit. "
+                        "Commit this tree VERBATIM and no further pass is needed: the "
+                        "commit carries the very tree this one vouched for. Only a "
+                        "selective or further-edited commit leaves a gap to close"
                     )
         delta = evidence.tree_diff(project_dir, base_tree, head_tree)
         if delta is None:
@@ -1618,6 +1620,27 @@ def begin_review(
         project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope
     )
 
+    # Answers already given about findings in these files, so a fresh review can
+    # decline to re-litigate them. Dispositions have been facts for a while;
+    # nothing put them where a REVIEWER could see one, so a cumulative
+    # dispatched after an `--accept` handed its reviewers a diff and no memory.
+    # Advisory like `record_lint` beside it: it rides the manifest, and nothing
+    # downstream gates on it.
+    from . import dispositions  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    try:
+        priors = dispositions.prior_dispositions(
+            evidence.read_facts(project_dir), files_changed, scope=scope
+        )
+    except (OSError, ValueError, TypeError) as exc:  # pragma: no cover - defensive
+        # A block that cannot be built must not cost a review its dispatch. Loud,
+        # though: an empty block and an unbuilt one are different facts about the
+        # world, and a reviewer told "nothing was dispositioned here" when the
+        # join failed would be told something false. This catches an unexpected
+        # shape; the two DEGRADED store states are returned rather than raised,
+        # so `prior_dispositions` answers those itself, in the same words.
+        priors = dispositions._unavailable(f"{type(exc).__name__}: {exc}")
+
     manifest = {
         "id": review_id,
         "mode": verbose,
@@ -1646,6 +1669,7 @@ def begin_review(
         "worktree": str(project_dir),
         "branch": gitstate.current_branch(project_dir),
         "record_lint": lint,
+        "prior_dispositions": priors,
     }
     ok, reason = validate_manifest(manifest)
     if not ok:
@@ -2089,14 +2113,35 @@ _TITLE_NOISE = frozenset(
     which while who with would""".split()
 )
 
-#: Jaccard overlap of significant title words above which two findings from
-#: DIFFERENT reviewers are reported as probably one defect. Calibrated on this
-#: repo's 254 recorded reviews: the true pair that prompted this sat at 0.44,
-#: and every pair surfaced at 0.4 spot-checked as a genuine duplicate (23 pairs
-#: across 16 of 209 reviews with findings, including one defect found by three
-#: reviewers). Set low deliberately — the output is advisory, so a false
-#: positive costs a hint while a miss costs a silently double-counted finding.
+#: Title-word overlap above which two findings from DIFFERENT reviewers are
+#: reported as probably one defect. Calibrated on this repo's 254 recorded
+#: reviews: the true pair that prompted this sat at 0.44, and every pair
+#: surfaced at 0.4 spot-checked as a genuine duplicate (23 pairs across 16 of
+#: 209 reviews with findings, including one defect found by three reviewers).
+#: Set low deliberately — the output is advisory, so a false positive costs a
+#: hint while a miss costs a silently double-counted finding.
 DUPLICATE_SIMILARITY = 0.4
+
+#: The same bar, applied to the OVERLAP coefficient rather than Jaccard, and
+#: only when the two findings cite the same files. Jaccard divides by the union,
+#: so it is punished by length asymmetry: three reviewers meeting one defect
+#: describe it at whatever length their goal calls for, and a terse title inside
+#: a verbose one scores low while sharing every word it has. The observed
+#: triplicate (R-1/R-5/R-11 on one branch — same file, same claim) reported as
+#: `[]` for exactly that reason. Overlap coefficient — |A∩B| / min(|A|,|B|) — is
+#: the length-insensitive form of the same question, and it is gated on
+#: identical file attributions because that is the condition under which a
+#: contained title is evidence of one defect rather than of two findings about
+#: the same subsystem.
+DUPLICATE_CONTAINMENT = 0.6
+
+#: Significant words the SHORTER title must carry before containment may group.
+#: Without it the rule is degenerate: a one- or two-word title ("Ordering") is
+#: trivially contained in any title that happens to use the same word, so every
+#: terse finding would join whichever neighbour shared a noun. Three is the
+#: floor at which containment says something — the observed triplicate's
+#: shortest title carries five.
+DUPLICATE_MIN_WORDS = 3
 
 
 def _title_words(title: str) -> frozenset:
@@ -2118,9 +2163,19 @@ def likely_duplicate_groups(findings: list[dict]) -> list[list[str]]:
     this reports and the builder decides.
 
     Candidates must come from different goals (hence different reviewers) and
-    have file attributions that are not disjoint; then their significant title
-    words must overlap by :data:`DUPLICATE_SIMILARITY`. Grouping is transitive,
-    so one defect found by all three reviewers reports as a single group.
+    have file attributions that are not disjoint. Two ways they then qualify,
+    and the second exists because the first missed the case this was built for:
+
+    - Jaccard over significant title words ≥ :data:`DUPLICATE_SIMILARITY`.
+    - **Identical** file attributions and overlap coefficient ≥
+      :data:`DUPLICATE_CONTAINMENT` — the length-insensitive test. Jaccard
+      divides by the union, so a terse title wholly contained in a verbose one
+      scores low while sharing every word it has, which is exactly how three
+      reviewers describing one defect at three levels of detail reported as no
+      group at all.
+
+    Grouping is transitive, so one defect found by all three reviewers reports
+    as a single group.
     """
     entries = [
         (
@@ -2150,7 +2205,14 @@ def likely_duplicate_groups(findings: list[dict]) -> list[list[str]]:
                 continue
             if not words_a or not words_b:
                 continue
-            if len(words_a & words_b) / len(words_a | words_b) >= DUPLICATE_SIMILARITY:
+            shared = len(words_a & words_b)
+            jaccard = shared / len(words_a | words_b)
+            containment = shared / min(len(words_a), len(words_b))
+            same_files = bool(files_a) and files_a == files_b
+            long_enough = min(len(words_a), len(words_b)) >= DUPLICATE_MIN_WORDS
+            if jaccard >= DUPLICATE_SIMILARITY or (
+                same_files and long_enough and containment >= DUPLICATE_CONTAINMENT
+            ):
                 root_a, root_b = find(fid_a), find(fid_b)
                 if root_a != root_b:
                     parent[root_a] = root_b
@@ -2168,6 +2230,64 @@ def likely_duplicate_groups(findings: list[dict]) -> list[list[str]]:
 def distinct_finding_count(findings: list[dict], groups: list[list[str]]) -> int:
     """``findings`` counted with each likely-duplicate group collapsed to one."""
     return len(findings) - sum(len(group) - 1 for group in groups)
+
+
+def _render_duplicate_groups(findings: list[dict], groups: list[list[str]]) -> str:
+    """Each likely-duplicate group as ONE defect line carrying N attributions.
+
+    Reporting "2 likely-duplicate groups" and then leaving the builder to read
+    three separately-worded findings does not save the second and third
+    disposition — the count is a claim about the list, and the list is what gets
+    worked. So the group gets a line of its own, with the shortest title as the
+    defect (a terse title is the one the three reviewers agree on; the verbose
+    ones carry each goal's framing) and every fid named after it.
+
+    Presentation only. `merge_findings` still keys exactly, every finding
+    survives in the fact and in `.critic-findings.json`, and each fid is printed
+    — so a WRONG group costs a reader one confusing line and can never hide a
+    finding. That asymmetry is what lets the grouping bar sit low.
+    """
+    if not groups:
+        return ""
+    by_fid = {
+        f["fid"]: f
+        for f in findings
+        if isinstance(f, dict) and isinstance(f.get("fid"), str)
+    }
+    lines = [
+        "",
+        f"  {len(groups)} defect(s) below were each filed by more than one reviewer — "
+        "dispose of the group once, not once per fid:",
+    ]
+    for group in groups:
+        entries = [by_fid[fid] for fid in group if fid in by_fid]
+        if not entries:
+            continue
+        lead = min(
+            entries,
+            key=lambda f: len(str(f.get("title") or f.get("summary") or "")),
+        )
+        title = str(lead.get("title") or lead.get("summary") or "<no title>")
+        # The severity is the group's MAXIMUM, never the lead's. The lead is
+        # chosen for its wording (shortest = the claim the reviewers agree on),
+        # and wording has nothing to do with severity — so a BLOCKING found by
+        # one reviewer and noted by another would have printed as [NOTE] and
+        # been dispositioned as one. A group is one defect; its severity is the
+        # most severe reading any reviewer gave it.
+        severity = max(
+            (str(f.get("severity") or "").lower() for f in entries),
+            key=lambda s: _SEVERITY_RANK.get(s, -1),
+            default="",
+        ).upper() or "?"
+        goals = ", ".join(
+            sorted({str(f.get("goal")) for f in entries if f.get("goal")})
+        )
+        lines.append(
+            f"    - [{severity}] {title}  ({'+'.join(group)}"
+            + (f"; goals: {goals}" if goals else "")
+            + ")"
+        )
+    return "\n".join(lines)
 
 
 def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
@@ -2804,12 +2924,21 @@ def consolidate(project_dir: Path) -> int:
         if groups
         else ""
     )
+    # ...and then RENDER each group as one defect. The summary line above tells
+    # the builder a number; what they act on is the list, and a list of three
+    # separately-worded findings reads as three pieces of work no matter what
+    # the count said. Every fid stays visible — this is a presentation of an
+    # advisory grouping, never a merge, so nothing can be dropped by a wrong
+    # group (the standing reason `merge_findings` refuses fuzzy keys in the
+    # WRITE path).
+    group_lines = _render_duplicate_groups(all_findings, groups)
     print(
         f"consolidated: {counts.get('blocking', 0)} blocking, "
         f"{counts.get('warning', 0)} warning, {counts.get('note', 0)} note"
         f"{dupe_note} "
         f"from {len(partials)} reviewer(s) → fact {review_id}{res_note} + "
         f"{findings_path.name} + ledger anchor; marker cleared."
+        + group_lines
         # Only when there is something to fix — a clean pass that ended with a
         # fix strategy attached would read as work it does not have.
         + (_BATCH_FIX_DIRECTIVE if all_findings else "")

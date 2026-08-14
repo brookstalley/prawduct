@@ -33,9 +33,9 @@ import re
 import sys
 from pathlib import Path
 
+from . import change_log as change_log_mod
 from . import plan_index
 
-_CHANGE_LOG_REL_PATH = ".prawduct/change-log.md"
 _BACKLOG_REL_PATH = ".prawduct/backlog.md"
 _ARTIFACTS_REL_DIR = ".prawduct/artifacts"
 
@@ -346,13 +346,11 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     state (missing change log, missing release plan) fails closed — the whole
     point is that an unclassified scope must never read as "fine".
     """
-    from . import change_log as change_log_mod  # noqa: PLC0415 -- lazy: mirrors coverage.py's import posture
-
-    change_log = project_dir / _CHANGE_LOG_REL_PATH
+    change_log = project_dir / change_log_mod.CHANGE_LOG_REL_PATH
     try:
         change_log_content = change_log.read_text(encoding="utf-8")
     except OSError as exc:
-        print(f"no-change-log: cannot read {_CHANGE_LOG_REL_PATH}: {exc}", file=sys.stderr)
+        print(f"no-change-log: cannot read {change_log_mod.CHANGE_LOG_REL_PATH}: {exc}", file=sys.stderr)
         return 1
 
     entries = change_log_mod.parse_change_log(change_log_content)
