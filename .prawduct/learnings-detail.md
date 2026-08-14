@@ -299,6 +299,41 @@ the subject passes forever.
 
 When a change deletes a module and rewrites a command that used to live off it, ask separately what the SURVIVOR now promises: its old tests died with the deleted thing's test file, correctly, and nothing replaced the contract it kept. Retiring `regen-views`/`stamp-merged` to "callable, notice, no writes, exit 0" took ~20 tests down with `test_views.py` and left that new contract — advertised in `api-contract.md` to operator scripts — held by nothing, so a later edit restoring a non-zero exit would break a copied release script and stay green. Its sibling rule above asks what the deleted thing HOSTED; this asks what stayed and changed, which no amount of re-homing finds.
 
+## When a criterion, plan or rule DESCRIBES an artifact, open the artifact before building to the description
+
+A description of a thing is not the thing, and the gap is invisible from inside the description —
+it reads as complete, it is internally consistent, and you can satisfy it end to end without ever
+opening what it names. That is why this fails silently rather than loudly.
+
+The instance that named the rule: `#633` carried the acceptance criterion *"does not touch a
+`test_tracking` block carrying other keys."* Sound-looking, conservative, and written from the
+2026-08-11 ruling's framing — *delete the field* — by someone who had not looked at the block. A
+survey of all 11 governed products then showed the field the item was named for is the sole member
+in exactly **one** repo; the other seven carry `assertion_count`, `test_files` and a `history` of
+per-chunk `tests_added` entries, every one the same hand-maintained bookkeeping. Building to the
+criterion would have fully cleaned one product, left the treadmill running in seven, and produced a
+second backlog item to finish the job. The criterion was not wrong when written. It was written
+before anyone looked.
+
+It fired a second time in the same work cycle, which is what promoted it from an observation to a
+rule. Writing the tripwire's own build plan, I quoted a matching fragment as *evidence* of what the
+pattern catches — and the check, once it existed, fired on my quotation. Same shape: I had written
+prose *about* a rule rather than checking what the rule's own checker would say about the prose.
+
+**The check is nearly always cheap and nearly always available.** Open the file. Run the survey.
+Execute the pattern against the real input. In both instances above the check took under two
+minutes and inverted the plan. This is Principle 24 (Retrieval Over Generation) at the scale of a
+single chunk rather than a major decision — the expensive-decision framing is what makes it easy to
+skip, because reading one YAML block does not feel like a decision worth researching.
+
+Related failure this is NOT: building the wrong thing from unclear requirements. Here the
+requirement is clear, agreed, and precisely stated. What is missing is contact with the artifact the
+statement is about — so a clarifying question would not have helped, and only looking would.
+
+Corollary for authoring: a criterion you write from a ruling, a design doc, or another artifact's
+summary should say so, so the next reader knows it inherits a framing and has not been checked
+against the data. A criterion that has been checked can say that instead, and name the command.
+
 ## When you retire a MECHANISM, sort its rules into three piles before deleting any
 
 Retiring the derived views touched **eleven** learnings, and the interesting result is that only

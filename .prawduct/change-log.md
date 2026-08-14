@@ -74,10 +74,21 @@ copy of it. Neither check was weakened.
 
 **And the methodology now names the instance.** `building.md` already said a count nothing reads is
 not worth writing; it did not say that a suite total is the one that keeps coming back, which is why
-the instance outlived the rule. One clause on that paragraph, landing **net zero** against the
-file's token budget — paid for by four trims, each pure restatement or a second example of a point
-already made. Its first draft was a separate bullet at +180 that also tripped the count-slot guard
-by quoting the shape it was forbidding.
+the instance outlived the rule. One clause **on that same paragraph** — not on the Verify step,
+where it was first drafted as a separate bullet at +180 tokens that broke the file's budget and
+tripped the count-slot guard by quoting the shape it was forbidding. The rewrite satisfying both
+put it where the concept already lives, and landed **net zero** against the budget, paid for by
+four trims of pure restatement.
+
+**The cutover's line-ending and decode contracts were fixed in the same scope**, both surfaced by
+the cumulative review and both older than this change. `record_distribution` read and rewrote the
+state file with universal newlines, so appending one key to a CRLF product file rewrote every line
+in it — and it runs immediately after the removal that had just preserved them. And
+`core.read_str_yaml_key`/`read_bool_yaml_key` document themselves as failing soft on an unreadable
+file while catching only `OSError`; `UnicodeDecodeError` is a `ValueError`, so an undecodable state
+file aborted the whole cutover before any later step reached its own guard — including guards a
+recorded disposition in this scope's build plan rested on. All three now fail soft, and the sum of
+those soft failures is reported rather than left to look like "nothing needed".
 
 ## 2026-08-13: the change log recommends its own merge driver
 

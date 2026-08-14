@@ -38,7 +38,14 @@ SKILLS_DIR = Path(__file__).resolve().parents[1] / "plugin" / "skills"
 #: `advisory list`, `evidence status`) are matched at their FIRST word only —
 #: grants are written per family (`Bash(prawduct-hook backlog *)`), so the family
 #: name is the unit that has to appear.
-_INVOCATION_RE = re.compile(r"prawduct-hook ([a-z][a-z0-9-]*)")
+#: The separator is ANY run of whitespace, not a literal space. Prose wraps, and
+#: a `prawduct-hook` that ended one line with its subcommand on the next was
+#: invisible to this guard — so a skill instructing an ungranted command read as
+#: clean purely because of where the line broke. Found in `migrate/SKILL.md`,
+#: whose `test-evidence` cross-reference wrapped exactly there while doctor's
+#: identical mention (on one line) was caught. A guard whose coverage depends on
+#: line width is indistinguishable from one that passed.
+_INVOCATION_RE = re.compile(r"prawduct-hook\s+([a-z][a-z0-9-]*)")
 
 #: Commands a skill NAMES but is deliberately not granted. Every entry is a
 #: decision with a reason, not a suppression: the whole value of this test is
@@ -71,6 +78,13 @@ _NOT_GRANTED: dict[tuple[str, str], str] = {
     # never executes the product's own tooling.
     ("doctor", "test-evidence"): "pointer to where the real count lives; recording "
     "it would run the product's suite, which doctor must not do",
+    # Same cross-reference, same reason, in the sibling flow: migrate names the
+    # evidence store as what to read instead of the hand-maintained count it
+    # removes. The cutover runs no test suite. This row was missing while the
+    # invocation pattern required a literal space — the mention wrapped across
+    # two lines and no one, including the guard, could see it.
+    ("migrate", "test-evidence"): "pointer to where the real count lives; the "
+    "cutover runs no test suite",
     # Cross-reference: names what the RELEASE CHECKLIST runs when gitflow
     # retention ends. The PR flow archives one plan by name; a fleet sweep is
     # not its to run.

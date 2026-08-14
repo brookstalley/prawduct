@@ -422,6 +422,90 @@ def test_a_state_file_with_no_retired_keys_is_left_alone(tmp_path: Path):
     assert state.read_text().startswith(original), "rewrote a file it had nothing to fix"
 
 
+def test_the_preview_lists_exactly_what_the_apply_removes(repo: Path):
+    """The dry run and the write compute the key list separately.
+
+    `lifecycle_repair`'s own docstring names the hazard: a preview that
+    re-derives what the write path derives is where drift hides, because it
+    reports clean while the write does something else. The two are kept honest
+    here by assertion rather than by structure — the operator's single
+    confirmation is given against the preview, so a preview that under-reports
+    is a confirmation obtained for the wrong act.
+    """
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_text(
+        state.read_text()
+        + "\nbuild_state:\n"
+        '  source_root: "src/"\n'
+        "  test_tracking:\n"
+        "    test_count: 1724\n",
+        encoding="utf-8",
+    )
+
+    previewed = run_migrate(repo)["state_keys_removed"]
+    applied = run_migrate(repo, "--apply")["state_keys_removed"]
+
+    assert previewed == applied, "the preview and the write disagree"
+    assert "build_state.test_tracking" in applied
+    assert "views_enabled" in applied
+
+
+def test_the_cutover_preserves_crlf_line_endings(tmp_path: Path):
+    """A surgical edit must not land as a whole-file reformat.
+
+    `strip_state_file` preserves endings, and `record_distribution` runs
+    immediately after it on the same file — so a `read_text`/`write_text` pair
+    there flattened every line the removal had just preserved, burying the real
+    change inside a diff that touches the whole document.
+    """
+    root = make_filesync_repo(tmp_path)
+    state = root / ".prawduct" / "project-state.yaml"
+    state.write_bytes(
+        b"# Project State\r\n"
+        b"backlog_format_version: 2\r\n"
+        b"views_enabled: true\r\n"
+        b"build_state:\r\n"
+        b'  source_root: "src/"\r\n'
+        b"  test_tracking:\r\n"
+        b"    test_count: 1724\r\n"
+    )
+
+    run_migrate(root, "--apply")
+    raw = state.read_bytes()
+
+    assert b"test_tracking" not in raw
+    assert b"distribution: plugin" in raw
+    assert b'source_root: "src/"' in raw
+    assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF file"
+
+
+def test_an_undecodable_state_file_does_not_abort_the_cutover(tmp_path: Path):
+    """The decode guards were unreachable, and a recorded disposition said they
+    were not.
+
+    `already_migrated` reads the state file first, through a helper documented
+    to fail soft on an unreadable file. `UnicodeDecodeError` is a `ValueError`,
+    so a bytes-invalid file escaped its `OSError`-only catch and the cutover
+    died before any later step could reach its own guard.
+    """
+    root = make_filesync_repo(tmp_path)
+    state = root / ".prawduct" / "project-state.yaml"
+    state.write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+
+    result = run_migrate(root, "--apply")
+
+    assert result["state_keys_removed"] == []
+    # The cutover completes: framework files still go, and the run does not die.
+    assert result["removed"], "the cutover aborted on an unreadable state file"
+    # And it SAYS so. Three steps fail soft on this file independently, so
+    # without a note their sum reads as "nothing needed" and the repo looks cut
+    # over while carrying no `distribution: plugin` marker.
+    assert any("not decodable" in n for n in result["notes"]), (
+        "skipped the state file silently"
+    )
+    assert state.read_bytes() == b"\xff\xfe not valid utf-8 \x80\x81", "wrote over it"
+
+
 def test_a_repo_with_no_state_file_does_not_error(tmp_path: Path):
     """Carried from Chunk 01's Critic review (R-4), closing AC9's second half.
 

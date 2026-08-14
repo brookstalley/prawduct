@@ -89,13 +89,19 @@ prawduct ever placed," only known framework files.
     "enabledPlugins": { "prawduct@prawduct": true }
   }
   ```
-- `.prawduct/project-state.yaml` — a single `distribution: plugin` line is appended (the signal
-  that tells the frozen legacy hook to stand down).
+- `.prawduct/project-state.yaml` — a `distribution: plugin` line is appended (the signal
+  that tells the frozen legacy hook to stand down), and **retired framework keys are removed**:
+  `views_enabled`, `scope_rollups` (the retired derived-view model) and `build_state.test_tracking`
+  (a hand-maintained test count, removed with whatever `assertion_count` / `test_files` / `history`
+  bookkeeping shares its block). These are framework residue, not product content — nothing in the
+  runtime reads them, no template scaffolds them, and what `test_tracking` copies has a real home in
+  the test evidence store. The dry run names every key it would remove, so the one confirmation
+  covers it. An already-migrated repo converges the same keys with `/prawduct:doctor`.
 
 **Never touched** (product-owned, mutable):
-- Everything else under `.prawduct/` — `project-state.yaml` content, `learnings.md`,
-  `learnings-detail.md`, `backlog.md`, `change-log.md`, `artifacts/`, `.critic-findings.json`,
-  reflections.
+- The rest of `.prawduct/` — everything in `project-state.yaml` other than the keys above,
+  `learnings.md`, `learnings-detail.md`, `backlog.md`, `change-log.md`, `artifacts/`,
+  `.critic-findings.json`, reflections.
 - **All** non-framework files — your own skills, `src/`, `tests/`, MCP servers, configs.
 
 ## After migrating

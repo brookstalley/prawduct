@@ -407,6 +407,24 @@ def apply_claude_anchor(project_dir: Path) -> bool:
     return True
 
 
+def _state_file_undecodable(project_dir: Path) -> bool:
+    """True when the state file exists but is not decodable as UTF-8.
+
+    Asked only to explain a no-op. Every step that touches the state file fails
+    soft on this, so without it three silent skips read as "nothing needed".
+    """
+    path = project_dir / ".prawduct" / "project-state.yaml"
+    if not path.is_file():
+        return False
+    try:
+        path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
 def retired_state_keys(project_dir: Path) -> list[str]:
     """The retired ``project-state.yaml`` keys this cutover would remove.
 
@@ -456,16 +474,35 @@ def record_distribution(project_dir: Path) -> bool:
     path = Path(project_dir) / ".prawduct" / "project-state.yaml"
     if core.read_str_yaml_key(path, DISTRIBUTION_KEY) is not None:
         return False
-    content = path.read_text(encoding="utf-8") if path.is_file() else ""
+    # `newline=""` disables universal-newline translation, and the block below
+    # is rewritten to match. Without both, appending one key to a CRLF product
+    # file rewrote every line in it to LF — so the surgical edit this promises
+    # to be landed as a whole-file reformat with the real change buried inside.
+    # `lib.lifecycle_repair` carries the same contract for the same reason, and
+    # this function runs immediately after its removal on the same file: the
+    # removal preserved the endings and this call flattened them right back.
+    content = ""
+    if path.is_file():
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                content = handle.read()
+        except (OSError, UnicodeDecodeError):
+            # Never append to a file we could not read: the alternative is
+            # writing our block over content we cannot see. The caller reports
+            # this, because a cutover that silently skips the distribution
+            # marker looks migrated and is not.
+            return False
     block = (
         "\n# Distribution mode — set by /prawduct:migrate (v2.0.0 plugin cutover).\n"
         "# `plugin` tells the legacy file-sync hook to stand down (Chunk 8).\n"
         f"{DISTRIBUTION_KEY}: {DISTRIBUTION_VALUE}\n"
     )
-    if content and not content.endswith("\n"):
-        content += "\n"
+    if "\r\n" in content:
+        block = block.replace("\n", "\r\n")
+    if content and not content.endswith(("\n", "\r")):
+        content += "\r\n" if "\r\n" in content else "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content + block, encoding="utf-8")
+    core.atomic_write_text(path, content + block, encoding="utf-8", newline="")
     return True
 
 
@@ -612,6 +649,16 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     state_keys_removed = strip_retired_state(project_dir)
     if record_distribution(project_dir) or state_keys_removed:
         edited.append(".prawduct/project-state.yaml")
+    elif _state_file_undecodable(project_dir):
+        # Said out loud rather than left to the diff. Every state-file step
+        # fails soft on a file it cannot decode — which is right, because none of
+        # them may write over content they cannot see — but the sum of three
+        # silent skips is a repo that looks cut over and never got its marker.
+        result["notes"].append(
+            ".prawduct/project-state.yaml is not decodable as UTF-8 — it was left "
+            "untouched, so the `distribution: plugin` marker was NOT recorded and "
+            "no retired keys were removed. Fix the file's encoding and re-run."
+        )
 
     gitignored = [VERSION_MARKER] if ensure_marker_gitignored(project_dir) else []
     untracked = [VERSION_MARKER] if _git_untrack_kept(project_dir, VERSION_MARKER) else []
@@ -655,6 +702,14 @@ def run(project_dir: str | Path, argv: list[str]) -> int:
         print(f"{verb} empty framework dir(s): {', '.join(result['removed_dirs'])}")
     if result["edited"]:
         print(f"{'Edited' if apply else 'Would edit'}: {', '.join(result['edited'])}")
+    if result["state_keys_removed"]:
+        # Named explicitly rather than folded into "edited": this is the one
+        # part of the blast radius that DELETES from a file the product
+        # hand-authored, and an operator giving the single confirmation this
+        # operation takes has to see it before saying yes, not afterwards in the
+        # diff. `--json` carried it from the start; the human path did not.
+        keys = ", ".join(result["state_keys_removed"])
+        print(f"{'Removed' if apply else 'Would remove'} retired state key(s): {keys}")
     if result["gitignored"]:
         print(f"Gitignored: {', '.join(result['gitignored'])}")
     for note in result["notes"]:
