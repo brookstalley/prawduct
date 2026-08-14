@@ -3,6 +3,55 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-14: the test count ten products maintain and nothing reads
+
+<!-- prawduct: type=fix | scope=test-tracking-treadmill -->
+
+`build_state.test_tracking` is a hand-maintained copy of a fact the evidence store already holds
+per tree. Nothing in the runtime reads it, no template scaffolds it, and prawduct's own state file
+has never carried it. It is nonetheless live in ten governed products, because the field is *in*
+the state file — and the state file is a product's source of truth, so Living Documentation obliges
+every agent that meets a stale number there to correct it. Each correction is a commit, each commit
+extends HEAD, and that is how a record defect buys a review round; the mechanism is the one
+`lib/record_lint.py` already documents, and one of the four examples it names is a test-count claim
+corrected three times.
+
+The cost is visible rather than theoretical. In the worst repo the field's provenance comment had
+grown to one 51,992-character YAML line — a third of a 159 KB state file — nesting its own
+correction history, including a note recording that three successive edits had used the wrong basis.
+Running the repair over that file takes it from 159,382 bytes to 78,117.
+
+**The block goes whole, which is a decision the survey forced.** Measured across every governed
+product: `test_tracking` sits under `build_state` in 10 of 10 that carry it, and the field the
+backlog item was named for is the *sole* member in exactly one. The other seven carry
+`assertion_count`, `test_files`, and a `history` of per-chunk `tests_added` entries — the same
+bookkeeping, so removing only `test_count` would fully clean one product and leave the treadmill
+running in seven, guaranteeing a second pass. Nothing in `lib/` or `bin/` reads `build_state` or any
+member; `source_root`, which is read in ten places, is a *sibling* under `build_state` and is never
+touched, so the parent is never left empty. This supersedes the earlier acceptance criterion on
+**#633** — "does not touch a `test_tracking` block carrying other keys" — which was written from the
+ruling's framing before the block was measured.
+
+**Two entry points, one definition.** `lifecycle-repair` converges repos that onboarded before the
+removal existed; the plugin cutover removes the same keys on the way through. The division is by
+*when*, not by *what* — `migrate_plugin` calls `lifecycle_repair` and a test asserts it holds no
+live string naming any retired key, so the two can never disagree about what one is. The removal is
+nested where the module's existing two are column-0, so it needed an enclosing-parent predicate and
+a depth-aware span; everything downstream — ordering, preview, the atomic write, the line-ending
+contract — is shared.
+
+**A test that pinned a misclassification was corrected, not weakened.** The cutover suite asserted
+that `views_enabled` survives migration and called it a "pre-existing product key". It is not one:
+it is retired *framework* residue, which is the entire reason `lifecycle_repair` exists. That
+assertion obliged the one act that deletes every other framework file to carry framework residue
+forward — which is how these keys reached the plugin era in ten products. The contract now reads on
+the axis that matters: product keys survive byte-for-byte, retired framework keys go, the marker is
+appended.
+
+Prawduct has removed this field once before, through `strip_test_tracking()` in the file-sync
+engine, retired in M4/v2.0.3 — and it came back. So the deletion ships with a tripwire rather than
+alone; that half is the same scope's second chunk.
+
 ## 2026-08-13: the change log recommends its own merge driver
 
 <!-- prawduct: type=feature | scope=tactical-efficiency -->

@@ -26,7 +26,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import core
+from . import core, lifecycle_repair
 
 # The committed install reference (design §8). Pins the marketplace + plugin
 # source to ref:"main" (the release surface, §5b); autoUpdate keeps consumers
@@ -407,6 +407,45 @@ def apply_claude_anchor(project_dir: Path) -> bool:
     return True
 
 
+def retired_state_keys(project_dir: Path) -> list[str]:
+    """The retired ``project-state.yaml`` keys this cutover would remove.
+
+    Reads; never writes. Used for the dry-run plan so the operator's one
+    confirmation names the removal before it happens.
+    """
+    path = project_dir / ".prawduct" / "project-state.yaml"
+    if not path.is_file():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    return [item["key"] for item in reversed(lifecycle_repair.state_removals(text))]
+
+
+def strip_retired_state(project_dir: Path) -> list[str]:
+    """Remove retired framework keys from the product's state file.
+
+    **This is framework residue, not product content.** The cutover's
+    preserve-verbatim rule protects what the *product* authored; every key
+    removed here was written by a framework mechanism that no longer exists —
+    the derived-view model's ``views_enabled`` / ``scope_rollups``, and the
+    hand-maintained ``build_state.test_tracking`` counts that the test evidence
+    store replaced. Deleting them belongs to the same act that deletes the
+    framework's files, and leaving them is what let them reach the plugin era in
+    ten products.
+
+    Detection lives in :mod:`lib.lifecycle_repair`, which owns the same removal
+    for the already-onboarded case. The division is by *when*, not by *what*:
+    this runs during the cutover, ``lifecycle-repair`` converges a repo that
+    cut over before the removal existed. Neither carries its own idea of what a
+    retired key is.
+    """
+    return lifecycle_repair.strip_state_file(
+        project_dir / ".prawduct" / "project-state.yaml"
+    )
+
+
 def record_distribution(project_dir: Path) -> bool:
     """Append ``distribution: plugin`` to ``project-state.yaml`` when absent.
 
@@ -502,6 +541,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
         "removed": [],
         "removed_dirs": [],
         "edited": [],
+        "state_keys_removed": [],
         "gitignored": [],
         "untracked": [],
         "notes": [],
@@ -524,7 +564,8 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     if claude_anchor_pending(project_dir):
         planned_edits.append("CLAUDE.md")
     planned_edits.append(".claude/settings.json")
-    if core.read_str_yaml_key(
+    planned_state_keys = retired_state_keys(project_dir)
+    if planned_state_keys or core.read_str_yaml_key(
         project_dir / ".prawduct" / "project-state.yaml", DISTRIBUTION_KEY
     ) is None:
         planned_edits.append(".prawduct/project-state.yaml")
@@ -533,6 +574,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
         result["removed"] = removals
         result["removed_dirs"] = sorted(skill_dirs + managed_dirs)
         result["edited"] = planned_edits
+        result["state_keys_removed"] = planned_state_keys
         result["gitignored"] = [VERSION_MARKER]
         result["notes"].append(
             "Dry run — no files changed. Re-run with --apply to perform the cutover."
@@ -565,7 +607,10 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
         edited.append("CLAUDE.md")
     if transform_settings(project_dir):
         edited.append(".claude/settings.json")
-    if record_distribution(project_dir):
+    # Before the append, so the distribution marker lands at the end of a state
+    # file that has already shed its retired keys rather than above them.
+    state_keys_removed = strip_retired_state(project_dir)
+    if record_distribution(project_dir) or state_keys_removed:
         edited.append(".prawduct/project-state.yaml")
 
     gitignored = [VERSION_MARKER] if ensure_marker_gitignored(project_dir) else []
@@ -574,6 +619,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     result["removed"] = removed
     result["removed_dirs"] = removed_dirs
     result["edited"] = edited
+    result["state_keys_removed"] = state_keys_removed
     result["gitignored"] = gitignored
     result["untracked"] = untracked
     result["notes"].append(

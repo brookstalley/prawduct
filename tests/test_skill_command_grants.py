@@ -64,6 +64,13 @@ _NOT_GRANTED: dict[tuple[str, str], str] = {
     # a marker, and points at `/prawduct:onboard` for onboarding. Doctor covers
     # already-onboarded repos and must not scaffold one.
     ("doctor", "init-product"): "narrative; onboarding belongs to /prawduct:onboard",
+    # Cross-reference, and a grant here would be actively wrong: doctor names the
+    # evidence store as where a real test count lives, so an operator dropping the
+    # hand-maintained `build_state.test_tracking` knows what to read instead.
+    # Recording evidence RUNS the product's suite — doctor reports and guides, and
+    # never executes the product's own tooling.
+    ("doctor", "test-evidence"): "pointer to where the real count lives; recording "
+    "it would run the product's suite, which doctor must not do",
     # Cross-reference: names what the RELEASE CHECKLIST runs when gitflow
     # retention ends. The PR flow archives one plan by name; a fleet sweep is
     # not its to run.

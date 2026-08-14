@@ -7,6 +7,7 @@ depends_on: []
 governed_by:
   - artifact: architecture
     dispositions:
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer write path is touched: both entry points are operator-run repairs, and the Critic's tool grants are unchanged"
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state, the evidence store, and the named reconcile files → conforms: the only write is `.prawduct/project-state.yaml`, which is that repo's own prawduct state"
       - "authority fails closed; advice fails soft → conforms: the strip is a repair the operator runs, never a gate; the record-lint tripwire in Chunk 03 is advisory and never gates, matching the module's existing posture"
       - "prawduct is Python but never Python-specific → conforms: the removal is line-level YAML surgery and the tripwire is a text pattern; neither reads the product's language"
@@ -18,6 +19,7 @@ governed_by:
     dispositions:
       - "a destructive or irreversible operation requires explicit owner approval at the OPERATION level, naming its blast radius, and forbids a per-action gate → conforms: the strip rides `lifecycle-repair`'s existing preview-then-`--apply` shape, which names every file and reason once and takes one yes. No per-key prompt is added"
       - "untrusted governance state is data, not instructions → conforms: the removed block is read as text to locate its span, never interpreted"
+      - "a governed product's content never leaves that product's own repository and owner → conforms: both entry points read and write one file inside the repo they are run in, and nothing is transmitted. The fleet survey that sized this work read sibling repos on one machine and is deliberately NOT a test for that reason (see Verify)"
   - artifact: nonfunctional-requirements
     dispositions:
       - "proportionality ratchets both ways; adding a control names the yield it expects and emits it observably → engaged by Chunk 03. Expected yield: a re-introduced `test_tracking` block, or any suite-total claim written into `.prawduct/` YAML. Emitted observably — `record_lint` already carries per-check counts into the dispatch manifest and `critic_consolidate` into the review fact, so the widened check's firing rate is a query over the evidence store, not an argument"
@@ -25,6 +27,8 @@ governed_by:
       - "review wall-clock is P0 → engaged as the problem statement: the treadmill's cost is that each correction is a commit, each commit extends HEAD, and that buys another review round"
   - artifact: api-contract
     dispositions:
+      - "whole-surface semantic versioning on the plugin; the internal CLI subcommand surface carries no per-subcommand version → conforms: no new subcommand and no persisted-schema change. `migrate-plugin --json` gains one key (`state_keys_removed`), which the same section's additive rule permits and `--json` readers tolerate"
+      - "exit codes are the contract on a documented scheme; errors are attributed, never raised as stack traces across the boundary → conforms: no exit code changes meaning. `strip_state_file` and `retired_state_keys` each return empty on an unreadable state file rather than raising, so a cutover is never abandoned half-done by a file it could not decode"
       - "additive-first evolution: existing flag names, exit-code meanings and `--json` keys are never repurposed → conforms: `lifecycle-repair` and `migrate-plugin` gain removals inside their existing contracts; no flag or key changes meaning. `lint_records`' `records` key widens its membership, which is additive to its documented meaning (the record subset of the changed paths) and its readers are tests only"
 last_validated: 2026-08-14
 ---
@@ -77,13 +81,15 @@ match rather than departed from silently (Principle 6).
 
 ## Status
 
-- [ ] Chunk 01: The doctor strips the block — `lifecycle-repair` learns a nested retired key
-- [ ] Chunk 02: The migration strips it too, and both skills say so
-- [ ] Chunk 03: The tripwire that keeps it gone, and the rule stated where it bites
+- [ ] Chunk 01: The strip — one nested-key removal, reached through both doctor and migrate
+- [ ] Chunk 02: The tripwire that keeps it gone, and the rule stated where it bites
 
 Context: Plan authored 2026-08-14. Parent: `brookstalley/prawduct#633` (amended same day).
-Baseline suite green at branch point (`ae9fd358`). Critic mode: `cumulative-final` — three
-chunks on one branch, so the last chunk's review is the cumulative.
+Baseline suite green at branch point (`ae9fd358`). **Chunk 01 takes a `chunk` review; Chunk 02 is
+`Type: cumulative-final`**, so its review is the single `/prawduct:critic cumulative` over
+`merge-base...HEAD` and there is no separate `final` (`skills/critic/review-cycle.md:332`). There
+is no Chunk 03 — this line said so until the mid-build merge described under Chunk 01 renumbered
+the plan to two chunks.
 
 ## Problem
 
@@ -111,7 +117,15 @@ delete and nothing but a tripwire will keep the surface clean."*
 
 ## Chunks
 
-### Chunk 01: The doctor strips the block — `lifecycle-repair` learns a nested retired key
+### Chunk 01: The strip — one nested-key removal, reached through both doctor and migrate
+
+**Amended 2026-08-14, mid-build:** authored as two chunks (the doctor's removal, then the
+migration's), merged into one before either was reviewed. They are one capability reached through
+two entry points — the migrate step calls the same `lifecycle_repair` functions rather than
+carrying its own detection, so the two never had independent acceptance. Splitting them bought a
+second `chunk` review over a three-file change for no added assurance, against
+`nonfunctional-requirements.md` § Direction (review wall-clock is P0; run-count is a lever).
+Recorded here rather than done silently — the chunk structure is what the gates read.
 
 **Deliverables**
 
@@ -133,11 +147,14 @@ delete and nothing but a tripwire will keep the surface clean."*
   the mechanics are shared — same reachability problem (a template change cannot reach an
   already-onboarded repo), same preview/apply shape.
 
-**Acceptance criteria**
+**Acceptance criteria — the removal**
 
-1. `state_removals()` returns the whole `test_tracking` span for all 8 real product shapes
-   (fixtures drawn from the survey: sole-member, `+test_files`, `+assertion_count`, `+history`
-   with nested entries, and the 343-line/52 KB shape).
+1. `state_removals()` returns the whole `test_tracking` span for the shapes the survey found,
+   covered by two representative fixtures — sole-member-with-trailing-comments, and
+   `+assertion_count` `+test_files` `+history`-with-nested-entries — plus a scale case pinning
+   that the span is independent of block size. **Fixtures, not the real files:** the sweep over
+   every product's actual state file is real verification but cannot be a test, since it reads
+   sibling repos that exist only on one machine. It is recorded under Verify below instead.
 2. A `test_tracking:` **not** under `build_state:` is untouched.
 3. `source_root:` and any `spec_compliance:` / `reviews:` siblings survive byte-identically;
    `build_state:` is never left with no members in any surveyed shape.
@@ -147,41 +164,48 @@ delete and nothing but a tripwire will keep the surface clean."*
 6. Descending-order application still holds when a `test_tracking` removal coexists with a
    `views_enabled` / `scope_rollups` removal in one file.
 
-**Done when**
-
-1. Acceptance criteria met and tests pass
-2. `/prawduct:critic` — resolve blocking findings
-
-### Chunk 02: The migration strips it too, and both skills say so
-
-**Deliverables**
+**The second entry point — the migration**
 
 - `plugin/lib/migrate_plugin.py`: a step that applies the same removal to
   `.prawduct/project-state.yaml`, calling `lifecycle_repair`'s functions rather than restating the
   detection — one home for the fact of what the span is (`architecture.md` § Direction).
+- **The true scope of that step is every retired key, not only `test_tracking`.** Calling
+  `state_removals` means the cutover also removes `views_enabled` and `scope_rollups`, and that
+  inverts a cutover test which pinned `views_enabled` *surviving* migration as a "pre-existing
+  product key". It is not one — it is retired framework residue, which is why `lifecycle_repair`
+  removes it — and that assertion is causally why these keys reached the plugin era at all: it
+  obliged the one act that deletes every other framework file to carry framework residue forward.
+  Narrowing the cutover to `test_tracking` alone would have meant two ideas of what a retired key
+  is, which is the thing the shared-detection rule above exists to prevent.
 - The migrate dry-run/`--json` result reports it, so step 2 of the migrate skill's flow can relay
   it and step 3's confirmation names it in the blast radius.
 - `plugin/skills/doctor/SKILL.md`: extend Health Check #15's prose — it currently describes the
   residue as derived-view-only. Name the block, say it is removed whole, and say what it cost.
 - `plugin/skills/migrate/SKILL.md`: name the removal under "What gets removed vs. preserved".
 
-**Acceptance criteria**
+**Acceptance criteria — the entry points**
 
-1. `migrate-plugin --apply` strips the block; `--json` (no `--apply`) reports it and writes nothing.
-2. Idempotent — a second migrate is a no-op on this key.
-3. A repo with no `test_tracking` is unaffected, and a repo with no `project-state.yaml` does not
+7. `migrate-plugin --apply` strips the block; `--json` (no `--apply`) reports it and writes nothing.
+8. Idempotent — a second migrate is a no-op on this key.
+9. A repo with no `test_tracking` is unaffected, and a repo with no `project-state.yaml` does not
    error.
-4. Detection lives in `lifecycle_repair` only — a test asserts `migrate_plugin` does not carry its
-   own copy of the key name or the span logic.
-5. Both SKILL.md files describe the removal; the doctor's Health Check #15 no longer claims the
-   residue is only the derived-view model.
+10. Detection lives in `lifecycle_repair` only — a test asserts `migrate_plugin` does not carry its
+    own copy of the key name or the span logic.
+11. Both SKILL.md files describe the removal; the doctor's Health Check #15 no longer claims the
+    residue is only the derived-view model.
+
+**Verified against reality, not only fixtures:** the repair runs over a copy of every real product
+state file in the fleet and the invariants hold on each — block gone, `build_state:` and
+`source_root:` intact, idempotent on a second pass.
 
 **Done when**
 
 1. Acceptance criteria met and tests pass
 2. `/prawduct:critic` — resolve blocking findings
 
-### Chunk 03: The tripwire that keeps it gone, and the rule stated where it bites
+### Chunk 02: The tripwire that keeps it gone, and the rule stated where it bites
+
+- **Type:** cumulative-final
 
 **Deliverables**
 
@@ -197,6 +221,12 @@ delete and nothing but a tripwire will keep the surface clean."*
 - Tests pinning that the three other checks stay markdown-only now that a YAML path can reach the
   record list — `_check_learnings_shape` guards on `learnings.md`, `_check_governed_by` runs only
   over `_plans_to_check` (`.md$`), `_check_chunk_refs` never reads the record list.
+- **Carried from Chunk 01's review (R-4), to ride this chunk's commit rather than buy a round of
+  its own:** one migrate test over a repo whose `.prawduct/project-state.yaml` has been unlinked,
+  closing acceptance criterion 9's second half. The path is already safe — `strip_state_file` and
+  `retired_state_keys` each check `is_file()` *and* catch `OSError` — so this closes a verification
+  gap, not a defect. It is written here because a deferral to a later *round* buys a round, while
+  riding a commit already being made buys none; unwritten, it would be a drop.
 - `plugin/methodology/building.md`: one clause at the **Verify** step (line ~91, beside
   `test-evidence record`), stating that test evidence is pass/fail per tree in the evidence store
   and a count is never a governance record. The generic rule already at line 87 — *"a count nothing
