@@ -145,25 +145,31 @@ class TestBranchScopedPlanBriefing:
         findings = briefing.staleness_scan(tmp_path)
         assert not any("not a branch in this repo" in f for f in findings), findings
 
-    def test_two_claimants_are_reported_and_the_briefing_survives(self, tmp_path: Path):
+    def test_two_claimants_resolve_and_the_briefing_names_both(self, tmp_path: Path):
+        # Two plans on one branch is an ordinary arrangement, so the briefing's
+        # job is attribution, not alarm: it must name the plan that governs, why
+        # it won, and the one it passed over. A session that learns which plan
+        # governed by watching a gate grade the wrong one was told too late.
         _init_git_repo(tmp_path, branch="work")
         prawduct = _prawduct(tmp_path)
         (prawduct / "project-state.yaml").write_text("")
-        for name in ("a", "b"):
+        for name, boxes in (("a", "- [x] Chunk 01: shipped"), ("b", "- [ ] Chunk 01: open")):
             _plan(
                 prawduct,
                 f"build-plan-{name}.md",
                 "---\nartifact: build-plan\nbranch: work\n---\n\n"
-                "## Status\n\n- [ ] Chunk 01: a chunk\n",
+                f"## Status\n\n{boxes}\n",
             )
         findings = briefing.staleness_scan(tmp_path)
-        assert any("live build plans declare" in f for f in findings), findings
-        # And the briefing itself is still produced, carrying the refusal — a
-        # session that only learns of this by watching a gate fail has been
-        # told too late.
         text = briefing.assemble_session_briefing(tmp_path, findings)
         assert "== SESSION BRIEFING ==" in text
-        assert "build-plan resolution REFUSES" in text
+        assert "2 live plans declare `branch: work`" in text
+        assert "build-plan-b.md" in text          # the one with chunks left
+        assert "build-plan-a.md" in text          # named as passed over
+        assert "chunks left" in text              # and why
+        # Attribution belongs in ONE place: repeating it as a staleness finding
+        # teaches the reader to skip both copies.
+        assert not any("live plans declare" in f for f in findings), findings
 
     def test_the_dangling_pointer_warning_defers_to_a_branch_claim(self, tmp_path: Path):
         # A plan claiming this branch outranks the scalar, so a stale pointer

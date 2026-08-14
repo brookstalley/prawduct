@@ -22,6 +22,11 @@ scope: pantry-v1
 # branches stop fighting over one line, and archiving the plan (or deleting the
 # merged branch) ends the claim with nothing to un-point. Leave it out and the
 # scalar keeps working exactly as before.
+#
+# Several plans MAY declare one branch — a release branch carrying two workstreams
+# is ordinary, not an error. Governance resolves the claimant with chunks left,
+# falling back to whichever one `active_build_plan` names, and the session briefing
+# says which plan it chose and what else claimed the branch.
 # branch: feature/pantry-v1
 depends_on:
   - artifact: product-brief

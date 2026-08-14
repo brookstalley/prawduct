@@ -45,7 +45,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
-from . import gitstate, plan_index, waivers
+from . import core, gitstate, plan_index, waivers
 from .core import read_str_yaml_key, resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
@@ -604,21 +604,19 @@ def _scope_of_branch_claiming_plan(
     no scope has no scope to return, and inventing one would tag a change-log
     entry and a ledger row with a string no plan declares.
 
-    Two plans claiming one branch resolves to ``None`` rather than a pick.
-    :func:`core.resolve_build_plan_path` is where that refusal is raised; making
-    a scope *inference* fail closed too would block advice on a condition the
-    authority path already blocks on, so this simply declines and lets the
-    caller's own routes answer.
+    **Several plans may claim one branch, and this asks the same resolver the
+    gates ask** (``core.resolve_branch_claim``) rather than declining on the
+    second claimant. Declining looked conservative and was not: the ledger scope
+    a dispatch records would then name nothing while every gate graded a plan,
+    so the review and the record it leaves would describe different work — the
+    precise failure that made ``critic-begin`` write scope ``(none)`` before
+    branch declarations existed.
     """
-    matched = [
-        path
-        for path, claimed in plan_index.branch_claiming_plans(prawduct_dir / "artifacts")
-        if claimed == branch
-    ]
-    if len(matched) != 1:
+    claim = core.resolve_branch_claim(prawduct_dir)
+    if claim is None or claim.branch != branch:
         return None
     for scope, plan_path in known.items():
-        if plan_path == matched[0]:
+        if plan_path == claim.chosen:
             return scope
     return None
 

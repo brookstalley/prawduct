@@ -45,9 +45,11 @@ from .backlog import legacy as backlog
 from .coverage import _resolve_base_branch
 from .core import (
     BUILD_PLAN_POINTER_KEY,
-    AmbiguousPlanBranchError,
     atomic_write_text,
+    describe_branch_claim,
+    pointer_plan_path,
     read_str_yaml_key,
+    resolve_branch_claim,
     resolve_build_plan_path,
 )
 
@@ -235,15 +237,11 @@ def staleness_scan(project_dir: Path) -> list[str]:
 
     # 4. Stale build plan detection — check Status section first, fall back to WIP
     #
-    # Resolution can now REFUSE (two live plans claiming this branch). The scan
-    # is advice, so it reports the refusal as a finding and skips the sections
-    # that need a plan, rather than taking the gates' fail-closed exit.
-    build_plan_path: Path | None
-    try:
-        build_plan_path = resolve_build_plan_path(prawduct_dir)
-    except AmbiguousPlanBranchError as exc:
-        findings.append(f"build plan: {exc}")
-        build_plan_path = None
+    # Several live plans may claim this branch; resolution picks one and says so
+    # in `assemble_session_briefing`. Reported there and not here because it is
+    # context for the whole session rather than a staleness finding, and saying
+    # it twice in one briefing is how a reader learns to skip both.
+    build_plan_path: Path | None = resolve_build_plan_path(prawduct_dir)
 
     # 4b. A plan with work left, claiming a branch this repo does not have —
     # advice, fails soft.
@@ -529,13 +527,7 @@ def _get_active_work(project_dir: Path) -> dict[str, str]:
     "all chunks complete", while this function said "in progress" from the same
     bytes. Both now ask ``buildplan_refs.build_plan_is_complete``.
     """
-    try:
-        work = buildplan_refs._parse_build_plan_status(project_dir)
-    except AmbiguousPlanBranchError:
-        # The briefing is advice and must still be produced: the refusal itself
-        # is reported by the guard in `assemble_session_briefing`, which runs
-        # AFTER this and would never be reached if this re-raised.
-        return _parse_wip(gitstate.get_prawduct_dir(project_dir))
+    work = buildplan_refs._parse_build_plan_status(project_dir)
     if work.get("description") and not buildplan_refs.build_plan_is_complete(work):
         return work
     return _parse_wip(gitstate.get_prawduct_dir(project_dir))
@@ -675,14 +667,26 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     # pointer misleads nobody and warning about it would train the reader to
     # scroll past a ⚠ that is usually wrong.
     try:
-        # Resolved unconditionally, so the refusal below is reported even in a
-        # repo that sets no pointer at all.
+        # Resolved unconditionally, so the contested-branch line below is
+        # reported even in a repo that sets no pointer at all.
+        claim = resolve_branch_claim(prawduct_dir)
+        if claim is not None and claim.contested:
+            # Said once, at the top, rather than left for the operator to infer
+            # from a gate grading a plan they did not expect. Several plans on
+            # one branch is ordinary; governing by one of them without saying
+            # which is what is not.
+            lines.append(
+                f"⚠ {describe_branch_claim(claim, prawduct_dir / 'artifacts')}"
+            )
         pointed = resolve_build_plan_path(prawduct_dir)
+        # The raw scalar for the message, `pointer_plan_path` for the path it
+        # means: a second local spelling of the `.prawduct/` prefix rule is how
+        # this comparison comes to be about a different file than resolution is.
         pointer = read_str_yaml_key(
             prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY
         )
-        if pointer:
-            pointer_target = prawduct_dir / pointer.removeprefix(".prawduct/")
+        pointer_target = pointer_plan_path(prawduct_dir)
+        if pointer and pointer_target is not None:
             if pointed == pointer_target and not pointed.is_file():
                 rel = pointed.relative_to(prawduct_dir).as_posix()
                 lines.append(
@@ -692,10 +696,6 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                     "Fix the pointer in project-state.yaml — it is .prawduct/-relative "
                     "(e.g. artifacts/build-plan-<scope>.md) — or unset it."
                 )
-    except AmbiguousPlanBranchError as exc:
-        # Every gate this session will refuse for this reason; say it once, at
-        # the top, rather than letting the operator meet it as a failed command.
-        lines.append(f"⚠ build-plan resolution REFUSES: {exc}")
     except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         pass
 

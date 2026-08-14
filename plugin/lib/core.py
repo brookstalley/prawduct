@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 # The plugin root: ``<root>/lib/core.py`` → ``<root>``. The previous
 # ``parent.parent.parent`` was a byte-parity holdover from the file-sync
@@ -179,17 +180,29 @@ BUILD_PLAN_POINTER_KEY = "active_build_plan"
 DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
 
 
-class AmbiguousPlanBranchError(RuntimeError):
-    """Two or more live build plans declare the same frontmatter ``branch:``.
+class BranchClaim(NamedTuple):
+    """Which plan governs the checked-out branch, and what else claimed it.
 
-    Authority fails closed. Either plan could be the one its author meant, so
-    governing the session by whichever sorted first would run every gate against
-    a plan nobody pointed at — the failure class where controls keep passing
-    while reading the wrong document. The resolver refuses instead, and every
-    caller inherits the refusal: the gates by propagating it (a refused gate is
-    a blocked gate), the session briefing by reporting it and carrying on
-    (advice fails soft).
+    ``chosen`` is the plan; ``claimants`` is every live plan that declared this
+    branch, ``chosen`` included, in path order. ``basis`` names the precedence
+    step that decided it (see :func:`resolve_branch_claim`), so a surface can
+    say *why* this plan and not the others.
+
+    The pair exists because attribution is what a multi-claim branch is owed.
+    Returning the winner alone would make governing by one of three plans look
+    exactly like governing by the only one — which is the failure mode the
+    branch declaration was supposed to remove, not introduce.
     """
+
+    chosen: Path
+    claimants: "list[Path]"
+    branch: str
+    basis: str
+
+    @property
+    def contested(self) -> bool:
+        """Whether more than one live plan claimed this branch."""
+        return len(self.claimants) > 1
 
 
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:
@@ -275,20 +288,61 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
     return False
 
 
-def _branch_claimed_plan(prawduct_dir: Path) -> Path | None:
-    """The live plan whose ``branch:`` names the checked-out branch, or ``None``.
+def pointer_plan_path(prawduct_dir: Path) -> Path | None:
+    """The ``active_build_plan:`` scalar as a path, or ``None`` when unset.
 
-    Falls through to ``None`` — and therefore to the pointer — on a detached
-    HEAD, outside a work tree, and when no live plan claims this branch.
+    One reader, because two would drift on the prefix rule below and the
+    tie-break would then resolve a different file than the fallback does — the
+    two places a repo's pointer is read must agree about what it points AT.
+
+    The pointer is ``.prawduct/``-relative, but the natural repo-relative
+    spelling (``.prawduct/artifacts/x-plan.md``) is accepted by stripping the
+    prefix — that spelling once shipped and silently disabled the gates for a
+    work cycle (STH-5P2W).
+    """
+    pointer = read_str_yaml_key(prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY)
+    if pointer and pointer.startswith(".prawduct/"):
+        pointer = pointer[len(".prawduct/"):]
+    return prawduct_dir / pointer if pointer else None
+
+
+def resolve_branch_claim(prawduct_dir: Path) -> BranchClaim | None:
+    """Which live plan governs the checked-out branch, or ``None`` for no claim.
+
+    **Several live plans may claim one branch, and that is an ordinary
+    arrangement — not an error.** A `release/2-0` branch can carry a telemetry
+    plan and a documentation plan; one consumer repo carries three plans on a
+    single fix branch. An earlier reading treated the second claimant as an
+    authority failure and refused to resolve at all, which blocked the very
+    workflow the declaration was added to serve. Refusing is the right posture
+    when a control cannot know the answer; it is the wrong posture when the
+    answer is "all of them, and here is the one being worked."
+
+    Precedence over the claimants, and every step is stated because the choice
+    is reported (``basis``):
+
+    1. **A sole claimant wins outright** — no further test. Deliberately ahead
+       of step 2: the unfinished-chunk signal goes false the moment the last box
+       is ticked, which happens *during* the closing PR, and a plan that stopped
+       governing between its final review and its merge would take the gates
+       with it.
+    2. **The one claimant with unfinished chunks** — of several plans on a
+       branch, the one still holding open work is the one governance is about.
+    3. **The ``active_build_plan`` pointer**, when it names a claimant. This is
+       what the scalar is *for* once branches carry their own plans: the
+       operator's explicit choice, used to break a tie within a branch rather
+       than to name one plan for a whole product.
+    4. **Path order**, as the last resort. Arbitrary, so it is never silent —
+       ``basis`` says ``order`` and the caller names the plans it passed over.
+
+    ``None`` — and therefore the pointer — on a detached HEAD, outside a work
+    tree, and when no live plan claims this branch.
 
     **The plan scan runs before the branch probe deliberately.** A repo where no
     plan has opted in gets its answer from a walk it was already paying for on
     every session boundary, and never spawns git; ordering it the other way
     would add a subprocess to every resolve in every repo to answer a question
     that is almost always "nobody claims anything."
-
-    Raises :class:`AmbiguousPlanBranchError` when more than one live plan claims
-    the branch.
     """
     from . import plan_index  # noqa: PLC0415 — lazy: core's top level stays stdlib-only
 
@@ -302,17 +356,65 @@ def _branch_claimed_plan(prawduct_dir: Path) -> Path | None:
     branch = gitstate.current_branch(prawduct_dir.parent)
     if not branch:
         return None
-    matched = [path for path, claimed in claims if claimed == branch]
-    if len(matched) > 1:
-        named = ", ".join(plan_index.display_path(p, artifacts_dir) for p in matched)
-        raise AmbiguousPlanBranchError(
-            f"{len(matched)} live build plans declare `branch: {branch}` ({named}) — "
-            "nothing can tell which one governs, so plan resolution refuses rather "
-            "than picking one. Keep the `branch:` frontmatter on the plan that "
-            "governs this branch and remove it from the other(s), or archive the "
-            "one that is finished (`prawduct-hook archive-plan <path> --state …`)."
-        )
-    return matched[0] if matched else None
+    matched = sorted(path for path, claimed in claims if claimed == branch)
+    if not matched:
+        return None
+    if len(matched) == 1:
+        return BranchClaim(matched[0], matched, branch, "sole")
+
+    # Only the contested path pays for this import: `buildplan_refs` pulls in
+    # the Status parser and its own dependency graph, and the overwhelmingly
+    # common shape — nobody claims, or one plan claims — is answered above.
+    from . import buildplan_refs  # noqa: PLC0415 — lazy, and only when contested
+
+    unfinished = [p for p in matched if buildplan_refs._has_unfinished_chunk(p)]
+    if len(unfinished) == 1:
+        return BranchClaim(unfinished[0], matched, branch, "unfinished")
+    # An empty `unfinished` means every claimant reads finished, which is the
+    # post-tick window rather than an absence of candidates — fall back to the
+    # full claimant set rather than to the pointer, so a branch whose plans are
+    # all ticked still resolves among ITS plans.
+    pool = unfinished or matched
+    pointed = pointer_plan_path(prawduct_dir)
+    if pointed is not None and pointed in pool:
+        return BranchClaim(pointed, matched, branch, "pointer")
+    return BranchClaim(pool[0], matched, branch, "order")
+
+
+def describe_branch_claim(claim: BranchClaim, artifacts_dir: Path) -> str:
+    """One sentence naming the governing plan and what else claimed the branch.
+
+    Rendered by every surface that reports which plan is in force, so the
+    wording is written once: a reader who meets it in the briefing and again in
+    a gate is reading the same sentence about the same decision, and a change to
+    how the choice is explained cannot land on one surface only.
+
+    Empty for an uncontested claim — there is nothing to disambiguate, and a
+    sentence printed on every ordinary session is a sentence nobody reads by the
+    time it matters.
+    """
+    from . import plan_index  # noqa: PLC0415 — lazy: core's top level stays stdlib-only
+
+    if not claim.contested:
+        return ""
+    others = [
+        plan_index.display_path(p, artifacts_dir)
+        for p in claim.claimants
+        if p != claim.chosen
+    ]
+    why = {
+        "unfinished": "it is the only one with chunks left",
+        "pointer": "`active_build_plan` names it",
+        "order": (
+            "nothing distinguishes them — no single plan has chunks left and the "
+            "pointer names none of them — so this is path order, not a judgement"
+        ),
+    }.get(claim.basis, "it claims this branch")
+    return (
+        f"{len(claim.claimants)} live plans declare `branch: {claim.branch}` — "
+        f"governing by {plan_index.display_path(claim.chosen, artifacts_dir)} "
+        f"because {why}. Also claiming: {', '.join(others)}."
+    )
 
 
 def resolve_build_plan_path(prawduct_dir: Path) -> Path:
@@ -321,12 +423,14 @@ def resolve_build_plan_path(prawduct_dir: Path) -> Path:
     Precedence:
 
     1. **The live plan that claims this branch.** A build plan may declare
-       ``branch: <name>`` in its frontmatter; the non-archived plan under
-       ``artifacts/`` whose declaration matches the checked-out branch is the
-       active plan. Which branch a plan governs is a fact about the plan, so the
-       plan is where it belongs — held in a product-level scalar instead, two
-       concurrent branches conflict on one line every time, and after the merge
-       one of the two plans is invisible to every pointer-resolved surface.
+       ``branch: <name>`` in its frontmatter; a non-archived plan under
+       ``artifacts/`` whose declaration matches the checked-out branch governs
+       it. Which branch a plan governs is a fact about the plan, so the plan is
+       where it belongs — held in a product-level scalar instead, two concurrent
+       branches conflict on one line every time, and after the merge one of the
+       two plans is invisible to every pointer-resolved surface. Several plans
+       may claim one branch; :func:`resolve_branch_claim` states which wins and
+       why, and callers that report the active plan report that too.
     2. **The ``active_build_plan:`` pointer** in ``project-state.yaml`` (a path
        relative to the ``.prawduct/`` dir), letting a project name its plan by
        scope (``artifacts/v1.6.0-foo-plan.md``).
@@ -336,23 +440,12 @@ def resolve_build_plan_path(prawduct_dir: Path) -> Path:
     did before step 1 existed — opting in is per plan, and nothing migrates.
 
     The returned path may not exist; callers treat a missing plan as "no active
-    build plan." Two live plans claiming one branch raise
-    :class:`AmbiguousPlanBranchError` rather than resolving.
-
-    The pointer is ``.prawduct/``-relative, but the natural repo-relative
-    spelling (``.prawduct/artifacts/x-plan.md``) is accepted by stripping the
-    prefix — that spelling once shipped and silently disabled the gates for a
-    work cycle (STH-5P2W).
+    build plan."
     """
-    claimed = _branch_claimed_plan(prawduct_dir)
-    if claimed is not None:
-        return claimed
-    pointer = read_str_yaml_key(prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY)
-    if pointer and pointer.startswith(".prawduct/"):
-        pointer = pointer[len(".prawduct/"):]
-    if pointer:
-        return prawduct_dir / pointer
-    return prawduct_dir / DEFAULT_BUILD_PLAN_REL
+    claim = resolve_branch_claim(prawduct_dir)
+    if claim is not None:
+        return claim.chosen
+    return pointer_plan_path(prawduct_dir) or prawduct_dir / DEFAULT_BUILD_PLAN_REL
 
 
 def extract_block(content: str) -> tuple[str | None, str, str]:

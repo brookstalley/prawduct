@@ -228,10 +228,10 @@ def branch_claiming_plans(artifacts_dir: Path) -> list[tuple[Path, str]]:
     archived plan's ``branch:`` claims nothing — moving a plan under ``archive/``
     ends its claim, which is what makes archiving the whole retirement step.
 
-    Returns EVERY claim rather than resolving one, because the caller that
-    resolves also has to detect two plans claiming the same branch, and a
-    function that returned the first match could not tell it apart from the only
-    match.
+    Returns EVERY claim rather than resolving one. Several plans may claim one
+    branch, and the caller both chooses among them and names the ones it passed
+    over — a function that returned the first match could tell it apart from
+    neither the only match nor the rest.
     """
     if not artifacts_dir.is_dir():
         return []

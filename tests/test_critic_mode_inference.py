@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import buildplan_refs, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
+from lib import buildplan_refs, core, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
 
 
 # ---------------------------------------------------------------------------
@@ -1134,10 +1134,13 @@ class TestRule4ChunkDefault:
         prawduct = tmp_path / ".prawduct"
         assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "done"
 
-    def test_two_plans_claiming_one_branch_infer_no_scope(self, tmp_path: Path):
-        """Advice declines rather than picking; the resolver is where the refusal
-        is raised, and a scope inference that failed closed would block advice on
-        a condition authority already blocks on."""
+    def test_two_plans_claiming_one_branch_infer_the_resolved_one(self, tmp_path: Path):
+        """Inference asks the same resolver the gates ask.
+
+        Declining on the second claimant looked conservative and was not: the
+        gates would grade a plan while the dispatch recorded no scope at all, so
+        the review and its ledger row would describe different work.
+        """
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
@@ -1145,13 +1148,16 @@ class TestRule4ChunkDefault:
 
         artifacts = tmp_path / ".prawduct" / "artifacts"
         artifacts.mkdir(parents=True, exist_ok=True)
-        for name in ("a", "b"):
+        for name, boxes in (("a", "- [x] Chunk 01: done"), ("b", "- [ ] Chunk 01: current")):
             (artifacts / f"build-plan-{name}.md").write_text(
                 f"---\nartifact: build-plan\nscope: {name}\nbranch: feat/contested\n---\n\n"
-                "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+                f"# Plan\n\n## Status\n\n{boxes}\n"
             )
         prawduct = tmp_path / ".prawduct"
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+        # `b` is the claimant with chunks left, so it is what resolution picks —
+        # and the scope must name that same plan, not the other one and not None.
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "b"
+        assert core.resolve_build_plan_path(prawduct).name == "build-plan-b.md"
 
     def test_a_declared_plan_with_no_scope_infers_nothing(self, tmp_path: Path):
         """A branch claim is not a scope. Inventing one would tag a change-log

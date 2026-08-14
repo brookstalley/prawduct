@@ -3,6 +3,47 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-13: several plans may claim one branch
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+Branch-scoped plan resolution shipped with a fail-closed refusal: a second live plan declaring the
+same `branch:` stopped resolution entirely, on the reasoning that governing by the wrong plan looks
+exactly like governing correctly. The reasoning was right and the proposition it guarded was false.
+**A branch can legitimately carry several plans** — a `release/2-0` with a telemetry plan and a
+documentation plan; a consumer repo carries three on one fix branch today. Refusing is the correct
+posture when a control cannot know the answer, and the wrong one when the answer is "all of them,
+and here is the one being worked."
+
+Resolution now picks among the claimants by a stated precedence — sole claimant, then the one with
+chunks left, then the plan `active_build_plan` names, then path order — and **names its choice and
+what it passed over** in the session briefing. That is what answers the original concern: a choice
+stops looking like the only possibility the moment the surface says what else claimed the branch.
+The scalar gains a job rather than losing one — it is now the operator's tie-break *within* a
+branch, instead of one product-wide singleton.
+
+The sole-claimant step sits ahead of the chunks-left step deliberately: the unfinished signal goes
+false the moment the last box is ticked, which happens *during* the closing PR, and a plan that
+stopped governing between its final review and its merge would take the gates with it.
+
+**Found by reading the feature against a consumer, not against its own tests.** That repo's plans
+already carried `branch:` in frontmatter as human documentation, written months before the key had
+meaning — three of them naming one branch, one of them holding prose (`feature/x (off develop)`)
+that is not a branch name at all. The key was declared collision-free on a grep of *this* repo and
+the shipped templates; the population it ships to was never asked. Its shapes are now a test.
+
+**Attribution has one home: the session briefing.** The gates already name the plan they graded
+(`record-lint`'s `plan_graded`), so what is missing at a gate is not the choice but the context for
+it — which is session-scoped, arrives before any gate runs, and would be a fourth copy of one
+sentence if every gate repeated it.
+
+`AmbiguousPlanBranchError`, the hook's `main()` classifier and the `cmd_stop` probe that rendered
+the refusal as the harness block code are **deleted** rather than left as handling for a condition
+nothing can produce (Principle 25). Their tests are redirected, not dropped: each now pins that a
+contested branch reaches the same gates an uncontested one does. `_scope_of_branch_claiming_plan`
+stopped declining on the second claimant too — it asks the same resolver, so a dispatch's ledger
+scope names the plan the gates actually graded.
+
 ## 2026-08-13: the change log recommends its own merge driver
 
 <!-- prawduct: type=feature | scope=tactical-efficiency -->
