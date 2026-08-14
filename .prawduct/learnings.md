@@ -26,6 +26,9 @@ never by dropping them.
 ## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
+## When a criterion, plan or rule DESCRIBES an artifact, open the artifact before building to the description — it was written from a framing and inherits that framing's blind spot. "Does not touch a block carrying other keys", authored before anyone read the block, would have left 7 of 8 repos broken. Tell: you can satisfy it fully without ever reading the thing it names — [learnings-detail.md]
+<!-- anchor: build-from-the-thing-not-its-description -->
+
 ## When you retire a MECHANISM, sort its rules into three piles before deleting any — died / rewritten / **INVERTED**. "The tool is gone" reads like a licence to drop the lot, and the lesson usually outlived the tool. The third pile is the one nobody looks for and the only one that leaves a harmful rule standing. Tell: the rule is a prohibition whose reason was the tool — [learnings-detail.md]
 <!-- anchor: the-derived-views-retirement -->
 

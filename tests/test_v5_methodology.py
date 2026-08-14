@@ -631,6 +631,21 @@ class TestBuildingMethodology:
         # positively, and better). Recorded because a self-funded change is the
         # one most likely to go unlogged -- the ledger is for what was spent
         # AND what paid, not only for movements in the total.
+        # The suite-total rule (2026-08-14) landed NET ZERO — the file measures
+        # 4806 before and after, so LAST_MEASURED_TOKENS did not move. The
+        # addition is one clause on the Same-decay paragraph, which already owns
+        # "a count nothing reads is not worth writing"; it names the instance
+        # that outlived the generic rule, since ten governed products maintained
+        # a hand-kept test count for a year under it. **Its first draft was a
+        # separate bullet on the Verify step at +180, and it also tripped
+        # `test_no_suite_total_claims`' count-slot guard by quoting the shape it
+        # was forbidding** — both facts recorded because the rewrite that fixed
+        # the second is what made the first affordable. Paid for by four trims,
+        # each pure restatement or a second example of a point already made: the
+        # comments rule's second inline example, the Confidence Check's
+        # restatement of what its own `discovery.md` pointer implies,
+        # consolidate's parenthetical about the SubagentStop trigger, and two
+        # words apiece in the research-presentation and cheap-check lines.
         tokens = estimate_tokens(self.content)
         assert tokens < 4810, f"building.md is ~{tokens} tokens, should be <4810"
 

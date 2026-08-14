@@ -206,7 +206,14 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """
     try:
         content = state_path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # A file that is not decodable text is *unreadable*, which is what this
+        # promises to fail soft on. `UnicodeDecodeError` is a `ValueError`, so
+        # catching only `OSError` let it escape — and every caller reads this
+        # through a guard shaped for None, so the raise surfaced far from here.
+        # `already_migrated` is the sharp case: it calls this first, so an
+        # undecodable state file aborted the cutover before any of the later
+        # steps could reach their own decode guards.
         return None
     needle = f"{key}:"
     for raw in content.splitlines():
@@ -261,7 +268,10 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
         return False
     try:
         content = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # Same hole as `read_str_yaml_key`: undecodable is unreadable, and this
+        # promises to fail soft on unreadable. Fixed in both, because the two
+        # are documented as siblings sharing one idiom.
         return False
     needle = f"{key}:"
     for raw in content.splitlines():

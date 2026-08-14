@@ -3,6 +3,127 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-14: the test count ten products maintain and nothing reads
+
+<!-- prawduct: type=fix | scope=test-tracking-treadmill -->
+
+`build_state.test_tracking` is a hand-maintained copy of a fact the evidence store already holds
+per tree. Nothing in the runtime reads it, no template scaffolds it, and prawduct's own state file
+has never carried it. It is nonetheless live in ten governed products, because the field is *in*
+the state file — and the state file is a product's source of truth, so Living Documentation obliges
+every agent that meets a stale number there to correct it. Each correction is a commit, each commit
+extends HEAD, and that is how a record defect buys a review round; the mechanism is the one
+`lib/record_lint.py` already documents, and one of the four examples it names is a test-count claim
+corrected three times.
+
+The cost is visible rather than theoretical. In the worst repo the field's provenance comment had
+grown to a single YAML line of ~52,000 characters — about a third of the file — nesting its own
+correction history, including a note recording that three successive edits had used the wrong basis.
+Running the repair over a copy of that file removed roughly 80 KB (measured 2026-08-14).
+
+**Those figures are a dated snapshot and are deliberately not stated as exact, which this entry owes
+an explanation for, because the exactness is what the entry is about.** The first draft recorded a
+precise before/after pair. It was true when taken and had stopped reproducing within ninety minutes
+— that repo's own session edited the file mid-measurement, trimming ~52 KB from inside the very
+block under discussion. A second party re-measuring found different numbers and correctly refused to
+write the pair it had been handed. So the *fact* here is what the repair does, not what one file
+weighed on one afternoon; re-derive the current figure rather than trusting this sentence:
+
+```
+python3 - ../SOME-PRODUCT/.prawduct/project-state.yaml <<'PY'
+import sys, shutil, tempfile; from pathlib import Path
+sys.path.insert(0, 'plugin'); from lib import lifecycle_repair as lr
+tmp = Path(tempfile.mkdtemp()); (tmp/'.prawduct'/'artifacts').mkdir(parents=True)
+shutil.copy(sys.argv[1], tmp/'.prawduct'/'project-state.yaml')
+sp = tmp/'.prawduct'/'project-state.yaml'; before = sp.stat().st_size
+lr.apply_repair(tmp, lr.plan_repair(tmp)); print(before, '->', sp.stat().st_size)
+PY
+```
+
+(It copies first and never touches the product's own file. Run from this repo's
+root, since it imports the plugin's `lib` from a relative path.)
+
+A durable record carrying a live measurement is the same defect as the field this change removes,
+one level up — which is why the correction is a re-derivation command and not a fresher number.
+
+**The block goes whole, which is a decision the survey forced.** Measured across every governed
+product: `test_tracking` sits under `build_state` in 10 of 10 that carry it, and the field the
+backlog item was named for is the *sole* member in exactly one. The other seven carry
+`assertion_count`, `test_files`, and a `history` of per-chunk `tests_added` entries — the same
+bookkeeping, so removing only `test_count` would fully clean one product and leave the treadmill
+running in seven, guaranteeing a second pass. Nothing in `lib/` or `bin/` reads `build_state` or any
+member; `source_root`, which is read in ten places, is a *sibling* under `build_state` and is never
+touched, so the parent is never left empty. This supersedes the earlier acceptance criterion on
+**#633** — "does not touch a `test_tracking` block carrying other keys" — which was written from the
+ruling's framing before the block was measured.
+
+**Two entry points, one definition.** `lifecycle-repair` converges repos that onboarded before the
+removal existed; the plugin cutover removes the same keys on the way through. The division is by
+*when*, not by *what* — `migrate_plugin` calls `lifecycle_repair` and a test asserts it holds no
+live string naming any retired key, so the two can never disagree about what one is. The removal is
+nested where the module's existing two are column-0, so it needed an enclosing-parent predicate and
+a depth-aware span; everything downstream — ordering, preview, the atomic write, the line-ending
+contract — is shared.
+
+**A test that pinned a misclassification was corrected, not weakened.** The cutover suite asserted
+that `views_enabled` survives migration and called it a "pre-existing product key". It is not one:
+it is retired *framework* residue, which is the entire reason `lifecycle_repair` exists. That
+assertion obliged the one act that deletes every other framework file to carry framework residue
+forward — which is how these keys reached the plugin era in ten products. The contract now reads on
+the axis that matters: product keys survive byte-for-byte, retired framework keys go, the marker is
+appended.
+
+Prawduct has removed this field once before, through `strip_test_tracking()` in the file-sync
+engine, retired in M4/v2.0.3 — and it came back. So the deletion ships with a tripwire rather than
+alone; that half is the same scope's second chunk.
+
+**The tripwire: record-lint now sees the state file.** `is_record()` classified only `.md`, so the
+suite-total check swept the plugin's markdown clean while the claim that actually survived sat in
+YAML. It now also accepts YAML **directly under a `.prawduct/` directory** — scoped to governance
+state, never to YAML generally, because a product's CI config and lockfiles are its data and grading
+them would put this control in the wrong business. **The pattern is unchanged**: it already matched
+the worst real line many times over, so the fix was the file-type gate alone. The three
+markdown-specific checks are unaffected and now pinned that way — each already selected its own
+inputs by filename or by build-plan name rather than trusting the record set to be markdown.
+
+`tests/test_record_lint.py` asserted `.prawduct/project-state.yaml` was *not* a record. That
+assertion is inverted here, deliberately and on the owner's decision: the pinned behaviour is what
+was re-decided, not an assertion relaxed to let code pass.
+
+**The check found two false positives in this repo's own prose within a minute of existing, and
+both were the prose's fault.** The build plan quoted a matching fragment as evidence, and a
+quotation of a defect is indistinguishable from the defect to anything that scans text; its
+acceptance criteria wrote backticked paths that `chunk-ref-missing` correctly read as declared
+deliverables. Both were reworded — a record should carry the command that re-derives a claim, not a
+copy of it. Neither check was weakened.
+
+**And the methodology now names the instance.** `building.md` already said a count nothing reads is
+not worth writing; it did not say that a suite total is the one that keeps coming back, which is why
+the instance outlived the rule. One clause **on that same paragraph** — not on the Verify step,
+where it was first drafted as a separate bullet at +180 tokens that broke the file's budget and
+tripped the count-slot guard by quoting the shape it was forbidding. The rewrite satisfying both
+put it where the concept already lives, and landed **net zero** against the budget, paid for by
+four trims of pure restatement.
+
+**The cutover's line-ending and decode contracts were fixed in the same scope**, both surfaced by
+the cumulative review and both older than this change. `record_distribution` read and rewrote the
+state file with universal newlines, so appending one key to a CRLF product file rewrote every line
+in it — and it runs immediately after the removal that had just preserved them. And
+`core.read_str_yaml_key`/`read_bool_yaml_key` document themselves as failing soft on an unreadable
+file while catching only `OSError`; `UnicodeDecodeError` is a `ValueError`, so an undecodable state
+file aborted the whole cutover before any later step reached its own guard — including guards a
+recorded disposition in this scope's build plan rested on. All three now fail soft, and the sum of
+those soft failures is reported — for **both** failure modes — rather than left to look like
+"nothing needed".
+
+That last qualifier was earned the hard way, and it is the entry worth remembering. The guard
+written to report the silent half-cutover *first covered only the decode error*, so a
+permission-locked state file still produced exactly the silence it existed to prevent: the guard
+had reproduced, one level up, the same too-narrow-catch defect it was reporting. The verify pass
+caught it. Both modes are now distinguished in the message, because they send an operator to
+different fixes — re-encode the file, or fix its permissions — and the dry run says the same thing
+the apply will do, rather than promising an edit the apply declines.
+
 ## 2026-08-13: the change log recommends its own merge driver
 
 <!-- prawduct: type=feature | scope=tactical-efficiency -->

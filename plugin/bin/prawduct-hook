@@ -4944,21 +4944,31 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
             # it as converged is the one wrong answer available.
             print("  no changes could be worked out, because some files could "
                   "not be read — this repo has NOT been checked")
-        # Grouped by kind so the reason is stated ONCE per group rather than
-        # repeated per file. On this repo the ungrouped form printed the same
-        # sentence fourteen times, which is how a blast radius meant to be read
-        # becomes a wall that is scrolled past — and the whole value of the
-        # preview is that the operator actually reads it before the one approval.
+        # Grouped so the reason is stated ONCE per group rather than repeated
+        # per file. On this repo the ungrouped form printed the same sentence
+        # fourteen times, which is how a blast radius meant to be read becomes a
+        # wall that is scrolled past — and the whole value of the preview is that
+        # the operator actually reads it before the one approval.
+        #
+        # Grouped by REASON within a kind, not by kind alone. `state-key` covers
+        # three retired keys with three different rationales, so keying on kind
+        # printed one of them above all three and silently attributed the others
+        # to a reason that is not theirs — worse than the repetition the grouping
+        # exists to prevent, because the operator cannot tell it happened.
         verb = "changed" if apply else "would change"
         for kind in ("state-key", "freeze-notes", "plan-comment"):
             group = [edit for edit in plan["edits"] if edit["kind"] == kind]
             if not group:
                 continue
+            by_reason: dict = {}
+            for edit in group:
+                by_reason.setdefault(edit["reason"], []).append(edit)
             # Every emitted line carries the plain-language reason and names no
             # internal identifier — `observability-strategy.md` § Direction.
-            print(f"  why: {group[0]['reason']}")
-            for edit in group:
-                print(f"    {verb} {edit['path']}: {edit['detail']}")
+            for reason, edits in by_reason.items():
+                print(f"  why: {reason}")
+                for edit in edits:
+                    print(f"    {verb} {edit['path']}: {edit['detail']}")
         if plan["edits"] and not apply:
             print("  Re-run with --apply to make these changes. One confirmation "
                   "covers all of them; they are ordinary file edits your version "
