@@ -3843,3 +3843,31 @@ written it without having watched the driver work.
 The general shape: when a mechanism's output is *advice*, the advice is the deliverable, and a test
 that only exercises the mechanism has tested the packaging. The recommendation needs a fixture where
 it is followed and one where it is not.
+
+---
+
+## A `try/except` around a producer that RETURNS its degraded states guards nothing
+
+The prior-dispositions block is built inside `try: ... except (OSError, ValueError, TypeError)`, and
+the comment above that guard states the requirement perfectly: *an empty block and an unbuilt one
+are different facts about the world, and a reviewer told "nothing was dispositioned here" when the
+join failed would be told something false.*
+
+The single producer of its input is `evidence.read_facts`, which never raises for either degraded
+case. It **returns** `{"status": "error", ...}` for an unreadable store, and it filters
+newer-plugin records into `schema_ahead` while returning `status: "ok"`. So the guard covered a
+path that does not occur and missed both that do — and the manifest carried an empty block, which
+the reviewer protocol reads as "nothing was dispositioned." Worst in exactly the case the control
+exists for: the answers were there and simply unreadable, so every accepted finding was available
+to be re-raised.
+
+What makes this hard to see is that everything *looks* right. The requirement is stated. A guard
+exists. Tests pass, because the tests build well-formed stores. And the same module already had the
+correct posture twice over — `record_disposition` and the census reader both test `status ==
+"error"` and `schema_ahead` explicitly and refuse loudly. The new sibling in the same file did
+neither, and nothing in the file's shape objected.
+
+The check is one question, asked before writing the guard: **what does this callee do on its bad
+paths?** If it returns them, an `except` is decoration; answer the returned states where the read
+already is. A tell that costs nothing to look for: your `except` clause names exception types the
+producer's own docstring never mentions raising.
