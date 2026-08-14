@@ -52,9 +52,10 @@ commits — all as **one `git revert`-able commit**.
 
 1. **Clean-tree check** — refuses to proceed on a dirty tree.
 2. **Dry run** — `prawduct-hook migrate-plugin --json` (no changes); presents the plan (files
-   removed, dirs removed, files edited, the gitignored marker). If the repo is already on the
-   plugin (`distribution: plugin` present), it reports a no-op and stops.
-3. **Confirm** — nothing is mutated until you approve.
+   removed, dirs removed, files edited, the retired state keys removed, the gitignored marker). If
+   the repo is already on the plugin (`distribution: plugin` present), it reports a no-op and stops.
+3. **Confirm** — nothing is mutated until you approve. The state keys are the part worth reading
+   twice: they are the only deletions that land *inside* a file your product hand-authored.
 4. **Apply** — `prawduct-hook migrate-plugin --apply`.
 5. **Commit** — one `chore(prawduct): migrate to plugin distribution` commit.
 

@@ -504,6 +504,35 @@ def test_an_undecodable_state_file_does_not_abort_the_cutover(tmp_path: Path):
         "skipped the state file silently"
     )
     assert state.read_bytes() == b"\xff\xfe not valid utf-8 \x80\x81", "wrote over it"
+    # And the PREVIEW says the same thing, rather than promising an edit the
+    # apply declines — the confirmation is given against the preview.
+    preview = run_migrate(root)
+    assert ".prawduct/project-state.yaml" not in preview["edited"]
+    assert any("not decodable" in n for n in preview["notes"])
+
+
+def test_an_unreadable_state_file_is_reported_not_only_an_undecodable_one(
+    tmp_path: Path,
+):
+    """The guard first covered only the decode error.
+
+    That reproduced, one level up, the very defect it was written to report — a
+    catch narrowed to the interesting exception class while the other one goes
+    silent. A permission-locked state file yields the same half-cutover: no
+    marker, no removal, and nothing said.
+    """
+    root = make_filesync_repo(tmp_path)
+    state = root / ".prawduct" / "project-state.yaml"
+    state.chmod(0o000)
+    try:
+        result = run_migrate(root, "--apply")
+    finally:
+        state.chmod(0o644)
+
+    assert result["state_keys_removed"] == []
+    assert any(
+        "could not be read" in n for n in result["notes"]
+    ), f"a locked state file went unreported: {result['notes']}"
 
 
 def test_a_repo_with_no_state_file_does_not_error(tmp_path: Path):

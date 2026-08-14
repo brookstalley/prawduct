@@ -407,22 +407,29 @@ def apply_claude_anchor(project_dir: Path) -> bool:
     return True
 
 
-def _state_file_undecodable(project_dir: Path) -> bool:
-    """True when the state file exists but is not decodable as UTF-8.
+def _state_file_unreadable(project_dir: Path) -> "str | None":
+    """Why the state file could not be read, or ``None`` when it reads fine.
 
     Asked only to explain a no-op. Every step that touches the state file fails
-    soft on this, so without it three silent skips read as "nothing needed".
+    soft, so without this three silent skips read as "nothing needed".
+
+    **Both failure modes, not just the interesting one.** This first covered only
+    `UnicodeDecodeError`, which left a permission-locked file producing exactly
+    the silent half-cutover the note exists to prevent — the guard reproduced, one
+    level up, the same "caught the wrong exception class" defect it was written to
+    report. The two are distinguished in the message because they send the
+    operator to different fixes: re-encode the file, or fix its permissions.
     """
     path = project_dir / ".prawduct" / "project-state.yaml"
     if not path.is_file():
-        return False
+        return None
     try:
         path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
-        return True
-    except OSError:
-        return False
-    return False
+        return "not decodable as UTF-8"
+    except OSError as exc:
+        return f"could not be read ({exc.strerror or exc})"
+    return None
 
 
 def retired_state_keys(project_dir: Path) -> list[str]:
@@ -602,9 +609,19 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
         planned_edits.append("CLAUDE.md")
     planned_edits.append(".claude/settings.json")
     planned_state_keys = retired_state_keys(project_dir)
-    if planned_state_keys or core.read_str_yaml_key(
-        project_dir / ".prawduct" / "project-state.yaml", DISTRIBUTION_KEY
-    ) is None:
+    # An unreadable state file is the one case where the apply path declines an
+    # edit the naive plan would promise: `read_str_yaml_key` fails soft to None,
+    # which is indistinguishable from "key absent" here. Over-reporting is the
+    # safe direction, but the preview is what the operator's single confirmation
+    # is given against, so it should describe the act that will actually happen.
+    state_unreadable = _state_file_unreadable(project_dir)
+    if not state_unreadable and (
+        planned_state_keys
+        or core.read_str_yaml_key(
+            project_dir / ".prawduct" / "project-state.yaml", DISTRIBUTION_KEY
+        )
+        is None
+    ):
         planned_edits.append(".prawduct/project-state.yaml")
 
     if not apply:
@@ -613,6 +630,12 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
         result["edited"] = planned_edits
         result["state_keys_removed"] = planned_state_keys
         result["gitignored"] = [VERSION_MARKER]
+        if state_unreadable:
+            result["notes"].append(
+                f".prawduct/project-state.yaml {state_unreadable} — it will be left "
+                "untouched, so the `distribution: plugin` marker will NOT be "
+                "recorded and no retired keys will be removed. Fix the file first."
+            )
         result["notes"].append(
             "Dry run — no files changed. Re-run with --apply to perform the cutover."
         )
@@ -649,16 +672,19 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     state_keys_removed = strip_retired_state(project_dir)
     if record_distribution(project_dir) or state_keys_removed:
         edited.append(".prawduct/project-state.yaml")
-    elif _state_file_undecodable(project_dir):
-        # Said out loud rather than left to the diff. Every state-file step
-        # fails soft on a file it cannot decode — which is right, because none of
-        # them may write over content they cannot see — but the sum of three
-        # silent skips is a repo that looks cut over and never got its marker.
-        result["notes"].append(
-            ".prawduct/project-state.yaml is not decodable as UTF-8 — it was left "
-            "untouched, so the `distribution: plugin` marker was NOT recorded and "
-            "no retired keys were removed. Fix the file's encoding and re-run."
-        )
+    else:
+        unreadable = _state_file_unreadable(project_dir)
+        if unreadable:
+            # Said out loud rather than left to the diff. Every state-file step
+            # fails soft on a file it cannot read — which is right, because none
+            # of them may write over content they cannot see — but the sum of
+            # three silent skips is a repo that looks cut over and never got its
+            # marker.
+            result["notes"].append(
+                f".prawduct/project-state.yaml {unreadable} — it was left "
+                "untouched, so the `distribution: plugin` marker was NOT recorded "
+                "and no retired keys were removed. Fix the file and re-run."
+            )
 
     gitignored = [VERSION_MARKER] if ensure_marker_gitignored(project_dir) else []
     untracked = [VERSION_MARKER] if _git_untrack_kept(project_dir, VERSION_MARKER) else []

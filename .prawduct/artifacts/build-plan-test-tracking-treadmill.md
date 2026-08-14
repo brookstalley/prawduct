@@ -9,11 +9,11 @@ governed_by:
     dispositions:
       - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer write path is touched: both entry points are operator-run repairs, and the Critic's tool grants are unchanged"
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state, the evidence store, and the named reconcile files → conforms: the only write is `.prawduct/project-state.yaml`, which is that repo's own prawduct state"
-      - "authority fails closed; advice fails soft → conforms: the strip is a repair the operator runs, never a gate; the record-lint tripwire in Chunk 02 is advisory and never gates, matching the module's existing posture"
+      - "authority fails closed; advice fails soft → conforms: the strip is a repair the operator runs, never a gate; the record-lint tripwire is advisory and never gates, matching the module's existing posture"
       - "prawduct is Python but never Python-specific → conforms: the removal is line-level YAML surgery and the tripwire is a text pattern; neither reads the product's language"
       - "prawduct guides and reviews; it never implements → conforms: nothing here touches product code"
       - "local-first, no network/daemon → conforms (file reads and writes only)"
-      - "every fact has one home → engaged and this plan's spine: the suite total's one home is the evidence store (`.test-evidence.json`), and `build_state.test_tracking` is a second home for it. Chunk 01 deletes the second home; Chunk 02 keeps it from being re-opened"
+      - "every fact has one home → engaged and this plan's spine: the suite total's one home is the evidence store (`.test-evidence.json`), and `build_state.test_tracking` is a second home for it. the strip deletes the second home; the tripwire keeps it from being re-opened"
       - "goals and verification bind; prescribed method is advice → conforms; Deliverables below are the author's best guess after reading `lifecycle_repair.py` and `record_lint.py`, and a builder finding a better route records why"
   - artifact: security-model
     dispositions:
@@ -22,7 +22,7 @@ governed_by:
       - "a governed product's content never leaves that product's own repository and owner → conforms: both entry points read and write one file inside the repo they are run in, and nothing is transmitted. The fleet survey that sized this work read sibling repos on one machine and is deliberately NOT a test for that reason (see Verify)"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "proportionality ratchets both ways; adding a control names the yield it expects and emits it observably → engaged by Chunk 02. Expected yield: a re-introduced `test_tracking` block, or any suite-total claim written into `.prawduct/` YAML. Emitted observably — `record_lint` already carries per-check counts into the dispatch manifest and `critic_consolidate` into the review fact, so the widened check's firing rate is a query over the evidence store, not an argument"
+      - "proportionality ratchets both ways; adding a control names the yield it expects and emits it observably → engaged by the record-lint widening. Expected yield: a re-introduced `test_tracking` block, or any suite-total claim written into `.prawduct/` YAML. Emitted observably — `record_lint` already carries per-check counts into the dispatch manifest and `critic_consolidate` into the review fact, so the widened check's firing rate is a query over the evidence store, not an argument"
       - "state-file growth past its size threshold is an advisory warning, never a hard block → engaged, and it is why a line-length tripwire on `project-state.yaml` was considered and DROPPED (see Out of scope): the existing size advisory already owns that signal, and a hard length rule would contradict this norm"
       - "review wall-clock is P0 → engaged as the problem statement: the treadmill's cost is that each correction is a commit, each commit extends HEAD, and that buys another review round"
   - artifact: api-contract
@@ -78,7 +78,7 @@ match rather than departed from silently (Principle 6).
 - [ASSUMPTION: widening `is_record()` to `.prawduct/` YAML is safe for the three other checks
   because each already self-filters — `_check_learnings_shape` guards on `learnings.md`, and
   `_check_governed_by` runs only over `_plans_to_check`, which matches `.md$` | LOW impact |
-  verified by reading; Chunk 02 adds a test pinning each guard | user can override by giving the
+  verified by reading; the tripwire chunk adds a test pinning each guard | user can override by giving the
   suite-total check its own separate path scope instead]
 
 **What would raise confidence:** Nothing pending. The one owner decision this needed was taken.
@@ -86,7 +86,7 @@ match rather than departed from silently (Principle 6).
 ## Status
 
 - [x] Chunk 01: The strip — one nested-key removal, reached through both doctor and migrate
-- [ ] Chunk 02: The tripwire that keeps it gone, and the rule stated where it bites
+- [x] Chunk 02: The tripwire that keeps it gone, and the rule stated where it bites
 
 Context: Plan authored 2026-08-14. Parent: `brookstalley/prawduct#633` (amended same day).
 Baseline suite green at branch point (`ae9fd358`). **Chunk 01 takes a `chunk` review; Chunk 02 is

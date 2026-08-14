@@ -88,7 +88,16 @@ in it — and it runs immediately after the removal that had just preserved them
 file while catching only `OSError`; `UnicodeDecodeError` is a `ValueError`, so an undecodable state
 file aborted the whole cutover before any later step reached its own guard — including guards a
 recorded disposition in this scope's build plan rested on. All three now fail soft, and the sum of
-those soft failures is reported rather than left to look like "nothing needed".
+those soft failures is reported — for **both** failure modes — rather than left to look like
+"nothing needed".
+
+That last qualifier was earned the hard way, and it is the entry worth remembering. The guard
+written to report the silent half-cutover *first covered only the decode error*, so a
+permission-locked state file still produced exactly the silence it existed to prevent: the guard
+had reproduced, one level up, the same too-narrow-catch defect it was reporting. The verify pass
+caught it. Both modes are now distinguished in the message, because they send an operator to
+different fixes — re-encode the file, or fix its permissions — and the dry run says the same thing
+the apply will do, rather than promising an edit the apply declines.
 
 ## 2026-08-13: the change log recommends its own merge driver
 
