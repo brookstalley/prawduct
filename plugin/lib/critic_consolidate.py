@@ -596,7 +596,7 @@ def _scope_widened(delta_count: int, prior_count: int) -> bool:
 
 
 def _widened_fallback_mode(
-    project_dir: Path, head_tree: str, committed_differs: bool
+    project_dir: Path, committed_head_tree: str, committed_differs: bool
 ) -> tuple[str, str]:
     """Which full-review mode actually COVERS the delta that just widened.
 
@@ -612,6 +612,19 @@ def _widened_fallback_mode(
     Where the delta LIVES decides the mode, and `begin_review` has already
     computed that. Returns ``(mode, why)``; ``why`` ships in the refusal so the
     reader can tell a recommendation from a default.
+
+    ``cumulative`` is not a superset of what widened, and must not be sold as
+    one: a base-branch merge moves the merge-base forward, so merge-base…HEAD
+    EXCLUDES the merged-in files that inflated the delta. That is the right
+    answer rather than a shortfall — those files were reviewed on the base
+    branch, and what this branch owes is its own work, which is exactly the
+    span.
+
+    ``committed_head_tree`` is spelled out because the caller's own ``head_tree``
+    at this point is the ANCHOR head, which may be the working tree — and
+    committed-vs-working is the exact distinction this function exists to keep
+    straight. Comparing the merge-base against the wrong one of the two would
+    reintroduce the defect inside its own fix.
     """
     if not committed_differs:
         return "final", (
@@ -621,16 +634,19 @@ def _widened_fallback_mode(
     from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
 
     resolved = coverage.resolve_merge_base_tree(project_dir)
-    # Both guards below keep this from recommending a mode that would refuse at
-    # dispatch — the very failure being fixed. `final` is then the remaining
-    # full review rather than the covering one, and says so.
+    # Both guards below keep this from recommending `cumulative` where it would
+    # refuse for want of a span — recommending a mode that cannot run being the
+    # very failure fixed here. `final` is then the remaining full review rather
+    # than the covering one, and says so; on a clean tree it too refuses (empty
+    # diff), which is the honest end state when no mode's interval holds the
+    # committed remainder. The coverage gate is where that remainder surfaces.
     if resolved["status"] != "ok":
         return "final", (
-            f"the delta includes committed work, but no merge-base resolves "
+            "the delta includes committed work, but no merge-base resolves "
             f"({resolved['reason']}), so `cumulative` cannot dispatch — `final` "
             "sees only the uncommitted part"
         )
-    if resolved["tree"] == head_tree:
+    if resolved["tree"] == committed_head_tree:
         return "final", (
             "the delta includes committed work, but HEAD is at the merge-base, "
             "so `cumulative`'s interval is empty — `final` sees only the "
@@ -638,8 +654,8 @@ def _widened_fallback_mode(
         )
     return "cumulative", (
         "the delta includes committed work, which `final`'s HEAD-tree → "
-        "working-tree interval cannot see; `cumulative` spans merge-base…HEAD, "
-        "which is both a superset of what widened and the PR gate's own span"
+        "working-tree interval cannot see; `cumulative` spans merge-base…HEAD — "
+        "the work this branch owes, and the PR gate's own span"
     )
 
 

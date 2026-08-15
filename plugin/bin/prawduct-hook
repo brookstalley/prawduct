@@ -1142,7 +1142,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     No-op (still exit 0) outside an onboarded repo — no session to protect,
     no store to dispatch against. Exit 2 = verify-resolutions scope widened
-    past the demotion threshold (the skill falls back to `final`); **exit 3 =
+    past the demotion threshold (the skill re-dispatches in the mode the
+    refusal names); **exit 3 =
     no review needed** — the interval holds no judgeable file and no finding
     this mode could resolve, so the coverage gate already composes it as a free
     edge (`--force` dispatches anyway; no session state is written and no marker

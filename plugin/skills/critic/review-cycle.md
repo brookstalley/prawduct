@@ -101,17 +101,19 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 The head end moves to **committed HEAD** instead when committed content differs from the reviewed tree — that is the PR gate's target, and anchoring there keeps a stray uncommitted file from leaving the gate `uncovered` after a successful pass (the WIP is noted and excluded). "Differs" is a **tree** comparison, and two readings of it are wrong in opposite directions: the vouching commit above materializes the reviewed tree verbatim, so it changes no content and is not a change of intent; and a prior review of a **dirty** tree (its fact records `head_commit: null`) leaves the anchor *ahead* of committed HEAD, which read as a committed delta inverts the edge and anchors the resolution facts to a tree the fixes are absent from. So the head end moves only when the trees differ **and** a commit actually landed — HEAD no longer standing where the prior review dispatched. (Both exclusions are code; `critic_consolidate.begin_review` carries the derivation.)
 
-The anchor must also be an **ancestor of HEAD**. The findings cache is single-slot and survives a branch switch, and worktrees of one clone share an object store, so a sibling branch's anchor still resolves — resolution alone once latched a pass onto a cross-branch delta full of phantom findings. Not-an-ancestor and any git failure both demote.
+The anchor must also be an **ancestor of HEAD**. The findings cache is single-slot and survives a branch switch, and worktrees of one clone share an object store, so a sibling branch's anchor still resolves — resolving is not evidence it belongs to this lineage, and a cross-branch anchor yields phantom findings. Not-an-ancestor and any git failure both demote.
 
 **Demotion** (all detected by `critic-begin`, fail-closed — it refuses to anchor rather than silently shrinking the review):
 
+**Every row is governed by the demotion property** (`SKILL.md` step 4) — a demotion must name a mode whose interval can SEE the work. Rows flagged **Committed** are by construction the case `chunk`/`final` cannot cover.
+
 | Trigger (exit code) | Why it demotes |
 |---|---|
-| No readable findings cache, no `fact_id` in it, or the fact is gone from the store (1) | Nothing to anchor against — fall back to `chunk`/`final`, record `mode_chosen_by: "fallback-no-prior-findings"`. |
-| The prior tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. |
-| The prior fact's anchor commit is not an ancestor of HEAD (1) | It belongs to another lineage — a branch switch, or rewritten history; the delta from it would span the divergence. Same fallback. |
-| Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it reviewed (1) | Nothing to verify and no delta to review. The message names the anchor and both tree hashes, because the old wording ("nothing changed since") was true of the anchor and false of the repo. |
-| Delta files > 2 × prior `files_reviewed` + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead. Fall back to the mode the refusal names, never reflexively `final`: its HEAD-tree → working-tree interval cannot see a committed delta, so a committed widening demotes to `cumulative`. Record `mode_chosen_by: "fallback-scope-widened"`. |
+| No readable findings cache, no `fact_id` in it, or the fact is gone from the store (1) | Nothing to anchor against — fall back per the property above, record `mode_chosen_by: "fallback-no-prior-findings"`. |
+| The prior tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. **Committed.** |
+| The prior fact's anchor commit is not an ancestor of HEAD (1) | Another lineage — a branch switch, or rewritten history; the delta would span the divergence. Same fallback. **Committed.** |
+| Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it reviewed (1) | Nothing to verify and no delta to review. The message names the anchor and both tree hashes — "nothing changed" alone is true of the anchor and says nothing about the repo. |
+| Delta files > 2 × prior `files_reviewed` + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead. Re-dispatch in the mode the refusal names, recording `mode_chosen_by: "fallback-scope-widened"`. |
 
 **When NOT to use verify-resolutions.** Not as a chunk's first review (it's a re-review mode). Not after long drift unrelated to the original findings — the scope-widening threshold exists for exactly that.
 

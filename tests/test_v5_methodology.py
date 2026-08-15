@@ -151,14 +151,18 @@ LAST_MEASURED_TOKENS = {
     # blocking-remedy mechanics were each stated a second time here after the
     # composition bullets above already owned them, and the selective-commit
     # routing a third.
-    # -25 on 2026-08-15: the scope-widened demotion row gained the rule that its
-    # fallback is named, not assumed (`final` cannot see a committed delta, so a
-    # committed widening demotes to `cumulative`). Paid for inside the same
-    # section: the anchoring paragraph narrated both wrong readings of "the trees
-    # differ" as incidents, and `critic_consolidate.begin_review`'s comment
-    # already owns that derivation — this file needs the exclusions, not their
-    # history. Net under the prior reading, so the ceiling is untouched.
-    "skills/critic/review-cycle.md": 9574,
+    # -25 then +17 on 2026-08-15, 9599 -> 9574 -> 9591, ceiling untouched. The
+    # demotion table gained the rule that its fallback is NAMED, not assumed --
+    # `chunk`/`final` see only HEAD-tree -> working-tree, so a committed delta
+    # demotes to `cumulative`. Paid three ways, all inside the section: the
+    # anchoring paragraph narrated both wrong readings of "the trees differ" as
+    # incidents and `begin_review`'s comment already owns that derivation; two
+    # more history narrations became their rules; and the property itself was
+    # RELOCATED to `SKILL.md` step 4, where it belongs -- every mode reads that
+    # file, only `final`/`cumulative` read this one, and the fact was already
+    # stated there twice. What is left here is a pointer plus the per-row
+    # `Committed` flags, which is the part specific to this table.
+    "skills/critic/review-cycle.md": 9591,
     "skills/critic/framework-checks.md": 1116,
 }
 

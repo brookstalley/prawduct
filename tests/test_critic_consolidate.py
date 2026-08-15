@@ -3424,6 +3424,11 @@ class TestVerifyResolutionsDispatch:
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 2
         assert "Re-dispatch as `final`" in result.stderr, result.stderr
+        # The reason, not just the mode. This fixture sits on `main`, where
+        # merge-base == HEAD, so a wrongly-True `committed_differs` would reach
+        # `final` through the empty-span guard instead and the mode assertion
+        # alone would still pass — leaving the branch this test names untested.
+        assert "every change since the prior review is uncommitted" in result.stderr
 
     def test_a_committed_widening_names_cumulative_not_final(self, tmp_path):
         """The defect this pins: a widening made of COMMITTED work demoted to
@@ -3467,6 +3472,36 @@ class TestVerifyResolutionsDispatch:
         # routes and only this one means "the span is empty".
         assert "HEAD is at the merge-base" in result.stderr
         assert "sees only the uncommitted part" in result.stderr
+
+    def test_the_structured_fallback_mode_carries_both_answers(self, tmp_path):
+        """`fallback_mode` is the structured half of the recommendation, and a
+        key that is always the same string is indistinguishable from a constant
+        — so both routes are asserted here, on the return value rather than on
+        the English. That keeps the prose free to be reworded without the
+        contract riding on it.
+        """
+        uncommitted = tmp_path / "u"
+        _init_repo(uncommitted)
+        self._seed_and_fix(uncommitted)
+        for i in range(2 * 1 + 6):
+            (uncommitted / f"src/new_{i}.py").write_text(f"n = {i}\n")
+        result = cc.begin_review(uncommitted, "verify-resolutions")
+        assert result["kind"] == "scope-widened"
+        assert result["fallback_mode"] == "final"
+
+        committed = tmp_path / "c"
+        _init_repo(committed)
+        self._seed_and_fix(committed)
+        _git(committed, "checkout", "-q", "-b", "feature/demo")
+        _commit_file(committed, "src/app.py", "x = 2  # fixed\n", "fix")
+        for i in range(2 * 1 + 6):
+            _commit_file(committed, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = cc.begin_review(committed, "verify-resolutions")
+        assert result["kind"] == "scope-widened"
+        assert result["fallback_mode"] == "cumulative"
+        # The prose and the structured field must not drift apart — the reader
+        # acts on the message, the caller could act on the key.
+        assert "`cumulative`" in result["reason"]
 
     def test_a_committed_widening_with_an_unresolvable_base_falls_back_to_final(
         self, tmp_path

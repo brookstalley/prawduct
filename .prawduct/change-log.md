@@ -23,9 +23,16 @@ cumulative's scope" refusal, which routes correctly; two strays were enough to s
 
 **Where the delta lives now picks the mode, in code.** `begin_review` has already computed whether
 committed content moved since the prior review, so the refusal carries a `fallback_mode` and names
-it in the message: `cumulative` when the widening includes committed work (merge-base…HEAD is both a
-superset of what widened and the PR gate's own span), `final` when the drift is all uncommitted —
-which is exactly that interval, and the case the old advice was accidentally right about.
+it in the message: `cumulative` when the widening includes committed work, `final` when the drift is
+all uncommitted — which is exactly that interval, and the case the old advice was accidentally right
+about.
+
+`cumulative` is deliberately **not** described as a superset of what widened, because it is not one:
+a base-branch merge moves the merge-base forward, so merge-base…HEAD *excludes* the merged-in files
+that inflated the delta. That is the right answer rather than a shortfall — those files were reviewed
+on the base branch, and what the branch owes is its own work, which is exactly that span. The first
+draft of this fix sold it as a superset; the review caught the claim, and a wrong claim about
+coverage is the same class of defect as the one being fixed.
 
 Two guards keep the recommendation from repeating the defect one level up, since recommending a mode
 that would itself refuse at dispatch is the same failure: when no merge-base resolves, or when HEAD
@@ -36,6 +43,23 @@ The prose was read correctly — it was wrong — so the fix moves the decision 
 and `review-cycle.md` now say to re-dispatch in the mode the refusal names and never to assume
 `final`; the reasoning they carry is the one already written into the exit-3 qualifier one section
 away, which had the interval-narrowness insight and was never generalized to exit 2.
+
+**Stated as a property, not as one table row.** The first draft fixed only the exit-2 row, and the
+review found the generalization independently from two directions: the exit-**1** demotions ("no
+usable prior review") still said `chunk`/`final` unconditionally, and two of their triggers —
+undiffable prior tree, anchor not an ancestor of HEAD — arise *precisely* because committed history
+moved. Worse, the reviewing agent hit a third instance while reviewing this very commit: dispatching
+`final` against a clean committed tree returns the empty-diff refusal, whose SKILL row said "report
+the stderr reason and stop" while the refusal text itself correctly named `cumulative`. So the rule
+is now stated once, as **the demotion property**, at the head of the exit table in `SKILL.md`, and
+every row leans on it — including exit 3's qualifier, which had been carrying its own copy.
+
+Deliberately not extended: the exit-1 refusals do not yet *compute* a fallback mode the way exit 2
+does. Two of the four have no prior fact to compare trees against, so `committed_differs` is not
+derivable there and a different signal would be needed. The property now covers those rows in prose
+and the empty-diff refusal remains the backstop; the code extension is filed rather than built here,
+because it is a design question about what a first review of committed work should anchor to, not a
+ripple of this fix.
 
 ## 2026-08-14: the retired test count now announces itself
 

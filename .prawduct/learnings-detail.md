@@ -3906,3 +3906,44 @@ The check is one question, asked before writing the guard: **what does this call
 paths?** If it returns them, an `except` is decoration; answer the returned states where the read
 already is. A tell that costs nothing to look for: your `except` clause names exception types the
 producer's own docstring never mentions raising.
+
+## A rule discovered on one branch of a dispatch table governs its siblings silently
+
+`SKILL.md`'s `critic-begin` exit table has five rows. The exit-3 row carries a carefully
+reasoned qualifier: `chunk`/`final`'s interval is HEAD-tree → working-tree, which is
+narrower than the coverage gate's span, so when a gate reports `uncovered` the right
+re-dispatch is `cumulative`. Someone worked that out, wrote it against the exit where they
+hit it, and stopped. Exit 2 — the scope-widened demotion — shares the premise exactly and
+said "re-dispatch as `final`" flat.
+
+The cost: a `verify-resolutions` refused for a 95-file widening demoted to a `final` whose
+interval held two untracked strays, which were then recorded as a chunk's review. Every
+component reported success; the defect lived only in the relation between two rows of one
+table.
+
+The general shape is that a table makes each row look self-contained, so a fix reads as
+complete when it lands in the row that produced the bug. It is not complete: the premise
+that justified it is a property of the mechanism, not of the row. Cheapest check — after
+writing a rule into one branch, state the premise in one sentence and grep the other
+branches for it.
+
+## A fallback must be checked against the SIZE of the interval it replaces
+
+The refusal here is sound: a delta far larger than the prior reviewed surface should not get
+a partial re-review. What made it harmful was the remedy. "Run a full review" sounds like a
+widening — more goals, more scrutiny — and `final` genuinely is the seven-goal mode. But
+mode names carry goal counts, not spans, and `final`'s span is the uncommitted diff. A
+delta that widened *because commits landed* demoted to the one mode structurally blind to
+commits.
+
+Two things follow. First, when a mechanism refuses an interval and offers a replacement,
+the replacement's span must be compared against the refused one — a fallback that shrinks
+the span is not a fallback, it is a silent narrowing that reports success. Second, the
+decision belongs in code where the spans are known. `begin_review` had already computed
+whether committed content moved since the prior review; it simply was not saying, leaving a
+reader to infer from prose what the callee could state as fact.
+
+The fix also had to avoid reproducing itself: recommending `cumulative` unconditionally
+fails on the base branch and with no resolvable merge-base, where `cumulative`'s interval is
+empty or unavailable and it would refuse at dispatch — recommending a mode that cannot run
+being precisely the original defect in a new shape.
