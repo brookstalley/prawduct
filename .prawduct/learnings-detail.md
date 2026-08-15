@@ -3947,3 +3947,30 @@ The fix also had to avoid reproducing itself: recommending `cumulative` uncondit
 fails on the base branch and with no resolvable merge-base, where `cumulative`'s interval is
 empty or unavailable and it would refuse at dispatch — recommending a mode that cannot run
 being precisely the original defect in a new shape.
+
+## A correct decision defended by an unread mechanism is still a defect
+
+Three times on one branch, each caught by a reviewer and none by me:
+
+1. `cumulative` sold as "a superset of what widened" — false. A base-branch merge moves the
+   merge-base forward, so `merge-base…HEAD` *excludes* the merged-in files that inflated the delta.
+2. The empty-span guard's message said "HEAD is at the merge-base" while the code compared *trees*.
+   A commit-then-revert branch sits far ahead of the merge-base with an identical tree.
+3. The plan-less discriminator justified itself with "`check-change-log-entry` refuses a branch
+   without an entry tagged with its scope." It refuses a branch without an *added* entry; the tag is
+   never inspected there.
+
+The pattern is exact and worth naming because it is invisible from the inside: in all three the
+*decision* was right and survived review untouched. What was wrong was the sentence explaining why —
+each a confident claim about a mechanism I had not opened, written in the flow of explaining a
+choice I had already made correctly on other grounds.
+
+That is more dangerous than a wrong decision, not less. A wrong decision fails and gets fixed. A
+false reason attached to a right decision is load-bearing prose that the next maintainer checks
+their change against — and it reads as verified precisely because the thing it justifies works.
+Overclaiming is also asymmetric under review: reviewers check whether the code does what the change
+says, and a rationale sentence is the part least likely to be executed by anything.
+
+The cheap check is the same one Principle 24 names, applied one level in from where it usually
+fires: before writing "X forces this", open X. Not to verify the decision — to verify the sentence.
+Ten seconds of reading beats a round, and beats a durable false claim that no round ever revisits.
