@@ -56,7 +56,7 @@ The data plane is deterministic (kernel v3): `prawduct-hook critic-begin --mode 
    |---|---|---|
    | **0** | dispatched | proceed to step 5 |
    | **3** | **no review needed** | **you are DONE — report and stop** (below) |
-   | **2** | scope widened past the demotion threshold (`verify-resolutions` only) | re-dispatch as `final`, recording `mode_chosen_by: "fallback-scope-widened"` |
+   | **2** | scope widened past the demotion threshold (`verify-resolutions` only) | re-dispatch in **the mode the refusal names** — `cumulative` when the widened delta includes committed work, `final` when it is all uncommitted — recording `mode_chosen_by: "fallback-scope-widened"`. Never assume `final`: its interval is HEAD-tree → working-tree, so demoting a *committed* widening to it reviews only whatever the working tree happens to hold — narrower than the interval just refused for being too wide. |
    | **1** on `verify-resolutions` | no usable prior review (stderr says why) | re-dispatch as `chunk`/`final`, recording `mode_chosen_by: "fallback-no-prior-findings"` |
    | **1** otherwise | dispatch failed | report the stderr reason and stop |
 

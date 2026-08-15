@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-15: the widened-scope demotion names a mode that can see the delta
+
+<!-- prawduct: type=bugfix | scope=scope-widened-demotion -->
+
+`critic-begin --mode verify-resolutions` refuses when the delta since the prior review outgrows the
+prior surface, and told the reviewer to "run a full review" — which the skill spelled `final`,
+unconditionally. `final`'s interval is HEAD-tree → working-tree, the *uncommitted* diff. So an
+interval refused for being **too wide** was replaced by one that is strictly **narrower**, and a
+widening made of commits demoted to the one mode that cannot see a commit.
+
+Observed on a product repo: 95 files widened the scope (a base-branch merge plus the chunk's own fix
+commit, already landed). The demoted `final` reviewed the two untracked files the working tree
+happened to hold — a devcontainer script and a build plan belonging to another scope — and that was
+recorded as the chunk's review. Nothing caught it: both dispatches succeeded, the manifest was
+internally consistent, and the reviewer reported exactly what it was handed. Only a clean working
+tree would have tripped `final`'s own "empty diff — already committed? a committed bundle is
+cumulative's scope" refusal, which routes correctly; two strays were enough to swallow it.
+
+**Where the delta lives now picks the mode, in code.** `begin_review` has already computed whether
+committed content moved since the prior review, so the refusal carries a `fallback_mode` and names
+it in the message: `cumulative` when the widening includes committed work (merge-base…HEAD is both a
+superset of what widened and the PR gate's own span), `final` when the drift is all uncommitted —
+which is exactly that interval, and the case the old advice was accidentally right about.
+
+Two guards keep the recommendation from repeating the defect one level up, since recommending a mode
+that would itself refuse at dispatch is the same failure: when no merge-base resolves, or when HEAD
+*is* the merge-base, `cumulative`'s interval is empty or unavailable, so the message falls to `final`
+and says plainly that it sees only the uncommitted part rather than claiming coverage it lacks.
+
+The prose was read correctly — it was wrong — so the fix moves the decision out of prose. `SKILL.md`
+and `review-cycle.md` now say to re-dispatch in the mode the refusal names and never to assume
+`final`; the reasoning they carry is the one already written into the exit-3 qualifier one section
+away, which had the interval-narrowness insight and was never generalized to exit 2.
+
 ## 2026-08-14: the retired test count now announces itself
 
 <!-- prawduct: type=feature | scope=test-tracking-advisory -->

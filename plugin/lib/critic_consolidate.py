@@ -595,6 +595,54 @@ def _scope_widened(delta_count: int, prior_count: int) -> bool:
     return delta_count > 2 * prior_count + 5
 
 
+def _widened_fallback_mode(
+    project_dir: Path, head_tree: str, committed_differs: bool
+) -> tuple[str, str]:
+    """Which full-review mode actually COVERS the delta that just widened.
+
+    "Run a full review" meant `final`, unconditionally — and `final`'s interval
+    is HEAD-tree → working-tree, the *uncommitted* diff. So a delta that widened
+    because commits landed since the prior review demoted to the one mode that
+    cannot see them: the refused interval was too wide, and its replacement was
+    strictly NARROWER. Observed 2026-08-15 on a 95-file widening (a base-branch
+    merge plus the chunk's own fix commit): the demoted `final` reviewed the two
+    untracked strays the working tree happened to hold and reported them as the
+    chunk's review. Nothing caught it, because both dispatches succeeded.
+
+    Where the delta LIVES decides the mode, and `begin_review` has already
+    computed that. Returns ``(mode, why)``; ``why`` ships in the refusal so the
+    reader can tell a recommendation from a default.
+    """
+    if not committed_differs:
+        return "final", (
+            "every change since the prior review is uncommitted, which is "
+            "exactly `final`'s HEAD-tree → working-tree interval"
+        )
+    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    # Both guards below keep this from recommending a mode that would refuse at
+    # dispatch — the very failure being fixed. `final` is then the remaining
+    # full review rather than the covering one, and says so.
+    if resolved["status"] != "ok":
+        return "final", (
+            f"the delta includes committed work, but no merge-base resolves "
+            f"({resolved['reason']}), so `cumulative` cannot dispatch — `final` "
+            "sees only the uncommitted part"
+        )
+    if resolved["tree"] == head_tree:
+        return "final", (
+            "the delta includes committed work, but HEAD is at the merge-base, "
+            "so `cumulative`'s interval is empty — `final` sees only the "
+            "uncommitted part"
+        )
+    return "cumulative", (
+        "the delta includes committed work, which `final`'s HEAD-tree → "
+        "working-tree interval cannot see; `cumulative` spans merge-base…HEAD, "
+        "which is both a superset of what widened and the PR gate's own span"
+    )
+
+
 def partials_dir(prawduct_dir: Path) -> Path:
     return prawduct_dir / PARTIALS_DIRNAME
 
@@ -1236,12 +1284,14 @@ def begin_review(
     Returns ``{"status": "ok", "id", "roster", "path", "notes": [...],
     "cleared_leftovers": bool, "manifest": {...}}`` or ``{"status": "error",
     "reason", "kind"?}`` where ``kind == "scope-widened"`` tells the CLI to
-    exit 2 (the skill's fall-back-to-final signal), or ``{"status":
+    exit 2 (the skill's demote-to-a-full-review signal), or ``{"status":
     "no-review-needed", "reason", "free_files"}`` when the interval holds no
     judgeable file and no finding this mode could resolve — the CLI exits 3.
     That is a NO-OP, not a failure: the coverage gate already composes such an
     interval as a free edge, so the review would record a fact nothing needs.
-    ``force=True`` dispatches anyway.
+    ``force=True`` dispatches anyway. A ``scope-widened`` result also carries
+    ``fallback_mode`` — the full-review mode that covers the widened delta,
+    named in ``reason`` so the re-dispatch does not have to guess it.
 
     Per-mode interval (design D8, chunk-03 refinements):
 
@@ -1477,13 +1527,17 @@ def begin_review(
             f for f in (prior_body.get("files_reviewed") or []) if isinstance(f, str)
         ]
         if _scope_widened(len(delta), len(prior_files)):
+            fallback, why = _widened_fallback_mode(
+                project_dir, capture["head_tree"], committed_differs
+            )
             return {
                 "status": "error",
                 "kind": "scope-widened",
+                "fallback_mode": fallback,
                 "reason": (
                     f"scope-widened: {len(delta)} files changed since the prior "
                     f"review of {len(prior_files)} — a partial re-review would "
-                    "mislead; run a full review"
+                    f"mislead. Re-dispatch as `{fallback}`: {why}."
                 ),
             }
         prior_counts = prior_body.get("counts") or {}

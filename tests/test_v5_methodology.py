@@ -151,7 +151,14 @@ LAST_MEASURED_TOKENS = {
     # blocking-remedy mechanics were each stated a second time here after the
     # composition bullets above already owned them, and the selective-commit
     # routing a third.
-    "skills/critic/review-cycle.md": 9599,
+    # -25 on 2026-08-15: the scope-widened demotion row gained the rule that its
+    # fallback is named, not assumed (`final` cannot see a committed delta, so a
+    # committed widening demotes to `cumulative`). Paid for inside the same
+    # section: the anchoring paragraph narrated both wrong readings of "the trees
+    # differ" as incidents, and `critic_consolidate.begin_review`'s comment
+    # already owns that derivation — this file needs the exclusions, not their
+    # history. Net under the prior reading, so the ceiling is untouched.
+    "skills/critic/review-cycle.md": 9574,
     "skills/critic/framework-checks.md": 1116,
 }
 
