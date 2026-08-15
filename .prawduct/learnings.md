@@ -547,3 +547,9 @@ never by dropping them.
 ## A recommendation an advisory prints ships to every consumer's repo, so test its EFFECT, not just that it fires — make the change on a fixture, observe the promised outcome, and keep the un-made case as the control. Tell: every test you wrote asserts on the advisory object and none on what following it does — [learnings-detail.md]
 
 ## A `try/except` around a producer that RETURNS its degraded states guards nothing — and the comment above it will read as if it does, so the intent survives while the mechanism does not. Read what the callee actually does on its bad paths before writing the guard, and answer the returned states where the read already is. Tell: your `except` names exception types the producer's docstring never mentions raising — [learnings-detail.md]
+
+## A rule discovered on one branch of a dispatch table governs its siblings silently — when you write a fix into one exit code, one mode, or one error row, ask which other rows share its premise, because the branch you did not visit keeps the old behavior while the file reads as if the rule is stated. Tell: your fix is a table row, and you edited exactly one — [learnings-detail.md]
+
+## A fallback must be checked against the SIZE of the interval it replaces, not its name — a mode name carries goal count, not span, so a demotion can hand back an interval narrower than the one just refused for being too wide. Have the refusal name the mode rather than let the reader pick. Tell: a refusal tells the caller to re-dispatch and does not say as what — [learnings-detail.md]
+
+## A correct decision defended by an unread mechanism is still a defect — when you write the *reason* for a choice ("X forces this", "that span is a superset"), open X first, because review checks the code against the claim and rarely the claim itself, so a false reason outlives the round. Tell: your justification names a gate, flag or span you have not opened — [learnings-detail.md]

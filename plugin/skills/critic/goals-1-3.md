@@ -37,22 +37,25 @@ code. Correctness shapes the recommendation, never the need. Stale registry → 
 
 **The manifest's `prior_dispositions` lists findings already accepted or filed in these files, with
 reasons. Do not re-raise one absent material change in its cited files** — one line under a
-`priors:` note instead. Already answered, don't recount (same rule as `record_lint`). `truncated`
+`priors:` note instead. `truncated`
 = older answers dropped; `unavailable` = the join failed, so you know nothing.
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
-recount what it counted: that is how a record defect buys a review round. Each entry carries its own
-explanation — raise it, don't restate it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
+recount it: that is how a record defect buys a review round. Each entry carries its explanation —
+raise it, don't restate it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
 **WARNING** under Goal 2. `suite-total-claim` and `learnings-entry-shape` → **NOTE**.
 **`unchecked` is not a pass, and only one shape blocks.**
 `chunk-ref-missing unchecked — …` is
-**BLOCKING**: the check could not run, which is indistinguishable from passing. `chunk-ref-missing
+**BLOCKING**: the check could not run — indistinguishable from passing. `chunk-ref-missing
+no-subject — …` is **NOTE**: the scope is real (the change-log declares it) but plan-less — nothing
+to grade. A typo'd scope still arrives `unchecked`.
+`chunk-ref-missing
 graded chunk … of <plan>: …` is an **assumption, not a failure** — it DID run (`chunk_graded`
-non-null), but half of "whose deliverables" was guessed: the chunk inferred from build-plan Status,
-or the plan from the `active_build_plan` pointer — either may be the wrong one. The line names which →
-**NOTE**; blocking it is a false blocker no `--chunk` can clear.
-Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_graded` name the subject —
-chunk, and plan file. `null` there, or in any `counts` entry, means **no answer** — not a zero.
+non-null), but half of "whose deliverables" was guessed: the chunk
+inferred from build-plan Status, or the plan from the `active_build_plan` pointer — the line names
+which → **NOTE**. Blocking either is a false blocker no `--chunk` can clear.
+Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_graded` name the subject.
+`null` there, or in any `counts` entry, means **no answer** — not a zero.
 
 ## 1. Nothing Is Broken
 

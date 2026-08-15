@@ -3,6 +3,100 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-15: a plan-less scope is an absence, not a check that failed
+
+<!-- prawduct: type=bugfix | scope=scope-widened-demotion -->
+
+Record-lint rates `chunk-ref-missing unchecked — …` BLOCKING, by string and not by judgment, because
+a deliverable check that could not run is indistinguishable from one that passed. One shape reached
+that prefix without deserving it: a dispatch whose scope no build plan declares. That is the ordinary
+condition of a **framework-only fix**, which `building.md` says needs no build plan at all — so the
+finding had no remedy. Not a `--chunk` to supply, not an edit to the diff that clears it. The only
+exits were inventing a retroactive plan or departing from the rule, and **three consecutive reviews
+on this branch took the second**, each recording the departure and moving on. A rule whose correct
+response is "ignore it, with reasons" is training people to ignore the prefix that blocks.
+
+The fix is a discriminator rather than a demotion, because the two shapes that reach here are not
+alike. A **typo'd or stale** scope names nothing anywhere, and grading must not go quiet on it. A
+**real, deliberately plan-less** scope is declared in the change-log — a record that already exists
+by review time, since `check-change-log-entry` refuses a code branch at the PR boundary unless it
+ADDS an entry, and the `scope=` tag on that entry is what the release flow reads to enumerate
+unshipped work. When the change-log declares the scope, the entry now arrives as
+`chunk-ref-missing no-subject — …` and rates NOTE; otherwise it is `unchecked` and still BLOCKING.
+
+**What that is worth, stated precisely.** The PR probe requires the *entry*, not the *tag*, so a
+builder writing `scope=` is still declaring something rather than having it forced out of them. The
+gain over the two alternatives — a `--scope-has-no-plan` flag on dispatch, or an allowlist key in
+`project-state.yaml` — is therefore not unforgeability. It is that the declaration is durable, is
+read by the release flow for an unrelated purpose, and shows up in the diff a reviewer reads; a
+transient flag on one dispatch is none of those. The typo case, which is what actually has to be
+separated here, is declared nowhere by construction.
+
+Considered and not done: making `check-change-log-entry` require the `scope=` tag, which would close
+the gap properly. It changes a gate's behavior for every consuming repo, including those whose
+existing entries carry no tag, so it is not a ripple of this fix.
+
+Fails closed at every edge: an absent change-log, an unreadable one, or a parse failure all keep the
+blocking read, since a witness that cannot be consulted proves nothing.
+
+## 2026-08-15: the widened-scope demotion names a mode that can see the delta
+
+<!-- prawduct: type=bugfix | scope=scope-widened-demotion -->
+
+`critic-begin --mode verify-resolutions` refuses when the delta since the prior review outgrows the
+prior surface, and told the reviewer to "run a full review" — which the skill spelled `final`,
+unconditionally. `final`'s interval is HEAD-tree → working-tree, the *uncommitted* diff. So an
+interval refused for being **too wide** was replaced by one that is strictly **narrower**, and a
+widening made of commits demoted to the one mode that cannot see a commit.
+
+Observed on a product repo: 95 files widened the scope (a base-branch merge plus the chunk's own fix
+commit, already landed). The demoted `final` reviewed the two untracked files the working tree
+happened to hold — a devcontainer script and a build plan belonging to another scope — and that was
+recorded as the chunk's review. Nothing caught it: both dispatches succeeded, the manifest was
+internally consistent, and the reviewer reported exactly what it was handed. Only a clean working
+tree would have tripped `final`'s own "empty diff — already committed? a committed bundle is
+cumulative's scope" refusal, which routes correctly; two strays were enough to swallow it.
+
+**Where the delta lives now picks the mode, in code.** `begin_review` has already computed whether
+committed content moved since the prior review, so the refusal carries a `fallback_mode` and names
+it in the message: `cumulative` when the widening includes committed work, `final` when the drift is
+all uncommitted — which is exactly that interval, and the case the old advice was accidentally right
+about.
+
+`cumulative` is deliberately **not** described as a superset of what widened, because it is not one:
+a base-branch merge moves the merge-base forward, so merge-base…HEAD *excludes* the merged-in files
+that inflated the delta. That is the right answer rather than a shortfall — those files were reviewed
+on the base branch, and what the branch owes is its own work, which is exactly that span. The first
+draft of this fix sold it as a superset; the review caught the claim, and a wrong claim about
+coverage is the same class of defect as the one being fixed.
+
+Two guards keep the recommendation from repeating the defect one level up, since recommending a mode
+that would itself refuse at dispatch is the same failure: when no merge-base resolves, or when HEAD
+*is* the merge-base, `cumulative`'s interval is empty or unavailable, so the message falls to `final`
+and says plainly that it sees only the uncommitted part rather than claiming coverage it lacks.
+
+The prose was read correctly — it was wrong — so the fix moves the decision out of prose. `SKILL.md`
+and `review-cycle.md` now say to re-dispatch in the mode the refusal names and never to assume
+`final`; the reasoning they carry is the one already written into the exit-3 qualifier one section
+away, which had the interval-narrowness insight and was never generalized to exit 2.
+
+**Stated as a property, not as one table row.** The first draft fixed only the exit-2 row, and the
+review found the generalization independently from two directions: the exit-**1** demotions ("no
+usable prior review") still said `chunk`/`final` unconditionally, and two of their triggers —
+undiffable prior tree, anchor not an ancestor of HEAD — arise *precisely* because committed history
+moved. Worse, the reviewing agent hit a third instance while reviewing this very commit: dispatching
+`final` against a clean committed tree returns the empty-diff refusal, whose SKILL row said "report
+the stderr reason and stop" while the refusal text itself correctly named `cumulative`. So the rule
+is now stated once, as **the demotion property**, at the head of the exit table in `SKILL.md`, and
+every row leans on it — including exit 3's qualifier, which had been carrying its own copy.
+
+Deliberately not extended: the exit-1 refusals do not yet *compute* a fallback mode the way exit 2
+does. Two of the four have no prior fact to compare trees against, so `committed_differs` is not
+derivable there and a different signal would be needed. The property now covers those rows in prose
+and the empty-diff refusal remains the backstop; the code extension is filed rather than built here,
+because it is a design question about what a first review of committed work should anchor to, not a
+ripple of this fix.
+
 ## 2026-08-14: the retired test count now announces itself
 
 <!-- prawduct: type=feature | scope=test-tracking-advisory -->

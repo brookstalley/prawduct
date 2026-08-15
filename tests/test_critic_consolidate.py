@@ -3412,6 +3412,121 @@ class TestVerifyResolutionsDispatch:
         assert result.returncode == 2
         assert "scope-widened" in result.stderr
 
+    def test_an_uncommitted_widening_names_final(self, tmp_path):
+        """`_seed_and_fix` leaves everything uncommitted, so HEAD-tree →
+        working-tree is exactly the widened delta. `final` covers it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        for i in range(2 * 1 + 6):
+            (repo / f"src/new_{i}.py").write_text(f"n = {i}\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `final`" in result.stderr, result.stderr
+        # The reason, not just the mode. This fixture sits on `main`, where
+        # merge-base == HEAD, so a wrongly-True `committed_differs` would reach
+        # `final` through the empty-span guard instead and the mode assertion
+        # alone would still pass — leaving the branch this test names untested.
+        assert "every change since the prior review is uncommitted" in result.stderr
+
+    def test_a_committed_widening_names_cumulative_not_final(self, tmp_path):
+        """The defect this pins: a widening made of COMMITTED work demoted to
+        `final`, whose HEAD-tree → working-tree interval cannot see a commit.
+        The replacement was narrower than the interval refused for being too
+        wide, so the re-dispatch reviewed whatever the working tree held —
+        untracked strays, in the observed case — and reported it as the chunk's
+        review. `cumulative` spans merge-base…HEAD and actually covers it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        # A feature branch, so a merge-base exists to span. The fix and the
+        # widening both LAND — this is the post-commit shape of the incident.
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix")
+        for i in range(2 * 1 + 6):
+            _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `cumulative`" in result.stderr, result.stderr
+        assert "Re-dispatch as `final`" not in result.stderr
+
+    def test_a_committed_widening_with_no_span_falls_back_to_final(self, tmp_path):
+        """Recommending a mode that would itself refuse at dispatch is the same
+        class of defect. On the base branch `cumulative`'s merge-base IS HEAD,
+        so its interval is empty; `final` is then the remaining full review and
+        the message says it sees only the uncommitted part rather than claiming
+        coverage it does not have.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix")
+        for i in range(2 * 1 + 6):
+            _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `final`" in result.stderr, result.stderr
+        # The reason, not just the mode: `final` is reached by three different
+        # routes and only this one means "the span is empty".
+        assert "HEAD's tree matches the merge-base's" in result.stderr
+        assert "sees only the uncommitted part" in result.stderr
+
+    def test_the_structured_fallback_mode_carries_both_answers(self, tmp_path):
+        """`fallback_mode` is the structured half of the recommendation, and a
+        key that is always the same string is indistinguishable from a constant
+        — so both routes are asserted here, on the return value rather than on
+        the English. That keeps the prose free to be reworded without the
+        contract riding on it.
+        """
+        uncommitted = tmp_path / "u"
+        _init_repo(uncommitted)
+        self._seed_and_fix(uncommitted)
+        for i in range(2 * 1 + 6):
+            (uncommitted / f"src/new_{i}.py").write_text(f"n = {i}\n")
+        result = cc.begin_review(uncommitted, "verify-resolutions")
+        assert result["kind"] == "scope-widened"
+        assert result["fallback_mode"] == "final"
+
+        committed = tmp_path / "c"
+        _init_repo(committed)
+        self._seed_and_fix(committed)
+        _git(committed, "checkout", "-q", "-b", "feature/demo")
+        _commit_file(committed, "src/app.py", "x = 2  # fixed\n", "fix")
+        for i in range(2 * 1 + 6):
+            _commit_file(committed, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = cc.begin_review(committed, "verify-resolutions")
+        assert result["kind"] == "scope-widened"
+        assert result["fallback_mode"] == "cumulative"
+        # The prose and the structured field must not drift apart — the reader
+        # acts on the message, the caller could act on the key.
+        assert "`cumulative`" in result["reason"]
+
+    def test_a_committed_widening_with_an_unresolvable_base_falls_back_to_final(
+        self, tmp_path
+    ):
+        """Third route to `final`, and the one that rots quietly: a configured
+        `base_branch:` that does not resolve fails closed upstream, so
+        `cumulative` could not dispatch either. Same posture — recommend the
+        mode that can run, and do not claim it covers the committed part.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "base_branch: no-such-branch\n"
+        )
+        _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix")
+        for i in range(2 * 1 + 6):
+            _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `final`" in result.stderr, result.stderr
+        assert "no merge-base resolves" in result.stderr
+        assert "sees only the uncommitted part" in result.stderr
+
 
 class TestResolutionDirectiveDelivery:
     """End-to-end: the directive reaches the reviewer at dispatch, on that one
@@ -3512,8 +3627,9 @@ class TestResolutionDirectiveDelivery:
         assert cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE not in result.stdout
 
     def test_a_demoted_dispatch_delivers_no_narrowing(self, tmp_path):
-        """Exit 2 demotes to `final`, which rates every severity. Shipping the
-        narrowing to a `final` reviewer would silence warnings on a delta wide
+        """Exit 2 demotes to a full review (`final` on this fixture, whose
+        widening is uncommitted), which rates every severity. Shipping the
+        narrowing to that reviewer would silence warnings on a delta wide
         enough that the scope threshold just refused a partial review of it.
         """
         repo = tmp_path / "r"
