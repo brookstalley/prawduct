@@ -478,12 +478,22 @@ def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bo
       plan or departing from the rule silently. Three consecutive reviews took
       the second.
 
-    The change-log is the right witness because nothing else has to exist: a
-    code-changing branch cannot open a PR without an entry tagged with its
-    scope (`check-change-log-entry`, enforced at the PR boundary), so a real
-    scope is already declared there by the time any review runs, while a typo
-    is declared nowhere. That keeps the downgrade evidence-based rather than
-    self-asserted — a builder cannot wave it through by passing a flag.
+    The change-log is the witness because a code-changing branch cannot open a
+    PR without ADDING an entry (`check-change-log-entry`, enforced at the PR
+    boundary), and the `scope=` tag on that entry is what the release flow
+    reads to enumerate what is still unshipped. So the declaration already
+    exists by the time any review runs, and it lives in a durable, reviewed,
+    release-tracked record.
+
+    Be precise about the strength of that: the PR probe requires the entry, not
+    the tag, so a builder who writes `scope=` is still declaring something
+    rather than having it forced out of them. What this buys over the
+    alternatives — a `--scope-has-no-plan` dispatch flag, or an allowlist key —
+    is not unforgeability, it is that the declaration is durable, is read by
+    the release flow for an unrelated purpose, and is visible in the diff a
+    reviewer reads. A transient flag on one dispatch is none of those. A typo'd
+    scope, meanwhile, is declared nowhere by construction, which is the case
+    this branch actually has to separate.
     """
     if not scope or not scope.strip():
         return False

@@ -18,17 +18,23 @@ response is "ignore it, with reasons" is training people to ignore the prefix th
 
 The fix is a discriminator rather than a demotion, because the two shapes that reach here are not
 alike. A **typo'd or stale** scope names nothing anywhere, and grading must not go quiet on it. A
-**real, deliberately plan-less** scope is declared — and the witness already exists and is already
-mandatory: `check-change-log-entry` refuses a code branch at the PR boundary unless the change-log
-carries an entry tagged with its scope. So a real scope is declared there before any review runs, and
-a typo is declared nowhere. When the change-log declares the scope, the entry now arrives as
+**real, deliberately plan-less** scope is declared in the change-log — a record that already exists
+by review time, since `check-change-log-entry` refuses a code branch at the PR boundary unless it
+ADDS an entry, and the `scope=` tag on that entry is what the release flow reads to enumerate
+unshipped work. When the change-log declares the scope, the entry now arrives as
 `chunk-ref-missing no-subject — …` and rates NOTE; otherwise it is `unchecked` and still BLOCKING.
 
-Evidence-based, not self-asserted — deliberately. The alternative designs both let the builder wave
-the check through: a `--scope-has-no-plan` flag on dispatch, or an allowlist key in
-`project-state.yaml`. Either would make the downgrade a claim by the party the check exists to
-constrain. Reading a record that something else already forced into existence costs the builder
-nothing and cannot be asserted into being.
+**What that is worth, stated precisely.** The PR probe requires the *entry*, not the *tag*, so a
+builder writing `scope=` is still declaring something rather than having it forced out of them. The
+gain over the two alternatives — a `--scope-has-no-plan` flag on dispatch, or an allowlist key in
+`project-state.yaml` — is therefore not unforgeability. It is that the declaration is durable, is
+read by the release flow for an unrelated purpose, and shows up in the diff a reviewer reads; a
+transient flag on one dispatch is none of those. The typo case, which is what actually has to be
+separated here, is declared nowhere by construction.
+
+Considered and not done: making `check-change-log-entry` require the `scope=` tag, which would close
+the gap properly. It changes a gate's behavior for every consuming repo, including those whose
+existing entries carry no tag, so it is not a ripple of this fix.
 
 Fails closed at every edge: an absent change-log, an unreadable one, or a parse failure all keep the
 blocking read, since a witness that cannot be consulted proves nothing.
