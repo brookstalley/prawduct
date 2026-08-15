@@ -392,24 +392,24 @@ BLOCKING (see "A re-review does not manufacture work"). A record defect on a fix
 the non-gating work that buys the next round, so the general rule is not suspended for this table.
 
 **`unchecked` is not a pass, and the PREFIX decides the severity.** Each entry names a check that
-could not run, or an assumption made in place of one — and the two are told apart by the string, not
-by judgment:
+could not run, or an assumption made in place of one — told apart by the string, not by judgment.
+**A severity with no remedy is a false blocker**, and code, not the builder, decides a line's shape:
 
-- **`chunk-ref-missing unchecked — …` → BLOCKING.** The old `verify-chunk-refs` `cannot-verify:`
-  exit, keeping its severity: a deliverable check that could not run is indistinguishable from one
-  that passed, and habituation to that silence is what BLD-5J8N cost. **The whole-pass crash carries
-  this prefix deliberately** (`record_lint.py`, the comment above the crash return) — a crash takes
-  the deliverable check down with everything else, so it must arrive at the deliverable check's
-  severity rather than as a generic NOTE, which would be BLD-5J8N by a new route.
+- **`chunk-ref-missing unchecked — …` → BLOCKING.** A deliverable check that could not run is
+  indistinguishable from one that passed, and habituation to that silence is what BLD-5J8N cost.
+  **The whole-pass crash carries this prefix deliberately** (`record_lint.py`, the comment above the
+  crash return) — a crash takes the deliverable check down with it, so it must arrive at the
+  deliverable check's severity, not as a generic NOTE.
+- **`chunk-ref-missing no-subject — …` → NOTE.** The scope names no plan *and* the change-log
+  declares that scope: real, and deliberately plan-less — the ordinary shape of a framework-only fix,
+  which `building.md` says needs no plan. Nothing was skipped; there is no deliverable set to grade,
+  and no edit could clear it. A typo'd scope is declared nowhere and still arrives `unchecked`.
 - **`chunk-ref-missing graded chunk … of <plan>: …` → NOTE.** An *assumption*, not a failure: the
-  check ran (`chunk_graded` is non-null), but one half of "whose deliverables" was inferred rather
-  than dispatched. Two inferences carry this prefix and the line names which fired — the **chunk**
-  was inferred from build-plan Status (which names the first UNCHECKED chunk, so it may be the next
-  chunk rather than the reviewed one), or the **plan** came from the `active_build_plan` pointer
-  because the dispatch carried no scope (the pointer names the plan in progress in the repo, which
-  need not be the one this branch is building). Either means **no answer about this diff**, not clean
-  — and blocking it would be a false blocker with no remedy, since a branch that builds no chunk has
-  no `--chunk` to supply.
+  check ran (`chunk_graded` non-null), but one half of "whose deliverables" was inferred — the
+  **chunk** inferred from build-plan Status (which names the first UNCHECKED chunk, so possibly the next one),
+  or the **plan** from the `active_build_plan` pointer because the dispatch carried no scope. The
+  line names which fired. Either means **no answer about this diff**, not clean; a branch that builds
+  no chunk has no `--chunk` to supply.
 - **Every other `unchecked` entry → NOTE**, still stated in your summary.
 
 `goals-1-3.md` carries this same rule for the modes that read only that file; the two must agree.

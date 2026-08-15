@@ -459,6 +459,46 @@ def _read_text(path: Path) -> "str | None":
         return None
 
 
+def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bool:
+    """Does any change-log entry declare ``scope``?
+
+    This is the discriminator between the two shapes that both reach
+    "the dispatch names a scope no build plan declares":
+
+    - a **typo'd or stale** scope, which names nothing anywhere. Grading must
+      not proceed and must not go quiet — a deliverable check that silently
+      skipped is indistinguishable from one that passed, which is the whole
+      reason the `unchecked` prefix blocks.
+    - a **real, deliberately plan-less** scope — the ordinary shape of a
+      framework-only fix, which prawduct's own methodology says needs no build
+      plan (`building.md`: small = build + verify, no plan). There is no
+      deliverable set to grade, no `--chunk` that could supply one, and no edit
+      to the diff that clears it. Blocking that is a false blocker with no
+      remedy, and the only exits left to a builder are inventing a retroactive
+      plan or departing from the rule silently. Three consecutive reviews took
+      the second.
+
+    The change-log is the right witness because nothing else has to exist: a
+    code-changing branch cannot open a PR without an entry tagged with its
+    scope (`check-change-log-entry`, enforced at the PR boundary), so a real
+    scope is already declared there by the time any review runs, while a typo
+    is declared nowhere. That keeps the downgrade evidence-based rather than
+    self-asserted — a builder cannot wave it through by passing a flag.
+    """
+    if not scope or not scope.strip():
+        return False
+    text = _read_text(prawduct_dir / "change-log.md")
+    if text is None:
+        return False  # unreadable witness proves nothing — keep the block
+    from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    try:
+        entries = change_log.parse_change_log(text)
+    except Exception:  # prawduct:allow prawduct/broad-except -- a malformed change-log must not decide severity; fail closed to the blocking read
+        return False
+    return any(e.tags.get("scope") == scope.strip() for e in entries)
+
+
 def _norm_field_re():
     """What a norm entry IS, imported from its one home in ``norm_probes``:
     ``(field marker, blockquote prefix)``.
@@ -702,6 +742,12 @@ def _check_chunk_refs(
     """
     plan = buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope)
     if plan.path is None and plan.gap:
+        if _scope_declared_in_change_log(prawduct_dir, scope):
+            return [], (
+                f"chunk-ref-missing no-subject — {plan.gap}; the change-log "
+                f"declares scope {scope!r}, so the scope is real and carries no "
+                "plan — there is no declared deliverable set to grade"
+            ), None, None
         return [], f"chunk-ref-missing unchecked — {plan.gap}", None, None
 
     assumed = False

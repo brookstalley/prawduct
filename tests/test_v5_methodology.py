@@ -143,7 +143,14 @@ LAST_MEASURED_TOKENS = {
     # already defines what an observation IS, so it costs the rule and no
     # framing. The raise is now fully spent: 7 tokens of headroom, and the next
     # addition trims.
-    "skills/critic/goals-1-3.md": 2243,
+    # +6 on 2026-08-15: the `chunk-ref-missing no-subject` severity, which this
+    # file must state because `chunk`/`verify-resolutions` read nothing else.
+    # Paid inside the same two paragraphs: `prior_dispositions` restated
+    # "already answered, don't recount" that the record-lint paragraph directly
+    # below already owns, `chunk_graded`/`plan_graded` re-listed what they name
+    # right after naming it, and the two false-blocker arguments (no-subject and
+    # graded) were one sentence said twice. Ceiling 2250 untouched, 1 to spare.
+    "skills/critic/goals-1-3.md": 2247,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -164,7 +171,12 @@ LAST_MEASURED_TOKENS = {
     # into an unguarded file is the bump-wearing-a-trim's-clothing move this
     # file's own comment warns about, which is why `SKILL.md` is now measured
     # below and the relocation is no longer credited here.
-    "skills/critic/review-cycle.md": 9591,
+    # +6 more on 2026-08-15 for the same severity rule, stated here at length
+    # because this is the table `final`/`cumulative` grade against. Paid in the
+    # block it landed in: "a severity with no remedy is a false blocker" was the
+    # tail of the `graded` bullet and is now the lead sentence both it and the
+    # new bullet lean on, and the BLOCKING bullet's provenance narration went.
+    "skills/critic/review-cycle.md": 9599,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the

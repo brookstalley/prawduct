@@ -586,6 +586,74 @@ class TestChunkRefs:
         assert any("chunk-ref-missing unchecked" in r for r in result["unchecked"])
         assert any("'ghost'" in r for r in result["unchecked"])
 
+    def test_a_change_log_declared_scope_with_no_plan_is_no_subject_not_unchecked(
+        self, tmp_path
+    ):
+        """A framework-only fix has no build plan — `building.md` says small work
+        needs none — so `unchecked` made it a false blocker whose only exits were
+        a retroactive plan or a silent departure from the rule. Three consecutive
+        reviews took the second, which is what a rule with no remedy buys.
+
+        The change-log is what tells this apart from a typo: a code branch cannot
+        reach a PR without an entry tagged with its scope, so a real scope is
+        declared there and a typo is declared nowhere.
+        """
+        repo, _head = self._repo_with_two_scoped_plans(tmp_path, "declared")
+        (repo / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## 2026-08-15: a framework-only fix\n\n"
+            "<!-- prawduct: type=bugfix | scope=planless -->\n\nBody.\n"
+        )
+        head = _commit(repo, "change-log declares the scope")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="planless"
+        )
+        entry = next(
+            r for r in result["unchecked"] if r.startswith("chunk-ref-missing")
+        )
+        assert entry.startswith("chunk-ref-missing no-subject"), entry
+        assert "'planless'" in entry
+        # Still an honest non-answer: nothing was graded, so the count stays
+        # null. The downgrade is of SEVERITY, not of the absence itself.
+        assert result["counts"]["chunk-ref-missing"] is None
+        assert result["plan_graded"] is None
+
+    def test_an_undeclared_scope_still_blocks_even_with_a_change_log(self, tmp_path):
+        """The other half — otherwise the downgrade is unconditional and a
+        typo'd or stale scope quietly stops grading a plan that exists. The
+        witness has to be the scope, not the mere presence of a change-log.
+        """
+        repo, _head = self._repo_with_two_scoped_plans(tmp_path, "undeclared")
+        (repo / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## 2026-08-15: something else entirely\n\n"
+            "<!-- prawduct: type=bugfix | scope=unrelated -->\n\nBody.\n"
+        )
+        head = _commit(repo, "change-log declares a different scope")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="ghost"
+        )
+        entry = next(
+            r for r in result["unchecked"] if r.startswith("chunk-ref-missing")
+        )
+        assert entry.startswith("chunk-ref-missing unchecked"), entry
+
+    def test_an_unreadable_change_log_keeps_the_block(self, tmp_path):
+        """Fail closed. An absent or malformed witness proves nothing, and the
+        severity it would otherwise grant is the one that stops a deliverable
+        check from going quiet.
+        """
+        repo, head = self._repo_with_two_scoped_plans(tmp_path, "nolog")
+        assert not (repo / ".prawduct" / "change-log.md").exists(), (
+            "the fixture must reach the unreadable-witness branch, not pass "
+            "because some change-log happened to be absent of the scope"
+        )
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="ghost"
+        )
+        entry = next(
+            r for r in result["unchecked"] if r.startswith("chunk-ref-missing")
+        )
+        assert entry.startswith("chunk-ref-missing unchecked"), entry
+
     def test_the_pointer_assumption_is_reported_when_plans_are_ambiguous(
         self, tmp_path
     ):

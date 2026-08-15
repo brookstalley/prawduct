@@ -3,6 +3,36 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-15: a plan-less scope is an absence, not a check that failed
+
+<!-- prawduct: type=bugfix | scope=scope-widened-demotion -->
+
+Record-lint rates `chunk-ref-missing unchecked — …` BLOCKING, by string and not by judgment, because
+a deliverable check that could not run is indistinguishable from one that passed. One shape reached
+that prefix without deserving it: a dispatch whose scope no build plan declares. That is the ordinary
+condition of a **framework-only fix**, which `building.md` says needs no build plan at all — so the
+finding had no remedy. Not a `--chunk` to supply, not an edit to the diff that clears it. The only
+exits were inventing a retroactive plan or departing from the rule, and **three consecutive reviews
+on this branch took the second**, each recording the departure and moving on. A rule whose correct
+response is "ignore it, with reasons" is training people to ignore the prefix that blocks.
+
+The fix is a discriminator rather than a demotion, because the two shapes that reach here are not
+alike. A **typo'd or stale** scope names nothing anywhere, and grading must not go quiet on it. A
+**real, deliberately plan-less** scope is declared — and the witness already exists and is already
+mandatory: `check-change-log-entry` refuses a code branch at the PR boundary unless the change-log
+carries an entry tagged with its scope. So a real scope is declared there before any review runs, and
+a typo is declared nowhere. When the change-log declares the scope, the entry now arrives as
+`chunk-ref-missing no-subject — …` and rates NOTE; otherwise it is `unchecked` and still BLOCKING.
+
+Evidence-based, not self-asserted — deliberately. The alternative designs both let the builder wave
+the check through: a `--scope-has-no-plan` flag on dispatch, or an allowlist key in
+`project-state.yaml`. Either would make the downgrade a claim by the party the check exists to
+constrain. Reading a record that something else already forced into existence costs the builder
+nothing and cannot be asserted into being.
+
+Fails closed at every edge: an absent change-log, an unreadable one, or a parse failure all keep the
+blocking read, since a witness that cannot be consulted proves nothing.
+
 ## 2026-08-15: the widened-scope demotion names a mode that can see the delta
 
 <!-- prawduct: type=bugfix | scope=scope-widened-demotion -->
