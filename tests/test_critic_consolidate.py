@@ -3470,7 +3470,7 @@ class TestVerifyResolutionsDispatch:
         assert "Re-dispatch as `final`" in result.stderr, result.stderr
         # The reason, not just the mode: `final` is reached by three different
         # routes and only this one means "the span is empty".
-        assert "HEAD is at the merge-base" in result.stderr
+        assert "HEAD's tree matches the merge-base's" in result.stderr
         assert "sees only the uncommitted part" in result.stderr
 
     def test_the_structured_fallback_mode_carries_both_answers(self, tmp_path):

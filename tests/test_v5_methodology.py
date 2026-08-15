@@ -154,15 +154,25 @@ LAST_MEASURED_TOKENS = {
     # -25 then +17 on 2026-08-15, 9599 -> 9574 -> 9591, ceiling untouched. The
     # demotion table gained the rule that its fallback is NAMED, not assumed --
     # `chunk`/`final` see only HEAD-tree -> working-tree, so a committed delta
-    # demotes to `cumulative`. Paid three ways, all inside the section: the
-    # anchoring paragraph narrated both wrong readings of "the trees differ" as
-    # incidents and `begin_review`'s comment already owns that derivation; two
-    # more history narrations became their rules; and the property itself was
-    # RELOCATED to `SKILL.md` step 4, where it belongs -- every mode reads that
-    # file, only `final`/`cumulative` read this one, and the fact was already
-    # stated there twice. What is left here is a pointer plus the per-row
-    # `Committed` flags, which is the part specific to this table.
+    # demotes to `cumulative`. Paid inside the section: the anchoring paragraph
+    # narrated both wrong readings of "the trees differ" as incidents and
+    # `begin_review`'s comment already owns that derivation, and two more
+    # history narrations became their rules. The property itself moved to
+    # `SKILL.md` step 4 -- but that is a PLACEMENT decision (every mode reads
+    # that file, only `final`/`cumulative` read this one, and the fact was
+    # already stated there twice), NOT payment. Funding a budget by moving prose
+    # into an unguarded file is the bump-wearing-a-trim's-clothing move this
+    # file's own comment warns about, which is why `SKILL.md` is now measured
+    # below and the relocation is no longer credited here.
     "skills/critic/review-cycle.md": 9591,
+    # First reading, 2026-08-15, taken because the demotion property landed here
+    # and nothing was watching. This is the payload EVERY mode loads -- including
+    # the fast `chunk` path whose whole reason for existing is to not read the
+    # seven-goal protocol -- so growth here is the most expensive growth in the
+    # skill and was, until now, the only growth nobody had to declare.
+    # No ceiling is asserted with this first measurement; the entry exists so the
+    # next change to this file has to state what paid for it.
+    "skills/critic/SKILL.md": 3411,
     "skills/critic/framework-checks.md": 1116,
 }
 

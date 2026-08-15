@@ -647,10 +647,14 @@ def _widened_fallback_mode(
             "sees only the uncommitted part"
         )
     if resolved["tree"] == committed_head_tree:
+        # TREE equality, and the message says so. "HEAD is at the merge-base" is
+        # the common cause but not the condition: a branch that commits and then
+        # reverts sits far ahead of the merge-base with an identical tree, takes
+        # this path correctly, and would be told something false about itself.
         return "final", (
-            "the delta includes committed work, but HEAD is at the merge-base, "
-            "so `cumulative`'s interval is empty — `final` sees only the "
-            "uncommitted part"
+            "the delta includes committed work, but HEAD's tree matches the "
+            "merge-base's, so `cumulative`'s interval is empty — `final` sees "
+            "only the uncommitted part"
         )
     return "cumulative", (
         "the delta includes committed work, which `final`'s HEAD-tree → "
