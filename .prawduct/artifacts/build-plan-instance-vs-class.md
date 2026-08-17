@@ -43,10 +43,14 @@ mechanical rather than evocative.
 
 - [ ] Chunk 01: A finding says whether it is an instance or a class, and the remedy is graded
 - [ ] Chunk 02: Eighteen scattered rules become three sharp ones
+- [ ] Chunk 03: Uplevel the repeated shapes in review-protocol.md (unblocks Chunk 01)
 Context: Plan written 2026-08-17 after the `fleet-feedback-661` branch produced three
-instances of the defect it describes. Chunk 01 first: Chunk 02's consolidated wording must
-match the vocabulary Chunk 01 establishes, or the corpus and the protocol disagree about
-what a class is. Next: Chunk 01.
+instances of the defect it describes. **Order reversed by operator decision 2026-08-17**
+(the "Open decision" below, option C): Chunk 01 is blocked on a token-budget ruling, and
+Chunk 02 has no such constraint. The stated dependency runs fine in reverse — the vocabulary
+for *class*, *premise* and *construction* gets settled in the consolidated learnings rule,
+and Chunk 01 then CITES it rather than restating it, which may also cost fewer tokens and
+partly answer the funding question. Next: Chunk 02.
 
 ## Verification Strategy
 
@@ -143,8 +147,9 @@ rule that cannot catch the defects that motivated it is the vacuous-guard class 
   the whole set "~12 restatements of one rule"; the careful read is three rules, and acting
   on the first read would have destroyed real content. That correction is itself an instance
   of Family C — the class was defined by a keyword match rather than by the property.
-- **Depends on:** Chunk 01 (the consolidated Family A rule must use Chunk 01's vocabulary
-  for "class", "premise" and "construction", or the corpus and the protocol disagree)
+- **Depends on:** none. (Was "Chunk 01", reversed by operator decision — this chunk now
+  ESTABLISHES the vocabulary for *class*, *premise* and *construction*, and Chunk 01 cites
+  it. Same coupling, opposite direction, and it unblocks the budget-constrained chunk.)
 - **Artifacts consumed:** `.prawduct/learnings.md`, `.prawduct/learnings-detail.md`
 - **Deliverables:** three rules in `.prawduct/learnings.md` replacing the ~18; the retired
   rules' evidence preserved in `.prawduct/learnings-detail.md` under the surviving headings
@@ -195,3 +200,50 @@ not as a side effect of paying for something else.
 
 **This is the operator's call by construction**, not a preference: the budget comment records
 that the ceiling moves by owner ruling.
+
+
+### Chunk 03: Uplevel the repeated shapes in review-protocol.md
+
+- **Description:** Added 2026-08-17 after the operator asked whether classes could be
+  upleveled rather than a ceiling raised. A measured scan says yes, and by more than Chunk 01
+  needs: **~634 of 3799 tokens sit in six repeated shapes.** Goal 4 drift family 252; Goal 2
+  declaration→obligation 163; Signals 96; `infrastructure_dependencies` checked in BOTH Goal 2
+  and Goal 4, 50; Goal 5 missing-rationale 45; a Goal 4 norms bullet restating the Normative
+  authority block, 28.
+
+  **The discriminator, which is the whole substance of this chunk.** A class uplevels when
+  the general form is *actionable without the enumeration*, and must stay enumerated when the
+  enumeration IS the trigger.
+  - **Uplevels:** Goal 4's five bullets are one property — *a description whose subject
+    moved*; artifact, comment, README, docstring and renamed term are containers, not
+    distinct checks. Goal 5's three are *a decision recorded without its why*. The
+    `infrastructure_dependencies` pair is one check written twice. The Goal 4 norms bullet is
+    already stated above it.
+  - **Must NOT uplevel:** Goal 2's declaration→obligation bullets are literal string matches
+    (`Foreign API:` ⇒ a `verify-api` step; `Exposed API:` ⇒ two named `design_decisions`
+    keys; `Visual change: yes` ⇒ an operator-verification entry). "A declaration creates an
+    obligation" names neither the string to find nor the thing owed, so collapsing them
+    silently stops three checks firing — the vacuous-guard failure, shipped into the
+    reviewer. `framework-checks.md` Check 7 already governs this: *when only the enumerated
+    form is workable, say why the general form fails here* — so the chunk RECORDS that
+    reason rather than leaving the non-merge unexplained.
+- **Depends on:** none. Unblocks Chunk 01 by leaving headroom, but stands on its own merits —
+  it is deliberately NOT folded into Chunk 01's commit, because funding a new rule by
+  refactoring load-bearing checks ships two half-reviewed changes as one.
+- **Artifacts consumed:** `plugin/skills/critic/review-protocol.md`; `framework-checks.md`
+  Check 7 (the governing rule for the non-merge)
+- **Deliverables:** upleveled Goal 4 and Goal 5 sections, the duplicate
+  `infrastructure_dependencies` check resolved to one home, the restated norms bullet removed,
+  in `plugin/skills/critic/review-protocol.md`; updated reading in
+  `tests/test_v5_methodology.py::LAST_MEASURED_TOKENS`
+- **Tests:** the file's own budget guardrail passes with a LOWER reading and an unchanged
+  ceiling; `assert_inert_count_cap` still passes (it asserts placement inside the NOTE legend
+  entry — do not disturb it)
+- **Acceptance criteria:** every check that fired before still fires — verified by walking
+  each removed bullet and naming which surviving sentence now carries it, not by reading the
+  new prose and finding it plausible; ≥150 tokens recovered; no ceiling raised
+- **Type:** doc-only
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
