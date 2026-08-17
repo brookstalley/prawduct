@@ -36,16 +36,33 @@ alongside them?) is a design call recorded in that chunk rather than an unknown.
 
 ## Status
 
-- [ ] Chunk 01: Chunk-heading parse failures become loud, not empty
-- [ ] Chunk 02: Unrecognised flags are refused; `update-gitignore` gains a real `--dry-run`
-- [ ] Chunk 03: An enabled-but-never-onboarded repo says so, by cause
-- [ ] Chunk 04: Reflections carry the version that produced them
-Context: Plan written 2026-08-17 from issue #661 (external fleet report, ~840 entries
-across 10 governed repos). All four chunks are independent — different files, no shared
-contract — and are built in parallel by worktree-isolated subagents, then combined,
-suite-run and E2E-verified by the main agent. Per user direction subagents run only
-their own feature tests; the full suite and all end-to-end verification are the main
-agent's. Next: dispatch the four subagents.
+- [x] Chunk 01: Chunk-heading parse failures become loud, not empty
+- [x] Chunk 02: Unrecognised flags are refused; `update-gitignore` gains a real `--dry-run`
+- [x] Chunk 03: An enabled-but-never-onboarded repo says so, by cause
+- [x] Chunk 04: Reflections carry the version that produced them
+Context: All four chunks built, combined, E2E-verified and reviewed. Built in parallel by
+worktree-isolated subagents (bases predated this branch, so each landed by cherry-pick;
+one union conflict in `probe_families.py`). Per user direction subagents ran only their
+own feature tests — the full suite, every end-to-end check and each fix below were the
+main agent's.
+
+The cumulative Critic (`rev-20260817T211246Z-cd033794`) returned 2 blocking, both real and
+both fixed in one pass: `coverage-status`/`coverage-scaffold` still read unknown flags as
+absent (so `coverage-scaffold --apply --dry-run` wrote stubs — the reported defect's own
+shape in the command Chunk 02 held up as well-behaved), and Chunk 01's new gap gate made
+`_critic_mode_for_chunk` return `None` for an unreadable plan, which walks to rule 4 and
+answers `chunk` — CRT-3M8Q's silent demotion by another door. The escalation added for the
+second is narrowed to the *untrustworthy* half of the gap: a chunk with no detail section
+in a clean plan is ordinary and still infers, and that discriminator is its own test.
+
+Two findings the branch produced rather than received: an unparseable heading also fails
+to CLOSE the section before it, so a parseable chunk absorbs its neighbour's deliverables
+and passes on them (worse than the reported empty-read, and the reason the loud signal
+scans the whole plan rather than firing at lookup); and `api-contract.md` had claimed all
+repo-lifecycle commands were dry-run-by-default, a contract `update-gitignore` never
+honoured.
+
+Next: `/prawduct:critic verify-resolutions`, then this scope is ready to PR.
 
 ## Verification Strategy
 

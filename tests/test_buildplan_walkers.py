@@ -593,13 +593,22 @@ class TestUnparsedHeadingReachesEveryCaller:
     ):
         """Chunk 01 declares `chunk`; the absorbed chunk 09 declares `final`.
         The reader must return neither — an override it cannot attribute is not
-        an override, and inference is the documented fallback."""
+        an override.
+
+        But it must not merely decline, either: a bare "no override" sends
+        inference down to rule 4 and a confident `chunk`, on a plan nobody could
+        read. So the read carries the reason, and the caller escalates on it.
+        """
         prawduct, plan = self._plan(tmp_path, PLAN_UNPARSED)
-        assert critic_mode._critic_mode_for_chunk(prawduct, "01", plan) is None
+        read = critic_mode._critic_mode_for_chunk(prawduct, "01", plan)
+        assert read.mode is None
+        assert read.unreadable and "do not parse as one" in read.unreadable
 
     def test_critic_mode_reader_still_reads_a_clean_plan(self, tmp_path: Path):
         prawduct, plan = self._plan(tmp_path, PLAN)
-        assert critic_mode._critic_mode_for_chunk(prawduct, "01", plan) == "chunk"
+        read = critic_mode._critic_mode_for_chunk(prawduct, "01", plan)
+        assert read.mode == "chunk"
+        assert read.unreadable is None
 
 
 # ---------------------------------------------------------------------------

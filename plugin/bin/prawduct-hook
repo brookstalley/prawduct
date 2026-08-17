@@ -624,7 +624,16 @@ def _reflection_provenance_header() -> str:
     try:
         version = _plugin_manifest_version() or "unknown"
         archived = datetime.now(timezone.utc).date().isoformat()
-    except Exception:  # prawduct:allow prawduct/broad-except -- provenance is metadata; the reflection it labels must survive anything this line does
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- provenance is metadata; the reflection it labels must survive anything this line does
+        # Named, not swallowed. Every other degradation at this boundary prints
+        # `NOTE: … ({exc})`, and a stamp that quietly reads `unknown` forever is
+        # the failure this header exists to end — an entry nobody can attribute,
+        # with nothing on the record saying why.
+        print(
+            f"NOTE: could not resolve the prawduct version for this reflection ({exc}) "
+            "— archiving it stamped `unknown`.",
+            file=sys.stderr,
+        )
         return "<!-- prawduct: version=unknown | archived=unknown -->"
     return f"<!-- prawduct: version={version} | archived={archived} -->"
 
@@ -1907,15 +1916,21 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             chunk_type, type_error = _bpr._parse_build_plan_chunk_type(
                 prawduct_dir, current_chunk_id, gate_plan
             )
-            # v1.5.1 Chunk 04(a): surface typo'd Type values. Pre-fix, the
-            # parser's "unknown type: ..." message was discarded so the author
-            # never saw it. Surfacing in waiver_notes makes the typo visible
-            # at session-end and in the next stop-hook briefing without
-            # changing fail-closed semantics (chunk still runs as `code` per
-            # parser default). Restricted to "unknown type:" errors only —
-            # "chunk not found" / "missing build-plan" errors indicate a
-            # structural fixture issue, not actionable user feedback.
-            if type_error and type_error.startswith("unknown type:"):
+            # Surface a typo'd `Type:` value in waiver_notes, so the author meets
+            # it at session-end rather than never — fail-closed semantics are
+            # unchanged (the chunk still runs as `code`, the parser's default).
+            #
+            # Two error shapes are surfaced, and the second was added because the
+            # blanket "not actionable user feedback" reason stopped being true.
+            # `chunk not found` / `missing build-plan` still read as fixture
+            # noise, but a plan carrying a heading nothing can parse now reports
+            # the offending LINE — the most actionable message this parser
+            # produces, and precisely the one a silent drop would keep from the
+            # only person who can fix it.
+            if type_error and (
+                type_error.startswith("unknown type:")
+                or "do not parse as one" in type_error
+            ):
                 waiver_notes.append(f"chunk-type-parse-error: {type_error}")
             if chunk_type == "designer-handoff" and not doc_only:
                 designer_handoff_skip = True
@@ -4254,6 +4269,12 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
     Read-only and informational — always exits 0. A broken plugin import or a
     faulty sub-check degrades to a NOTE / "unknown", never a crash (a health
     *report* must not fail the operator's shell)."""
+    # Read-only, so a swallowed token cannot mutate here — but it can still make
+    # the report answer a question nobody asked, which is the same class the
+    # pre-dispatch guard closes for the commands that take no argv at all.
+    rejected = _reject_unknown_args("coverage-status", argv, {"--json"})
+    if rejected is not None:
+        return rejected
     want_json = "--json" in argv
     lib_root = _plugin_root()
     if lib_root not in sys.path:
@@ -4401,6 +4422,16 @@ def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
     Exit 0 on dry run or successful ``--apply``; exit 1 if the plugin ``lib/`` is
     not importable (a state-mutating command must not claim success on a broken
     install — mirrors ``accept-operator-verification``)."""
+    # This command MUTATES under `--apply`, and the flag-only idiom below reads a
+    # token it does not recognise as absent. So `--apply --dry-run` wrote the
+    # stubs while the caller believed they had asked for a preview — the same
+    # surprise `update-gitignore` served, in the command held up as its
+    # well-behaved sibling. `--dry-run` is not accepted here because the bare
+    # invocation already IS the dry run; the point is that it is refused rather
+    # than ignored.
+    rejected = _reject_unknown_args("coverage-scaffold", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
     apply = "--apply" in argv
     want_json = "--json" in argv
     lib_root = _plugin_root()

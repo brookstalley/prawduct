@@ -347,10 +347,19 @@ def _count_build_plan_chunks(
 # pattern missed, and every subject it newly drops is a prose reference. Other
 # idioms ("resolve Chunk 02 Critic findings") fall to this control's documented
 # failure mode, silence — enumerating verbs is the slide this stops short of.
+# The id shape tracks the plan-side matchers deliberately. When `_CHUNK_HEADING_RE`
+# and `_CHUNK_ITEM_RE` learned dotted ids, this reader kept `\d+` and so read
+# `Chunk 1.2` in a subject as id `1` — a *wrong* attribution, not a missed one,
+# which is worse: the commit reports against a chunk it does not belong to. A
+# chunk vocabulary has three readers, and widening two of them is the one-sided
+# widening the comment above `_CHUNK_HEADING_RE` already warns is a new defect.
+# Still digits-and-dots only, NOT `\w+`: the surrounding forms are prose-adjacent,
+# and a bare word would match "close Chunk work" as an id.
+_CHUNK_ID_IN_SUBJECT = r"(\d+(?:\.\d+)*)"
 _CHUNK_COMMIT_RE = re.compile(
-    r"\(Chunk\s+(\d+)\)"
-    r"|:\s*Chunk\s+(\d+)\b"
-    r"|\bclos(?:e|es|ed)\s+Chunk\s+(\d+)\b"
+    rf"\(Chunk\s+{_CHUNK_ID_IN_SUBJECT}\)"
+    rf"|:\s*Chunk\s+{_CHUNK_ID_IN_SUBJECT}\b"
+    rf"|\bclos(?:e|es|ed)\s+Chunk\s+{_CHUNK_ID_IN_SUBJECT}\b"
 )
 # Conventional-commit scope: `fix(session-boundary-events): … (Chunk 01)`.
 _COMMIT_SCOPE_RE = re.compile(r"^\w+\(([^)]+)\)!?:")

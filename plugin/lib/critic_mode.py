@@ -80,6 +80,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 from . import buildplan_refs, gitstate
 from .core import resolve_build_plan_path
@@ -172,13 +173,22 @@ def infer_mode(
     # feature branch the override reads the chunk actually in progress, not
     # always Chunk 01 (CRT-7B4M). Only a recognized token overrides; an absent /
     # blank / unrecognized field falls through to ordinary inference.
-    plan_mode = (
+    plan_read = (
         _critic_mode_for_chunk(prawduct_dir, current_chunk_id, plan.path)
         if current_chunk_id is not None
-        else None
+        else ChunkModeRead(None, None)
     )
-    if plan_mode is not None:
-        return plan_mode, f"plan-override: {plan_mode}"
+    if plan_read.mode is not None:
+        return plan_read.mode, f"plan-override: {plan_read.mode}"
+
+    # An unreadable plan escalates rather than falling through. Rule 4 would
+    # answer `chunk` — the narrowest mode there is — on the strength of a plan
+    # nobody could parse, which is the canonical rule inverted: "missing,
+    # unrecognized, or inference cannot make a confident call → final". The
+    # reason travels with it, so the rationale names the plan instead of
+    # reporting a confident `chunk`.
+    if plan_read.unreadable:
+        return "final", f"rule-0 final (plan unreadable): {plan_read.unreadable}"
 
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
         return "verify-resolutions", (
@@ -668,9 +678,27 @@ def _commit_is_ancestor(project_dir: Path, sha: str) -> bool:
 # like every other consumer — `infer_mode` calls that directly.
 
 
+class ChunkModeRead(NamedTuple):
+    """What reading a chunk's ``**Critic mode:**`` field found.
+
+    Two fields because ``None`` alone cannot carry the difference that matters:
+    *this chunk declares no mode* and *this plan could not be read* both mean
+    "no override", but only the second means inference is working from a plan it
+    cannot trust. Collapsing them sends an unreadable plan down rule 4 to
+    ``chunk`` with a rationale that never mentions the plan — the silent
+    demotion CRT-3M8Q exists to prevent, arriving by a different door.
+
+    ``unreadable`` is prose naming why, for the rationale string; ``None`` when
+    the plan read fine.
+    """
+
+    mode: str | None
+    unreadable: str | None
+
+
 def _critic_mode_for_chunk(
     prawduct_dir: Path, chunk_id: str | None, plan_path: Path | None = None
-) -> str | None:
+) -> ChunkModeRead:
     """Return ``chunk_id``'s declared ``**Critic mode:**`` token, or ``None``.
 
     Finds that chunk's ``### Chunk <id>:`` detail section and reads its
@@ -690,7 +718,7 @@ def _critic_mode_for_chunk(
     the comment at that call for why this reader declines rather than reports.
     """
     if chunk_id is None:
-        return None
+        return ChunkModeRead(None, None)
 
     # ``plan_path`` is the plan `infer_mode` resolved for this branch; the
     # pointer is the fallback. Reading a different plan here than the one the
@@ -699,7 +727,10 @@ def _critic_mode_for_chunk(
     if plan_path is None:
         plan_path = resolve_build_plan_path(prawduct_dir)
     if not plan_path.is_file():
-        return None
+        # No plan at all is not an unreadable plan: rule 4 already grounds its
+        # choice on the plan's absence and says so, so there is nothing here that
+        # inference does not already know.
+        return ChunkModeRead(None, None)
     try:
         # Explicit UTF-8 with the same except-set as every other build-plan
         # reader. `infer_mode` reads the plan TWICE — here and through
@@ -708,27 +739,38 @@ def _critic_mode_for_chunk(
         # `UnicodeDecodeError` is a `ValueError`, so a bare `except OSError`
         # let it escape past a caller that has no guard.
         content = plan_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        return ChunkModeRead(None, f"{plan_path.name} could not be read ({exc})")
 
     section = buildplan_refs._chunk_section_lines(content, chunk_id)
-    # The same gate the deliverable and `Type:` readers apply — and the one
-    # caller that must not turn it into an error. This function's contract is
-    # "the declared mode, or None to infer", and declining is safe here in a way
-    # it is not there: inference still runs, and a plan whose boundaries cannot
-    # be read is already hard-failing the chunk-ref check in the same review, so
-    # the reader gets the line number from there rather than twice.
+    # The same gate the deliverable and `Type:` readers apply. Reading the field
+    # anyway is not safe: a section whose end was never detected runs on into the
+    # next chunk, so the first `**Critic mode:**` in it can belong to a different
+    # one — and this field OVERRIDES inference, so a `chunk` picked up from a
+    # neighbour silently downgrades a plan-mandated `final`.
     #
-    # What is NOT safe is reading the field anyway. A section whose end was never
-    # detected runs on into the next chunk, so the first `**Critic mode:**` in it
-    # can belong to a different one — and this field OVERRIDES inference, so a
-    # `chunk` picked up from a neighbour silently downgrades a plan-mandated
-    # `final`.
+    # But declining is not safe either, which is why the gap is REPORTED rather
+    # than swallowed. A bare `None` here means "no override", and inference then
+    # walks down to rule 4 and picks `chunk` — narrower than the `final` the
+    # unreadable plan might have mandated, with a rationale that never says the
+    # plan could not be read. That is CRT-3M8Q's silent demotion arriving through
+    # the gate meant to prevent it. The caller escalates instead.
+    # Only the UNTRUSTWORTHY half escalates. `chunk_section_gap` also refuses a
+    # chunk that simply has no detail section in a plan that reads perfectly —
+    # an ordinary shape (a Status roster whose later chunks are not written up
+    # yet), where the plan states no mode and inference is exactly right to
+    # proceed. Escalating that would turn every not-yet-detailed chunk into a
+    # `final`. What must not proceed silently is a plan carrying a heading
+    # nothing can parse, because then the field this function did not find may
+    # exist under it, and the section that did resolve may not be its own.
+    unparsed = buildplan_refs.unparsed_chunk_heading_reason(section)
+    if unparsed:
+        return ChunkModeRead(None, unparsed)
     if buildplan_refs.chunk_section_gap(chunk_id, section):
-        return None
+        return ChunkModeRead(None, None)
     for _line_num, line in section.lines:
         m = _BUILD_PLAN_CRITIC_MODE_RE.match(line)
         if m:
             token = m.group(1)
-            return token if token in _VALID_ARG_MODES else None
-    return None
+            return ChunkModeRead(token if token in _VALID_ARG_MODES else None, None)
+    return ChunkModeRead(None, None)

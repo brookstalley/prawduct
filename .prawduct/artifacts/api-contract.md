@@ -196,6 +196,30 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   no argv at all, so `--dry-run` could not reach it and the reconcile ran anyway. Both
   halves are fixed; the asymmetry that remains is deliberate and is stated here rather
   than left for the next reader to discover by running it.
+
+**Argument shape is checked before dispatch, for every subcommand.** An argument a
+subcommand has no parameter to receive is refused with exit 2 and nothing runs — the
+usage-error convention already used by `_reject_unknown_args`. The check sits ahead of
+the dispatch chain (and ahead of project-dir resolution) rather than inside each command,
+because a per-command guard misses whichever command nobody thought of; that is the same
+placement `_check_binary_skew` and `_check_ephemeral_worktree` already use. Two carve-outs
+are deliberate and are the only ones:
+
+- **`stop` / `subagent-stop` name the stray argument on stderr and still run.** These are
+  the harness's own calls, never typed. A usage error on a Stop hook does not protect a
+  caller — it blocks the session and feeds the refusal back as a turn, which is a worse
+  failure than the silence it would close.
+- **`stamp-merged` is unchecked and silent.** It is retired-but-callable and its
+  deprecation contract is exit 0 for any input, so a copied release script keeps working.
+  An inert command cannot act on an argument it ignored, so there is no surprise to
+  prevent — the harm this guard exists for is a command that *did* something other than
+  what was asked.
+
+Flag-only subcommands (`--json` / `--apply` style, detected with `"--flag" in argv`) each
+call `_reject_unknown_args`, because that idiom reads an unrecognised token as *absent*.
+`coverage-scaffold` is the reason this is stated rather than left to habit: it mutates
+under `--apply`, and `--apply --dry-run` wrote the stubs while the caller believed they
+had asked for a preview.
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an

@@ -1288,6 +1288,54 @@ class TestPlanCriticModeOverride:
         assert mode == "final"
         assert rationale == "plan-override: final"
 
+    def test_an_unparseable_heading_escalates_instead_of_demoting(self, tmp_path: Path):
+        """A plan carrying a heading nothing can parse must not yield `chunk`.
+
+        The gap gate stops this reader from trusting a section whose end was
+        never detected. If it merely declined, inference would walk to rule 4
+        and answer `chunk` — the NARROWEST mode — on the strength of a plan it
+        could not read, with a rationale that never mentions the plan. That is
+        CRT-3M8Q's silent demotion by another door, so the read escalates and
+        carries the reason.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _write_build_plan_with_chunks(
+            tmp_path / ".prawduct",
+            [("x", "Chunk 01: keystone"), (" ", "Chunk 02: widget")],
+        )
+        plan = tmp_path / ".prawduct" / "artifacts" / "build-plan.md"
+        # An H4 announces a chunk and no matcher accepts it, so it also fails to
+        # close the section above it.
+        plan.write_text(plan.read_text() + "\n#### Chunk 9: unparseable\n")
+        _write(tmp_path, "src/widget.py", "# chunk 2 work\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "final", rationale
+        assert "plan unreadable" in rationale, rationale
+        assert "Chunk 9" in rationale, rationale
+
+    def test_a_chunk_without_a_detail_section_still_infers(self, tmp_path: Path):
+        """The discriminator, and the reason the escalation is not the gap gate.
+
+        A Status roster whose later chunks are not written up yet is ordinary,
+        not corrupt: the plan reads perfectly and simply declares no mode. If
+        this escalated too, every not-yet-detailed chunk would review as `final`.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _write_build_plan(
+            tmp_path / ".prawduct",
+            [("x", "Chunk 01: done"), (" ", "Chunk 02: widget"), (" ", "Chunk 03: later")],
+        )
+        _write(tmp_path, "src/widget.py", "# chunk 2 work\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk", rationale
+        assert rationale.startswith("rule-4 chunk:"), rationale
+
     def test_explicit_args_still_beats_plan_override(self, tmp_path: Path):
         """The slash-command argument is the per-invocation override and wins
         over the plan-level override."""
