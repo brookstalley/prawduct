@@ -89,11 +89,26 @@ rule that cannot catch the defects that motivated it is the vacuous-guard class 
 - **Depends on:** none
 - **Artifacts consumed:** this session's `.prawduct/.session-reflected`; the three findings
   in `rev-20260817T211246Z-cd033794` and `rev-20260817T213600Z-f4a0f50e`
-- **Deliverables:** the rule in `plugin/skills/critic/review-protocol.md` (currently 3799
-  tokens, budgeted — the addition must be **funded from within the file** and the narration
-  must say what paid); the resolution-grading half in
-  `plugin/skills/critic/review-cycle.md` (9599, budgeted) where `verify-resolutions` is
-  defined; updated readings in `tests/test_v5_methodology.py::LAST_MEASURED_TOKENS`
+- **Design improvement found during build — a required SLOT, not a paragraph.** The
+  original design was prose in `## Severity Levels`. Better: the finding output template
+  (`## Output Format`) gains `**Scope:** instance | class — <the premise>`. A slot in a
+  template the reviewer fills for every finding is much closer to un-skippable than a
+  paragraph it may not re-read, it costs fewer tokens than the prose form, and it
+  substantially resolves this plan's prose-vs-schema tension without touching the JSON
+  contract in `critic-reviewer.md` / `critic_consolidate.py`. Precedent for treating
+  placement as substance: `tests/test_v5_methodology.py::assert_inert_count_cap` already
+  asserts *where* a rule sits, not just that it exists.
+- **BLOCKED ON A FUNDING DECISION — see "Open decision" below.** `review-protocol.md` is at
+  3799 against a `< 3800` ceiling: **zero headroom**, under a standing rule that reads "THE
+  NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP." Every sibling is also at its ceiling
+  (`review-cycle.md` 9599/<9600, `goals-1-3.md` 2247/<2250, `building.md` 4806/<4810); only
+  `framework-checks.md` has slack (33) and it is the wrong home — framework-only, while this
+  defect bit a code change. I read the file looking for slack: its budget comment claims it
+  is audited lean and I agree — every goal bullet is a specific, severity-mapped check.
+- **Deliverables:** the `**Scope:**` slot + its rule in
+  `plugin/skills/critic/review-protocol.md`; the resolution-grading half in
+  `plugin/skills/critic/review-cycle.md` where `verify-resolutions` is defined; updated
+  readings in `tests/test_v5_methodology.py::LAST_MEASURED_TOKENS`
 - **Tests:** the existing budget guardrails must pass with updated readings — no ceiling
   raised (a raise needs the separate justification `learnings.md` already demands)
 - **Acceptance criteria:** applied to the three findings this session produced, the drafted
@@ -144,3 +159,39 @@ rule that cannot catch the defects that motivated it is the vacuous-guard class 
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
+
+## Open decision — how Chunk 01 is funded
+
+`learnings.md` L397 states the raise rule: *a token budget is raised only when the framework
+is provably better FOR THE RAISE and upleveling has no headroom left — cut the class, not the
+words.* Both halves have to be answered, and the second is answered: I looked, and the file
+is lean. So the question is only which of these pays.
+
+**A — collapse the declaration→obligation class in Goal 2.** `Foreign API`, `Exposed API`
+(two decisions), `Operator verification` and `Requirements Confidence` are five bullets of
+one shape: *chunk declares X ⇒ owes Y in Done-when → WARNING if absent.* Stating it once at
+the property level frees an estimated 80–120 tokens and would be an instance of the very rule
+being added. **Against it:** it is a real behaviour change to five live checks, the specific
+trigger tokens are what make them fire, and funding a new rule by refactoring load-bearing
+checks produces two half-reviewed changes in one commit. If this is taken it deserves its own
+chunk and its own review, not the status of a funding source.
+
+**B — raise the ceiling by ~60, with the justification recorded.** This is the case the raise
+rule contemplates: the addition *removes* review work rather than adding it. One defect on
+`fleet-feedback-661` cost three review rounds (~15 min of Opus review each) because the class
+was re-found twice; a rule that ends that pays for its own tokens on first use. **Against it:**
+the ceiling has been raised exactly once before, by owner ruling, and the standing posture is
+explicitly "trims or relocates."
+
+**C — build Chunk 02 first.** The learnings consolidation has no budget constraint and real
+standalone value; Chunk 01 then cites the consolidated rule rather than restating it, which
+may itself be cheaper. Reverses this plan's stated dependency (Chunk 01 was ordered first so
+Chunk 02 could inherit its vocabulary) — workable in reverse, since the vocabulary can be
+settled in the learnings rule and cited by the protocol.
+
+**Recommendation: B, then C, leaving A as its own scoped chunk if wanted.** The raise rule's
+two conditions are met and the arithmetic is favourable; A is worth doing on its merits but
+not as a side effect of paying for something else.
+
+**This is the operator's call by construction**, not a preference: the budget comment records
+that the ceiling moves by owner ruling.
