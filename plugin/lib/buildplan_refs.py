@@ -167,10 +167,54 @@ def _iter_status_section_items(content: str):
 # disagreement cannot recur — but the widening stays, because the plans that
 # provoked it are still on disk. A one-sided widening of a shared contract is not a partial
 # fix, it is a new defect.
+#
+# Two more authoring forms are accepted for the same reason: plans in the wild
+# write them, and neither errors when it fails to parse.
+#   * A **dotted id** (`Chunk 1.2`) — sub-chunk numbering. `(\w+)` stopped at the
+#     `1`, and `.` is not a separator, so the whole heading fell through.
+#   * A **leading checkbox** (`### [ ] Chunk 7:`, `- [x]` bullet included) — plans
+#     that carry the roster's tick marks into the body headings. The checkbox
+#     occupies the position the matcher expected `Chunk` in.
+# The dotted id is `\w+(?:\.\w+)*` rather than `[\w.]+`, so a heading ending in a
+# sentence period (`### Chunk 1. Name`) still fails to match instead of yielding
+# the id `1.` — that form did not parse before and gains nothing by parsing as a
+# chunk nobody's Status roster names.
+# Both widenings land on BOTH matchers, which is the rule the paragraph above
+# records: the heading form and the Status-item form are one authoring
+# vocabulary read by two regexes, and a form accepted by one alone reproduces
+# the split-brain exactly — the section resolves while the roster entry returns
+# None, so completeness "cannot be told", every forward-ref exemption is kept,
+# and the check passes having verified nothing.
+# `_CHUNK_ITEM_RE`'s callers hand it Status-item text with the `- [ ] ` prefix
+# already stripped, so the checkbox alternative is unreachable on today's paths;
+# it is there so that a caller passing a raw Status LINE gets the same answer as
+# the heading matcher does, rather than a second silent gap to discover later.
 _CHUNK_ID_SEP = r"\s*(?:[:—–(-]|\*\*|$)"
 _CHUNK_BOLD = r"(?:\*\*\s*)?"
-_CHUNK_HEADING_RE = re.compile(r"^#{2,3}\s+" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + _CHUNK_ID_SEP)
-_CHUNK_ITEM_RE = re.compile(r"^" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + _CHUNK_ID_SEP)
+_CHUNK_CHECKBOX = r"(?:(?:[-*+]\s+)?\[[ xX]\]\s+)?"
+_CHUNK_ID = r"(\w+(?:\.\w+)*)"
+_CHUNK_HEADING_RE = re.compile(
+    r"^#{2,3}\s+" + _CHUNK_CHECKBOX + _CHUNK_BOLD + r"Chunk\s+" + _CHUNK_ID + _CHUNK_ID_SEP
+)
+_CHUNK_ITEM_RE = re.compile(
+    r"^" + _CHUNK_CHECKBOX + _CHUNK_BOLD + r"Chunk\s+" + _CHUNK_ID + _CHUNK_ID_SEP
+)
+
+# A heading line that ANNOUNCES a chunk without parsing as one — deliberately
+# looser than `_CHUNK_HEADING_RE` on every axis it can afford to be: any heading
+# depth (`#### Chunk 01:` is the classic silent defeat), any short run of
+# punctuation between the hashes and the word, any dotted id, and any separator
+# after it. What it will not accept is the two shapes that make a heading prose
+# rather than an announcement:
+#   * a WORD after the id — `### Chunk 1 build-session decisions` is a notes
+#     sub-heading living inside chunk 1's body, and treating it as a boundary is
+#     a defect this module already fixed once;
+#   * an APOSTROPHE after the id — `## Chunk 01's review` is possessive prose.
+# It is used only to explain a failure, never to locate a section: nothing is
+# parsed out of it, so being loose costs a sentence and never a wrong id.
+_CHUNK_ANNOUNCE_RE = re.compile(
+    r"^#{1,6}\s+[^A-Za-z0-9]{0,8}Chunk\s+[\w.]+\s*(?:[^\w\s'’]|$)"
+)
 
 
 def unticked_chunk_items(content: str) -> list[str]:
@@ -1285,21 +1329,127 @@ def _ref_path_part(token: str) -> str:
     return _BUILD_PLAN_LINE_SUFFIX_RE.sub("", path_part)
 
 
-def _chunk_section_lines(
-    content: str, chunk_id: str
-) -> tuple[bool, list[tuple[int, str]]]:
+class ChunkSection(NamedTuple):
+    """The result of one chunk-section walk — THREE states, not two.
+
+    ``found`` / ``lines`` are the answer; ``unparsed`` is why an answer may be
+    worth nothing. A two-state return is what let this walk fail silently: an
+    unparseable heading yields ``found=False`` with an empty ``lines``, which is
+    the same shape a plan that simply has no such chunk produces, and empty
+    reads downstream as "nothing to check."
+
+    ``unparsed`` names every heading-position chunk announcement in the WHOLE
+    plan that :data:`_CHUNK_HEADING_RE` rejected, as ``[(line_num, text), ...]``
+    — not only the ones near the requested chunk, because the damage is not
+    local. A heading that does not match also does not TERMINATE the preceding
+    section, so the chunk before it absorbs its body and answers a deliverable
+    check with a confident, non-empty, wrong set. That failure lands on a
+    different, perfectly parseable chunk than the malformed one, so a signal
+    raised only at the malformed chunk's own lookup would never reach it.
+
+    Hence the plan-level rule, the same one
+    :func:`incompleteness_reason` and :func:`_has_unfinished_chunk` apply: a
+    plan whose chunk boundaries cannot all be read is not evidence about any of
+    its chunks. A plan with no chunk headings at all leaves ``unparsed`` empty
+    and stays quiet — that is an absence, not a check that failed, and the two
+    must not collapse into one signal.
+    """
+
+    found: bool
+    lines: list[tuple[int, str]]
+    unparsed: list[tuple[int, str]]
+
+
+def unparsed_chunk_heading_reason(section: ChunkSection) -> str | None:
+    """Prose for a caller to report ``section``'s unparseable headings, or
+    ``None`` when every chunk heading in the plan parsed.
+
+    The reason names lines, because the remedy is an edit to one of them and a
+    reader who cannot find the offending heading cannot make it. Callers append
+    this to their own "could not verify" message rather than replacing it: which
+    chunk was asked for is still the first thing to say.
+    """
+    if not section.unparsed:
+        return None
+    shown = "; ".join(f"line {num}: {text!r}" for num, text in section.unparsed[:3])
+    if len(section.unparsed) > 3:
+        shown += f"; …and {len(section.unparsed) - 3} more"
+    return (
+        f"{len(section.unparsed)} chunk heading(s) in this plan announce a chunk but "
+        f"do not parse as one ({shown}) — an unparseable heading also fails to close "
+        "the section before it, so no chunk boundary in this plan can be trusted"
+    )
+
+
+def chunk_section_gap(chunk_id: str, section: ChunkSection) -> str | None:
+    """Why ``section`` cannot answer about ``chunk_id``, or ``None`` when it can.
+
+    **The one gate every consumer of the walk goes through**, so that a reader
+    added later inherits the refusal instead of having to remember it. Three
+    outcomes, and the first two must not share a sentence:
+
+    - **Not located, plan reads cleanly** → the plan genuinely has no such
+      chunk. That is the plan's answer, and it names no line to go fix.
+    - **Not located, plan has unreadable headings** → the chunk may well be
+      there, under a heading nothing can parse. The remedy is an edit to a named
+      line, so the reason names it.
+    - **Located, plan has unreadable headings** → refused anyway, and this is
+      the case worth the words. A heading that does not parse does not close the
+      section before it either, so the section that *did* resolve runs on
+      through its neighbour's body and answers with a confident, non-empty,
+      wrong set — a deliverable check that verifies another chunk's files and
+      passes, a ``Type:`` or ``Trivial because:`` read off a declaration written
+      for different work.
+    """
+    unparsed = unparsed_chunk_heading_reason(section)
+    if not section.found:
+        base = f"chunk {chunk_id!r} not found in build-plan"
+        return f"{base} — {unparsed}" if unparsed else base
+    if unparsed:
+        return (
+            f"chunk {chunk_id!r} resolved, but its boundaries are not trustworthy: "
+            f"{unparsed}"
+        )
+    return None
+
+
+def _unparsed_chunk_headings(content: str) -> list[tuple[int, str]]:
+    """Heading lines that announce a chunk but that the chunk matcher rejects.
+
+    Fenced spans are skipped: a plan that documents the heading forms in a
+    ``text`` block is describing them, not declaring chunks, and such a line
+    cannot bleed anyway — the walk drops fenced lines from every section body.
+    """
+    found: list[tuple[int, str]] = []
+    in_fence = False
+    for line_num, line in enumerate(content.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if _CHUNK_ANNOUNCE_RE.match(stripped) and not _CHUNK_HEADING_RE.match(stripped):
+            found.append((line_num, stripped))
+    return found
+
+
+def _chunk_section_lines(content: str, chunk_id: str) -> ChunkSection:
     """Locate the ``Chunk <chunk_id>`` section and return its body lines.
 
     The one canonical chunk-section walk: name-anchored with leading-zero
-    tolerance (``"02"`` matches ``### Chunk 2:`` and vice versa), matches both
-    supported heading forms (``### Chunk NN: Name`` and ``## Chunk N (ID) — Name``
-    via ``_CHUNK_HEADING_RE``), stops at the next sibling chunk heading or a
+    tolerance (``"02"`` matches ``### Chunk 2:`` and vice versa), matches every
+    supported heading form (``### Chunk NN: Name``, ``## Chunk N (ID) — Name``,
+    ``### **Chunk A** — Name``, dotted ids and a leading checkbox — see
+    ``_CHUNK_HEADING_RE``), stops at the next sibling chunk heading or a
     non-chunk ``## `` heading, and drops fenced code blocks (project-structure
-    diagrams aren't load-bearing prose). Returns
-    ``(found, [(line_num, raw_line), ...])`` with 1-based line numbers into
-    ``content``. This skeleton was previously copied in the three chunk-field
-    parsers below and ``lib.critic_mode``'s ``**Critic mode:**`` reader; all
-    four now fold onto it.
+    diagrams aren't load-bearing prose). Line numbers in the returned
+    :class:`ChunkSection` are 1-based into ``content``. This skeleton was
+    previously copied in the three chunk-field parsers below and
+    ``lib.critic_mode``'s ``**Critic mode:**`` reader; all four now fold onto it.
+
+    Returns a :class:`ChunkSection`, whose docstring carries the contract every
+    caller owes the third field.
     """
     target = chunk_id.lstrip("0") or "0"
     in_section = False
@@ -1327,7 +1477,7 @@ def _chunk_section_lines(
         if in_fence:
             continue
         section_lines.append((line_num, line))
-    return in_section, section_lines
+    return ChunkSection(in_section, section_lines, _unparsed_chunk_headings(content))
 
 
 def _normalize_chunk_id(chunk_id: str) -> str:
@@ -1443,10 +1593,12 @@ def _parse_build_plan_chunk_refs(
         result["error"] = f"unreadable build-plan: {exc}"
         return result
 
-    found, section_lines = _chunk_section_lines(content, chunk_id)
-    if not found:
-        result["error"] = f"chunk {chunk_id!r} not found in build-plan"
+    section = _chunk_section_lines(content, chunk_id)
+    gap = chunk_section_gap(chunk_id, section)
+    if gap:
+        result["error"] = gap
         return result
+    section_lines = section.lines
 
     # A path the chunk declares with the `new ` qualifier is a forward reference
     # for the WHOLE chunk section, not just the occurrence carrying the word.
@@ -1556,12 +1708,16 @@ def _parse_build_plan_chunk_type(
     except (OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable build-plan: {exc}"
 
-    found, section_lines = _chunk_section_lines(content, chunk_id)
-    if not found:
-        return None, f"chunk {chunk_id!r} not found in build-plan"
+    # Fail-closed here means REPORTING the gap, not falling back to the `code`
+    # default: that default exists for a field nobody wrote, and this is a field
+    # nobody can attribute.
+    section = _chunk_section_lines(content, chunk_id)
+    gap = chunk_section_gap(chunk_id, section)
+    if gap:
+        return None, gap
 
     declared: str | None = None
-    for _line_num, line in section_lines:
+    for _line_num, line in section.lines:
         m = _BUILD_PLAN_TYPE_RE.match(line)
         if m:
             declared = m.group(1)
@@ -1605,13 +1761,18 @@ def _parse_build_plan_chunk_trivial_rationale(
     except (OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable build-plan: {exc}"
 
-    found, section_lines = _chunk_section_lines(content, chunk_id)
-    if not found:
-        return None, f"chunk {chunk_id!r} not found in build-plan"
+    # Same gate as the `Type:` reader one function up, and it earns its place
+    # here for a sharper reason: a rationale written for a LATER chunk would
+    # otherwise justify this chunk's trivial declaration, which is the one thing
+    # the field exists to stop.
+    section = _chunk_section_lines(content, chunk_id)
+    gap = chunk_section_gap(chunk_id, section)
+    if gap:
+        return None, gap
 
     capturing = False
     rationale_lines: list[str] = []
-    for _line_num, line in section_lines:
+    for _line_num, line in section.lines:
         stripped = line.strip()
         m = _BUILD_PLAN_TRIVIAL_RATIONALE_RE.match(line)
         if m:

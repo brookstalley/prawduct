@@ -3235,8 +3235,8 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         chunk_id = os.environ.get("PRAWDUCT_VERIFY_CHUNK_ID")
     if chunk_id is None:
         # One canonical current-chunk resolution (shared with the stop hook and
-        # the Critic helper); handles both the "### Chunk NN:" and
-        # "## Chunk N (ID) — Name" Status-item forms.
+        # the Critic helper); it accepts every Status-item form the body-heading
+        # matcher accepts, which is the pairing `lib/buildplan_refs.py` keeps.
         # Announce a chunk that looks finished-but-unticked BEFORE grading on
         # the checkbox reading. Only on the inference path — an explicit
         # chunk_id does not consume that reading, so warning there would be
@@ -3256,9 +3256,14 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # (the missing-ref lines below). Surfacing them differently stops a
         # can't-parse exit from being dismissed as noise and masking a real
         # missing-deliverable BLOCKING (the false-negative habituation BLD-5J8N).
+        # When the error names lines, they ARE the remedy and the generic hint
+        # below would only bury them; it stays for the case where nothing could
+        # be named, which is the plan-has-no-such-chunk reading.
         print(
             f"cannot-verify: {refs['error']}; Goal-2 deliverable check did not run "
-            "(is the chunk heading a recognized '### Chunk NN:' / '## Chunk N (ID) — Name' form?)",
+            "(recognized heading forms: '### Chunk NN: Name', "
+            "'## Chunk N (ID) — Name', '### **Chunk N** — Name', a dotted id "
+            "'### Chunk 1.2:', and a leading '[ ]' checkbox)",
             file=sys.stderr,
         )
         return 1

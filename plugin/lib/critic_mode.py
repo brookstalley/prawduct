@@ -685,7 +685,9 @@ def _critic_mode_for_chunk(
     (CRT-7B4M), otherwise the first ``- [ ]`` chunk. Section discovery is
     the shared ``buildplan_refs._chunk_section_lines`` walker: name-anchored
     on ``### Chunk <id>:`` with leading-zero tolerance, fenced code blocks
-    skipped, stop at the next sibling chunk or top-level section.
+    skipped, stop at the next sibling chunk or top-level section. A plan
+    carrying a chunk heading that walker cannot read also yields ``None`` — see
+    the comment at that call for why this reader declines rather than reports.
     """
     if chunk_id is None:
         return None
@@ -709,8 +711,22 @@ def _critic_mode_for_chunk(
     except (OSError, UnicodeDecodeError):
         return None
 
-    _found, section_lines = buildplan_refs._chunk_section_lines(content, chunk_id)
-    for _line_num, line in section_lines:
+    section = buildplan_refs._chunk_section_lines(content, chunk_id)
+    # The same gate the deliverable and `Type:` readers apply — and the one
+    # caller that must not turn it into an error. This function's contract is
+    # "the declared mode, or None to infer", and declining is safe here in a way
+    # it is not there: inference still runs, and a plan whose boundaries cannot
+    # be read is already hard-failing the chunk-ref check in the same review, so
+    # the reader gets the line number from there rather than twice.
+    #
+    # What is NOT safe is reading the field anyway. A section whose end was never
+    # detected runs on into the next chunk, so the first `**Critic mode:**` in it
+    # can belong to a different one — and this field OVERRIDES inference, so a
+    # `chunk` picked up from a neighbour silently downgrades a plan-mandated
+    # `final`.
+    if buildplan_refs.chunk_section_gap(chunk_id, section):
+        return None
+    for _line_num, line in section.lines:
         m = _BUILD_PLAN_CRITIC_MODE_RE.match(line)
         if m:
             token = m.group(1)
