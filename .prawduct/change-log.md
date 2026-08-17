@@ -40,7 +40,9 @@ is what made it false.
 **Two more, both in this file, both found rather than recalled.** The pin written for the
 dotted-id fix above was **vacuous**: one case called the sort helper directly (green either
 way) and the other asserted `int("1.2")` raises — a property of the stdlib, not of this repo —
-so both passed with the fix fully reverted. A vacuous guard for the vacuous-guard class,
+so the pair could not fail on this defect. (One of the two did carry a real assertion — that
+`1.2` sorts before `1.10` — which is restored; calling both vacuous overclaimed.) A vacuous
+guard for the vacuous-guard class,
 inside the branch that exists to fix it. Replaced with a pin that drives
 `unticked_committed_chunk_notice` end-to-end, and falsified: reverting the fix turns it red.
 
@@ -51,6 +53,14 @@ every deliverable present bought a full extra review round, twice in one session
 unrelated plans. The leading-zero tolerance made it worse by looking forgiving. The walk now
 strips a leading `Chunk` label, so the flag accepts what the heading prints.
 
+
+**And once more, one commit later.** The label strip landed in the section walk only, while
+the same id is used again to join against completed chunks through `_normalize_chunk_id` —
+which still only trimmed zeros. The membership test could never be true for a label, so a
+completed chunk's `new \`path\`` forward-ref exemption never expired and the deliverable check
+reported zero refs while reporting that it ran. The file's own docstring had said it: this is
+**the only chunk-id normalizer in the tree — widen this one rather than adding a second**, and
+a second is exactly what the previous commit added. Folded in; the section walk now calls it.
 
 ## 2026-08-17: four defects an external fleet report found, and the one shape they share
 

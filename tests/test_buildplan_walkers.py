@@ -784,8 +784,20 @@ class TestChunkIdFormsReachTheWalk:
         _write(repo, "src/x.py", "x = 1\n")
         _git(repo, "add", "-A")
         _git(repo, "commit", "-q", "-m", "feat(dotted): land it (Chunk 1.2)")
-        # With key=int this raises ValueError instead of returning.
-        buildplan_refs.unticked_committed_chunk_notice(repo)
+        # With key=int this raises ValueError instead of returning. The assertion
+        # matters as much as the call: `sorted()` never invokes the key on an empty
+        # set, so a fixture that stopped producing an intersection would go green
+        # while testing nothing.
+        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
+        assert notice is not None and "1.2" in notice
+
+    def test_dotted_ids_sort_numerically(self):
+        """Restored: the deleted pin's non-vacuous half. A string key passes
+        everything else green while ordering 1.10 before 1.2."""
+        from lib.buildplan_refs import _chunk_sort_key
+        assert sorted(["1.10", "1.2", "2", "01"], key=_chunk_sort_key) == [
+            "01", "1.2", "1.10", "2"
+        ]
 
     def test_the_heading_label_is_an_accepted_chunk_id(self):
         """`--chunk "Chunk 01"` must find what `--chunk 01` finds."""

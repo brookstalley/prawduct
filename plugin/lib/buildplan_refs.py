@@ -1468,13 +1468,7 @@ def _chunk_section_lines(content: str, chunk_id: str) -> ChunkSection:
     Returns a :class:`ChunkSection`, whose docstring carries the contract every
     caller owes the third field.
     """
-    # Accept the form the plan's own heading prints. The matcher captures a BARE
-    # id, so a caller handing over the label it read on screen ("Chunk 01") could
-    # never match, and the failure is CLOSED: record-lint rates an unrunnable
-    # deliverable check BLOCKING, so a correct plan bought a whole extra review
-    # round. The leading-zero tolerance below made it worse by looking forgiving.
-    target = _CHUNK_LABEL_PREFIX_RE.sub("", chunk_id.strip())
-    target = target.lstrip("0") or "0"
+    target = _normalize_chunk_id(chunk_id)
     in_section = False
     in_fence = False
     section_lines: list[tuple[int, str]] = []
@@ -1504,7 +1498,14 @@ def _chunk_section_lines(content: str, chunk_id: str) -> ChunkSection:
 
 
 def _normalize_chunk_id(chunk_id: str) -> str:
-    """Leading-zero-normalized chunk id (``01`` -> ``1``), for comparison only.
+    """Chunk id reduced to its comparable form — label stripped, zeros trimmed.
+
+    Accepts the string a plan's own heading prints (``Chunk 01``) as well as the
+    bare id the matchers capture. That widening lived inline in the section walk
+    for one commit, which left the completed-chunk join below comparing a label
+    against bare ids: the membership test could never be true, so a completed
+    chunk's forward-ref exemption never expired and the deliverable check
+    reported zero refs while claiming it ran.
 
     **The only chunk-id normalizer in the tree.** A stronger one — casefolding
     and unifying ``_``/``-`` — lived in the derived-view module and went with it,
@@ -1515,7 +1516,8 @@ def _normalize_chunk_id(chunk_id: str) -> str:
     if a caller ever needs case- or separator-insensitive matching, widen this
     one rather than adding a second.
     """
-    return chunk_id.lstrip("0") or "0"
+    bare = _CHUNK_LABEL_PREFIX_RE.sub("", chunk_id.strip())
+    return bare.lstrip("0") or "0"
 
 
 def _qualifier_scope_lines(
