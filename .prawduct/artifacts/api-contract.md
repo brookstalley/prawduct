@@ -186,9 +186,16 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   working tree by default — buy a review round? Asks the gates' own `is_judgeable_path`, so it
   cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
   to `unknown` rather than a reassuring `free`).
-- **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
-  `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`, `plan-backfill`,
-  `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
+- **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
+  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`,
+  `plan-backfill`, `repo-disable`, `bug-inbox` (dry-run-by-default where they mutate, with
+  one stated exception). **`update-gitignore` is the exception: it repairs by default and
+  previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
+  which is why the default is the mutating one — but a reader who assumed the blanket
+  claim above got the opposite of the truth, and for a while so did the command: it took
+  no argv at all, so `--dry-run` could not reach it and the reconcile ran anyway. Both
+  halves are fixed; the asymmetry that remains is deliberate and is stated here rather
+  than left for the next reader to discover by running it.
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
