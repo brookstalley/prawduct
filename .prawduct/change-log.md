@@ -74,8 +74,40 @@ invocation is corrected; the assertions are untouched.
 
 Considered and not done: making `/prawduct:doctor` preview before it reconciles. The report ranked
 the doctor-reads-as-read-only framing first, and `--dry-run` now makes it a one-line change — but
-it alters a skill's behaviour rather than fixing a defect, so it is the operator's call and is
-recorded here as open rather than taken silently.
+it alters a skill's behaviour rather than fixing a defect, so it is the operator's call. Filed as
+`#666` rather than left in prose.
+
+**The flag fix took three rounds, and the reason is the most transferable thing here.** Round one
+fixed `update-gitignore`. The cumulative Critic found `coverage-scaffold` and `coverage-status`
+still reading unknown tokens as absent — and `coverage-scaffold` MUTATES, so `--apply --dry-run`
+wrote 5 stub artifacts while the caller believed they had asked for a preview. That is the same
+defect, in the command this entry's own first draft held up as the well-behaved sibling. Round two
+fixed those two. The verify round then found `migrate-plugin` and `init-product` — the plugin
+cutover and the repo scaffolder, the two most destructive commands on the surface. Measured against
+the pre-change binary rather than argued: `migrate-plugin --apply --dry-run` performed the cutover,
+and `init-product --apply --dry-run` scaffolded an entire repo.
+
+Twice fixed by naming the commands someone had thought of; twice wrong. `learnings.md` has said to
+prefer sweeping **by construction** over sweeping by enumeration since long before this branch, and
+reading that rule did not prevent either enumeration. So the coverage is now asserted structurally:
+`tests/test_hook_argument_shape.py::test_every_argv_taking_command_refuses_what_it_cannot_read`
+derives the argv-taking set from `_dispatch`'s own source and fails for any member carrying neither
+a guard nor a recorded reason. It immediately surfaced seven more commands nobody had looked at.
+
+**Two defects the pin found in itself.** Its exemption list first shipped seventeen confident
+one-line reasons written from names and comments; running bare-vs-unknown-token on each returned ten
+verified, nine inconclusive (a bare invocation already errors, so the probe cannot separate a refusal
+from that), and one ignoring the token by documented design. The nine are recorded as **NOT AUDITED**
+in the test and in `api-contract.md`, with `#667` carrying the audit — an honest gap beats a confident
+allowlist inside a test whose purpose is stopping unchecked assertions. And `migrate-plugin` was
+listed in that dict as a courtesy to the reader, which exempted it from the scan: deleting its guard
+left the test green. A vacuous guard inside the guard written to stop vacuous guards, caught only by
+falsifying it.
+
+The `api-contract.md` sentence added mid-branch — "checked before dispatch, for every subcommand",
+with three carve-outs named as "the only ones" — was false for two mutating commands when it shipped.
+Corrected, including which nine remain unverified. A written contract that overstates coverage is the
+same defect class as a check that cannot run: both read as assurance.
 
 ## 2026-08-15: a plan-less scope is an absence, not a check that failed
 

@@ -257,7 +257,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
 
 ## Inputs & Outputs
 
-- **Inputs:** subcommand argv (each subcommand parses its own flags; unknown flags are rejected),
+- **Inputs:** subcommand argv (each subcommand parses its own flags; unknown flags are rejected
+  except where § Operations records otherwise — five deliberate non-refusers and nine unaudited),
   and — for the hook subcommands — a JSON event payload on **stdin** (e.g. `stop` reads
   `background_tasks`; `subagent-stop` reads `cwd`/`agent_type`).
 - **Human-readable output:** most subcommands print prefixed text (see Error Model). Skills consume

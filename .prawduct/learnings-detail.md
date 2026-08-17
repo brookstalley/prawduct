@@ -3974,3 +3974,27 @@ says, and a rationale sentence is the part least likely to be executed by anythi
 The cheap check is the same one Principle 24 names, applied one level in from where it usually
 fires: before writing "X forces this", open X. Not to verify the decision — to verify the sentence.
 Ten seconds of reading beats a round, and beats a durable false claim that no round ever revisits.
+
+## A refusal predicate is not a severity predicate
+
+`buildplan_refs.chunk_section_gap` answers one question — why a chunk section cannot be
+trusted — by folding three conditions into one string: *not located and the plan reads
+cleanly*, *not located and the plan has unreadable headings*, and *located but the plan has
+unreadable headings*. Its own docstring says "the first two must not share a sentence."
+
+Fixing a silent mode demotion, I needed "this plan cannot be trusted, escalate the review"
+and reached for that function, because its name matched my sentence. Eleven tests went red:
+the first of its three conditions — a chunk with no detail section in a plan that parses
+perfectly — is completely ordinary (a Status roster whose later chunks are not written up
+yet), and escalating on it would have reviewed every not-yet-detailed chunk at `final`.
+
+The composite is correct for the readers that must REFUSE, which is what it was built for:
+all three conditions mean "do not answer from this section." It is wrong for a caller
+deciding how *severely* to react, because severity is not uniform across the reasons. The
+fix was to call the narrower `unparsed_chunk_heading_reason` for the escalation and leave
+the composite for the refusal, then pin both directions — the escalating case and the
+ordinary one — as separate tests, and falsify the escalation to confirm the test fails
+without it.
+
+Discovered fleet-feedback-661 (2026-08-17, Critic blocking, second round). Relates to
+Honest Confidence (#5) and [[Reads as evidence, is not]].
