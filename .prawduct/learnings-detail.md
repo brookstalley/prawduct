@@ -3998,3 +3998,59 @@ without it.
 
 Discovered fleet-feedback-661 (2026-08-17, Critic blocking, second round). Relates to
 Honest Confidence (#5) and [[Reads as evidence, is not]].
+
+## The three consolidation entries (fleet-feedback-661 follow-on, 2026-08-17)
+
+Seventeen rules across three families were folded into three. Each said a true thing; each
+said it at the altitude of the incident that produced it, so the general statement sat buried
+among its own paraphrases and **none of them fired** during the session that produced three
+instances of the very defect they describe. The corpus had the disease it was describing:
+seventeen instances, no construction.
+
+The retired text is preserved verbatim below — a rule is retired, never deleted, and the
+wording each incident produced is often sharper about its own case than the general form can
+afford to be.
+
+### Family A — retired into `A fix lands at the instance a review named; the defect lives in the class`
+
+All seven say: the change you made reaches past the site you made it at. They differ only in the relation that carries it — siblings in a table, readers of a moved path, existing uses of a newly-dangerous value, surfaces of a leak, guards behind prose, and the only-consumers of a thing being retired. The survivor states the relation generally (the premise of the defect) and keeps the one insight none of the seven stated outright: **the other members are outside your diff**, which is the mechanical reason they stay invisible.
+
+- **Relocating a source file: sweep every READER of the old path, not just the data-key references** — Relocating a source file: sweep every READER of the old path, not just the data-key references
+
+- **A "renders-but-doesn't-resolve" leak is a SURFACE, not a line** — A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
+
+- **An untested governance bound rots silently across a migration** — An untested governance bound rots silently across a migration — sweep the guards (with tests), not just the prose
+
+- **When you add a validator because a value became DANGEROUS, sweep every existing use of that value, not the uses you are writing** — When you add a validator because a value became DANGEROUS, sweep every existing use of that value, not the uses you are writing — the vulnerable line is already in the file and therefore not in your diff. Tell: the helper is new and you never grepped the value's other readers — [learnings-detail.md]
+
+- **A retirement ruling also retires whatever existed only to serve the retired thing, and those consequences never announce themselves** — A retirement ruling also retires whatever existed only to serve the retired thing, and those consequences never announce themselves — after deciding to remove a mechanism, sweep for what it was the ONLY reader of. Retiring the claim machinery silently killed the `assignee` column's only consumer, so a schema specified by a reviewed artifact would have shipped a dead field; found only by walking all fifteen consumer queries against the column list before writing the DDL. Tell: you have just accepted a removal and are moving straight to the thing that replaces it
+
+- **Read a review's findings for the CLASS, not the list** — Read a review's findings for the CLASS, not the list — when four findings share a shape, fixing four instances leaves the fifth to be found by the next round. Tell: several findings could be described by one sentence
+
+- **A rule discovered on one branch of a dispatch table governs its siblings silently** — A rule discovered on one branch of a dispatch table governs its siblings silently — when you write a fix into one exit code, one mode, or one error row, ask which other rows share its premise, because the branch you did not visit keeps the old behavior while the file reads as if the rule is stated. Tell: your fix is a table row, and you edited exactly one — [learnings-detail.md]
+
+### Family B — retired into `A clean sweep usually indicts your QUERY, not the tree`
+
+These six are NOT family A restated — they are the second half of the problem, and folding them into A would have destroyed real content. A says the class exists; B says **your search for it under-reports**, and names four distinct ways: one spelling of a form-family, a phrasing rather than a concept, an identifier rather than the claim, and an assert-absent guard that silence satisfies by construction.
+
+- **An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form** — An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form — enumerate the whole FORM-FAMILY, not one spelling
+
+- **A falsifying grep queries a PHRASING** — A falsifying grep queries a PHRASING; only a reader queries a concept — the same stale state written in words your query does not contain is invisible, so the sites that survive a sweep are exactly the ones that paraphrase. Name the STATE being asserted, then search two or three vocabularies that share no word with each other. Tell: every hit came back in the words you typed
+
+- **An edit that changes a COUNT or a SET falsifies every sentence stating the old one** — An edit that changes a COUNT or a SET falsifies every sentence stating the old one — and noticing one of them feels like completing a search rather than starting one, because the catch arrives with the satisfaction of thoroughness. The instance you found is the one you happened to be reading, not the first of an enumerated set. Grep the document for the old value before committing; prefer a relational statement ("the table's rows") over a literal count, which is the part that goes stale
+
+- **Enumerating the surfaces a chunk EDITS is a different question from enumerating the surfaces its behaviour change FALSIFIES** — Enumerating the surfaces a chunk EDITS is a different question from enumerating the surfaces its behaviour change FALSIFIES — only the second finds the docstring that now lies. A plan that lists the first and calls it a surface sweep misses the file the chunk never opens, which is exactly where a maintainer reads the old rule before changing a threshold
+
+- **Sweeping for the IDENTIFIER is not sweeping for the CLAIM** — Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
+
+- **An assert-absent guard passes when the instruction is simply DROPPED** — An assert-absent guard passes when the instruction is simply DROPPED — silence satisfies it by construction — so any retired-behaviour sweep needs a positive pin on each surface that must now carry the replacement, scoped to the BRANCH rather than the file, because which branch carries it is usually the whole rule. Tell: your only coverage of a governance surface is a negative grep
+
+### Family C — retired into `Bound a class by the PROPERTY that justifies it`
+
+The third distinct rule: how the class gets bounded in the first place. A path prefix, a line range and a fixture drawn from the feature's own subject are all containers standing in for a property, and each looks complete from inside itself. `methodology/planning.md`'s 'Line-number scoping' trap is the same rule stated for build plans.
+
+- **A fixture's world is narrower than the requirement it certifies** — A fixture's world is narrower than the requirement it certifies — check coverage against the requirement's stated BREADTH, not against the common instance, because a guard silently redefines the claim to its own scope and the claim then reads as verified — [learnings-detail.md]
+
+- **Scope an exemption by the PROPERTY that justifies it, not by the container it lives in** — Scope an exemption by the PROPERTY that justifies it, not by the container it lives in — an exemption justified by *naming* a file belongs to naming forms, not to every file under that directory, and the container is one cheap generalisation away from correct while looking complete. Tell: the boundary is a path prefix while the rationale is a verb
+
+- **Unit tests built from a feature's OWN subject cannot catch a WIDENED subject** — Unit tests built from a feature's OWN subject cannot catch a WIDENED subject — every fixture is an instance of the thing the feature is about, so the input that breaks it is the one you had no reason to construct. Run the real command against the real repo before believing green. Tell: your feature reads whatever it is pointed at — [learnings-detail.md]

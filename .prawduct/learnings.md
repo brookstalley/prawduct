@@ -270,7 +270,6 @@ never by dropping them.
 
 ## Dogfooding the generator on its own output masks output-relative bugs the real consumer would hit
 
-## Relocating a source file: sweep every READER of the old path, not just the data-key references
 
 ## A review's "inert / harmless" verdict on a latent bug is conditional on the current call graph
 
@@ -278,11 +277,8 @@ never by dropping them.
 
 ## A deletion's SURVIVORS owe new coverage when their behaviour changed — the deleted thing's tests dying correctly is a different question
 
-## A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
 
-## An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form — enumerate the whole FORM-FAMILY, not one spelling
 
-## An untested governance bound rots silently across a migration — sweep the guards (with tests), not just the prose
 
 ## In a leaf-first decomposition, dependency-scan a chunk's COMMAND bodies against later-chunk symbols before moving — and never move a parity-pinned mirror just because a deliverable lists it
 
@@ -342,7 +338,7 @@ never by dropping them.
 
 ## "Advice fails soft" is not "advice fails silent" — a degraded advisory path must still name its consequence, or it manufactures the false success it was meant to prevent
 
-## A fix lands at the instance a review named; the defect lives in the class — so before closing a finding, name the class and route it through one owner, because every local fix looks complete from inside itself
+## A fix lands at the instance a review named; the defect lives in the class — state why it broke in one sentence; if that sentence does not name the site you fixed, it defines the class, whose members sit OUTSIDE your diff and stay invisible. Route it through one owner, not a longer list. Tell: several findings share one sentence; your fix is one row — [learnings-detail.md]
 
 ## A CLI on `$PATH` is a different checkout from the worktree you are editing — an interactive command's exit code is not verification evidence for a change to that command
 
@@ -372,7 +368,6 @@ never by dropping them.
 
 ## A completeness claim asserts the falsifying COMMAND now returns nothing — never a count of sites fixed, which is true of any prefix of the real set. The query is itself a mechanism and can carry the defect it hunts: normalize the text before searching, because line structure is not semantic structure, and query the CONCEPT, not the phrasings you already found wrong
 
-## A falsifying grep queries a PHRASING; only a reader queries a concept — the same stale state written in words your query does not contain is invisible, so the sites that survive a sweep are exactly the ones that paraphrase. Name the STATE being asserted, then search two or three vocabularies that share no word with each other. Tell: every hit came back in the words you typed
 
 ## Reads as evidence, is not: an absence-claim citing a path that does not RESOLVE, a missing directory returns the same empty result as the claim being true; a disposition recorded from intent, not the diff, which the next reader trusts INSTEAD of the findings; a commit crediting a backlog item by TITLE while its filed reproduction still reproduces; and a subagent's COUNT or LIST, a lead
 
@@ -380,7 +375,6 @@ never by dropping them.
 
 ## A passing assertion may be satisfied by something other than the property — an unimplemented flag passes because the arg guard REJECTED it (assert success BEFORE absence); a prose SUBSTRING stays green under any longer sentence containing it (when prose changes meaning, grep tests asserting FRAGMENTS, not just failing ones); a proxy passes every test you thought to write — gate on the named event
 
-## A fixture's world is narrower than the requirement it certifies — check coverage against the requirement's stated BREADTH, not against the common instance, because a guard silently redefines the claim to its own scope and the claim then reads as verified — [learnings-detail.md]
 
 ## A test inherits inputs nobody declared and properties nothing observes — machine state, a load-dependent race in setup, and a value silent by construction, so a stage whose worth is SPEED needs a test that fails when it stops being fast. Mutation is one-directional — reverting removes the damage alongside the fix — so pair it with branch coverage of the function you touched
 
@@ -402,13 +396,11 @@ never by dropping them.
 
 ## A disposition claiming "fixed" must restate the FINDING'S OWN predicate and show it false — arguing from what the change FOUND is satisfiable by fixing an adjacent surface. If the finding says *the check cannot see X*, the closing test asserts exactly that sentence. Tell: the fix note describes what the fix caught rather than what the finding said
 
-## Scope an exemption by the PROPERTY that justifies it, not by the container it lives in — an exemption justified by *naming* a file belongs to naming forms, not to every file under that directory, and the container is one cheap generalisation away from correct while looking complete. Tell: the boundary is a path prefix while the rationale is a verb
 
 ## "Make A agree with B" has two solutions and the cheap one hands A the defects of B — an agreement criterion is satisfied by teaching A the narrower predicate, so it cannot tell correctness from consensus and goes green with both wrong together. Pin the DIRECTION separately, on a fixture from the population that predicate is worst at. Tell: every fixture sits inside its allowlist
 
 ## Citing a named procedure is a claim that you RAN that procedure — re-read the named step before citing it, because two independent recalls fire and each feels verified by the other: you reach for the test you KNOW and attach the authority you REMEMBER. A right conclusion on a substituted warrant is the durable defect, since conclusions get re-derived by the next reader and warrants get copied. Repair by running the named test, never by softening the citation
 
-## An edit that changes a COUNT or a SET falsifies every sentence stating the old one — and noticing one of them feels like completing a search rather than starting one, because the catch arrives with the satisfaction of thoroughness. The instance you found is the one you happened to be reading, not the first of an enumerated set. Grep the document for the old value before committing; prefer a relational statement ("the table's rows") over a literal count, which is the part that goes stale
 
 ## A guardrail whose anchors come from your MENTAL MODEL of a file is a second copy of the claim, not a check on it — derive them by reading the file, line by line, as you write the test, because otherwise the test encodes the same error the claim does and goes green over it. Tell: you can write the anchors without opening the file
 
@@ -420,7 +412,6 @@ never by dropping them.
 
 ## Making a capability conditional on the RUNTIME retroactively conditions every existing test whose fixture touches it — the affected set is not the set you wrote, since shared fixtures carry it into tests that never mention it. Simulate the degraded runtime over the whole file before commit; a reviewer surfaces one and it reads like the one — [learnings-detail.md]
 
-## When you add a validator because a value became DANGEROUS, sweep every existing use of that value, not the uses you are writing — the vulnerable line is already in the file and therefore not in your diff. Tell: the helper is new and you never grepped the value's other readers — [learnings-detail.md]
 
 ## When a check's subject is a SET (files scanned, paths matched, items collected), assert the set is non-empty and contains what the check names — otherwise green means "nothing was looked at", and the check passes forever
 
@@ -430,7 +421,6 @@ never by dropping them.
 
 ## Before choosing block-vs-warn for a gate, establish WHO is at the write — a refusal in front of a human is a stop, but in front of an AGENT it is an auto-fix, and an auto-fix performed to satisfy a gate is a silent mutation nobody reviewed. Tell: you are weighing "strict vs lenient" and have not named the caller
 
-## Enumerating the surfaces a chunk EDITS is a different question from enumerating the surfaces its behaviour change FALSIFIES — only the second finds the docstring that now lies. A plan that lists the first and calls it a surface sweep misses the file the chunk never opens, which is exactly where a maintainer reads the old rule before changing a threshold
 
 ## Promoting an advisory check to blocking changes what its false positives COST, so audit them as part of the wiring — a placeholder lint matched "fix it" inside "pre-FIX IT-em" harmlessly for years, then became a false refusal on an irreversible migration. Fix the classification, never the budget
 
@@ -450,7 +440,6 @@ never by dropping them.
 
 ## A docstring stating a guarantee is an ASSERTION, not a verification — when you write a rule you know into a docstring, check the API can actually express it before believing the sentence. I wrote "the cursor is written in the same transaction as the rows it covers" *because* the learnings pass had handed me the rule, then shipped two functions each opening their own transaction; no test failed, because the chunk that had the bug degraded harmlessly and the chunk whose correctness argument depended on it was not written yet. Tell: a docstring that states a rule you were pleased to have remembered, on a guarantee no current caller exercises
 
-## A retirement ruling also retires whatever existed only to serve the retired thing, and those consequences never announce themselves — after deciding to remove a mechanism, sweep for what it was the ONLY reader of. Retiring the claim machinery silently killed the `assignee` column's only consumer, so a schema specified by a reviewed artifact would have shipped a dead field; found only by walking all fifteen consumer queries against the column list before writing the DDL. Tell: you have just accepted a removal and are moving straight to the thing that replaces it
 
 ## A number that disagrees with another number is a bug report, and "that source is stale" is the explanation that stops you reading it — chase two-digit discrepancies before explaining them away. The cache said 178 open and the session briefing said 182 pending; the snapshot genuinely WAS 27 minutes old, which made the wrong explanation available and correct-sounding. The real cause was a consumer query filtering `status = 'open'` literally and dropping `submitted`/`in-progress` — invisible to every fixture (which had no such items) and to live verification (ditto). Tell: you can name a plausible reason two counts differ without having checked that it is the actual reason
 
@@ -470,7 +459,6 @@ never by dropping them.
 
 ## A rule enforced only as a SIDE EFFECT of some other failure is unenforced for every change whose failure mode differs — when a rule has a real incident behind it, ask what actually caught that incident; if the answer is "something else broke loudly," the rule has no guard of its own. Tell: a mutation you expected to be caught is not, and the rule it violates has a documented past incident
 
-## Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
 
 ## A change-log `scope=` tag comes from the PLAN you are in, never the entry above it — `check-releasability` matches it to plan frontmatter by exact string, so a copied neighbouring scope attributes your work to someone else's plan and BOTH readings stay quiet: that scope does resolve to a plan, and yours reports as pending with nothing describing it. Tell: your branch narrows an existing scope
 
@@ -478,7 +466,6 @@ never by dropping them.
 
 ## A new key in a shared namespace needs a collision check against real DATA before it needs a test — grep the live corpus for the name and ask what already means something by it, because a writer that strips "its own" keys silently deletes a homonym and every test you wrote for your own semantics still passes. Tell: you picked the obvious short name for a frontmatter/config/tag key
 
-## An assert-absent guard passes when the instruction is simply DROPPED — silence satisfies it by construction — so any retired-behaviour sweep needs a positive pin on each surface that must now carry the replacement, scoped to the BRANCH rather than the file, because which branch carries it is usually the whole rule. Tell: your only coverage of a governance surface is a negative grep
 
 ## A parser shared between a READER and a WRITER inverts its safety on malformed input — "assume it runs to EOF" is tolerant for a reader and "delete to EOF" for a writer, so a writer must claim nothing it cannot delimit. Tell: you reused a reporting scanner inside something that edits files
 
@@ -494,7 +481,6 @@ never by dropping them.
 
 ## A guard written against the EXAMPLE IN THE FINDING holds for that example and nothing else — restate the threat in your own words before coding it (`is_relative_to` is lexical, so one `..` walks through a containment check that passes the reported case). Tell: your fix quotes the report's scenario back at it
 
-## Read a review's findings for the CLASS, not the list — when four findings share a shape, fixing four instances leaves the fifth to be found by the next round. Tell: several findings could be described by one sentence
 
 ## Fix a defect at the LAYER IT WAS REPORTED AT — pinning the extracted predicate proves the predicate, not the wiring, so deleting the CLI branch leaves a lib-level test green while the reported defect returns. Tell: the finding says "at the CLI" and your new test imports the module
 
@@ -536,7 +522,6 @@ never by dropping them.
 
 ## Copying a fix into a sibling procedure is a NEW change needing its own analysis — two documents share a paragraph, not their invariants, so one edit can repair one and break the other. Ask which invariant made the original wrong and whether it holds next door. Tell: you fixed one file and grep found the same lines elsewhere — [learnings-detail.md]
 
-## Unit tests built from a feature's OWN subject cannot catch a WIDENED subject — every fixture is an instance of the thing the feature is about, so the input that breaks it is the one you had no reason to construct. Run the real command against the real repo before believing green. Tell: your feature reads whatever it is pointed at — [learnings-detail.md]
 
 ## A rule that LOWERS a severity outranks every rule that raises one unless you say so — state the floor with the ceiling, in one sentence, or the suppression quietly becomes the file's highest authority. The exits that LIFT a ceiling are not the severities it must never touch. Tell: your new rule caps a severity and all you wrote next was how to escape the cap — [learnings-detail.md]
 
@@ -548,10 +533,13 @@ never by dropping them.
 
 ## A `try/except` around a producer that RETURNS its degraded states guards nothing — and the comment above it will read as if it does, so the intent survives while the mechanism does not. Read what the callee actually does on its bad paths before writing the guard, and answer the returned states where the read already is. Tell: your `except` names exception types the producer's docstring never mentions raising — [learnings-detail.md]
 
-## A rule discovered on one branch of a dispatch table governs its siblings silently — when you write a fix into one exit code, one mode, or one error row, ask which other rows share its premise, because the branch you did not visit keeps the old behavior while the file reads as if the rule is stated. Tell: your fix is a table row, and you edited exactly one — [learnings-detail.md]
 
 ## A fallback must be checked against the SIZE of the interval it replaces, not its name — a mode name carries goal count, not span, so a demotion can hand back an interval narrower than the one just refused for being too wide. Have the refusal name the mode rather than let the reader pick. Tell: a refusal tells the caller to re-dispatch and does not say as what — [learnings-detail.md]
 
 ## A correct decision defended by an unread mechanism is still a defect — when you write the *reason* for a choice ("X forces this", "that span is a superset"), open X first, because review checks the code against the claim and rarely the claim itself, so a false reason outlives the round. Tell: your justification names a gate, flag or span you have not opened — [learnings-detail.md]
 
 ## A refusal predicate is not a severity predicate — a gate folding several conditions into one "cannot be trusted" answer must not also decide how hard to fail, because its mildest condition is ordinary and escalating on it punishes the common case. Split the reasons at the call site. Tell: you reached for the function whose NAME matched your sentence — [learnings-detail.md]
+
+## A clean sweep usually indicts your QUERY, not the tree — grep returns sites phrased in your words, so survivors are the ones that paraphrase, assert the opposite in prose, or say nothing (silence satisfies an assert-absent guard). Name the state the change makes true or false, search two vocabularies sharing no word, pin positively. Tell: every hit used your words — [learnings-detail.md]
+
+## Bound a class by the PROPERTY that justifies it, never by the container it sits in — a path prefix, a line range, or a fixture built from the feature's own subject each look complete while bounding the wrong set, so the claim reads as verified at the fixture's scope rather than the requirement's BREADTH. Tell: your boundary is a location, your rationale is a verb — [learnings-detail.md]
