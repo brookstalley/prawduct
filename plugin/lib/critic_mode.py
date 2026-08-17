@@ -699,7 +699,7 @@ class ChunkModeRead(NamedTuple):
 def _critic_mode_for_chunk(
     prawduct_dir: Path, chunk_id: str | None, plan_path: Path | None = None
 ) -> ChunkModeRead:
-    """Return ``chunk_id``'s declared ``**Critic mode:**`` token, or ``None``.
+    """Return ``chunk_id``'s declared mode and whether its plan could be read.
 
     Finds that chunk's ``### Chunk <id>:`` detail section and reads its
     ``- **Critic mode:** <value>`` field. Returns the short-token value

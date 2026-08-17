@@ -750,22 +750,47 @@ class TestStatusSectionBoundsStaySingular:
         assert buildplan_refs.status_section_bounds("# Plan\n- [ ] x".splitlines()) is None
 
 
-class TestDottedChunkIdSurvivesTheNotice:
-    """`unticked_committed_chunk_notice` sorted with `key=int`, warranted by a
-    comment asserting every id is a digit string. Widening the commit matcher
-    and the Status matcher to dotted ids falsified both halves at once, and the
-    sort sits OUTSIDE the caller's except-set — so `int('1.2')` tracebacks two
-    callers that promise a `cannot-verify:` line rather than an exception.
+class TestChunkIdFormsReachTheWalk:
+    """Two defects, one file, both about an id the code could not accept.
+
+    The dotted-id sort: `unticked_committed_chunk_notice` sorted with `key=int`
+    under a comment asserting every id is a digit string. Widening the commit
+    and Status matchers falsified both halves, so `int('1.2')` became reachable
+    outside the caller's except-set. The first pin written for it was VACUOUS —
+    it called the helper directly and asserted `int('1.2')` raises, a property
+    of the stdlib — so it stayed green with the fix reverted. This one drives
+    the notice.
+
+    The label form: `--chunk "Chunk 01"`, the string the plan's own heading
+    prints, never matched a matcher that captures a bare id, and record-lint
+    rates an unrunnable deliverable check BLOCKING — so a correct plan bought a
+    whole extra review round.
     """
 
-    def test_dotted_ids_sort_numerically(self):
-        from lib.buildplan_refs import _chunk_sort_key
-        assert sorted(["1.10", "1.2", "2", "01"], key=_chunk_sort_key) == [
-            "01", "1.2", "1.10", "2"
-        ]
+    def test_a_dotted_chunk_id_does_not_raise_through_the_notice(self, tmp_path: Path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (tmp_path / "_home").mkdir()
+        _init_repo(repo)
+        _write(repo, ".prawduct/project-state.yaml", "base_branch: main\n")
+        _write_plan(
+            repo / ".prawduct",
+            "---\nartifact: build-plan\nscope: dotted\n---\n\n## Status\n\n"
+            "- [ ] Chunk 1.2: the dotted one\n",
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "chore: plan")
+        _git(repo, "checkout", "-b", "feature/x", "--quiet")
+        _write(repo, "src/x.py", "x = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "feat(dotted): land it (Chunk 1.2)")
+        # With key=int this raises ValueError instead of returning.
+        buildplan_refs.unticked_committed_chunk_notice(repo)
 
-    def test_the_old_key_would_have_raised(self):
-        """Falsifies the fix: the value that reaches the sort is one `int` rejects."""
-        import pytest
-        with pytest.raises(ValueError):
-            int("1.2")
+    def test_the_heading_label_is_an_accepted_chunk_id(self):
+        """`--chunk "Chunk 01"` must find what `--chunk 01` finds."""
+        bare = _chunk_section_lines(PLAN, "01")
+        labelled = _chunk_section_lines(PLAN, "Chunk 01")
+        assert labelled.found and labelled.found == bare.found
+        assert [ln for _n, ln in labelled.lines] == [ln for _n, ln in bare.lines]
+        assert _chunk_section_lines(PLAN, "chunk 2").found

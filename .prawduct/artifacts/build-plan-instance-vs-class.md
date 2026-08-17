@@ -7,7 +7,13 @@ depends_on: []
 governed_by:
   - artifact: api-contract
     dispositions:
-      - "inapplicable because this plan changes review prose and the learnings corpus, no CLI surface"
+      - "error model (a boundary returns a diagnostic, never a traceback) → conforms — the
+        `--chunk` label normalisation removes a case that reached record-lint as an unrunnable
+        check rather than a diagnostic"
+      - "versioning/deprecation → inapplicable because no published surface changes shape;
+        `--chunk` gains an accepted input form and refuses none"
+      - "published surfaces are read-only and allowlistable → conforms — no exit code on
+        `version` or `print-install-reference` moves"
 last_validated: 2026-08-17
 ---
 

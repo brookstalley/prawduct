@@ -37,6 +37,21 @@ the dotted-id widening reached `_CHUNK_COMMIT_RE` but not the `key=int` sort con
 `int` — "every key here is a digit string" — deleted rather than reworded, because this bundle
 is what made it false.
 
+**Two more, both in this file, both found rather than recalled.** The pin written for the
+dotted-id fix above was **vacuous**: one case called the sort helper directly (green either
+way) and the other asserted `int("1.2")` raises — a property of the stdlib, not of this repo —
+so both passed with the fix fully reverted. A vacuous guard for the vacuous-guard class,
+inside the branch that exists to fix it. Replaced with a pin that drives
+`unticked_committed_chunk_notice` end-to-end, and falsified: reverting the fix turns it red.
+
+And an airgapped consumer reported that `--chunk "Chunk 01"` — the string the plan's own
+heading prints — never matched, because the matcher captures a bare id. The failure is
+CLOSED: record-lint rates an unrunnable deliverable check BLOCKING, so a correct plan with
+every deliverable present bought a full extra review round, twice in one session on two
+unrelated plans. The leading-zero tolerance made it worse by looking forgiving. The walk now
+strips a leading `Chunk` label, so the flag accepts what the heading prints.
+
+
 ## 2026-08-17: four defects an external fleet report found, and the one shape they share
 
 <!-- prawduct: type=bugfix | scope=fleet-feedback-661 -->

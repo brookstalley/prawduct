@@ -193,6 +193,8 @@ _CHUNK_ID_SEP = r"\s*(?:[:—–(-]|\*\*|$)"
 _CHUNK_BOLD = r"(?:\*\*\s*)?"
 _CHUNK_CHECKBOX = r"(?:(?:[-*+]\s+)?\[[ xX]\]\s+)?"
 _CHUNK_ID = r"(\w+(?:\.\w+)*)"
+#: Strips a leading ``Chunk`` label so the flag accepts what the heading prints.
+_CHUNK_LABEL_PREFIX_RE = re.compile(r"^[Cc]hunk\s+")
 _CHUNK_HEADING_RE = re.compile(
     r"^#{2,3}\s+" + _CHUNK_CHECKBOX + _CHUNK_BOLD + r"Chunk\s+" + _CHUNK_ID + _CHUNK_ID_SEP
 )
@@ -973,7 +975,7 @@ def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
         return None
     # Numeric order, and the key is TOTAL on this domain rather than merely
     # usually-right: the input is a SET, so a key with ties would leave the
-    # tied ids in set-iteration order and the same repo could print the same
+    # tied ids in set-iteration order and the same repo could print the same notice twice.
     flagged = sorted(set(unticked) & set(committed), key=_chunk_sort_key)
     if not flagged:
         return None
@@ -1466,7 +1468,13 @@ def _chunk_section_lines(content: str, chunk_id: str) -> ChunkSection:
     Returns a :class:`ChunkSection`, whose docstring carries the contract every
     caller owes the third field.
     """
-    target = chunk_id.lstrip("0") or "0"
+    # Accept the form the plan's own heading prints. The matcher captures a BARE
+    # id, so a caller handing over the label it read on screen ("Chunk 01") could
+    # never match, and the failure is CLOSED: record-lint rates an unrunnable
+    # deliverable check BLOCKING, so a correct plan bought a whole extra review
+    # round. The leading-zero tolerance below made it worse by looking forgiving.
+    target = _CHUNK_LABEL_PREFIX_RE.sub("", chunk_id.strip())
+    target = target.lstrip("0") or "0"
     in_section = False
     in_fence = False
     section_lines: list[tuple[int, str]] = []
