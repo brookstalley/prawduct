@@ -748,3 +748,24 @@ class TestStatusSectionBoundsStaySingular:
 
     def test_no_status_section_reads_as_absent_not_as_the_whole_document(self):
         assert buildplan_refs.status_section_bounds("# Plan\n- [ ] x".splitlines()) is None
+
+
+class TestDottedChunkIdSurvivesTheNotice:
+    """`unticked_committed_chunk_notice` sorted with `key=int`, warranted by a
+    comment asserting every id is a digit string. Widening the commit matcher
+    and the Status matcher to dotted ids falsified both halves at once, and the
+    sort sits OUTSIDE the caller's except-set — so `int('1.2')` tracebacks two
+    callers that promise a `cannot-verify:` line rather than an exception.
+    """
+
+    def test_dotted_ids_sort_numerically(self):
+        from lib.buildplan_refs import _chunk_sort_key
+        assert sorted(["1.10", "1.2", "2", "01"], key=_chunk_sort_key) == [
+            "01", "1.2", "1.10", "2"
+        ]
+
+    def test_the_old_key_would_have_raised(self):
+        """Falsifies the fix: the value that reaches the sort is one `int` rejects."""
+        import pytest
+        with pytest.raises(ValueError):
+            int("1.2")

@@ -704,7 +704,7 @@ def _critic_mode_for_chunk(
     Finds that chunk's ``### Chunk <id>:`` detail section and reads its
     ``- **Critic mode:** <value>`` field. Returns the short-token value
     only when it is one of the recognized modes; an absent, blank, or
-    unrecognized value yields ``None`` (fall through to inference rather
+    unrecognized value yields ``ChunkModeRead(None, None)`` (fall through to inference rather
     than honoring a typo as a mode override — same fail-open-to-inference
     posture the methodology's "optional field" contract implies).
 
@@ -713,9 +713,8 @@ def _critic_mode_for_chunk(
     (CRT-7B4M), otherwise the first ``- [ ]`` chunk. Section discovery is
     the shared ``buildplan_refs._chunk_section_lines`` walker: name-anchored
     on ``### Chunk <id>:`` with leading-zero tolerance, fenced code blocks
-    skipped, stop at the next sibling chunk or top-level section. A plan
-    carrying a chunk heading that walker cannot read also yields ``None`` — see
-    the comment at that call for why this reader declines rather than reports.
+    skipped, stop at the next sibling chunk or top-level section. A plan carrying a chunk heading that walker cannot read yields
+    ``ChunkModeRead(None, <reason>)`` instead, and the caller escalates on it.
     """
     if chunk_id is None:
         return ChunkModeRead(None, None)

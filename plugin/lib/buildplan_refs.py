@@ -876,6 +876,17 @@ def _resolve_chunk_progress_from(content: str) -> ChunkProgress:
 UNTICKED_CHUNK_TOKEN = "unticked-committed-chunk"
 
 
+def _chunk_sort_key(chunk_id: str) -> tuple[int, ...]:
+    """Numeric sort for a chunk id, dotted ids included.
+
+    ``int`` was safe only while every id was a digit string. The commit and
+    Status matchers both accept ``1.2`` now, so an id reaching here can carry
+    a dot — and this sort sits outside the caller's except-set, so raising
+    here tracebacks two callers that promise a ``cannot-verify:`` line.
+    """
+    return tuple(int(part) for part in chunk_id.split("."))
+
+
 def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
     """A notice when a chunk's work is committed but its Status box is empty.
 
@@ -963,12 +974,7 @@ def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
     # Numeric order, and the key is TOTAL on this domain rather than merely
     # usually-right: the input is a SET, so a key with ties would leave the
     # tied ids in set-iteration order and the same repo could print the same
-    # finding two ways on two runs. Every key here is a digit string because
-    # every `_CHUNK_COMMIT_RE` group captures `\d+` — which also means a plan using
-    # non-numeric chunk ids (`Chunk A`) gets no report at all, since no commit
-    # subject can ever match one. That is a real gap in this control's coverage,
-    # not a case handled elsewhere.
-    flagged = sorted(set(unticked) & set(committed), key=int)
+    flagged = sorted(set(unticked) & set(committed), key=_chunk_sort_key)
     if not flagged:
         return None
     lines = [

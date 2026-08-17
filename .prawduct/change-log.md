@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-17: seventeen learnings rules become three, and the corpus stops burying its own general rule
+
+<!-- prawduct: type=chore | scope=instance-vs-class -->
+
+`fleet-feedback-661` produced three instances of one defect: a fix lands at the site a finding
+named and the class survives. The corpus already had the rule — eight times, in eight
+vocabularies, one of them (`A fix lands at the instance a review named`) well-worded and
+general. None fired. The learnings file had the disease it was describing: seventeen
+instances, no construction.
+
+Seventeen rules across three families become three, and the split is the substance rather
+than the trimming. **A** — the fix has relatives (7 folded in; the survivor keeps its heading
+verbatim because it is a live `[[wikilink]]` target, and gains the one thing none of the seven
+said outright: the other members sit OUTSIDE your diff, which is the mechanical reason they
+stay invisible). **B** — the search under-reports (6 folded in), deliberately NOT merged into
+A: A says the class exists, B says your grep for it lies, in four distinct ways. **C** — bound
+the class by the property, not the container (3 folded in).
+
+An earlier read of this corpus called the whole set "~12 restatements of one rule" and would
+have deleted B and C. That was a keyword match reported as an analysis — an instance of C,
+committed while surveying for C, which is why the count in this entry is 17 and not 12.
+
+Every retired rule is preserved verbatim in `learnings-detail.md` under its family. Verified
+rather than asserted: 264 rules to 250, `learnings-entry-shape` 0, descent-obligation ok, and
+dangling wikilinks 15 before / 15 after / **0 newly broken** — the one retired rule that was a
+link target still resolves because its text moved rather than being deleted.
+
+The Critic's own review of this change then produced a **fourth** instance of the same defect:
+the dotted-id widening reached `_CHUNK_COMMIT_RE` but not the `key=int` sort consuming it, so
+`int('1.2')` was newly reachable and would traceback two callers that promise a
+`cannot-verify:` line. Fixed with the widening's own sort key, and the comment that warranted
+`int` — "every key here is a digit string" — deleted rather than reworded, because this bundle
+is what made it false.
+
 ## 2026-08-17: four defects an external fleet report found, and the one shape they share
 
 <!-- prawduct: type=bugfix | scope=fleet-feedback-661 -->
