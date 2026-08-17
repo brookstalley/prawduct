@@ -3,6 +3,80 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-17: four defects an external fleet report found, and the one shape they share
+
+<!-- prawduct: type=bugfix | scope=fleet-feedback-661 -->
+
+Issue #661 analysed ~840 reflection and learning entries across ten governed repos and returned
+four still-live defects. Each was re-verified here before any code moved — three by reading the
+mechanism, the chunk parser by running its regex against the inputs that fail. **Three of the four
+are the same defect wearing different clothes: a check that could not run reads as a check that
+passed.** That is the vacuous-guard class this methodology already teaches against, which is why
+they were fixed as one scope rather than filed as four items.
+
+**The chunk parser was worse than reported, and the report's own framing understated it.**
+`_CHUNK_HEADING_RE` rejected dotted ids (`Chunk 1.2` — `(\w+)` excludes `.`) and a leading
+checkbox. The report's complaint was that such a chunk yields zero deliverables, and zero reads as
+"nothing to check". True but secondary. `_chunk_section_lines` ends a section at the next
+*matching* heading, so an unparseable heading never closes the section before it: baselining a plan
+carrying all five heading forms, chunk `A` returned **10 body lines instead of 3**, claiming
+deliverables belonging to the two unparseable chunks that followed it. The check then *runs*,
+verifies another chunk's files, and **passes**. A silent wrong answer outranks a silent empty one,
+because empty at least looks like nothing. Both matchers were widened together (the module's own
+comment block records why one-sided widening of that pair is a new defect), and the loud signal
+scans the whole plan rather than firing at lookup time — the corrupted answer belongs to a
+*different, parseable* chunk, so a lookup-time signal never reaches it.
+
+**A flag nothing could receive.** `cmd_update_gitignore` took no `argv` parameter at all, so
+`--dry-run` was not discarded by arg parsing — there was no arg parsing, and the reconcile ran. A
+user reached a live `.gitignore` mutation by typing `--help`. The fix is at the dispatch site, on
+the precedent `_check_binary_skew` already set there ("before dispatch, so it covers every
+command"), because a per-command fix misses whichever command nobody thought of. `update-gitignore`
+also gained the real `--dry-run` its siblings taught users to expect; it still repairs by default,
+because `/prawduct:doctor` calls it as a repair step. **`api-contract.md` had claimed the
+repo-lifecycle commands were "all dry-run-by-default where they mutate"** — so the artifact
+documented a contract the code never honoured, and a reader who believed it got the opposite. That
+is the more interesting half of this defect and it is now stated as the exception it is.
+
+**An install that looks like it worked.** Enabling the plugin starts the hooks, and the hooks fill
+`.prawduct/` with runtime state — so a repo that never ran `/prawduct:onboard` shows a version
+banner, a populated directory and firing advisories. One fleet repo has been in that state for
+weeks. Three advisories fired there and **none of them contained the word "onboard"**: prawduct
+detected three downstream consequences and never named the cause, which is worse than silence
+because visible activity reads as confirmation. The new probe fires only on the unanimous absence
+of every marker that `/prawduct:onboard` or `/prawduct:migrate` writes, so a repo that was
+onboarded and merely drifted stays silent and keeps getting told to repair rather than install. It
+sits alongside the consequences rather than suppressing them, ranked `urgent` so it renders above
+them — suppression would trade a misleading briefing now for a surprising one later.
+
+Deliberately *not* counted as onboarding markers: `learnings.md`, `backlog.md` and
+`project-preferences.md`. The runtime nudges each into existence without any onboard, so counting
+them would have silenced the probe on exactly the trajectory the field repo took.
+
+**Reflections now carry the version that produced them.** Nothing stamped it, so grouping the
+corpus by release was archaeology — the reporter could attribute 35.6% of 839 entries and the rest
+is an honest `unknown`. `.session-reflected` has no code write site, but its archive into
+`reflections.md` does, so one statement at the session boundary covers the whole corpus. The header
+reuses the tag idiom `lib/change_log.py` already parses, because a prose line would carry the same
+words unparseably and repeat the gap at lower cost. Every resolution failure degrades to
+`version=unknown` — never an omitted header, which is indistinguishable from an unstamped block,
+and never a raise, which would escape the archive's handler and make the stamp a new way to lose a
+reflection.
+
+**What the new guard caught on its first run, which is the part worth keeping.**
+`test_verify_chunk_refs_cli_reports_rather_than_tracebacks` invoked
+`verify-chunk-refs --chunk 01`. The id is positional; `--chunk` is `verify-records`' spelling, and
+dispatch was recording the literal string `--chunk` as the chunk id. The assertion passed anyway,
+because an undecodable plan fails at the read before any id is used — so the test exercised its
+contract through an invocation that never existed and would have stayed green if the real form
+broke. A guard built for silently-ignored arguments found a test silently passing one. The
+invocation is corrected; the assertions are untouched.
+
+Considered and not done: making `/prawduct:doctor` preview before it reconciles. The report ranked
+the doctor-reads-as-read-only framing first, and `--dry-run` now makes it a one-line change — but
+it alters a skill's behaviour rather than fixing a defect, so it is the operator's call and is
+recorded here as open rather than taken silently.
+
 ## 2026-08-15: a plan-less scope is an absence, not a check that failed
 
 <!-- prawduct: type=bugfix | scope=scope-widened-demotion -->
