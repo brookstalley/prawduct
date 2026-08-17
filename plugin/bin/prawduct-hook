@@ -596,6 +596,39 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
 # =============================================================================
 
 
+# Each archived reflection carries the version that produced it, because nothing
+# else on disk can supply it later: `.prawduct/.prawduct-version` holds only the
+# most recently seen value, and `reflections.md` is gitignored, so it has no
+# history to mine. Grouping a corpus by release otherwise degrades to whatever
+# dates the prose happens to contain, which is a minority of entries.
+#
+# The line is this repo's existing machine-readable tag idiom — the same shape
+# `lib/change_log.py` parses — so "which release produced this reflection" is a
+# query rather than an act of archaeology. A prose line would carry the same
+# words and stay unparseable, repeating the gap at lower cost.
+def _reflection_provenance_header() -> str:
+    """The tag line written ahead of one archived reflection block.
+
+    The version comes from the plugin manifest — the same accessor `version`
+    publishes — rather than from `.prawduct/.prawduct-version`: the banner
+    rewrites that marker earlier in this same SessionStart, so it holds nothing
+    the manifest does not, and it is absent altogether in a repo whose banner
+    has never run.
+
+    Every failure resolves to `unknown` rather than to an omitted header or a
+    raise. An omitted header is indistinguishable from an unstamped block, and a
+    raise would escape the archive's `(UnicodeError, OSError)` handler below and
+    take the whole session boundary with it — making the stamp a new way to lose
+    a reflection, which is the one thing this write site must never become.
+    """
+    try:
+        version = _plugin_manifest_version() or "unknown"
+        archived = datetime.now(timezone.utc).date().isoformat()
+    except Exception:  # prawduct:allow prawduct/broad-except -- provenance is metadata; the reflection it labels must survive anything this line does
+        return "<!-- prawduct: version=unknown | archived=unknown -->"
+    return f"<!-- prawduct: version={version} | archived={archived} -->"
+
+
 def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
     """Clear `.handoff-notes.md` iff its text reached the generated handoff.
 
@@ -717,8 +750,11 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
                 log = prawduct_dir / "reflections.md"
                 prior = log.read_text(encoding="utf-8").strip() if log.is_file() else ""
                 separator = "\n\n---\n\n" if prior else ""
+                # Inside the guard, so a stamp shares the archive's failure
+                # contract instead of standing outside it.
+                header = _reflection_provenance_header()
                 with open(log, "a", encoding="utf-8") as f:
-                    f.write(f"{separator}{content}\n")
+                    f.write(f"{separator}{header}\n\n{content}\n")
             reflection_preserved = True
         except (UnicodeError, OSError) as exc:
             # Consumption keys on PRESERVATION, not on "we tried" — the same rule
