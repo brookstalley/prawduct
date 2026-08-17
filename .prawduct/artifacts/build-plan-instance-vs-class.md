@@ -42,15 +42,15 @@ mechanical rather than evocative.
 ## Status
 
 - [ ] Chunk 01: A finding says whether it is an instance or a class, and the remedy is graded
-- [ ] Chunk 02: Eighteen scattered rules become three sharp ones
+- [x] Chunk 02: Eighteen scattered rules become three sharp ones
 - [ ] Chunk 03: Uplevel the repeated shapes in review-protocol.md (unblocks Chunk 01)
 Context: Plan written 2026-08-17 after the `fleet-feedback-661` branch produced three
 instances of the defect it describes. **Order reversed by operator decision 2026-08-17**
 (the "Open decision" below, option C): Chunk 01 is blocked on a token-budget ruling, and
 Chunk 02 has no such constraint. The stated dependency runs fine in reverse — the vocabulary
 for *class*, *premise* and *construction* gets settled in the consolidated learnings rule,
-and Chunk 01 then CITES it rather than restating it, which may also cost fewer tokens and
-partly answer the funding question. Next: Chunk 02.
+and Chunk 01 then CITES it rather than restating it. Chunk 02 is DONE (17 rules to 3,
+reviewed, one blocking fix). Next: Chunk 03 (the uplevel), which unblocks Chunk 01.
 
 ## Verification Strategy
 
