@@ -215,11 +215,28 @@ are deliberate and are the only ones:
   prevent — the harm this guard exists for is a command that *did* something other than
   what was asked.
 
-Flag-only subcommands (`--json` / `--apply` style, detected with `"--flag" in argv`) each
-call `_reject_unknown_args`, because that idiom reads an unrecognised token as *absent*.
-`coverage-scaffold` is the reason this is stated rather than left to habit: it mutates
-under `--apply`, and `--apply --dry-run` wrote the stubs while the caller believed they
-had asked for a preview.
+**Commands that DO receive `argv` refuse their own unknown tokens** — the dispatcher cannot
+speak for them, because they can see their arguments and it cannot know their vocabulary.
+Flag-only ones (`--json` / `--apply` style, detected with `"--flag" in argv`) call
+`_reject_unknown_args`, because that idiom reads an unrecognised token as *absent*.
+
+That bucket is the part worth reading carefully, because it was filled twice by
+enumeration and was wrong both times. `update-gitignore` was fixed and `coverage-scaffold`
+was missed — it mutates under `--apply`, and `--apply --dry-run` wrote the stub artifacts
+while the caller believed they had asked for a preview. Those two were fixed and
+`migrate-plugin` and `init-product` were missed: the cutover and the scaffolder, the two
+most destructive commands on the surface. A list is something the next command is not on,
+so the coverage is now asserted structurally —
+`tests/test_hook_argument_shape.py::test_every_argv_taking_command_refuses_what_it_cannot_read`
+derives the argv-taking set from `_dispatch`'s own source and fails for any member with
+neither a guard nor a recorded reason.
+
+**Nine of those recorded reasons are honest gaps, not clearances.** `backlog`,
+`test-evidence`, `advisory`, `ledger-append`, `critic-begin`, `critic-restore`, `handoff`,
+`disposition` and `archive-plan` each error on a bare invocation, so the bare-vs-unknown
+probe cannot distinguish a refusal from that pre-existing error, and they were not
+individually audited. They are named in the test rather than folded into a confident-looking
+allowlist; `#667` carries the audit.
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an

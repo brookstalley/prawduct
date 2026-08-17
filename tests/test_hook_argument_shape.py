@@ -120,6 +120,119 @@ def test_the_collections_match_the_dispatch_chain():
     assert single == _hook._SINGLE_POSITIONAL_COMMANDS
 
 
+# Where an argv-taking command's unknown-argument refusal lives, when it is NOT
+# a `_reject_unknown_args` call in the `cmd_*` wrapper. Each entry is a reviewed
+# answer to "what stops this command reading a token it does not understand as
+# absent?" — never a way to skip the question.
+#
+# This set is the point of the test below, and the reason it exists: the guard
+# was twice fixed by naming the commands someone had thought of. `update-gitignore`
+# was fixed and `coverage-scaffold` was missed; those two were fixed and
+# `migrate-plugin` and `init-product` were missed — the two most destructive
+# commands on the surface, both of which scaffold or cut over under `--apply`.
+# Enumeration is a list the next command is not on. A NEW argv-taking command
+# now fails here until someone records which of the two it is.
+# Verified by running each: bare invocation vs the same invocation plus an
+# unrecognised token, comparing exit codes. A differing exit is the refusal; a
+# matching one would mean the token was swallowed. Checked, not read off a
+# comment — the comment above `check-releasability`'s parser says it scans
+# explicitly *because* the `in argv` idiom is unsafe, and a comment saying that
+# is not the same as a parser doing it.
+_REFUSAL_VERIFIED = {
+    "verify-records": "exits 2 on an unknown token",
+    "classify-diff-risk": "exits 1 on an unknown token",
+    "clear": "exits 2 on an unknown token",
+    "evidence": "exits 1 on an unknown token",
+    "render-dispositions": "exits 2 on an unknown token",
+    "cost-of-commit": "exits 1 on an unknown token",
+    "review-stats": "exits 1 on an unknown token",
+    "check-releasability": "explicit token scan; exits 2",
+    "check-released": "explicit token scan; exits 2",
+    "plan-backfill": "explicit token scan; exits 2",
+}
+
+# Refusing is the wrong behaviour for these, for the same reasons the
+# no-argument carve-outs exist.
+_REFUSAL_NOT_WANTED = {
+    "user-prompt-submit": "harness hook; must exit 0 for any argv or it blocks the session",
+    "build-index": "inert — `del argv`; an ignored argument cannot act",
+    "regen-views": "deprecated and inert; exit 0 for any input is its contract",
+    "infer-critic-mode": "takes free-form $ARGUMENTS by contract; an unrecognised mode "
+                         "falling through to inference is the documented behaviour",
+    "jurisdiction": "documented fail-open: a bad --file or any other error yields no "
+                    "matches rather than an error",
+    "verify-chunk-refs": "single positional; covered by _check_argument_shape",
+    "init-product": "lib.init_product._parse_argv collects unclaimed tokens; run() exits 2",
+    # `migrate-plugin` is deliberately NOT listed. It IS guarded — in its wrapper —
+    # and an entry here would have been a courtesy to the reader that silently
+    # exempted it from the scan. It was listed once, and removing the guard left
+    # this test green: a vacuous guard inside the guard written to stop vacuous
+    # guards. An entry in this dict is a claim that the scan must NOT check the
+    # wrapper; never add one for a command the scan can verify itself.
+}
+
+# NOT AUDITED. A bare invocation of each already errors (they require a
+# subcommand or a required argument), so the bare-vs-bogus probe cannot tell a
+# refusal from that pre-existing error, and I did not construct a valid
+# invocation for each. Listed so the gap is visible rather than absorbed into a
+# confident-looking allowlist — brookstalley/prawduct#667 carries the audit.
+_REFUSAL_NOT_AUDITED = {
+    "backlog", "test-evidence", "advisory", "ledger-append", "critic-begin",
+    "critic-restore", "handoff", "disposition", "archive-plan",
+}
+
+_REFUSAL_DELEGATED_TO_LIB = {
+    **_REFUSAL_VERIFIED,
+    **_REFUSAL_NOT_WANTED,
+    **{c: "not audited — see #667" for c in _REFUSAL_NOT_AUDITED},
+}
+
+
+def test_every_argv_taking_command_refuses_what_it_cannot_read():
+    """The gap the pre-dispatch guard cannot close, pinned.
+
+    `_check_argument_shape` speaks for commands that take NO argv. A command
+    that receives `sys.argv[2:]` can see its arguments and must refuse the ones
+    it does not know — the `"--flag" in argv` idiom reads an unrecognised token
+    as *absent*, which is how a `--dry-run` came to mutate. Nothing structural
+    covered this bucket, and the hole was refilled twice by enumeration.
+
+    A command passes by calling `_reject_unknown_args` in its wrapper, or by
+    carrying a recorded reason above. Adding one without either fails here.
+    """
+    source = HOOK.read_text(encoding="utf-8")
+    branches = _dispatch_branches()
+    takes_argv = {c for c, body in branches.items() if "sys.argv[2:]" in body}
+    assert takes_argv, "parser found no argv-taking branches — the test would be vacuous"
+
+    unguarded = []
+    for command in sorted(takes_argv):
+        if command in _REFUSAL_DELEGATED_TO_LIB:
+            continue
+        handler = re.search(r"return (cmd_\w+)\(", branches[command])
+        if handler is None:
+            unguarded.append(f"{command} (no cmd_* handler found)")
+            continue
+        body = re.search(
+            rf"\ndef {handler.group(1)}\(.*?(?=\ndef )", source, re.S
+        )
+        if body is None or "_reject_unknown_args(" not in body.group(0):
+            unguarded.append(f"{command} -> {handler.group(1)}")
+
+    assert not unguarded, (
+        "argv-taking command(s) with no unknown-argument refusal and no recorded "
+        f"reason: {unguarded}. Add `_reject_unknown_args` to the wrapper, or record "
+        "where the refusal lives in _REFUSAL_DELEGATED_TO_LIB."
+    )
+
+
+def test_the_delegation_record_names_only_real_commands():
+    """A stale entry would exempt a command that no longer exists, and silently
+    stop covering one that does."""
+    branches = _dispatch_branches()
+    assert set(_REFUSAL_DELEGATED_TO_LIB) <= set(branches)
+
+
 def test_the_three_no_argument_dispositions_are_disjoint():
     """Refuse / note-only / unchecked are answers to the same question, so a
     command in two of them would get whichever the guard tested first."""

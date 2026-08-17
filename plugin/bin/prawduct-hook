@@ -4721,6 +4721,9 @@ def cmd_migrate_plugin(project_dir: Path, argv: list[str]) -> int:
     Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
     install), print a clear message and return 1 rather than crashing.
     """
+    rejected = _reject_unknown_args("migrate-plugin", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
