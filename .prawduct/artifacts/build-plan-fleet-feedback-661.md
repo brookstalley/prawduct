@@ -76,14 +76,31 @@ advisory sync against a synthesised un-onboarded fixture repo, and drive a real
   `plugin/lib/buildplan_refs.py`; a detector that distinguishes *a heading that
   names a chunk but did not parse* from *no chunk heading present*, reported loudly
   by the consumers of `_chunk_section_lines` rather than returned as an empty list
+- **Section bleed — found during this build, not in the report, and worse than
+  what was reported.** `_chunk_section_lines` terminates a section on the next
+  *matching* chunk heading, so an unparseable heading never terminates the
+  previous one and the preceding chunk silently absorbs the following chunks'
+  bodies. Measured on a fixture carrying all five forms: chunk `A` returned 10
+  body lines instead of 3, claiming `gates.py` and `risk.py` — deliverables
+  belonging to the two unparseable chunks after it. So the failure is not only
+  "an unparseable chunk yields zero"; the chunk *before* it yields a **non-empty
+  and wrong** set, and a deliverable check against it runs, verifies the wrong
+  files, and **passes**. A silent false positive is harder to notice than a
+  silent zero. Two consequences: a partial widening keeps corrupting each
+  unmatched heading's *predecessor*, and the loud-failure signal must fire
+  wherever a chunk-naming heading fails to parse — including mid-body — because
+  the lookup that gets corrupted is a lookup for a *different, parseable* chunk
+  that returns `found=True`.
 - **Tests:** unit — every heading form in the wild (`### Chunk 02:`,
   `## Chunk 2 (RES-K3QP) —`, `### **Chunk A** —`, `### [ ] Chunk 1:`,
   `### Chunk 1.2:`) parses; a malformed heading raises/reports rather than
   returning empty; a plan with genuinely no chunk headings still returns empty
-  quietly (the two must stay distinguishable)
+  quietly (the two must stay distinguishable); **regression — a parseable chunk
+  followed by an unparseable one stops at its own boundary**
 - **Acceptance criteria:** all five heading forms parse to their ids; an
   unparseable `Chunk` heading produces a signal the caller cannot mistake for
-  a pass; no existing plan in `.prawduct/artifacts/` changes its parse
+  a pass; no chunk's body extends past its own section; no existing plan in
+  `.prawduct/artifacts/` changes its parse
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
