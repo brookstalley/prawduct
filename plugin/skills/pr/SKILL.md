@@ -60,7 +60,9 @@ Verify on a feature branch (not main/master/develop). Verify commits ahead of ba
 > always go through the full review below.
 
 ### Step 1c: Change-log entry probe
-**Run `prawduct-hook check-change-log-entry`.** A code-changing branch (any non-`.md` file in `merge-base...HEAD`) must ADD a change-log entry — a branch merged with no entry is invisible to the release flow and surfaces only at release reconstruction (REL-6C3W). Doc-only and empty diffs are exempt (exit 0).
+**Run `prawduct-hook check-change-log-entry`.** A branch carrying **judgeable** work in `merge-base...HEAD` must ADD a change-log entry — a branch merged with no entry is invisible to the release flow and surfaces only at release reconstruction (REL-6C3W). Empty diffs and diffs with no judgeable file are exempt (exit 0).
+
+> **Judgeable is the same predicate Step 1b uses** (`coverage_algebra.is_judgeable_path`), not "is it `.md`" — so `.prawduct/` session metadata is exempt even though it is not `.md`, and governance-protected prose (`skills/`, `methodology/`, `templates/`, root `CLAUDE.md`) needs an entry even though it *is* `.md`. The two gates at this boundary once classified with different rules and returned opposite verdicts on the same file; they now ask one predicate, and the tests assert that they **agree** rather than pinning each verdict separately.
 
 - **Exit 0**: proceed.
 - **Exit 1 with `no-entry` or `entry-edited-not-added`**: **STOP** — write the change-log entry for this branch's work (tag line with `scope=` and no `release=` — that absence IS the release-pending state), commit it, then re-run the probe.

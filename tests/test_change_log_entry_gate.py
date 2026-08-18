@@ -3,9 +3,11 @@
 REL-6C3W: a code-changing branch could merge with NO change-log entry and
 nothing flagged it — the gap surfaced only at release reconstruction
 (CRT-7B4M/#82, found at the v2.0.16 release). The probe runs at the PR
-boundary (`/prawduct:pr` Create Step 1c): a non-``.md`` diff in
-``merge-base...HEAD`` must ADD an entry header (``+## `` line) to
-``.prawduct/change-log.md``. Doc-only and empty diffs are exempt;
+boundary (`/prawduct:pr` Create Step 1c): a diff in ``merge-base...HEAD``
+carrying **judgeable** work — ``coverage_algebra.is_judgeable_path``, the same
+predicate ``check-pr-doc-only`` asks, NOT a ``.md`` suffix test — must ADD an
+entry header (``+## `` line) to ``.prawduct/change-log.md``. Diffs with no
+judgeable file, and empty diffs, are exempt;
 un-evaluable git state fails closed (named reason, exit 1) so the caller
 falls back to manual judgment rather than silently skipping the probe —
 learnings: a skip-gate needs the most adversarial coverage, so the exempt
@@ -19,6 +21,8 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -134,18 +138,70 @@ def test_session_metadata_is_not_code(tmp_path):
     assert "doc-only" in result.stdout
 
 
-def test_both_pr_gates_agree_on_the_same_diff(tmp_path):
+def test_a_governance_protected_md_branch_still_needs_an_entry(tmp_path):
+    """The direction the same one-line routing change TIGHTENS.
+
+    `is_judgeable_path` rates a `.md` file judgeable when it sits under a
+    protected path (`skills/`, `methodology/`, `templates/`, root `CLAUDE.md`) —
+    skill prose is behavioral logic, not docs. So routing this gate through
+    `judgeable_files` moves it in *both* directions: a branch changing only
+    `plugin/skills/pr/SKILL.md` went from exit 0 (all `.md`, exempt) to exit 1
+    (judgeable, entry required).
+
+    Pinned because it is changed behavior, and because the loosening direction
+    alone is the easy half to test — `learnings.md`: pin the DIRECTION
+    separately, on a fixture from the population the predicate is worst at. The
+    backlog item this closes (`#245`) names both directions explicitly; shipping
+    only the `.prawduct/` case would close it against half its recorded scope.
+    """
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "plugin/skills/pr/SKILL.md", "# skill\nprose\n", "skill prose")
+    result = _run_probe(repo)
+    assert result.returncode == 1, (
+        "a governance-protected .md branch is judgeable and must still require "
+        f"an entry; got exit {result.returncode}: {result.stdout}{result.stderr}"
+    )
+    assert "no-entry" in result.stderr
+    assert "SKILL.md" in result.stderr, (
+        "the remedy names the .md files it counted, or the author cannot tell "
+        "why a prose branch was asked for a change-log entry"
+    )
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [
+        pytest.param([".prawduct/corpus-state.json"], id="session-metadata-only"),
+        pytest.param([".prawduct/corpus-state.json", "docs/notes.md"], id="metadata-plus-docs"),
+        pytest.param(["docs/notes.md"], id="docs-only"),
+        pytest.param(["app.py"], id="code-only"),
+        pytest.param(["plugin/skills/pr/SKILL.md"], id="protected-md"),
+        pytest.param(["app.py", "docs/notes.md"], id="code-plus-docs"),
+    ],
+)
+def test_both_pr_gates_agree_on_the_same_diff(tmp_path, paths):
     """The two PR-boundary gates must never contradict each other.
 
     `check-pr-doc-only` said "none judgeable, gates may be skipped" while
     `check-change-log-entry` said "branch changes code" — about the same file, at
     the same boundary, in the same command. Asserted as *agreement* rather than
-    as two separate expected verdicts, because the defect was the disagreement:
-    pinning each gate's answer independently is what let them drift apart.
+    as two expected verdicts, because the defect was the disagreement: pinning
+    each gate's answer independently is what let them drift apart.
+
+    **Deliberately NOT parametrized over the empty diff.** The two gates diverge
+    there by design — `_pr_diff_is_doc_only` returns False (there is nothing to
+    call doc-only) while this gate returns 0 (nothing to write an entry about) —
+    so including it would assert an invariant the code does not hold and go red
+    on the next fixture someone adds. The shared question is "does this diff
+    contain judgeable work", which an empty diff does not pose.
+
+    The fixture set spans both sides of the predicate on purpose: a case where
+    both exempt, both block, and each mixed shape. An all-exempt or all-blocking
+    parameter list would pass while the gates agreed only by luck.
     """
     repo = _make_branched_repo(tmp_path)
-    _commit_file(repo, ".prawduct/corpus-state.json", '{"n": 1}\n', "corpus refresh")
-    _commit_file(repo, "docs/notes.md", "notes\n", "doc change")
+    for i, rel in enumerate(paths):
+        _commit_file(repo, rel, f"content {i}\n", f"change {rel}")
 
     change_log = _run_probe(repo)
     env = dict(_git_env(repo))
@@ -155,13 +211,35 @@ def test_both_pr_gates_agree_on_the_same_diff(tmp_path):
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
     # doc-only exits 0 when the diff needs no review; the change-log gate exits 0
-    # when it needs no entry. Same underlying question, so same answer.
+    # when it needs no entry. Same underlying question, so the same answer.
     assert (doc_only.returncode == 0) == (change_log.returncode == 0), (
-        "the two PR-boundary gates disagree about this diff: "
+        f"the two PR-boundary gates disagree about {paths}: "
         f"check-pr-doc-only exit={doc_only.returncode} "
         f"({doc_only.stdout.strip() or doc_only.stderr.strip()}), "
         f"check-change-log-entry exit={change_log.returncode} "
         f"({change_log.stdout.strip() or change_log.stderr.strip()})"
+    )
+
+
+def test_the_two_gates_diverge_on_an_empty_diff_by_design(tmp_path):
+    """The one case the agreement test excludes, pinned so it stays a decision.
+
+    An excluded case with no test is indistinguishable from an oversight, and
+    the next person to notice the divergence would either "fix" it or widen the
+    agreement test until it went red. Neither gate is wrong here: there is no
+    judgeable work to review AND nothing to write an entry about.
+    """
+    repo = _make_branched_repo(tmp_path)
+    env = dict(_git_env(repo))
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    doc_only = subprocess.run(
+        ["python3", str(HOOK), "check-pr-doc-only"],
+        cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+    )
+    assert _run_probe(repo).returncode == 0, "an empty diff owes no entry"
+    assert doc_only.returncode != 0, (
+        "check-pr-doc-only now calls an empty diff doc-only — if that is "
+        "intended, the agreement test above can stop excluding it"
     )
 
 

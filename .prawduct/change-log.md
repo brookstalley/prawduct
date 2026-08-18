@@ -406,6 +406,16 @@ one document a release reads. The guarantee REL-6C3W actually needs — *no code
 entry* — is unchanged, because `is_judgeable_path` is the same predicate the coverage gates use
 to decide what counts as code.
 
+**The same line TIGHTENS in the other direction, and that half is the more surprising one.**
+`is_judgeable_path` rates governance-protected prose judgeable — `skills/`, `methodology/`,
+`templates/`, root `CLAUDE.md` — because skill prose is behavioral logic, not documentation. So a
+branch changing only `plugin/skills/pr/SKILL.md` goes from exit 0 to **exit 1**: it now needs a
+change-log entry it previously did not. That is `#245`'s other half, which the item calls "a
+REL-6C3W-class hole", and it is deliberate: a change to how the Critic or the PR flow *behaves*
+is shipped work by any reading, and it reached releases unrecorded for as long as the `.md` test
+stood. Both directions are pinned, and a maintainer blocked on a prose-only branch should read
+this paragraph rather than the one above it.
+
 The two new pins are the defect and its shape: one reproduces the consumer's exact diff, and the
 other asserts the two gates **agree**, rather than pinning each one's verdict separately —
 because the defect was the disagreement, and independently-pinned verdicts are what let them
