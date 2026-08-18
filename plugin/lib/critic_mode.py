@@ -23,7 +23,7 @@ return the first that fires:
      findings from the last review.
   1b. ``verify-resolutions`` (post-cumulative fix, CRT-4J8W) — tree clean,
      prior record is a ``cumulative`` review, and the committed delta since
-     its ``commit_reviewed`` has ≥1 non-``.md`` file under the widening
+     its ``commit_reviewed`` holds ≥1 judgeable file under the widening
      threshold. Signal: builder committed a fix after the cumulative; a
      verify pass reviews the delta instead of re-paying a full bundle
      review. (The v2 multi-link chain arm — a verify record carrying an
@@ -82,7 +82,7 @@ import subprocess
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, gitstate
+from . import buildplan_refs, coverage_algebra, gitstate
 from .core import resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
@@ -417,17 +417,20 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
 
     Fires when the working tree is clean, the prior record is a
     ``cumulative`` review (see :func:`_cumulative_anchor`), its
-    ``commit_reviewed`` resolves, and the committed delta since it has at
-    least one non-``.md`` file while staying under the verify-resolutions
+    ``commit_reviewed`` resolves, and the committed delta since it holds at
+    least one judgeable file while staying under the verify-resolutions
     widening threshold (``len(delta) > 2 * prior + 5`` — mirrored so the
     rule never recommends a mode that would immediately demote). Without
     this rule the canonical no-args ``/prawduct:critic`` after a
     post-cumulative fix falls through to rule 2 and recommends a FULL
     bundle re-review — the run-count treadmill this rule exists to kill
     (under v3 either recommendation records a fact the gates compose;
-    the verify pass is simply the delta-cost one). A doc-only
-    (all-``.md``) or empty delta does not fire: the existing coverage
-    still spans HEAD, so no review is needed at all.
+    the verify pass is simply the delta-cost one). A delta holding no
+    **judgeable** file, or an empty one, does not fire: the existing coverage
+    still spans HEAD, so no review is needed at all. Judgeable is
+    :func:`coverage_algebra.is_judgeable_path`, NOT a ``.md`` suffix test —
+    governance-protected prose is judgeable and does fire, which is the case
+    this docstring used to get wrong along with the code below it.
 
     Returns a rationale string when the rule fires, ``""`` otherwise.
     """
@@ -460,7 +463,13 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
         f for f in _committed_files_since(project_dir, commit_reviewed)
         if not gitstate._is_metadata_path(f)
     }
-    if not any(not f.endswith(".md") for f in delta):
+    # THE predicate again (CRT-5D8Q). This was a FIFTH bare-suffix classifier,
+    # found by the class scan the change-log-gate fix triggered — the same
+    # `.endswith(".md")` shape, and wrong in the same direction: governance-
+    # protected prose (`skills/`, `methodology/`, `templates/`, root CLAUDE.md)
+    # IS judgeable, so a committed delta of only skill prose used to suppress the
+    # verify-resolutions suggestion as though nothing reviewable had landed.
+    if not coverage_algebra.judgeable_files(list(delta)):
         return ""
     if len(delta) > 2 * len(prior_set) + 5:
         return ""

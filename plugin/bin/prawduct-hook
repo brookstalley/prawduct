@@ -2231,11 +2231,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
                 if has_pr:
                     # Symmetry with `/prawduct:pr create` Step 1b: when the PR diff
-                    # is doc-only (all .md), the cumulative-Critic and PR-reviewer
+                    # holds no JUDGEABLE file, the cumulative-Critic and PR-reviewer
                     # gates were legitimately skipped at create-time and no
                     # evidence file was written. Gate 3 would otherwise block
                     # session end with a misleading "no review evidence" error for
-                    # a PR that doesn't need one. If a later session adds a non-.md
+                    # a PR that doesn't need one. Judgeable is
+                    # `coverage_algebra.is_judgeable_path`, not "is it .md" — a
+                    # `skills/`-only PR is judgeable prose and is NOT doc-only. If a
+                    # later session adds a judgeable
                     # commit, the check returns False and the gate fires as
                     # intended — matching the create-flow contract. (The parallel
                     # `Type: trivial` fast-path was retired — fileset-eligibility
