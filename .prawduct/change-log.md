@@ -37,12 +37,28 @@ change introduces — `COMPLETE` is an agent self-assessment, and making it a lo
 raises its authority, so a confidently wrong one misleads harder than the quiet "NEXT: nothing"
 it replaces. Splitting evidence (line 1) from claim (line 2) is what keeps `COMPLETE` earned.
 
-**The in-flight rule survives the retaxonomy, which was the main hazard.** "Outstanding includes
-work in flight — a dispatched review, a running PR reviewer, any unread background agent — takes
-the second line, named" exists because agents signalled safe with reviewers live. It is now
-bolted explicitly to `NEXT`, with a precedence rule for the overlap: a review running *and* a
-decision owed is `BLOCKED`, with the in-flight work named beside it. `test_v5_methodology`
-pins the string "in flight" on all four surfaces, so a silent drop goes red.
+**The in-flight rule survives the retaxonomy, which was the main hazard**, but the first draft
+only thought it did — both halves were fixed on the Critic's findings and both are worth
+recording, because they are the same mistake in two costumes: *a rule that was unambiguous under
+the old shape, carried forward verbatim into a shape that gave it a second reading.*
+
+- **"Takes the second line" stopped being an instruction.** It was exact when the second line had
+  one label; with three it names a location and no longer a verdict — while the entry advertises
+  `BLOCKED` as the common case, so the cheap default under ambiguity pointed at the wrong label.
+  Now bolted to the label itself: in-flight work is `NEXT` when it is only waiting on the event,
+  `BLOCKED` when you also owe them something, **never `COMPLETE`**.
+- **The precedence rule contradicted its own worked example — BLOCKING.** It read "when two are
+  true the earlier label wins", and the declared order is `NEXT`, `BLOCKED`, `COMPLETE` — so the
+  general rule resolved to `NEXT` while the example beside it said `BLOCKED`. An agent applying
+  the stated rule emits *nothing needs you* on a turn where the user is the gate: the exact
+  failure the in-flight rule exists to prevent, reintroduced by the fix for it. Restated
+  relationally — **`BLOCKED` wins any overlap** — which drops the ordinal that made an ordering
+  incidental to the taxonomy load-bearing for its semantics, and is also right for the
+  `BLOCKED`-vs-`COMPLETE` case the ordinal got right by accident.
+
+`test_v5_methodology` pins the string "in flight" on all four surfaces, so a silent drop goes red.
+It does not pin the precedence rule, which is prose about a judgement call — the reason that one
+had to be caught by review rather than by the suite.
 
 **Blast radius: four surfaces, and they must not disagree** — `building.md`, `reflection.md` and
 both session digests, two of which are always injected. Two budgets had to absorb it, both funded
@@ -57,8 +73,12 @@ inside their own file per the standing order (dedupe, then raise, never relocate
   landed at 10083 and the suite caught it. Funded by three cuts — the "label answers whose it
   is" gloss (`reflection.md` states it in full), one of three in-flight examples, and a
   handoff-notes gloss calling the file "the session channel that carries your intent across a
-  `/clear`" that the same bullet already explains at length two sentences later. Now 9956, so
+  `/clear`" that the same bullet already explains at length two sentences later. Now 9962, so
   the change hands back **more headroom than it took**.
+- A **third** budget absorbed it unremarked until the Critic named it:
+  `test_slim_budget_at_most_half_of_full` compares the two digests, so trimming the full one
+  while growing the slim one moves both sides at once — headroom 273 → 175 chars. Still green,
+  recorded here because a budget that tightened silently is the one the next edit walks into.
 
 The test contract moved with it: the old assertions pinned the literals "Safe to `/clear`." and
 "Not safe to `/clear` yet", which *were* the sentence-you-had-to-parse. Pinning them now would

@@ -64,7 +64,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   (continues on an external event / stops until they act / finished) · `SAFE TO CLEAR` or
   `DO NOT CLEAR` (the label is the verdict, the copy the reason). Burying, padding or
   collapsing it fail alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review or any
-  unread background agent takes the second line. Full rule:
+  unread background agent is `NEXT`, never `COMPLETE`. Full rule:
   `methodology/reflection.md` "Work cycle boundary".
 - **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
   "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in

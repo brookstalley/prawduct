@@ -33,7 +33,7 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
   `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy is the reason).
   Omitting, burying, padding, and collapsing it onto one line fail identically — people read the
   bottom and nothing else, and three answers run together stop being separately findable. **Outstanding includes work in flight**: a dispatched review, a running PR reviewer
-  or any unread background agent takes the second line — a coordinator Critic review hands your
+  or any unread background agent is `NEXT`, never `COMPLETE` — a coordinator Critic review hands your
   turn back *before* its three reviewers finish. Full rule: `/prawduct:methodology reflection`.
   **Read it before rewriting it; reconcile, never blind-append**: only `/clear` consumes that file, so a second batch finds the first's notes still there — drop what the work discharged, correct what moved, keep what still bites, and never stack a new section on top.
   `.session-handoff.md` is the machine's, regenerated at every `/clear`.
