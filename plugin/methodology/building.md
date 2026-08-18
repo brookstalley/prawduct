@@ -122,14 +122,14 @@ Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades acr
 ```
 ---
 
-`STATE` — done / blocked / waiting; committed or not; suite green or not.
+`STATE` — what changed; committed or not; suite green or not.
 
-`NEXT` — the ONE next action, and whose it is.
+`NEXT` / `BLOCKED` / `COMPLETE` — one only: work continues on an external event / stops until you act / is finished.
 
-`CLEAR` — Safe to `/clear`. — or — Not safe to `/clear` yet: [what has to happen first].
+`SAFE TO CLEAR` / `DO NOT CLEAR` — the label is the verdict; the copy is the reason.
 ```
 
-Omitting it, burying it, padding it, or collapsing it onto one line fail identically — people read the bottom of a long turn and nothing else. Same trigger on every surface: a turn ending a chunk or work cycle, or one you end with work outstanding. Say safe only when steps 1-7 are done **and nothing is outstanding, in flight included** (`methodology/reflection.md` "Work cycle boundary").
+Omitting, burying, padding or collapsing it fail alike — the bottom is all they read. Same trigger on every surface: a turn ending a chunk or work cycle, or one you end with work outstanding. Say `SAFE TO CLEAR` only when steps 1-7 are done **and nothing is outstanding, in flight included** (`methodology/reflection.md` "Work cycle boundary").
 
 **Two session files, two owners.** You own `.prawduct/.handoff-notes.md`; the `/clear` hook owns `.prawduct/.session-handoff.md`, regenerating it from your notes (first), build plan Status, reflection, Critic findings and changed files — never hand-edit the generated one. `prawduct-hook handoff preview` shows what the next session would get.
 

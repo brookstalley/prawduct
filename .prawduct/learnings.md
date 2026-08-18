@@ -354,6 +354,10 @@ never by dropping them.
 
 ## When a release has two documents tracking its state, one is already wrong — designate a single live tracker and demote the other to a decision record; and author each build chunk from the TREE, never from the upstream plan, because a plan derived from a plan describes intent the code may have overtaken
 
+## State precedence among named alternatives RELATIONALLY ("`BLOCKED` wins any overlap"), never by position ("the earlier one wins") — list order is presentational and gets reordered the moment someone improves the prose, so the ordinal inverts while every word still reads true; the tell is a worked example that is the only thing keeping the general rule honest
+
+## When a shape changes, re-read every rule that POINTED AT the old shape — one exact under the old shape ("takes the second line") degrades to a location rather than an instruction once that slot holds several meanings, and it degrades silently because the sentence stays grammatical; a presence test pinning the rule passes throughout
+
 ## When a guard test pins a safety claim, assert the PROPERTY, not one spelling of it — a test that matches a literal (an exact flag token, an exact grant string, a substring anywhere in a file) passes for every rewording of the same defect, so write the check to answer the question the property asks and verify it red against a DIFFERENT phrasing than the one that prompted it
 
 ## When the deliverable is INSTRUCTIONS, at least one guardrail must model the READER — tests that measure the artifact (size, budget, "the right words are present") all pass while the instruction has no effect, because none of them read the file in the order an agent reads it

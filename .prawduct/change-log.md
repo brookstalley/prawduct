@@ -3,6 +3,90 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: the turn-closing block puts the answer in the label, not beside it
+
+<!-- prawduct: type=feature | scope=standing-block-expressive-labels -->
+
+Owner report, and it names a gap the block's own rationale already implied without acting on it.
+`reflection.md` argues that the backticked labels are the only coloured tokens near the bottom of
+a turn, "so the eye finds them without reading" — but `NEXT` and `CLEAR` named a **topic**. The
+token the eye landed on said which question was being answered; the answer was in the sentence
+after it. So the reader still had to read, which is the cost the colour was spent to avoid.
+
+**Two changes, one principle.** The second line is now one of `NEXT` / `BLOCKED` / `COMPLETE`;
+the third is `SAFE TO CLEAR` / `DO NOT CLEAR` with the reason as the copy.
+
+**The axis is what makes the second line exhaustive: what happens if the reader walks away.**
+`NEXT` — work continues without them, on an external event (a dispatched review, a background
+agent); name it. `BLOCKED` — work stops here until they supply something only they can: a
+decision, an answer, a name, or simply the go-ahead. `COMPLETE` — stopped and finished. A first
+draft scoped `BLOCKED` as "cannot proceed without user interaction" and the owner corrected it to
+include the routine ask ("user picks product name"), which is what forced the axis: under the
+looser reading every turn qualifies, because a turn-based CLI always ends waiting, and the
+loudest label becomes the default one. Under the walk-away reading the three are mutually
+exclusive and `NEXT` acquires a specific meaning it did not have before — *nothing needs you.*
+
+**`BLOCKED` is now the common case and that is the honest reading**, not a regression: the user
+usually is the gate. The signal moved into `NEXT`, which now means the reader can leave.
+
+**[DECISION — `STATE` gives up its verdict vocabulary.]** Beyond the reported scope, and taken
+deliberately. `STATE` read "done / blocked / waiting" — the same three words the new line 2 now
+owns, so the block would have stuttered ("STATE: done… COMPLETE: nothing left"). It now carries
+only evidence: what changed, committed or not, suite green or not. That also prices a risk the
+change introduces — `COMPLETE` is an agent self-assessment, and making it a loud coloured token
+raises its authority, so a confidently wrong one misleads harder than the quiet "NEXT: nothing"
+it replaces. Splitting evidence (line 1) from claim (line 2) is what keeps `COMPLETE` earned.
+
+**The in-flight rule survives the retaxonomy, which was the main hazard**, but the first draft
+only thought it did — both halves were fixed on the Critic's findings and both are worth
+recording, because they are the same mistake in two costumes: *a rule that was unambiguous under
+the old shape, carried forward verbatim into a shape that gave it a second reading.*
+
+- **"Takes the second line" stopped being an instruction.** It was exact when the second line had
+  one label; with three it names a location and no longer a verdict — while the entry advertises
+  `BLOCKED` as the common case, so the cheap default under ambiguity pointed at the wrong label.
+  Now bolted to the label itself: in-flight work is `NEXT` when it is only waiting on the event,
+  `BLOCKED` when you also owe them something, **never `COMPLETE`**.
+- **The precedence rule contradicted its own worked example — BLOCKING.** It read "when two are
+  true the earlier label wins", and the declared order is `NEXT`, `BLOCKED`, `COMPLETE` — so the
+  general rule resolved to `NEXT` while the example beside it said `BLOCKED`. An agent applying
+  the stated rule emits *nothing needs you* on a turn where the user is the gate: the exact
+  failure the in-flight rule exists to prevent, reintroduced by the fix for it. Restated
+  relationally — **`BLOCKED` wins any overlap** — which drops the ordinal that made an ordering
+  incidental to the taxonomy load-bearing for its semantics, and is also right for the
+  `BLOCKED`-vs-`COMPLETE` case the ordinal got right by accident.
+
+`test_v5_methodology` pins the string "in flight" on all four surfaces, so a silent drop goes red.
+It does not pin the precedence rule, which is prose about a judgement call — the reason that one
+had to be caught by review rather than by the suite.
+
+**Blast radius: four surfaces, and they must not disagree** — `building.md`, `reflection.md` and
+both session digests, two of which are always injected. Two budgets had to absorb it, both funded
+inside their own file per the standing order (dedupe, then raise, never relocate):
+
+- `building.md` sits at 4806 tokens against a 4810 ceiling. Its four-failure-mode sentence took
+  the tighter form `session-digest.md` already used. Net zero — still 4806, so
+  `LAST_MEASURED_TOKENS` is unchanged.
+- `session-digest.md` was at **9983 of 10000 chars emitted — 17 of headroom** (the file is a
+  char longer than what the hook emits; the assertion measures the emitted text), and this is a *hard*
+  limit, not a self-imposed one: over it Claude Code spills the digest to a file instead of
+  injecting it, so the always-injected surface stops being always-injected. The first draft
+  landed at 10083 and the suite caught it. Funded by three cuts — the "label answers whose it
+  is" gloss (`reflection.md` states it in full), one of three in-flight examples, and a
+  handoff-notes gloss calling the file "the session channel that carries your intent across a
+  `/clear`" that the same bullet already explains at length two sentences later. Now 9962, so
+  the change hands back **more headroom than it took**.
+- A **third** budget absorbed it unremarked until the Critic named it:
+  `test_slim_budget_at_most_half_of_full` compares the two digests, so trimming the full one
+  while growing the slim one moves both sides at once — its headroom fell by roughly a third.
+  Still green. No endpoint is written here on purpose: this bullet exists to warn the next edit
+  that the budget tightened, and a hand-copied figure goes stale against a number both sides move
+  (it already did once inside this branch — read it live off the test, not off this line).
+
+The test contract moved with it: the old assertions pinned the literals "Safe to `/clear`." and
+"Not safe to `/clear` yet", which *were* the sentence-you-had-to-parse. Pinning them now would
+re-require the shape this change removed, so they are replaced by label assertions.
+
 ## 2026-08-18: the change-log gate stops calling session metadata "code"
 
 <!-- prawduct: type=bugfix | scope=change-log-gate-predicate -->
