@@ -416,7 +416,18 @@ is shipped work by any reading, and it reached releases unrecorded for as long a
 stood. Both directions are pinned, and a maintainer blocked on a prose-only branch should read
 this paragraph rather than the one above it.
 
-The two new pins are the defect and its shape: one reproduces the consumer's exact diff, and the
+**A FIFTH classifier turned up when the class was actually swept, and a sixth site of the prose.**
+Removing the fourth code classifier triggered a `grep` for the shape rather than for the file, and
+it found `critic_mode.py`'s `if not any(not f.endswith(".md") for f in delta)` — wrong in the same
+direction, suppressing the `verify-resolutions` suggestion for a committed delta of only
+governance-protected prose. Two more prose sites in `skills/pr/SKILL.md` asserted the same wrong
+rule about what must land before a cumulative run. All are routed or reworded to cite the
+predicate. The sweep is now by construction: `grep -rn 'endswith(".md")' plugin/lib plugin/bin`
+returns only `coverage_algebra`'s own definition, two comments describing this history, and two
+predicates asking genuinely different questions (`record_lint.is_record`, which lints governance
+records and classifies no language, and `plan_index`'s filename glob).
+
+The new pins are the defect and its shape: one reproduces the consumer's exact diff, and the
 other asserts the two gates **agree**, rather than pinning each one's verdict separately —
 because the defect was the disagreement, and independently-pinned verdicts are what let them
 drift apart in the first place. Both fail against the old inline classifier.

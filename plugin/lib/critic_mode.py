@@ -82,7 +82,7 @@ import subprocess
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, gitstate
+from . import buildplan_refs, coverage_algebra, gitstate
 from .core import resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
@@ -460,7 +460,13 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
         f for f in _committed_files_since(project_dir, commit_reviewed)
         if not gitstate._is_metadata_path(f)
     }
-    if not any(not f.endswith(".md") for f in delta):
+    # THE predicate again (CRT-5D8Q). This was a FIFTH bare-suffix classifier,
+    # found by the class scan the change-log-gate fix triggered — the same
+    # `.endswith(".md")` shape, and wrong in the same direction: governance-
+    # protected prose (`skills/`, `methodology/`, `templates/`, root CLAUDE.md)
+    # IS judgeable, so a committed delta of only skill prose used to suppress the
+    # verify-resolutions suggestion as though nothing reviewable had landed.
+    if not coverage_algebra.judgeable_files(list(delta)):
         return ""
     if len(delta) > 2 * len(prior_set) + 5:
         return ""
