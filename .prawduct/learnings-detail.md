@@ -1296,6 +1296,8 @@ When a generator/framework repo runs its OWN output (here: the framework governe
 
 ## Relocating a source file: sweep every READER of the old path, not just the data-key references
 
+**Superseded by** *A fix lands at the instance a review named; the defect lives in the class* (`learnings.md`, Family A). Retired 2026-08-18 by the `instance-vs-class` consolidation — the narrative below is kept because it is the evidence, not the rule.
+
 When you move a source file (`git mv A → B`) and repoint the engine that reads it, the migration is not done until **every reader of the old path** is swept — including test content-assertions that `read_text()` the old path and fixtures that write/read it, not only the structural/manifest references that name the path as a data key. v2.0.0 Chunk 14 relocated 6 file-sync skill sources `.claude/skills/<n>/SKILL.md → templates/skill-<n>.md`; validating the hardcoded template-*value* assertions and existence checks all passed, but **5 failures + 8 errors** surfaced on the first full-suite run from tests that read the framework skill *content* by path (and a fake-framework fixture that *wrote* the old source path). Grep the old path for `read_text` / `open` / fixture writes, not just for the path string used as a dict key. The content was byte-identical at the new home, so every repoint was a one-line path swap — but they had to be found. Relates to Validate Before Propagating (#15) and Living Documentation (#3).
 
 When moving a source file, sweep EVERY reader of the old path — grep it for `read_text` / `open` / fixture writes, not just the path string used as a data key; content-assertions and fixtures that touch the old path surface only on the full-suite run. **The sweep re-triggers at every MERGE, not just at move time:** merging an integration branch into a feature branch that renamed/packaged a module can import NEW readers of the old path that didn't exist when the move was done (here: `lib/norm_probes.py` arrived from develop importing the pre-move `from .backlog import …` API after Chunk 01 moved the parser to `.backlog.legacy`; the full-suite collection error caught it). After such a merge, grep the merged-in tree for the old import/path before trusting green.
@@ -1311,13 +1313,19 @@ When you remove a mechanism, audit not just what *calls* it (the name-sweep abov
 
 ## A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
 
+**Superseded by** *Bound a class by the PROPERTY that justifies it, never by the container it sits in* (`learnings.md`, Family C). Retired 2026-08-18 by the `instance-vs-class` consolidation — the narrative below is kept because it is the evidence, not the rule.
+
 When user-facing output names something that won't resolve in the current context — a bare `/backlog` skill in a plugin repo that namespaces it `/prawduct:backlog`, a stale command form, a renamed token — fix every command-bearing line in the SAME renderer in one pass, not just the one you noticed, and add a test that asserts the WRONG form is ABSENT, not merely that the right form is present. A presence-only assertion (`assert "/prawduct:backlog" in out`) passes happily while a sibling line still emits the bare `/backlog`. In the ADV-3K7Q fix the Critic caught the same leak class in two successive rounds — first the advisory dismiss hint left bare after the migrate action was fixed, then `/backlog to triage` left bare after both advisory lines were fixed — because each patch targeted the flagged line, not `assemble_session_briefing` as a surface. Root cause upstream: v2.0.0 Chunk 13's namespace divergence was driven module-by-module (it diverged `operator_verification`) instead of by enumerating every command-bearing OUTPUT, so `backlog_probes` and three briefing status lines were silently missed and only surfaced when v2.0.2 re-enabled the advisory. Fix-shape: when you touch one occurrence of a context-dependent leak, immediately `grep` the enclosing renderer (and its frozen twin) for the whole leak class, fix all live-context occurrences together, leave the frozen-context twin (the file-sync `tools/` copy) untouched, and pin it with assert-present + assert-absent. Extends the copy-port doc-sweep rule (a copied renderer inherits the source's command vocabulary) and the deprecation name-sweep rule. Discovered 2026-06-03 (ADV-3K7Q). Relates to Coherent Artifacts (#13), Validate Before Propagating (#15), and Complete Delivery (#2).
 
 ## An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form — enumerate the whole FORM-FAMILY, not one spelling
 
+**Superseded by** *A clean sweep usually indicts your QUERY, not the tree* (`learnings.md`, Family B). Retired 2026-08-18 by the `instance-vs-class` consolidation — the narrative below is kept because it is the evidence, not the rule.
+
 The renderer-surface rule above says grep "the whole leak class." The trap: a frozen-vs-namespaced vocabulary has MULTIPLE spellings of the SAME leak, and a grep that encodes one spelling silently passes over the siblings. Completing ADV-3K7Q's gate-message sweep, I grepped `/(critic|pr|backlog|learnings|...)\b` and cleared every BARE slash-command form from `bin/prawduct-hook` — but that pattern can't match the **hyphenated frozen skill name** `/prawduct-advisory` (the v1 file-sync skill; the plugin form is `/prawduct:advisory`), so a `cmd_advisory` docstring kept emitting it. The Critic caught it — the exact leak class I thought I'd swept, in a spelling my pattern didn't cover. Widening to `/prawduct-[a-z]+` then surfaced a THIRD spelling, the legacy CLI tool `prawduct-setup` (correctly left as a factual historical reference, not a command-resolution leak). Fix-shape: before declaring a namespace/rename sweep done, list every SPELLING the frozen vocabulary uses for the thing — bare `/cmd`, hyphenated `/prawduct-cmd`, legacy CLI `prawduct-setup` — and run one grep per spelling (or a union pattern), because each spelling is a distinct regex the others won't match; then bake the full spelling-set into the absent-assertion's `FORBIDDEN` list, not just the spelling you happened to fix. Discovered 2026-06-03 (gate-message sweep). Extends the renderer-surface rule above; relates to Validate Before Propagating (#15) and Complete Delivery (#2).
 
 ## An untested governance bound rots silently across a migration — sweep the guards (with tests), not just the prose
+
+**Superseded by** *A fix lands at the instance a review named; the defect lives in the class* (`learnings.md`, Family A). Retired 2026-08-18 by the `instance-vs-class` consolidation — the narrative below is kept because it is the evidence, not the rule.
 
 The name-sweep rule above ("Removing a mechanism requires removing its name too") covers prose; its sharper corollary is about *guards*. When a migration removes or relocates a mechanism, the code that **enforces a bound by naming the old shape** rots silently if no test pins it. Two instances surfaced together in the 2.0-rock-solid pass (2026-06-03), both rooted in M4's `agents/`→`skills/` plugin cutover: (1) the trivial/doc-only file-set gate (`_classify_trivial_change`) still bounded `agents/` (deleted) and was **missing `skills/`** — so a `Type: trivial` chunk could edit `skills/critic/SKILL.md` (the Critic's own protocol) without tripping the catastrophic-blast-radius guard; the literal survived precisely because the bound had **zero test coverage**. (2) M4 deleted `tests/test_coverage_gaps.py`, which carried the only `_SESSION_GITIGNORED_PATHS`↔`GITIGNORE_ENTRIES` parity test, while leaving comments that still cited it as live — so the two mirrored lists could drift undetected. Fix-shape: when a migration removes/relocates a mechanism, enumerate the **guards** that referenced the old shape (path bounds, allowlists, parity tests, prefix tables) and (a) repoint them to the new shape, (b) add the regression test if it was missing, or (c) **restore** a deleted guard rather than deleting its now-dangling references — deleting a reference to a guard that *should* exist hides the gap instead of closing it. A guard with no test is the thing most likely to carry a stale literal through a cutover. Discovered 2026-06-03 (waiver-pragma / 2.0-rock-solid pass; gate fixed test-first, 12 new tests; parity test restored). Relates to Tests Are Contracts (#1), Root Cause Discipline (#16), and "Removing a mechanism requires removing its name too" (the prose sibling of this rule).
 
@@ -1996,7 +2004,7 @@ Integrating `develop` into a 40-commits-stale feature branch produced four confl
 
 Same chunk, second instance of the same class. `architecture.md`'s ratified norm reads "advice fails soft… a probe that errors is swallowed with attribution, not raised" — and its own words are *degrades to a note*. I read the norm as license to swallow, and left handoff generation as the one failure path in `cmd_clear` that printed nothing, while every sibling (session-start write, each session-file unlink) named what the user loses. Consequence: an agent that wrote a forward note, watched `/clear` exit 0, and reported "safe to `/clear`" was wrong, and nothing told anyone — which is precisely the silent-success defect the chunk existed to repair, reproduced inside the repair. So: when a norm says a path may not *block*, that constrains the exit code, not the diagnostic. Ask separately "who is harmed by this failure, and how would they learn?" — if the answer is "nobody tells them," the soft failure is incomplete regardless of the norm. Discovered session-handoff-continuity Chunk 01 (2026-07-26, Critic warning). Relates to Honest Confidence (#5) and Living Documentation (#3).
 
-## A fix lands at the instance a review named; the defect lives in the class — so before closing a finding, name the class and route it through one owner, because every local fix looks complete from inside itself
+## A fix lands at the instance a review named; the defect lives in the class — state why it broke in one sentence; if that sentence does not name the site you fixed, it defines the class, whose members sit OUTSIDE your diff and stay invisible. Route it through one owner, not a longer list. Tell: several findings share one sentence; your fix is one row
 
 Three instances in one bundle, which is why this is a rule and not an anecdote. (1) CRT-7B4M shipped the git-derived "which chunk is current" for `infer-critic-mode` alone; the identical defect then surfaced at `verify-chunk-refs` (BLD-7K3Q) and at the session handoff (SCN-4H9T) — three consumers, one root cause, fixed once locally and twice more later. (2) The Chunk 01 Critic's central catch produced the rule "make the state representable," and it was applied to `_read_handoff_notes` — while its sibling `_read_unmarked_handoff`, *three lines below*, kept returning a string whose emptiness meant absent / machine-generated / **unreadable**, and the Chunk 02 Critic found it as BLOCKING. The learning had been written the day before, from that very function's neighbour. (3) Chunk 02's own sweep moved three git helpers into one module and pinned them out of the old one — while the *composition* they served ("try git, else checkboxes") stayed written in two places, so a third progress signal would have diverged the consumers again with the pin still green. So: a finding names a location; ask what class it belongs to and sweep the class. Prefer sweeping **by construction** — one owner every consumer must go through — over sweeping by enumeration, because enumeration is a list that the next consumer is not on. Corollary with teeth: a consolidation pin that asserts where a SYMBOL lives does not assert where a DECISION is made; pin the decision. Second corollary, learned the hard way over three consecutive review rounds on one class (a build-plan read decoding with the operator's locale, so two readers of the same file disagree about whether it parses): each sweep reached exactly as far as the unit being edited — the function, then the module — because **a boundary you are inside is invisible**, which is what makes this recur rather than what makes it careless. So when a class comes back a THIRD time, stop sweeping and make it enforceable: a pin is checked by something with no field of view. The tell that you are still sweeping by attention is a commit subject claiming the class is handled. Discovered session-handoff-continuity Chunk 02 (2026-07-27, Critic blocking + warning ×3 rounds). Relates to [[When a guarantee names a specific event, gate on THAT event]], Root Cause Discipline (#16) and Close the Learning Loop (#18).
 
@@ -3974,3 +3982,87 @@ says, and a rationale sentence is the part least likely to be executed by anythi
 The cheap check is the same one Principle 24 names, applied one level in from where it usually
 fires: before writing "X forces this", open X. Not to verify the decision — to verify the sentence.
 Ten seconds of reading beats a round, and beats a durable false claim that no round ever revisits.
+
+## A refusal predicate is not a severity predicate
+
+`buildplan_refs.chunk_section_gap` answers one question — why a chunk section cannot be
+trusted — by folding three conditions into one string: *not located and the plan reads
+cleanly*, *not located and the plan has unreadable headings*, and *located but the plan has
+unreadable headings*. Its own docstring says "the first two must not share a sentence."
+
+Fixing a silent mode demotion, I needed "this plan cannot be trusted, escalate the review"
+and reached for that function, because its name matched my sentence. Eleven tests went red:
+the first of its three conditions — a chunk with no detail section in a plan that parses
+perfectly — is completely ordinary (a Status roster whose later chunks are not written up
+yet), and escalating on it would have reviewed every not-yet-detailed chunk at `final`.
+
+The composite is correct for the readers that must REFUSE, which is what it was built for:
+all three conditions mean "do not answer from this section." It is wrong for a caller
+deciding how *severely* to react, because severity is not uniform across the reasons. The
+fix was to call the narrower `unparsed_chunk_heading_reason` for the escalation and leave
+the composite for the refusal, then pin both directions — the escalating case and the
+ordinary one — as separate tests, and falsify the escalation to confirm the test fails
+without it.
+
+Discovered fleet-feedback-661 (2026-08-17, Critic blocking, second round). Relates to
+Honest Confidence (#5) and [[Reads as evidence, is not]].
+
+## The three consolidation entries (fleet-feedback-661 follow-on, 2026-08-17)
+
+Seventeen rules across three families were folded into three. Each said a true thing; each
+said it at the altitude of the incident that produced it, so the general statement sat buried
+among its own paraphrases and **none of them fired** during the session that produced three
+instances of the very defect they describe. The corpus had the disease it was describing:
+seventeen instances, no construction.
+
+The retired text is preserved verbatim below — a rule is retired, never deleted, and the
+wording each incident produced is often sharper about its own case than the general form can
+afford to be.
+
+### Family A — retired into `A fix lands at the instance a review named; the defect lives in the class`
+
+All seven say: the change you made reaches past the site you made it at. They differ only in the relation that carries it — siblings in a table, readers of a moved path, existing uses of a newly-dangerous value, surfaces of a leak, guards behind prose, and the only-consumers of a thing being retired. The survivor states the relation generally (the premise of the defect) and keeps the one insight none of the seven stated outright: **the other members are outside your diff**, which is the mechanical reason they stay invisible.
+
+- **Relocating a source file: sweep every READER of the old path, not just the data-key references** — Relocating a source file: sweep every READER of the old path, not just the data-key references
+
+- **A "renders-but-doesn't-resolve" leak is a SURFACE, not a line** — A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
+
+- **An untested governance bound rots silently across a migration** — An untested governance bound rots silently across a migration — sweep the guards (with tests), not just the prose
+
+- **When you add a validator because a value became DANGEROUS, sweep every existing use of that value, not the uses you are writing** — When you add a validator because a value became DANGEROUS, sweep every existing use of that value, not the uses you are writing — the vulnerable line is already in the file and therefore not in your diff. Tell: the helper is new and you never grepped the value's other readers — [learnings-detail.md]
+
+- **A retirement ruling also retires whatever existed only to serve the retired thing, and those consequences never announce themselves** — A retirement ruling also retires whatever existed only to serve the retired thing, and those consequences never announce themselves — after deciding to remove a mechanism, sweep for what it was the ONLY reader of. Retiring the claim machinery silently killed the `assignee` column's only consumer, so a schema specified by a reviewed artifact would have shipped a dead field; found only by walking all fifteen consumer queries against the column list before writing the DDL. Tell: you have just accepted a removal and are moving straight to the thing that replaces it
+
+- **Read a review's findings for the CLASS, not the list** — Read a review's findings for the CLASS, not the list — when four findings share a shape, fixing four instances leaves the fifth to be found by the next round. Tell: several findings could be described by one sentence
+
+- **A rule discovered on one branch of a dispatch table governs its siblings silently** — A rule discovered on one branch of a dispatch table governs its siblings silently — when you write a fix into one exit code, one mode, or one error row, ask which other rows share its premise, because the branch you did not visit keeps the old behavior while the file reads as if the rule is stated. Tell: your fix is a table row, and you edited exactly one — [learnings-detail.md]
+
+## A clean sweep usually indicts your QUERY, not the tree — grep returns sites phrased in your words, so survivors are the ones that paraphrase, assert the opposite in prose, or say nothing (silence satisfies an assert-absent guard). Name the state the change makes true or false, search two vocabularies sharing no word, pin positively. Tell: every hit used your words
+
+### Family B — retired into `A clean sweep usually indicts your QUERY, not the tree`
+
+These six are NOT family A restated — they are the second half of the problem, and folding them into A would have destroyed real content. A says the class exists; B says **your search for it under-reports**, and names four distinct ways: one spelling of a form-family, a phrasing rather than a concept, an identifier rather than the claim, and an assert-absent guard that silence satisfies by construction.
+
+- **An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form** — An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form — enumerate the whole FORM-FAMILY, not one spelling
+
+- **A falsifying grep queries a PHRASING** — A falsifying grep queries a PHRASING; only a reader queries a concept — the same stale state written in words your query does not contain is invisible, so the sites that survive a sweep are exactly the ones that paraphrase. Name the STATE being asserted, then search two or three vocabularies that share no word with each other. Tell: every hit came back in the words you typed
+
+- **An edit that changes a COUNT or a SET falsifies every sentence stating the old one** — An edit that changes a COUNT or a SET falsifies every sentence stating the old one — and noticing one of them feels like completing a search rather than starting one, because the catch arrives with the satisfaction of thoroughness. The instance you found is the one you happened to be reading, not the first of an enumerated set. Grep the document for the old value before committing; prefer a relational statement ("the table's rows") over a literal count, which is the part that goes stale
+
+- **Enumerating the surfaces a chunk EDITS is a different question from enumerating the surfaces its behaviour change FALSIFIES** — Enumerating the surfaces a chunk EDITS is a different question from enumerating the surfaces its behaviour change FALSIFIES — only the second finds the docstring that now lies. A plan that lists the first and calls it a surface sweep misses the file the chunk never opens, which is exactly where a maintainer reads the old rule before changing a threshold
+
+- **Sweeping for the IDENTIFIER is not sweeping for the CLAIM** — Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
+
+- **An assert-absent guard passes when the instruction is simply DROPPED** — An assert-absent guard passes when the instruction is simply DROPPED — silence satisfies it by construction — so any retired-behaviour sweep needs a positive pin on each surface that must now carry the replacement, scoped to the BRANCH rather than the file, because which branch carries it is usually the whole rule. Tell: your only coverage of a governance surface is a negative grep
+
+## Bound a class by the PROPERTY that justifies it, never by the container it sits in — a path prefix, a line range, or a fixture built from the feature's own subject each look complete while bounding the wrong set, so the claim reads as verified at the fixture's scope rather than the requirement's BREADTH. Tell: your boundary is a location, your rationale is a verb
+
+### Family C — retired into `Bound a class by the PROPERTY that justifies it`
+
+The third distinct rule: how the class gets bounded in the first place. A path prefix, a line range and a fixture drawn from the feature's own subject are all containers standing in for a property, and each looks complete from inside itself. `methodology/planning.md`'s 'Line-number scoping' trap is the same rule stated for build plans.
+
+- **A fixture's world is narrower than the requirement it certifies** — A fixture's world is narrower than the requirement it certifies — check coverage against the requirement's stated BREADTH, not against the common instance, because a guard silently redefines the claim to its own scope and the claim then reads as verified — [learnings-detail.md]
+
+- **Scope an exemption by the PROPERTY that justifies it, not by the container it lives in** — Scope an exemption by the PROPERTY that justifies it, not by the container it lives in — an exemption justified by *naming* a file belongs to naming forms, not to every file under that directory, and the container is one cheap generalisation away from correct while looking complete. Tell: the boundary is a path prefix while the rationale is a verb
+
+- **Unit tests built from a feature's OWN subject cannot catch a WIDENED subject** — Unit tests built from a feature's OWN subject cannot catch a WIDENED subject — every fixture is an instance of the thing the feature is about, so the input that breaks it is the one you had no reason to construct. Run the real command against the real repo before believing green. Tell: your feature reads whatever it is pointed at — [learnings-detail.md]

@@ -147,3 +147,5 @@ The corresponding `learnings-detail.md` entry carries the full observation, erro
 ## Reflections Archive
 
 Session reflections in `.prawduct/.session-reflected` are automatically archived to `.prawduct/reflections.md` at the next session boundary (a fresh start or `/clear`) — an unbounded historical record for framework improvement, NOT loaded into session context.
+
+Each archived block is preceded by a provenance tag line — `<!-- prawduct: version=X.Y.Z | archived=YYYY-MM-DD -->` — recording the plugin version that archived it, so the corpus can be grouped by release without reconstructing it from prose dates. `version=unknown` means the version could not be read, never that the reflection is suspect. The file is gitignored, so this line is the only history it has.

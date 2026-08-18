@@ -705,6 +705,12 @@ def run(project_dir: str | Path, argv: list[str]) -> int:
     """CLI entry for ``prawduct-hook migrate-plugin [--apply] [--json]``.
 
     Defaults to a dry-run plan (safe). ``--apply`` performs the cutover.
+
+    Unrecognised tokens are refused by the ``cmd_migrate_plugin`` wrapper in
+    ``bin/prawduct-hook``, alongside every other flag-only guard, so the
+    ``"--flag" in argv`` reads below cannot see one. Without that,
+    ``--apply --dry-run`` performs the cutover while the caller believes they
+    asked for a preview — the idiom reads a token it does not know as *absent*.
     """
     apply = "--apply" in argv
     json_mode = "--json" in argv

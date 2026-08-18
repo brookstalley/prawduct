@@ -457,14 +457,20 @@ def gitignore_contract_drift(target: Path) -> dict:
     return _contract_diff(existing_lines)
 
 
-def update_gitignore(target: Path) -> dict:
+def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     """Add prawduct entries to .gitignore and remove incorrect ones.
 
     Managed files (MANAGED_FILES) should be committed, not gitignored.
     Session files (GITIGNORE_ENTRIES) should be gitignored.
-    Returns dict with 'modified' bool and 'unignored' list of paths
-    that were removed from .gitignore (caller should advise user to
-    git-add these).
+    Returns dict with 'modified' bool, 'unignored' list of paths that were
+    removed from .gitignore (caller should advise user to git-add these), and
+    'missing' list of session entries that were added.
+
+    ``dry_run=True`` computes the same three answers and skips the write, so a
+    caller can PREVIEW the reconcile. The whole point is that the preview and
+    the repair share one body: a separate "what would change" implementation is
+    free to drift from the fixer, and a preview that disagrees with the fix is
+    worse than no preview.
     """
     gitignore = target / ".gitignore"
 
@@ -509,7 +515,7 @@ def update_gitignore(target: Path) -> dict:
         content += "".join(parts)
         modified = True
 
-    if modified:
+    if modified and not dry_run:
         gitignore.write_text(content)
 
-    return {"modified": modified, "unignored": unignored}
+    return {"modified": modified, "unignored": unignored, "missing": list(missing)}

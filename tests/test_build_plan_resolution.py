@@ -600,10 +600,20 @@ class TestGuardMatchesProductionHeadingContract:
             "### Chunk 01 (adapter)",
             "### Chunk 01 - Name",
             "### Chunk 01",
+            # The leading checkbox: a plan that carries its roster's tick marks
+            # into the body headings.
+            "### [ ] Chunk 01: Name",
+            "### - [x] Chunk 01 — Name",
         ],
     )
     def test_production_accepted_forms_are_accepted_by_the_guard(self, heading: str):
         assert _parseable_body_chunk_ids(heading + "\n") == {"1"}
+
+    def test_a_dotted_id_survives_normalization_intact(self):
+        # Sub-chunk numbering: the guard normalizes leading zeros only, so the
+        # dot must reach the comparison — `1.2` folding to `1` would silently
+        # resolve a Status entry against the wrong chunk's heading.
+        assert _parseable_body_chunk_ids("### Chunk 01.2: Name\n") == {"1.2"}
 
     def test_wrong_depth_is_still_rejected(self):
         # The silent-defeat the guard exists for: `####` is outside `#{2,3}`.
@@ -1718,3 +1728,16 @@ class TestPathShapedAmbiguityIsReported:
     def test_placeholder_form_is_the_disambiguator(self):
         # The escape hatch the docstring points authors at, already supported.
         assert not _bpr._looks_like_file_path("<owner>/<repo>")
+
+
+def test_the_heading_label_reaches_the_completed_chunk_join():
+    """`--chunk "Chunk 01"` must normalize for BOTH uses of the id.
+
+    The label strip first landed only in the section walk, leaving
+    `_normalize_chunk_id(chunk_id) in completed` comparing a label against bare
+    ids. It could never be true, so a completed chunk's `new \`path\`` forward-ref
+    exemption never expired and the check reported zero refs while claiming to run.
+    """
+    from lib.buildplan_refs import _normalize_chunk_id
+    assert _normalize_chunk_id("Chunk 01") == _normalize_chunk_id("01") == "1"
+    assert _normalize_chunk_id("chunk 1.2") == _normalize_chunk_id("1.2") == "1.2"

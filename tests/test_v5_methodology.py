@@ -120,11 +120,70 @@ LAST_MEASURED_TOKENS = {
     # and the drift bullet named the chunk-number case twice and re-derived
     # "archiving moves the file" from "archived, not deleted". The last 18 are
     # the floor clause — without it the ceiling silently outranks the
-    # README bullet's actively-misleading BLOCKING two entries above, so a wrong
+    # actively-misleading BLOCKING Goal 4 assigns explicitly, so a wrong
     # command ships as a WARNING that gates nothing. This file is now at ONE
     # token of headroom: the next addition trims or relocates, and there is no
     # third raise coming.
-    "skills/critic/review-protocol.md": 3799,
+    # -128 on 2026-08-18: the uplevel pass. Six repeated shapes measured at 634
+    # tokens; three were one property written many times and merged, one was a
+    # check written twice, one was a bullet the preamble already owned, and one
+    # was measured and deliberately kept. What merged: Goal 4's five drift
+    # bullets plus changelog scope became "a description whose subject moved"
+    # with the container named as incidental; Goal 5's three missing-rationale
+    # bullets became "a decision without a recorded why";
+    # `infrastructure_dependencies` was checked in Goal 2 AND Goal 4 and now has
+    # one home, Goal 2; Signals lost its Files-changed bullet to the Work-size
+    # scale that already implied it; and CLAUDE.md size no longer restates the
+    # changeset scoping the History bullet now owns for every Goal 4 check.
+    #
+    # The first draft recovered 153 and was WRONG BY 31 of them, which is the
+    # number worth carrying forward. Family SIZE was read as recoverable
+    # redundancy, and two cuts turned out to be deletions: Signals' work-type
+    # mapping (Feature -> spec compliance, Bugfix -> root cause, ...) was
+    # redirected to "the selector cited above", which is the chunk `Type:`
+    # selector -- a different axis this same file calls separate, and the real
+    # home is a builder-side file no reviewer opens; and the flat stale-artifact
+    # WARNING was folded under the prose ceiling, silently letting a stale
+    # architecture.md grade NOTE. Both restored. A scan measures what a shape
+    # COSTS; only rewriting it measures what it can give back, and the gap is
+    # the checks that only look repeated.
+    #
+    # WHAT DID NOT MERGE, and why, so the next reader does not retry it. Goal
+    # 2's declaration->obligation bullets (`Foreign API:`, `Exposed API:`,
+    # `Visual change: yes`, 163 tokens) are literal string matches, each owing a
+    # different thing. "A declaration creates an obligation" names neither the
+    # string to find nor the thing owed, so merging them silently stops three
+    # checks firing — the enumeration IS the trigger, which is the exception
+    # framework-checks.md Check 7 requires be stated rather than left implicit.
+    #
+    # The Goal 4 `**Norms**` bullet DID go, and the trap below is retired with
+    # it: test_project_preferences_blocking needs one line carrying both
+    # "project-preferences" and "blocking", and the Normative-authority preamble
+    # now carries them — the BLOCKING clause names the `project-preferences.md`
+    # row or Direction statement the finding cites, which is where a reviewer
+    # resolving jurisdiction already reads. The rule kept its only home; it did
+    # not lose one.
+    # +123 on 2026-08-18: a site-naming finding must answer instance-or-class,
+    # and the remedy is graded — the `**Scope:**` slot in the finding template
+    # plus its rule in the severity legend. Spends the 128 the uplevel pass
+    # above recovered, which is what that pass was for; the ceiling stays at
+    # 3800 and this file has 5 tokens of headroom. Nothing was paid back in
+    # place because the uplevel already took everything there was — the payment
+    # is the -128 entry directly above, not a second trim.
+    #
+    # This is the file's HALF of the rule, and the split is deliberate rather
+    # than budgetary. `final`/`cumulative` reviewers (the single-pass fork and
+    # all three coordinator subagents) read this file and write findings, so the
+    # tell and the graded remedy live here. The reviewer that GRADES a fix reads
+    # neither this file nor `review-cycle.md` — `verify-resolutions` is served by
+    # `goals-1-3.md` and by the dispatch directives — so the withholding rule
+    # went into `critic_consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE`, which
+    # already carried it in instance form ("a finding whose second site is in a
+    # file this delta does not touch": a list of two where the property was
+    # meant). `chunk` mode is UNCOVERED and explicitly so: `goals-1-3.md` has 2
+    # tokens of headroom and the rule costs ~65, which is an owner ruling on
+    # that ceiling, not a trim to slip into this chunk.
+    "skills/critic/review-protocol.md": 3794,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -784,6 +843,69 @@ class TestCriticSkill:
         """
         assert_inert_count_cap(self.content, "review-protocol.md")
 
+    def test_a_site_naming_finding_must_answer_instance_or_class(self):
+        """The rule and the slot are BOTH asserted, and so is where each sits.
+
+        The defect this screens for was observed three times in one session on
+        one branch: a finding named two commands, the builder fixed those two,
+        and the class — every subcommand reading an option with `"--flag" in
+        argv` — survived twice more, caught by a reviewer each time. The
+        reviewers had the knowledge; nothing asked them to write it down, so the
+        builder received a list of sites instead of a bounded class.
+
+        **Placement is the substance, same as `assert_inert_count_cap`.** The
+        rule goes in the severity legend because that is the lookup a reviewer
+        performs while rating the finding in front of it; the slot goes in the
+        finding template because a template is filled every time and a paragraph
+        is re-read never. A version of this rule parked in its own section would
+        satisfy any word-presence check and change no finding.
+
+        **The three components are the rule, not decoration.** "Say instance or
+        class" alone is a coin flip: the tell has to be mechanical (a
+        one-sentence reason that does not name the site names a class), the
+        members have to be located outside the diff (or the reviewer searches
+        the delta and finds nothing), and the remedy has to be graded (or an
+        enumeration of the named sites reads as a resolution, which is the
+        observed defect exactly).
+        """
+        # Scoped to the legend SECTION, not to the file. Goal 5 carries a
+        # `**Scope pressure-test:**` bullet — a different axis entirely — and a
+        # file-wide scan for a bold "Scope" matches it, passes, and asserts
+        # nothing about where this rule sits. Bounding the search by the section
+        # that a reviewer actually reads while rating is the placement claim.
+        section = self.content.split("## Severity Levels", 1)
+        assert len(section) == 2, "the Severity Levels section is gone"
+        legend = [
+            ln for ln in section[1].split("\n## ", 1)[0].split("\n")
+            if ln.lstrip().startswith("- **") and "Scope" in ln
+        ]
+        assert legend, (
+            "review-protocol.md has no Scope entry in its severity legend — a "
+            "reviewer picking a severity reads the legend, not the file"
+        )
+        rule = legend[0]
+        for component, why in (
+            ("one sentence", "without a mechanical tell the answer is a coin flip"),
+            ("outside the diff", "else the reviewer searches the delta and clears it"),
+            ("construction", "the only remedy that closes an unbounded class"),
+            ("longer list", "naming the wrong remedy is what shipped the defect"),
+        ):
+            assert component in rule, (
+                f"review-protocol.md's Scope rule dropped {component!r} — {why}"
+            )
+
+        template = self.content.split("## Output Format", 1)
+        assert len(template) == 2, "the Output Format section is gone"
+        finding_block = template[1].split("### Summary", 1)[0]
+        assert "**Scope:**" in finding_block, (
+            "the finding template has no **Scope:** slot, so the answer depends "
+            "on the reviewer remembering a paragraph rather than filling a field"
+        )
+        assert "instance | class" in finding_block, (
+            "the slot no longer offers the two answers, so it reads as free "
+            "prose and collects a restatement of the finding title"
+        )
+
     def test_signals_and_work_scaling(self):
         """Has signals section and work size/type guidance."""
         assert "Signals That Guide Your Review" in self.content
@@ -843,12 +965,31 @@ class TestCriticSkill:
             pytest.fail("project-preferences compliance should be BLOCKING")
 
     def test_readme_and_changelog_scope(self):
-        """Critic checks README and scopes changelog review to current changeset."""
-        lower = self.content.lower()
-        assert "readme" in lower
-        assert "actively read" in lower or "read the" in lower
-        assert "changelog" in lower
-        assert "history" in lower or "current changeset" in lower
+        """Critic checks README and scopes changelog review to current changeset.
+
+        Both halves assert on the LINE carrying the rule, not on the file. The
+        README half used to accept a bare "read the" anywhere in the file, which
+        a `record_lint` sentence four sections away satisfied — so the check
+        passed for a release in which the README rule had been merged away.
+
+        `\\bread\\b` and not `"read" in line`: "README".lower() CONTAINS "read",
+        so the substring form is entailed by the line naming README at all, and
+        the guard reads as two conditions while being one. The word boundary is
+        the whole assertion — it fails the moment an editor trims the reading
+        instruction and leaves README sitting in the container list.
+        """
+        readme_line = next(
+            (ln for ln in self.content.split("\n")
+             if "README" in ln and re.search(r"\bread\b", ln.lower())),
+            None,
+        )
+        assert readme_line, "no line tells the reviewer to read the project's README"
+        scope_line = next(
+            (ln for ln in self.content.split("\n")
+             if "hangelog" in ln and ("history" in ln.lower() or "changeset" in ln.lower())),
+            None,
+        )
+        assert scope_line, "no line scopes changelog review to the current changeset"
 
     def test_framework_specific_checks(self):
         assert "Framework-Specific Checks" in self.content
@@ -856,7 +997,9 @@ class TestCriticSkill:
         assert "Instruction Clarity" in self.content
 
     def test_token_budget(self):
-        # Ceiling 3620. This file is the `final` / `cumulative` payload, and the
+        # The ceiling is the number this test asserts, and nothing else restates
+        # it — a second copy here went stale at the raise below and shipped as
+        # fact. This file is the `final` / `cumulative` payload, and the
         # prose-diet audit found it LEAN -- every goal bullet is a specific,
         # severity-mapped check, so there is no slack to reclaim by rewording.
         #
@@ -876,12 +1019,16 @@ class TestCriticSkill:
         # compose is not worth quoting verbatim; and history -- what a mechanism
         # USED to do -- is never worth carrying in an instruction payload.
         #
-        # One trap, learned twice: Goal 4's `**Norms**` bullet READS as a pure
-        # restatement of the Normative-authority preamble and is not safe to
-        # delete. test_project_preferences_blocking contracts on a single LINE
-        # carrying both "project-preferences" and "blocking", and that bullet is
-        # the only line that satisfies it. Two separate editors have cut it and
-        # put it back.
+        # The trap that caught two editors is gone, and how it was retired is
+        # the reusable part: Goal 4's `**Norms**` bullet read as a restatement of
+        # the Normative-authority preamble but was the only LINE carrying both
+        # "project-preferences" and "blocking", which
+        # test_project_preferences_blocking contracts on. Both editors deleted
+        # the duplicate and left the contract unhomed. It is now satisfied at the
+        # rule's real home -- the preamble's BLOCKING clause names the
+        # `project-preferences.md` row the finding cites -- so the duplicate
+        # could go. A test pinning prose pins WHERE the rule lives; move the rule
+        # before deleting its only carrier.
         #
         # 3599 -> 3611 (2026-08-02) -- the coordinator prompt template gained
         # the reviewer's FIRST-action liveness marker (`<ROLE>.started`), the

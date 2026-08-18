@@ -3,6 +3,370 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: the cumulative review's two warnings close by construction, and both were class-shaped
+
+<!-- prawduct: type=fix | scope=instance-vs-class -->
+
+`rev-20260818T175424Z-bd5c4bf5` returned 0 blocking, 2 warning, 10 note over
+`bbc31edeabf2...437e7b9a`. **Every finding carried the `Scope:` slot the same bundle added**, and
+both warnings graded themselves `class` — the first live evidence the rule fires.
+
+**A normalizer written against the old grammar keeps typechecking against the new one.**
+`_normalize_chunk_id` trimmed leading zeros with `lstrip("0")` on the whole id, but chunk ids grew
+dot-separated components: `"0.2"` lost the zero of its *first* component and returned `".2"`,
+truthy enough that the `or "0"` fallback could not fire, and `_chunk_sort_key` then evaluated
+`int("")`. That ValueError is not in `unticked_committed_chunk_notice`'s `(OSError,
+SubprocessError)` except-set and two of its three callers are unguarded, so a plan numbering
+`Chunk 0.1` tracebacked exactly where `api-contract.md`'s error model promises a diagnostic.
+Fixed by making the one normalizer total — the zero trim is per *component*, because that is what
+the grammar makes it — and by routing the two inline copies through it, which is what makes its
+docstring's "the only chunk-id normalizer in the tree" true rather than aspirational. Both sides
+of the `unticked & committed` intersection had carried the same inline trim, so they agreed on a
+wrong answer, and agreement reads as corroboration.
+
+**A cross-module coupling on a prose substring has nothing that fails when the prose is
+reworded.** `cmd_stop` recognized an unparseable-heading report by `"do not parse as one" in
+type_error` and its sibling by `startswith("unknown type:")` — two literals produced in a module
+that does not know they are load-bearing, both inside long narrative messages rewritten whenever
+the parser's advice improves. Rewording either silently disabled the only session-end surfacing of
+a plan heading nothing can parse, leaving the author of the broken plan with no line number.
+`buildplan_refs` now owns the discriminator (`UNPARSED_HEADING_MARKER`, `UNKNOWN_TYPE_PREFIX`) and
+exports one predicate, `is_reportable_type_error`, that answers both members — because they are
+one question, and a caller asking it twice is a caller that can come to answer it once. The pin
+feeds the predicate output *produced by the real producers*: a test that hand-writes the sentence
+it expects re-creates the coupling one layer up, going green against a producer that has drifted
+because the fixture drifted with the assertion.
+
+Also fixed, riding the same commit: the reflection provenance stamp computed `archived` inside the
+version read's `try`, so a manifest failure degraded a date that touches no disk and cannot fail —
+`archived=unknown` for the one field the corpus query this stamp exists for would group by.
+
+**A 3.4.0-dev version bump was built here and then reverted, which is the more useful record.** It
+was made on request, and the verify pass found that `fix/release-cut-checklist@73b30688` already
+carries it — same three version files, same two banner defects, a *different* implementation.
+Theirs admits `-dev`/`-dev.N` only and ranks `-dev.N`; this one accepted any semver prerelease and
+deliberately did not rank. Theirs is the owner's recorded decision (2026-08-18) and is the one the
+`#668` campaign needs, so this branch reverted its copy rather than shipping a divergent duplicate
+into a semantic merge conflict in `banner.py` and `test_plugin_manifest.py`. The consumer-facing
+`## v3.4.0-dev` section in `plugin/CHANGELOG.md` stays — it is additive content, not a competing
+mechanism. **The finding under the finding:** two branches independently fixed the same two banner
+defects within hours, which is the branch-level shape of this bundle's own subject — the second
+author could not see the first, because a class member outside your diff is invisible whether it
+sits in another file or another branch.
+
+Two `.prawduct/` notes closed for free (they move no coverage): 14 blank-line runs left by the
+learnings consolidation, and four retired rules whose `learnings-detail.md` sections still read as
+live. The four were found the way the finding said to find them — diff the `## ` headings at the
+merge-base against HEAD and intersect with the detail file, a query rather than a list — and each
+now carries a `**Superseded by** <survivor>` line. Headings are unchanged, so the
+`[[an untested governance bound rots silently across a migration]]` wikilink still resolves.
+
+Four notes accepted with reasons recorded as facts: a deliberate plan-wide parser refusal, a
+registry row that should wait for the #667 audit so it states audited coverage rather than a
+week-old snapshot, a `building.md` sentence that is true while its label no longer resolves, and a
+Goal 4 legibility risk that would spend `review-protocol.md`'s last 5 tokens.
+
+**One process finding for the operator, from the coordinator rather than a goal:** the design
+reviewer self-reported violating its no-execution contract — it ran `python3` to import
+`buildplan_refs` and call `_unparsed_chunk_headings` while checking a regex's blast radius.
+Read-only and pure, and it states no finding rests on the result, but `critic-reviewer`'s
+allow-list grants `Read`/`Grep`/`Write` and a fixed set of `git` subcommands, and a bare `Bash`
+call was not anticipated by it. Whether that should be structurally impossible rather than
+prose-forbidden is a decision, not a defect to patch here.
+
+## 2026-08-18: a finding says whether it is an instance or a class, and the remedy is graded
+
+<!-- prawduct: type=chore | scope=instance-vs-class -->
+
+Three times in one session on `fleet-feedback-661`, a finding named a site, the builder fixed
+that site, and the class survived — caught by a reviewer each time. `update-gitignore` fixed
+and `coverage-scaffold` missed; those two fixed and `migrate-plugin` + `init-product` missed,
+both mutating on `--dry-run`. The reviewers had the knowledge; nothing asked them to write it
+down, so what reached the builder was a list of sites.
+
+**The tell is mechanical, which is the half that makes this more than a longer list.** State
+why it broke in one sentence. If that sentence does not name the site you found, the finding is
+a **class** and the sentence bounds it — say what to search, and expect members outside the
+diff. The motivating sentence was *"the `"--flag" in argv` idiom reads an unknown token as
+absent"*: it names an idiom, not a command, so grepping the idiom bounds the class. **And the
+remedy is graded.** An instance closes by fixing it; an unbounded class closes only by a
+construction — one owner every member passes through, or a check derived from the source of
+truth — never by a longer list of names. Six existing learnings rules independently record that
+the naive search under-reports, which is why an enumeration is not a reliable resolution even
+when attempted in good faith.
+
+`review-protocol.md` carries both halves — the rule in the severity legend, where a reviewer
+looks while rating, plus a `**Scope:** instance | class — <why it broke>` slot in the finding
+template, because a template is filled every time and a paragraph is re-read never. That serves
+`final` and `cumulative`: the single-pass fork and all three coordinator subagents read this
+file. Cost 123 tokens against the 128 the uplevel pass below recovered — no ceiling raised,
+which is what that pass was for.
+
+**The plan's deliverable list was itself instance-shaped, and the rule caught it.** It named
+`review-protocol.md` and `review-cycle.md`. The class is *every surface a reviewer reads while
+writing or grading a site-naming finding*, and `review-cycle.md` is not one — the file records
+that fact about itself, where it notes fix-by-fudging's workaround leg "was rated only here, in
+a file this mode's reviewer is forbidden to open." So the grading half went to
+`critic_consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE`, printed at `verify-resolutions` dispatch,
+the last moment before the reviewer writes the one output that weakens a gate. It already
+carried the rule in instance form — *"a finding whose second site is in a file this delta does
+not touch"*, a list of two where the property was meant — and now names the class, the act
+(re-run the finding's own reason as a search) and the withholding (a longer list of names is not
+a resolution, so the finding stays out of `resolutions`). That directive was the framework's
+designated overflow route precisely because it was uncapped; it is capped now, at 280 against
+400, by the edit that spent it.
+
+**`chunk` mode is uncovered, and explicitly.** `goals-1-3.md` — the only payload `chunk` and
+`verify-resolutions` read — sits at 2247 against a `< 2250` ceiling, and the compressed rule
+costs ~65 tokens. That is an owner ruling on that ceiling, or its own uplevel chunk, not a trim
+to slip into the chunk that adds the rule. All three observed instances came from modes that
+are covered (`cumulative` and `verify-resolutions`), and a `chunk`-mode finding still meets the
+rule one round later, at the verify pass that grades its fix.
+
+**And the rule found a third surface when applied to this diff.** The justification for the slot
+— a template is filled every time, a paragraph is re-read never — names no file, so by the rule's
+own tell it is a class. Its other two members are `review-cycle.md`'s `## Per-Chunk Output
+Format`, the same four-field shape with no `**Scope:**`, and `goals-1-3.md`'s prose report
+contract. Both live in the two budget-blocked files above, so one funding decision covers the
+whole remainder instead of leaving a second item to rediscover.
+
+Applied retrospectively to all three findings, the tell fires on each and names the same class:
+the reason sentence names the `argv` idiom rather than any command, the class is unbounded
+because new subcommands keep arriving, and the resolution is the pre-dispatch guard every
+subcommand passes through — which is what eventually shipped, two rounds later than necessary.
+The third finding's reviewer had already done this unprompted ("I found them by re-running the
+class scan rather than the two names"); the change converts that initiative into instruction.
+
+Prose, not a schema field, and the escalation trigger is stated rather than left to judgment: if
+a review after this ships produces a site-naming finding that does not answer
+instance-or-class, prose has failed and the answer becomes machine-checkable — cheapest form is
+a lint on findings whose `files` array has ≥2 entries. Two guardrails model the reader rather
+than the artifact: one asserts the rule sits *in the legend* and keeps all four load-bearing
+components, the other that the directive names the class, the act and the withholding. The
+first draft of the legend guard matched Goal 5's `**Scope pressure-test:**` bullet — a
+file-wide scan for a bold "Scope" — and passed while asserting nothing about placement. Bounding
+a class by the container instead of the property, inside the change that forbids it.
+
+## 2026-08-18: the Critic's protocol pays for its next rule by upleveling, not by raising a ceiling
+
+<!-- prawduct: type=chore | scope=instance-vs-class -->
+
+Chunk 01 needs room in `review-protocol.md`, whose budget comment has said for five edits
+running that the next addition trims or relocates. A measured scan found 634 of 3799 tokens
+sitting in six repeated shapes; **128** of them proved recoverable, the ceiling is untouched at
+3800, and the file now sits at 3671 with real headroom for the first time in months.
+
+The discriminator is the substance, not the saving. **A class uplevels when the general form
+is actionable without the enumeration, and stays enumerated when the enumeration IS the
+trigger.** Four merged: Goal 4's five drift bullets plus changelog scope became *a description
+whose subject moved*, with artifact, comment, docstring, README and renamed term named as
+containers rather than as five checks; Goal 5's three missing-rationale bullets became *a
+decision without a recorded why*; `infrastructure_dependencies` was being checked in both Goal
+2 and Goal 4 and now has one home; and `CLAUDE.md size` stopped restating the changeset
+scoping that now governs every Goal 4 check at once.
+
+**128 and not the 153 the first draft claimed, and the gap is the finding.** A scan measures
+what a shape *costs*; only rewriting it measures what it gives back, and the difference is the
+checks that merely look repeated. Two of the first draft's cuts were deletions wearing a
+merge's clothes, both caught by this chunk's own acceptance criterion — walk each removed
+bullet and name the surviving sentence that carries it. Signals' work-type mapping (Feature →
+spec compliance, Bugfix → root cause + regression, …) was redirected to "the selector cited
+above", which is the chunk `Type:` selector — a *different* axis this same file calls separate,
+whose real home is `methodology/building.md`, a builder-side file no reviewer is told to open.
+And Goal 4's flat `stale artifact → WARNING` was folded under the prose ceiling, so a stale
+`architecture.md` that no gate reads would have quietly graded NOTE. Both restored; the drift
+bullet now carries two severity arms because artifacts and prose genuinely differ. Closing the
+remaining 22 tokens would mean shaving load-bearing prose — the trade this file has refused
+five times running.
+
+One was measured and deliberately kept. Goal 2's declaration→obligation bullets (`Foreign
+API:`, `Exposed API:`, `Visual change: yes`) are literal string matches, each owing a
+different thing — "a declaration creates an obligation" names neither the string to find nor
+the thing owed, so merging them stops three checks firing while reading as a tidy-up. That is
+the vacuous guard shipped into the reviewer, and `framework-checks.md` Check 7 requires the
+reason for a non-merge be stated rather than left implicit. It is stated in the budget
+comment, which is maintainer-facing — putting it in the payload every reviewer loads would
+have spent the tokens the pass just recovered.
+
+Two upleveled rules now bind wider than their predecessors, deliberately: the concept-ripple
+check said *for framework changes* and the id-anchoring check said *product* artifact, and a
+renamed term or a dangling chunk number strands a reader identically on either side of that
+line. The id-anchoring case also loses its own explicit `WARNING` and inherits the drift
+severity rule — a dangling pointer is load-bearing by construction, since someone follows it.
+
+The Goal 4 `**Norms**` bullet went with them, which two previous editors tried and reverted:
+`test_project_preferences_blocking` needs one line carrying both `project-preferences` and
+`blocking`, and that bullet was the only line that had it. Both editors deleted the duplicate
+and left the contract unhomed. The rule now lives once, in the Normative-authority preamble,
+whose BLOCKING clause names the `project-preferences.md` row or Direction statement a finding
+cites — better for the reviewer, who reads that line while resolving jurisdiction. The trap
+comment in `tests/test_v5_methodology.py` is retired and replaced with the general form: **a
+test pinning prose pins WHERE a rule lives; move the rule before deleting its only carrier.**
+
+## 2026-08-17: seventeen learnings rules become three, and the corpus stops burying its own general rule
+
+<!-- prawduct: type=chore | scope=instance-vs-class -->
+
+`fleet-feedback-661` produced three instances of one defect: a fix lands at the site a finding
+named and the class survives. The corpus already had the rule — eight times, in eight
+vocabularies, one of them (`A fix lands at the instance a review named`) well-worded and
+general. None fired. The learnings file had the disease it was describing: seventeen
+instances, no construction.
+
+Seventeen rules across three families become three, and the split is the substance rather
+than the trimming. **A** — the fix has relatives (7 folded in; the survivor keeps its heading
+verbatim because it is a live `[[wikilink]]` target, and gains the one thing none of the seven
+said outright: the other members sit OUTSIDE your diff, which is the mechanical reason they
+stay invisible). **B** — the search under-reports (6 folded in), deliberately NOT merged into
+A: A says the class exists, B says your grep for it lies, in four distinct ways. **C** — bound
+the class by the property, not the container (3 folded in).
+
+An earlier read of this corpus called the whole set "~12 restatements of one rule" and would
+have deleted B and C. That was a keyword match reported as an analysis — an instance of C,
+committed while surveying for C, which is why the count in this entry is 17 and not 12.
+
+Every retired rule is preserved verbatim in `learnings-detail.md` under its family. Verified
+rather than asserted: 264 rules to 250, `learnings-entry-shape` 0, descent-obligation ok, and
+dangling wikilinks 15 before / 15 after / **0 newly broken** — the one retired rule that was a
+link target still resolves because its text moved rather than being deleted.
+
+The Critic's own review of this change then produced a **fourth** instance of the same defect:
+the dotted-id widening reached `_CHUNK_COMMIT_RE` but not the `key=int` sort consuming it, so
+`int('1.2')` was newly reachable and would traceback two callers that promise a
+`cannot-verify:` line. Fixed with the widening's own sort key, and the comment that warranted
+`int` — "every key here is a digit string" — deleted rather than reworded, because this bundle
+is what made it false.
+
+**Two more, both in this file, both found rather than recalled.** The pin written for the
+dotted-id fix above was **vacuous**: one case called the sort helper directly (green either
+way) and the other asserted `int("1.2")` raises — a property of the stdlib, not of this repo —
+so the pair could not fail on this defect. (One of the two did carry a real assertion — that
+`1.2` sorts before `1.10` — which is restored; calling both vacuous overclaimed.) A vacuous
+guard for the vacuous-guard class,
+inside the branch that exists to fix it. Replaced with a pin that drives
+`unticked_committed_chunk_notice` end-to-end, and falsified: reverting the fix turns it red.
+
+And an airgapped consumer reported that `--chunk "Chunk 01"` — the string the plan's own
+heading prints — never matched, because the matcher captures a bare id. The failure is
+CLOSED: record-lint rates an unrunnable deliverable check BLOCKING, so a correct plan with
+every deliverable present bought a full extra review round, twice in one session on two
+unrelated plans. The leading-zero tolerance made it worse by looking forgiving. The walk now
+strips a leading `Chunk` label, so the flag accepts what the heading prints.
+
+
+**And once more, one commit later.** The label strip landed in the section walk only, while
+the same id is used again to join against completed chunks through `_normalize_chunk_id` —
+which still only trimmed zeros. The membership test could never be true for a label, so a
+completed chunk's `new \`path\`` forward-ref exemption never expired and the deliverable check
+reported zero refs while reporting that it ran. The file's own docstring had said it: this is
+**the only chunk-id normalizer in the tree — widen this one rather than adding a second**, and
+a second is exactly what the previous commit added. Folded in; the section walk now calls it.
+
+## 2026-08-17: four defects an external fleet report found, and the one shape they share
+
+<!-- prawduct: type=bugfix | scope=fleet-feedback-661 -->
+
+Issue #661 analysed ~840 reflection and learning entries across ten governed repos and returned
+four still-live defects. Each was re-verified here before any code moved — three by reading the
+mechanism, the chunk parser by running its regex against the inputs that fail. **Three of the four
+are the same defect wearing different clothes: a check that could not run reads as a check that
+passed.** That is the vacuous-guard class this methodology already teaches against, which is why
+they were fixed as one scope rather than filed as four items.
+
+**The chunk parser was worse than reported, and the report's own framing understated it.**
+`_CHUNK_HEADING_RE` rejected dotted ids (`Chunk 1.2` — `(\w+)` excludes `.`) and a leading
+checkbox. The report's complaint was that such a chunk yields zero deliverables, and zero reads as
+"nothing to check". True but secondary. `_chunk_section_lines` ends a section at the next
+*matching* heading, so an unparseable heading never closes the section before it: baselining a plan
+carrying all five heading forms, chunk `A` returned **10 body lines instead of 3**, claiming
+deliverables belonging to the two unparseable chunks that followed it. The check then *runs*,
+verifies another chunk's files, and **passes**. A silent wrong answer outranks a silent empty one,
+because empty at least looks like nothing. Both matchers were widened together (the module's own
+comment block records why one-sided widening of that pair is a new defect), and the loud signal
+scans the whole plan rather than firing at lookup time — the corrupted answer belongs to a
+*different, parseable* chunk, so a lookup-time signal never reaches it.
+
+**A flag nothing could receive.** `cmd_update_gitignore` took no `argv` parameter at all, so
+`--dry-run` was not discarded by arg parsing — there was no arg parsing, and the reconcile ran. A
+user reached a live `.gitignore` mutation by typing `--help`. The fix is at the dispatch site, on
+the precedent `_check_binary_skew` already set there ("before dispatch, so it covers every
+command"), because a per-command fix misses whichever command nobody thought of. `update-gitignore`
+also gained the real `--dry-run` its siblings taught users to expect; it still repairs by default,
+because `/prawduct:doctor` calls it as a repair step. **`api-contract.md` had claimed the
+repo-lifecycle commands were "all dry-run-by-default where they mutate"** — so the artifact
+documented a contract the code never honoured, and a reader who believed it got the opposite. That
+is the more interesting half of this defect and it is now stated as the exception it is.
+
+**An install that looks like it worked.** Enabling the plugin starts the hooks, and the hooks fill
+`.prawduct/` with runtime state — so a repo that never ran `/prawduct:onboard` shows a version
+banner, a populated directory and firing advisories. One fleet repo has been in that state for
+weeks. Three advisories fired there and **none of them contained the word "onboard"**: prawduct
+detected three downstream consequences and never named the cause, which is worse than silence
+because visible activity reads as confirmation. The new probe fires only on the unanimous absence
+of every marker that `/prawduct:onboard` or `/prawduct:migrate` writes, so a repo that was
+onboarded and merely drifted stays silent and keeps getting told to repair rather than install. It
+sits alongside the consequences rather than suppressing them, ranked `urgent` so it renders above
+them — suppression would trade a misleading briefing now for a surprising one later.
+
+Deliberately *not* counted as onboarding markers: `learnings.md`, `backlog.md` and
+`project-preferences.md`. The runtime nudges each into existence without any onboard, so counting
+them would have silenced the probe on exactly the trajectory the field repo took.
+
+**Reflections now carry the version that produced them.** Nothing stamped it, so grouping the
+corpus by release was archaeology — the reporter could attribute 35.6% of 839 entries and the rest
+is an honest `unknown`. `.session-reflected` has no code write site, but its archive into
+`reflections.md` does, so one statement at the session boundary covers the whole corpus. The header
+reuses the tag idiom `lib/change_log.py` already parses, because a prose line would carry the same
+words unparseably and repeat the gap at lower cost. Every resolution failure degrades to
+`version=unknown` — never an omitted header, which is indistinguishable from an unstamped block,
+and never a raise, which would escape the archive's handler and make the stamp a new way to lose a
+reflection.
+
+**What the new guard caught on its first run, which is the part worth keeping.**
+`test_verify_chunk_refs_cli_reports_rather_than_tracebacks` invoked
+`verify-chunk-refs --chunk 01`. The id is positional; `--chunk` is `verify-records`' spelling, and
+dispatch was recording the literal string `--chunk` as the chunk id. The assertion passed anyway,
+because an undecodable plan fails at the read before any id is used — so the test exercised its
+contract through an invocation that never existed and would have stayed green if the real form
+broke. A guard built for silently-ignored arguments found a test silently passing one. The
+invocation is corrected; the assertions are untouched.
+
+Considered and not done: making `/prawduct:doctor` preview before it reconciles. The report ranked
+the doctor-reads-as-read-only framing first, and `--dry-run` now makes it a one-line change — but
+it alters a skill's behaviour rather than fixing a defect, so it is the operator's call. Filed as
+`#666` rather than left in prose.
+
+**The flag fix took three rounds, and the reason is the most transferable thing here.** Round one
+fixed `update-gitignore`. The cumulative Critic found `coverage-scaffold` and `coverage-status`
+still reading unknown tokens as absent — and `coverage-scaffold` MUTATES, so `--apply --dry-run`
+wrote 5 stub artifacts while the caller believed they had asked for a preview. That is the same
+defect, in the command this entry's own first draft held up as the well-behaved sibling. Round two
+fixed those two. The verify round then found `migrate-plugin` and `init-product` — the plugin
+cutover and the repo scaffolder, the two most destructive commands on the surface. Measured against
+the pre-change binary rather than argued: `migrate-plugin --apply --dry-run` performed the cutover,
+and `init-product --apply --dry-run` scaffolded an entire repo.
+
+Twice fixed by naming the commands someone had thought of; twice wrong. `learnings.md` has said to
+prefer sweeping **by construction** over sweeping by enumeration since long before this branch, and
+reading that rule did not prevent either enumeration. So the coverage is now asserted structurally:
+`tests/test_hook_argument_shape.py::test_every_argv_taking_command_refuses_what_it_cannot_read`
+derives the argv-taking set from `_dispatch`'s own source and fails for any member carrying neither
+a guard nor a recorded reason. It immediately surfaced seven more commands nobody had looked at.
+
+**Two defects the pin found in itself.** Its exemption list first shipped seventeen confident
+one-line reasons written from names and comments; running bare-vs-unknown-token on each returned ten
+verified, nine inconclusive (a bare invocation already errors, so the probe cannot separate a refusal
+from that), and one ignoring the token by documented design. The nine are recorded as **NOT AUDITED**
+in the test and in `api-contract.md`, with `#667` carrying the audit — an honest gap beats a confident
+allowlist inside a test whose purpose is stopping unchecked assertions. And `migrate-plugin` was
+listed in that dict as a courtesy to the reader, which exempted it from the scan: deleting its guard
+left the test green. A vacuous guard inside the guard written to stop vacuous guards, caught only by
+falsifying it.
+
+The `api-contract.md` sentence added mid-branch — "checked before dispatch, for every subcommand",
+with three carve-outs named as "the only ones" — was false for two mutating commands when it shipped.
+Corrected, including which nine remain unverified. A written contract that overstates coverage is the
+same defect class as a check that cannot run: both read as assurance.
 ## 2026-08-18: the reopen version is guessed LOW, and that is a correctness rule
 
 <!-- prawduct: type=fix | scope=release-cut-checklist -->

@@ -982,9 +982,16 @@ class TestNonUtf8PlanDegrades:
         return plan
 
     def test_chunk_refs_returns_its_error_instead_of_raising(self, tmp_path: Path):
-        """The reachable symptom: `verify-chunk-refs --chunk <id>` bypasses the
+        """The reachable symptom: `verify-chunk-refs <chunk_id>` bypasses the
         degrading resolver and calls this directly, so a raise here becomes a
-        traceback where the CLI documents a `cannot-verify:` exit."""
+        traceback where the CLI documents a `cannot-verify:` exit.
+
+        The id is POSITIONAL. `--chunk <id>` is `verify-records`' spelling, and
+        passing it here recorded the literal string `--chunk` as the chunk id —
+        which still reached this error, because an undecodable plan fails at the
+        read before any id is used. So the assertion below passed while the
+        invocation it documented did not exist.
+        """
         self._write_undecodable_plan(tmp_path)
         refs = buildplan_refs._parse_build_plan_chunk_refs(tmp_path / ".prawduct", "01")
         assert "unreadable build-plan" in refs["error"]
@@ -999,7 +1006,6 @@ class TestNonUtf8PlanDegrades:
                 sys.executable,
                 str(REPO_ROOT / "bin" / "prawduct-hook"),
                 "verify-chunk-refs",
-                "--chunk",
                 "01",
             ],
             cwd=str(tmp_path),

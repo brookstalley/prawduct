@@ -23,6 +23,45 @@ stays fixed across every push in the cycle — so it separates prerelease from
 release, not one develop push from the next. `-dev.N` is permitted for that and is
 not yet produced.
 
+**A Critic finding now says whether it found an instance or a class — and fixing the sites it named is no longer a resolution.** The most expensive review failure is the cheap-looking one: a finding names two files, you fix those two, and the same defect is still in four more. It costs a full extra round every time, and the reviewer usually knew.
+
+### The tell is mechanical, not a judgement call
+
+Say why it broke in one sentence. **If that sentence does not name the site you found, it is a class** — and the sentence itself tells you what to search for. *"The `"--flag" in argv` idiom reads an unknown token as absent"* names an idiom, not a command, so every command using that idiom is a member, and most of them are outside the diff you are looking at.
+
+Findings now carry a `**Scope:** instance | class` line, so what reaches you is a bounded class instead of a list of addresses.
+
+### An enumeration is not a fix
+
+The other half, and the one with teeth: an **instance** closes by fixing it, but an **unbounded class** closes only by a *construction* — one owner every member passes through, or a check derived from the source of truth. A longer list of names is not a resolution, because the next member to be written is not on it.
+
+At `verify-resolutions`, a reviewer grading your fix is now told to re-run the finding's own reason as a search before writing `fixed`. A class finding closed at the sites it happened to name stays blocking.
+
+### Why this ships as review prose
+
+Every one of the Critic's seven goals is already prose, and the observed defect was that *this* prose was absent — not that prose does not work. The escalation trigger is written down rather than left to judgement: if a review after this produces a site-naming finding that does not answer instance-or-class, the answer becomes machine-checkable.
+
+**Known gap, stated rather than discovered later:** `chunk`-mode reviews do not carry the rule yet — their instruction payload is at its size ceiling. `final`, `cumulative` and `verify-resolutions` all have it, and a `chunk`-mode finding meets the rule one round later when its fix is graded.
+
+### Also in this release
+
+**The learnings corpus stopped burying its own general rule.** Seventeen rules across three families became three sharp ones — the fix has relatives, your search under-reports, and bound a class by its property rather than its container. All seventeen were saying versions of the same thing in different vocabularies, and none of them fired.
+
+**Two crashes and a silent failure, all found by the rule above.** A plan numbering a sub-chunk (`Chunk 0.1`) tracebacked instead of returning a diagnostic — leading-zero trimming read the id as one token. And the session-end report of an unparseable plan heading was wired to a prose substring, so rewording the message would have silently switched off the only surface that tells you which line to fix.
+
+### Four defects an external fleet report found, and the shape they share
+
+A survey of ~840 reflection and learning entries across ten governed repos (issue #661) returned four still-live defects. **Three are the same defect in different clothes: a check that could not run reads as a check that passed.**
+
+**A repo where prawduct was never set up now says so — loudly.** Enabling the plugin starts the hooks, and the hooks fill `.prawduct/` with runtime state, so a never-onboarded repo shows a version banner, a populated directory and firing advisories — and reads as installed. A live repo sat that way for weeks while three advisories fired and not one of them contained the word "onboard": prawduct reported three consequences and never the cause. There is now an **urgent** `PRAWDUCT IS NOT SET UP` advisory that fires only when *every* install marker is absent, so a repo that merely drifted still gets told to repair rather than reinstall.
+
+**`prawduct-hook` no longer ignores an argument it cannot read.** `update-gitignore` took no argv at all, so `--dry-run` was not rejected — there was no parsing, and the reconcile ran. Typing `--help` mutated your `.gitignore`. The guard is at the dispatch site rather than per command, because a per-command fix misses whichever command nobody thought of, and the test derives the command set from the dispatch chain's own source rather than a hand-kept list. `update-gitignore` also gained the real `--dry-run` its siblings taught you to expect. Five commands deliberately still accept free arguments, and `api-contract.md` names them and the nine not yet audited — rather than absorbing them into a confident allowlist.
+
+**A build plan with an unparseable chunk heading was answering with another chunk's contents.** `Chunk 1.2` and checkbox-prefixed headings did not match, and an unmatched heading also fails to *close* the section before it — so a lookup returned 10 body lines instead of 3, verified a different chunk's files, and passed. A silent wrong answer outranks a silent empty one. The signal now scans the whole plan and names the offending line numbers.
+
+**Archived reflections carry provenance.** Each block is stamped with the plugin version and date that produced it, so the corpus can be grouped by release.
+
+
 ## v3.3.4
 
 **An archived plan now says whether it actually finished.** `archive-plan` stamps `unbuilt_at_archive:` into the frontmatter, naming the chunks that stopped it — so filing a plan away no longer erases the difference between work that completed and work that was abandoned mid-chunk.

@@ -596,6 +596,52 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
 # =============================================================================
 
 
+# Each archived reflection carries the version that produced it, because nothing
+# else on disk can supply it later: `.prawduct/.prawduct-version` holds only the
+# most recently seen value, and `reflections.md` is gitignored, so it has no
+# history to mine. Grouping a corpus by release otherwise degrades to whatever
+# dates the prose happens to contain, which is a minority of entries.
+#
+# The line is this repo's existing machine-readable tag idiom — the same shape
+# `lib/change_log.py` parses — so "which release produced this reflection" is a
+# query rather than an act of archaeology. A prose line would carry the same
+# words and stay unparseable, repeating the gap at lower cost.
+def _reflection_provenance_header() -> str:
+    """The tag line written ahead of one archived reflection block.
+
+    The version comes from the plugin manifest — the same accessor `version`
+    publishes — rather than from `.prawduct/.prawduct-version`: the banner
+    rewrites that marker earlier in this same SessionStart, so it holds nothing
+    the manifest does not, and it is absent altogether in a repo whose banner
+    has never run.
+
+    Every failure resolves to `unknown` rather than to an omitted header or a
+    raise. An omitted header is indistinguishable from an unstamped block, and a
+    raise would escape the archive's `(UnicodeError, OSError)` handler below and
+    take the whole session boundary with it — making the stamp a new way to lose
+    a reflection, which is the one thing this write site must never become.
+    """
+    # Computed ABOVE the guard, because it cannot fail and the guard's job is to
+    # name what did. Inside, a manifest read that raises degraded the date too,
+    # so the tag said `archived=unknown` for a value nothing had asked the disk
+    # for — a field reading as unresolvable when it was merely adjacent to one.
+    archived = datetime.now(timezone.utc).date().isoformat()
+    try:
+        version = _plugin_manifest_version() or "unknown"
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- provenance is metadata; the reflection it labels must survive anything this line does
+        # Named, not swallowed. Every other degradation at this boundary prints
+        # `NOTE: … ({exc})`, and a stamp that quietly reads `unknown` forever is
+        # the failure this header exists to end — an entry nobody can attribute,
+        # with nothing on the record saying why.
+        print(
+            f"NOTE: could not resolve the prawduct version for this reflection ({exc}) "
+            "— archiving it stamped `unknown`.",
+            file=sys.stderr,
+        )
+        return f"<!-- prawduct: version=unknown | archived={archived} -->"
+    return f"<!-- prawduct: version={version} | archived={archived} -->"
+
+
 def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
     """Clear `.handoff-notes.md` iff its text reached the generated handoff.
 
@@ -717,8 +763,11 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
                 log = prawduct_dir / "reflections.md"
                 prior = log.read_text(encoding="utf-8").strip() if log.is_file() else ""
                 separator = "\n\n---\n\n" if prior else ""
+                # Inside the guard, so a stamp shares the archive's failure
+                # contract instead of standing outside it.
+                header = _reflection_provenance_header()
                 with open(log, "a", encoding="utf-8") as f:
-                    f.write(f"{separator}{content}\n")
+                    f.write(f"{separator}{header}\n\n{content}\n")
             reflection_preserved = True
         except (UnicodeError, OSError) as exc:
             # Consumption keys on PRESERVATION, not on "we tried" — the same rule
@@ -1871,15 +1920,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             chunk_type, type_error = _bpr._parse_build_plan_chunk_type(
                 prawduct_dir, current_chunk_id, gate_plan
             )
-            # v1.5.1 Chunk 04(a): surface typo'd Type values. Pre-fix, the
-            # parser's "unknown type: ..." message was discarded so the author
-            # never saw it. Surfacing in waiver_notes makes the typo visible
-            # at session-end and in the next stop-hook briefing without
-            # changing fail-closed semantics (chunk still runs as `code` per
-            # parser default). Restricted to "unknown type:" errors only —
-            # "chunk not found" / "missing build-plan" errors indicate a
-            # structural fixture issue, not actionable user feedback.
-            if type_error and type_error.startswith("unknown type:"):
+            # Surface a typo'd `Type:` value in waiver_notes, so the author meets
+            # it at session-end rather than never — fail-closed semantics are
+            # unchanged (the chunk still runs as `code`, the parser's default).
+            #
+            # Two error shapes are surfaced, and the second was added because the
+            # blanket "not actionable user feedback" reason stopped being true.
+            # `chunk not found` / `missing build-plan` still read as fixture
+            # noise, but a plan carrying a heading nothing can parse now reports
+            # the offending LINE — the most actionable message this parser
+            # produces, and precisely the one a silent drop would keep from the
+            # only person who can fix it.
+            if _bpr.is_reportable_type_error(type_error):
                 waiver_notes.append(f"chunk-type-parse-error: {type_error}")
             if chunk_type == "designer-handoff" and not doc_only:
                 designer_handoff_skip = True
@@ -3199,8 +3251,8 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         chunk_id = os.environ.get("PRAWDUCT_VERIFY_CHUNK_ID")
     if chunk_id is None:
         # One canonical current-chunk resolution (shared with the stop hook and
-        # the Critic helper); handles both the "### Chunk NN:" and
-        # "## Chunk N (ID) — Name" Status-item forms.
+        # the Critic helper); it accepts every Status-item form the body-heading
+        # matcher accepts, which is the pairing `lib/buildplan_refs.py` keeps.
         # Announce a chunk that looks finished-but-unticked BEFORE grading on
         # the checkbox reading. Only on the inference path — an explicit
         # chunk_id does not consume that reading, so warning there would be
@@ -3220,9 +3272,14 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # (the missing-ref lines below). Surfacing them differently stops a
         # can't-parse exit from being dismissed as noise and masking a real
         # missing-deliverable BLOCKING (the false-negative habituation BLD-5J8N).
+        # When the error names lines, they ARE the remedy and the generic hint
+        # below would only bury them; it stays for the case where nothing could
+        # be named, which is the plan-has-no-such-chunk reading.
         print(
             f"cannot-verify: {refs['error']}; Goal-2 deliverable check did not run "
-            "(is the chunk heading a recognized '### Chunk NN:' / '## Chunk N (ID) — Name' form?)",
+            "(recognized heading forms: '### Chunk NN: Name', "
+            "'## Chunk N (ID) — Name', '### **Chunk N** — Name', a dotted id "
+            "'### Chunk 1.2:', and a leading '[ ]' checkbox)",
             file=sys.stderr,
         )
         return 1
@@ -3574,6 +3631,21 @@ def cmd_verify_operator_verification(
             "`prawduct-hook verify-operator-verification <VRF-NNN>`. Complete "
             "the entry's human-verification step first; this flips its status "
             "to verified in operator-verification.md.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # A flag reaching a positional slot is data by accident. Left alone it is
+    # looked up as a VRF id, and the failure that follows names a missing entry
+    # rather than the mistyped flag that caused it. The dispatcher refuses this
+    # too; the check is repeated here because the function is callable on its
+    # own and the argument it validates is its own.
+    if vrf_id.strip().startswith("-"):
+        print(
+            f"error: verify-operator-verification got {vrf_id.strip()!r}, which "
+            "looks like a flag — this argument is a VRF id "
+            "(`prawduct-hook verify-operator-verification <VRF-NNN>`). Nothing "
+            "was changed.",
             file=sys.stderr,
         )
         return 1
@@ -4198,6 +4270,12 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
     Read-only and informational — always exits 0. A broken plugin import or a
     faulty sub-check degrades to a NOTE / "unknown", never a crash (a health
     *report* must not fail the operator's shell)."""
+    # Read-only, so a swallowed token cannot mutate here — but it can still make
+    # the report answer a question nobody asked, which is the same class the
+    # pre-dispatch guard closes for the commands that take no argv at all.
+    rejected = _reject_unknown_args("coverage-status", argv, {"--json"})
+    if rejected is not None:
+        return rejected
     want_json = "--json" in argv
     lib_root = _plugin_root()
     if lib_root not in sys.path:
@@ -4345,6 +4423,16 @@ def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
     Exit 0 on dry run or successful ``--apply``; exit 1 if the plugin ``lib/`` is
     not importable (a state-mutating command must not claim success on a broken
     install — mirrors ``accept-operator-verification``)."""
+    # This command MUTATES under `--apply`, and the flag-only idiom below reads a
+    # token it does not recognise as absent. So `--apply --dry-run` wrote the
+    # stubs while the caller believed they had asked for a preview — the same
+    # surprise `update-gitignore` served, in the command held up as its
+    # well-behaved sibling. `--dry-run` is not accepted here because the bare
+    # invocation already IS the dry run; the point is that it is refused rather
+    # than ignored.
+    rejected = _reject_unknown_args("coverage-scaffold", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
     apply = "--apply" in argv
     want_json = "--json" in argv
     lib_root = _plugin_root()
@@ -4634,6 +4722,9 @@ def cmd_migrate_plugin(project_dir: Path, argv: list[str]) -> int:
     Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
     install), print a clear message and return 1 rather than crashing.
     """
+    rejected = _reject_unknown_args("migrate-plugin", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -4677,7 +4768,7 @@ def cmd_init_product(argv: list[str]) -> int:
     return init_product.run(argv)
 
 
-def cmd_update_gitignore(project_dir: Path) -> int:
+def cmd_update_gitignore(project_dir: Path, argv: list[str]) -> int:
     """Reconcile ``.gitignore`` with the framework's session-file contract
     (``/prawduct:doctor`` repair step — gate-soundness ch.3).
 
@@ -4688,9 +4779,22 @@ def cmd_update_gitignore(project_dir: Path) -> int:
     how an existing repo picks up gitignore-contract changes. Prints each
     unignored path so the caller can advise ``git add``.
 
+    **Mutating by default, deliberately** — doctor calls it to REPAIR, so a
+    preview-by-default would silently stop fixing the repos that need fixing.
+    ``--dry-run`` is the opt-in preview: it reports the same three answers and
+    leaves ``.gitignore`` byte-identical. Its siblings on the doctor flow
+    (``coverage-scaffold``, ``lifecycle-repair``) are preview-by-default with
+    ``--apply``, and the asymmetry is what made a caller expect a preview here
+    and get a rewrite.
+
     Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
     install), print a clear message and return 1 rather than crashing.
     """
+    rejected = _reject_unknown_args("update-gitignore", argv, {"--dry-run"})
+    if rejected is not None:
+        return rejected
+    dry_run = "--dry-run" in argv
+
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -4703,7 +4807,20 @@ def cmd_update_gitignore(project_dir: Path) -> int:
             file=sys.stderr,
         )
         return 1
-    result = lib_core.update_gitignore(project_dir)
+    result = lib_core.update_gitignore(project_dir, dry_run=dry_run)
+    if dry_run:
+        # Past tense would be a lie on this branch, and the caller is here
+        # BECAUSE they wanted to know before anything moved.
+        for path in result.get("unignored", []):
+            print(f"would un-ignore: {path} — tracked-by-contract; `git add` it if present")
+        for entry in result.get("missing", []):
+            print(f"would ignore: {entry}")
+        print(
+            "would update .gitignore (re-run without --dry-run to apply)"
+            if result.get("modified")
+            else "no changes needed"
+        )
+        return 0
     if result.get("unignored"):
         for path in result["unignored"]:
             print(f"unignored: {path} — now tracked-by-contract; `git add` it if present")
@@ -5364,7 +5481,7 @@ _USAGE = (
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
-    "update-gitignore|"
+    "update-gitignore [--dry-run]|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
     "norm-index-scaffold [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
@@ -6044,12 +6161,131 @@ def _is_plan_refusal(exc: BaseException) -> bool:
         return False
 
 
+# --- Pre-dispatch argument shape --------------------------------------------
+# What each subcommand can actually SEE. A command whose dispatch branch passes
+# no `argv` has nowhere to put an argument check — the token is dropped by the
+# dispatcher, so only the dispatcher can refuse it. That is not a hypothetical:
+# `update-gitignore` took no `argv` parameter, so `--dry-run` reached no parser
+# to be rejected by and the reconcile ran, rewriting a live `.gitignore` for a
+# caller who believed they had asked for a preview. Placed pre-dispatch for the
+# same reason `_check_binary_skew` and `_check_ephemeral_worktree` are: a
+# per-command fix misses whichever command nobody thought of.
+#
+# `tests/test_hook_argument_shape.py` derives these collections from the
+# `_dispatch` chain itself, so a new subcommand cannot quietly rejoin the hole.
+
+# Refuse: an argument here was silently discarded, and the caller believed it
+# did something.
+_NO_ARGUMENT_COMMANDS = frozenset({
+    "bug-inbox",
+    "check-change-log-entry",
+    "check-cumulative-critic",
+    "check-operator-verification",
+    "check-pr-doc-only",
+    "critic-consolidate",
+    "critic-discard",
+    "critic-end",
+    "print-install-reference",
+    "resolve-base",
+    "test-status",
+    "validate-evidence",
+    "verify-coverage",
+    "version",
+})
+
+# Say so, then proceed. These are the harness's own calls, never typed: every
+# `hooks.json` prawduct has ever shipped invokes them as a bare literal. A usage
+# error on a Stop hook does not protect a caller — it blocks the session and
+# feeds the refusal back as a turn, which is a worse failure than the silence it
+# would be closing. So the argument is named on stderr and the gate still runs.
+_NO_ARGUMENT_NOTE_ONLY_COMMANDS = frozenset({
+    "stop",
+    "subagent-stop",
+})
+
+# Say nothing. `stamp-merged` is retired-but-callable, and its deprecation
+# contract is exit 0 for ANY input so that a copied release script keeps
+# working. An inert command cannot act on an argument it ignored, so there is no
+# surprise to prevent — the harm this guard exists for is a command that DID
+# something other than what was asked.
+_NO_ARGUMENT_UNCHECKED_COMMANDS = frozenset({
+    "stamp-merged",
+})
+
+# One positional, read as `sys.argv[2]`, and everything after it dropped on the
+# floor. Both halves of that are reportable: an unquoted multi-word value is
+# silently truncated to its first word, and a flag-shaped token is recorded as
+# if it were the id or rationale the command wanted. No documented invocation
+# passes a value starting with a dash.
+_SINGLE_POSITIONAL_COMMANDS = frozenset({
+    "accept-operator-verification",
+    "verify-chunk-refs",
+    "verify-operator-verification",
+})
+
+
+def _check_argument_shape(command: str, argv: list[str]) -> int:
+    """0 to proceed; 2 when the invocation passed something the command cannot
+    read. 2 is the hook's usage-error convention (see `_reject_unknown_args`).
+
+    Runs before anything else in `_dispatch`, including project-dir resolution:
+    a malformed invocation should do nothing at all, and "nothing ran" is the
+    sentence the caller most needs to be able to trust.
+    """
+    if not argv:
+        return 0
+
+    if command in _NO_ARGUMENT_NOTE_ONLY_COMMANDS:
+        print(
+            f"NOTE: {command} takes no arguments; ignoring {argv[0]!r}.",
+            file=sys.stderr,
+        )
+        return 0
+
+    if command in _NO_ARGUMENT_COMMANDS:
+        print(
+            f"{command}: unknown argument {argv[0]!r} — this subcommand takes no "
+            f"arguments, so nothing ran. Re-invoke it as `prawduct-hook {command}`.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if command in _SINGLE_POSITIONAL_COMMANDS:
+        if argv[0].startswith("-"):
+            print(
+                f"{command}: {argv[0]!r} looks like a flag, but this subcommand "
+                "expects a positional value here and would have recorded the flag "
+                "as that value. Nothing ran. See `prawduct-hook` usage for what "
+                f"{command} accepts.",
+                file=sys.stderr,
+            )
+            return 2
+        if len(argv) > 1:
+            print(
+                f"{command}: unexpected extra argument {argv[1]!r} — this "
+                "subcommand reads one value and would have dropped the rest "
+                "silently. Nothing ran. Quote it if it is one value containing "
+                "spaces.",
+                file=sys.stderr,
+            )
+            return 2
+
+    return 0
+
+
 def _dispatch() -> int:
     if len(sys.argv) < 2:
         print(_USAGE, file=sys.stderr)
         return 1
 
     command = sys.argv[1]
+
+    # Before dispatch, and before anything else: a command that never receives
+    # `argv` cannot refuse an argument, so the dispatcher refuses on its behalf.
+    shape = _check_argument_shape(command, sys.argv[2:])
+    if shape != 0:
+        return shape
+
     project_dir = get_project_dir()
 
     # Before dispatch, so it covers every command — including `subagent-stop`,
@@ -6165,7 +6401,7 @@ def _dispatch() -> int:
     elif command == "init-product":
         return cmd_init_product(sys.argv[2:])
     elif command == "update-gitignore":
-        return cmd_update_gitignore(project_dir)
+        return cmd_update_gitignore(project_dir, sys.argv[2:])
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
     elif command == "norm-index-scaffold":
