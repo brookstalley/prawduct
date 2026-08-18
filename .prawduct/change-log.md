@@ -98,11 +98,20 @@ one-site-of-three defect the blockers were, caught in the same review.
 Between releases, develop carried the released version string. Harmless until the verdict
 cache keyed on that string: successive develop pushes all claiming `3.3.4` can replay
 `covered` verdicts across a judgeability change, and a consumer pinned to the `develop` ref
-cannot tell from the banner which plugin it is running. The three version files now read
-`3.4.0-dev`; the runbook gains Phase 3 (reopen develop at the next `-dev` after every cut);
-`test_version_is_semver` admits exactly `-dev`/`-dev.N` and nothing else, amended by owner
-decision 2026-08-18. Releases stay bare — `check_version_files` refuses a `-dev` residue at
-the cut.
+cannot tell from the banner which plugin it is running. The three version files now carry a
+`-dev` suffix; the runbook gains Phase 3 (reopen develop at the next `-dev` after every cut);
+`test_version_is_semver` admits exactly `-dev`/`-dev.N` and nothing else, by owner decision
+2026-08-18. Releases stay bare because step 7 overwrites the version files at the cut.
+
+**Three claims in the paragraph above were corrected by this branch's own later entries, and
+they are named here rather than edited out** — the change log is append-only, and a reader who
+meets this entry first should not have to reach the correction by luck. The version files read
+`3.3.5-dev`, not `3.4.0-dev`: guessing the next *minor* was blocked as both a conservative-
+versioning norm departure and a downgrade hazard. `check_version_files` does not *refuse* a
+`-dev` residue — it runs `git show <tag>:…` and is a post-publish detector, so step 7 is the only
+preventive control. And the `-dev` suffix does not separate one develop push from the next: the
+verdict cache keys on the version string, which is static across a cycle, so what it buys is the
+release boundary. `-dev.N` is what would buy the rest, and it is permitted but not yet produced.
 
 ## 2026-08-18: purpose.md stops claiming the responsibility ledger exists
 

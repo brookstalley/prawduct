@@ -2,8 +2,10 @@
 runbook: cut-and-publish-a-plugin-release
 tier: 3
 owner: prawduct maintainer
-last_verified: 2026-08-11   # executed end-to-end for the v3.3.4 cut; every step matched
-verified_by: brookstalley
+last_verified: null         # steps 0-21 matched the v3.3.4 cut (2026-08-11, brookstalley); Phase 3,
+                            # step 10's rename and the rewritten `Done when` were added AFTER that
+                            # run and have never been executed — re-verify at the next cut
+verified_by: null
 ---
 
 # Cut and publish a Prawduct plugin release
