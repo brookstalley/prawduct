@@ -3,6 +3,124 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: the reopen version is guessed LOW, and that is a correctness rule
+
+<!-- prawduct: type=fix | scope=release-cut-checklist -->
+
+The spanning cumulative (`rev-20260818T192844Z-d7391015`) blocked on the reopen step telling the
+operator to guess the next **minor**, on two independent grounds, and the second is the one that
+would have bitten.
+
+**A high guess breaks the banner for the exact audience the step exists to serve.** A prerelease
+sorts just below its own release, so `3.4.0-dev` = `(3,4,0,0,0)` sits ABOVE `3.3.5` = `(3,3,5,1)`.
+A develop-pinned consumer that meets a patch cut therefore moves *backwards* — and
+`highlights_in_range` and `new_gates_in_range` are both empty on a downgrade, so they get a
+version move with no release notes and no gate announcement. From a low guess every possible next
+cut is a forward move, which makes the conservative number and the safe number the same number.
+`develop` now carries **3.3.5-dev**, and the rule reads "next patch" at all three sites.
+
+**It was also a norm departure written into a procedure.** `operational-spec.md` § Direction
+ratifies conservative versioning — *a minor bump is a recorded decision, not a reflex* — and a
+runbook defaulting to a minor writes the reflex in. The `-dev` number is squarely inside that
+norm's own rationale, being the handle a develop-pinned consumer reads all cycle. A minor `-dev`
+now needs the recorded decision a minor release needs.
+
+**The pruned promotion path never reached Phase 3 at all.** `promote-a-pruned-release.md` replaces
+Phase 2 and says everything *before* Phase 2 is unchanged — Phase 3 is after, so it was neither
+replaced nor covered, and nothing sent the operator back. Phase 1 has already bumped `develop` to
+the bare release number by then, and the pruned completion test is the path partition rather than
+the five-file diff, so nothing detects the omission either: on the shape used for v3.1.1 and
+v3.1.2, the defect this branch removes came back silently. That runbook now points at Phase 3 and
+says why it is easy to lose.
+
+**A NOTE that this branch itself falsified.** `release_readiness._resolve_version` told the
+operator the `plugin/VERSION` fallback was "the PREVIOUS release". After Phase 3 it is a `-dev`
+marker that is not any release — no tag or plan will ever carry that name — so an operator
+resolving `no-release-plan: no release-plan-v3.3.5-dev*.md` by creating that file damages the
+artifact set. The message now says so, and its test asserts the **property** (the NOTE says the
+fallback is not the thing being graded) rather than the old spelling, which is what let a pinned
+sentence stay green while becoming false.
+
+Two more claims corrected where they were made rather than where they were noticed: Phase 3
+credited "step 7" with overwriting three files that steps 7-9 overwrite, and
+`test_plugin_manifest.py`'s comment still carried the `check_version_files`-prevents-it framing
+the runbook had already retracted.
+
+## 2026-08-18: the reopen step gets the three blockers its first review found
+
+<!-- prawduct: type=fix | scope=release-cut-checklist -->
+
+The branch's first cumulative review (`rev-20260818T185932Z-a1b20a37`) returned **3 blocking, 4
+warning, 4 note**. All three blockers were the same shape — a step added at one site while the
+claims and checks that depend on it stayed where they were.
+
+**Phase 3 falsified the runbook's own completion test.** Step 22 advances `develop` one commit
+past the content-identity Phase 2 establishes, and the `Done when` bullet asking
+`git diff --stat origin/main origin/develop` to print *nothing* sits below it — so on a correct
+release it could never pass again. A check that always fails is worse than no check: the operator
+learns to expect the failure and stops reading it. The bullet now expects exactly the reopen
+commit's files, and says to run the strict form before step 22. `operational-spec.md` carried the
+same claim in its own words and was swept with it — the second site is why this was blocking
+rather than a stale-artifact warning, because `learnings.md` already warns that sweeping for the
+identifier is not sweeping for the claim.
+
+**Step 22, followed literally, shipped a red suite.** It said "commit with a change-log entry",
+which reads as `.prawduct/change-log.md`; `test_changelog_has_current_version_entry` requires a
+`## v<plugin.json version>` section in the **public** digest. This branch satisfied that by hand,
+so the gap was invisible here and would have fired on whoever ran the step next. The mirror gap
+was at the other end: Phase 1 step 10 said to *add* a `## vX.Y.Z` section, which leaves the `-dev`
+section in place forever and gives a consumer two highlights for one release. It now says to
+**rename** the open prerelease section.
+
+**The new prerelease ordering had no test.** `version_tuple`'s trailing-sentinel scheme and the
+widened `_SEMVER_HEADER` shipped with zero direct assertions — covered only incidentally by a test
+whose coverage *evaporates at every cut*, when the version is bare again, so the released plugin
+carried this path untested by construction. Five pins now cover it: the ordering in both
+directions, `-dev.N` ranked numerically (`-dev.10` above `-dev.2`), the refusal of any suffix
+`test_version_is_semver` would reject, the heading capture keeping its suffix, and the end-to-end
+highlight selection. Four of the five fail against the pre-change implementation.
+
+Two claims corrected rather than reworded around. The runbook credited `check_version_files`'
+tag comparison with keeping a `-dev` suffix out of a cut; it runs `git show <tag>:...`, so it is a
+post-publish **detector** — step 7 is the only preventive control, and is now named as such. And
+the public CHANGELOG said cached verdicts "never cross a plugin change"; the cache keys on the
+version *string*, which is static across a cycle, so it separates prerelease from release and not
+one develop push from the next. Stated plainly, with `-dev.N` named as the unbuilt remainder.
+
+The reopen step also reached the two other documents enumerating the release checklist —
+`documentation/release-process.md` (as step 10) and `operational-spec.md` — which is the same
+one-site-of-three defect the blockers were, caught in the same review.
+
+## 2026-08-18: develop identifies itself as a prerelease
+
+<!-- prawduct: type=feature | scope=release-cut-checklist -->
+
+Between releases, develop carried the released version string. Harmless until the verdict
+cache keyed on that string: successive develop pushes all claiming `3.3.4` can replay
+`covered` verdicts across a judgeability change, and a consumer pinned to the `develop` ref
+cannot tell from the banner which plugin it is running. The three version files now carry a
+`-dev` suffix; the runbook gains Phase 3 (reopen develop at the next `-dev` after every cut);
+`test_version_is_semver` admits exactly `-dev`/`-dev.N` and nothing else, by owner decision
+2026-08-18. Releases stay bare because step 7 overwrites the version files at the cut.
+
+**Three claims in the paragraph above were corrected by this branch's own later entries, and
+they are named here rather than edited out** — the change log is append-only, and a reader who
+meets this entry first should not have to reach the correction by luck. The version files read
+`3.3.5-dev`, not `3.4.0-dev`: guessing the next *minor* was blocked as both a conservative-
+versioning norm departure and a downgrade hazard. `check_version_files` does not *refuse* a
+`-dev` residue — it runs `git show <tag>:…` and is a post-publish detector, so step 7 is the only
+preventive control. And the `-dev` suffix does not separate one develop push from the next: the
+verdict cache keys on the version string, which is static across a cycle, so what it buys is the
+release boundary. `-dev.N` is what would buy the rest, and it is permitted but not yet produced.
+
+## 2026-08-18: purpose.md stops claiming the responsibility ledger exists
+
+<!-- prawduct: type=bugfix | scope=release-cut-checklist -->
+
+`documentation/purpose.md` described the responsibility ledger in the present tense; it is
+Cycle 3 of the cession program and unbuilt. Pre-release audit finding (2026-08-18). The line
+now says "planned" and names the cycle — the doc-vs-reality shape this repo polices elsewhere.
+
 ## 2026-08-15: a plan-less scope is an absence, not a check that failed
 
 <!-- prawduct: type=bugfix | scope=scope-widened-demotion -->

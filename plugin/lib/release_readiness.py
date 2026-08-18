@@ -238,11 +238,16 @@ def _resolve_version(project_dir: Path, release: str | None) -> str | None:
     """The release under test.
 
     ``--release`` is authoritative. The ``plugin/VERSION`` fallback exists for
-    ad-hoc mid-cycle checks and is **wrong by construction during Phase 0**:
-    the runbook bumps ``VERSION`` in Phase 1 step 7, *after* this gate runs, so
-    at gate time the file still names the PREVIOUS release. The fallback says
-    so out loud rather than quietly grading the wrong release — the same
-    refusal-to-guess posture as the argv scan in the CLI wrapper.
+    ad-hoc mid-cycle checks and is **wrong by construction during Phase 0** —
+    but not for the reason it used to give. It once said the file named the
+    PREVIOUS release, because Phase 1 step 7 bumps ``VERSION`` after this gate
+    runs. Phase 3 falsified that: ``develop`` now carries the next patch plus a
+    ``-dev`` suffix all cycle, so at gate time the file names a **prerelease
+    marker that is not any release** — never a tag, never a directory name, and
+    guessed low on purpose, so it is not even reliably the number being cut.
+    Either way the fallback says so out loud rather than quietly grading the
+    wrong release — the same refusal-to-guess posture as the argv scan in the
+    CLI wrapper.
     """
     if release:
         return normalize_version(release)
@@ -254,9 +259,11 @@ def _resolve_version(project_dir: Path, release: str | None) -> str | None:
     if not raw:
         return None
     print(
-        f"NOTE: no --release given, falling back to plugin/VERSION (v{raw}). During "
-        "Phase 0 that is the PREVIOUS release — VERSION is bumped later, in Phase 1 "
-        "step 7. Pass --release vX.Y.Z to grade the release you are cutting.",
+        f"NOTE: no --release given, falling back to plugin/VERSION (v{raw}). On "
+        "develop that is a `-dev` PRERELEASE MARKER, not a release — no tag or "
+        "release-plan will ever carry that name, and it is guessed low, so it is "
+        "not reliably the number you are cutting either. Do NOT create artifacts "
+        "named after it. Pass --release vX.Y.Z to grade the release you are cutting.",
         file=sys.stderr,
     )
     return f"v{raw}"
