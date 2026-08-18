@@ -733,7 +733,12 @@ own `Done when`: the content-identity check below can never pass there, and if i
 mean the withheld work shipped.*
 
 - After `git fetch origin`, `git diff --stat origin/main origin/develop` prints **only the
-  reopen commit's files** — the three version files and `.prawduct/change-log.md`.
+  reopen commit's five files** — `plugin/VERSION`, `plugin/.claude-plugin/plugin.json`,
+  `pyproject.toml`, `plugin/CHANGELOG.md` and `.prawduct/change-log.md`.
+
+  > `plugin/CHANGELOG.md` is in the list because step 10 renames `## vX.Y.Z-dev` → `## vX.Y.Z`
+  > on the tree `main` is set from, and step 22 then opens `## vX.Y.Z+1-dev` above it on
+  > `develop` only — so the two branches' digests differ by exactly that new heading.
 
   > **This bullet used to say "prints nothing", and Phase 3 is what changed it.** Content
   > identity is the expected outcome of Phase 2, and step 22 deliberately advances `develop`

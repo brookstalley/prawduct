@@ -54,8 +54,9 @@ Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-bac
     single-parent commit. `git diff --stat origin/main origin/develop` is empty **at the moment the
     promotion lands**, which is what makes it a valid completion test for that step. It does not
     stay empty: the runbook's Phase 3 reopens `develop` at the next `-dev` version one commit
-    later, so a release run to completion leaves the three version files and the change-log
-    differing. Read the check against Phase 2, not against the end of the runbook.
+    later, so a release run to completion leaves **five** files differing — the three version
+    files, `plugin/CHANGELOG.md` (whose new `-dev` heading exists only on `develop`) and
+    `.prawduct/change-log.md`. Read the check against Phase 2, not against the end of the runbook.
   - *Pruned* — used for **v3.1.1 and v3.1.2**, where only a classified subset shipped. `main`'s tree
     is deliberately **not** develop's, the content-identical check can never pass, and the completion
     test is the **partition**: every path in `origin/main..origin/develop` accounted for as shipped or
