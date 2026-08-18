@@ -3,6 +3,14 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: purpose.md stops claiming the responsibility ledger exists
+
+<!-- prawduct: type=bugfix | scope=release-cut-checklist -->
+
+`documentation/purpose.md` described the responsibility ledger in the present tense; it is
+Cycle 3 of the cession program and unbuilt. Pre-release audit finding (2026-08-18). The line
+now says "planned" and names the cycle — the doc-vs-reality shape this repo polices elsewhere.
+
 ## 2026-08-15: a plan-less scope is an absence, not a check that failed
 
 <!-- prawduct: type=bugfix | scope=scope-widened-demotion -->
