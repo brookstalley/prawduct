@@ -78,7 +78,8 @@ functions**. The operating rules for that evolution:
   (Principle 25.)
 - **Deletion gets the same care as addition** — reviewed, evidenced, recorded. A
   mechanism exits whole: its code, tests, docs, and records together.
-- The instrument for all of this is a **responsibility ledger**: each condition of
+- The planned instrument for all of this is a **responsibility ledger** (Cycle 3 of
+  the cession program; not yet built): each condition of
   successful software development, who holds it today, under what assumption, and what
   external signal would reassign it. Re-pricing is event-driven — a runtime change, not
   a calendar — and each re-pricing is conducted by a runtime smarter than the one that

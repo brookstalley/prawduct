@@ -10,7 +10,18 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.4.0-dev
+## v3.3.5-dev
+
+**Prerelease under test — this build is the develop branch ahead of the next release.** The
+version now says so wherever it appears, so a repo pinned to the develop ref can
+tell what it is running, and a cached review verdict from the released plugin is
+no longer replayed against this one. Rolling release notes accumulate here and
+this section is renamed to the release number at the cut.
+
+*What this does not yet do:* the verdict cache keys on the version **string**, which
+stays fixed across every push in the cycle — so it separates prerelease from
+release, not one develop push from the next. `-dev.N` is permitted for that and is
+not yet produced.
 
 **A Critic finding now says whether it found an instance or a class — and fixing the sites it named is no longer a resolution.** The most expensive review failure is the cheap-looking one: a finding names two files, you fix those two, and the same defect is still in four more. It costs a full extra round every time, and the reviewer usually knew.
 
@@ -49,6 +60,7 @@ A survey of ~840 reflection and learning entries across ten governed repos (issu
 **A build plan with an unparseable chunk heading was answering with another chunk's contents.** `Chunk 1.2` and checkbox-prefixed headings did not match, and an unmatched heading also fails to *close* the section before it — so a lookup returned 10 body lines instead of 3, verified a different chunk's files, and passed. A silent wrong answer outranks a silent empty one. The signal now scans the whole plan and names the offending line numbers.
 
 **Archived reflections carry provenance.** Each block is stamped with the plugin version and date that produced it, so the corpus can be grouped by release.
+
 
 ## v3.3.4
 
