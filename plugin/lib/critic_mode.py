@@ -23,7 +23,7 @@ return the first that fires:
      findings from the last review.
   1b. ``verify-resolutions`` (post-cumulative fix, CRT-4J8W) — tree clean,
      prior record is a ``cumulative`` review, and the committed delta since
-     its ``commit_reviewed`` has ≥1 non-``.md`` file under the widening
+     its ``commit_reviewed`` holds ≥1 judgeable file under the widening
      threshold. Signal: builder committed a fix after the cumulative; a
      verify pass reviews the delta instead of re-paying a full bundle
      review. (The v2 multi-link chain arm — a verify record carrying an
@@ -417,8 +417,8 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
 
     Fires when the working tree is clean, the prior record is a
     ``cumulative`` review (see :func:`_cumulative_anchor`), its
-    ``commit_reviewed`` resolves, and the committed delta since it has at
-    least one non-``.md`` file while staying under the verify-resolutions
+    ``commit_reviewed`` resolves, and the committed delta since it holds at
+    least one judgeable file while staying under the verify-resolutions
     widening threshold (``len(delta) > 2 * prior + 5`` — mirrored so the
     rule never recommends a mode that would immediately demote). Without
     this rule the canonical no-args ``/prawduct:critic`` after a
