@@ -422,10 +422,17 @@ it found `critic_mode.py`'s `if not any(not f.endswith(".md") for f in delta)` �
 direction, suppressing the `verify-resolutions` suggestion for a committed delta of only
 governance-protected prose. Two more prose sites in `skills/pr/SKILL.md` asserted the same wrong
 rule about what must land before a cumulative run. All are routed or reworded to cite the
-predicate. The sweep is now by construction: `grep -rn 'endswith(".md")' plugin/lib plugin/bin`
-returns only `coverage_algebra`'s own definition, two comments describing this history, and two
+predicate. The by-shape sweep is `grep -rn 'endswith(".md")' plugin/lib plugin/bin`, which
+returns only `coverage_algebra`'s own definition, three comments describing this history, and two
 predicates asking genuinely different questions (`record_lint.is_record`, which lints governance
 records and classifies no language, and `plan_index`'s filename glob).
+
+**And the by-shape sweep was itself bounded by shape, which the next round caught.** Two more
+members carried the wrong rule in *prose that contains no `endswith`* — `_rule_postfix_fix_fires`'
+own docstring, directly above the line this branch changed, and the comment above
+`_pr_diff_is_doc_only`'s call site in `prawduct-hook`. A grep for the idiom cannot see a sentence,
+so the class needed a second sweep by *claim* rather than by token. That is the third time in this
+release that a class was bounded by the thing easiest to search for.
 
 The new pins are the defect and its shape: one reproduces the consumer's exact diff, and the
 other asserts the two gates **agree**, rather than pinning each one's verdict separately —

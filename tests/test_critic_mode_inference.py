@@ -553,6 +553,44 @@ class TestRule1bPostCumulativeFix:
         mode, rationale = infer_mode(tmp_path, None)
         assert not rationale.startswith("rule-1b"), rationale
 
+    def test_fires_for_a_governance_protected_md_delta(self, tmp_path: Path):
+        """The direction the judgeability predicate changed, pinned.
+
+        Rule 1b used to ask `not any(not f.endswith(".md") for f in delta)` — a
+        bare suffix test — and now asks `coverage_algebra.judgeable_files`. The
+        two agree on `src/a.py` (both fire) and on `docs.md` (both suppress), and
+        **every existing 1b fixture sits inside that agreement region**, so
+        reverting the change left the suite green.
+
+        They disagree on exactly one population: governance-protected `.md`
+        (`skills/`, `methodology/`, `templates/`, root `CLAUDE.md`), where skill
+        prose is behavioral logic and IS judgeable. A committed delta of only
+        skill prose used to suppress the verify-resolutions recommendation as
+        though nothing reviewable had landed. That is the case this pins —
+        `learnings.md`: pin the DIRECTION separately, on a fixture from the
+        population the predicate is worst at.
+
+        Kept beside `test_does_not_fire_for_doc_only_delta` on purpose: the pair
+        is what shows the predicate discriminates rather than just firing more.
+        """
+        reviewed = self._reviewed_branch_repo(tmp_path)
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=reviewed,
+            files_reviewed=["src/a.py", "src/b.py"],
+            include_finding=False,
+        )
+        _write(tmp_path, "plugin/skills/pr/SKILL.md", "# skill\nbehavioral prose\n")
+        _commit(tmp_path, "docs: skill prose after review")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert rationale.startswith("rule-1b"), (
+            "a committed delta of governance-protected skill prose is judgeable "
+            f"and must recommend a verify pass; got {mode!r} via {rationale!r}"
+        )
+        assert mode == "verify-resolutions"
+
     def test_does_not_fire_when_delta_widens_past_threshold(self, tmp_path: Path):
         # prior surface 1 file → threshold 2*1+5 = 7; 8 changed files would
         # demote inside the verify pass, so 1b must not recommend it.

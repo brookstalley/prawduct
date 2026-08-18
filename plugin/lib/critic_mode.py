@@ -425,9 +425,12 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     post-cumulative fix falls through to rule 2 and recommends a FULL
     bundle re-review — the run-count treadmill this rule exists to kill
     (under v3 either recommendation records a fact the gates compose;
-    the verify pass is simply the delta-cost one). A doc-only
-    (all-``.md``) or empty delta does not fire: the existing coverage
-    still spans HEAD, so no review is needed at all.
+    the verify pass is simply the delta-cost one). A delta holding no
+    **judgeable** file, or an empty one, does not fire: the existing coverage
+    still spans HEAD, so no review is needed at all. Judgeable is
+    :func:`coverage_algebra.is_judgeable_path`, NOT a ``.md`` suffix test —
+    governance-protected prose is judgeable and does fire, which is the case
+    this docstring used to get wrong along with the code below it.
 
     Returns a rationale string when the rule fires, ``""`` otherwise.
     """
