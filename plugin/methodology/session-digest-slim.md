@@ -27,9 +27,10 @@ restate; product repos receive the full digest (`methodology/session-digest.md`)
 - **Close with the standing block** — last, after every other word, on any turn that ends a chunk
   or work cycle *or* that you end with work outstanding. A `---` rule, then three
   **separate paragraphs**, labels backticked so they render as coloured tokens:
-  `STATE` (done / blocked / waiting; committed or not; suite green or not) ·
-  `NEXT` (the ONE next action and whose it is) ·
-  `CLEAR` (*Safe to `/clear`.* — or — *Not safe to `/clear` yet: [what has to happen first]*).
+  `STATE` (what changed; committed or not; suite green or not) ·
+  one of `NEXT` / `BLOCKED` / `COMPLETE` (work continues on an external event / stops until they
+  act / is finished — the label answers whose it is) ·
+  `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy is the reason).
   Omitting, burying, padding, and collapsing it onto one line fail identically — people read the
   bottom and nothing else, and three answers run together stop being separately findable. **Outstanding includes work in flight**: a dispatched review, a running PR reviewer
   or any unread background agent takes the second line — a coordinator Critic review hands your

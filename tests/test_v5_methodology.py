@@ -432,8 +432,24 @@ class TestBuildingMethodology:
             # coloured token near the bottom of a turn, so the eye finds it
             # without reading. Owner-requested 2026-07-31 — the block was
             # correct and complete and still scanned as prose.
-            for label in ("`STATE`", "`NEXT`", "`CLEAR`"):
-                assert label in text, f"{name} dropped the {label} line"
+            # The disposition and clear lines carry the VERDICT in the label,
+            # not the topic. Owner-requested 2026-08-18: the labels are the only
+            # coloured tokens near the bottom of a turn, so a label the reader
+            # must read past to learn the answer has spent its colour on
+            # nothing. `NEXT`/`BLOCKED`/`COMPLETE` are chosen on one axis — what
+            # happens if the reader walks away — which is what makes them
+            # exhaustive and mutually exclusive; an earlier draft scoped
+            # `BLOCKED` as "cannot proceed without user interaction" and that
+            # swallows every turn, because a turn-based CLI always ends waiting.
+            for label in (
+                "`STATE`",
+                "`NEXT`",
+                "`BLOCKED`",
+                "`COMPLETE`",
+                "`SAFE TO CLEAR`",
+                "`DO NOT CLEAR`",
+            ):
+                assert label in text, f"{name} dropped the {label} label"
             # Deliberately NOT asserting `**State**` is absent. `reflection.md`
             # keeps a bolded "what each line owes" list that *explains* the
             # three lines rather than being the emitted shape, and forbidding
@@ -462,8 +478,10 @@ class TestBuildingMethodology:
             # thing `architecture.md`'s one-home norm exists to stop, and it
             # would fail a surface that demonstrates the shape instead of
             # narrating it.
-            assert "Safe to `/clear`." in text, f"{name} dropped the safe line"
-            assert "Not safe to `/clear` yet" in text, f"{name} dropped the unsafe line"
+            # Asserted as the LABELS above, not as prose literals. The old
+            # assertions pinned "Safe to `/clear`." / "Not safe to `/clear`
+            # yet", which were the sentence the reader had to parse; pinning
+            # them now would re-require the shape the change removed.
             # Outstanding includes work that is RUNNING, not merely unstarted —
             # the reported failure was signalling safe while reviewers were live.
             assert "in flight" in text, f"{name} dropped the in-flight rule"

@@ -47,8 +47,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
-  `.session-reflected`, its backward-looking twin), and the session channel that carries your
-  intent across a `/clear`. Write it at each chunk close, and **never ask whether to prepare
+  `.session-reflected`, its backward-looking twin). Write it at each chunk close, and **never ask whether to prepare
   one — prepare it, then signal.** Asking costs a round-trip and, if the user stepped away, a
   context replay into a cold cache. "Nothing beyond the plan" if that is the truth, but write
   the line rather than no file.
@@ -61,10 +60,11 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   writing there survives one hop at best.
 - **Close with the standing block** — last, after every other word, on any turn ending a chunk or
   work cycle *or* left with work outstanding. A `---` rule, then three **separate paragraphs**:
-  `STATE` (done / blocked / waiting; committed?; suite green?) · `NEXT` (the ONE next action, and
-  whose) · `CLEAR` (*Safe to `/clear`.* / *Not safe to `/clear` yet: [what first]*). Burying,
-  padding or collapsing it fail alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review, a running PR
-  reviewer or any unread background agent takes the second line. Full rule:
+  `STATE` (what changed; committed?; suite green?) · one of `NEXT` / `BLOCKED` / `COMPLETE`
+  (continues on an external event / stops until they act / finished) · `SAFE TO CLEAR` or
+  `DO NOT CLEAR` (the label is the verdict, the copy the reason). Burying, padding or
+  collapsing it fail alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review or any
+  unread background agent takes the second line. Full rule:
   `methodology/reflection.md` "Work cycle boundary".
 - **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
   "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in

@@ -794,10 +794,11 @@ class TestNextLineRelayContract:
 
     def test_the_prefix_does_not_collide_with_the_standing_block(self):
         # `NEXT` is already framework-wide: the turn-closing standing block
-        # (session digest, building.md, reflection.md) defines it as "the ONE
-        # next action" — one line. This line is a paragraph that must be
-        # relayed verbatim, so an agent holding both contracts would have a
-        # standing instruction to compress the very text it was told to copy.
+        # (session digest, building.md, reflection.md) uses it as one of three
+        # disposition labels — one line, naming the external event work
+        # continues on. This line is a paragraph that must be relayed verbatim,
+        # so an agent holding both contracts would have a standing instruction
+        # to compress the very text it was told to copy.
         for name in self.PROTOCOLS:
             text = self._text(name)
             assert "NEXT-ACTION:" in text, name
