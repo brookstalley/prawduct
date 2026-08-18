@@ -62,9 +62,12 @@ class TestPluginManifest:
         # Bare major.minor.patch, or the one permitted prerelease form: a
         # `-dev` / `-dev.N` suffix, which develop carries between releases so
         # the verdict cache's version key and the session banner distinguish a
-        # prerelease plugin from the release it precedes. Releases stay bare —
-        # `check_version_files` refuses a `-dev` residue at the cut, where the
-        # tag comparison lives.
+        # prerelease plugin from the release it precedes. Releases stay bare
+        # because the runbook's step 7 overwrites all three version files with
+        # the bare number — that is the only PREVENTIVE control.
+        # `check_version_files` compares against `git show <tag>:…`, so it runs
+        # after the tag exists: it detects a `-dev` residue that shipped, it
+        # cannot stop one.
         version = manifest["version"]
         base, dash, prerelease = version.partition("-")
         parts = base.split(".")

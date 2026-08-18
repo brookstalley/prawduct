@@ -178,7 +178,7 @@ When `develop` is ready to release as `vX.Y.Z`:
    gate newly active in the range.
 
 10. **Reopen `develop` at the next `-dev` version.** Bump the same three files from step 2 to the
-    next expected minor plus a `-dev` suffix (after cutting `v3.4.0`, write `3.5.0-dev`), open a
+    next **patch** plus a `-dev` suffix (after cutting `v3.4.0`, write `3.4.1-dev`), open a
     `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md` with a non-empty first line, and
     add a `.prawduct/change-log.md` entry — all in one commit on `develop`.
 
@@ -189,6 +189,12 @@ When `develop` is ready to release as `vX.Y.Z`:
     > suffixes `test_version_is_semver` permits. The CHANGELOG section is not optional —
     > `test_changelog_has_current_version_entry` requires one for the current version, so the
     > version files and the digest move together or `develop` goes red.
+
+    > **Guess low.** A prerelease sorts just below its own release, so from `3.4.1-dev` every
+    > possible next cut is a forward move; from a high guess like `3.5.0-dev` a patch cut is a
+    > *downgrade*, and the banner is empty on a downgrade — no notes, no gate announcement. It
+    > is also the ratified conservative-versioning norm: a minor bump is a recorded decision,
+    > not a reflex.
 
     Full procedure, including what to do when the guessed number is wrong at the next cut:
     `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 3.

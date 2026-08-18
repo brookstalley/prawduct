@@ -695,10 +695,23 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
 ## Phase 3 — Reopen `develop`
 
 22. On `develop`, bump the three version files (`plugin/VERSION`,
-    `plugin/.claude-plugin/plugin.json`, `pyproject.toml`) to the next expected minor
-    plus a `-dev` suffix — after cutting `v3.4.0`, write `3.5.0-dev` — **and in the same
-    commit open a `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md`** with a
-    non-empty first line, plus a `.prawduct/change-log.md` entry.
+    `plugin/.claude-plugin/plugin.json`, `pyproject.toml`) to the next **patch** plus a
+    `-dev` suffix — after cutting `v3.4.0`, write `3.4.1-dev` — **and in the same commit
+    open a `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md`** with a non-empty
+    first line, plus a `.prawduct/change-log.md` entry.
+
+    > **Guess LOW, and it is not a style preference — a high guess breaks the banner for
+    > the audience this whole step exists to serve.** Version ordering puts a prerelease
+    > just below its own release, so `3.4.1-dev` precedes both `3.4.1` and `3.5.0`: from a
+    > low guess, *every* possible next cut is a forward move. From a high one it is not —
+    > a develop consumer sitting on `3.5.0-dev` that meets a patch cut `3.4.1` moves
+    > **backwards**, and `highlights_in_range` and `new_gates_in_range` are both empty on a
+    > downgrade, so they get a version move with no release notes and no gate announcement.
+    > This also *is* the ratified conservative-versioning norm (`operational-spec.md`
+    > § Direction: a minor bump is a recorded decision, not a reflex) — a procedure that
+    > defaults to a minor writes the reflex into the runbook. If the next release is
+    > already decided to be a minor or major, that decision is what licenses the higher
+    > number; record it, don't assume it.
 
     > **The CHANGELOG section is not bookkeeping — omit it and `develop` goes red.**
     > `test_changelog_has_current_version_entry` requires a `## v<plugin.json version>`
@@ -721,8 +734,10 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > Nothing on the pre-tag path reads the version files at all (`check-releasability` never
     > opens `plugin/VERSION`). Treat step 7 as load-bearing rather than as one of two belts.
 
-    If the number guessed here turns out wrong at the next cut, step 7 overwrites it —
-    the suffix is identity, not a commitment.
+    If the number guessed here turns out wrong at the next cut, **steps 7–9** overwrite all
+    three files — the suffix is identity, not a commitment. That covers the *files*; it does
+    not un-tell a consumer that already crossed onto the marker, which is the other reason
+    the guess goes low rather than high.
 
 ---
 

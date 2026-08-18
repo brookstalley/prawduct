@@ -10,16 +10,16 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.4.0-dev
+## v3.3.5-dev
 
-**Prerelease under test — this build is the develop branch ahead of v3.4.0.** The
+**Prerelease under test — this build is the develop branch ahead of the next release.** The
 version now says so wherever it appears, so a repo pinned to the develop ref can
 tell what it is running, and a cached review verdict from the released plugin is
 no longer replayed against this one. Rolling release notes accumulate here and
-this section becomes v3.4.0 at the cut.
+this section is renamed to the release number at the cut.
 
 *What this does not yet do:* the verdict cache keys on the version **string**, which
-stays `3.4.0-dev` across every push in the cycle — so it separates prerelease from
+stays fixed across every push in the cycle — so it separates prerelease from
 release, not one develop push from the next. `-dev.N` is permitted for that and is
 not yet produced.
 

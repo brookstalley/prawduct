@@ -64,9 +64,13 @@ Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-bac
     at Phase 2 by Phase 0's withheld count; `release-plan-v3.1.2-pruned.md` is the worked example.
 - The release checklist: merge to `main`, **bump `version` + the `VERSION` file**, flip the release's
   change-log entries to `status=shipped`, regenerate derived views, tag `vX.Y.Z` on `main`,
-  confirm the version banner, and **reopen `develop` at the next `-dev` version** (version files
-  plus a `## vX.Y.Z-dev` CHANGELOG section, one commit) so a prerelease codebase never reports the
-  released number to the verdict cache or to a develop-pinned consumer's banner. Tags are decorative for delivery (the branch-pinned marketplace
+  confirm the version banner, and **reopen `develop` at the next PATCH `-dev` version** (the same
+  five files the completion test above enumerates, one commit) so a prerelease codebase never
+  reports the released number to the verdict cache or to a develop-pinned consumer's banner. The
+  guess is deliberately low: a prerelease sorts just below its own release, so from `X.Y.Z+1-dev`
+  every possible next cut is a forward move, while a high guess makes a patch cut a downgrade —
+  and the banner renders nothing on a downgrade. Conservative versioning is also the ratified
+  norm above; a minor `-dev` needs the same recorded decision a minor release does. Tags are decorative for delivery (the branch-pinned marketplace
   resolves the branch HEAD, not the latest tag) but are kept for human navigation.
 - `/prawduct:pr` handles feature→`develop` PRs; it is **not** the release vehicle — the
   develop→main promotion is a separate, deliberate step.

@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: the reopen version is guessed LOW, and that is a correctness rule
+
+<!-- prawduct: type=fix | scope=release-cut-checklist -->
+
+The spanning cumulative (`rev-20260818T192844Z-d7391015`) blocked on the reopen step telling the
+operator to guess the next **minor**, on two independent grounds, and the second is the one that
+would have bitten.
+
+**A high guess breaks the banner for the exact audience the step exists to serve.** A prerelease
+sorts just below its own release, so `3.4.0-dev` = `(3,4,0,0,0)` sits ABOVE `3.3.5` = `(3,3,5,1)`.
+A develop-pinned consumer that meets a patch cut therefore moves *backwards* — and
+`highlights_in_range` and `new_gates_in_range` are both empty on a downgrade, so they get a
+version move with no release notes and no gate announcement. From a low guess every possible next
+cut is a forward move, which makes the conservative number and the safe number the same number.
+`develop` now carries **3.3.5-dev**, and the rule reads "next patch" at all three sites.
+
+**It was also a norm departure written into a procedure.** `operational-spec.md` § Direction
+ratifies conservative versioning — *a minor bump is a recorded decision, not a reflex* — and a
+runbook defaulting to a minor writes the reflex in. The `-dev` number is squarely inside that
+norm's own rationale, being the handle a develop-pinned consumer reads all cycle. A minor `-dev`
+now needs the recorded decision a minor release needs.
+
+**The pruned promotion path never reached Phase 3 at all.** `promote-a-pruned-release.md` replaces
+Phase 2 and says everything *before* Phase 2 is unchanged — Phase 3 is after, so it was neither
+replaced nor covered, and nothing sent the operator back. Phase 1 has already bumped `develop` to
+the bare release number by then, and the pruned completion test is the path partition rather than
+the five-file diff, so nothing detects the omission either: on the shape used for v3.1.1 and
+v3.1.2, the defect this branch removes came back silently. That runbook now points at Phase 3 and
+says why it is easy to lose.
+
+**A NOTE that this branch itself falsified.** `release_readiness._resolve_version` told the
+operator the `plugin/VERSION` fallback was "the PREVIOUS release". After Phase 3 it is a `-dev`
+marker that is not any release — no tag or plan will ever carry that name — so an operator
+resolving `no-release-plan: no release-plan-v3.3.5-dev*.md` by creating that file damages the
+artifact set. The message now says so, and its test asserts the **property** (the NOTE says the
+fallback is not the thing being graded) rather than the old spelling, which is what let a pinned
+sentence stay green while becoming false.
+
+Two more claims corrected where they were made rather than where they were noticed: Phase 3
+credited "step 7" with overwriting three files that steps 7-9 overwrite, and
+`test_plugin_manifest.py`'s comment still carried the `check_version_files`-prevents-it framing
+the runbook had already retracted.
+
 ## 2026-08-18: the reopen step gets the three blockers its first review found
 
 <!-- prawduct: type=fix | scope=release-cut-checklist -->
