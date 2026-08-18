@@ -56,7 +56,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-_SEMVER_HEADER = re.compile(r"^##\s+v(\d+\.\d+\.\d+)\b")
+_SEMVER_HEADER = re.compile(r"^##\s+v(\d+\.\d+\.\d+(?:-dev(?:\.\d+)?)?)\b")
 
 # Bound the provenance git call. It runs only for a local checkout (never for a
 # managed install), but a wedged git must not hold up session start.
@@ -217,15 +217,29 @@ def read_version(root: Path) -> str:
 def version_tuple(v: str) -> tuple:
     """Parse a semver string into a comparable tuple. Tolerant: a non-numeric
     or malformed value sorts below any real version so it never wins a range
-    comparison (an unparseable marker is treated as 'older than everything')."""
-    parts = v.strip().lstrip("v").split(".")
+    comparison (an unparseable marker is treated as 'older than everything').
+
+    The one permitted prerelease form, ``X.Y.Z-dev`` / ``X.Y.Z-dev.N`` (what
+    develop carries between releases), sorts just below its bare release:
+    a release gets a trailing 1, a ``-dev`` a trailing 0 — so the banner picks
+    the prerelease's own changelog entry, and crossing ``-dev`` → release
+    highlights only that release rather than replaying history."""
+    base, dash, prerelease = v.strip().lstrip("v").partition("-")
+    parts = base.split(".")
     out: list[int] = []
     for p in parts:
         if p.isdigit():
             out.append(int(p))
         else:
             return (-1,)
-    return tuple(out) if out else (-1,)
+    if not out:
+        return (-1,)
+    if not dash:
+        return tuple(out) + (1,)
+    m = re.fullmatch(r"dev(?:\.(\d+))?", prerelease)
+    if not m:
+        return (-1,)
+    return tuple(out) + (0, int(m.group(1) or 0))
 
 
 def read_marker(prawduct_dir: Path) -> str | None:

@@ -683,6 +683,26 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
 
 ---
 
+## Phase 3 — Reopen `develop`
+
+22. On `develop`, bump the three version files (`plugin/VERSION`,
+    `plugin/.claude-plugin/plugin.json`, `pyproject.toml`) to the next expected minor
+    plus a `-dev` suffix — after cutting `v3.4.0`, write `3.5.0-dev` — and commit
+    directly to `develop` with a change-log entry.
+
+    > *Why develop never reads as the released version: the verdict cache keys on the
+    > plugin version (`verdict_cache._key`), so a prerelease codebase reporting the
+    > released number can replay `covered` verdicts across a judgeability change; and a
+    > test consumer pinned to the `develop` ref can only tell which plugin it is running
+    > if the banner says so. `-dev` and `-dev.N` are the only suffixes
+    > `test_version_is_semver` permits, and step 7's replacement plus
+    > `check_version_files`' tag comparison keep the suffix from ever reaching a cut.*
+
+    If the number guessed here turns out wrong at the next cut, step 7 overwrites it —
+    the suffix is identity, not a commitment.
+
+---
+
 ## Done when
 
 *These are the **whole-develop** tests. A pruned promotion left this document at Phase 2 and has its

@@ -3,6 +3,19 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: develop identifies itself as a prerelease
+
+<!-- prawduct: type=feature | scope=release-cut-checklist -->
+
+Between releases, develop carried the released version string. Harmless until the verdict
+cache keyed on that string: successive develop pushes all claiming `3.3.4` can replay
+`covered` verdicts across a judgeability change, and a consumer pinned to the `develop` ref
+cannot tell from the banner which plugin it is running. The three version files now read
+`3.4.0-dev`; the runbook gains Phase 3 (reopen develop at the next `-dev` after every cut);
+`test_version_is_semver` admits exactly `-dev`/`-dev.N` and nothing else, amended by owner
+decision 2026-08-18. Releases stay bare — `check_version_files` refuses a `-dev` residue at
+the cut.
+
 ## 2026-08-18: purpose.md stops claiming the responsibility ledger exists
 
 <!-- prawduct: type=bugfix | scope=release-cut-checklist -->

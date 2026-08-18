@@ -10,6 +10,13 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.4.0-dev
+
+**Prerelease under test — this build is the develop branch ahead of v3.4.0.** The
+version now says so wherever it appears, so a repo pinned to the develop ref can
+tell what it is running, and cached review verdicts never cross a plugin change.
+Rolling release notes accumulate here and this section becomes v3.4.0 at the cut.
+
 ## v3.3.4
 
 **An archived plan now says whether it actually finished.** `archive-plan` stamps `unbuilt_at_archive:` into the frontmatter, naming the chunks that stopped it — so filing a plan away no longer erases the difference between work that completed and work that was abandoned mid-chunk.
