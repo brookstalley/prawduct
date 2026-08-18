@@ -3,6 +3,79 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: a finding says whether it is an instance or a class, and the remedy is graded
+
+<!-- prawduct: type=chore | scope=instance-vs-class -->
+
+Three times in one session on `fleet-feedback-661`, a finding named a site, the builder fixed
+that site, and the class survived — caught by a reviewer each time. `update-gitignore` fixed
+and `coverage-scaffold` missed; those two fixed and `migrate-plugin` + `init-product` missed,
+both mutating on `--dry-run`. The reviewers had the knowledge; nothing asked them to write it
+down, so what reached the builder was a list of sites.
+
+**The tell is mechanical, which is the half that makes this more than a longer list.** State
+why it broke in one sentence. If that sentence does not name the site you found, the finding is
+a **class** and the sentence bounds it — say what to search, and expect members outside the
+diff. The motivating sentence was *"the `"--flag" in argv` idiom reads an unknown token as
+absent"*: it names an idiom, not a command, so grepping the idiom bounds the class. **And the
+remedy is graded.** An instance closes by fixing it; an unbounded class closes only by a
+construction — one owner every member passes through, or a check derived from the source of
+truth — never by a longer list of names. Six existing learnings rules independently record that
+the naive search under-reports, which is why an enumeration is not a reliable resolution even
+when attempted in good faith.
+
+`review-protocol.md` carries both halves — the rule in the severity legend, where a reviewer
+looks while rating, plus a `**Scope:** instance | class — <why it broke>` slot in the finding
+template, because a template is filled every time and a paragraph is re-read never. That serves
+`final` and `cumulative`: the single-pass fork and all three coordinator subagents read this
+file. Cost 123 tokens against the 128 the uplevel pass below recovered — no ceiling raised,
+which is what that pass was for.
+
+**The plan's deliverable list was itself instance-shaped, and the rule caught it.** It named
+`review-protocol.md` and `review-cycle.md`. The class is *every surface a reviewer reads while
+writing or grading a site-naming finding*, and `review-cycle.md` is not one — the file records
+that fact about itself, where it notes fix-by-fudging's workaround leg "was rated only here, in
+a file this mode's reviewer is forbidden to open." So the grading half went to
+`critic_consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE`, printed at `verify-resolutions` dispatch,
+the last moment before the reviewer writes the one output that weakens a gate. It already
+carried the rule in instance form — *"a finding whose second site is in a file this delta does
+not touch"*, a list of two where the property was meant — and now names the class, the act
+(re-run the finding's own reason as a search) and the withholding (a longer list of names is not
+a resolution, so the finding stays out of `resolutions`). That directive was the framework's
+designated overflow route precisely because it was uncapped; it is capped now, at 280 against
+400, by the edit that spent it.
+
+**`chunk` mode is uncovered, and explicitly.** `goals-1-3.md` — the only payload `chunk` and
+`verify-resolutions` read — sits at 2247 against a `< 2250` ceiling, and the compressed rule
+costs ~65 tokens. That is an owner ruling on that ceiling, or its own uplevel chunk, not a trim
+to slip into the chunk that adds the rule. All three observed instances came from modes that
+are covered (`cumulative` and `verify-resolutions`), and a `chunk`-mode finding still meets the
+rule one round later, at the verify pass that grades its fix.
+
+**And the rule found a third surface when applied to this diff.** The justification for the slot
+— a template is filled every time, a paragraph is re-read never — names no file, so by the rule's
+own tell it is a class. Its other two members are `review-cycle.md`'s `## Per-Chunk Output
+Format`, the same four-field shape with no `**Scope:**`, and `goals-1-3.md`'s prose report
+contract. Both live in the two budget-blocked files above, so one funding decision covers the
+whole remainder instead of leaving a second item to rediscover.
+
+Applied retrospectively to all three findings, the tell fires on each and names the same class:
+the reason sentence names the `argv` idiom rather than any command, the class is unbounded
+because new subcommands keep arriving, and the resolution is the pre-dispatch guard every
+subcommand passes through — which is what eventually shipped, two rounds later than necessary.
+The third finding's reviewer had already done this unprompted ("I found them by re-running the
+class scan rather than the two names"); the change converts that initiative into instruction.
+
+Prose, not a schema field, and the escalation trigger is stated rather than left to judgment: if
+a review after this ships produces a site-naming finding that does not answer
+instance-or-class, prose has failed and the answer becomes machine-checkable — cheapest form is
+a lint on findings whose `files` array has ≥2 entries. Two guardrails model the reader rather
+than the artifact: one asserts the rule sits *in the legend* and keeps all four load-bearing
+components, the other that the directive names the class, the act and the withholding. The
+first draft of the legend guard matched Goal 5's `**Scope pressure-test:**` bullet — a
+file-wide scan for a bold "Scope" — and passed while asserting nothing about placement. Bounding
+a class by the container instead of the property, inside the change that forbids it.
+
 ## 2026-08-18: the Critic's protocol pays for its next rule by upleveling, not by raising a ceiling
 
 <!-- prawduct: type=chore | scope=instance-vs-class -->

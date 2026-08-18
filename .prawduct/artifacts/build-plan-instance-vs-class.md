@@ -125,6 +125,45 @@ rule that cannot catch the defects that motivated it is the vacuous-guard class 
   `plugin/skills/critic/review-protocol.md`; the resolution-grading half in
   `plugin/skills/critic/review-cycle.md` where `verify-resolutions` is defined; updated
   readings in `tests/test_v5_methodology.py::LAST_MEASURED_TOKENS`
+- **[DECISION 2026-08-18: the second deliverable moves from `review-cycle.md` to the
+  verify-dispatch directive, and the deliverable list was itself instance-shaped.]** The list
+  above names two files. The class is *every surface a reviewer reads while writing or grading a
+  site-naming finding*, and its members are fixed and enumerable: `review-protocol.md`
+  (`final`/`cumulative` — the single-pass fork and all three coordinator reviewers),
+  `goals-1-3.md` (`chunk` and `verify-resolutions`, which it orders to open nothing else), and
+  `critic_consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE` (printed at `verify-resolutions`
+  dispatch). `review-cycle.md` is on none of those paths — the file says so itself where it
+  records that fix-by-fudging's workaround leg "was rated only here, in a file this mode's
+  reviewer is forbidden to open." Shipping the grading half there puts it where its actor
+  cannot read it. It goes into the claim directive instead, which already carried the rule in
+  instance form — *"a finding whose second site is in a file this delta does not touch"* — a
+  list of two where the property was meant; sharpening that clause is the change, and the
+  reader is the reviewer at the moment it writes `resolutions`. Licensed by `architecture.md`
+  § Direction GOV-4T9P: a plan's named call sites are the author's guess made before the code
+  was read; goals and verification bind, prescribed method is advice.
+- **[DECISION 2026-08-18: `chunk` mode is explicitly descoped, not silently dropped.]**
+  `goals-1-3.md` is at 2247 against a `< 2250` ceiling — 2 tokens, under its own standing
+  "THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP". The compressed rule costs ~65.
+  Funding it means either an owner ruling on the ceiling or a scoped uplevel pass in a second
+  budgeted file, which this plan already refuses to bundle into a chunk that adds a rule. What
+  ships covers `final`, `cumulative` and `verify-resolutions`; **all three observed instances
+  came from those modes** (`cd033794` was `cumulative`, `f4a0f50e` was `verify-resolutions`),
+  and a `chunk`-mode finding still meets the rule one round later at the verify pass that
+  grades its fix. Open for the owner: fund `goals-1-3.md` (a ~70-token raise, or its own
+  uplevel chunk), or leave `chunk` mode on the escalation trigger above.
+  - **The gap is three surfaces in two files, found by applying this chunk's own rule to this
+    chunk's own diff.** `review-protocol.md`'s `## Output Format` was the template the plan
+    named; the reason it needed a slot — *a template is filled every time and a paragraph is
+    re-read never* — names no file, so it is a class. Its other two members are
+    `review-cycle.md`'s `## Per-Chunk Output Format` (line 453, the same
+    `**Goal:**`/`**Severity:**`/`**Recommendation:**` shape, no `**Scope:**`) and
+    `goals-1-3.md`'s prose report contract, which enumerates the fields to report back. Both
+    sit in the two files with 1 and 2 tokens of headroom, so the single funding decision above
+    covers the whole remaining class rather than leaving a second item to rediscover.
+  - **Checked and clean, so it is not an open risk:** `critic_consolidate.validate_partial`
+    tolerates an unrecognized key on a finding, so a reviewer that mirrors the new markdown
+    slot into its JSON partial as `"scope"` does not fail the consolidation closed. Verified by
+    calling the validator, not by reading it.
 - **Tests:** the existing budget guardrails must pass with updated readings — no ceiling
   raised (a raise needs the separate justification `learnings.md` already demands)
 - **Acceptance criteria:** applied to the three findings this session produced, the drafted

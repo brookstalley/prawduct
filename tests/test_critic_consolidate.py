@@ -1424,6 +1424,72 @@ class TestResolutionIsAClaimDirective:
             "fires and one that is agreed with"
         )
 
+    def test_a_class_finding_is_not_resolved_by_the_sites_it_named(self):
+        """The clause that makes this directive the grading half of
+        instance-vs-class, and the three parts that make it act.
+
+        It replaced an instance-shaped version of itself — "a finding whose
+        second site is in a file this delta does not touch" — which named a
+        list of two where the property was meant, in a directive whose subject
+        is dispositions made from memory. A reviewer holding a finding with
+        five surviving members reads "second site", finds no second site, and
+        writes `fixed`.
+
+        Why the rule lands HERE rather than in a protocol file: this reviewer
+        reads `goals-1-3.md` and these two directives, and nothing else.
+        `review-cycle.md` — where fix-by-fudging's siblings are defined — is a
+        file this mode's reviewer is forbidden to open, which that file itself
+        records about its own workaround clause.
+        """
+        d = cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE
+        assert "CLASS" in d, (
+            "the directive no longer names the class case, so the only "
+            "resolution defect it warns about is a misread diff"
+        )
+        # The act: re-run the reason as a search. Without it the reviewer is
+        # told a class exists and given no way to find its members.
+        assert "search" in d, (
+            "the directive names the class case but not the act that settles "
+            "it — a reviewer cannot check membership by reading the delta"
+        )
+        # The withholding, which is the only part with teeth: an enumeration
+        # offered as the whole fix is not a resolution.
+        assert "not a resolution" in d, (
+            "the directive no longer says an enumeration fails to resolve, so "
+            "a list of names still reads as a fix and clears the blocker"
+        )
+
+    def test_the_directive_has_a_size_ceiling(self):
+        """Pinned for the same reason its sibling is, and pinned now because
+        this is the edit that spent it.
+
+        Its sibling's ceiling docstring records that this directive is "the
+        overflow route by default" — capped homes on either side, none here —
+        and the instance-vs-class grading clause took that route on 2026-08-18
+        (`goals-1-3.md` sat 2 tokens under its ceiling, `review-cycle.md` 1, and
+        neither is read by this mode's reviewer anyway). Leaving the route
+        unguarded after using it is how the next editor uses it silently.
+
+        235 -> 280 on 2026-08-18: the class clause, replacing a two-item list
+        with the property plus the act and the withholding. Measured with the
+        estimator every budgeted file in this repo uses. Two numbers, two jobs:
+        the pin fails on any drift and carries the new figure; the ceiling says
+        how much drift is allowed before a clause has to move out.
+        """
+        tokens = int(len(cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE.split()) * 1.3)
+
+        assert tokens == 280, (
+            f"RESOLUTION_IS_A_CLAIM_DIRECTIVE is ~{tokens} tokens; this pin "
+            f"says 280. Update it to {tokens} and say in the docstring what paid "
+            f"for the change — the ceiling below is not a budget to spend."
+        )
+        assert tokens < 400, (
+            f"the directive is ~{tokens} tokens. It is delivered on every "
+            f"verify dispatch, immediately before the reviewer writes the one "
+            f"output that weakens a gate, and it competes with the review for "
+            f"attention. Trim, or move a clause to the file that owns it."
+        )
+
     def test_delivery_is_upstream_of_the_claim(self):
         """WHERE this prints is the chunk's substance, so it is pinned here.
 

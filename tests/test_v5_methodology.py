@@ -163,7 +163,27 @@ LAST_MEASURED_TOKENS = {
     # row or Direction statement the finding cites, which is where a reviewer
     # resolving jurisdiction already reads. The rule kept its only home; it did
     # not lose one.
-    "skills/critic/review-protocol.md": 3671,
+    # +123 on 2026-08-18: a site-naming finding must answer instance-or-class,
+    # and the remedy is graded — the `**Scope:**` slot in the finding template
+    # plus its rule in the severity legend. Spends the 128 the uplevel pass
+    # above recovered, which is what that pass was for; the ceiling stays at
+    # 3800 and this file has 5 tokens of headroom. Nothing was paid back in
+    # place because the uplevel already took everything there was — the payment
+    # is the -128 entry directly above, not a second trim.
+    #
+    # This is the file's HALF of the rule, and the split is deliberate rather
+    # than budgetary. `final`/`cumulative` reviewers (the single-pass fork and
+    # all three coordinator subagents) read this file and write findings, so the
+    # tell and the graded remedy live here. The reviewer that GRADES a fix reads
+    # neither this file nor `review-cycle.md` — `verify-resolutions` is served by
+    # `goals-1-3.md` and by the dispatch directives — so the withholding rule
+    # went into `critic_consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE`, which
+    # already carried it in instance form ("a finding whose second site is in a
+    # file this delta does not touch": a list of two where the property was
+    # meant). `chunk` mode is UNCOVERED and explicitly so: `goals-1-3.md` has 2
+    # tokens of headroom and the rule costs ~65, which is an owner ruling on
+    # that ceiling, not a trim to slip into this chunk.
+    "skills/critic/review-protocol.md": 3794,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -822,6 +842,69 @@ class TestCriticSkill:
         the two copies cannot drift into disagreeing about the cap.
         """
         assert_inert_count_cap(self.content, "review-protocol.md")
+
+    def test_a_site_naming_finding_must_answer_instance_or_class(self):
+        """The rule and the slot are BOTH asserted, and so is where each sits.
+
+        The defect this screens for was observed three times in one session on
+        one branch: a finding named two commands, the builder fixed those two,
+        and the class — every subcommand reading an option with `"--flag" in
+        argv` — survived twice more, caught by a reviewer each time. The
+        reviewers had the knowledge; nothing asked them to write it down, so the
+        builder received a list of sites instead of a bounded class.
+
+        **Placement is the substance, same as `assert_inert_count_cap`.** The
+        rule goes in the severity legend because that is the lookup a reviewer
+        performs while rating the finding in front of it; the slot goes in the
+        finding template because a template is filled every time and a paragraph
+        is re-read never. A version of this rule parked in its own section would
+        satisfy any word-presence check and change no finding.
+
+        **The three components are the rule, not decoration.** "Say instance or
+        class" alone is a coin flip: the tell has to be mechanical (a
+        one-sentence reason that does not name the site names a class), the
+        members have to be located outside the diff (or the reviewer searches
+        the delta and finds nothing), and the remedy has to be graded (or an
+        enumeration of the named sites reads as a resolution, which is the
+        observed defect exactly).
+        """
+        # Scoped to the legend SECTION, not to the file. Goal 5 carries a
+        # `**Scope pressure-test:**` bullet — a different axis entirely — and a
+        # file-wide scan for a bold "Scope" matches it, passes, and asserts
+        # nothing about where this rule sits. Bounding the search by the section
+        # that a reviewer actually reads while rating is the placement claim.
+        section = self.content.split("## Severity Levels", 1)
+        assert len(section) == 2, "the Severity Levels section is gone"
+        legend = [
+            ln for ln in section[1].split("\n## ", 1)[0].split("\n")
+            if ln.lstrip().startswith("- **") and "Scope" in ln
+        ]
+        assert legend, (
+            "review-protocol.md has no Scope entry in its severity legend — a "
+            "reviewer picking a severity reads the legend, not the file"
+        )
+        rule = legend[0]
+        for component, why in (
+            ("one sentence", "without a mechanical tell the answer is a coin flip"),
+            ("outside the diff", "else the reviewer searches the delta and clears it"),
+            ("construction", "the only remedy that closes an unbounded class"),
+            ("longer list", "naming the wrong remedy is what shipped the defect"),
+        ):
+            assert component in rule, (
+                f"review-protocol.md's Scope rule dropped {component!r} — {why}"
+            )
+
+        template = self.content.split("## Output Format", 1)
+        assert len(template) == 2, "the Output Format section is gone"
+        finding_block = template[1].split("### Summary", 1)[0]
+        assert "**Scope:**" in finding_block, (
+            "the finding template has no **Scope:** slot, so the answer depends "
+            "on the reviewer remembering a paragraph rather than filling a field"
+        )
+        assert "instance | class" in finding_block, (
+            "the slot no longer offers the two answers, so it reads as free "
+            "prose and collects a restatement of the finding title"
+        )
 
     def test_signals_and_work_scaling(self):
         """Has signals section and work size/type guidance."""

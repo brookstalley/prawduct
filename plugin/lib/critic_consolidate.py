@@ -456,8 +456,11 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
     " now\" is never something you verified. A finding you could not settle from"
     " the tree is LEFT OUT of `resolutions`: omitting it keeps it blocking,"
     " which is the answer that fails closed. Two that read as resolved and are"
-    " not — a diff read instead of the file it changed, and a finding whose"
-    " second site is in a file this delta does not touch. Spend this on the"
+    " not — a diff read instead of the file it changed, and a finding that named"
+    " a CLASS but was closed at the sites it happened to name: re-run the"
+    " finding's own reason as a search before you write `fixed`, because the"
+    " members that survive are the ones outside this delta, and a longer list of"
+    " names is not a resolution. Spend this on the"
     " finding you feel surest about: a rule you agree with and do not apply to"
     " the disposition actually in front of you has done nothing."
 )
