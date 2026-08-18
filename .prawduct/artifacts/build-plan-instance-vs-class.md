@@ -248,6 +248,16 @@ that the ceiling moves by owner ruling.
 - **Acceptance criteria:** every check that fired before still fires — verified by walking
   each removed bullet and naming which surviving sentence now carries it, not by reading the
   new prose and finding it plausible; ≥150 tokens recovered; no ceiling raised
+  - **[DECISION 2026-08-18: the yield criterion lands at 128, not ≥150, and the first check
+    is why.]** The 634-token scan measured what the six shapes *cost*, not what they could
+    give back. A first draft hit 153 and the Critic found 31 of them were deletions, not
+    merges: Signals' work-type mapping had been redirected to the chunk `Type:` selector — a
+    different axis, whose real home is a builder-side file no reviewer opens — and the flat
+    stale-artifact `WARNING` had been folded under the prose ceiling, quietly letting a stale
+    `architecture.md` grade NOTE. Both restored, and the criterion above is the one that
+    caught it. Closing the remaining 22 means shaving load-bearing prose, which is the trade
+    this file's budget comment has refused for five consecutive edits. 128 tokens of headroom
+    against an untouched 3800 ceiling is what Chunk 01 has to work with.
 - **Type:** doc-only
 - **Done when:**
   1. Acceptance criteria met and tests pass

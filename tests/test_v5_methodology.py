@@ -120,11 +120,50 @@ LAST_MEASURED_TOKENS = {
     # and the drift bullet named the chunk-number case twice and re-derived
     # "archiving moves the file" from "archived, not deleted". The last 18 are
     # the floor clause — without it the ceiling silently outranks the
-    # README bullet's actively-misleading BLOCKING two entries above, so a wrong
+    # actively-misleading BLOCKING Goal 4 assigns explicitly, so a wrong
     # command ships as a WARNING that gates nothing. This file is now at ONE
     # token of headroom: the next addition trims or relocates, and there is no
     # third raise coming.
-    "skills/critic/review-protocol.md": 3799,
+    # -128 on 2026-08-18: the uplevel pass. Six repeated shapes measured at 634
+    # tokens; three were one property written many times and merged, one was a
+    # check written twice, one was a bullet the preamble already owned, and one
+    # was measured and deliberately kept. What merged: Goal 4's five drift
+    # bullets plus changelog scope became "a description whose subject moved"
+    # with the container named as incidental; Goal 5's three missing-rationale
+    # bullets became "a decision without a recorded why";
+    # `infrastructure_dependencies` was checked in Goal 2 AND Goal 4 and now has
+    # one home, Goal 2; Signals lost its Files-changed bullet to the Work-size
+    # scale that already implied it; and CLAUDE.md size no longer restates the
+    # changeset scoping the History bullet now owns for every Goal 4 check.
+    #
+    # The first draft recovered 153 and was WRONG BY 31 of them, which is the
+    # number worth carrying forward. Family SIZE was read as recoverable
+    # redundancy, and two cuts turned out to be deletions: Signals' work-type
+    # mapping (Feature -> spec compliance, Bugfix -> root cause, ...) was
+    # redirected to "the selector cited above", which is the chunk `Type:`
+    # selector -- a different axis this same file calls separate, and the real
+    # home is a builder-side file no reviewer opens; and the flat stale-artifact
+    # WARNING was folded under the prose ceiling, silently letting a stale
+    # architecture.md grade NOTE. Both restored. A scan measures what a shape
+    # COSTS; only rewriting it measures what it can give back, and the gap is
+    # the checks that only look repeated.
+    #
+    # WHAT DID NOT MERGE, and why, so the next reader does not retry it. Goal
+    # 2's declaration->obligation bullets (`Foreign API:`, `Exposed API:`,
+    # `Visual change: yes`, 163 tokens) are literal string matches, each owing a
+    # different thing. "A declaration creates an obligation" names neither the
+    # string to find nor the thing owed, so merging them silently stops three
+    # checks firing — the enumeration IS the trigger, which is the exception
+    # framework-checks.md Check 7 requires be stated rather than left implicit.
+    #
+    # The Goal 4 `**Norms**` bullet DID go, and the trap below is retired with
+    # it: test_project_preferences_blocking needs one line carrying both
+    # "project-preferences" and "blocking", and the Normative-authority preamble
+    # now carries them — the BLOCKING clause names the `project-preferences.md`
+    # row or Direction statement the finding cites, which is where a reviewer
+    # resolving jurisdiction already reads. The rule kept its only home; it did
+    # not lose one.
+    "skills/critic/review-protocol.md": 3671,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -843,12 +882,24 @@ class TestCriticSkill:
             pytest.fail("project-preferences compliance should be BLOCKING")
 
     def test_readme_and_changelog_scope(self):
-        """Critic checks README and scopes changelog review to current changeset."""
-        lower = self.content.lower()
-        assert "readme" in lower
-        assert "actively read" in lower or "read the" in lower
-        assert "changelog" in lower
-        assert "history" in lower or "current changeset" in lower
+        """Critic checks README and scopes changelog review to current changeset.
+
+        Both halves assert on the LINE carrying the rule, not on the file. The
+        README half used to accept a bare "read the" anywhere in the file, which
+        a `record_lint` sentence four sections away satisfied — so the check
+        passed for a release in which the README rule had been merged away.
+        """
+        readme_line = next(
+            (ln for ln in self.content.split("\n") if "README" in ln and "read" in ln.lower()),
+            None,
+        )
+        assert readme_line, "no line tells the reviewer to read the project's README"
+        scope_line = next(
+            (ln for ln in self.content.split("\n")
+             if "hangelog" in ln and ("history" in ln.lower() or "changeset" in ln.lower())),
+            None,
+        )
+        assert scope_line, "no line scopes changelog review to the current changeset"
 
     def test_framework_specific_checks(self):
         assert "Framework-Specific Checks" in self.content
@@ -856,7 +907,9 @@ class TestCriticSkill:
         assert "Instruction Clarity" in self.content
 
     def test_token_budget(self):
-        # Ceiling 3620. This file is the `final` / `cumulative` payload, and the
+        # The ceiling is the number this test asserts, and nothing else restates
+        # it — a second copy here went stale at the raise below and shipped as
+        # fact. This file is the `final` / `cumulative` payload, and the
         # prose-diet audit found it LEAN -- every goal bullet is a specific,
         # severity-mapped check, so there is no slack to reclaim by rewording.
         #
@@ -876,12 +929,16 @@ class TestCriticSkill:
         # compose is not worth quoting verbatim; and history -- what a mechanism
         # USED to do -- is never worth carrying in an instruction payload.
         #
-        # One trap, learned twice: Goal 4's `**Norms**` bullet READS as a pure
-        # restatement of the Normative-authority preamble and is not safe to
-        # delete. test_project_preferences_blocking contracts on a single LINE
-        # carrying both "project-preferences" and "blocking", and that bullet is
-        # the only line that satisfies it. Two separate editors have cut it and
-        # put it back.
+        # The trap that caught two editors is gone, and how it was retired is
+        # the reusable part: Goal 4's `**Norms**` bullet read as a restatement of
+        # the Normative-authority preamble but was the only LINE carrying both
+        # "project-preferences" and "blocking", which
+        # test_project_preferences_blocking contracts on. Both editors deleted
+        # the duplicate and left the contract unhomed. It is now satisfied at the
+        # rule's real home -- the preamble's BLOCKING clause names the
+        # `project-preferences.md` row the finding cites -- so the duplicate
+        # could go. A test pinning prose pins WHERE the rule lives; move the rule
+        # before deleting its only carrier.
         #
         # 3599 -> 3611 (2026-08-02) -- the coordinator prompt template gained
         # the reviewer's FIRST-action liveness marker (`<ROLE>.started`), the

@@ -3,6 +3,62 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: the Critic's protocol pays for its next rule by upleveling, not by raising a ceiling
+
+<!-- prawduct: type=chore | scope=instance-vs-class -->
+
+Chunk 01 needs room in `review-protocol.md`, whose budget comment has said for five edits
+running that the next addition trims or relocates. A measured scan found 634 of 3799 tokens
+sitting in six repeated shapes; **128** of them proved recoverable, the ceiling is untouched at
+3800, and the file now sits at 3671 with real headroom for the first time in months.
+
+The discriminator is the substance, not the saving. **A class uplevels when the general form
+is actionable without the enumeration, and stays enumerated when the enumeration IS the
+trigger.** Four merged: Goal 4's five drift bullets plus changelog scope became *a description
+whose subject moved*, with artifact, comment, docstring, README and renamed term named as
+containers rather than as five checks; Goal 5's three missing-rationale bullets became *a
+decision without a recorded why*; `infrastructure_dependencies` was being checked in both Goal
+2 and Goal 4 and now has one home; and `CLAUDE.md size` stopped restating the changeset
+scoping that now governs every Goal 4 check at once.
+
+**128 and not the 153 the first draft claimed, and the gap is the finding.** A scan measures
+what a shape *costs*; only rewriting it measures what it gives back, and the difference is the
+checks that merely look repeated. Two of the first draft's cuts were deletions wearing a
+merge's clothes, both caught by this chunk's own acceptance criterion — walk each removed
+bullet and name the surviving sentence that carries it. Signals' work-type mapping (Feature →
+spec compliance, Bugfix → root cause + regression, …) was redirected to "the selector cited
+above", which is the chunk `Type:` selector — a *different* axis this same file calls separate,
+whose real home is `methodology/building.md`, a builder-side file no reviewer is told to open.
+And Goal 4's flat `stale artifact → WARNING` was folded under the prose ceiling, so a stale
+`architecture.md` that no gate reads would have quietly graded NOTE. Both restored; the drift
+bullet now carries two severity arms because artifacts and prose genuinely differ. Closing the
+remaining 22 tokens would mean shaving load-bearing prose — the trade this file has refused
+five times running.
+
+One was measured and deliberately kept. Goal 2's declaration→obligation bullets (`Foreign
+API:`, `Exposed API:`, `Visual change: yes`) are literal string matches, each owing a
+different thing — "a declaration creates an obligation" names neither the string to find nor
+the thing owed, so merging them stops three checks firing while reading as a tidy-up. That is
+the vacuous guard shipped into the reviewer, and `framework-checks.md` Check 7 requires the
+reason for a non-merge be stated rather than left implicit. It is stated in the budget
+comment, which is maintainer-facing — putting it in the payload every reviewer loads would
+have spent the tokens the pass just recovered.
+
+Two upleveled rules now bind wider than their predecessors, deliberately: the concept-ripple
+check said *for framework changes* and the id-anchoring check said *product* artifact, and a
+renamed term or a dangling chunk number strands a reader identically on either side of that
+line. The id-anchoring case also loses its own explicit `WARNING` and inherits the drift
+severity rule — a dangling pointer is load-bearing by construction, since someone follows it.
+
+The Goal 4 `**Norms**` bullet went with them, which two previous editors tried and reverted:
+`test_project_preferences_blocking` needs one line carrying both `project-preferences` and
+`blocking`, and that bullet was the only line that had it. Both editors deleted the duplicate
+and left the contract unhomed. The rule now lives once, in the Normative-authority preamble,
+whose BLOCKING clause names the `project-preferences.md` row or Direction statement a finding
+cites — better for the reviewer, who reads that line while resolving jurisdiction. The trap
+comment in `tests/test_v5_methodology.py` is retired and replaced with the general form: **a
+test pinning prose pins WHERE a rule lives; move the rule before deleting its only carrier.**
+
 ## 2026-08-17: seventeen learnings rules become three, and the corpus stops burying its own general rule
 
 <!-- prawduct: type=chore | scope=instance-vs-class -->

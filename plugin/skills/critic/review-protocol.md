@@ -26,9 +26,7 @@ The Critic reviews changes against principles and specifications as a **separate
 
 ## Signals That Guide Your Review
 
-**Files changed**: Which layers? How many? Do changes cross boundaries (API + frontend, model + routes, IPC + consumer)?
-
-**Work size**: Trivial (1-2 files) → quick coherence check. Small (bug fix) → root cause + regression. Medium (feature, refactor) → full review. Large (subsystem) → deep architectural review.
+**Work size**: Trivial (1-2 files) → quick coherence check. Small (bug fix) → root cause + regression. Medium (feature, refactor) → full review. Large (subsystem) → deep architectural review. Layers spanned and boundaries crossed move a change up this scale.
 
 **Work type**: Feature → spec compliance + coverage. Bugfix → root cause + regression test. Refactor → behavior preservation. Optimization → baseline measured? Debt → scope discipline.
 
@@ -40,8 +38,10 @@ Your goals, in priority order — you run all seven.
 preferences rows, project-state classification, **and unmarked prose recording a decision**
 bind; descriptions track (test: would syncing it to code silently unmake a decision?).
 Departure, unruled edge-work, normative change (even doc-only), or norm birth without a
-recorded vetoable decision → Goal 3 **BLOCKING** where ratified norms exist; with none,
-**NOTE** naming the capture path. Tell: amending a norm to match your own code.
+recorded vetoable decision → Goal 3 **BLOCKING** naming the `project-preferences.md` row or
+Direction statement it departs from, where ratified norms exist; with none, **NOTE** naming
+the capture path. Tell: amending a norm to match your own code; never fix a divergence by
+editing the artifact.
 Correctness shapes the recommendation, never the need. Judge jurisdiction yourself;
 applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a
 downgrade.
@@ -69,7 +69,7 @@ downgrade.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
-- If `infrastructure_dependencies` is declared in project-state.yaml: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
+- `infrastructure_dependencies` declared: tests and code exercise the real dependency, not an in-memory stand-in → **WARNING** if all mocked. Document a mock; never substitute one silently.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when (read source or probe before drafting handlers — see `methodology/planning.md`) → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach` present, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. The produced-surface mirror of Foreign API — see `methodology/planning.md`.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
@@ -82,21 +82,13 @@ downgrade.
 - **Rationale-vs-diff fit (`Type: trivial` only)**: compare `**Trivial because:**` claim vs diff. Mismatch (claim "rename" but diff adds defs) → **BLOCKING** (scope expansion). Low-information rationale ("small change") → **WARNING** (no testable claim).
 
 ### 4. Everything Is Coherent
-- Artifacts are consistent with each other and with code.
-- **Bidirectional freshness** (descriptive content only — norms follow Normative authority above): code matches artifacts AND artifacts still describe code (model fields, architecture components). Stale artifact → **WARNING**.
-- **Norms**: `project-preferences.md` rows and Direction statements bind — unrecorded departure → **BLOCKING** via Goal 3; never fix divergence by artifact edit.
-- **Infrastructure coherence**: `infrastructure_dependencies` declared but code uses in-memory only → **WARNING**. Mocks must be documented, not silently substituted.
-- **README and top-level docs**: read the project's README and `docs/` when features change. Removed/renamed features or wrong setup → **WARNING**. Actively misleading instructions (wrong commands, deleted config refs) → **BLOCKING**.
-- **Documentation drift**: Comments, type annotations, or API docs that contradict the code they describe → **WARNING** when load-bearing, else **NOTE** at the prose ceiling in Severity Levels, whose three remedies are the only ones to recommend. Same defect when a *product* durable artifact rides its meaning on an ephemeral build id (a count, a chunk number that renumbers, a work-cycle name) that dangles once the id changes → **WARNING**. A pointer *to a plan* resolves **by scope, not by path**: archiving moves the file, so a hard-coded `artifacts/build-plan-<scope>.md` dangles the moment the plan finishes. Bookkeeping that records the work (backlog `closed-by:`, operator-verification) is exempt.
-- **Changelog scope**: When reviewing `change-log.md` or `change_log_history`, only check entries added/modified in the current changeset. Older entries are append-only history — don't flag stale terminology, outdated counts, or superseded descriptions. Same applies to commit messages and archived notes.
-- **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`. Applies to the current changeset.
-- For framework changes: concept ripple check — renamed/removed terms still referenced in *active* files (not changelogs or archives) → **WARNING**.
+- **Drift — a description whose subject moved.** The container never changes the check: artifacts and code drift in both directions, and so do the README and `docs/` you read when features change, comments, type annotations, docstrings, API docs, and the citations a renamed or removed term leaves behind. A stale artifact, README or doc page → **WARNING**; comment, docstring and doc *wording* takes Severity Levels' prose ceiling; an instruction that actively misleads (a wrong command, a deleted config reference) → **BLOCKING**. Sharpest instance, meaning anchored to something that moves: an ephemeral build id (a count, a chunk number that renumbers, a work-cycle name), or a plan cited by path — archiving dangles it, so a plan resolves **by scope**. Norms are exempt — Normative authority above.
+- **History cannot drift**: only what this changeset added or modified is in scope. Changelog entries (`change-log.md`, `change_log_history`), commit messages and archives are append-only, and bookkeeping that records the work (backlog `closed-by:`, operator-verification) is exempt for the same reason.
+- **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`.
 
 ### 5. Decisions Were Deliberate
-- New external dependencies include rationale in dependency manifest → **WARNING** if missing.
-- Architectural patterns are captured in architecture artifact → **WARNING** if missing.
+- **A decision without a recorded why** → **WARNING**: a new external dependency, an architectural pattern, or a major technology choice with alternatives considered, each in the artifact that owns it.
 - If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was *downstream* consumer impact investigated? → **WARNING** if no evidence. The inverse — a consumer mismodelling what the producer emits — is Goal 1's cross-component contract check, not this one.
-- Major technology choices include alternatives considered → **WARNING** if missing.
 - **Scope pressure-test:** does each capability trace up to a documented requirement, and is it reachable and consumed end-to-end? A capability with no parent, or one nothing calls → **WARNING**. Goal 3 asks whether the work exceeded its *plan*; this asks whether the plan traced to a *requirement*, and whether anything reaches the result. Open the title with `scope-trace:` so its yield stays countable.
 
 ### 6. The System Can Be Understood
@@ -128,7 +120,7 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 - **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
 - **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
-- **NOTE**: Genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly — the README bullet's actively-misleading **BLOCKING** stands. That covers record-only text (change-log, learnings, plan text) and comment, docstring and doc wording, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
+- **NOTE**: Genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly — Goal 4's actively-misleading **BLOCKING**, and its stale-artifact **WARNING**, both stand. That covers record-only text (change-log, learnings, plan text) and comment, docstring and doc wording, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 - **Prose remedies**: stale prose gets one of three — delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
 ## Review Execution
