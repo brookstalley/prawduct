@@ -62,6 +62,9 @@ Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-bac
     test is the **partition**: every path in `origin/main..origin/develop` accounted for as shipped or
     deliberately withheld. The durable procedure is `runbooks/promote-a-pruned-release.md`, selected
     at Phase 2 by Phase 0's withheld count; `release-plan-v3.1.2-pruned.md` is the worked example.
+    **It replaces Phase 2 only — the reopen step (Phase 3) still runs afterwards**, and nothing on
+    this path detects its omission, because the completion test here is the partition rather than
+    the five-file diff.
 - The release checklist: merge to `main`, **bump `version` + the `VERSION` file**, flip the release's
   change-log entries to `status=shipped`, regenerate derived views, tag `vX.Y.Z` on `main`,
   confirm the version banner, and **reopen `develop` at the next PATCH `-dev` version** (the same
