@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: the reopen step gets the three blockers its first review found
+
+<!-- prawduct: type=fix | scope=release-cut-checklist -->
+
+The branch's first cumulative review (`rev-20260818T185932Z-a1b20a37`) returned **3 blocking, 4
+warning, 4 note**. All three blockers were the same shape — a step added at one site while the
+claims and checks that depend on it stayed where they were.
+
+**Phase 3 falsified the runbook's own completion test.** Step 22 advances `develop` one commit
+past the content-identity Phase 2 establishes, and the `Done when` bullet asking
+`git diff --stat origin/main origin/develop` to print *nothing* sits below it — so on a correct
+release it could never pass again. A check that always fails is worse than no check: the operator
+learns to expect the failure and stops reading it. The bullet now expects exactly the reopen
+commit's files, and says to run the strict form before step 22. `operational-spec.md` carried the
+same claim in its own words and was swept with it — the second site is why this was blocking
+rather than a stale-artifact warning, because `learnings.md` already warns that sweeping for the
+identifier is not sweeping for the claim.
+
+**Step 22, followed literally, shipped a red suite.** It said "commit with a change-log entry",
+which reads as `.prawduct/change-log.md`; `test_changelog_has_current_version_entry` requires a
+`## v<plugin.json version>` section in the **public** digest. This branch satisfied that by hand,
+so the gap was invisible here and would have fired on whoever ran the step next. The mirror gap
+was at the other end: Phase 1 step 10 said to *add* a `## vX.Y.Z` section, which leaves the `-dev`
+section in place forever and gives a consumer two highlights for one release. It now says to
+**rename** the open prerelease section.
+
+**The new prerelease ordering had no test.** `version_tuple`'s trailing-sentinel scheme and the
+widened `_SEMVER_HEADER` shipped with zero direct assertions — covered only incidentally by a test
+whose coverage *evaporates at every cut*, when the version is bare again, so the released plugin
+carried this path untested by construction. Five pins now cover it: the ordering in both
+directions, `-dev.N` ranked numerically (`-dev.10` above `-dev.2`), the refusal of any suffix
+`test_version_is_semver` would reject, the heading capture keeping its suffix, and the end-to-end
+highlight selection. Four of the five fail against the pre-change implementation.
+
+Two claims corrected rather than reworded around. The runbook credited `check_version_files`'
+tag comparison with keeping a `-dev` suffix out of a cut; it runs `git show <tag>:...`, so it is a
+post-publish **detector** — step 7 is the only preventive control, and is now named as such. And
+the public CHANGELOG said cached verdicts "never cross a plugin change"; the cache keys on the
+version *string*, which is static across a cycle, so it separates prerelease from release and not
+one develop push from the next. Stated plainly, with `-dev.N` named as the unbuilt remainder.
+
+The reopen step also reached the two other documents enumerating the release checklist —
+`documentation/release-process.md` (as step 10) and `operational-spec.md` — which is the same
+one-site-of-three defect the blockers were, caught in the same review.
+
 ## 2026-08-18: develop identifies itself as a prerelease
 
 <!-- prawduct: type=feature | scope=release-cut-checklist -->

@@ -391,11 +391,20 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > *Adjudicated, not derived: the file's own comment asks for this bump;
    > `documentation/release-process.md` step 2 didn't name it until v3.1.1.*
 
-10. In `plugin/CHANGELOG.md`, add a `## vX.Y.Z` section directly above the previous release,
-    with the consumer-facing headline as the first non-empty line under it.
+10. In `plugin/CHANGELOG.md`, **rename the open `## vX.Y.Z-dev` section to `## vX.Y.Z`** — the
+    prerelease section step 22 opened at the last cut, which the cycle's work has been
+    accumulating under. Confirm its first non-empty line is the consumer-facing headline for
+    this release, and replace the seeded placeholder if it is still there. Only when no
+    prerelease section exists (the first cut after this runbook changed) do you add a fresh
+    `## vX.Y.Z` section above the previous release.
 
     > *Why: the version-delta banner shows exactly that first line to every repo
     > crossing this version.*
+
+    > **Rename, do not add a second section.** Adding one leaves the `-dev` section in place
+    > permanently, so the public digest carries a "Prerelease under test" heading forever and a
+    > consumer crossing 3.3.4 → 3.4.0 gets two highlights for one release. The `-dev` heading is
+    > the *same* release's notes under a working name, not a separate entry.
 
     **On a minor or major bump — not a patch — also refresh `README.md`'s `## Recent
     Changes`** so the current line is represented there. Rewrite the section; do not
@@ -687,16 +696,30 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
 
 22. On `develop`, bump the three version files (`plugin/VERSION`,
     `plugin/.claude-plugin/plugin.json`, `pyproject.toml`) to the next expected minor
-    plus a `-dev` suffix — after cutting `v3.4.0`, write `3.5.0-dev` — and commit
-    directly to `develop` with a change-log entry.
+    plus a `-dev` suffix — after cutting `v3.4.0`, write `3.5.0-dev` — **and in the same
+    commit open a `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md`** with a
+    non-empty first line, plus a `.prawduct/change-log.md` entry.
+
+    > **The CHANGELOG section is not bookkeeping — omit it and `develop` goes red.**
+    > `test_changelog_has_current_version_entry` requires a `## v<plugin.json version>`
+    > section with a non-empty headline, so the three version files and the public digest
+    > move together or the suite fails on the next push. "A change-log entry" reads as
+    > `.prawduct/change-log.md` alone, which is why this step now names both files.
+    > Seed it with one line — the rolling notes accumulate under it as work lands.
 
     > *Why develop never reads as the released version: the verdict cache keys on the
     > plugin version (`verdict_cache._key`), so a prerelease codebase reporting the
     > released number can replay `covered` verdicts across a judgeability change; and a
     > test consumer pinned to the `develop` ref can only tell which plugin it is running
     > if the banner says so. `-dev` and `-dev.N` are the only suffixes
-    > `test_version_is_semver` permits, and step 7's replacement plus
-    > `check_version_files`' tag comparison keep the suffix from ever reaching a cut.*
+    > `test_version_is_semver` permits.*
+
+    > **What keeps the suffix out of a cut is step 7, and nothing else.** Step 7 overwrites all
+    > three files with the bare release number; that is the only *preventive* control.
+    > `check_version_files` runs `git show <tag>:…`, i.e. against a tag that already exists, so
+    > it is a post-publish detector — it tells you a `-dev` suffix shipped, it cannot stop it.
+    > Nothing on the pre-tag path reads the version files at all (`check-releasability` never
+    > opens `plugin/VERSION`). Treat step 7 as load-bearing rather than as one of two belts.
 
     If the number guessed here turns out wrong at the next cut, step 7 overwrites it —
     the suffix is identity, not a commitment.
@@ -709,8 +732,14 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
 own `Done when`: the content-identity check below can never pass there, and if it did pass it would
 mean the withheld work shipped.*
 
-- After `git fetch origin`, `git diff --stat origin/main origin/develop` prints
-  nothing.
+- After `git fetch origin`, `git diff --stat origin/main origin/develop` prints **only the
+  reopen commit's files** — the three version files and `.prawduct/change-log.md`.
+
+  > **This bullet used to say "prints nothing", and Phase 3 is what changed it.** Content
+  > identity is the expected outcome of Phase 2, and step 22 deliberately advances `develop`
+  > past it one commit later. A check that can never pass on a correct release is worse than
+  > no check: the operator learns to expect the failure and stops reading it. If it prints
+  > anything *else*, Phase 2 did not finish. Run it before step 22 to get the strict form.
 - `git ls-remote --tags origin` shows a line ending `refs/tags/vX.Y.Z`.
 - `./plugin/bin/prawduct-hook check-released vX.Y.Z` prints `released: vX.Y.Z — 3 of 3 verified`
   and exits 0. It checks the three things this phase just did — version files agreeing

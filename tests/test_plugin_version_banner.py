@@ -108,6 +108,90 @@ class TestVersionMath:
         assert banner.version_tuple("1.8.1") < banner.version_tuple("2.0.0")
         assert banner.version_tuple("garbage") == (-1,)  # sorts below everything
 
+    def test_version_tuple_orders_a_dev_prerelease(self, banner):
+        """`develop` carries `X.Y.Z-dev`; the cut promotes it to `X.Y.Z`.
+
+        Asserted directly because nothing else does. The only incidental coverage
+        of this path is `test_changelog_has_current_version_entry`, and that
+        coverage **evaporates at every release cut** — the version is bare again,
+        so the released plugin ships this branch untested by construction. That
+        is exactly backwards from what the suffix is for.
+
+        Both directions, and the trailing sentinel is the reason both are needed:
+        before it, any prerelease collapsed to the malformed `(-1,)`, which sorts
+        below every real version, so a consumer moving onto `-dev` read as having
+        moved BACKWARDS — no update banner and an empty highlight range.
+        """
+        assert banner.version_tuple("3.4.0-dev") < banner.version_tuple("3.4.0")
+        assert banner.version_tuple("3.3.4") < banner.version_tuple("3.4.0-dev")
+        assert banner.version_tuple("3.4.0-dev") != (-1,), (
+            "a permitted prerelease collapsed to the malformed sentinel — it "
+            "would sort below every real version and suppress its own banner"
+        )
+
+    def test_version_tuple_ranks_successive_dev_pushes(self, banner):
+        """`-dev.N` is what makes a develop-pinned consumer see each push.
+
+        `version` is the update cache key, so a static `-dev` resolves once and
+        then freezes; `-dev.N` is the increment that unfreezes it. The ordering
+        has to be numeric, not lexical, or `-dev.10` sorts below `-dev.2` and the
+        tenth push reads as a downgrade.
+        """
+        assert banner.version_tuple("3.4.0-dev") < banner.version_tuple("3.4.0-dev.1")
+        assert banner.version_tuple("3.4.0-dev.2") < banner.version_tuple("3.4.0-dev.10")
+        assert banner.version_tuple("3.4.0-dev.10") < banner.version_tuple("3.4.0")
+
+    def test_version_tuple_refuses_an_unpermitted_prerelease(self, banner):
+        """`-dev`/`-dev.N` are the ONLY suffixes this project permits.
+
+        The discriminating half of the pair above: widening the parser to any
+        semver prerelease would silently admit `-rc.1` or `-alpha`, which
+        `test_version_is_semver` rejects, so the banner and the manifest guard
+        would disagree about what a legal version is. Refusing here keeps them
+        answering the same question.
+        """
+        for rejected in ("3.4.0-rc.1", "3.4.0-alpha", "3.4.0-devel", "3.4.0-dev.x"):
+            assert banner.version_tuple(rejected) == (-1,), (
+                f"{rejected!r} parsed as a version — the banner now admits a "
+                "suffix test_version_is_semver refuses"
+            )
+
+    def test_changelog_headings_keep_the_dev_suffix(self, banner):
+        """The section key must equal the manifest string exactly.
+
+        A pattern capturing only the numeric core files `## v3.4.0-dev` under
+        `3.4.0`, so the lookup for the RUNNING version misses its own entry and
+        the banner renders a version move with no highlights — the one case the
+        changelog exists to serve.
+
+        Driven against the pattern with synthetic headings so it keeps testing
+        the rule after this repo's own CHANGELOG stops carrying a prerelease.
+        """
+        for heading, expected in (
+            ("## v3.4.0-dev", "3.4.0-dev"),
+            ("## v3.4.0-dev.2", "3.4.0-dev.2"),
+            ("## v3.4.0", "3.4.0"),
+        ):
+            m = banner._SEMVER_HEADER.match(heading)
+            assert m, f"{heading!r} is no longer recognized as a version section"
+            assert m.group(1) == expected, (
+                f"{heading!r} keyed its section under {m.group(1)!r} — the "
+                "manifest string and the changelog key must be the same string"
+            )
+
+    def test_a_dev_consumer_gets_the_prerelease_highlight(self, banner):
+        """The whole point, end to end: crossing onto `-dev` shows its notes, and
+        crossing `-dev` → release shows that release ONCE rather than replaying.
+        """
+        cl = [("3.4.0-dev", "prerelease notes"), ("3.3.4", "last release")]
+        assert [v for v, _ in banner.highlights_in_range(cl, "3.3.4", "3.4.0-dev")] == [
+            "3.4.0-dev"
+        ]
+        cl_cut = [("3.4.0", "the release"), ("3.3.4", "last release")]
+        assert [v for v, _ in banner.highlights_in_range(cl_cut, "3.4.0-dev", "3.4.0")] == [
+            "3.4.0"
+        ]
+
     def test_highlights_select_open_lower_closed_upper(self, banner):
         cl = [("1.8.1", "patch"), ("1.8.0", "minor"), ("1.7.0", "old")]
         picked = banner.highlights_in_range(cl, "1.7.0", "1.8.1")

@@ -14,8 +14,14 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Prerelease under test — this build is the develop branch ahead of v3.4.0.** The
 version now says so wherever it appears, so a repo pinned to the develop ref can
-tell what it is running, and cached review verdicts never cross a plugin change.
-Rolling release notes accumulate here and this section becomes v3.4.0 at the cut.
+tell what it is running, and a cached review verdict from the released plugin is
+no longer replayed against this one. Rolling release notes accumulate here and
+this section becomes v3.4.0 at the cut.
+
+*What this does not yet do:* the verdict cache keys on the version **string**, which
+stays `3.4.0-dev` across every push in the cycle — so it separates prerelease from
+release, not one develop push from the next. `-dev.N` is permitted for that and is
+not yet produced.
 
 ## v3.3.4
 
