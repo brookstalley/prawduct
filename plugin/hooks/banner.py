@@ -56,12 +56,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# The prerelease suffix is part of the CAPTURE, not merely tolerated after it:
-# `develop` ships `X.Y.Z-dev`, and a pattern that captured only the numeric core
-# keyed that section under `X.Y.Z` while the manifest said `X.Y.Z-dev`, so the
-# lookup for the running version missed its own entry and the banner rendered a
-# version move with no highlights.
-_SEMVER_HEADER = re.compile(r"^##\s+v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)")
+_SEMVER_HEADER = re.compile(r"^##\s+v(\d+\.\d+\.\d+)\b")
 
 # Bound the provenance git call. It runs only for a local checkout (never for a
 # managed install), but a wedged git must not hold up session start.
@@ -222,33 +217,15 @@ def read_version(root: Path) -> str:
 def version_tuple(v: str) -> tuple:
     """Parse a semver string into a comparable tuple. Tolerant: a non-numeric
     or malformed value sorts below any real version so it never wins a range
-    comparison (an unparseable marker is treated as 'older than everything').
-
-    **Prerelease-aware, because a prerelease is a version this project ships.**
-    ``develop`` carries ``X.Y.Z-dev`` and `main` promotes it to ``X.Y.Z``. Parsing
-    the string as three integers made ``"0-dev"`` non-numeric, so the WHOLE
-    version collapsed to the malformed sentinel ``(-1,)`` — sorting below every
-    real version, which is the one answer that is never merely imprecise here: it
-    reads as "older than the marker", so a consumer moving onto a prerelease sees
-    no update banner at all and the highlight range selects nothing.
-
-    Ordering follows semver: a prerelease precedes its own release, so the core
-    carries a trailing ``0`` for a prerelease and ``1`` for a release, and
-    ``3.4.0-dev < 3.4.0 < 3.4.1``. Prerelease identifiers are not ranked against
-    each other beyond that — nothing here needs ``-dev.2 > -dev.1``, and a
-    comparison this file does not need is a comparison it should not invent.
-    """
-    core, _, pre = v.strip().lstrip("v").partition("-")
-    parts = core.split(".")
+    comparison (an unparseable marker is treated as 'older than everything')."""
+    parts = v.strip().lstrip("v").split(".")
     out: list[int] = []
     for p in parts:
         if p.isdigit():
             out.append(int(p))
         else:
             return (-1,)
-    if not out:
-        return (-1,)
-    return tuple(out) + (0 if pre else 1,)
+    return tuple(out) if out else (-1,)
 
 
 def read_marker(prawduct_dir: Path) -> str | None:

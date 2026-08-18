@@ -41,6 +41,19 @@ Also fixed, riding the same commit: the reflection provenance stamp computed `ar
 version read's `try`, so a manifest failure degraded a date that touches no disk and cannot fail —
 `archived=unknown` for the one field the corpus query this stamp exists for would group by.
 
+**A 3.4.0-dev version bump was built here and then reverted, which is the more useful record.** It
+was made on request, and the verify pass found that `fix/release-cut-checklist@73b30688` already
+carries it — same three version files, same two banner defects, a *different* implementation.
+Theirs admits `-dev`/`-dev.N` only and ranks `-dev.N`; this one accepted any semver prerelease and
+deliberately did not rank. Theirs is the owner's recorded decision (2026-08-18) and is the one the
+`#668` campaign needs, so this branch reverted its copy rather than shipping a divergent duplicate
+into a semantic merge conflict in `banner.py` and `test_plugin_manifest.py`. The consumer-facing
+`## v3.4.0-dev` section in `plugin/CHANGELOG.md` stays — it is additive content, not a competing
+mechanism. **The finding under the finding:** two branches independently fixed the same two banner
+defects within hours, which is the branch-level shape of this bundle's own subject — the second
+author could not see the first, because a class member outside your diff is invisible whether it
+sits in another file or another branch.
+
 Two `.prawduct/` notes closed for free (they move no coverage): 14 blank-line runs left by the
 learnings consolidation, and four retired rules whose `learnings-detail.md` sections still read as
 live. The four were found the way the finding said to find them — diff the `## ` headings at the

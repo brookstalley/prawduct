@@ -47,7 +47,7 @@ mechanical rather than evocative.
 
 ## Status
 
-- [ ] Chunk 01: A finding says whether it is an instance or a class, and the remedy is graded
+- [x] Chunk 01: A finding says whether it is an instance or a class, and the remedy is graded
 - [x] Chunk 02: Eighteen scattered rules become three sharp ones
 - [x] Chunk 03: Uplevel the repeated shapes in review-protocol.md (unblocks Chunk 01)
 Context: Plan written 2026-08-17 after the `fleet-feedback-661` branch produced three
@@ -58,11 +58,20 @@ for *class*, *premise* and *construction* got settled in the consolidated learni
 and Chunk 01 now CITES it rather than restating it. Chunk 02 DONE (17 rules to 3, reviewed,
 one blocking fix). Chunk 03 DONE (`review-protocol.md` 3799 → 3671, ceiling untouched at
 3800; reviewed, one blocking fix plus four demoted, all fixed rather than accepted).
-**Chunk 01 is the last chunk and is now unblocked, with 128 tokens of headroom rather than
-the ≥150 the plan predicted** — read the decision on Chunk 03's acceptance criteria before
-designing the rule, because it is the budget. The plan declares no `Critic mode:`, so
-inference picks; Chunk 01 closes the plan, and a `final`/`cumulative` is owed before the
-branch is done — chunk-mode reviews cover Goals 1-3 only.
+**ALL THREE CHUNKS DONE (2026-08-18).** Chunk 01 shipped the rule to `review-protocol.md`
+(3671 → 3794, ceiling untouched at 3800) and to
+`critic_consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE`, with `chunk` mode explicitly descoped —
+see the two DECISION blocks on Chunk 01. Reviewed by `cumulative`
+`rev-20260818T175424Z-bd5c4bf5` (0 blocking, 2 warning, 10 note; **every finding carried the
+`Scope:` slot this chunk added, and both warnings graded themselves `class`**) and closed by
+`verify-resolutions` `rev-20260818T181936Z-d7ef1f87` (0 findings, both warnings verified
+`fixed` by construction). PR gate satisfied. **Plan is complete; the branch is PR-ready.**
+
+**Owner decision still open, carried past plan close:** fund `goals-1-3.md` so `chunk` mode
+gets the rule (a ~70-token ceiling raise or its own uplevel chunk), or leave `chunk` mode on
+the escalation trigger. The same decision covers `review-cycle.md`'s `## Per-Chunk Output
+Format` and `goals-1-3.md`'s report contract, the two sibling templates that did not get the
+`**Scope:**` slot.
 
 ## Verification Strategy
 
