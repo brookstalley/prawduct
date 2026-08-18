@@ -799,6 +799,139 @@ class TestChunkIdFormsReachTheWalk:
             "01", "1.2", "1.10", "2"
         ]
 
+    def test_the_normalizer_is_total_on_the_dotted_grammar(self):
+        """A leading zero on ANY component, not just the first token.
+
+        `lstrip("0")` read the id as one string, so `"0.2"` normalized to `".2"`
+        — truthy, so the `or "0"` fallback could not fire — and `_chunk_sort_key`
+        then evaluated `int("")` and raised past an except-set of
+        `(OSError, subprocess.SubprocessError)` that cannot catch a ValueError.
+        Two of the three callers are unguarded, so a plan numbering `Chunk 0.1`
+        tracebacked where the error model promises a diagnostic.
+
+        Every case here is asserted THROUGH the sort as well as the normalizer:
+        normalizing correctly and still raising downstream is the failure that
+        actually reached users, and a pin on the string alone would not see it.
+        """
+        from lib.buildplan_refs import _chunk_sort_key, _normalize_chunk_id
+
+        for raw, norm, key in (
+            ("0.2", "0.2", (0, 2)),
+            ("00.2", "0.2", (0, 2)),
+            ("1.02", "1.2", (1, 2)),
+            ("Chunk 0.1", "0.1", (0, 1)),
+            ("00", "0", (0,)),
+            ("01", "1", (1,)),
+            ("1.10", "1.10", (1, 10)),
+        ):
+            got = _normalize_chunk_id(raw)
+            assert got == norm, f"{raw!r} normalized to {got!r}, expected {norm!r}"
+            assert _chunk_sort_key(got) == key, (
+                f"{raw!r} normalizes to {got!r} which does not sort — the "
+                "normalizer and the sort disagree about the id grammar"
+            )
+
+    def test_one_normalizer_owns_the_zero_trim(self):
+        """The docstring claims to be the only chunk-id normalizer in the tree;
+        this is what makes the claim true rather than aspirational.
+
+        Two callers had `lstrip("0") or "0"` inline, so both sides of the
+        `unticked & committed` intersection agreed on a wrong answer — agreement
+        that reads as corroboration. A second copy is how the class comes back.
+        """
+        source = (
+            Path(buildplan_refs.__file__).read_text(encoding="utf-8").split("\n")
+        )
+        offenders = [
+            (i + 1, ln.strip())
+            for i, ln in enumerate(source)
+            if 'lstrip("0")' in ln and "def _normalize_chunk_id" not in ln
+        ]
+        # The one legitimate site is inside _normalize_chunk_id's own body.
+        outside = [
+            (num, text) for num, text in offenders
+            if not text.startswith("return \".\".join(")
+            and not text.startswith("``lstrip")
+        ]
+        assert not outside, (
+            f"a second zero-trim exists outside the one normalizer: {outside}. "
+            "Route the caller through _normalize_chunk_id instead."
+        )
+
+    def test_the_type_error_discriminator_is_producer_owned(self, tmp_path):
+        """The session-end surfacing recognizes BOTH producers' real output.
+
+        `cmd_stop` used to match `"do not parse as one" in type_error` and
+        `type_error.startswith("unknown type:")` — a cross-module coupling on two
+        literal prose substrings, with nothing that fails when the prose is
+        reworded. Both messages are long, narrative, and edited whenever the
+        parser's advice improves; rewording either silently disabled the ONLY
+        session-end surfacing of a plan heading nothing can parse, and the author
+        of the broken plan never learned which line to fix.
+
+        **The strings here are PRODUCED, never written by hand.** A test that
+        hand-writes the sentence it expects re-creates the coupling one layer up:
+        it goes green against a producer that has drifted, because the fixture
+        drifted with the assertion instead of with the code.
+        """
+        from lib.buildplan_refs import (
+            ChunkSection,
+            _parse_build_plan_chunk_type,
+            is_reportable_type_error,
+            unparsed_chunk_heading_reason,
+        )
+
+        unparsed = unparsed_chunk_heading_reason(
+            ChunkSection(False, [], [(7, "### Chunk 02 & 03 — combined")])
+        )
+        assert unparsed, "the fixture stopped producing an unparsed reason"
+        assert is_reportable_type_error(unparsed), (
+            "the predicate no longer recognizes its own module's unparsed-heading "
+            "reason — the session-end surfacing is silently off"
+        )
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        plan = prawduct / "plan.md"
+        plan.write_text(
+            "### Chunk 01: a chunk\n\n- **Type:** nonsense-value\n",
+            encoding="utf-8",
+        )
+        chunk_type, type_error = _parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None and type_error, (
+            "the fixture stopped producing an unknown-type error"
+        )
+        assert is_reportable_type_error(type_error), (
+            "the predicate no longer recognizes an unrecognized Type: value"
+        )
+
+        # And it stays quiet on the states that are not authoring defects, or the
+        # surfacing becomes noise at every session end and gets muted wholesale.
+        assert not is_reportable_type_error(None)
+        assert not is_reportable_type_error("")
+
+    def test_the_hook_asks_the_predicate_rather_than_the_prose(self):
+        """Where the rule is enforced is the substance, so it is pinned.
+
+        The predicate only helps if the consumer calls it; a hook that keeps its
+        own substring match is unaffected by the producer owning the string.
+        """
+        hook = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "bin" / "prawduct-hook"
+        ).read_text(encoding="utf-8")
+        assert "is_reportable_type_error(" in hook, (
+            "the stop hook no longer asks buildplan_refs whether a Type: error is "
+            "reportable — it is back to matching prose it does not own"
+        )
+        for literal in ('"do not parse as one"', '"unknown type:"'):
+            assert literal not in hook, (
+                f"the hook matches {literal} directly again; the producer owns "
+                "that string and the consumer must ask, not grep"
+            )
+
     def test_the_heading_label_is_an_accepted_chunk_id(self):
         """`--chunk "Chunk 01"` must find what `--chunk 01` finds."""
         bare = _chunk_section_lines(PLAN, "01")

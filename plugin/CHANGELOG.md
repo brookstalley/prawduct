@@ -10,6 +10,34 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.4.0-dev
+
+**A Critic finding now says whether it found an instance or a class — and fixing the sites it named is no longer a resolution.** The most expensive review failure is the cheap-looking one: a finding names two files, you fix those two, and the same defect is still in four more. It costs a full extra round every time, and the reviewer usually knew.
+
+### The tell is mechanical, not a judgement call
+
+Say why it broke in one sentence. **If that sentence does not name the site you found, it is a class** — and the sentence itself tells you what to search for. *"The `"--flag" in argv` idiom reads an unknown token as absent"* names an idiom, not a command, so every command using that idiom is a member, and most of them are outside the diff you are looking at.
+
+Findings now carry a `**Scope:** instance | class` line, so what reaches you is a bounded class instead of a list of addresses.
+
+### An enumeration is not a fix
+
+The other half, and the one with teeth: an **instance** closes by fixing it, but an **unbounded class** closes only by a *construction* — one owner every member passes through, or a check derived from the source of truth. A longer list of names is not a resolution, because the next member to be written is not on it.
+
+At `verify-resolutions`, a reviewer grading your fix is now told to re-run the finding's own reason as a search before writing `fixed`. A class finding closed at the sites it happened to name stays blocking.
+
+### Why this ships as review prose
+
+Every one of the Critic's seven goals is already prose, and the observed defect was that *this* prose was absent — not that prose does not work. The escalation trigger is written down rather than left to judgement: if a review after this produces a site-naming finding that does not answer instance-or-class, the answer becomes machine-checkable.
+
+**Known gap, stated rather than discovered later:** `chunk`-mode reviews do not carry the rule yet — their instruction payload is at its size ceiling. `final`, `cumulative` and `verify-resolutions` all have it, and a `chunk`-mode finding meets the rule one round later when its fix is graded.
+
+### Also in this release
+
+**The learnings corpus stopped burying its own general rule.** Seventeen rules across three families became three sharp ones — the fix has relatives, your search under-reports, and bound a class by its property rather than its container. All seventeen were saying versions of the same thing in different vocabularies, and none of them fired.
+
+**Two crashes and a silent failure, all found by the rule above.** A plan numbering a sub-chunk (`Chunk 0.1`) tracebacked instead of returning a diagnostic — leading-zero trimming read the id as one token. And the session-end report of an unparseable plan heading was wired to a prose substring, so rewording the message would have silently switched off the only surface that tells you which line to fix.
+
 ## v3.3.4
 
 **An archived plan now says whether it actually finished.** `archive-plan` stamps `unbuilt_at_archive:` into the frontmatter, naming the chunks that stopped it — so filing a plan away no longer erases the difference between work that completed and work that was abandoned mid-chunk.

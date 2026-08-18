@@ -621,9 +621,13 @@ def _reflection_provenance_header() -> str:
     take the whole session boundary with it — making the stamp a new way to lose
     a reflection, which is the one thing this write site must never become.
     """
+    # Computed ABOVE the guard, because it cannot fail and the guard's job is to
+    # name what did. Inside, a manifest read that raises degraded the date too,
+    # so the tag said `archived=unknown` for a value nothing had asked the disk
+    # for — a field reading as unresolvable when it was merely adjacent to one.
+    archived = datetime.now(timezone.utc).date().isoformat()
     try:
         version = _plugin_manifest_version() or "unknown"
-        archived = datetime.now(timezone.utc).date().isoformat()
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- provenance is metadata; the reflection it labels must survive anything this line does
         # Named, not swallowed. Every other degradation at this boundary prints
         # `NOTE: … ({exc})`, and a stamp that quietly reads `unknown` forever is
@@ -634,7 +638,7 @@ def _reflection_provenance_header() -> str:
             "— archiving it stamped `unknown`.",
             file=sys.stderr,
         )
-        return "<!-- prawduct: version=unknown | archived=unknown -->"
+        return f"<!-- prawduct: version=unknown | archived={archived} -->"
     return f"<!-- prawduct: version={version} | archived={archived} -->"
 
 
@@ -1927,10 +1931,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             # the offending LINE — the most actionable message this parser
             # produces, and precisely the one a silent drop would keep from the
             # only person who can fix it.
-            if type_error and (
-                type_error.startswith("unknown type:")
-                or "do not parse as one" in type_error
-            ):
+            if _bpr.is_reportable_type_error(type_error):
                 waiver_notes.append(f"chunk-type-parse-error: {type_error}")
             if chunk_type == "designer-handoff" and not doc_only:
                 designer_handoff_skip = True

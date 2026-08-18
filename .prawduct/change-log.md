@@ -3,6 +3,64 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-18: the cumulative review's two warnings close by construction, and both were class-shaped
+
+<!-- prawduct: type=fix | scope=instance-vs-class -->
+
+`rev-20260818T175424Z-bd5c4bf5` returned 0 blocking, 2 warning, 10 note over
+`bbc31edeabf2...437e7b9a`. **Every finding carried the `Scope:` slot the same bundle added**, and
+both warnings graded themselves `class` — the first live evidence the rule fires.
+
+**A normalizer written against the old grammar keeps typechecking against the new one.**
+`_normalize_chunk_id` trimmed leading zeros with `lstrip("0")` on the whole id, but chunk ids grew
+dot-separated components: `"0.2"` lost the zero of its *first* component and returned `".2"`,
+truthy enough that the `or "0"` fallback could not fire, and `_chunk_sort_key` then evaluated
+`int("")`. That ValueError is not in `unticked_committed_chunk_notice`'s `(OSError,
+SubprocessError)` except-set and two of its three callers are unguarded, so a plan numbering
+`Chunk 0.1` tracebacked exactly where `api-contract.md`'s error model promises a diagnostic.
+Fixed by making the one normalizer total — the zero trim is per *component*, because that is what
+the grammar makes it — and by routing the two inline copies through it, which is what makes its
+docstring's "the only chunk-id normalizer in the tree" true rather than aspirational. Both sides
+of the `unticked & committed` intersection had carried the same inline trim, so they agreed on a
+wrong answer, and agreement reads as corroboration.
+
+**A cross-module coupling on a prose substring has nothing that fails when the prose is
+reworded.** `cmd_stop` recognized an unparseable-heading report by `"do not parse as one" in
+type_error` and its sibling by `startswith("unknown type:")` — two literals produced in a module
+that does not know they are load-bearing, both inside long narrative messages rewritten whenever
+the parser's advice improves. Rewording either silently disabled the only session-end surfacing of
+a plan heading nothing can parse, leaving the author of the broken plan with no line number.
+`buildplan_refs` now owns the discriminator (`UNPARSED_HEADING_MARKER`, `UNKNOWN_TYPE_PREFIX`) and
+exports one predicate, `is_reportable_type_error`, that answers both members — because they are
+one question, and a caller asking it twice is a caller that can come to answer it once. The pin
+feeds the predicate output *produced by the real producers*: a test that hand-writes the sentence
+it expects re-creates the coupling one layer up, going green against a producer that has drifted
+because the fixture drifted with the assertion.
+
+Also fixed, riding the same commit: the reflection provenance stamp computed `archived` inside the
+version read's `try`, so a manifest failure degraded a date that touches no disk and cannot fail —
+`archived=unknown` for the one field the corpus query this stamp exists for would group by.
+
+Two `.prawduct/` notes closed for free (they move no coverage): 14 blank-line runs left by the
+learnings consolidation, and four retired rules whose `learnings-detail.md` sections still read as
+live. The four were found the way the finding said to find them — diff the `## ` headings at the
+merge-base against HEAD and intersect with the detail file, a query rather than a list — and each
+now carries a `**Superseded by** <survivor>` line. Headings are unchanged, so the
+`[[an untested governance bound rots silently across a migration]]` wikilink still resolves.
+
+Four notes accepted with reasons recorded as facts: a deliberate plan-wide parser refusal, a
+registry row that should wait for the #667 audit so it states audited coverage rather than a
+week-old snapshot, a `building.md` sentence that is true while its label no longer resolves, and a
+Goal 4 legibility risk that would spend `review-protocol.md`'s last 5 tokens.
+
+**One process finding for the operator, from the coordinator rather than a goal:** the design
+reviewer self-reported violating its no-execution contract — it ran `python3` to import
+`buildplan_refs` and call `_unparsed_chunk_headings` while checking a regex's blast radius.
+Read-only and pure, and it states no finding rests on the result, but `critic-reviewer`'s
+allow-list grants `Read`/`Grep`/`Write` and a fixed set of `git` subcommands, and a bare `Bash`
+call was not anticipated by it. Whether that should be structurally impossible rather than
+prose-forbidden is a decision, not a defect to patch here.
+
 ## 2026-08-18: a finding says whether it is an instance or a class, and the remedy is graded
 
 <!-- prawduct: type=chore | scope=instance-vs-class -->

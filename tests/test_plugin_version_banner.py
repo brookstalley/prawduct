@@ -108,6 +108,49 @@ class TestVersionMath:
         assert banner.version_tuple("1.8.1") < banner.version_tuple("2.0.0")
         assert banner.version_tuple("garbage") == (-1,)  # sorts below everything
 
+    def test_version_tuple_orders_a_prerelease(self, banner):
+        """`develop` ships `X.Y.Z-dev`; `main` promotes it to `X.Y.Z`.
+
+        Parsing the version as three integers made `"0-dev"` non-numeric and
+        collapsed the whole string to the malformed sentinel `(-1,)` — which is
+        not merely imprecise, it sorts BELOW every real version, so a consumer
+        moving onto a prerelease reads as having moved backwards: no update
+        banner, and an empty highlight range.
+
+        Both directions are asserted. A prerelease precedes its own release and
+        follows the release before it; getting only the first right is what a
+        sentinel that sorts below everything already did.
+        """
+        assert banner.version_tuple("3.4.0-dev") < banner.version_tuple("3.4.0")
+        assert banner.version_tuple("3.3.4") < banner.version_tuple("3.4.0-dev")
+        assert banner.version_tuple("3.4.0-dev") != (-1,), (
+            "a prerelease collapsed to the malformed sentinel — it would sort "
+            "below every real version and suppress its own update banner"
+        )
+
+    def test_changelog_headings_keep_the_prerelease_suffix(self, banner):
+        """The section key must match the manifest string exactly.
+
+        A pattern capturing only the numeric core filed `## v3.4.0-dev` under
+        `3.4.0`, so the lookup for the RUNNING version missed its own entry and
+        the banner rendered a version move with no highlights — the one case the
+        changelog exists to serve.
+
+        Driven against the pattern with synthetic headings, so it keeps testing
+        the rule after this repo's own CHANGELOG stops carrying a prerelease.
+        """
+        for heading, expected in (
+            ("## v3.4.0-dev", "3.4.0-dev"),
+            ("## v3.4.0-dev.2", "3.4.0-dev.2"),
+            ("## v3.4.0", "3.4.0"),
+        ):
+            m = banner._SEMVER_HEADER.match(heading)
+            assert m, f"{heading!r} is no longer recognized as a version section"
+            assert m.group(1) == expected, (
+                f"{heading!r} keyed its section under {m.group(1)!r} — the "
+                "manifest string and the changelog key must be the same string"
+            )
+
     def test_highlights_select_open_lower_closed_upper(self, banner):
         cl = [("1.8.1", "patch"), ("1.8.0", "minor"), ("1.7.0", "old")]
         picked = banner.highlights_in_range(cl, "1.7.0", "1.8.1")

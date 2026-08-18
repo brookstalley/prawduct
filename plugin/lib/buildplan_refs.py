@@ -457,7 +457,7 @@ def _committed_chunk_ids(
                 # One group per anchored form; exactly one is ever set, and
                 # reading `group(1)` alone would silently drop forms 2 and 3.
                 cid = next(g for g in m.groups() if g is not None)
-                out.setdefault(cid.lstrip("0") or "0", subject)
+                out.setdefault(_normalize_chunk_id(cid), subject)
         return out
 
     subjects = proc.stdout.splitlines()
@@ -1377,6 +1377,45 @@ class ChunkSection(NamedTuple):
     unparsed: list[tuple[int, str]]
 
 
+#: The marker :func:`unparsed_chunk_heading_reason` stamps on its prose so a
+#: consumer can recognize it without matching a sentence. The reason text is
+#: long, narrative and rewritten whenever the parser's advice improves; a reader
+#: that greps a phrase out of it goes silently dead on the first reword, and the
+#: only session-end surfacing of an unparseable plan heading is what goes quiet.
+#: Producer-owned by construction: the string a consumer tests for is the string
+#: this module writes, so the two cannot drift apart.
+UNPARSED_HEADING_MARKER = "unparseable-chunk-heading"
+
+
+#: The prefix :func:`chunk_type` stamps on an unrecognized ``Type:`` value. Same
+#: rule, same reason, and it is a constant for the same one: the sentence after
+#: it names the allowed values and will grow as they do.
+UNKNOWN_TYPE_PREFIX = "unknown type:"
+
+
+def is_unparsed_heading_error(reason: str | None) -> bool:
+    """Whether ``reason`` is :func:`unparsed_chunk_heading_reason`'s output.
+
+    The predicate rather than the marker is the export callers should reach for:
+    it keeps *how* the reason is recognized on this side of the boundary, so a
+    future change of mechanism (a marker, a prefix, a structured error) touches
+    one function instead of every consumer.
+    """
+    return bool(reason) and UNPARSED_HEADING_MARKER in reason
+
+
+def is_reportable_type_error(reason: str | None) -> bool:
+    """Whether a ``Type:`` read's error is one a session-end surface should show.
+
+    Both members of the class in one predicate, because they are one question —
+    *did the plan's own text defeat the parser in a way an author can fix?* — and
+    a caller asking it twice is a caller that can come to answer it once.
+    """
+    return bool(reason) and (
+        reason.startswith(UNKNOWN_TYPE_PREFIX) or is_unparsed_heading_error(reason)
+    )
+
+
 def unparsed_chunk_heading_reason(section: ChunkSection) -> str | None:
     """Prose for a caller to report ``section``'s unparseable headings, or
     ``None`` when every chunk heading in the plan parsed.
@@ -1392,9 +1431,10 @@ def unparsed_chunk_heading_reason(section: ChunkSection) -> str | None:
     if len(section.unparsed) > 3:
         shown += f"; …and {len(section.unparsed) - 3} more"
     return (
-        f"{len(section.unparsed)} chunk heading(s) in this plan announce a chunk but "
-        f"do not parse as one ({shown}) — an unparseable heading also fails to close "
-        "the section before it, so no chunk boundary in this plan can be trusted"
+        f"{UNPARSED_HEADING_MARKER}: {len(section.unparsed)} chunk heading(s) in this "
+        f"plan announce a chunk but do not parse as one ({shown}) — an unparseable "
+        "heading also fails to close the section before it, so no chunk boundary in "
+        "this plan can be trusted"
     )
 
 
@@ -1476,7 +1516,7 @@ def _chunk_section_lines(content: str, chunk_id: str) -> ChunkSection:
         stripped = line.strip()
         heading = _CHUNK_HEADING_RE.match(stripped)
         if heading:
-            head_norm = heading.group(1).lstrip("0") or "0"
+            head_norm = _normalize_chunk_id(heading.group(1))
             if in_section:
                 # Entered a sibling chunk; stop accumulating.
                 break
@@ -1515,9 +1555,18 @@ def _normalize_chunk_id(chunk_id: str) -> str:
     grew to cover the retired one's extra folding, because nothing asked for it;
     if a caller ever needs case- or separator-insensitive matching, widen this
     one rather than adding a second.
+
+    **Total on the dotted grammar, which it was not when that grammar widened.**
+    ``lstrip("0")`` reads the id as one token, so ``"0.2"`` lost the leading zero
+    of its FIRST component and returned ``".2"`` — truthy, so the ``or "0"`` guard
+    could not fire — and ``_chunk_sort_key`` then evaluated ``int("")`` and raised
+    past an except-set that does not catch it. The trim is per COMPONENT because
+    that is what the grammar makes it: a normalizer written against the old
+    grammar keeps typechecking against the new one and answers wrongly, which is
+    why this is fixed here rather than guarded at the sort.
     """
     bare = _CHUNK_LABEL_PREFIX_RE.sub("", chunk_id.strip())
-    return bare.lstrip("0") or "0"
+    return ".".join(part.lstrip("0") or "0" for part in bare.split("."))
 
 
 def _qualifier_scope_lines(
@@ -1752,7 +1801,7 @@ def _parse_build_plan_chunk_type(
         return "code", None  # fail-closed default
     if declared not in _BUILD_PLAN_ALLOWED_TYPES:
         allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES))
-        return None, f"unknown type: {declared!r} (allowed: {allowed})"
+        return None, f"{UNKNOWN_TYPE_PREFIX} {declared!r} (allowed: {allowed})"
     return declared, None
 
 

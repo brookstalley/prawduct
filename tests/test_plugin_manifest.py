@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -58,9 +59,29 @@ class TestPluginManifest:
         )
 
     def test_version_is_semver(self, manifest):
-        parts = manifest["version"].split(".")
-        assert len(parts) == 3 and all(p.isdigit() for p in parts), (
-            f"version must be semver major.minor.patch, got {manifest['version']!r}"
+        """Semver 2.0, prerelease suffix included.
+
+        `project-preferences.md` ratifies **whole-surface semver**; this check
+        used to assert `major.minor.patch` with every part `isdigit()`, which is
+        narrower than the spec it names — it rejects `3.4.0-dev`, a well-formed
+        prerelease, so the assertion contradicted the norm it enforces rather
+        than implementing it. Widened 2026-08-18 by owner ruling when `develop`
+        moved to `3.4.0-dev` (promoted to `3.4.0` at `main`).
+
+        The numeric core is still asserted exactly, because that is what the
+        release model reads: the version is the update cache key, so a
+        malformed core ships nothing.
+        """
+        version = manifest["version"]
+        m = re.fullmatch(
+            r"(?P<core>\d+\.\d+\.\d+)"
+            r"(?:-(?P<pre>[0-9A-Za-z.-]+))?"
+            r"(?:\+(?P<build>[0-9A-Za-z.-]+))?",
+            version,
+        )
+        assert m, (
+            f"version must be semver major.minor.patch[-prerelease][+build], "
+            f"got {version!r}"
         )
 
 

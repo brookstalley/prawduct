@@ -128,6 +128,31 @@ class TestArchivedBlockCarriesProvenance:
         line = (prawduct / "reflections.md").read_text(encoding="utf-8").splitlines()[0]
         assert set(_tags(line)) == {"version", "archived"}
 
+    def test_only_the_field_that_can_fail_degrades(self, monkeypatch):
+        """A version read that raises must not take the DATE down with it.
+
+        Both values were computed inside one `try`, so any manifest failure
+        stamped `archived=unknown` too — for a value that touches no disk, has no
+        failure mode, and is the field the corpus query this stamp exists for
+        would group by. `reflection.md` documents the tag as
+        `archived=YYYY-MM-DD` and explains only `version=unknown`, so the doc was
+        true of the code's intent and false of its behavior.
+
+        Both arms are checked, because they degraded together and only one of
+        them should: the raising manifest read AND the `None` return.
+        """
+        def _boom():
+            raise RuntimeError("manifest unreadable")
+
+        for label, stub in (("raises", _boom), ("returns None", lambda: None)):
+            monkeypatch.setattr(_hook, "_plugin_manifest_version", stub)
+            tags = _tags(_hook._reflection_provenance_header())
+            assert tags["archived"] == _today(), (
+                f"with the version read {label}, archived degraded to "
+                f"{tags['archived']!r} — the date touches no disk, cannot fail, "
+                "and is the field the corpus query groups by"
+            )
+
     def test_no_header_when_there_is_nothing_to_archive(self, tmp_path):
         """A whitespace-only reflection archives nothing, so it must not leave an
         orphan header labelling the NEXT session's block."""
