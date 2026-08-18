@@ -881,17 +881,36 @@ def check_change_log_entry(project_dir: Path) -> int:
         return 1
 
     files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    non_md = [f for f in files if not f.endswith(".md")]
+    # THE predicate, shared with `check-pr-doc-only` (CRT-5D8Q). This used to be
+    # an inline `not f.endswith(".md")`, which is a FOURTH classifier that the
+    # CRT-5D8Q consolidation never folded in — so the two gates at the same PR
+    # boundary answered oppositely about the same file. `.prawduct/` session
+    # metadata (`corpus-state.json`, evidence, findings) is not `.md`, so this
+    # gate called it code while `check-pr-doc-only` correctly called it
+    # non-judgeable and skipped the review gates entirely.
+    #
+    # Reported from a consuming repo, and worse than a spurious block: the
+    # remedy text is executable advice, and it was wrong advice. The
+    # `.prawduct/corpus-state.json` that triggered it was another session's
+    # corpus refresh riding along on a cherry-pick, so following the gate would
+    # have written a change-log entry describing someone else's work as the
+    # author's own — a gate demanding a false provenance record.
+    from . import coverage_algebra  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    judgeable = coverage_algebra.judgeable_files(files)
     if not files:
         print(f"empty-diff: no files changed in {base}...HEAD — no entry required.")
         return 0
-    if not non_md:
-        print(f"doc-only: all {len(files)} changed file(s) are .md — no entry required.")
+    if not judgeable:
+        print(
+            f"doc-only: none of the {len(files)} changed file(s) are judgeable "
+            "(docs and session metadata only) — no entry required."
+        )
         return 0
 
     if CHANGE_LOG_REL_PATH not in files:
-        sample = ", ".join(non_md[:3])
-        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
+        sample = ", ".join(judgeable[:3])
+        more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         print(
             f"no-entry: branch changes code ({sample}{more}) but "
             f"{CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "

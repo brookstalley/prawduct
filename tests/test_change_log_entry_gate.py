@@ -109,6 +109,62 @@ def test_doc_only_branch_exempt(tmp_path):
     assert "doc-only" in result.stdout
 
 
+def test_session_metadata_is_not_code(tmp_path):
+    """The consumer-reported defect: `.prawduct/` metadata read as code.
+
+    This gate classified with an inline `not f.endswith(".md")`, so any non-`.md`
+    file was "code" — including the `.prawduct/` session metadata that
+    `coverage_algebra.is_judgeable_path` (whose docstring calls it "THE predicate
+    (CRT-5D8Q fix)") exists to exclude. CRT-5D8Q consolidated three classifiers;
+    this was a fourth that was never folded in.
+
+    **Worse than a spurious block, which is why it is pinned.** The gate's remedy
+    text is executable advice, and it was wrong advice: in the case that surfaced
+    this, the `.prawduct/corpus-state.json` on the blocked branch was another
+    session's corpus refresh riding along on a cherry-pick, so obeying the gate
+    would have produced a change-log entry describing someone else's work as the
+    author's own — the gate demanding a false provenance record.
+    """
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, ".prawduct/corpus-state.json", '{"n": 1}\n', "corpus refresh")
+    result = _run_probe(repo)
+    assert result.returncode == 0, (
+        f"session metadata was read as code and blocked the PR: {result.stderr}"
+    )
+    assert "doc-only" in result.stdout
+
+
+def test_both_pr_gates_agree_on_the_same_diff(tmp_path):
+    """The two PR-boundary gates must never contradict each other.
+
+    `check-pr-doc-only` said "none judgeable, gates may be skipped" while
+    `check-change-log-entry` said "branch changes code" — about the same file, at
+    the same boundary, in the same command. Asserted as *agreement* rather than
+    as two separate expected verdicts, because the defect was the disagreement:
+    pinning each gate's answer independently is what let them drift apart.
+    """
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, ".prawduct/corpus-state.json", '{"n": 1}\n', "corpus refresh")
+    _commit_file(repo, "docs/notes.md", "notes\n", "doc change")
+
+    change_log = _run_probe(repo)
+    env = dict(_git_env(repo))
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    doc_only = subprocess.run(
+        ["python3", str(HOOK), "check-pr-doc-only"],
+        cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+    )
+    # doc-only exits 0 when the diff needs no review; the change-log gate exits 0
+    # when it needs no entry. Same underlying question, so same answer.
+    assert (doc_only.returncode == 0) == (change_log.returncode == 0), (
+        "the two PR-boundary gates disagree about this diff: "
+        f"check-pr-doc-only exit={doc_only.returncode} "
+        f"({doc_only.stdout.strip() or doc_only.stderr.strip()}), "
+        f"check-change-log-entry exit={change_log.returncode} "
+        f"({change_log.stdout.strip() or change_log.stderr.strip()})"
+    )
+
+
 def test_empty_diff_exempt(tmp_path):
     repo = _make_branched_repo(tmp_path)
     # No branch commits: merge-base...HEAD is empty.
