@@ -888,9 +888,16 @@ class TestCriticSkill:
         README half used to accept a bare "read the" anywhere in the file, which
         a `record_lint` sentence four sections away satisfied — so the check
         passed for a release in which the README rule had been merged away.
+
+        `\\bread\\b` and not `"read" in line`: "README".lower() CONTAINS "read",
+        so the substring form is entailed by the line naming README at all, and
+        the guard reads as two conditions while being one. The word boundary is
+        the whole assertion — it fails the moment an editor trims the reading
+        instruction and leaves README sitting in the container list.
         """
         readme_line = next(
-            (ln for ln in self.content.split("\n") if "README" in ln and "read" in ln.lower()),
+            (ln for ln in self.content.split("\n")
+             if "README" in ln and re.search(r"\bread\b", ln.lower())),
             None,
         )
         assert readme_line, "no line tells the reviewer to read the project's README"

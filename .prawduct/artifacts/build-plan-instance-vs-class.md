@@ -49,14 +49,20 @@ mechanical rather than evocative.
 
 - [ ] Chunk 01: A finding says whether it is an instance or a class, and the remedy is graded
 - [x] Chunk 02: Eighteen scattered rules become three sharp ones
-- [ ] Chunk 03: Uplevel the repeated shapes in review-protocol.md (unblocks Chunk 01)
+- [x] Chunk 03: Uplevel the repeated shapes in review-protocol.md (unblocks Chunk 01)
 Context: Plan written 2026-08-17 after the `fleet-feedback-661` branch produced three
 instances of the defect it describes. **Order reversed by operator decision 2026-08-17**
-(the "Open decision" below, option C): Chunk 01 is blocked on a token-budget ruling, and
-Chunk 02 has no such constraint. The stated dependency runs fine in reverse — the vocabulary
-for *class*, *premise* and *construction* gets settled in the consolidated learnings rule,
-and Chunk 01 then CITES it rather than restating it. Chunk 02 is DONE (17 rules to 3,
-reviewed, one blocking fix). Next: Chunk 03 (the uplevel), which unblocks Chunk 01.
+(the "Open decision" below, option C): Chunk 01 was blocked on a token-budget ruling, and
+Chunk 02 had no such constraint. The stated dependency ran fine in reverse — the vocabulary
+for *class*, *premise* and *construction* got settled in the consolidated learnings rule,
+and Chunk 01 now CITES it rather than restating it. Chunk 02 DONE (17 rules to 3, reviewed,
+one blocking fix). Chunk 03 DONE (`review-protocol.md` 3799 → 3671, ceiling untouched at
+3800; reviewed, one blocking fix plus four demoted, all fixed rather than accepted).
+**Chunk 01 is the last chunk and is now unblocked, with 128 tokens of headroom rather than
+the ≥150 the plan predicted** — read the decision on Chunk 03's acceptance criteria before
+designing the rule, because it is the budget. The plan declares no `Critic mode:`, so
+inference picks; Chunk 01 closes the plan, and a `final`/`cumulative` is owed before the
+branch is done — chunk-mode reviews cover Goals 1-3 only.
 
 ## Verification Strategy
 
