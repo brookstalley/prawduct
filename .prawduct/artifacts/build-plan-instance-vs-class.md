@@ -169,6 +169,18 @@ rule that cannot catch the defects that motivated it is the vacuous-guard class 
     `goals-1-3.md`'s prose report contract, which enumerates the fields to report back. Both
     sit in the two files with 1 and 2 tokens of headroom, so the single funding decision above
     covers the whole remaining class rather than leaving a second item to rediscover.
+  - **[DECISION 2026-08-18, from the PR review: there is a FOURTH member, and bounding the class
+    at three was the Family C failure again.]** `plugin/skills/pr/review-protocol.md`'s finding
+    template (`**Goal:** / **Severity:** / **File:** / **Recommendation:**`) is also a surface a
+    reviewer fills while writing a site-naming finding — and it carries **no token ceiling**, so
+    no funding decision blocks it. The three members above were bounded by their *container*
+    (Critic instruction payloads) rather than by the *property* the rule states (any surface a
+    reviewer fills while writing a site-naming finding), which is what this plan's own Family C
+    rule forbids — committed, for the third time in this bundle, inside the change that codifies
+    it. **ACCEPTED, not fixed:** a `skills/` edit is judgeable and costs a review round (~5 min),
+    and nothing else in the PR review buys one. Recorded here and in the cross-cutting row so the
+    deferral is a deferral and not a drop — the PR reviewer's slot is unblocked work the moment
+    anything else opens that file.
   - **Checked and clean, so it is not an open risk:** `critic_consolidate.validate_partial`
     tolerates an unrecognized key on a finding, so a reviewer that mirrors the new markdown
     slot into its JSON partial as `"scope"` does not fail the consolidation closed. Verified by

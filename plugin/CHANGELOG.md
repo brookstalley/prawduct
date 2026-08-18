@@ -38,6 +38,18 @@ Every one of the Critic's seven goals is already prose, and the observed defect 
 
 **Two crashes and a silent failure, all found by the rule above.** A plan numbering a sub-chunk (`Chunk 0.1`) tracebacked instead of returning a diagnostic — leading-zero trimming read the id as one token. And the session-end report of an unparseable plan heading was wired to a prose substring, so rewording the message would have silently switched off the only surface that tells you which line to fix.
 
+### Four defects an external fleet report found, and the shape they share
+
+A survey of ~840 reflection and learning entries across ten governed repos (issue #661) returned four still-live defects. **Three are the same defect in different clothes: a check that could not run reads as a check that passed.**
+
+**A repo where prawduct was never set up now says so — loudly.** Enabling the plugin starts the hooks, and the hooks fill `.prawduct/` with runtime state, so a never-onboarded repo shows a version banner, a populated directory and firing advisories — and reads as installed. A live repo sat that way for weeks while three advisories fired and not one of them contained the word "onboard": prawduct reported three consequences and never the cause. There is now an **urgent** `PRAWDUCT IS NOT SET UP` advisory that fires only when *every* install marker is absent, so a repo that merely drifted still gets told to repair rather than reinstall.
+
+**`prawduct-hook` no longer ignores an argument it cannot read.** `update-gitignore` took no argv at all, so `--dry-run` was not rejected — there was no parsing, and the reconcile ran. Typing `--help` mutated your `.gitignore`. The guard is at the dispatch site rather than per command, because a per-command fix misses whichever command nobody thought of, and the test derives the command set from the dispatch chain's own source rather than a hand-kept list. `update-gitignore` also gained the real `--dry-run` its siblings taught you to expect. Five commands deliberately still accept free arguments, and `api-contract.md` names them and the nine not yet audited — rather than absorbing them into a confident allowlist.
+
+**A build plan with an unparseable chunk heading was answering with another chunk's contents.** `Chunk 1.2` and checkbox-prefixed headings did not match, and an unmatched heading also fails to *close* the section before it — so a lookup returned 10 body lines instead of 3, verified a different chunk's files, and passed. A silent wrong answer outranks a silent empty one. The signal now scans the whole plan and names the offending line numbers.
+
+**Archived reflections carry provenance.** Each block is stamped with the plugin version and date that produced it, so the corpus can be grouped by release.
+
 ## v3.3.4
 
 **An archived plan now says whether it actually finished.** `archive-plan` stamps `unbuilt_at_archive:` into the frontmatter, naming the chunks that stopped it — so filing a plan away no longer erases the difference between work that completed and work that was abandoned mid-chunk.
