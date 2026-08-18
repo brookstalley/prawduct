@@ -67,7 +67,8 @@ inside their own file per the standing order (dedupe, then raise, never relocate
 - `building.md` sits at 4806 tokens against a 4810 ceiling. Its four-failure-mode sentence took
   the tighter form `session-digest.md` already used. Net zero — still 4806, so
   `LAST_MEASURED_TOKENS` is unchanged.
-- `session-digest.md` was at **9983 of 10000 chars — 17 of headroom**, and this is a *hard*
+- `session-digest.md` was at **9983 of 10000 chars emitted — 17 of headroom** (the file is a
+  char longer than what the hook emits; the assertion measures the emitted text), and this is a *hard*
   limit, not a self-imposed one: over it Claude Code spills the digest to a file instead of
   injecting it, so the always-injected surface stops being always-injected. The first draft
   landed at 10083 and the suite caught it. Funded by three cuts — the "label answers whose it
@@ -77,8 +78,10 @@ inside their own file per the standing order (dedupe, then raise, never relocate
   the change hands back **more headroom than it took**.
 - A **third** budget absorbed it unremarked until the Critic named it:
   `test_slim_budget_at_most_half_of_full` compares the two digests, so trimming the full one
-  while growing the slim one moves both sides at once — headroom 273 → 175 chars. Still green,
-  recorded here because a budget that tightened silently is the one the next edit walks into.
+  while growing the slim one moves both sides at once — its headroom fell by roughly a third.
+  Still green. No endpoint is written here on purpose: this bullet exists to warn the next edit
+  that the budget tightened, and a hand-copied figure goes stale against a number both sides move
+  (it already did once inside this branch — read it live off the test, not off this line).
 
 The test contract moved with it: the old assertions pinned the literals "Safe to `/clear`." and
 "Not safe to `/clear` yet", which *were* the sentence-you-had-to-parse. Pinning them now would
