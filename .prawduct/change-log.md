@@ -3,6 +3,29 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: the test suite stops taking the whole machine
+
+<!-- prawduct: type=chore | scope=clear-cadence -->
+
+pytest-xdist is pinned to **5 workers** instead of `-n auto` (owner ruling). `auto` takes every
+core, so a full-suite run owned the developer's machine for its whole duration — observed at a load
+average of 24 on a 10-core box with a run in flight. Worker count is now a **developer-ergonomics**
+setting rather than a throughput one, which is why it is a fixed number and not a fraction of
+`auto`.
+
+**Routed as a norm amendment, not a config tweak.** `Parallelization` is a `project-preferences.md`
+norm with a test enforcing it, so editing `pyproject.toml` alone would have left the norm
+contradicting the tree — doc-drift-to-sync, which this repo forbids. The preference row carries the
+ruling, its date and its why; the test pins the new value **and** asserts `auto` is gone, since a
+revert is the regression and a check for "some `-n` value" sails through it.
+
+**CI inherits it and is therefore oversubscribed by one worker** on a 4-core runner — accepted
+deliberately, not overlooked, and named at all three sites rather than denied at one. Overriding it
+in `tests.yml` would put a pytest flag in a workflow that carries none by norm, and no CI timing was
+measured that would justify amending *that* norm; a first attempt did exactly this, tripped the
+norm's test, and was reverted rather than the norm amended. If runs begin timing out under
+contention, the fix is an environment-driven count *with* that evidence.
+
 ## 2026-08-19: two tools stop losing what they were asked to record
 
 <!-- prawduct: type=fix | scope=clear-cadence -->
@@ -10,15 +33,28 @@
 Both found by *using* the governed path rather than by reading it, and each has a reproduction in
 this branch's own history.
 
-**`backlog file` silently discarded the filer's metadata.** Filing writes a fresh `prawduct:` block
-onto the caller's body — and the caller's body is where a filer declares `related:`, because the
-docs tell them to. The two were *appended*, and parsing is last-block-wins, so the filer's fields
-were dropped. The only signal was a warning that reads cosmetic: *"issue body carries 2 prawduct
-blocks; using the last and ignoring the earlier one(s)."* Three items filed on 2026-08-19 (#690,
-#691, #692) lost their `related:` edges exactly that way, and nothing failed. Composition now
-**merges**: one block out, the filer's fields preserved, and the caller's fresh fields winning a key
-collision — so a body claiming `automated: false` cannot launder a background sweep into looking
-human. Fixed where the block is composed, not by asking filers to stop writing one.
+**`backlog` silently discarded metadata in FOUR places.** It began as a filing bug: filing writes a
+fresh `prawduct:` block onto the caller's body — and the caller's body is where a filer declares
+`related:`, because the docs tell them to. The two were *appended*, and parsing is last-block-wins,
+so the filer's fields were dropped. The only signal was a warning that reads cosmetic: *"issue body
+carries 2 prawduct blocks; using the last and ignoring the earlier one(s)."* Three items filed on
+2026-08-19 (#690, #691, #692) lost their `related:` edges that way, and nothing failed.
+
+**The class was wider than the bug, and three sweeps bounded it wrong before one bounded it right.**
+The property is *a writer that persists a body's block*; the trap is `parse_block` (last-block-wins)
+paired with `strip_block` (removes them all) in a writer that emits exactly one — which discards an
+earlier block's fields **and** destroys the multi-block warning that was the loss's only signal.
+Found at four sites: `compose_body` (filing), `upsert_block_field`, `core._body_update_preserving_block`
+— where `backlog update --body` was permanently dropping an earlier block's `id_aliases`, the
+alias-loss footgun that function's own docstring names — and `_related`, whose read-modify-write
+computed its new list from a last-block read and wrote it over a merged one. All four now route
+through `encode.merge_all_block_fields`, the property's one home. Bounding the class by *module*
+rather than by property is what left the last two standing; the closure was verified by enumerating
+every `parse_block` call site in the package, not by re-checking the sites the findings named.
+
+Precedence: the caller's fresh fields win a key collision, and the attribution stamps
+(`automated`/`worker`) are stripped from an embedded block in both directions — a body must not be
+able to launder a background sweep into looking human, nor a human's filing into looking automated.
 
 **`test-evidence record --no-rerun` restamped a count it had not checked.** A restamp is an operator
 *assertion* that the tree's test-relevant content is unchanged since the last real run. Nothing
