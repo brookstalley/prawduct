@@ -39,6 +39,22 @@ One methodology note worth keeping: this was caught by `/prawduct:pr`'s Step 1d 
 tag as bookkeeping ceremony between a finished branch and its PR. The step that felt like a checkbox
 was the only thing standing between the branch and a release that would have skipped it silently.
 
+
+**The blast-radius half generalised, 2026-08-19 (`clear-cadence` Chunk 01).** Two guards differed:
+`status=` was guarded, `release=` — which drops a whole scope — was not. Same shape in the
+critic-marker work: the plan recorded as **verified** that a retained `.critic-active` marker could
+not block a new review, citing `critic_marker.write_marker`'s overwrite. That is the *reader*. The
+consumer is `critic_consolidate.begin_review`, which refuses on `active or roster_state ==
+"complete"` **before** `write_marker` is reached and is **not** gated on `--force`, so the change
+did block the next `/prawduct:critic` for up to the TTL. The un-asked consumer was, again, the one
+with the largest blast radius — it refuses a whole review round.
+
+The new half is the *word*. Skipping the consumer check is the ordinary error; writing **"verified"**
+against a reader check is worse, because an assumption invites scrutiny and a verification deflects
+it. The label survived plan review, its own author's deep-scrub, and reached an independent Critic
+before anyone opened the consumer. So: a claim labelled verified must name the function whose
+behaviour was observed, or it is an assumption wearing the wrong word.
+
 ## A background agent's liveness is answered by ITS OWN completion signal, never by reading the files it is midway through writing — a death verdict from a directory listing is how a re-dispatch clobbers a live review. And the grep that "confirms" it may be matching the failure mode's own DOCUMENTATION, which feels exactly like verification
 
 Observed twice. `critic_consolidate._archive_leftovers` exists because on **2026-08-02** "a premature

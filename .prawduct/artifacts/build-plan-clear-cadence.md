@@ -73,7 +73,7 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
 
 - **Description:** `#687`'s load-bearing prerequisite, and a defect in its own right. The boundary/continuation table in `architecture.md` divides `SessionStart` sources on one question — **was the transcript restored?** — and sorts the critic-active marker sweep onto the boundary side. But the premise that licenses deleting a marker someone else wrote is narrower: **the dispatching process is gone.** For `startup` both answers agree. For `clear` they diverge — the transcript is discarded but the process is not — so the sweep is sorted by a proxy for the question it actually asks. The same reasoning already excluded `compact` and `fork`; `clear` was missed because it fails the transcript test that the other two pass.
 
-  The fix keys on the marker rather than the source: at `clear`, sweep only a marker that already fails the liveness test (`review_active()` sweeps exactly when the TTL has expired), and leave a fresh one alone. `startup` keeps the unconditional sweep, where process death is certain. This preserves the crashed-Critic rescue the sweep exists for — a stale marker is still swept — while never deleting one that is plausibly live. Note what this costs, because the asymmetry is the whole argument and it is not free: a marker that survives a `/clear` and is genuinely dead can raise a false "abandoned review" at the next Stop until the TTL expires, since `marker_present()` deliberately has no TTL. Sweeping a live marker is a silent governance failure; a false signal is a loud one.
+  The fix keys on the marker rather than the source, at **both** boundary sources: sweep only a marker that already fails the liveness test, and leave a fresh one alone. This preserves the crashed-Critic rescue the sweep exists for — a stale marker is still swept — while never deleting one that is plausibly live. What it costs is priced once in `plugin/lib/critic_marker.py`'s module docstring and deliberately not restated here; the short form is that retention is the *loud* error and sweeping a live marker the *silent* one. See the `[DECISION: ...]` under Deliverables for why this is boundary-wide rather than a per-source split, and the `[CORRECTED ...]` assumption above for what the cost actually is.
 
   Cascade surfaces: the dispatch path, the module docstring that states the lifecycle, `architecture.md` § What counts as a session boundary (descriptive — it *tracks* the code, so it is updated, not amended), and the tests pinning the split.
 - **Depends on:** none
@@ -151,7 +151,7 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
 
 ## Status
 
-- [ ] Chunk 01: The `/clear` sweep stops deleting a plausibly-live marker
+- [x] Chunk 01: The `/clear` sweep stops deleting a plausibly-live marker
 - [ ] Chunk 02: `building.md` re-prices the work-cycle limit
 - [ ] Chunk 03: The clear line answers *should you*, and a live review moves the verdict
 - [ ] Chunk 04: Settle the on-demand guides' budget policy (#688)
@@ -161,5 +161,16 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
 Plan authored 2026-08-19 on `fix/clear-cadence` off `develop`, closing #687 (buildable half) and #688 for the 3.3.5 release. Owner set the scope this session: #687 plus the marker-sweep prerequisite plus #688; **#560 explicitly deferred to 3.3.6**.
 
 Two of #687's five acceptance items were already shipped by `governance-surface-dedup` Chunk 04 and are not re-done here — the findings-only rule and the write-notes-before-the-wait obligation both live at `plugin/methodology/reflection.md`.
+
+**Chunk 01 closed 2026-08-19.** Commits `32f3473f` (change), `48d9e3fd` (findings fix), `15e1050e`
+(budget). Critic `cumulative` rev-20260819T145554Z-9e408ad8 → 1 blocking / 8 warnings / 8 notes,
+all 17 dispositioned (14 fixed, R-3 filed as #690, R-16/R-17 accepted); `verify-resolutions`
+rev-20260819T152802Z-583aea58 → 0/0/0, gate satisfied. Suite green, evidence from a real JUnit run.
+
+The chunk's most useful output was not the fix: the plan had recorded a **false "verified"** (see
+the `[CORRECTED ...]` assumption above), and that is now a sharpened rule in `learnings.md`.
+Governance dispositions written at plan time are predictions — re-check them at chunk close rather
+than inheriting them as passes; the one-home disposition claimed conformance before the code existed
+and was wrong within one commit.
 
 Release context: 12 scopes are release-pending for 3.3.5. `check-releasability`'s four "no build-plan file" warnings are advisory by the release runbook's own triage table, not blockers.
