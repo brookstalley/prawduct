@@ -59,9 +59,11 @@ Backlog items: **#675** (Chunk 01), **#692** and **#690** (Chunk 02). All three 
 - [ ] Chunk 01: Tree capture stops re-hashing the world — and cleans up after a timeout
 - [ ] Chunk 02: An expiring marker announces itself, and never discards a self-heal
 
-Context: Plan authored 2026-08-19 from this session's discovery; nothing built yet.
-Next: Chunk 01. Chunk order is deliberate — Chunk 01 is the field-breaking bug and is
-independent, so it can ship even if Chunk 02's review runs long against the release cut.
+Context: Chunk 01 built, reviewed (`cumulative`, findings resolved) and committed
+2026-08-19. Next: Chunk 02, which is independent of it. Chunk order was deliberate —
+Chunk 01 is the field-breaking bug, so it can ship even if Chunk 02's review runs long
+against the release cut. Chunk 01 corrected two things in its own spec as it was built;
+both corrections are in its Description and neither should be re-litigated.
 
 ## Verification Strategy
 
@@ -86,7 +88,7 @@ the two defects in this branch's sibling scope (`clear-cadence`) were both found
   tracked file. On a bind mount each read pays mount-RPC latency and the capture blows
   through the hardcoded 15s timeout — every `critic-begin` fails, so no review can record
   and the PR gate becomes structurally unsatisfiable. Each timeout also kills `git add -A`
-  mid-operation, leaving `.git/index.lock` behind so a *later, unrelated* `git commit`
+  mid-operation, leaving `.git/index.lock` behind so a *later, unrelated* `git commit` <!-- prawduct:allow prawduct/chunk-ref-missing -- the ORIGINAL report's claim, quoted so the correction below has something to correct; the path is absent by design -->
   fails pointing at git rather than at prawduct. Three defects, one site: the cost, the
   unconfigurable budget, and the wedge. Fix the cost first — copying the repo's existing
   `.git/index` preserves stat data, so `add -A` re-hashes only what actually changed —
@@ -95,11 +97,11 @@ the two defects in this branch's sibling scope (`clear-cadence`) were both found
   **Correction, from building it (2026-08-19): the wedge is real but it is not in
   `.git`.** `capture_tree` runs every git call with `GIT_INDEX_FILE` pointed at its temp
   index, and git takes its index lock *next to the index it was given* — so a capture
-  killed mid-`add` leaves `<tempdir>/prawduct-idx-XXXX.lock`, never `.git/index.lock`.
+  killed mid-`add` leaves `<tempdir>/prawduct-idx-XXXX.lock`, never `.git/index.lock`. <!-- prawduct:allow prawduct/chunk-ref-missing -- the correction itself: this path is what the fix does NOT produce, and saying so is the record's whole value -->
   Reproduced directly (kill a real `git add -A` mid-operation under `GIT_INDEX_FILE`: no
   `.git/*.lock` appears), and there is exactly one `git add` call site in the plugin, so
   no other prawduct path can produce one either. The leak this chunk closes is therefore
-  temp-directory litter — one stale lock per timeout — and the report's `.git/index.lock`
+  temp-directory litter — one stale lock per timeout — and the report's `.git/index.lock` <!-- prawduct:allow prawduct/chunk-ref-missing -- same correction; a future reader of #675 must not believe this fix addressed that path -->
   is NOT attributable to this code path. Recorded rather than quietly re-scoped: whatever
   the reporter saw has another cause, and a future reader of #675 should not believe this
   fix addressed it.
@@ -124,14 +126,22 @@ the two defects in this branch's sibling scope (`clear-cadence`) were both found
   `read-tree HEAD` fallback when that file is absent, unreadable, or only partly copied;
   `_GIT_TIMEOUT` becomes an env-overridable default (`PRAWDUCT_GIT_TIMEOUT`), refusing a
   malformed override rather than silently restoring the default; a failed capture removes
-  the temp-index lock **it created** and names the remedy in its error string.
+  the temp-index lock **it created** and names the remedy in its error string; the capture
+  result reports **which seed it used**, and a fallback says so on stderr, because a
+  silent degradation to `read-tree` is indistinguishable from the fix not being enough —
+  the operator raises the budget, gets a slow-but-working capture, and closes the bug
+  while the fix never engaged. A refused `PRAWDUCT_GIT_TIMEOUT` is announced once per
+  process for the same reason: it fails every `run_git`, and two advisory callers read a
+  nonzero rc as an honest 'no answer' and go quiet.
   `.prawduct/research/tree-capture-2026-08-19/measure.py` — the committed derivation
   behind the cost claim, the seed-agreement claim, and the mtime claim
 - **Tests:** unit — the seed reads the repo's own index; the fallback path when the copy
   cannot happen at all and when it dies part-way (a truncated index git would reject);
   the env override reaches the subprocess call and a malformed value is refused rather
   than silently defaulted; a capture failure leaves no lock behind and its message names
-  the remedy; a same-tick, same-size edit is still captured (the racily-clean pin, with
+  the remedy; a fallback names itself in the result and on stderr, and a refused override
+  is announced once and only once; a same-tick, same-size edit is still captured (the
+  racily-clean pin, with
   every timestamp forced so the race is not left to the machine's speed); a
   `--skip-worktree` entry still agrees with a verbatim commit. Integration —
   `capture_tree` on a tree with an uncommitted change still returns the correct tree SHA
@@ -142,7 +152,7 @@ the two defects in this branch's sibling scope (`clear-cadence`) were both found
   including for an edit made within one filesystem tick of the index write; elapsed
   capture time on this repo's tree improves measurably against the `read-tree` path,
   recorded by a committed derivation rather than a quoted figure; a forced timeout leaves
-  no lock file behind and says how to raise the budget
+  no lock file behind and says how to raise the budget; no degraded path is silent
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved

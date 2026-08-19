@@ -110,17 +110,37 @@ def _git_timeout() -> "tuple[int | None, str | None]":
     try:
         value = int(raw.strip())
     except ValueError:
-        return None, (
+        return None, _attribute_bad_timeout(
             f"{_GIT_TIMEOUT_ENV} is not a whole number of seconds "
             f"({raw.strip()!r}) — set it to a positive integer, or unset it "
             f"for the {_GIT_TIMEOUT_DEFAULT}s default"
         )
     if value <= 0:
-        return None, (
+        return None, _attribute_bad_timeout(
             f"{_GIT_TIMEOUT_ENV} must be a positive number of seconds, got "
             f"{value} — unset it for the {_GIT_TIMEOUT_DEFAULT}s default"
         )
     return value, None
+
+
+def _attribute_bad_timeout(reason: str) -> str:
+    """Say a refused override out loud, once, and hand the reason back.
+
+    A refusal has to be visible at the SOURCE, not only wherever it first bites.
+    Every ``run_git`` call fails while the variable is malformed, and not every
+    caller reports the reason — ``coverage`` and ``record_lint`` both read a
+    nonzero rc as an honest 'no answer' and go quiet, which is right for a real
+    git failure and wrong for a typo in the operator's own environment. Without
+    this line an unnoticed `PRAWDUCT_GIT_TIMEOUT=1O` mutes two advisories with
+    nothing on screen. Deduped per process: the variable is read on every git
+    call, and the tenth identical line teaches nothing."""
+    if reason not in _ATTRIBUTED_BAD_TIMEOUTS:
+        _ATTRIBUTED_BAD_TIMEOUTS.add(reason)
+        print(f"evidence: {reason}", file=sys.stderr)
+    return reason
+
+
+_ATTRIBUTED_BAD_TIMEOUTS: set[str] = set()
 
 
 def store_path(project_dir: Path) -> Path | None:
@@ -668,9 +688,18 @@ _ATTRIBUTED_BAD_TREES: set[str] = set()
 
 def _seed_temp_index(
     project_dir: Path, tmp_name: str, env: dict, has_head: bool
-) -> "tuple[bool, str | None]":
+) -> "tuple[bool, str | None, str]":
     """Fill the temporary index so the ``add -A`` that follows re-hashes only
-    what actually changed. Returns ``(ok, reason)``.
+    what actually changed. Returns ``(ok, reason, seed)``, where ``seed`` names
+    which path was taken — ``index-copy``, ``read-tree``, or ``empty``.
+
+    **The seed is reported because the fallback is the failure that looks like
+    success.** A capture that silently degrades to ``read-tree`` is slow again,
+    and on the filesystem this whole change exists for that means the timeout
+    comes back — at which point an operator raises the budget, gets a working
+    capture, and closes the bug while the fix never engaged. Naming the seed in
+    the result (and in the timeout message) is what makes that distinguishable
+    from the fix simply not being enough.
 
     **Preferred: copy the repo's own index.** Its entries carry STAT DATA —
     size, mtime, inode, device — so ``git add -A`` can compare a file's stat
@@ -695,7 +724,13 @@ def _seed_temp_index(
     commit`` in that repo would produce — which is exactly the invariant
     :func:`capture_tree` promises. Seeding from ``read-tree`` drops the flags,
     so a sparse checkout captured that way stages a DELETION for every file
-    outside the cone."""
+    outside the cone.
+
+    An **unmerged** index (mid-conflict) is the third case where the seeds
+    differ on their way in and agree on their way out: the copy carries stage
+    1/2/3 entries that ``read-tree HEAD`` would have flattened, and ``add -A``
+    resolves them to the working tree either way — verified against a real
+    conflicted repo, where both seeds capture the conflict markers as content."""
     rc, git_dir, _ = run_git(project_dir, "rev-parse", "--absolute-git-dir")
     if rc == 0 and git_dir:
         try:
@@ -711,8 +746,8 @@ def _seed_temp_index(
             # captured tree would carry the file's PREVIOUS content and the
             # review would vouch for a tree that never existed.
             shutil.copy2(Path(git_dir) / "index", tmp_name)
-            return True, None
-        except OSError:
+            return True, None, "index-copy"
+        except OSError as exc:
             # Absent, unreadable, or racing a writer. A copy that failed
             # PART-way leaves a truncated index that git would reject as
             # corrupt, so clear it before handing the slot to the fallback.
@@ -720,20 +755,29 @@ def _seed_temp_index(
                 os.unlink(tmp_name)
             except OSError:
                 pass
+            print(
+                f"evidence: could not copy the repo index ({exc}) — falling back to "
+                "`read-tree HEAD`, which re-hashes the whole working tree and may "
+                "exceed the capture budget on a slow filesystem",
+                file=sys.stderr,
+            )
     if not has_head:
-        return True, None  # unborn HEAD: the empty temp index is correct
+        return True, None, "empty"  # unborn HEAD: the empty temp index is correct
     rc, _, err = run_git(project_dir, "read-tree", "HEAD", env=env)
     if rc != 0:
-        return False, f"read-tree failed: {err}"
-    return True, None
+        return False, f"read-tree failed: {err}", "read-tree"
+    return True, None, "read-tree"
 
 
 def capture_tree(project_dir: Path) -> dict:
     """Capture the working tree (tracked changes + untracked, gitignored
     excluded) as a tree object in the shared odb, via a TEMPORARY index.
 
-    Returns ``{"status": "ok", "tree", "head_commit", "head_tree", "clean"}``
-    or ``{"status": "error", "reason"}``. The session's real index and working
+    Returns ``{"status": "ok", "tree", "head_commit", "head_tree", "clean",
+    "seed"}`` or ``{"status": "error", "reason", "seed"}``. ``seed`` names how
+    the temp index was filled (:func:`_seed_temp_index`) — it rides on both
+    outcomes because a capture that degraded to the slow seed and a capture
+    that never had a fast one to lose are the same symptom and different bugs. The session's real index and working
     tree are never touched (R1) — asserted by tests, verified by the D3 spike.
     ``clean`` is True when the captured tree equals ``HEAD^{tree}`` (a verbatim
     commit of this state will carry the same tree SHA)."""
@@ -749,21 +793,30 @@ def capture_tree(project_dir: Path) -> dict:
         if head_commit:
             rc, head_tree_out, _ = run_git(project_dir, "rev-parse", "HEAD^{tree}")
             head_tree = head_tree_out if rc == 0 else None
-        ok, reason = _seed_temp_index(project_dir, tmp_name, env, bool(head_commit))
+        ok, reason, seed = _seed_temp_index(project_dir, tmp_name, env, bool(head_commit))
         if not ok:
-            return {"status": "error", "reason": reason}
+            return {"status": "error", "reason": reason, "seed": seed}
         rc, _, err = run_git(project_dir, "add", "-A", env=env)
         if rc != 0:
-            return {"status": "error", "reason": f"temp-index add failed: {err}"}
+            return {
+                "status": "error",
+                "reason": f"temp-index add failed (seed: {seed}) — {err}",
+                "seed": seed,
+            }
         rc, tree, err = run_git(project_dir, "write-tree", env=env)
         if rc != 0 or not tree:
-            return {"status": "error", "reason": f"write-tree failed: {err}"}
+            return {
+                "status": "error",
+                "reason": f"write-tree failed (seed: {seed}) — {err}",
+                "seed": seed,
+            }
         return {
             "status": "ok",
             "tree": tree,
             "head_commit": head_commit,
             "head_tree": head_tree,
             "clean": tree == head_tree,
+            "seed": seed,
         }
     finally:
         # The lock as well as the index. `GIT_INDEX_FILE` moves git's index

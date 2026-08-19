@@ -31,6 +31,15 @@ and was chased to cause rather than re-run; `shutil.copy2` is the fix and
 `test_same_second_same_size_edit_is_still_captured` is the pin, with every timestamp forced so the
 race is not left to the machine's speed.
 
+**No degraded path is silent**, which is the other thing the review sharpened. A fallback to
+`read-tree` produces exactly the original symptom — a slow capture that times out on the
+filesystem this change exists for — so an operator would raise the budget, get a working capture,
+and close #675 while the fix never engaged. The capture result now reports which seed it used and
+a fallback says so on stderr. A refused `PRAWDUCT_GIT_TIMEOUT` is announced once per process for
+the same reason: it fails *every* `run_git`, and two advisory callers (`coverage`, `record_lint`)
+correctly read a nonzero rc as "no answer" and go quiet — right for a git failure, wrong for a typo
+in the operator's own environment.
+
 Two smaller repairs at the same site. `PRAWDUCT_GIT_TIMEOUT` now overrides the 15-second budget,
 read per call so an operator on a slow filesystem can raise it without a restart; a malformed value
 is **refused**, never silently replaced by the default, because someone who set the variable wanted

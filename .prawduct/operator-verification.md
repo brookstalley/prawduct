@@ -945,3 +945,32 @@ a person would act on. Skills are prose a model executes, and the failure this w
    unstaged --repo <scope>` (no `--json`) ends with a `cache:` line naming the age.
 
 **Verified by:** _(operator, date)_
+
+## VRF-016 — Chunk 01 — Tree capture on a bind-mounted working tree
+
+**Status:** pending
+**Added:** 2026-08-19 (critic-reliability Chunk 01, #675)
+
+**Why a human check:** the defect only manifests where a file read costs a mount round trip.
+This repo has no bind mount, so the acceptance criteria measure the MECHANISM — re-hash volume
+and elapsed capture time on a local disk, where the same change is worth roughly 3x. The
+reported symptom (capture exceeds its budget, `critic-begin` fails, the PR gate becomes
+unsatisfiable) can only be confirmed where it was reported.
+
+**Where to verify:** the reporter's environment — a prawduct-governed repo whose working tree
+is reached over a bind mount or network filesystem.
+
+**Steps:**
+
+1. Run `/prawduct:critic` (any mode). `critic-begin` must complete and write
+   `.prawduct/.critic-partials/manifest.json` with a `head_tree`.
+2. If it still times out, re-run with `PRAWDUCT_GIT_TIMEOUT=<seconds>` raised. The timeout
+   message itself names this remedy — confirm it does, verbatim, rather than reporting a bare
+   git failure.
+3. Confirm no `prawduct-idx-*.lock` files accumulate in the temp directory across repeated
+   captures, including ones that time out.
+4. **Separately**: if a stale `.git/index.lock` still appears, that is NOT this fix and needs
+   its own report — `capture_tree` runs every git call under `GIT_INDEX_FILE`, so it cannot
+   produce one. Capture what command was running when it appeared.
+
+**Verified by:** _(operator, date)_

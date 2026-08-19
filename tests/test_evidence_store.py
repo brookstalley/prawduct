@@ -388,7 +388,7 @@ class TestCaptureTree:
         assert result["status"] == "error"
         assert result["reason"]  # attributed, never a silent empty dict
 
-    def test_seed_copies_the_repo_index_when_it_exists(self, tmp_path):
+    def test_seed_copies_the_repo_index_when_it_exists(self, tmp_path, monkeypatch):
         """The stat-data seed, asserted at the mechanism rather than the clock.
 
         A timing assertion would be flaky on a loaded machine; what actually
@@ -403,15 +403,13 @@ class TestCaptureTree:
             seen["src"] = Path(src)
             return real_copy2(src, dst, *a, **k)
 
-        evidence.shutil.copy2 = spy
-        try:
-            result = evidence.capture_tree(repo)
-        finally:
-            evidence.shutil.copy2 = real_copy2
+        monkeypatch.setattr(evidence.shutil, "copy2", spy)
+        result = evidence.capture_tree(repo)
         assert result["status"] == "ok"
+        assert result["seed"] == "index-copy"
         assert seen["src"] == Path(_git(repo, "rev-parse", "--absolute-git-dir")) / "index"
 
-    def test_seed_falls_back_when_index_is_unreadable(self, tmp_path):
+    def test_seed_falls_back_when_index_is_unreadable(self, tmp_path, monkeypatch, capsys):
         """A copy that cannot happen degrades to `read-tree HEAD` — slower,
         never wrong. Same tree either way."""
         repo = _make_repo(tmp_path)
@@ -419,35 +417,31 @@ class TestCaptureTree:
         (repo / "extra.py").write_text("e = 1\n")
         expected = evidence.capture_tree(repo)["tree"]
 
-        real_copy2 = evidence.shutil.copy2
-
         def refuse(src, dst, *a, **k):
             raise OSError("index unreadable")
 
-        evidence.shutil.copy2 = refuse
-        try:
-            result = evidence.capture_tree(repo)
-        finally:
-            evidence.shutil.copy2 = real_copy2
+        monkeypatch.setattr(evidence.shutil, "copy2", refuse)
+        result = evidence.capture_tree(repo)
         assert result["status"] == "ok"
         assert result["tree"] == expected
+        # The degradation is NOT silent: it is named in the result and on stderr,
+        # so a capture that fell back is distinguishable from one that never had
+        # a fast seed to lose.
+        assert result["seed"] == "read-tree"
+        assert "read-tree" in capsys.readouterr().err
 
-    def test_seed_falls_back_when_a_partial_copy_is_left_behind(self, tmp_path):
+    def test_seed_falls_back_when_a_partial_copy_is_left_behind(self, tmp_path, monkeypatch):
         """A copy that dies PART-way would leave a truncated index that git
         rejects as corrupt. The fallback must start from a clean slot."""
         repo = _make_repo(tmp_path)
         (repo / "extra.py").write_text("e = 1\n")
-        real_copy2 = evidence.shutil.copy2
 
         def truncate_then_fail(src, dst, *a, **k):
             Path(dst).write_bytes(b"DIRC\x00garbage")
             raise OSError("disk full mid-copy")
 
-        evidence.shutil.copy2 = truncate_then_fail
-        try:
-            result = evidence.capture_tree(repo)
-        finally:
-            evidence.shutil.copy2 = real_copy2
+        monkeypatch.setattr(evidence.shutil, "copy2", truncate_then_fail)
+        result = evidence.capture_tree(repo)
         assert result["status"] == "ok"
         names = _git(repo, "ls-tree", "-r", "--name-only", result["tree"])
         assert "extra.py" in names.splitlines()
@@ -571,6 +565,21 @@ class TestGitTimeoutBudget:
         result = evidence.capture_tree(repo)
         assert result["status"] == "error"
         assert evidence._GIT_TIMEOUT_ENV in result["reason"]
+
+    def test_a_refused_override_says_so_on_stderr(self, tmp_path, monkeypatch, capsys):
+        """A refusal has to be visible at the SOURCE. Every `run_git` call fails
+        while the variable is malformed, and not every caller reports the reason
+        — `coverage` and `record_lint` both read a nonzero rc as an honest 'no
+        answer' and go quiet, which is right for a real git failure and wrong
+        for a typo in the operator's own environment."""
+        monkeypatch.setattr(evidence, "_ATTRIBUTED_BAD_TIMEOUTS", set())
+        monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, "1O")
+        evidence.capture_tree(_make_repo(tmp_path))
+        err = capsys.readouterr().err
+        assert evidence._GIT_TIMEOUT_ENV in err
+        # Deduped: the variable is read on every git call, and capture_tree makes
+        # several — one line, not one per call.
+        assert err.count(evidence._GIT_TIMEOUT_ENV) == 1
 
     def test_timeout_names_the_remedy_and_leaves_no_lock(self, tmp_path, monkeypatch):
         """`GIT_INDEX_FILE` moves git's index lock alongside the temp index,
