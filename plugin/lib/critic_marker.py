@@ -198,8 +198,13 @@ def review_active(prawduct_dir: Path, sweep: bool = True) -> tuple[bool, float |
 
     Returns ``(active, age_seconds)``. ``active`` is True only when the marker
     exists AND its age is within :data:`CRITIC_ACTIVE_TTL_SECONDS`. A
-    stale/unreadable marker is swept (best-effort ``unlink``) and reported as
-    not active, so a crashed review self-heals on the next check.
+    marker whose age puts it past the TTL is swept (best-effort ``unlink``) and
+    reported as not active, so a crashed review self-heals on the next check.
+    **Unreadable is not the same as stale** — the module docstring's "decided by
+    AGE, not by readability" is the rule, and ``_marker_age_seconds`` falls back
+    to mtime, so a freshly-written corrupt marker is still ACTIVE and survives.
+    Only a marker whose age cannot be determined by either signal is swept for
+    unreadability.
 
     ``sweep=False`` answers the same question WITHOUT unlinking, and exists
     because the sweep is a side effect that not every caller can afford. The

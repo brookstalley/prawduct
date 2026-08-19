@@ -363,7 +363,13 @@ LAST_MEASURED_TOKENS = {
     # rather than capped.
     "methodology/discovery.md": 4752,
     "methodology/planning.md": 4301,
-    "methodology/reflection.md": 4529,
+    # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
+    # the assertion went red the moment the file changed without its reading,
+    # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
+    # branch on the live-review deadline. Recorded, not capped, which is the
+    # decision above working as intended: the growth is a correction to an
+    # instruction that could not be followed in a fresh clone.
+    "methodology/reflection.md": 4644,
 }
 
 
@@ -468,8 +474,20 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # is the rest of it, and `## Enforcement (this is what makes governance
     # stick)` is the claim its two sentences go on to make. `(stance)` on the
     # fourth heading is a LABEL, not a restatement, and stays.
-    "framework": 3317,
-    "product": 2240,
+    #
+    # +3 on both shapes, 2026-08-19 (Critic R-7): the deadline recipe told the
+    # agent to compute an expected total and forbade a constant, while naming
+    # no branch for the case where the ledger cannot price one — and the ledger
+    # is gitignored, so it is EMPTY in every fresh clone and every newly
+    # onboarded product. The digest now says "expected when priceable"; the
+    # full rule (report elapsed and the roster, name the expectation
+    # unavailable, and why a one-sample median is a missing number rather than
+    # a small one) lives in `reflection.md`, which is the split this bullet
+    # already uses. Three tokens rather than the eight a fuller phrasing cost:
+    # the first draft spelled out "where the ledger can price one" and broke
+    # the ceiling, which is the ceiling doing its job.
+    "framework": 3320,
+    "product": 2243,
 }
 
 #: Ceilings. HARD, like the five per-file prose ceilings in this module and

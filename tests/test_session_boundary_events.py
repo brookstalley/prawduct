@@ -413,40 +413,124 @@ class TestBoundaryDependentInterpretation:
             "clear; it is the operator's only escape from a fresh marker"
         )
 
-    def test_forcing_a_sweep_of_a_live_marker_announces_what_it_destroyed(self, tmp_path):
-        """The destructive branch may not be the quiet one.
+    def test_forcing_a_sweep_names_a_recovery_that_can_actually_be_run(self, tmp_path):
+        """An INCOMPLETE roster: the partials will be archived, so restore is the
+        recovery — but only at a moment when `critic-restore` will run.
 
-        `--force` is the only path that removes a plausibly-live marker, and it
-        was the only branch that printed nothing — while its non-destructive
-        sibling prints four lines for merely RETAINING one. The design calls
-        sweeping a live marker the *silent* governance failure, so leaving the
-        act itself silent is that failure spelled out.
+        The first cut of this notice said "restore after the next dispatch",
+        which is the one moment the command is guaranteed to refuse:
+        `restore_review` bails while partials are present or a marker is active,
+        and a dispatch makes both true. The refusal it landed on then offers
+        `critic-discard` — i.e. it walked the operator toward discarding the
+        review that was running right then.
 
-        Pinned on the RECOVERY, not the wording, for the same reason the
-        retention notice is: after the marker is cleared nothing else in the new
-        session knows which review it was, so the id and the restore command are
-        the half that makes the announcement actionable rather than merely
-        informative.
+        So the assertion is on the ORDERING, not on the command name. The
+        previous pin looked for the id and the substring `critic-restore`, both
+        of which were present in the broken message; a substring check cannot
+        tell a runnable instruction from an unrunnable one.
         """
         prawduct = _seed_session(tmp_path)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         marker = prawduct / ".critic-active"
         marker.write_text(json.dumps({"started_at": now}))
-        partials = prawduct / ".critic-partials"
-        partials.mkdir(exist_ok=True)
-        (partials / "manifest.json").write_text(json.dumps({"id": "rev-forced"}))
+        # Build the fixture from the module that OWNS the layout, not from a
+        # hardcoded literal: the code used to hardcode the same path, so a
+        # rename would have moved both together and stayed green.
+        from lib.critic_consolidate import manifest_path  # noqa: PLC0415
+        mpath = manifest_path(prawduct)
+        mpath.parent.mkdir(parents=True, exist_ok=True)
+        roster = ["correctness", "design"]
+        mpath.write_text(json.dumps({
+            "id": "rev-forced",
+            "mode": "cumulative (bundle review, ready for merge)",
+            "mode_chosen_by": "test", "roster_chosen_by": "test",
+            "commit_reviewed": "0" * 40,
+            "base_tree": "1" * 40, "head_tree": "2" * 40,
+            "files_reviewed": ["some/file.py"], "files_changed": ["some/file.py"],
+            "roster": roster,
+            "rendezvous": {
+                r: {"partial": f".prawduct/.critic-partials/{r}.rev-forced.json",
+                    "started": f".prawduct/.critic-partials/{r}.rev-forced.started"}
+                for r in roster
+            },
+        }))
+        from lib.critic_consolidate import pending_state  # noqa: PLC0415
+        assert pending_state(prawduct)[0] == "incomplete", (
+            "fixture must build an INCOMPLETE roster; the complete branch says "
+            "something different and this would grade the wrong one"
+        )
 
         res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
         assert res.returncode == 0, res.stderr
         out = res.stdout + res.stderr
-        assert not marker.is_file(), "--force must still sweep; this pins the notice, not a refusal"
+        assert not marker.is_file(), "--force must still sweep; this pins the notice"
         assert "rev-forced" in out, (
-            "the forced sweep did not name the review it unguarded — without "
-            "the id, `critic-restore` cannot be run at all"
+            "the forced sweep did not name the review it unguarded — without the "
+            "id no recovery is addressable at all"
         )
-        assert "critic-restore" in out, (
-            "the forced sweep announced no recovery; the partials are archived "
-            "by the next dispatch, not deleted, so a restore is possible"
+        assert "once the next one has consolidated" in out, (
+            "the notice does not say WHEN `critic-restore` can run. `restore_review` "
+            "refuses while partials or a marker are present, so a recovery timed to "
+            "'after the next dispatch' is unrunnable and lands the operator on a "
+            "refusal that offers `critic-discard`"
+        )
+        assert "after the next dispatch" not in out, (
+            "the notice is back on the unrunnable timing — that phrasing names the "
+            "one moment `critic-restore` is guaranteed to refuse"
+        )
+
+    def test_forcing_a_sweep_of_a_complete_roster_names_the_lost_self_heal(self, tmp_path):
+        """A COMPLETE roster: nothing will archive those partials — and nothing
+        will consolidate them either, which is what the sweep actually cost.
+
+        The notice called itself the retention notice's "mirror image" while
+        asking no roster question, so on a complete roster its central claim was
+        false in both directions: `begin_review` refuses on a complete roster at
+        any age, so the next `critic-begin` does NOT archive the partials, and
+        the Stop hook's self-heal keys on the marker — so sweeping it removed the
+        one automatic recovery a finished review was about to get, which the
+        message never mentioned.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": now}))
+        from lib.critic_consolidate import manifest_path, pending_state  # noqa: PLC0415
+        mpath = manifest_path(prawduct)
+        mpath.parent.mkdir(parents=True, exist_ok=True)
+        mpath.write_text(json.dumps({
+            "id": "rev-done",
+            "mode": "chunk (lighter pass, not ready for push)",
+            "mode_chosen_by": "test", "roster_chosen_by": "test",
+            "commit_reviewed": "0" * 40,
+            "base_tree": "1" * 40, "head_tree": "2" * 40,
+            "files_reviewed": ["some/file.py"], "files_changed": ["some/file.py"],
+            "roster": ["reviewer"],
+            "rendezvous": {"reviewer": {
+                "partial": ".prawduct/.critic-partials/reviewer.rev-done.json",
+                "started": ".prawduct/.critic-partials/reviewer.rev-done.started",
+            }},
+        }))
+        (mpath.parent / "reviewer.rev-done.json").write_text(json.dumps({"findings": []}))
+        assert pending_state(prawduct)[0] == "complete", (
+            "fixture must build a COMPLETE roster or this grades another branch"
+        )
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        assert "critic-consolidate" in out, (
+            "a complete roster's findings are written and only need consolidating; "
+            "the notice must route there"
+        )
+        assert "self-heal" in out, (
+            "the notice does not name what the sweep COST — the Stop hook's "
+            "self-heal keys on the marker, so removing it is what stops a "
+            "finished review from being consolidated automatically"
+        )
+        assert "will archive its" not in out, (
+            "the notice still claims the next dispatch will archive these partials; "
+            "`begin_review` refuses on a complete roster at any age, so it will not"
         )
 
     def test_forcing_a_sweep_of_a_dead_marker_stays_quiet(self, tmp_path):

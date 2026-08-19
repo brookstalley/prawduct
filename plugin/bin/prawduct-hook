@@ -894,9 +894,22 @@ def _boundary_retained_marker_notice(prawduct_dir: Path) -> str:
     # command it would send them to archives partials that reviewers may still
     # be writing. The remedy below stays local; the state does not.
     try:
-        state, _missing, reading = _critic_consolidate().pending_roster_reading(prawduct_dir)
+        state, reading = _critic_consolidate().pending_roster_reading(prawduct_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
-        state, reading = "unreadable", "  On disk: unreadable.\n"
+        # An exception means NO reading was taken, so this path must not claim
+        # one — and must not inherit the `unreadable` remedy either. That branch
+        # says "nothing here is worth keeping" and offers `critic-end`, a
+        # conclusion drawn from having successfully read an unusable manifest.
+        # Reaching it because the lib failed to import would advise discarding a
+        # review nobody looked at. Say what is actually known: nothing.
+        return head + (
+            "  Could not read the review's state (the consolidation lib failed to\n"
+            "  answer), so this cannot say whether it is finished or still running —\n"
+            "  and the safe remedies differ. Inspect before acting:\n"
+            "    prawduct-hook evidence status\n"
+            "  then `critic-consolidate` if every reviewer reported, `critic-end` only\n"
+            "  if the review is genuinely abandoned."
+        )
     if state == "complete":
         return head + reading + (
             "  It needs consolidating, NOT clearing:\n"
@@ -917,34 +930,65 @@ def _boundary_retained_marker_notice(prawduct_dir: Path) -> str:
 def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> str:
     """What `--force` just destroyed, when the marker it removed was still live.
 
-    The retention notice's mirror image, and it exists for the same reason that
-    one does: an act nobody is told about cannot be recovered from. `--force` is
-    the operator's documented escape from a marker the TTL has not released, so
-    it is legitimate — but on a LIVE marker it also unguards a review whose
-    reviewers may still be writing, and the next `critic-begin` will archive
-    their partials rather than refuse.
+    The retention notice's mirror image — and being a mirror means asking the
+    same question, not merely facing the same way. The first cut of this called
+    itself the mirror while asking nothing, and was wrong on a complete roster
+    in both directions: `begin_review` refuses on `roster_state == "complete"`
+    at any age, so the next dispatch does NOT archive those partials, and the
+    consequence it failed to name is the one that matters — the Stop hook's
+    self-heal keys on ``marker_present``, so sweeping the marker is what removes
+    the automatic consolidation a finished review was about to get.
 
-    Reports the review by id and names the recovery, because the partials are
-    not gone: `critic-begin` archives them and `critic-restore <review-id>`
-    brings that review back as itself. Naming the id here is what makes the
-    restore possible at all — after the marker is cleared, nothing else in the
-    new session knows which review it was.
+    **The recovery's timing is load-bearing.** ``restore_review`` refuses while
+    partials are present or a marker is active, and a dispatch makes both true,
+    so "restore after the next dispatch" named the one moment the command
+    cannot run — and the refusal it lands on offers ``critic-discard``, i.e.
+    discarding the review that is running right then. The archive notice at
+    ``cmd_critic_begin`` already had the correct phrasing; this now matches it.
+
+    Reports the review by id because after the marker is cleared nothing else in
+    the new session knows which review it was, and the id is what makes any
+    recovery addressable at all.
     """
     age = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
     review_id = "(id unavailable — manifest unreadable)"
+    state = "unknown"
     try:
+        consolidate = _critic_consolidate()
+        # Ask the module that OWNS the layout. Building
+        # `.critic-partials/manifest.json` by hand here put a second copy of
+        # that path in a file that already reaches `manifest_path()`, under a
+        # broad except that would have degraded a rename to "id unavailable" —
+        # silently losing the one field this notice exists to carry.
         review_id = json.loads(
-            (prawduct_dir / ".critic-partials" / "manifest.json").read_text()
+            consolidate.manifest_path(prawduct_dir).read_text()
         )["id"]
+        state, _reading = consolidate.pending_roster_reading(prawduct_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
         pass
-    return (
+
+    head = (
         "PRAWDUCT: --force swept a LIVE Critic review marker "
         f"({review_id}, dispatched {age}).\n"
+    )
+    if state == "complete":
+        # Every reviewer reported, so nothing is going to archive these
+        # partials — but nothing is going to consolidate them either, which is
+        # what the sweep just cost.
+        return head + (
+            "  Every reviewer had reported. Those findings are still on disk, but the\n"
+            "  Stop hook's self-heal keys on the marker — so the automatic consolidation\n"
+            "  they were about to get no longer fires. Run it yourself:\n"
+            "    prawduct-hook critic-consolidate"
+        )
+    return head + (
         "  That review is no longer guarded: the next `critic-begin` will archive its\n"
-        "  partials instead of refusing. If it was still running, recover it with\n"
+        "  partials instead of refusing. They are archived, not deleted — recover that\n"
+        "  review once the next one has consolidated:\n"
         f"    prawduct-hook critic-restore {review_id}\n"
-        "  after the next dispatch, or consolidate it now with `critic-consolidate`."
+        "  (Not before: `critic-restore` refuses while partials or a marker are present,\n"
+        "  which a dispatch makes true.) If its reviewers had all reported, consolidate\n"
+        "  now instead: `prawduct-hook critic-consolidate`."
     )
 
 

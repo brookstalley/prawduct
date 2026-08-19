@@ -17,7 +17,7 @@ governed_by:
       - "prawduct guides and reviews, it never implements → inapplicable — no product code, and no check duplicating an ecosystem linter"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "proportionality ratchets both ways — a new control names its expected yield AND emits it observably → BINDS Chunk 04, which is the only chunk that could add a control. It is discharged there by DECIDING rather than by building: #688's own acceptance permits a recorded decision that on-demand guides stay unbudgeted, and this norm is the reason that branch is live rather than a dodge. Chunks 01-03 add no control (Chunk 01 narrows an existing act; 02-03 are prose)"
+      - "proportionality ratchets both ways — a new control names its expected yield AND emits it observably → BINDS Chunk 04. **PREDICTED WRONG, and corrected at chunk close 2026-08-19 rather than inherited as a pass** (the Chunk 01 lesson: a governance disposition written at plan time is a prediction). This text expected the discharge to be a decision that on-demand guides stay UNBUDGETED — i.e. adding no control at all. The owner selected a third answer the framing had not separated out: a **reading** for the class and no ceiling. That IS a new control, so the norm binds it rather than being sidestepped, and the discharge is different from the one predicted here. It is an **accounting** control — it never refuses a change, only an unrecorded one — so the failure mode the norm targets (repeated firings, no blocking yield) is unreachable by construction, and the norm's stated why ('data to act from') is satisfied by the dated reading history itself. Recorded in full above `LAST_MEASURED_TOKENS`. Chunks 01-03 add no control (Chunk 01 narrows an existing act; 02-03 are prose)"
       - "state-file growth past its size threshold is advisory, never a hard block → inapplicable — Chunk 04 concerns SHIPPED PROSE PAYLOADS, which the 2026-08-19 owner ruling already put in the hard-ceiling class, not `.prawduct/` state files"
       - "review wall-clock is P0; unit-cost is the reviewer's payload, per-mode and reducible → conforms — Chunk 03 spends against a 5-token headroom on the always-injected framework shape and must trim or ratchet in the same commit, never bump silently"
   - artifact: project-preferences
@@ -175,7 +175,7 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
 - [x] Chunk 01: The `/clear` sweep stops deleting a plausibly-live marker
 - [x] Chunk 02: `building.md` re-prices the work-cycle limit
 - [x] Chunk 03: The clear line answers *should you*, and a live review moves the verdict
-- [ ] Chunk 04: Settle the on-demand guides' budget policy (#688)
+- [x] Chunk 04: Settle the on-demand guides' budget policy (#688)
 - [ ] Chunk 05: Two friction fixes found by building this plan
 
 ## Context
@@ -194,6 +194,19 @@ the `[CORRECTED ...]` assumption above), and that is now a sharpened rule in `le
 Governance dispositions written at plan time are predictions — re-check them at chunk close rather
 than inheriting them as passes; the one-home disposition claimed conformance before the code existed
 and was wrong within one commit.
+
+**Chunk 04 closed 2026-08-19.** `27c6cae4` (the decision) + the findings fix. Critic
+`cumulative` rev-20260819T185939Z-aa2e9524 → **0 blocking** / 5 warnings / 15 notes. Suite green.
+
+The on-demand methodology guides get **readings and no ceilings** — owner-selected from three
+framed options. The distinction #688 had fused, and the one to preserve if this is revisited: a
+*reading* catches undeclared growth, a *ceiling* blocks growth itself. #688's stated yield is
+undeclared growth, so the reading discharges it in full, while these are the files where growth is
+cheap and deliberately encouraged. `test_every_methodology_guide_is_accounted_for` makes it
+self-enforcing for guides that do not exist yet.
+
+**The control fired on its first real use, inside this same chunk**: the R-7 fix changed
+`reflection.md` and the assertion went red immediately carrying the number to write (4529 → 4644).
 
 **Chunk 03 closed 2026-08-19.** `1ba185cf` (the two carriers) + `622ae77e` (self-scrub) +
 `a3dcd2c8` (findings fix). Critic `cumulative` rev-20260819T165646Z-1854a3ce → **0 blocking** / 4

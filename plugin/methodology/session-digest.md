@@ -63,7 +63,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   future one — a running job may answer its own question. Burying, padding or collapsing it fail
   alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review
   or any unread background agent is `RUNNING`, never `COMPLETE` — and a live review is also
-  `DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected). **A
+  `DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected when priceable). **A
   findings-only turn is not `SAFE TO CLEAR` until its findings are on disk** — a reason citing
   the message itself is the defect said aloud. Full rule: `methodology/reflection.md`
   "Work cycle boundary".

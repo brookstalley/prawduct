@@ -2031,7 +2031,7 @@ def pending_state(prawduct_dir: Path) -> tuple[str, list[str]]:
     return "complete", []
 
 
-def pending_roster_reading(prawduct_dir: Path) -> tuple[str, list[str], str]:
+def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
     """What a pending roster MEANS — the one home, for every surface that advises on one.
 
     Two functions compose advice from :func:`pending_state`: this module's
@@ -2054,9 +2054,15 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, list[str], str]:
     still writing. So the reading carries both possibilities and the tell that
     separates them, and it carries them everywhere at once.
 
-    Returns ``(state, missing, reading)``. The reading is indented two spaces to
-    match every caller's block, states only what is on disk, and deliberately
-    names no command: the remedy is surface-specific and stays with the caller.
+    Returns ``(state, reading)`` — deliberately NOT the ``missing`` role list.
+    The reading already names the outstanding roles in prose, and a third
+    element no caller consumed read as an obligation to use it; both call sites
+    had bound it to ``_missing``. A caller that needs the roles programmatically
+    should ask :func:`pending_state`, which is what this wraps.
+
+    The reading is indented two spaces to match every caller's block, states
+    only what is on disk, and deliberately names no command: the remedy is
+    surface-specific and stays with the caller.
     """
     state, missing = pending_state(prawduct_dir)
     if state == "complete":
@@ -2076,7 +2082,7 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, list[str], str]:
             "  On disk: no readable dispatch manifest — a review set the marker but\n"
             "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
         )
-    return state, missing, reading
+    return state, reading
 
 
 def active_dispatch_refusal(
@@ -2117,7 +2123,7 @@ def active_dispatch_refusal(
     # The READING is shared with the boundary retained-marker notice
     # (:func:`pending_roster_reading` says why); only the remedy below is local
     # to refusing a dispatch.
-    state, missing, situation = pending_roster_reading(prawduct_dir)
+    state, situation = pending_roster_reading(prawduct_dir)
     if state == "complete":
         situation += (
             "  Dispatching now would discard it:\n"
