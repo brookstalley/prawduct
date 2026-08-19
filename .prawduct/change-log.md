@@ -3,6 +3,47 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: a token budget that can see a new file
+
+<!-- prawduct: type=feature | scope=governance-surface-dedup -->
+
+Every token budget in this framework is asserted per-file, and a per-file ceiling cannot see a
+**new** file. That is not a hypothetical: `session-digest-slim.md` was added to save tokens in
+the framework repo, put roughly 928 of them into every framework session, and every one of the
+five per-file prose ceilings stayed green — because none of them was watching the *set*. The
+budget regime was also inverted, which is what made the gap survive: the files with hard ceilings
+and a measured-drift pin are the **on-demand** ones a session may never open, while the surfaces
+paid unconditionally before the first useful token had only a loose character limit and a ratio.
+
+**The set is defined by load event, not by weight.** Ranking governance files against each other
+needs an importance score nobody can derive — and a weighted score would not have caught the
+defect above either, since the new file's weight was never assigned at all. Grouping by *when the
+cost is paid* needs no weight: frequency **is** the weight, and it is readable out of
+`hooks/digest.py` rather than assigned by opinion. `INJECTED_SESSION_SHAPES` carries the two
+shapes of the unavoidable tier — a framework session (`CLAUDE.md` + the slim digest) and a
+product session (the `STATIC_ANCHOR` governance anchor + the full digest).
+
+**The two shapes are separate rather than one flat set, and that is a departure from the plan's
+own Deliverables** — recorded in the plan's `governed_by`, per the architecture norm that
+prescribed method is advice while goals and verification bind. `digest.py` *selects* between the
+variants, so a session never loads both; summing them would assert a ceiling on a total no
+session has ever paid, which is a fiction dressed as a budget.
+
+**The half that catches the original defect is the membership check, not the numbers.** The
+totals only watch files already known. `test_every_injectable_digest_is_budgeted` reads the
+injectable set out of `digest.py`'s own module-level path tuples via `ast` — so it holds for a
+variant named outside any convention, and it fails loudly rather than narrowing silently if the
+module stops declaring them that way. Red-verified both ways before shipping.
+
+**Ceilings are HARD**, matching the five existing per-file prose ceilings rather than the
+advisory state-file size threshold — that norm governs `.prawduct/` state, and an advisory would
+not have caught this, since nothing was blocked when the set grew. Owner ruling, recorded as a
+decision against the norm rather than assumed past it.
+
+The per-dispatch tier — the subagent briefing and the reviewer payload, larger by two orders of
+magnitude — is deliberately excluded and left to its own item. Folding it in would let a win
+there hide growth here, which is the failure this control exists to prevent.
+
 ## 2026-08-18: the turn-closing block puts the answer in the label, not beside it
 
 <!-- prawduct: type=feature | scope=standing-block-expressive-labels -->
