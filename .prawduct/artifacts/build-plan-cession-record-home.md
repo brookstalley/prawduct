@@ -42,10 +42,16 @@ cession program and this item explicitly does not pre-empt its design. The deliv
 
 **Open assumptions / unknowns:**
 
-- [ASSUMPTION: the owner wants the interim regime (cessions ride the change-log until Cycle
-  3 lands) rather than pulling the ledger forward into this release | HIGH impact | user
-  can correct — this is the one decision the chunk turns on, and it is stated for veto
-  rather than assumed silently]
+- [DECISION 2026-08-19: the interim regime is live — cessions ride the change-log until
+  Cycle 3 lands; the ledger is NOT pulled forward into this release. Owner ruling, on the
+  stated ground that the cheapest thing that ships wins while prawduct's own repo is
+  mid-build. This was the one decision the chunk turned on; it is now closed, and the
+  chunk is buildable.]
+- [DECISION 2026-08-19: the acceptance criterion "no other prose in the repo now
+  contradicts the stated regime" is bounded to the surfaces a cascade-search over the
+  ledger / re-pricing / cession vocabulary actually reaches. Owner ruling: perfect
+  coverage is not owed while the repo is mid-build. A missed surface is a later fix, not
+  a reason to widen this chunk.]
 - [ASSUMPTION: `documentation/purpose.md` remains the right home for the statement, since
   it is where the reader who needs it is already standing | LOW impact | user can override]
 
