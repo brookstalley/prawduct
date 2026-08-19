@@ -204,7 +204,7 @@ def parse_block(body: str | None) -> Block:
     the **last** wins and each earlier one is flagged (ENC-3). A malformed inner
     line (no ``:`` separator) is skipped with a warning, never an error.
 
-    **This READER and the two WRITERS deliberately disagree about a two-block
+    **This READER and the WRITERS deliberately disagree about a two-block
     body.** Reading keeps the last block (a body someone edited twice means the
     later value); writing — every caller of
     :func:`merge_all_block_fields` — merges every block, because a write that kept only the last would *persist*

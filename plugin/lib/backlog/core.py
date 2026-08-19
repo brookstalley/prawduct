@@ -1044,8 +1044,15 @@ def _related(transport: Transport, nid, target_canonical: str, *, add: bool) -> 
     idempotent no-op has nothing for a caller to mirror, and returning the
     unchanged issue would make one look like a write."""
     issue = transport.get_issue(nid.owner, nid.repo, nid.number)
-    block = encode.parse_block(issue.get("body"))
-    current = set(encode.parse_list(block.get("related")))
+    # Read through the WRITER's view, not `parse_block`'s. The write below
+    # merges every block, but a value computed from a last-block-wins read would
+    # then overwrite the merged-in earlier one — so a body whose EARLIER block
+    # carries `related` and whose later block does not would lose those edges,
+    # silently, the same shape the writers were just fixed for. Reading and
+    # writing may disagree (`parse_block` says why); a read-modify-WRITE may not
+    # disagree with itself.
+    fields = encode.merge_all_block_fields(issue.get("body"))
+    current = set(encode.parse_list(fields.get("related")))
     if add:
         current.add(target_canonical)
     else:
