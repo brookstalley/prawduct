@@ -6,10 +6,10 @@ Prawduct turns product ideas into well-built software through structured discove
 
 ## Principles
 
-The 26 principles — Quality · Product · Process · Learning · Judgment · Evolution — guide every
-decision. Apply them with judgment, not mechanically. The always-injected session digest carries
-the roster; the full text with rationale and the review perspectives is `plugin/docs/principles.md`
-(`/prawduct:methodology principles`).
+The principles guide every decision. Apply them with judgment, not mechanically. The
+always-injected session digest carries the roster, grouped; the full text with rationale and the
+review perspectives is `plugin/docs/principles.md` (`/prawduct:methodology principles`), which is
+where the count and the groups are defined rather than restated.
 
 ## Getting Started
 

@@ -141,7 +141,7 @@ Context: Chunks 01-03 shipped 2026-08-19 on `fix/governance-surface-dedup`. Chun
 (slim digest deleted, `digest.py` reduced to one digest with `is_framework_repo` removed, `CLAUDE.md`
 2527 -> 1339 est. tokens, five digest-pair pins collapsed across four test modules, both ceilings
 ratcheted). Injected footprint: framework 3455 -> 3315 (ceiling 3325), product 2256 -> 2238 (ceiling
-2248). Suite green, 4791 passed / 10 skipped, evidence at tree `ce8f1651`. Critic `chunk`
+2248). Suite green with evidence current at the reviewed tree (`prawduct-hook test-status`). Critic `chunk`
 (`rev-20260819T120816Z-ccb631c6`): 2 blocking, 1 warning, 2 notes -- R-1 (the no-attribution rule
 lost the clause stating it outranks a contrary harness default; the digest carried the rule but not
 the clause) and R-2 (chunk-ref-missing on the deletion deliverable) FIXED in the commit, R-3 (stale

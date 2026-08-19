@@ -445,10 +445,15 @@ def test_every_injectable_digest_is_budgeted():
     tree = ast.parse((ROOT / "hooks" / "digest.py").read_text())
     declared = set()
     for node in tree.body:
-        if not isinstance(node, ast.Assign):
+        # BOTH assignment forms and BOTH sequence literals. A check that read
+        # only `x = (...)` was blind to `x: tuple[str, str] = (...)` and to a
+        # list -- and the non-empty guard below still passed on the surviving
+        # constant, so the blindness looked exactly like coverage. A variant
+        # added in either shape is the defect this test exists to catch.
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         value = node.value
-        if not isinstance(value, ast.Tuple) or not value.elts:
+        if not isinstance(value, (ast.Tuple, ast.List)) or not value.elts:
             continue
         parts = [
             e.value
@@ -458,7 +463,7 @@ def test_every_injectable_digest_is_budgeted():
         if len(parts) == len(value.elts) and parts[-1].endswith(".md"):
             declared.add("/".join(parts))
     assert declared, (
-        "no module-level path tuples found in hooks/digest.py. This test reads "
+        "no module-level path sequences found in hooks/digest.py. This test reads "
         "the digest set out of the module's own constants; if the module stopped "
         "declaring them as tuples of string literals, this check has silently "
         "stopped watching anything and needs rewriting, not deleting."
@@ -744,7 +749,7 @@ class TestBuildingMethodology:
         # the carriers above pin. Negative and positive together are the
         # contract -- either alone is satisfiable by the change it exists to
         # prevent.
-        for label in ("`STATE`", "`NEXT`", "`BLOCKED`", "`COMPLETE`"):
+        for label in ("`STATE`", "`RUNNING`", "`YOUR TURN`", "`COMPLETE`"):
             assert label not in self.content, (
                 f"building.md restates the standing block's {label} label; "
                 "reflection.md and the injected digest own the shape"
