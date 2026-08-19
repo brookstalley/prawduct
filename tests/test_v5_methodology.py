@@ -108,7 +108,22 @@ LAST_MEASURED_TOKENS = {
     # this file can make: `SAFE TO CLEAR` binds to ITS steps 1-7. The ceiling
     # was ratcheted down with the cut, so the standing trim-or-relocate rule is
     # enforced structurally here rather than asserted in prose.
-    "methodology/building.md": 4720,
+    # +6 on 2026-08-19 (#687): the work-cycle limit was re-priced. It stated one
+    # rule on TWO rationales with different expiry dates and a chunk count
+    # proxying for both. The compaction half is CEDED (Principle 26 — the
+    # cession itself is recorded in the change-log, which is where a re-pricing
+    # belongs; purpose.md's responsibility ledger, its eventual home, is not
+    # built); the review-scope half survives, re-justified on the reviewer's
+    # ATTENTION rather than its window, which is why larger windows do not erode
+    # it; the number retires in favour of the diff-size unit the roster rule
+    # already uses. Paid for in place, NOT by a bump: the Modes section restated
+    # what each of the four modes covers, three lines above its own pointer to
+    # the file that defines them and that the reader is told to open. What it
+    # keeps is the two facts a reader needs BEFORE opening it (`cumulative`
+    # feeds the PR gate; `verify-resolutions` alone records resolutions), which
+    # is the part a pointer cannot carry. Ceiling unchanged at 4730 — the file
+    # grew, so there is no slack to ratchet; headroom is now 4.
+    "methodology/building.md": 4726,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -891,6 +906,48 @@ class TestBuildingMethodology:
         assert "before rewriting it" in content
         # The why belongs on the injected surface, not the on-demand one.
         assert "/clear` consumes" in content
+
+    def test_work_cycle_size_is_priced_on_diff_not_chunk_count(self):
+        """The re-priced rule (#687) states the rationale that survived, in the
+        unit that survived with it.
+
+        The rule used to read "limit work cycles to 1-3 chunks — Critic quality
+        degrades across a large diff, and long-session compaction can lose
+        governance context." Two rationales, different expiry dates. The
+        compaction half was ceded; the review-scope half was not, because a
+        large diff is hard to review through the reviewer's ATTENTION, not its
+        context window — so a bigger window does not ease it, and arguably makes
+        it worse by removing the friction that was incidentally holding diffs
+        small.
+
+        Pinned on the DISCRIMINATING content, not on the absence of "1-3". A
+        negative-only assertion passes against a sentence that names no unit at
+        all, which is the likeliest way this decays: the count is easy to delete
+        and the replacement unit is easy to never write. So this asserts the
+        attention/window distinction (without which a future reader re-derives
+        the ceded rationale and re-adds it) and that a diff-shaped unit is
+        named.
+        """
+        assert "1-3 chunks" not in self.content, (
+            "the chunk-count proxy retired with the rationales it stood for"
+        )
+        lowered = self.content.lower()
+        assert "attention" in lowered and "window" in lowered, (
+            "building.md no longer says WHY the review-scope rationale survives "
+            "a larger context window — without the attention/window distinction "
+            "the ceded compaction argument reads as still live"
+        )
+        assert "judgeable files" in self.content, (
+            "the rule names no diff-shaped unit, so 'size by the diff' is "
+            "unactionable — deleting the count is not the same as replacing it"
+        )
+        # Compaction's REAL invariant is untouched and must stay: what was ceded
+        # is compaction as a reason to cap cycle length, not the rule that
+        # unpersisted state dies at a compaction boundary.
+        assert "must be written to a file first" in self.content, (
+            "the ceded rationale took the persistence rule with it; only the "
+            "cycle-length argument was ceded"
+        )
 
     def test_chunk_close_routes_backlog_to_skill(self):
         """The chunk-close sequence routes backlog work through /prawduct:backlog

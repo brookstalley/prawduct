@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: the work-cycle limit is re-priced, and a rationale is formally ceded
+
+<!-- prawduct: type=refactor | scope=clear-cadence -->
+
+`building.md` said: *"Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades
+across a large diff, and long-session compaction can lose governance context."* One rule, two
+rationales, **different expiry dates** — and a chunk count proxying for both.
+
+**What is ceded (Principle 26).** *Long-session compaction can lose governance context.* The
+mechanism carried a runtime assumption about context windows, the runtime changed, and the honest
+response is to re-price rather than let it ride. This is a cession, not a deletion: the rule was
+correct when written, and what retired it is a change in the world, not a defect in the reasoning.
+Recorded here because **it has nowhere else to go** — `documentation/purpose.md` names a
+*responsibility ledger* as the instrument for exactly this act and says outright it is not yet built
+(Cycle 3 of the cession program). Filed, so the gap is tracked rather than implied.
+
+**What survives, re-justified on one reason instead of two.** *Critic quality degrades across a
+large diff* — and this half does **not** erode, because the binding constraint is the reviewer's
+**attention**, not its context window. A larger window arguably makes it *worse*, by removing the
+friction that was incidentally keeping diffs small. So the rule stands with one rationale, which is
+stronger than standing with two when only one is load-bearing.
+
+**The number retires.** `1-3 chunks` was a proxy for both halves and is now a proxy for neither. The
+honest unit is the one the coordinator roster rule already keys on — a risk surface, or 12+
+judgeable files — so cycle size is priced on the diff its review must cover. A second site carried
+the same retiring number (*"when you've completed 2-3 chunks"*); it went in the same pass, because
+sweeping the instance and leaving its sibling is how a retired rule comes back.
+
+**What was NOT ceded, and the distinction matters.** Compaction's real invariant is untouched:
+anything that must survive — plans, decisions, rationale — is written to a file first. What was
+ceded is compaction as a reason to *cap cycle length*, not compaction as a hazard. The replacement
+invariant #687 proposes is sharper than either: the risk is not "context got full", it is
+**unpersisted state**.
+
+**It funded itself.** ~6 tokens net against 10 of headroom, paid by a cut in the same commit: the
+Modes section restated what each of the four Critic modes covers, three lines above its own pointer
+to the file that defines them. It keeps the two facts a reader needs *before* opening that file
+(`cumulative` feeds the PR gate; `verify-resolutions` alone records resolutions) — the part a
+pointer cannot carry. The ceiling did not move.
+
+**Still open, deliberately.** The cadence question — *should* you clear, and by when — is not
+answered here; it belongs to the standing block's clear paragraph, and putting it in two places is
+the failure this release already spent four chunks fixing. And no numeric threshold ships until
+rebuild cost and per-turn growth are measured from real `/clear`s.
+
 ## 2026-08-19: the turn-closing block answers whose move it is
 
 <!-- prawduct: type=refactor | scope=governance-surface-dedup -->

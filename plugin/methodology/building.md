@@ -111,9 +111,9 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 ## Session Scope Discipline
 
-Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades across a large diff, and long-session compaction can lose governance context. A multi-chunk plan spans sessions: per-chunk reviews accumulate, the final/cumulative lands with the last chunk, and session boundaries don't reset the plan.
+**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: per-chunk reviews accumulate, the final/cumulative lands with the last chunk, and session boundaries don't reset the plan.
 
-**Complete required governance at chunk boundaries, then signal — never *ask* whether to prepare a handoff; prepare it and say so.** When you've completed 2-3 chunks, or the user switches tasks, complete in order:
+**Complete required governance at chunk boundaries, then signal — never *ask* whether to prepare a handoff; prepare it and say so.** At a chunk boundary, or when the user switches tasks, complete in order:
 
 1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 7. **Handoff notes** — **read `.prawduct/.handoff-notes.md` before rewriting it**, then reconcile to what the *next* session needs: where you stopped, what you'd do next, what would bite them. Never blind-append.
 
@@ -191,10 +191,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 `Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes:
 
-- **`chunk`** — Goals 1-3 against the chunk's uncommitted diff.
-- **`final`** — all 7 goals + cross-checks + Framework-Specific Checks.
-- **`cumulative`** — all 7 goals against `merge-base...HEAD`. Feeds `/prawduct:pr create`'s gate.
-- **`verify-resolutions`** — Goals 1-3 over the delta since the prior review fact; the re-review after fixing findings, and the only mode recording resolution facts.
+`chunk`, `final`, `cumulative`, `verify-resolutions` — what each covers is the per-mode table below, not restated here. Two are worth knowing before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` is the only mode that records resolution facts.
 
 If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
 
