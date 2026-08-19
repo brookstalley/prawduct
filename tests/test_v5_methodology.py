@@ -6,6 +6,7 @@ are internally consistent and reflect v5 concepts.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -263,6 +264,174 @@ def test_recorded_token_count_matches_the_file(rel_path):
         f"Update the entry to {actual} (and say in that file's budget comment "
         f"what paid for the change — the ceiling is not a budget to spend)."
     )
+
+
+# =============================================================================
+# The always-injected footprint
+# =============================================================================
+
+#: What a session pays BEFORE it does any work, grouped by session shape.
+#:
+#: **Why a total, when every one of these files could have its own ceiling.**
+#: A per-file ceiling cannot see a NEW file. `session-digest-slim.md` was added
+#: to save tokens in the framework repo and put ~928 of them into every
+#: framework session; every per-file assertion in this module stayed green,
+#: because none of them was watching the SET. That is the defect this total
+#: exists to catch, and `test_every_injectable_digest_is_budgeted` below is the
+#: half that catches it -- the numbers here only catch growth in files already
+#: known.
+#:
+#: **Why membership is by LOAD EVENT rather than by importance.** Ranking these
+#: files against each other needs a weight nobody can derive, and a weighted
+#: score would not have caught the defect above either. Grouping by *when the
+#: cost is paid* needs no weight: frequency IS the weight, and it is readable
+#: out of `hooks/digest.py` rather than assigned by opinion. These two shapes
+#: are the unavoidable tier -- paid every session, no opt-out, before the first
+#: useful token. The per-dispatch tier (the subagent briefing, the reviewer
+#: payload x N reviewers) is deliberately NOT here: it is larger by two orders
+#: of magnitude and owned by its own backlog item, and folding it in would let
+#: a win there hide growth here.
+#:
+#: This generalizes `artifacts/nonfunctional-requirements.md` § Direction --
+#: "unit-cost is the reviewer's payload, what a mode must load, per-mode and
+#: reducible" -- from reviewer payloads to every injected surface.
+INJECTED_SESSION_SHAPES = {
+    # A framework-repo session: the always-loaded CLAUDE.md plus the slim digest
+    # `hooks/digest.py` selects for a repo that IS prawduct.
+    "framework": ("CLAUDE.md", "methodology/session-digest-slim.md"),
+    # A product session: the thin governance anchor `migrate_plugin` writes into
+    # a governed repo's CLAUDE.md, plus the full digest every product receives.
+    "product": ("<STATIC_ANCHOR>", "methodology/session-digest.md"),
+}
+
+#: The actual total per shape, as last measured -- the reading, not the ceiling.
+#: Same contract as LAST_MEASURED_TOKENS: the assertion's message carries the
+#: number to write, so a figure is never re-derived by hand or copied forward.
+LAST_MEASURED_INJECTED_TOKENS = {
+    # First reading, 2026-08-19, taken with the ceilings below.
+    "framework": 3455,
+    "product": 2256,
+}
+
+#: Ceilings. HARD, like the five per-file prose ceilings in this module and
+#: unlike the advisory state-file size threshold in
+#: `artifacts/nonfunctional-requirements.md` § Direction -- that norm governs
+#: `.prawduct/` STATE files, these are shipped instruction payloads. Recorded as
+#: a decision (owner ruling 2026-08-19) rather than assumed, because the norm's
+#: wording would otherwise read as covering this: an advisory would not have
+#: caught the defect above, since nothing was blocked when the set grew.
+#:
+#: The standing rule is the per-file one: THE NEXT ADDITION TRIMS OR RELOCATES,
+#: IT DOES NOT BUMP -- with "relocates" meaning *into a file outside this set*,
+#: never between two members, which buys nothing and is banned outright
+#: (owner rule 2026-08-05: total footprint is the only number that matters).
+INJECTED_FOOTPRINT_CEILINGS = {
+    "framework": 3460,
+    "product": 2260,
+}
+
+
+def _injected_member_text(member: str) -> str:
+    """One member of an injected set, resolved to its text.
+
+    Two members are not plugin-relative files: the framework repo's own
+    `CLAUDE.md` sits at the repo root, and the product anchor is a Python
+    constant rather than a file at all. Reading the anchor from its definition
+    rather than from a copy is the point -- a copy here would be exactly the
+    second authoritative statement this whole plan deletes elsewhere.
+    """
+    if member == "<STATIC_ANCHOR>":
+        from lib.migrate_plugin import STATIC_ANCHOR
+
+        return STATIC_ANCHOR
+    if member == "CLAUDE.md":
+        return (REPO_ROOT / "CLAUDE.md").read_text()
+    return read_file(member)
+
+
+@pytest.mark.parametrize("shape", sorted(INJECTED_SESSION_SHAPES))
+def test_recorded_injected_footprint_matches_the_files(shape):
+    """A session shape's recorded total is what its members actually sum to.
+
+    The reading half. Fails the moment any member changes without the total
+    being restated, so the number in this module is never a stale copy of a
+    measurement someone took once.
+    """
+    actual = sum(
+        estimate_tokens(_injected_member_text(m))
+        for m in INJECTED_SESSION_SHAPES[shape]
+    )
+    expected = LAST_MEASURED_INJECTED_TOKENS[shape]
+    assert actual == expected, (
+        f"the {shape} session injects ~{actual} tokens; "
+        f"LAST_MEASURED_INJECTED_TOKENS says {expected}. Update the entry to "
+        f"{actual} and say what paid for the change -- the ceiling is not a "
+        f"budget to spend."
+    )
+
+
+@pytest.mark.parametrize("shape", sorted(INJECTED_SESSION_SHAPES))
+def test_injected_footprint_under_ceiling(shape):
+    """Every session pays this before it does any work. Hold it."""
+    actual = sum(
+        estimate_tokens(_injected_member_text(m))
+        for m in INJECTED_SESSION_SHAPES[shape]
+    )
+    ceiling = INJECTED_FOOTPRINT_CEILINGS[shape]
+    assert actual < ceiling, (
+        f"the {shape} session injects ~{actual} tokens, over its {ceiling} "
+        f"ceiling. Trim a member, or move the content OUT of the injected set "
+        f"into an on-demand guide -- moving it to the other member of this same "
+        f"set buys nothing, because this assertion sums them."
+    )
+
+
+def test_every_injectable_digest_is_budgeted():
+    """Every digest `hooks/digest.py` can inject appears in a budgeted shape.
+
+    THE HALF THAT CATCHES THE ACTUAL DEFECT. The totals above only watch files
+    already known; this watches the SET, which is what nothing was doing when
+    `session-digest-slim.md` was added. Derived from `digest.py`'s own
+    `*_RELPATH` constants rather than from a list kept beside them, because a
+    hand-kept list has the same blind spot as the per-file ceilings: adding a
+    variant and forgetting the list is precisely the mistake being guarded.
+
+    Positive counterpart to the ceilings, per the paired-assertion rule: a
+    ceiling can be satisfied by deleting a surface, and a set-membership check
+    can be satisfied by budgeting a surface at zero. Both must hold.
+    """
+    tree = ast.parse((ROOT / "hooks" / "digest.py").read_text())
+    declared = set()
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        value = node.value
+        if not isinstance(value, ast.Tuple) or not value.elts:
+            continue
+        parts = [
+            e.value
+            for e in value.elts
+            if isinstance(e, ast.Constant) and isinstance(e.value, str)
+        ]
+        if len(parts) == len(value.elts) and parts[-1].endswith(".md"):
+            declared.add("/".join(parts))
+    assert declared, (
+        "no module-level path tuples found in hooks/digest.py. This test reads "
+        "the digest set out of the module's own constants; if the module stopped "
+        "declaring them as tuples of string literals, this check has silently "
+        "stopped watching anything and needs rewriting, not deleting."
+    )
+    budgeted = {
+        m for members in INJECTED_SESSION_SHAPES.values() for m in members
+    }
+    unbudgeted = declared - budgeted
+    assert not unbudgeted, (
+        f"hooks/digest.py can inject {sorted(unbudgeted)}, which no session "
+        f"shape in INJECTED_SESSION_SHAPES budgets. A digest variant added "
+        f"without a shape is tokens in every session that nothing is watching "
+        f"-- add it to a shape and record the total."
+    )
+
 
 
 # =============================================================================
