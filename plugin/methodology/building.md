@@ -117,19 +117,7 @@ Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades acr
 
 1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 7. **Handoff notes** — **read `.prawduct/.handoff-notes.md` before rewriting it**, then reconcile to what the *next* session needs: where you stopped, what you'd do next, what would bite them. Never blind-append.
 
-**Then close the turn with the standing block — last, after every other word. This exact shape, `---` rule included, three separate paragraphs, labels backticked so they render coloured:**
-
-```
----
-
-`STATE` — what changed; committed or not; suite green or not.
-
-`NEXT` / `BLOCKED` / `COMPLETE` — one only: work continues on an external event / stops until you act / is finished.
-
-`SAFE TO CLEAR` / `DO NOT CLEAR` — the label is the verdict; the copy is the reason.
-```
-
-Omitting, burying, padding or collapsing it fail alike — the bottom is all they read. Same trigger on every surface: a turn ending a chunk or work cycle, or one you end with work outstanding. Say `SAFE TO CLEAR` only when steps 1-7 are done **and nothing is outstanding, in flight included** (`methodology/reflection.md` "Work cycle boundary").
+**Then close the turn with the standing block — last, after every other word.** Say `SAFE TO CLEAR` only when steps 1-7 above are done **and nothing is outstanding, in flight included** — that binding is what this file owes the block. Its shape, trigger and failure modes are `methodology/reflection.md` "Work cycle boundary", and the session digest injects them into every session, so they reach you whether or not you opened this guide.
 
 **Two session files, two owners.** You own `.prawduct/.handoff-notes.md`; the `/clear` hook owns `.prawduct/.session-handoff.md`, regenerating it from your notes (first), build plan Status, reflection, Critic findings and changed files — never hand-edit the generated one. `prawduct-hook handoff preview` shows what the next session would get.
 

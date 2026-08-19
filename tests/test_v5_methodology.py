@@ -98,7 +98,17 @@ LAST_MEASURED_TOKENS = {
     # (only "warnings and notes gate nothing" was its own), the Critic-review
     # step said "runs as a separate agent" a second time, and the seven goal
     # names were spelled out beside the pointer to the file that defines them.
-    "methodology/building.md": 4806,
+    # -86 on 2026-08-19: a CUT, not a relocate. This file restated the whole
+    # three-label standing-block shape -- the fenced block, the `---` rule, the
+    # trigger, the three failure modes -- while `reflection.md` owns it and the
+    # session digest injects it unconditionally. A reader of THIS file has
+    # already been handed the shape by the digest before they open it, so the
+    # copy here was a second authoritative statement of a fact with a home
+    # (`artifacts/architecture.md` § Direction). What stays is the clause only
+    # this file can make: `SAFE TO CLEAR` binds to ITS steps 1-7. The freed
+    # headroom is not a budget to spend -- the next addition still trims or
+    # relocates.
+    "methodology/building.md": 4720,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -574,12 +584,24 @@ class TestBuildingMethodology:
     def test_standing_block_is_on_every_surface_that_claims_it(self):
         """State / Next / Clear, the in-flight rule, and one shared trigger.
 
-        Four prose copies carry this rule, and the split is deliberate — the
-        injected digests reach product sessions, the guides are read on demand.
-        But `building.md`'s token budget was FUNDED by relocating this rule's
-        rationale into the digests and `reflection.md`, and that funding argument
-        only holds while the destinations actually carry it. Without this pin, a
-        later trim of any destination silently unfunds a trim already taken here.
+        What this guards is COVERAGE: the shape has to reach an agent through a
+        surface it actually reads. `reflection.md` is canonical and read on
+        demand at the work-cycle boundary; the digests are injected into every
+        session with no opt-out, which is what makes them the carriers that
+        cannot be missed. Drop the rule from a digest and an agent that never
+        opens a guide emits no block at all.
+
+        `building.md` is deliberately NOT here (2026-08-19). It used to restate
+        the whole shape, but its reader has already been handed that shape by
+        the injected digest before they open the file, so the copy was a second
+        authoritative statement of a fact with a home. It keeps the one clause
+        only it can make — see
+        `test_building_md_binds_the_clear_verdict_to_its_own_steps`, the
+        positive half without which this narrowing could be satisfied by
+        deleting too much. An earlier docstring here justified the pin as
+        protecting a token trim "funded" by relocating this rationale INTO the
+        digests; that accounting is disavowed (owner rule 2026-08-05 — moving
+        prose between files reduces no total), and the pin stands on coverage.
 
         Also pins the trigger, which shipped undefined: "every stopping-place
         turn" appeared nowhere else in the plugin, and since every assistant turn
@@ -588,7 +610,6 @@ class TestBuildingMethodology:
         exists to prevent.
         """
         surfaces = {
-            "methodology/building.md": self.content,
             "methodology/reflection.md": read_file("methodology/reflection.md"),
             "methodology/session-digest.md": read_file("methodology/session-digest.md"),
             "methodology/session-digest-slim.md": read_file(
@@ -657,6 +678,36 @@ class TestBuildingMethodology:
             # One trigger, stated the same way, or the surfaces disagree about
             # when the block is owed.
             assert "work outstanding" in text, f"{name} states a different trigger"
+
+    def test_building_md_binds_the_clear_verdict_to_its_own_steps(self):
+        """building.md drops the shape but keeps the binding only it can state.
+
+        The clear verdict is not a free-standing judgement: it is owed against
+        THIS file's chunk-close sequence, and no other surface enumerates those
+        seven steps. So the trim above is bounded from below here — cut the
+        pointer or the binding as well and this goes red, which is what stops
+        "stop restating the shape" from sliding into "stop mentioning it".
+
+        Asserted as the pointer PLUS the binding, not as either alone: a
+        pointer with no binding sends the reader away for a rule that is not
+        there, and a binding with no pointer leaves a reader who opened only
+        this guide holding a verdict with no shape to put it in.
+        """
+        assert "standing block" in self.content
+        assert "steps 1-7" in self.content
+        assert "in flight included" in self.content
+        # The shape itself is gone: no fenced example, and none of the labels
+        # the carriers above pin. Negative and positive together are the
+        # contract -- either alone is satisfiable by the change it exists to
+        # prevent.
+        for label in ("`STATE`", "`NEXT`", "`BLOCKED`", "`COMPLETE`"):
+            assert label not in self.content, (
+                f"building.md restates the standing block's {label} label; "
+                "reflection.md and the injected digest own the shape"
+            )
+        # Where the reader is sent for the shape. Named, not implied -- a bare
+        # "see reflection.md" would survive the section being renamed away.
+        assert 'methodology/reflection.md` "Work cycle boundary"' in self.content
 
     def test_handoff_notes_are_reconciled_not_appended(self):
         """A handoff is reconciled against reality on every write, not grown.
@@ -926,7 +977,15 @@ class TestBuildingMethodology:
         # consolidate's parenthetical about the SubagentStop trigger, and two
         # words apiece in the research-presentation and cheap-check lines.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4810, f"building.md is ~{tokens} tokens, should be <4810"
+        # LOWERED 4810 -> 4730 (2026-08-19), the same commit that cut the
+        # standing-block restatement. A cut that leaves its own slack behind is
+        # a cut the next edit spends silently: the drift pin only asks the next
+        # editor to update the READING, while this ceiling is the hard gate, so
+        # 90 tokens of unratcheted headroom disarms it for the next 89. Every
+        # other budgeted file in this module sits within ~1-34 tokens of its
+        # ceiling; this restores building.md to that posture and keeps the
+        # trim-or-relocate rule meaning what it says.
+        assert tokens < 4730, f"building.md is ~{tokens} tokens, should be <4730"
 
 
 # =============================================================================
