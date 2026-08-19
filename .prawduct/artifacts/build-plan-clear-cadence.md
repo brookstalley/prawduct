@@ -63,7 +63,7 @@ None. This plan edits shipped prose, one hook dispatch path, and their guarding 
 
 ### Verification Strategy
 
-Chunk 01 is code and verifies by behaviour at the boundary: fresh marker + `clear` keeps it, expired marker + `clear` sweeps it, `startup` sweeps either. Assert the *direction*, not only the state — a test that only pins today's outcome passes against a revert that swaps the sources.
+Chunk 01 is code and verifies by behaviour at the boundary: a fresh marker survives a boundary, an expired one is swept, a continuation sweeps neither, and `--force` sweeps unconditionally wherever a sweep is licensed. Assert the *direction*, not only the state — a test that only pins today's outcome passes against a revert that swaps the sources.
 
 Chunks 02-04 are prose and budgets, where the suite *is* the executable contract (the surface pins and the ceilings). Each closes by re-reading the changed file end to end against #687's revised acceptance, plus a re-measurement, because the deliverable is a number as much as a change. Chunk 03 additionally checks the rendered digest a real session receives, not only the source file — the two ceilings that bind it are computed over the injected set, and a source-file reading is not what a session pays.
 
@@ -99,7 +99,10 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
   Budget: `building.md` sits at 4720 against a hard 4730. This chunk should net **down** — it retires a number and cedes a clause — and if it does, the ceiling ratchets in the same commit. Ratcheting is part of a cut, not a follow-up; unratcheted slack is a loan the next edit collects silently and green.
 - **Depends on:** Chunk 01 (no code dependency; ordered so the plan's one code change lands and is reviewed before three prose chunks)
 - **Artifacts consumed:** `documentation/purpose.md` (the re-pricing rule and the ledger's absence); `plugin/docs/principles.md` § 26
-- **Deliverables:** re-priced sentence in `plugin/methodology/building.md` § Session Scope Discipline stating only the rationale that still holds, in diff-size terms; the `/clear`-between-work-cycles line carrying its actual reason rather than a bare recommendation; a `.prawduct/change-log.md` entry recording the cession — what was ceded, what broke its assumption, and what survives; updated `LAST_MEASURED_TOKENS` reading and a ratcheted ceiling if the file shrank; #687 split on the tracker (`stage: ready` for the built half, the measurement half stated as remaining research); a backlog item for the cession record's missing mechanism home
+- **Deliverables:** re-priced sentence in `plugin/methodology/building.md` § Session Scope Discipline stating only the rationale that still holds, in diff-size terms;
+
+  `[DECISION: the /clear-between-work-cycles line ships UNCHANGED | it was listed here as "carrying its actual reason rather than a bare recommendation", and a draft of that edit was written and then reverted. The reason it would carry is the cadence answer — should you clear, and by when — which Chunk 03 puts on the standing block. Stating it in both places creates a second home for one fact, the exact defect `governance-surface-dedup` spent four chunks removing and that this plan was already found departing from once. A deliverable that should not ship is recorded as a decision, not silently skipped | user can veto/override]`
+ a `.prawduct/change-log.md` entry recording the cession — what was ceded, what broke its assumption, and what survives; updated `LAST_MEASURED_TOKENS` reading and a ratcheted ceiling if the file shrank; #687 split on the tracker (`stage: ready` for the built half, the measurement half stated as remaining research); a backlog item for the cession record's missing mechanism home
 - **Tests:** the existing `building.md` budget pin and ceiling; a pin that the surviving sentence names diff size rather than a chunk count, asserted on the discriminating content — a reader must be able to tell which rule they are under, so pinning the mere absence of "1-3" would pass against a sentence that names nothing
 - **Acceptance criteria:** suite green; #687 acceptance item 1 satisfied (only rationales that still hold, ceded one recorded as a cession); acceptance item 5 satisfied as an explicit park; the reading and ceiling agree with the file
 - **Type:** doc-only
@@ -144,6 +147,24 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
   2. `/prawduct:critic` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
 
+### Chunk 05: Two friction fixes found by building this plan
+
+- **Description:** Owner-approved mid-plan (2026-08-19) after the session hit both while running the governed path. Neither is speculative — each has a reproduction in this branch's own history.
+
+  **`backlog file` silently drops metadata.** It appends its own ```` ```prawduct ```` block to a body that already has one, then warns *"issue body carries 2 prawduct blocks; using the last and ignoring the earlier one(s)"* — so the earlier block's content is **discarded**. All three items filed this session (#690, #691, #692) lost their `related:` edges that way, and the warning reads as cosmetic while the data loss is real. Fix at the point where the block is composed, not by asking filers to omit theirs.
+
+  **`test-evidence record --no-rerun` restamps a count that may be stale.** It reused the prior record's counts and reported *"recorded: 4794 passed"* on a tree where the true figure was 4797 — three tests had been added since. The restamp is documented as an operator assertion that test-relevant content is unchanged, and there is deliberately no tree hash (removed pre-v1.4 for false positives). But **`test-status` already classifies judgeable paths**, and test files changing is precisely when the assertion is false. The fix is not a hash: it is refusing (or loudly warning) when the judgeable set has moved since the recorded run. The output line is the defect surface — a restamp that prints `recorded: N passed` is indistinguishable from a fresh measurement.
+- **Depends on:** Chunk 04
+- **Artifacts consumed:** none
+- **Deliverables:** single-metadata-block composition in the backlog filing path; a judgeability guard on `--no-rerun` with output that distinguishes a restamp from a measurement
+- **Tests:** a body already carrying a metadata block yields exactly one, with the filer's own fields preserved; a restamp after a test-file change does not silently succeed; a restamp with no judgeable change still does
+- **Acceptance criteria:** suite green; filing an item with `related:` in its body preserves those edges; the 4794-for-4797 reproduction cannot recur silently
+- **Type:** code
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
 ## Governance Checkpoints
 
 - **After Chunk 01** — the only code change and the one that repairs a ratified norm's mechanism. Confirm the sweep's new premise is stated where a reader meets it and that the residual cost is named rather than elided.
@@ -155,6 +176,7 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
 - [ ] Chunk 02: `building.md` re-prices the work-cycle limit
 - [ ] Chunk 03: The clear line answers *should you*, and a live review moves the verdict
 - [ ] Chunk 04: Settle the on-demand guides' budget policy (#688)
+- [ ] Chunk 05: Two friction fixes found by building this plan
 
 ## Context
 

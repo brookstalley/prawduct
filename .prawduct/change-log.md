@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: `/clear` stops deleting a Critic review's liveness marker
+
+<!-- prawduct: type=fix | scope=clear-cadence -->
+
+A session boundary swept `.critic-active` unconditionally. What licenses deleting a marker someone
+else wrote is that **the process that dispatched the review is gone** — and the boundary/continuation
+split sorts `SessionStart` sources on a different question: *was the transcript restored?*
+
+Those agree at `startup`. They come apart at **`/clear`**, which discards the transcript **without
+ending the process** — so a review subagent dispatched before it may still be running. `compact` and
+`fork` were excluded from the sweep for exactly this reason; `clear` was missed because it *passes*
+the transcript test the other two fail.
+
+**What went wrong when it fired.** Deleting a live marker disarms two things at once: the guard that
+stops an independent reviewer clobbering the session it is reviewing, and the Stop hook's
+abandoned-review backstop — which does not merely block, it **consolidates** a review whose
+reviewers all reported. So a wrongly-swept marker destroyed a recovery, not just a signal.
+
+**The fix keys on the marker, not the source.** A boundary now sweeps only a marker the 30-minute
+TTL has already released. That answers the real question at every source and needs no finer matcher
+— `startup` and `/clear` share one hook entry and are indistinguishable to the command. The
+crashed-Critic rescue the sweep exists for is unchanged. `--force` stays unconditional wherever a
+sweep is licensed: it is the operator's escape from a marker the TTL has *not* released, which is
+the one case it serves.
+
+**What retention costs, stated honestly because it is not free.** Two readers hold different
+liveness predicates. A dispatch refusal keys on the TTL and is *not* `--force`-overridable, so a
+dead-but-fresh marker blocks the next `/prawduct:critic` until it expires; the Stop backstop reads
+raw presence and has **no TTL** at all. Both are loud and recoverable by a command the refusal
+prints. That is the trade: sweeping a live marker fails *silently*, retaining a dead one fails
+*loudly*.
+
+**A new session is now told when a marker was kept** — the session that most needs telling, since
+`/clear` just discarded the context in which the review was dispatched. The remedy it offers is
+conditional on the roster, because the wrong one is destructive: a complete roster is routed to
+`critic-consolidate`, never to `critic-end`, which would discard a finished review's findings.
+
 ## 2026-08-19: the work-cycle limit is re-priced, and a rationale is formally ceded
 
 <!-- prawduct: type=refactor | scope=clear-cadence -->

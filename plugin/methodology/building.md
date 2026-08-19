@@ -189,11 +189,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 ### Modes
 
-`Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes:
-
-`chunk`, `final`, `cumulative`, `verify-resolutions` — what each covers is the per-mode table below, not restated here. Two are worth knowing before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` is the only mode that records resolution facts.
-
-If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
+`Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the fail-safe that a missing, unrecognized or unconfidently-inferred mode runs `final` — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
 **The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings.
 

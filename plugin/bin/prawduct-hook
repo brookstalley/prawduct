@@ -875,6 +875,40 @@ def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None
         )
 
 
+def _boundary_retained_marker_notice(prawduct_dir: Path) -> str:
+    """What to tell a new session about a marker the boundary kept.
+
+    The remedy is CONDITIONAL and getting it wrong is destructive, which is why
+    this asks the roster before advising. `critic-end` clears the marker only —
+    on a **complete** roster that discards the Stop hook's self-heal, which would
+    otherwise consolidate the review and append its fact. So a complete roster is
+    told to consolidate; an incomplete one is told what it is waiting on. This is
+    the same split `active_dispatch_refusal` already makes, applied at the other
+    surface that meets the marker.
+    """
+    head = "PRAWDUCT: a Critic review is still marked active — kept, because no session event proves its reviewers died.\n"
+    try:
+        state, missing = _critic_consolidate().pending_state(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        state, missing = "unreadable", []
+    if state == "complete":
+        return head + (
+            "  Every reviewer reported — it needs consolidating, NOT clearing:\n"
+            "    prawduct-hook critic-consolidate\n"
+            "  (`critic-end` here would discard a finished review's findings.)"
+        )
+    if state == "incomplete":
+        return head + (
+            f"  Still waiting on {', '.join(missing)}. If that session is gone they will\n"
+            "  never land — abandon the review explicitly, then re-dispatch:\n"
+            "    prawduct-hook critic-end"
+        )
+    return head + (
+        "  No readable dispatch manifest — nothing here is worth keeping:\n"
+        "    prawduct-hook critic-end"
+    )
+
+
 def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     """Orient a session, and at a genuine boundary also reset it (plugin runtime: no sync).
 
@@ -905,7 +939,10 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     proceeds. ``--brief-only`` runs orientation only and skips both (1) and (2);
     it is orthogonal to ``--session-start`` rather than replacing it, so the
     boundary is ``--session-start`` *without* ``--brief-only``. ``--force`` is
-    the operator override for a stale marker and sweeps it. A bare ``clear``
+    the operator override for a marker the TTL has **not** released — a stale one
+    needs no override, since every sweeping path already takes it — and it sweeps
+    unconditionally wherever a sweep is licensed at all (boundary or guarded),
+    never on a continuation. A bare ``clear``
     (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
     while a Critic review is plausibly in progress so an independent reviewer
     cannot clobber the session it is reviewing. A continuation neither sweeps nor
@@ -977,26 +1014,32 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # carrying no source — so the gate is on the marker, not on the source, and a
     # finer matcher would buy nothing the TTL does not already decide.
     #
-    # Announce a RETAINED marker. This branch now has two outcomes and printed
-    # nothing for either, and the session most in need of the signal is exactly
-    # this one: `/clear` just discarded the context in which the review was
-    # dispatched, so nothing else in the new session knows it is pending.
-    if kind == "BOUNDARY":
-        try:
-            if _critic_marker().sweep_if_expired(prawduct_dir):
-                print(
-                    "PRAWDUCT: a Critic review is still marked active — kept, because no "
-                    "session event proves its reviewers died. Release it with "
-                    "`prawduct-hook critic-end`, or `prawduct-hook clear --force`."
-                )
-        except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
-            pass
-    elif kind == "GUARDED" and force:
-        # An operator override is deliberate and therefore unconditional: --force
-        # is the documented escape hatch for a marker the TTL has not released
-        # yet, so gating it on freshness would disable the one case it exists for.
+    # `--force` is orthogonal to the gate and stays UNCONDITIONAL wherever it is
+    # passed. It is the operator's documented escape from a marker the TTL has
+    # not released, so gating it would disable the one case it exists for — and
+    # an earlier cut of this split consulted it only on GUARDED, which silently
+    # made `--session-start --force` a no-op while three comments still promised
+    # otherwise, including the message below that recommends it.
+    if force and kind != "CONTINUATION":
+        # Unconditional, at BOTH kinds that can carry it. `--force` never
+        # promotes a continuation (that remains the failure mode, not an
+        # override of it), but where a sweep is licensed at all, forcing means
+        # forcing.
         try:
             _critic_marker().clear_marker(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
+            pass
+    elif kind == "BOUNDARY":
+        # Announce a RETAINED marker. This branch has two outcomes and printed
+        # nothing for either, and the session most in need of the signal is
+        # exactly this one: `/clear` just discarded the context in which the
+        # review was dispatched, so nothing else in the new session knows it is
+        # pending. The remedy is CONDITIONAL on the roster — telling someone to
+        # `critic-end` a complete roster destroys the Stop hook's self-heal — so
+        # the notice asks the state before it advises.
+        try:
+            if _critic_marker().sweep_unless_live(prawduct_dir):
+                print(_boundary_retained_marker_notice(prawduct_dir))
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
             pass
     elif kind == "CONTINUATION":

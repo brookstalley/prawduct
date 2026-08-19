@@ -61,11 +61,19 @@ independent corrections, no one of which has to be perfect:
 3. **Explicit override** — the refusal message tells the operator/agent how to
    clear a stale marker (``rm``) or force the one command (``clear --force``).
 
-**Failure stance.** A missing, corrupt, or unparseable marker is treated as
-*not active* (fail toward availability, not toward blocking) — the override
-exists regardless, and a corrupt marker is far more likely junk than a live
-review. The freshness signal is the embedded ``started_at`` timestamp when
-parseable, falling back to the file's mtime.
+**Failure stance — decided by AGE, not by readability.** A *missing* marker is
+not active. A *corrupt or unparseable* one is not therefore dead: the freshness
+signal is the embedded ``started_at`` when parseable and **falls back to the
+file's mtime**, so a recently-written corrupt marker still counts as active
+(protective, and pinned by ``test_corrupt_marker_falls_back_to_mtime``) while an
+old one expires like any other. Only when neither signal is readable at all is
+the marker treated as not active.
+
+That distinction is load-bearing now that the session-boundary sweep keys on
+this predicate (:func:`sweep_unless_live`): "corrupt ⇒ swept" would delete a
+marker a reviewer had just written and mangled, which is the silent failure the
+gate exists to close. The two loud overrides (``--force``, ``rm``) are what keep
+the protective direction from bricking anyone.
 """
 
 from __future__ import annotations
@@ -127,19 +135,25 @@ def clear_marker(prawduct_dir: Path) -> bool:
         return False
 
 
-def sweep_if_expired(prawduct_dir: Path) -> bool:
-    """Release the marker **only if** the TTL has already expired. Returns True
-    when a marker survived (a review is still plausibly live), False otherwise.
+def sweep_unless_live(prawduct_dir: Path) -> bool:
+    """The session-boundary sweep: release the marker **unless** it is still
+    within its TTL. Returns ``True`` when a live marker was **retained** — i.e.
+    when this call swept *nothing*.
 
-    The session-boundary sweep, named. It delegates to :func:`review_active`,
-    whose sweeping default does exactly this — but a bare ``review_active`` call
-    at a boundary is a query used as a command, with its result discarded and its
-    intent living only in a comment. The reason a boundary may not simply delete
-    the marker is in this module's docstring; this function is how the call site
-    says which of the two acts it is performing.
+    Read the name and the return together: the function's job is the sweep, and
+    the value it hands back is the exception to it, because the caller's only
+    reason to branch is the marker it did *not* remove. An earlier name for this
+    (``sweep_if_expired``) returned ``True`` on the path where it had swept
+    nothing at all, so a second caller written from the name alone would take the
+    wrong branch — the silent direction this whole guard exists to close.
+
+    It delegates to :func:`review_active`, whose sweeping default does exactly
+    this. The reason a boundary may not simply delete the marker is in this
+    module's docstring; this function is how the call site names which of the two
+    acts it is performing, instead of calling a predicate for its side effect.
     """
-    active, _age = review_active(prawduct_dir)
-    return active
+    retained, _age = review_active(prawduct_dir)
+    return retained
 
 
 def marker_present(prawduct_dir: Path) -> bool:

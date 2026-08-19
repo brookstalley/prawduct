@@ -389,6 +389,84 @@ class TestBoundaryDependentInterpretation:
             "the reader's next step is otherwise an unexplained refusal"
         )
 
+    def test_force_sweeps_a_live_marker_at_a_boundary_too(self, tmp_path):
+        """`--force` is orthogonal to the freshness gate, at every kind that can
+        carry it.
+
+        The regression this pins actually shipped for one commit: splitting the
+        sweep into `if BOUNDARY / elif GUARDED and force` made
+        `--session-start --force` take the BOUNDARY branch, so the flag was
+        silently ignored — while the call-site comment, `cmd_clear`'s docstring
+        and `architecture.md` all still promised it was unconditional, and the
+        retained-marker notice recommended it. The bare-`--force` test passed
+        throughout, because it exercises the GUARDED path.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": now}))
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
+        assert res.returncode == 0, res.stderr
+        assert not marker.is_file(), (
+            "--force must sweep a live marker at a BOUNDARY as well as a bare "
+            "clear; it is the operator's only escape from a fresh marker"
+        )
+
+    def test_the_retained_notice_never_advises_clearing_a_complete_roster(self, tmp_path):
+        """The remedy is conditional, and the wrong one is destructive.
+
+        `critic-end` clears the marker only. On a COMPLETE roster the Stop hook
+        would have consolidated those partials into a review fact — so advising
+        `critic-end` there tells the reader to discard a finished review's
+        findings. The notice therefore asks `pending_state` before advising, the
+        same split `active_dispatch_refusal` already makes.
+
+        Asserted as a positive and a negative together: naming `consolidate` is
+        not enough if it also offers the destructive command beside it.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        (prawduct / ".critic-active").write_text(json.dumps({"started_at": now}))
+        partials = prawduct / ".critic-partials"
+        partials.mkdir(exist_ok=True)
+        (partials / "manifest.json").write_text(json.dumps({
+            "id": "rev-test",
+            "mode": "chunk (lighter pass, not ready for push)",
+            "mode_chosen_by": "test", "roster_chosen_by": "test",
+            "commit_reviewed": "0" * 40,
+            "base_tree": "1" * 40, "head_tree": "2" * 40,
+            "files_reviewed": ["some/file.py"],
+            "files_changed": ["some/file.py"],
+            "roster": ["reviewer"],
+            "rendezvous": {"reviewer": {
+                "partial": ".prawduct/.critic-partials/reviewer.rev-test.json",
+                "started": ".prawduct/.critic-partials/reviewer.rev-test.started",
+            }},
+        }))
+        (partials / "reviewer.rev-test.json").write_text(json.dumps({"findings": []}))
+        # Guard the fixture itself: pending_state falls back to "unreadable" on a
+        # manifest it cannot validate, and "unreadable" also routes to
+        # `critic-end` — so a malformed fixture would make the negative assertion
+        # below pass for the wrong reason. Assert the state we meant to build.
+        from lib.critic_consolidate import pending_state  # noqa: PLC0415
+        assert pending_state(prawduct)[0] == "complete", (
+            "fixture does not build a complete roster; the assertions below "
+            "would grade the unreadable branch instead"
+        )
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        assert "critic-consolidate" in out, (
+            "a complete roster must be routed to consolidation — its findings "
+            "are already written and only need a fact appended"
+        )
+        assert "prawduct-hook critic-end" not in out, (
+            "the notice offered `critic-end` on a complete roster; following it "
+            "discards a finished review's findings"
+        )
+
     def test_a_swept_marker_is_not_announced(self, tmp_path):
         """The discriminating half. Without it the announcement could fire on
         every boundary and still pass the test above, which would train the

@@ -121,9 +121,18 @@ LAST_MEASURED_TOKENS = {
     # the file that defines them and that the reader is told to open. What it
     # keeps is the two facts a reader needs BEFORE opening it (`cumulative`
     # feeds the PR gate; `verify-resolutions` alone records resolutions), which
-    # is the part a pointer cannot carry. Ceiling unchanged at 4730 — the file
-    # grew, so there is no slack to ratchet; headroom is now 4.
-    "methodology/building.md": 4726,
+    # is the part a pointer cannot carry.
+    #
+    # The cut went FURTHER than the addition, which is why this reading is below
+    # where the branch started: the Modes section named
+    # `skills/critic/review-cycle.md` three times in five lines — once in the
+    # gloss, once in a fail-safe sentence, once in a following aside — while the
+    # first draft of the trim ADDED a fourth by pointing at a "per-mode table
+    # below" that is not in this file. Merged to one pointer carrying both the
+    # per-mode table and the fail-safe. CEILING RATCHETED 4730 -> 4718 with the
+    # cut, per the standing rule: slack left behind is a loan the next edit
+    # collects silently and green.
+    "methodology/building.md": 4708,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1180,6 +1189,9 @@ class TestBuildingMethodology:
         # consolidate's parenthetical about the SubagentStop trigger, and two
         # words apiece in the research-presentation and cheap-check lines.
         tokens = estimate_tokens(self.content)
+        # LOWERED 4730 -> 4718 (2026-08-19, #687): the work-cycle re-pricing was
+        # funded by collapsing the Modes section's three pointers to one, and the
+        # cut exceeded the addition. Ratcheted in the same commit.
         # LOWERED 4810 -> 4730 (2026-08-19), the same commit that cut the
         # standing-block restatement. A cut that leaves its own slack behind is
         # a cut the next edit spends silently: the drift pin only asks the next
@@ -1188,7 +1200,7 @@ class TestBuildingMethodology:
         # other budgeted file in this module sits within ~1-34 tokens of its
         # ceiling; this restores building.md to that posture and keeps the
         # trim-or-relocate rule meaning what it says.
-        assert tokens < 4730, f"building.md is ~{tokens} tokens, should be <4730"
+        assert tokens < 4718, f"building.md is ~{tokens} tokens, should be <4718"
 
 
 # =============================================================================
