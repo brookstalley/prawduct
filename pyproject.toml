@@ -30,8 +30,13 @@ packages = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Worker count is pinned rather than `auto` (owner request 2026-08-19): `auto`
+# takes every core, and a full-suite run then owns the developer's machine for
+# its whole duration — measured at a load average of 24 on a 10-core box with
+# a suite run in flight. CI is unaffected in practice: GitHub's standard
+# runners have 4 cores, so `auto` was already giving it fewer than this.
 addopts = [
-    "-n", "auto",
+    "-n", "5",
     "--dist", "loadfile",
     "--timeout", "30",
     "--timeout-method", "thread",
