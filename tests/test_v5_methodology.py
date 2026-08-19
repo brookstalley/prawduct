@@ -374,8 +374,25 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # preamble's second argument for its own first sentence, and four
     # explanations of rules the same bullet had already stated. Net +5 is what
     # the trim could not reach; both ceilings still hold.
-    "framework": 3320,
-    "product": 2243,
+    #
+    # -3 on both shapes, 2026-08-19 (#687): the standing block's CLEAR line
+    # gained the binding it never had. The in-flight rule bound only the
+    # DISPOSITION line, so `RUNNING` beside `SAFE TO CLEAR` was emittable --
+    # and this repo emitted it three times with a Critic review live. A live
+    # review now moves the verdict, and its copy carries a computed deadline
+    # rather than only a reason, because the reader about to step away is
+    # asking by WHEN to check back.
+    #
+    # Paid for in place and past the addition, by cutting a CLASS rather than
+    # words: three section headings carried a parenthetical restating a fact
+    # the preamble or their own body already stated -- `## Principles (apply
+    # with judgment, not mechanically)` is verbatim the opening sentence,
+    # `## Read on demand (plugin skills -- the full guides ship in the plugin)`
+    # is the rest of it, and `## Enforcement (this is what makes governance
+    # stick)` is the claim its two sentences go on to make. `(stance)` on the
+    # fourth heading is a LABEL, not a restatement, and stays.
+    "framework": 3317,
+    "product": 2240,
 }
 
 #: Ceilings. HARD, like the five per-file prose ceilings in this module and
@@ -399,8 +416,14 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # Both shapes carry the digest, so a digest addition is charged twice and
     # both ceilings bind it; only a CLAUDE.md edit is charged to `framework`
     # alone.
-    "framework": 3325,
-    "product": 2248,
+    #
+    # -3 on both, 2026-08-19: ratcheted with the readings again. The clear-line
+    # binding cost less than the heading-parenthetical class that funded it, so
+    # both readings landed BELOW where the branch started; leaving the ceilings
+    # would have banked that difference as headroom for the next addition,
+    # which is the re-funding this comment's first paragraph forbids.
+    "framework": 3322,
+    "product": 2245,
 }
 
 
@@ -758,6 +781,107 @@ class TestBuildingMethodology:
             # One trigger, stated the same way, or the surfaces disagree about
             # when the block is owed.
             assert "work outstanding" in text, f"{name} states a different trigger"
+
+    def test_a_live_review_moves_the_clear_verdict_on_every_carrier(self):
+        """A live Critic review is `DO NOT CLEAR`, and the copy carries a deadline.
+
+        THE GAP THIS CLOSES. The in-flight rule binds the *disposition* line
+        only — "a dispatched review is `RUNNING`, never `COMPLETE`" — and
+        nothing bound the line below it, so `RUNNING` beside `SAFE TO CLEAR`
+        was a reachable emission. It is not a hypothetical: this repo emitted
+        that pair three times on 2026-08-19 with a review live.
+
+        **Asserted on the verdict, not on the mention.** A carrier that merely
+        names a running review in the clear copy — "a review is in flight, but
+        the work is committed" — satisfies any pin that greps for "review",
+        while being exactly the copy-only phrasing this rule replaces. So the
+        discriminating content is the verdict token adjacent to the live-review
+        subject, plus the deadline the copy owes; both halves have to be there,
+        because a verdict with no clock answers *may I clear* and leaves *by
+        when must I check back* unanswered, and that second question is the one
+        the person stepping away is actually asking.
+
+        Pinned on both carriers for the same reason the shape is: the digest is
+        injected with no opt-out, so an agent that never opens a guide gets the
+        binding anyway, and `reflection.md` is where a reader sent by the
+        digest's pointer arrives.
+        """
+        for name in (
+            "methodology/reflection.md",
+            "methodology/session-digest.md",
+        ):
+            # Normalized because the digest wraps mid-clause: the subject and
+            # its verdict sit on different source lines there, and a raw
+            # substring match would pin the line-breaking rather than the rule.
+            text = " ".join(read_file(name).split())
+            assert re.search(r"live (Critic )?review is (also )?`DO NOT CLEAR`", text), (
+                f"{name} no longer states that a live review MOVES the clear "
+                "verdict. Naming the review in the copy is not this rule — the "
+                "pair `RUNNING` + `SAFE TO CLEAR` stays emittable under it."
+            )
+            # The clock. `DO NOT CLEAR` with a live review is a deadline, not
+            # just a refusal, and the copy owes what it is computed from.
+            assert "deadline" in text, (
+                f"{name} dropped the deadline the `DO NOT CLEAR` copy owes — "
+                "without it the line answers *may I clear* and leaves *by when "
+                "must I check back* unanswered"
+            )
+            for input_name in ("elapsed", "roster"):
+                assert input_name in text, (
+                    f"{name} stopped naming {input_name!r} as an input to the "
+                    "deadline. A deadline with no stated derivation invites the "
+                    "constant this rule exists to keep out"
+                )
+        # The nuance lives on the canonical carrier alone, and is load-bearing:
+        # the rule is NOT "`RUNNING` implies `DO NOT CLEAR`". Work a clear
+        # leaves alone is legitimately both, and over-reading this into a
+        # blanket implication would make the clear line a restatement of the
+        # disposition line — which is the collapse the two-axis design exists
+        # to prevent (see the "different axis" clause the shape pin guards).
+        canonical = read_file("methodology/reflection.md")
+        assert "for work a clear leaves alone it is correct" in canonical, (
+            "reflection.md dropped the clause scoping the new binding to work "
+            "a clear DESTROYS. Without it the rule reads as `RUNNING` implying "
+            "`DO NOT CLEAR`, collapsing two lines that answer different axes."
+        )
+
+    def test_the_clear_line_answers_should_you_without_a_threshold(self):
+        """*Should you clear* is answered, and answered without a number.
+
+        #687 scopes every numeric threshold OUT until rebuild cost and
+        per-turn growth are measured from real `/clear`s, and separately
+        records why a context-fullness gate was rejected: an agent cannot
+        reliably measure its own window, and a gate that fires routinely trains
+        dismissal. So this pin has a positive and a negative half, and the
+        negative is the one that matters — a later edit "helpfully" adding
+        "clear when context passes 50%" ships the rejected design, and the
+        positive half alone would stay green through it.
+
+        `reflection.md` only: the digest carries the VERDICT binding in its
+        shortest true form (five tokens of headroom, and it is charged to both
+        injected shapes), while the reasoning belongs to the canonical carrier.
+        """
+        content = read_file("methodology/reflection.md")
+        assert "*should you*" in content, (
+            "reflection.md's clear line no longer answers *should you* — it is "
+            "back to answering only *can you*, which is the gap #687 names"
+        )
+        # Keyed to cost, not to a threshold: coverage survives a clear (so the
+        # review argument is not the reason), and the read cost of NOT clearing
+        # is what grows.
+        assert "review-cycle.md" in content, (
+            "reflection.md stopped citing where review coverage's survival "
+            "across sessions is defined; without it the cost argument reads as "
+            "though clearing risks the accumulated reviews"
+        )
+        for banned in ("% full", "50%", "context is full"):
+            assert banned not in content, (
+                f"reflection.md's clear guidance names {banned!r} — #687 "
+                "records the context-fullness trigger as REJECTED, on grounds "
+                "no later edit re-derives: the percentage proxies the risk "
+                "rather than measuring it, and the agent cannot take the "
+                "measurement anyway"
+            )
 
     def test_building_md_binds_the_clear_verdict_to_its_own_steps(self):
         """building.md drops the shape but keeps the binding only it can state.
