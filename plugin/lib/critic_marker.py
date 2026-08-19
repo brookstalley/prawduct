@@ -26,19 +26,26 @@ independent corrections, no one of which has to be perfect:
    stops counting as active (and is swept on the next read).
 2. **Session-boundary sweep** — a genuine session boundary (``clear
    --session-start`` *without* ``--brief-only``: only ``startup`` and ``clear``)
-   deletes any marker. What licenses deleting a marker someone else wrote is that
-   a review is dispatched by a process, so an in-flight review dies with the
-   session that died — a marker outliving its session is stale by construction.
+   deletes a marker **that has already failed the TTL above**. What licenses
+   deleting a marker someone else wrote is that a review is dispatched by a
+   process, so the sweep's real question is *is that process gone?*
 
-   That premise is scoped, and the sweep is scoped to match (SCN-5B8Q): it does
-   **not** fire on continuations. ``compact`` fires mid-session *in-process*, and
+   Source is only a proxy for that question, and the sweep is scoped twice
+   because the proxy leaks in both directions. It does **not** fire on
+   continuations (SCN-5B8Q): ``compact`` fires mid-session *in-process* and
    ``fork``'s parent session is frequently still running, so a marker seen there
-   is very likely **live** — sweeping it would disarm this guard and the Stop
-   hook's abandoned-review backstop while a reviewer is genuinely working. The
-   asymmetry decides it: sweeping a live marker is a silent governance failure,
-   whereas leaving a dead one costs at most the TTL below, with two loud
-   overrides. A crashed Critic is therefore rescued by the next real boundary,
-   not by a resume.
+   is very likely **live**. And at a boundary it is gated on freshness rather
+   than fired outright, because ``clear`` discards the transcript *without*
+   ending the process — it passes the was-the-transcript-restored test that
+   sorts the boundary column, while failing the process-death test this act
+   actually needs, so a subagent dispatched before it may still be writing.
+
+   The asymmetry decides every uncertain case: sweeping a live marker is a
+   silent governance failure — it disarms this guard *and* the Stop hook's
+   abandoned-review backstop, which not only blocks on the marker but
+   **consolidates** a review whose reviewers all reported — whereas leaving a
+   dead one costs at most the TTL below, with two loud overrides. A crashed
+   Critic is therefore rescued by the TTL, at whichever check reaches it first.
 3. **Explicit override** — the refusal message tells the operator/agent how to
    clear a stale marker (``rm``) or force the one command (``clear --force``).
 

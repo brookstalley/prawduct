@@ -969,18 +969,43 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # on a lib import error so an incomplete install never blocks session start (a
     # broken lib also means the Critic can't run, so there is no review to protect).
     #
-    # The sweep is BOUNDARY-only, not orientation (SCN-5B8Q review R-1/R-6). What
-    # licenses deleting someone else's marker is that an in-flight review dies with
-    # the process that dispatched it, so a marker outliving its session is stale by
-    # construction. That premise holds for a session that ENDED. It is false for
-    # `compact`, which fires mid-session *in-process*, and often false for `fork`,
-    # whose parent session is frequently still running — sweeping there would
-    # disarm this very guard, and the Stop hook's abandoned-review backstop (which
-    # keys on the marker's presence), while a reviewer is genuinely alive. The
-    # asymmetry decides it: sweeping a live marker is a silent governance failure,
-    # while not sweeping a dead one costs at most the 30-minute TTL, with `--force`
-    # and `rm` as loud, documented overrides.
-    if kind == "BOUNDARY" or (kind == "GUARDED" and force):
+    # The sweep is BOUNDARY-only, not orientation (SCN-5B8Q review R-1/R-6), and
+    # at a boundary it is gated on the marker's own freshness rather than fired
+    # unconditionally. What licenses deleting someone else's marker is that an
+    # in-flight review dies with the process that dispatched it — so the question
+    # the sweep actually asks is *is that process gone?*, and the only evidence
+    # this command holds for it is the marker's age.
+    #
+    # Source is a PROXY for that question and it is not a faithful one. The
+    # boundary/continuation split sorts on whether the transcript was restored,
+    # which is the right test for every other act here but diverges from process
+    # death at exactly one source: `clear` discards the transcript WITHOUT ending
+    # the process, so a review subagent dispatched before it may still be running.
+    # `compact` and `fork` were excluded for that reason; `clear` was not, because
+    # it passes the transcript test the other two fail. Keying on the TTL instead
+    # answers the real question at every source and needs no finer matcher.
+    #
+    # The asymmetry decides the uncertain case: sweeping a live marker is a silent
+    # governance failure — it disarms this guard AND the Stop hook's
+    # abandoned-review backstop, which keys on the marker's presence — while
+    # leaving a dead one costs at most the 30-minute TTL, with `--force` and `rm`
+    # as loud, documented overrides. Worth naming the second half of that cost,
+    # since it is a recovery and not just an annoyance: the Stop backstop
+    # CONSOLIDATES an abandoned review whose reviewers all reported, so a marker
+    # deleted here also destroys the self-heal.
+    #
+    # `review_active` unlinks exactly when the marker is stale or unreadable, so
+    # the crashed-Critic rescue this act exists for is unchanged; only a marker
+    # that is still plausibly live now survives.
+    if kind == "BOUNDARY":
+        try:
+            _critic_marker().review_active(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
+            pass
+    elif kind == "GUARDED" and force:
+        # An operator override is deliberate and therefore unconditional: --force
+        # is the documented escape hatch for a marker the TTL has not released
+        # yet, so gating it on freshness would disable the one case it exists for.
         try:
             _critic_marker().clear_marker(prawduct_dir)
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
@@ -1008,9 +1033,10 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
                 "    rm .prawduct/.critic-active        # then retry\n"
                 "  or override this one invocation:\n"
                 "    prawduct-hook clear --force\n"
-                "  (The marker also auto-expires after 30 min, or is swept at the next session "
-                "BOUNDARY — a fresh start or /clear. Resuming, forking or compacting this session "
-                "does NOT sweep it: a review may still be running in the session those continue.)",
+                "  (The marker also auto-expires after 30 min, and a session boundary — a fresh "
+                "start or /clear — sweeps it once expired. No session event sweeps it sooner: "
+                "a review may still be running in a session that /clear, resume, fork or compact "
+                "leaves alive.)",
                 file=sys.stderr,
             )
             return 2

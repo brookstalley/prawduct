@@ -170,14 +170,47 @@ class TestClearGuardCLI:
         assert (prawduct / cm.MARKER_NAME).is_file(), "guard must not remove the marker"
         assert not (prawduct / ".session-start").is_file(), "refused clear must not write session-start"
 
-    def test_session_start_proceeds_and_sweeps_marker(self, tmp_path):
+    def test_session_start_proceeds_and_sweeps_a_stale_marker(self, tmp_path):
+        """A session boundary proceeds unrefused and sweeps a marker the TTL has
+        released — the crashed-Critic rescue this act exists for.
+
+        This test used to write a FRESH marker and assert the sweep, which
+        pinned a defect: `/clear` and `startup` share one hook entry, and
+        `/clear` resets context *in-process*, so a fresh marker there may belong
+        to a reviewer that is still running. A correction, not a relaxation —
+        the same shape as the earlier `resume` correction in
+        `test_session_boundary_events.py`. What the sweep exists for is asserted
+        here, and the case it must no longer touch is asserted beside it.
+        """
+        prawduct = _prawduct(tmp_path)
+        old = datetime.now(timezone.utc) - timedelta(seconds=cm.CRITIC_ACTIVE_TTL_SECONDS + 300)
+        _write_marker(prawduct, started_at=_iso(old))
+        result = run_plugin_hook("clear", tmp_path, "--session-start", git_status=" M src/app.py")
+        assert result.returncode == 0, result.stderr
+        assert not (prawduct / cm.MARKER_NAME).is_file(), "session start must sweep a stale marker"
+        assert (prawduct / ".session-start").is_file()
+        assert (prawduct / ".session-git-baseline").read_text() == " M src/app.py"
+
+    def test_session_start_proceeds_but_keeps_a_live_marker(self, tmp_path):
+        """The half the old assertion inverted. The boundary still runs in full —
+        anchors captured, session started — while the marker survives, because a
+        boundary event is not evidence that the reviewing process died.
+
+        Both halves are asserted together: `.session-start` present proves the
+        boundary was not demoted to a continuation, which is the other way this
+        could pass while being wrong.
+        """
         prawduct = _prawduct(tmp_path)
         cm.write_marker(prawduct)
         result = run_plugin_hook("clear", tmp_path, "--session-start", git_status=" M src/app.py")
         assert result.returncode == 0, result.stderr
-        assert not (prawduct / cm.MARKER_NAME).is_file(), "session start must sweep the marker"
-        assert (prawduct / ".session-start").is_file()
-        assert (prawduct / ".session-git-baseline").read_text() == " M src/app.py"
+        assert (prawduct / cm.MARKER_NAME).is_file(), (
+            "a live marker must survive a boundary — /clear resets context "
+            "in-process, so the dispatched reviewer may still be writing"
+        )
+        assert (prawduct / ".session-start").is_file(), (
+            "the boundary itself must still run; only the sweep is gated"
+        )
 
     def test_force_overrides_active_marker(self, tmp_path):
         prawduct = _prawduct(tmp_path)

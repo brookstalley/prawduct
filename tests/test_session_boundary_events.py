@@ -28,6 +28,14 @@ is boundary-only: `compact` fires in-process and `fork`'s parent is often still
 running, so a marker seen there is likely LIVE, and sweeping it would disarm the
 guard while a reviewer is working.
 
+The marker sweep is scoped a second time, *inside* the boundary column, because
+source is only a proxy for the question it asks. What licenses deleting someone
+else's marker is that the dispatching process is gone — and `clear` discards the
+transcript WITHOUT ending the process, so it passes the test that sorts this
+column while failing the one the sweep needs. At a boundary the sweep therefore
+fires only on a marker that has already failed the 30-minute TTL; a fresh one
+survives every session event.
+
 The premise was verified empirically before this was built, not reasoned about:
 a headless session was given a codeword, resumed by session id, and returned the
 codeword — so a resumed session has not lost context. The same probe confirmed
@@ -302,7 +310,12 @@ class TestBoundaryDependentInterpretation:
         assert (prawduct / ".handoff-notes.md").is_file(), "and mutate nothing"
 
     def test_boundary_still_sweeps_the_critic_marker(self, tmp_path):
-        """The discriminating half — the sweep is not lost, only re-scoped."""
+        """The discriminating half — the sweep is not lost, only re-scoped.
+
+        The marker is deliberately hours old: past the TTL, so it is the case
+        the sweep exists for (a crashed Critic), and the one that must survive
+        the freshness gate added beside it.
+        """
         prawduct = _seed_session(tmp_path)
         marker = prawduct / ".critic-active"
         marker.write_text(json.dumps({"started_at": "2026-07-27T06:00:00Z"}))
@@ -311,6 +324,67 @@ class TestBoundaryDependentInterpretation:
         assert res.returncode == 0, res.stderr
         assert not marker.is_file(), (
             "a genuine boundary must still sweep a stale marker"
+        )
+
+    def test_boundary_does_not_sweep_a_marker_that_is_still_live(self, tmp_path):
+        """`/clear` is the one boundary source where the column's test and the
+        sweep's premise disagree.
+
+        The boundary/continuation split sorts on *was the transcript restored?*
+        — correct for every destructive act here, because those all destroy a
+        finished session's evidence. The sweep asks something narrower: *is the
+        process that dispatched the review gone?* `startup` answers yes to both.
+        `clear` answers yes to the first and NO to the second — it resets context
+        in-process — so a review subagent dispatched before it may still be
+        running, and deleting its marker disarms both the CRT-3X9D refusal and
+        the Stop hook's abandoned-review backstop (which does not merely block:
+        it consolidates a review whose reviewers all reported).
+
+        Gating on the TTL answers the real question at every source, which is why
+        this needs no finer matcher — `startup|clear` share one hook entry and
+        are indistinguishable to the command.
+
+        Stamped NOW rather than at a fixed date, for the reason
+        `test_bare_clear_still_refuses_while_a_review_is_live` records: a marker
+        past the 30-minute TTL is correctly not active, so a frozen timestamp
+        would make this assert the TTL instead of the gate.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": now}))
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        assert marker.is_file(), (
+            "a boundary must not sweep a marker that is still within the TTL — "
+            "/clear does not end the process, so the reviewer may be alive"
+        )
+        # And the boundary still HAPPENED: the gate is scoped to the marker, not
+        # a demotion of the whole event. Without this the assertion above would
+        # also pass if `clear` had silently become a continuation.
+        assert (prawduct / ".session-handoff.md").is_file(), (
+            "the freshness gate must scope the SWEEP only, not demote the boundary"
+        )
+
+    def test_force_sweeps_a_live_marker_the_ttl_has_not_released(self, tmp_path):
+        """The operator override stays unconditional, which is the whole point of
+        it: `--force` exists for a marker the TTL has not released yet, so gating
+        it on freshness would disable the one case it serves. Pinned because the
+        boundary gate above and this branch now differ, and a later simplification
+        that merges them silently removes the escape hatch the refusal message
+        tells the operator to use.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": now}))
+
+        res = run_plugin_hook("clear", tmp_path, "--force")
+        assert res.returncode == 0, res.stderr
+        assert not marker.is_file(), (
+            "--force must sweep a live marker; it is the documented override for "
+            "exactly the marker the TTL has not released"
         )
 
     def test_continuation_announces_a_missing_base_tree_anchor(self, tmp_path):
