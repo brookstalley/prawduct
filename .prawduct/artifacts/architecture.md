@@ -58,7 +58,7 @@ what we want to be true.
 
 - **An independent reviewer never mutates the session it reviews — enforced at the mutation site, not by tool-restriction alone.**
   Why: a dispatched subagent does not inherit the coordinator's tool limits, so the invariant must be enforced where mutation happens; this is the load-bearing governance guarantee — without it the reviewed party could quietly rewrite what it is being judged on.
-  Status: steady-state. Mechanism: `prawduct-hook clear` refuses while a review is active (`critic-begin` … `critic-consolidate`/`critic-end`).
+  Status: steady-state. Mechanism: a *bare* `prawduct-hook clear` — the form a reviewer subagent can issue — refuses while a review is active (`critic-begin` … `critic-consolidate`/`critic-end`). A session **boundary** (`--session-start`, the hook's own invocation) is not refused; it retains a live marker instead, which is why the invariant still holds at the surface it is about.
 - **Authority fails closed; advice fails soft.**
   Why: anything that produces or consumes a governance *verdict* blocks on incomplete, malformed, or ambiguous state (so governance means something), while anything that merely *informs* degrades to a note (so governance stays bearable) — the split is also an abuse-resistance property: you cannot make a gate pass by feeding it garbage, garbage makes it block.
   Status: steady-state.

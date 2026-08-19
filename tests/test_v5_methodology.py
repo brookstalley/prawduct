@@ -296,7 +296,16 @@ LAST_MEASURED_TOKENS = {
     # ACTS on it (the abandon-a-review paragraph), not in the data-plane gloss.
     # The boundary behaviour is deliberately NOT restated here -- that same
     # closing paragraph already owns it.
-    "skills/critic/SKILL.md": 3400,
+    #
+    # +3 on 2026-08-19 (verify-resolutions): R-4 was closed at the two sites it
+    # NAMED and the class was left open. Its own prescribed search still
+    # returned three survivors, one of them the frontmatter comment 24 lines
+    # above the fix -- which is injected verbatim into every Critic fork's
+    # prompt, so the reviewer reading it had been handed the false claim while
+    # reviewing the correction. Same narrowing applied there. Net for the
+    # branch is still -3 (3406 -> 3403): the TTL cut above overpaid, and this
+    # spends part of that rather than adding on top of it.
+    "skills/critic/SKILL.md": 3403,
     "skills/critic/framework-checks.md": 1116,
 }
 

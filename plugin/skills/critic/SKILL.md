@@ -14,7 +14,7 @@ argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolu
      allow-list governs the single-pass fork; the coordinator's reviewers are the
      `critic-reviewer` agent type, whose OWN tools allow-list binds them (no pytest,
      Write only). The critic-active marker (critic-begin at step 4) is the
-     session-mutation backstop: while set, `prawduct-hook clear` refuses to run; it is
+     session-mutation backstop: while set, a *bare* `prawduct-hook clear` refuses to run; it is
      cleared by critic-consolidate when it persists the review (every mode ends there),
      or by critic-end when a dispatched review must be abandoned. -->
 

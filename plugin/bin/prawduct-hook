@@ -1285,8 +1285,8 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
 
 def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     """Dispatch one Critic review: derive + write the manifest (code, never a
-    model — kernel v3 D8) and set the critic-active marker so session-mutating
-    `clear` refuses to run.
+    model — kernel v3 D8) and set the critic-active marker so a session-mutating
+    bare `clear` — the form a reviewer subagent can issue — refuses to run.
 
     Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
            [--chosen-by <rationale>] [--chunk <id>] [--scope <s>] [--tier <t>]
