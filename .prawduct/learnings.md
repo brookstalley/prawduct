@@ -126,6 +126,8 @@ never by dropping them.
 
 ## When writing a durable artifact (code comment, docstring, long-lived spec), never anchor its meaning to an ephemeral build identifier — carry the *why* inline, because build plans are deleted after completion and every project has many "chunk 03"s
 
+## When a durable prose surface holds both released and UNRELEASED sections, "it is history, leave it" is a per-SECTION test, not a per-file one — an unreleased section states pending claims, so a bundle that retires a vocabulary its own unreleased notes announce ships a consumer-facing banner contradicting what it shipped. Tell: a rationale that spares a file by its GENRE ("that's a changelog") rather than by its section's release state
+
 ## A red version/release-hygiene test on a feature branch is often a branch-STALENESS symptom, not a doc defect — check distance from the integration branch before patching the changelog
 
 ## When `check-cumulative-critic` reports `uncovered` on a branch whose code you know was reviewed, suspect a stale base before running a fresh review — the gate anchors to `origin/<base>` by design, so unpushed integration commits drag already-shipped work into the required span

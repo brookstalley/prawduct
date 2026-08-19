@@ -4066,3 +4066,34 @@ The third distinct rule: how the class gets bounded in the first place. A path p
 - **Scope an exemption by the PROPERTY that justifies it, not by the container it lives in** — Scope an exemption by the PROPERTY that justifies it, not by the container it lives in — an exemption justified by *naming* a file belongs to naming forms, not to every file under that directory, and the container is one cheap generalisation away from correct while looking complete. Tell: the boundary is a path prefix while the rationale is a verb
 
 - **Unit tests built from a feature's OWN subject cannot catch a WIDENED subject** — Unit tests built from a feature's OWN subject cannot catch a WIDENED subject — every fixture is an instance of the thing the feature is about, so the input that breaks it is the one you had no reason to construct. Run the real command against the real repo before believing green. Tell: your feature reads whatever it is pointed at — [learnings-detail.md]
+
+## When a durable prose surface holds both released and UNRELEASED sections, "it is history, leave it" is a per-SECTION test, not a per-file one
+
+Found by the PR reviewer on #689 (`governance-surface-dedup`), 2026-08-19.
+
+The branch replaced the turn-closing block's disposition labels, retiring `BLOCKED`. Chunk 04's
+commit rationale said: *"plugin/CHANGELOG.md keeps NEXT/BLOCKED — it is history."* True of v3.3.4
+and every section below it. Not true of the `v3.3.5-dev` section, which is unreleased and whose
+own text says "Rolling release notes accumulate here" — that paragraph was a **pending claim**
+about what v3.3.5 would ship, and v3.3.5 was about to ship the opposite.
+
+Left standing it would have been consumer-visible in the worst possible place: the version-delta
+banner, the surface built to tell consumers what changed, announcing a vocabulary the shipped
+session digest contradicts. Consumers on v3.3.4 hold `NEXT`/`CLEAR` and jump straight to
+`RUNNING`/`YOUR TURN`/`COMPLETE`; the intermediate set never ships to anyone, so the honest note
+describes the net delta and never mentions it.
+
+**Why the reasoning failed.** "It is history" is a property of a *section*, and it was applied to
+a *file*. Changelogs are precisely the artifact where that distinction is load-bearing — they are
+append-at-top, so every one of them is part frozen and part pending, with the boundary at the
+version header. Any file-level rule about them is wrong for one half.
+
+Same shape as this branch's Chunk 03 blocking finding, where coverage was verified at section
+level for a deletion that needed clause-level checking: **rigor tracked the artifact's genre
+instead of the blast radius, and the defect landed where confidence was highest.**
+
+Cheap tell at review time: the fix cost nothing — `prawduct-hook cost-of-commit
+plugin/CHANGELOG.md` reported `free`, so no review coverage moved and no round was bought. A
+"leave it alone" rationale for a free edit is worth one more look; the reason to skip it was never
+cost.
+
