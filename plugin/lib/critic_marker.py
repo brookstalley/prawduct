@@ -40,12 +40,24 @@ independent corrections, no one of which has to be perfect:
    sorts the boundary column, while failing the process-death test this act
    actually needs, so a subagent dispatched before it may still be writing.
 
-   The asymmetry decides every uncertain case: sweeping a live marker is a
-   silent governance failure — it disarms this guard *and* the Stop hook's
-   abandoned-review backstop, which not only blocks on the marker but
-   **consolidates** a review whose reviewers all reported — whereas leaving a
-   dead one costs at most the TTL below, with two loud overrides. A crashed
-   Critic is therefore rescued by the TTL, at whichever check reaches it first.
+   The asymmetry decides every uncertain case, and both halves are worth
+   pricing honestly:
+
+   *Sweeping a live marker* is a **silent** governance failure. It disarms this
+   guard and the Stop hook's abandoned-review backstop — which does not merely
+   block on the marker but **consolidates** a review whose reviewers all
+   reported, so a wrongly-swept marker destroys a recovery, not just a signal.
+
+   *Retaining a dead one* is **loud**, and costs more than the TTL below —
+   do not state it as TTL-bounded. Two readers hold different liveness
+   predicates. ``critic_consolidate.begin_review`` refuses a new dispatch while
+   this marker is within the TTL, and that refusal is **not** overridable by
+   ``--force``, so a dead-but-fresh marker blocks the next ``/prawduct:critic``
+   until it expires. The Stop hook's backstop reads :func:`marker_present`,
+   which has **no TTL at all** and so keeps firing past it. Both are recoverable
+   by a named command the refusal prints (``critic-end``, ``critic-discard``),
+   which is what keeps this the cheaper error — but "at most the TTL" is false
+   for the second reader and understates the first.
 3. **Explicit override** — the refusal message tells the operator/agent how to
    clear a stale marker (``rm``) or force the one command (``clear --force``).
 
@@ -113,6 +125,21 @@ def clear_marker(prawduct_dir: Path) -> bool:
         return True
     except FileNotFoundError:
         return False
+
+
+def sweep_if_expired(prawduct_dir: Path) -> bool:
+    """Release the marker **only if** the TTL has already expired. Returns True
+    when a marker survived (a review is still plausibly live), False otherwise.
+
+    The session-boundary sweep, named. It delegates to :func:`review_active`,
+    whose sweeping default does exactly this — but a bare ``review_active`` call
+    at a boundary is a query used as a command, with its result discarded and its
+    intent living only in a comment. The reason a boundary may not simply delete
+    the marker is in this module's docstring; this function is how the call site
+    says which of the two acts it is performing.
+    """
+    active, _age = review_active(prawduct_dir)
+    return active
 
 
 def marker_present(prawduct_dir: Path) -> bool:

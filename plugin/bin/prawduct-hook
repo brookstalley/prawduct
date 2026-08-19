@@ -890,8 +890,9 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
        the pre-split behaviour gave it.
     2. *Boundary-dependent readers* — they destroy nothing but interpret session
        state as a **finished** session's: the critic-active marker sweep (it
-       deletes a marker on the theory that its writer's process is gone) and the
-       previous-session gate check. Both are boundary-only for that reason.
+       releases a marker on the theory that its writer's process is gone, and so
+       fires only once the TTL agrees — no session event proves that on its own)
+       and the previous-session gate check. Both are boundary-only for that reason.
     3. *Orientation* — the briefing, advisories, untracking committed session
        files, the size/preferences checks, the subagent briefing. Safe on every
        source.
@@ -963,43 +964,31 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Critic-active session-mutation guard (CRT-3X9D). cmd_clear is destructive
     # (it archives/deletes .session-reflected, rewrites .session-start, recaptures
     # the git baseline). An independent reviewer must never mutate the session it
-    # is reviewing. A genuine session BOUNDARY (--session-start without
-    # --brief-only) or an explicit --force sweeps any marker and proceeds; a bare
-    # clear refuses while a review is plausibly in progress. The check fails OPEN
-    # on a lib import error so an incomplete install never blocks session start (a
-    # broken lib also means the Critic can't run, so there is no review to protect).
+    # is reviewing. A bare clear refuses while a review is plausibly in progress;
+    # a genuine session BOUNDARY (--session-start without --brief-only) proceeds
+    # and sweeps the marker only once the TTL has released it; an explicit --force
+    # proceeds and sweeps unconditionally. The check fails OPEN on a lib import
+    # error so an incomplete install never blocks session start (a broken lib also
+    # means the Critic can't run, so there is no review to protect).
     #
-    # The sweep is BOUNDARY-only, not orientation (SCN-5B8Q review R-1/R-6), and
-    # at a boundary it is gated on the marker's own freshness rather than fired
-    # unconditionally. What licenses deleting someone else's marker is that an
-    # in-flight review dies with the process that dispatched it — so the question
-    # the sweep actually asks is *is that process gone?*, and the only evidence
-    # this command holds for it is the marker's age.
+    # Why the boundary sweep is gated rather than outright: `lib/critic_marker.py`'s
+    # module docstring. The one fact local to this call site is that a boundary
+    # here cannot tell `startup` from `clear` — `hooks.json` gives them one entry
+    # carrying no source — so the gate is on the marker, not on the source, and a
+    # finer matcher would buy nothing the TTL does not already decide.
     #
-    # Source is a PROXY for that question and it is not a faithful one. The
-    # boundary/continuation split sorts on whether the transcript was restored,
-    # which is the right test for every other act here but diverges from process
-    # death at exactly one source: `clear` discards the transcript WITHOUT ending
-    # the process, so a review subagent dispatched before it may still be running.
-    # `compact` and `fork` were excluded for that reason; `clear` was not, because
-    # it passes the transcript test the other two fail. Keying on the TTL instead
-    # answers the real question at every source and needs no finer matcher.
-    #
-    # The asymmetry decides the uncertain case: sweeping a live marker is a silent
-    # governance failure — it disarms this guard AND the Stop hook's
-    # abandoned-review backstop, which keys on the marker's presence — while
-    # leaving a dead one costs at most the 30-minute TTL, with `--force` and `rm`
-    # as loud, documented overrides. Worth naming the second half of that cost,
-    # since it is a recovery and not just an annoyance: the Stop backstop
-    # CONSOLIDATES an abandoned review whose reviewers all reported, so a marker
-    # deleted here also destroys the self-heal.
-    #
-    # `review_active` unlinks exactly when the marker is stale or unreadable, so
-    # the crashed-Critic rescue this act exists for is unchanged; only a marker
-    # that is still plausibly live now survives.
+    # Announce a RETAINED marker. This branch now has two outcomes and printed
+    # nothing for either, and the session most in need of the signal is exactly
+    # this one: `/clear` just discarded the context in which the review was
+    # dispatched, so nothing else in the new session knows it is pending.
     if kind == "BOUNDARY":
         try:
-            _critic_marker().review_active(prawduct_dir)
+            if _critic_marker().sweep_if_expired(prawduct_dir):
+                print(
+                    "PRAWDUCT: a Critic review is still marked active — kept, because no "
+                    "session event proves its reviewers died. Release it with "
+                    "`prawduct-hook critic-end`, or `prawduct-hook clear --force`."
+                )
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
             pass
     elif kind == "GUARDED" and force:
@@ -1422,10 +1411,10 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
 def cmd_critic_end(project_dir: Path) -> int:
     """Clear the critic-active marker at the end of a review. Idempotent — exit 0
-    whether or not a marker was present (a crashed review's marker also expires
-    by TTL, and is swept at the next session BOUNDARY — `startup`/`clear` only,
-    never a resume/compact/fork, which may be continuing the session a reviewer
-    is still running in)."""
+    whether or not a marker was present (a crashed review's marker expires by TTL,
+    and is then swept at the next session BOUNDARY — `startup`/`clear` only, and
+    only once expired, since any session event may leave the reviewer's process
+    alive)."""
     prawduct_dir = get_prawduct_dir(project_dir)
     _critic_marker().clear_marker(prawduct_dir)
     return 0

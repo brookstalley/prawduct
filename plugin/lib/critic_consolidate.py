@@ -1133,9 +1133,9 @@ def _mark_cache_superseded(prawduct_dir: Path, review_id: str) -> bool:
     the marker keys is preserved byte-for-byte.
 
     **The marker states a fact about the record, not a liveness claim.**
-    "A review is in flight" would go false on its own: a dispatched review can
-    expire by TTL or be swept at a session boundary, and neither path passes
-    through here to retract anything. "Review X was dispatched after this
+    "A review is in flight" would go false on its own: a dispatched review
+    expires by TTL and is swept at a session boundary thereafter, and neither
+    path passes through here to retract anything. "Review X was dispatched after this
     record was written, so this is not X's result" stays true forever, and a
     reader that meets it after an abandoned review learns exactly why the
     newest record is older than it expected. Consolidation rewrites the whole
@@ -2074,9 +2074,16 @@ def active_dispatch_refusal(
             "    prawduct-hook critic-consolidate\n"
         )
     elif state == "incomplete":
+        # Do NOT assert the reviewers are running. A marker now survives `/clear`
+        # (it is released by the TTL, not by a session event — `lib/critic_marker`
+        # states why), so this branch is also reached in a session whose
+        # dispatcher is gone, where "wait" is advice that never resolves. Name
+        # both readings and the tell that separates them.
         situation = (
-            f"  On disk: still waiting on {', '.join(missing)}. Those reviewers are\n"
-            "  most likely still running — consolidation fires as they finish. Wait.\n"
+            f"  On disk: still waiting on {', '.join(missing)}. Either those reviewers\n"
+            "  are still running — consolidation fires as they finish, so wait — or the\n"
+            "  session that dispatched them ended (a `/clear` retains the marker; it does\n"
+            "  not release it). If nothing lands, they are gone: `critic-end`, below.\n"
         )
     else:
         situation = (

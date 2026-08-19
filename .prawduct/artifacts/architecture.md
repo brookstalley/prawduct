@@ -264,15 +264,18 @@ Statements sort into **three** categories, not two — the middle one is the eas
 
    **The marker sweep is scoped a second time, inside this column, and the reason generalises.** The
    table's question is *was the transcript restored?*; the sweep's is *is the dispatching process
-   gone?* Those agree at `startup` and diverge at `clear`, which discards the transcript **without**
-   ending the process — so a review subagent dispatched before it may still be running. The sweep
-   therefore fires at a boundary only on a marker that has already failed the 30-minute TTL. Read
-   the general form off this case rather than the instance: **a boundary-dependent reader that
-   depends on process death, not on transcript loss, is not fully scoped by this table** — the
-   table is a proxy for it, exact at four sources out of five. A reader in that class states its own
-   predicate, as the sweep now does by keying on the marker's age; `startup|clear` share one hook
-   entry and are indistinguishable to the command, so a source-based fix would also have needed a
-   finer matcher to do worse.
+   gone?* The two come apart at `clear`, which discards the transcript **without** ending the
+   process — so a review subagent dispatched before it may still be running. (They also come apart
+   at `resume`, in the safe direction: the resumed session's dispatcher is typically gone, so a
+   sweep would be licensed where the table forbids one.) The sweep therefore fires at a boundary
+   only on a marker that has already failed the 30-minute TTL. Read the general form off this case
+   rather than the instance: **a boundary-dependent reader that turns on process death, not on
+   transcript loss, is not fully scoped by this table** — the table is a proxy for it, and the one
+   place the proxy is *unsafe* is `clear`. A reader in that class states its own predicate, as the
+   sweep now does by keying on the marker's age; `startup|clear` share one hook entry and are
+   indistinguishable to the command, so a source-based fix would have needed a finer matcher to do
+   worse. Why retaining a marker is the cheaper error, and what it actually costs, is priced once
+   in `plugin/lib/critic_marker.py`'s module docstring and not restated here.
 3. **Orientation** — everything else: safe on every source, because it neither destroys session
    evidence nor assumes a boundary just happened.
 
@@ -292,14 +295,12 @@ which is the opposite of the intuitive call: sweeping looks like a repair, and a
 marker does wedge an operator. But the premise that licenses deleting someone else's marker — an
 in-flight review dies with the process that dispatched it — holds only for a session whose *process*
 ended. `compact` fires mid-session in-process, `fork`'s parent is frequently still running, and
-`clear` resets context in-process too, so a marker seen at any of the three may be **live**;
-sweeping it would disarm both this norm's enforcement and the Stop hook's abandoned-review backstop,
-which does not merely key on the marker's presence but **consolidates** a review whose reviewers all
-reported — so a wrongly-swept marker destroys a recovery, not just a signal. Sweeping a live marker
-is a silent governance failure; leaving a dead one costs the 30-minute TTL, with `--force` and `rm`
-as loud overrides — and `--force` stays unconditional precisely because it is the operator's
-documented escape from a marker the TTL has not released. A crashed Critic is rescued by the TTL, at
-whichever check reaches it first.
+`clear` resets context in-process too, so a marker seen at any of the three may be **live**.
+Sweeping a live marker is a *silent* governance failure; retaining a dead one is *loud* and
+recoverable by a named command — that asymmetry, and the honest price of each side, is stated once
+in `plugin/lib/critic_marker.py`'s module docstring. `--force` stays unconditional precisely because
+it is the operator's documented escape from a marker the TTL has not released. A crashed Critic is
+rescued by the TTL, at whichever check reaches it first.
 
 `fork` is the source most easily overlooked (it postdates the other four and was missing from this
 plan's first draft). It restores the transcript *and* allocates a new session id, so the parent

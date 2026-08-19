@@ -1190,7 +1190,7 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
         # definitionally the builder who lost the reviewer's report and cannot
         # compare what they are holding against a review id they never saw. The
         # `clear` guard does not close it: a dispatched review's marker expires
-        # by TTL and is swept at the next session boundary, so the record
+        # by TTL and is swept at a session boundary thereafter, so the record
         # outlives every in-session signal that a newer review happened.
         superseded_by = data.get("superseded_by")
         if superseded_by:

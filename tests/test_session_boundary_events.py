@@ -367,6 +367,44 @@ class TestBoundaryDependentInterpretation:
             "the freshness gate must scope the SWEEP only, not demote the boundary"
         )
 
+    def test_a_retained_marker_is_announced_to_the_new_session(self, tmp_path):
+        """Retention must not be silent, and this is the session that most needs
+        telling: `/clear` just discarded the context in which the review was
+        dispatched, so nothing else in the new session knows one is pending.
+
+        Asserted on the RECOVERY, not on the wording. A message that says only
+        "a review is active" leaves the reader stuck at the refusal they will
+        hit next, so the pin is that a named release command travels with it —
+        which is the half a phrasing check would miss.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        (prawduct / ".critic-active").write_text(json.dumps({"started_at": now}))
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        assert "critic-end" in out, (
+            "a retained marker must travel with the command that releases it — "
+            "the reader's next step is otherwise an unexplained refusal"
+        )
+
+    def test_a_swept_marker_is_not_announced(self, tmp_path):
+        """The discriminating half. Without it the announcement could fire on
+        every boundary and still pass the test above, which would train the
+        reader to ignore the one case that means something.
+        """
+        prawduct = _seed_session(tmp_path)
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": "2026-07-27T06:00:00Z"}))
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        assert not marker.is_file()
+        assert "still marked active" not in (res.stdout + res.stderr), (
+            "a swept marker must announce nothing — there is no review to report"
+        )
+
     def test_force_sweeps_a_live_marker_the_ttl_has_not_released(self, tmp_path):
         """The operator override stays unconditional, which is the whole point of
         it: `--force` exists for a marker the TTL has not released yet, so gating
