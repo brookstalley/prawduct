@@ -6,6 +6,7 @@ are internally consistent and reflect v5 concepts.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -97,7 +98,17 @@ LAST_MEASURED_TOKENS = {
     # (only "warnings and notes gate nothing" was its own), the Critic-review
     # step said "runs as a separate agent" a second time, and the seven goal
     # names were spelled out beside the pointer to the file that defines them.
-    "methodology/building.md": 4806,
+    # -86 on 2026-08-19: a CUT, not a relocate. This file restated the whole
+    # three-label standing-block shape -- the fenced block, the `---` rule, the
+    # trigger, the three failure modes -- while `reflection.md` owns it and the
+    # session digest injects it unconditionally. A reader of THIS file has
+    # already been handed the shape by the digest before they open it, so the
+    # copy here was a second authoritative statement of a fact with a home
+    # (`artifacts/architecture.md` § Direction). What stays is the clause only
+    # this file can make: `SAFE TO CLEAR` binds to ITS steps 1-7. The ceiling
+    # was ratcheted down with the cut, so the standing trim-or-relocate rule is
+    # enforced structurally here rather than asserted in prose.
+    "methodology/building.md": 4720,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -266,6 +277,211 @@ def test_recorded_token_count_matches_the_file(rel_path):
 
 
 # =============================================================================
+# The always-injected footprint
+# =============================================================================
+
+#: What a session pays BEFORE it does any work, grouped by session shape.
+#:
+#: **Why a total, when every one of these files could have its own ceiling.**
+#: A per-file ceiling cannot see a NEW file. A digest variant added to save
+#: tokens in one repo shape can put ~900 of them into every session of that
+#: shape with every per-file assertion in this module still green, because none
+#: of them watches the SET. That is the defect this total exists to catch, and
+#: `test_every_injectable_digest_is_budgeted` below is the half that catches it
+#: -- the numbers here only catch growth in files already known.
+#:
+#: **Why membership is by LOAD EVENT rather than by importance.** Ranking these
+#: files against each other needs a weight nobody can derive, and a weighted
+#: score would not have caught the defect above either. Grouping by *when the
+#: cost is paid* needs no weight: frequency IS the weight, and it is readable
+#: out of `hooks/digest.py` rather than assigned by opinion. These two shapes
+#: are the unavoidable tier -- paid every session, no opt-out, before the first
+#: useful token. The per-dispatch tier (the subagent briefing, the reviewer
+#: payload x N reviewers) is deliberately NOT here: it is larger by two orders
+#: of magnitude and owned by its own backlog item, and folding it in would let
+#: a win there hide growth here.
+#:
+#: This generalizes `artifacts/nonfunctional-requirements.md` § Direction --
+#: "unit-cost is the reviewer's payload, what a mode must load, per-mode and
+#: reducible" -- from reviewer payloads to every injected surface.
+INJECTED_SESSION_SHAPES = {
+    # A framework-repo session: the always-loaded CLAUDE.md plus the one digest
+    # `hooks/digest.py` emits for every governed repo.
+    "framework": ("CLAUDE.md", "methodology/session-digest.md"),
+    # A product session: the thin governance anchor `migrate_plugin` writes into
+    # a governed repo's CLAUDE.md, plus the full digest every product receives.
+    "product": ("<STATIC_ANCHOR>", "methodology/session-digest.md"),
+}
+
+#: The actual total per shape, as last measured -- the reading, not the ceiling.
+#: Same contract as LAST_MEASURED_TOKENS: the assertion's message carries the
+#: number to write, so a figure is never re-derived by hand or copied forward.
+LAST_MEASURED_INJECTED_TOKENS = {
+    # First reading, 2026-08-19, taken with the ceilings below.
+    # framework 3455 -> 3315: the framework repo stopped receiving a digest
+    # variant of its own and now takes the same one every product does, paid
+    # for by trimming CLAUDE.md (-1188) to what that digest does not state --
+    # its principles roster, its commit conventions, and the restatements of
+    # rules the digest already carries. A CUT at the source of the duplication,
+    # not a relocation: no prose moved between two members of this set. The
+    # digest then gave back 18 more: the no-attribution rule regained the
+    # clause stating it outranks a contrary harness default -- which only
+    # CLAUDE.md had carried -- paid for in place by dropping a sentence that
+    # restated "never blind-append" two lines after it was said.
+    #
+    # product 2256 -> 2238: the SAME digest trim, and the only reason this
+    # entry moved. The digest is a member of BOTH shapes while CLAUDE.md is a
+    # member of one, so a digest edit lands on every reading here and a
+    # CLAUDE.md edit lands on one. An edit that updated only the shape being
+    # worked on is what this pin caught.
+    #
+    # +5 on both shapes, 2026-08-19: the disposition labels became
+    # `RUNNING`/`YOUR TURN`/`COMPLETE` on one axis (what produces the next turn)
+    # and the findings-only clear rule landed. That is ~113 tokens of new rule
+    # funded almost entirely IN PLACE -- the size/type table the digest restated
+    # from `building.md`, a worked example of the stale-count rule, the stance
+    # preamble's second argument for its own first sentence, and four
+    # explanations of rules the same bullet had already stated. Net +5 is what
+    # the trim could not reach; both ceilings still hold.
+    "framework": 3320,
+    "product": 2243,
+}
+
+#: Ceilings. HARD, like the five per-file prose ceilings in this module and
+#: unlike the advisory state-file size threshold in
+#: `artifacts/nonfunctional-requirements.md` § Direction -- that norm governs
+#: `.prawduct/` STATE files, these are shipped instruction payloads. Recorded as
+#: a decision (owner ruling 2026-08-19) rather than assumed, because the norm's
+#: wording would otherwise read as covering this: an advisory would not have
+#: caught the defect above, since nothing was blocked when the set grew.
+#:
+#: The standing rule is the per-file one: THE NEXT ADDITION TRIMS OR RELOCATES,
+#: IT DOES NOT BUMP -- with "relocates" meaning *into a file outside this set*,
+#: never between two members, which buys nothing and is banned outright
+#: (owner rule 2026-08-05: total footprint is the only number that matters).
+INJECTED_FOOTPRINT_CEILINGS = {
+    # Ratcheted with the readings they guard (3460 -> 3325, 2260 -> 2248): a
+    # ceiling left at its old value after a cut silently re-funds the growth
+    # the cut paid for. Headroom is ~10 by design, matching every other budget
+    # in this module -- the next addition trims or relocates, it does not bump.
+    #
+    # Both shapes carry the digest, so a digest addition is charged twice and
+    # both ceilings bind it; only a CLAUDE.md edit is charged to `framework`
+    # alone.
+    "framework": 3325,
+    "product": 2248,
+}
+
+
+def _injected_member_text(member: str) -> str:
+    """One member of an injected set, resolved to its text.
+
+    Two members are not plugin-relative files: the framework repo's own
+    `CLAUDE.md` sits at the repo root, and the product anchor is a Python
+    constant rather than a file at all. Reading the anchor from its definition
+    rather than from a copy is the point -- a copy here would be exactly the
+    second authoritative statement this whole plan deletes elsewhere.
+    """
+    if member == "<STATIC_ANCHOR>":
+        from lib.migrate_plugin import STATIC_ANCHOR
+
+        return STATIC_ANCHOR
+    if member == "CLAUDE.md":
+        return (REPO_ROOT / "CLAUDE.md").read_text()
+    return read_file(member)
+
+
+@pytest.mark.parametrize("shape", sorted(INJECTED_SESSION_SHAPES))
+def test_recorded_injected_footprint_matches_the_files(shape):
+    """A session shape's recorded total is what its members actually sum to.
+
+    The reading half. Fails the moment any member changes without the total
+    being restated, so the number in this module is never a stale copy of a
+    measurement someone took once.
+    """
+    actual = sum(
+        estimate_tokens(_injected_member_text(m))
+        for m in INJECTED_SESSION_SHAPES[shape]
+    )
+    expected = LAST_MEASURED_INJECTED_TOKENS[shape]
+    assert actual == expected, (
+        f"the {shape} session injects ~{actual} tokens; "
+        f"LAST_MEASURED_INJECTED_TOKENS says {expected}. Update the entry to "
+        f"{actual} and say what paid for the change -- the ceiling is not a "
+        f"budget to spend."
+    )
+
+
+@pytest.mark.parametrize("shape", sorted(INJECTED_SESSION_SHAPES))
+def test_injected_footprint_under_ceiling(shape):
+    """Every session pays this before it does any work. Hold it."""
+    actual = sum(
+        estimate_tokens(_injected_member_text(m))
+        for m in INJECTED_SESSION_SHAPES[shape]
+    )
+    ceiling = INJECTED_FOOTPRINT_CEILINGS[shape]
+    assert actual < ceiling, (
+        f"the {shape} session injects ~{actual} tokens, over its {ceiling} "
+        f"ceiling. Trim a member, or move the content OUT of the injected set "
+        f"into an on-demand guide -- moving it to the other member of this same "
+        f"set buys nothing, because this assertion sums them."
+    )
+
+
+def test_every_injectable_digest_is_budgeted():
+    """Every digest `hooks/digest.py` can inject appears in a budgeted shape.
+
+    THE HALF THAT CATCHES THE ACTUAL DEFECT. The totals above only watch files
+    already known; this watches the SET, which is what nothing was watching the
+    last time a digest variant was added. Derived from `digest.py`'s own
+    `*_RELPATH` constants rather than from a list kept beside them, because a
+    hand-kept list has the same blind spot as the per-file ceilings: adding a
+    variant and forgetting the list is precisely the mistake being guarded.
+
+    Positive counterpart to the ceilings, per the paired-assertion rule: a
+    ceiling can be satisfied by deleting a surface, and a set-membership check
+    can be satisfied by budgeting a surface at zero. Both must hold.
+    """
+    tree = ast.parse((ROOT / "hooks" / "digest.py").read_text())
+    declared = set()
+    for node in tree.body:
+        # BOTH assignment forms and BOTH sequence literals. A check that read
+        # only `x = (...)` was blind to `x: tuple[str, str] = (...)` and to a
+        # list -- and the non-empty guard below still passed on the surviving
+        # constant, so the blindness looked exactly like coverage. A variant
+        # added in either shape is the defect this test exists to catch.
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = node.value
+        if not isinstance(value, (ast.Tuple, ast.List)) or not value.elts:
+            continue
+        parts = [
+            e.value
+            for e in value.elts
+            if isinstance(e, ast.Constant) and isinstance(e.value, str)
+        ]
+        if len(parts) == len(value.elts) and parts[-1].endswith(".md"):
+            declared.add("/".join(parts))
+    assert declared, (
+        "no module-level path sequences found in hooks/digest.py. This test reads "
+        "the digest set out of the module's own constants; if the module stopped "
+        "declaring them as tuples of string literals, this check has silently "
+        "stopped watching anything and needs rewriting, not deleting."
+    )
+    budgeted = {
+        m for members in INJECTED_SESSION_SHAPES.values() for m in members
+    }
+    unbudgeted = declared - budgeted
+    assert not unbudgeted, (
+        f"hooks/digest.py can inject {sorted(unbudgeted)}, which no session "
+        f"shape in INJECTED_SESSION_SHAPES budgets. A digest variant added "
+        f"without a shape is tokens in every session that nothing is watching "
+        f"-- add it to a shape and record the total."
+    )
+
+
+
+# =============================================================================
 # building.md
 # =============================================================================
 
@@ -389,28 +605,38 @@ class TestBuildingMethodology:
         unasked costs little and they may continue in place, so the asymmetry
         makes the default unconditional.
 
-        Pinned on all three surfaces because this must be framework behaviour a
+        Pinned on both surfaces because this must be framework behaviour a
         consuming product inherits, not a prawduct-local habit: building.md is
-        read on demand, session-digest.md is injected into every product
-        session, and the slim digest is what framework sessions get.
+        read on demand, and session-digest.md is injected into every session of
+        every governed repo, the framework repo included.
         """
         assert "never *ask* whether to prepare a handoff" in self.content
         digest = read_file("methodology/session-digest.md")
-        slim = read_file("methodology/session-digest-slim.md")
         assert "never ask whether to prepare" in digest
-        assert "Never ask whether to prepare one" in slim
         # The why travels with the always-injected surface, not the on-demand one.
         assert "cold cache" in digest
 
     def test_standing_block_is_on_every_surface_that_claims_it(self):
         """State / Next / Clear, the in-flight rule, and one shared trigger.
 
-        Four prose copies carry this rule, and the split is deliberate — the
-        injected digests reach product sessions, the guides are read on demand.
-        But `building.md`'s token budget was FUNDED by relocating this rule's
-        rationale into the digests and `reflection.md`, and that funding argument
-        only holds while the destinations actually carry it. Without this pin, a
-        later trim of any destination silently unfunds a trim already taken here.
+        What this guards is COVERAGE: the shape has to reach an agent through a
+        surface it actually reads. `reflection.md` is canonical and read on
+        demand at the work-cycle boundary; the digest is injected into every
+        session with no opt-out, which is what makes it the carrier that cannot
+        be missed. Drop the rule from the digest and an agent that never opens
+        a guide emits no block at all.
+
+        `building.md` is deliberately NOT here (2026-08-19). It used to restate
+        the whole shape, but its reader has already been handed that shape by
+        the injected digest before they open the file, so the copy was a second
+        authoritative statement of a fact with a home. It keeps the one clause
+        only it can make — see
+        `test_building_md_binds_the_clear_verdict_to_its_own_steps`, the
+        positive half without which this narrowing could be satisfied by
+        deleting too much. An earlier docstring here justified the pin as
+        protecting a token trim "funded" by relocating this rationale INTO the
+        digests; that accounting is disavowed (owner rule 2026-08-05 — moving
+        prose between files reduces no total), and the pin stands on coverage.
 
         Also pins the trigger, which shipped undefined: "every stopping-place
         turn" appeared nowhere else in the plugin, and since every assistant turn
@@ -419,12 +645,8 @@ class TestBuildingMethodology:
         exists to prevent.
         """
         surfaces = {
-            "methodology/building.md": self.content,
             "methodology/reflection.md": read_file("methodology/reflection.md"),
             "methodology/session-digest.md": read_file("methodology/session-digest.md"),
-            "methodology/session-digest-slim.md": read_file(
-                "methodology/session-digest-slim.md"
-            ),
         }
         for name, text in surfaces.items():
             assert "standing block" in text, f"{name} no longer names the standing block"
@@ -433,23 +655,40 @@ class TestBuildingMethodology:
             # without reading. Owner-requested 2026-07-31 — the block was
             # correct and complete and still scanned as prose.
             # The disposition and clear lines carry the VERDICT in the label,
-            # not the topic. Owner-requested 2026-08-18: the labels are the only
-            # coloured tokens near the bottom of a turn, so a label the reader
-            # must read past to learn the answer has spent its colour on
-            # nothing. `NEXT`/`BLOCKED`/`COMPLETE` are chosen on one axis — what
-            # happens if the reader walks away — which is what makes them
-            # exhaustive and mutually exclusive; an earlier draft scoped
-            # `BLOCKED` as "cannot proceed without user interaction" and that
-            # swallows every turn, because a turn-based CLI always ends waiting.
+            # not the topic: the labels are the only coloured tokens near the
+            # bottom of a turn, so a label the reader must read past to learn
+            # the answer has spent its colour on nothing.
+            #
+            # The disposition set is chosen on ONE axis -- what produces the
+            # next turn: a machine event, a human utterance, or nothing. That
+            # is what makes it exhaustive and mutually exclusive. `BLOCKED` is
+            # deliberately absent: obstruction is a REASON, and this line owes a
+            # verdict, so obstruction rides in the copy as one shade of
+            # `YOUR TURN`. Two labels both meaning "you must speak" force a
+            # choice an agent makes inconsistently at the boundary.
             for label in (
                 "`STATE`",
-                "`NEXT`",
-                "`BLOCKED`",
+                "`RUNNING`",
+                "`YOUR TURN`",
                 "`COMPLETE`",
                 "`SAFE TO CLEAR`",
                 "`DO NOT CLEAR`",
             ):
                 assert label in text, f"{name} dropped the {label} label"
+            # THE HALF A PRESENT-LABEL CHECK CANNOT SEE. A half-done rename
+            # leaves BOTH vocabularies live on the same surface, which is worse
+            # than either alone -- a reader meets two answers to one question
+            # and an agent picks whichever it saw last. The positive loop above
+            # passes throughout that state.
+            for retired, absorbed_by in (
+                ("`NEXT`", "`RUNNING`"),
+                ("`BLOCKED`", "`YOUR TURN`"),
+            ):
+                assert retired not in text, (
+                    f"{name} still carries the retired {retired} label; it was "
+                    f"replaced by {absorbed_by}. Two live vocabularies for one "
+                    "slot is worse than either alone."
+                )
             # Deliberately NOT asserting `**State**` is absent. `reflection.md`
             # keeps a bolded "what each line owes" list that *explains* the
             # three lines rather than being the emitted shape, and forbidding
@@ -489,6 +728,36 @@ class TestBuildingMethodology:
             # when the block is owed.
             assert "work outstanding" in text, f"{name} states a different trigger"
 
+    def test_building_md_binds_the_clear_verdict_to_its_own_steps(self):
+        """building.md drops the shape but keeps the binding only it can state.
+
+        The clear verdict is not a free-standing judgement: it is owed against
+        THIS file's chunk-close sequence, and no other surface enumerates those
+        seven steps. So the trim above is bounded from below here — cut the
+        pointer or the binding as well and this goes red, which is what stops
+        "stop restating the shape" from sliding into "stop mentioning it".
+
+        Asserted as the pointer PLUS the binding, not as either alone: a
+        pointer with no binding sends the reader away for a rule that is not
+        there, and a binding with no pointer leaves a reader who opened only
+        this guide holding a verdict with no shape to put it in.
+        """
+        assert "standing block" in self.content
+        assert "steps 1-7" in self.content
+        assert "in flight included" in self.content
+        # The shape itself is gone: no fenced example, and none of the labels
+        # the carriers above pin. Negative and positive together are the
+        # contract -- either alone is satisfiable by the change it exists to
+        # prevent.
+        for label in ("`STATE`", "`RUNNING`", "`YOUR TURN`", "`COMPLETE`"):
+            assert label not in self.content, (
+                f"building.md restates the standing block's {label} label; "
+                "reflection.md and the injected digest own the shape"
+            )
+        # Where the reader is sent for the shape. Named, not implied -- a bare
+        # "see reflection.md" would survive the section being renamed away.
+        assert 'methodology/reflection.md` "Work cycle boundary"' in self.content
+
     def test_handoff_notes_are_reconciled_not_appended(self):
         """A handoff is reconciled against reality on every write, not grown.
 
@@ -503,10 +772,102 @@ class TestBuildingMethodology:
         """
         assert "reconcile" in self.content.lower()
         assert "Never blind-append" in self.content
-        for surface in ("session-digest.md", "session-digest-slim.md"):
-            assert "never blind-append" in read_file(
-                f"methodology/{surface}"
-            ).lower(), surface
+        assert (
+            "never blind-append"
+            in read_file("methodology/session-digest.md").lower()
+        )
+
+    def test_a_findings_only_turn_must_persist_before_claiming_safe_to_clear(self):
+        """The clear verdict is computed from disk and process state, so a turn
+        whose whole output is analysis IN THE CONVERSATION scores as safe while
+        clearing destroys everything it produced.
+
+        Pinned for the DISCRIMINATING content, not the phrase. A deliverable of
+        INSTRUCTIONS passes every size and word-presence check while having no
+        effect on a reader, so the assertions below name the condition
+        (findings-only => persist first) and the self-contradiction tell (a
+        `SAFE TO CLEAR` whose stated reason cites the message a clear deletes).
+        A rule that merely said "persist your findings" would satisfy a phrase
+        check and leave the reader unable to recognise the case they are in.
+        """
+        for surface in ("methodology/reflection.md", "methodology/session-digest.md"):
+            text = read_file(surface)
+            lowered = text.lower()
+            assert "findings-only" in lowered, (
+                f"{surface} does not name the findings-only turn -- the reader "
+                "cannot apply a rule to a case they cannot identify"
+            )
+            # The condition, not just the topic: persistence PRECEDES the claim.
+            assert ".prawduct/.handoff-notes.md" in text, (
+                f"{surface} states the findings-only rule without naming where "
+                "the findings go, which leaves it unactionable"
+            )
+            # The self-contradiction tell. This is the half that models the
+            # reader: it lets them catch the failure in their OWN draft, which
+            # a bare instruction to persist does not.
+            assert "cites the message" in lowered or "citing the message" in lowered, (
+                f"{surface} dropped the tell -- a `SAFE TO CLEAR` whose reason "
+                "points at the thing a clear deletes is the defect said aloud, "
+                "and naming it is what makes the rule self-checkable"
+            )
+
+    def test_disposition_label_rules_carry_their_discriminating_content(self):
+        """The label set differs from a rename by two rules; pin those, not the names.
+
+        `test_standing_block_is_on_every_surface_that_claims_it` proves the
+        three labels are present and the retired two are gone. That check passes
+        for a pure rename -- which would leave the set no better than what it
+        replaced. What makes it behave differently is the precedence rule (a
+        human utterance outranks a running job, so the reader is never told to
+        act when they cannot) and the refusal to PREDICT a human turn (an agent
+        cannot know a running job will need a decision; it may answer its own
+        question). Both are reasoning rules, so both are pinned by their
+        substance.
+        """
+        for surface in ("methodology/reflection.md", "methodology/session-digest.md"):
+            text = read_file(surface)
+            lowered = text.lower()
+            # The axis itself. Without it the three labels are just words and an
+            # agent picks by vibe at every boundary.
+            assert "what produces the next turn" in lowered, (
+                f"{surface} no longer states the axis the labels are chosen on"
+            )
+            # Precedence: the human wins an overlap, and the copy carries what
+            # is in flight -- otherwise that fact leaves the block entirely.
+            assert "`YOUR TURN` even when" in text or "`YOUR TURN` even though" in text, (
+                f"{surface} dropped the precedence rule -- without it a turn "
+                "that needs the reader AND has work running has two defensible "
+                "labels, and the choice gets made inconsistently"
+            )
+            # The no-prediction rule, which is the one an agent is most tempted
+            # to break because forecasting feels helpful.
+            assert "predict" in lowered, (
+                f"{surface} dropped the no-prediction rule: a decision that will "
+                "be needed only ONCE a running job lands is `RUNNING`, because "
+                "the job may answer its own question"
+            )
+
+    def test_reaching_safe_to_clear_is_part_of_finishing_a_long_task(self):
+        """The worst outcome in this space is caused by the agent, not the user.
+
+        A multi-hour task lands while they are away and the turn still says
+        `DO NOT CLEAR`: they return to a cold cache they pay full price to
+        reload AND a session they cannot leave -- purely because bookkeeping
+        trailed the work. Canonical guide only: the rule is about how the agent
+        SEQUENCES a long task, which is the on-demand guide's subject, and the
+        injected digest is budget-bound to the rules it must carry unconditionally.
+        """
+        text = read_file("methodology/reflection.md")
+        lowered = text.lower()
+        assert "before a long wait" in lowered or "before the wait" in lowered, (
+            "reflection.md does not say WHEN to write the forward notes for a "
+            "long-running task. 'Prepare it, don't ask' is silent on timing, and "
+            "notes written after the wait leave an away-reader stranded during it"
+        )
+        assert "part of the task" in lowered, (
+            "reflection.md no longer states that reaching `SAFE TO CLEAR` is part "
+            "of finishing a long task rather than a report about it"
+        )
 
     def test_handoff_notes_are_read_before_being_rewritten(self):
         """Reconciling requires READING first, and that had to be said.
@@ -519,11 +880,10 @@ class TestBuildingMethodology:
         these notes long predated any instruction to read them.
         """
         assert "read `.prawduct/.handoff-notes.md` before rewriting it" in self.content
-        for surface in ("session-digest.md", "session-digest-slim.md"):
-            content = read_file(f"methodology/{surface}")
-            assert "before rewriting it" in content, surface
-            # The why belongs on the injected surfaces, not the on-demand one.
-            assert "/clear` consumes" in content, surface
+        content = read_file("methodology/session-digest.md")
+        assert "before rewriting it" in content
+        # The why belongs on the injected surface, not the on-demand one.
+        assert "/clear` consumes" in content
 
     def test_chunk_close_routes_backlog_to_skill(self):
         """The chunk-close sequence routes backlog work through /prawduct:backlog
@@ -561,9 +921,8 @@ class TestBuildingMethodology:
         # rules stated earlier in this same file. Surviving coverage checked per
         # item, not assumed: "Silent requirement dropping" -> Working With
         # Specs' closing line + the digest + CLAUDE.md's principle roster;
-        # "Pre-existing dismissal" -> the clean-baseline paragraph + the full
-        # digest (NOT the slim one, so a framework session keeps it only in this
-        # file); "Ignoring the Critic" -> the Blocking-findings paragraph two
+        # "Pre-existing dismissal" -> the clean-baseline paragraph + the
+        # injected digest; "Ignoring the Critic" -> the Blocking-findings paragraph two
         # sections down, and nowhere else — the thinnest of the three, and the
         # first to restore if the ceiling is ever raised. Plus trailing sentences
         # restating their own bullet (multi-hop, PBT, verification theater) and
@@ -602,10 +961,10 @@ class TestBuildingMethodology:
         # stepped away) went to session-digest.md, which is always injected, so
         # every session carries the why without building.md paying for it. The
         # funding was step 7's "nothing beyond the plan is a valid answer"
-        # sentence, which both digests already state verbatim — checked, not
-        # assumed: full digest lines 46-52, slim lines 21-23. That makes this a
-        # dedup rather than a cut; a reader who never opens building.md still
-        # gets the guidance, from a surface they cannot skip.
+        # sentence, which the injected digest already states verbatim in its
+        # forward-notes bullet — checked, not assumed. That makes this a dedup
+        # rather than a cut; a reader who never opens building.md still gets the
+        # guidance, from a surface they cannot skip.
         #
         # 2026-07-30 (record-mechanization Chunk 04) restated the coordinator
         # roster rule on two lines — it is no longer a file count but "a risk
@@ -757,7 +1116,15 @@ class TestBuildingMethodology:
         # consolidate's parenthetical about the SubagentStop trigger, and two
         # words apiece in the research-presentation and cheap-check lines.
         tokens = estimate_tokens(self.content)
-        assert tokens < 4810, f"building.md is ~{tokens} tokens, should be <4810"
+        # LOWERED 4810 -> 4730 (2026-08-19), the same commit that cut the
+        # standing-block restatement. A cut that leaves its own slack behind is
+        # a cut the next edit spends silently: the drift pin only asks the next
+        # editor to update the READING, while this ceiling is the hard gate, so
+        # 90 tokens of unratcheted headroom disarms it for the next 89. Every
+        # other budgeted file in this module sits within ~1-34 tokens of its
+        # ceiling; this restores building.md to that posture and keeps the
+        # trim-or-relocate rule meaning what it says.
+        assert tokens < 4730, f"building.md is ~{tokens} tokens, should be <4730"
 
 
 # =============================================================================

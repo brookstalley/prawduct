@@ -3,6 +3,216 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: the turn-closing block answers whose move it is
+
+<!-- prawduct: type=refactor | scope=governance-surface-dedup -->
+
+The standing block's middle line offered `NEXT` / `BLOCKED` / `COMPLETE`, which mixed two questions
+into one slot: *is there a problem?* (`BLOCKED`) and *what comes next?* (`NEXT`). Neither got
+answered cleanly. The tell was in the spec itself — the injected digest had to **gloss** its own
+label (*"Outstanding includes work in flight: a dispatched review … is `NEXT`"*), and when a spec
+must translate its label to make it land, the translation is the better label.
+
+One variable does the whole job: **what produces the next turn?** `RUNNING` — a machine event
+will, so the reader can walk away. `YOUR TURN` — only a human utterance will; the session is inert
+until they speak. `COMPLETE` — nothing needs to.
+
+**`BLOCKED` retires because it was a reason wearing a verdict's clothes.** This block's own rule is
+that the label is the verdict and the copy is the reason; obstruction is a reason. It now rides as
+one of three shades of `YOUR TURN` — *just go*, *decide*, *unblock* — which the copy distinguishes
+by leading with the ask and its cost. Two labels both meaning "you must speak" would force a choice
+an agent makes inconsistently at the boundary.
+
+**A premise the earlier design rested on was simply false, and correcting it is what unlocked the
+set.** It held that every turn end waits for the user, so waiting could not discriminate — which is
+why an earlier draft had narrowed `BLOCKED` rather than fixing the axis. Machine-resumed turns are
+common: this branch's own reviews, monitors and background suites all resumed sessions with no
+human input. Turn-ownership discriminates precisely because that is true.
+
+**Two rules make this more than a rename, and both are pinned by their substance.** *Precedence:* a
+human utterance outranks a running job, so a turn needing the reader is `YOUR TURN` even when work
+is in flight, with the copy naming what runs. *No prediction:* a turn where something runs and a
+decision may be needed **once it lands** is `RUNNING` — the agent cannot know the decision will be
+needed, since the job may return "option 1 is clearly correct". This line reports what **is**, never
+what might be.
+
+**`COMPLETE` gained the scope it never had.** "Complete of what?" had no answer, so a finished chunk
+inside an unfinished plan attracted the rarest label. It now means a **blank slate** — no next
+action to propose. Ending a plan while knowing a PR is the obvious next step is `YOUR TURN`.
+
+**The original ask (#683) landed alongside it.** The clear verdict is computed from disk and process
+state, so a turn whose whole output is analysis *in the conversation* scored as safe while clearing
+destroyed everything it produced. A findings-only turn now persists to `.prawduct/.handoff-notes.md`
+before claiming `SAFE TO CLEAR`, and the self-contradiction tell is named so a reader can catch it
+in their own draft: a `SAFE TO CLEAR` whose stated reason **cites the message itself** points at the
+thing a clear deletes.
+
+**The sequencing rule is the operationally sharp half.** The worst outcome in this space is a
+multi-hour task landing while the reader is away and the turn still saying `DO NOT CLEAR` — they
+return to a cold cache they pay full price to reload *and* a session they cannot leave, purely
+because bookkeeping trailed the work. So: write the forward notes **before** a long wait, not after
+it, and treat reaching `SAFE TO CLEAR` as part of finishing a long task rather than a report about
+it. The existing "never ask whether to prepare a handoff — prepare it" rule was silent on *when*.
+
+**It funded itself, which was the plan's closing argument.** ~113 tokens of new rule against ~10
+tokens of headroom, paid almost entirely in place: the digest was restating `building.md`'s
+size/type table, carrying a worked example of the stale-count rule, arguing the stance preamble's
+own first sentence a second time, and explaining four rules the same bullet had already stated. Net
++5 on each shape — framework 3320/3325, product 2243/2248.
+
+**`building.md` needed no edit at all.** Chunk 02 had already collapsed its standing-block copy to a
+pointer, so it never carried the labels — the payoff that chunk predicted, arriving on schedule.
+`plugin/CHANGELOG.md` keeps `NEXT`/`BLOCKED`: it is history, and history is not renamed.
+
+**The pins model the reader, not the vocabulary.** A present-label check passes throughout a
+half-done rename — the worst state, since both vocabularies are live and an agent picks whichever it
+saw last — so the pin also asserts the retired labels are **gone**. And because a rename would
+satisfy every name check while changing nothing, the axis, the precedence rule and the
+no-prediction rule are each pinned by their discriminating content. All four assertions were
+mutation-checked red before shipping.
+
+## 2026-08-19: one digest for every repo, and a CLAUDE.md trimmed to what it does not say
+
+<!-- prawduct: type=refactor | scope=governance-surface-dedup -->
+
+The framework repo received a digest variant of its own. The reasoning was sound and the fix was
+applied to the wrong artifact: this repo's always-loaded `CLAUDE.md` duplicated 40-50% of the full
+digest, so a **slim** digest was shipped in the plugin to avoid paying for the overlap here. That
+traded one repository's duplication for a second shipped artifact every framework session carried,
+a branch in `hooks/digest.py`, and five must-agree pins holding the two variants in step —
+permanent, framework-wide cost to serve exactly one repo. Trimming the local file instead removes
+the duplication at its source.
+
+`session-digest-slim.md` is deleted, `hooks/digest.py` reduced to one digest with no shape
+selection, and `CLAUDE.md` cut from ~2,527 to ~1,339 estimated tokens. The framework session's
+always-injected footprint goes **3,455 → 3,315** and the product session's **2,256 → 2,238**, with
+both ceilings ratcheted to ~10 tokens of headroom (3,325 and 2,248).
+
+**The digest is a member of both session shapes; `CLAUDE.md` is a member of one.** So the digest
+trim below moved *both* readings while the `CLAUDE.md` trim moved only one — and the drift pin
+caught an edit that updated just the shape being worked on. That asymmetry is now stated where the
+ceilings are set, because it decides what a future addition costs: a token added to the digest is
+charged twice.
+
+**Both halves had to land together.** Deleting the variant without the trim re-creates the
+duplication the variant existed to remove; trimming first opens a gap in `CLAUDE.md` that nothing
+yet fills. Neither is separately shippable, which is why they are one chunk.
+
+**The largest cut is the principles roster, and it was decided on evidence rather than estimate.**
+`CLAUDE.md` carried all 26 principles with one-line glosses (~698 tokens) while the injected digest
+carries the same roster as bare grouped names (~148). Checking the glosses one by one: 13 of 26 are
+already stated by the digest in *point-of-action* form, which is the form that actually fires — and
+the 13 that are not are the situational ones (accessibility, operational cost, clean deployment,
+structural awareness) that matter when work touches them, which is what an on-demand file is for.
+So the roster became a pointer at `docs/principles.md`, and nothing lost a carrier: the roster's
+own test pins it against `docs/principles.md`, never against `CLAUDE.md`. `## Commit Conventions`
+went the same way — the digest carries both rules, including the never-silently-downgrade-to-
+`--squash` clause. One clause did **not** survive the move and had to be restored: the deleted
+section said the no-attribution rule "overrides any harness default to the contrary", and the
+digest's bullet had no precedence clause. That is not decoration — the Claude Code harness injects
+a contrary `Co-Authored-By` instruction, so the clause is the only thing standing between the
+default and every commit made under it. It now lives on the digest, paid for in place.
+
+**What stayed is what only this file can say**: the framework-repo routing table, the two Critic
+bindings the skill does not restate (fix blocking findings before the next chunk; reflect
+immediately), the reflection *cadence*, the local file map, and the compaction instructions. The
+requirements-clarity check stayed too, with its trigger made explicit — it fires when the user says
+"build X", which is before a plan exists and therefore before `building.md` is read.
+
+**The measurement came before the ceiling, not after.** The plan made the trim step 0 and the
+number a reading, because the estimate that motivated the chunk (~1,350 tokens) was section-level
+arithmetic rather than an edit. The edit came in at 1,188 — enough to win, and 162 short of the
+prediction, which is exactly the gap that would have shipped as a wrong ceiling had the number been
+promised instead of measured.
+
+**A win worth stating honestly: the token saving is ~122 tokens per framework session, about 3.5%.**
+This change earns its place structurally, not numerically — one carrier per fact, one shipped
+digest instead of two, a hook branch and a repo-shape classifier deleted, and five must-agree pins
+collapsed to single-surface assertions.
+
+**The pins were collapsed, not dropped.** Every rule that was asserted on the slim variant is still
+asserted on the surviving one, and `TestDigestReachesEveryRepoShape` now exercises **both** repo
+shapes — a framework fixture and a product fixture — where the old suite ran the framework path and
+inferred the product one. It also asserts the two are *identical and non-empty*, so the collapse
+cannot be satisfied by both shapes agreeing on nothing. `is_framework_repo` and its three
+manifest-location fixtures exited with the branch that consumed them.
+
+## 2026-08-19: the standing block collapses to the surfaces that carry it
+
+<!-- prawduct: type=refactor | scope=governance-surface-dedup -->
+
+Four prose surfaces restated the turn-closing standing block in full: `reflection.md`, which owns
+it, both injected digests, which reach a session whether or not it opens a guide, and
+`building.md`, which is read on demand. The fourth copy was redundant **for its own reader** — an
+agent that opens `building.md` has already been handed the shape by the digest injected at
+session start, so the restatement was a second authoritative statement of a fact that has a home
+(`architecture.md` § Direction).
+
+**One clause there was load-bearing and stays.** `SAFE TO CLEAR` is not a free-standing
+judgement; it is owed against `building.md`'s own chunk-close steps 1-7, and no other surface
+enumerates those steps. So the file keeps the pointer and the binding, and loses the fenced
+shape, the `---` rule, the trigger and the three failure modes — 4806 → 4720 estimated tokens.
+
+**The trim is bounded from below by a paired positive assertion.** A negative pin ("no longer
+restates the shape") passes just as well when the pointer is deleted too, which would leave a
+reader who opened only this guide holding a verdict with no shape to put it in.
+`test_building_md_binds_the_clear_verdict_to_its_own_steps` asserts the pointer, the binding, and
+the absence of the labels together; both directions were mutation-checked red before shipping.
+
+**The surviving pin was re-justified, not merely narrowed.** Its docstring had defended the rule
+as protecting a token trim "funded" by relocating the rationale *into* the digests — accounting
+the 2026-08-05 owner rule disavowed, since moving prose between files reduces no total. What the
+pin actually guards is **coverage**: the shape has to reach an agent through a surface it really
+reads, and dropping it from a digest means an agent that never opens a guide emits no block at
+all.
+
+**The ceiling was ratcheted down with the cut** (4810 → 4730), which the Critic raised
+independently and is the difference between a win and a loan. The drift pin only asks the next
+editor to update the *reading*; the ceiling is the hard gate, so 90 tokens of unratcheted slack
+would have let the next 89 tokens of prose ship green and hand this trim straight back. Every
+other budgeted file in the module sits within ~1-34 tokens of its ceiling.
+
+## 2026-08-19: a token budget that can see a new file
+
+<!-- prawduct: type=feature | scope=governance-surface-dedup -->
+
+Every token budget in this framework is asserted per-file, and a per-file ceiling cannot see a
+**new** file. That is not a hypothetical: `session-digest-slim.md` was added to save tokens in
+the framework repo, put roughly 928 of them into every framework session, and every one of the
+five per-file prose ceilings stayed green — because none of them was watching the *set*. The
+budget regime was also inverted, which is what made the gap survive: the files with hard ceilings
+and a measured-drift pin are the **on-demand** ones a session may never open, while the surfaces
+paid unconditionally before the first useful token had only a loose character limit and a ratio.
+
+**The set is defined by load event, not by weight.** Ranking governance files against each other
+needs an importance score nobody can derive — and a weighted score would not have caught the
+defect above either, since the new file's weight was never assigned at all. Grouping by *when the
+cost is paid* needs no weight: frequency **is** the weight, and it is readable out of
+`hooks/digest.py` rather than assigned by opinion. `INJECTED_SESSION_SHAPES` carries the two
+shapes of the unavoidable tier — a framework session (`CLAUDE.md` + the slim digest) and a
+product session (the `STATIC_ANCHOR` governance anchor + the full digest).
+
+**The two shapes are separate rather than one flat set, and that is a departure from the plan's
+own Deliverables** — recorded in the plan's `governed_by`, per the architecture norm that
+prescribed method is advice while goals and verification bind. `digest.py` *selects* between the
+variants, so a session never loads both; summing them would assert a ceiling on a total no
+session has ever paid, which is a fiction dressed as a budget.
+
+**The half that catches the original defect is the membership check, not the numbers.** The
+totals only watch files already known. `test_every_injectable_digest_is_budgeted` reads the
+injectable set out of `digest.py`'s own module-level path tuples via `ast` — so it holds for a
+variant named outside any convention, and it fails loudly rather than narrowing silently if the
+module stops declaring them that way. Red-verified both ways before shipping.
+
+**Ceilings are HARD**, matching the five existing per-file prose ceilings rather than the
+advisory state-file size threshold — that norm governs `.prawduct/` state, and an advisory would
+not have caught this, since nothing was blocked when the set grew. Owner ruling, recorded as a
+decision against the norm rather than assumed past it.
+
+The per-dispatch tier — the subagent briefing and the reviewer payload, larger by two orders of
+magnitude — is deliberately excluded and left to its own item. Folding it in would let a win
+there hide growth here, which is the failure this control exists to prevent.
+
 ## 2026-08-18: the turn-closing block puts the answer in the label, not beside it
 
 <!-- prawduct: type=feature | scope=standing-block-expressive-labels -->

@@ -71,7 +71,7 @@ Write for the person who walked away: a long build leaves them returning to a wa
 
 `STATE` — what changed; committed or not; suite green or not.
 
-`NEXT` / `BLOCKED` / `COMPLETE` — one only: work continues on an external event / stops until you act / is finished.
+`RUNNING` / `YOUR TURN` / `COMPLETE` — one only: a machine event produces the next turn / only you can / nothing needs to.
 
 `SAFE TO CLEAR` / `DO NOT CLEAR` — the label is the verdict; the copy is the reason.
 ```
@@ -81,12 +81,33 @@ The shape is part of the signal, not decoration, and each element does a differe
 What each line owes:
 
 1. **State** — the evidence, not the verdict: what changed, whether it is committed, whether the suite is green. No hedging. This is the "did it work?" they scrolled down to answer, and it is what makes the line below *earned* rather than merely asserted.
-2. **Disposition** — exactly one of `NEXT`, `BLOCKED`, `COMPLETE`, chosen on a single axis: **what happens if they walk away.** `NEXT` — work continues without them, because an external event lands and you go on from there; name the event. `BLOCKED` — work stops here until they supply something only they can: a decision, an answer, a name, or simply the go-ahead for the next chunk; say exactly what you need. `COMPLETE` — work stops here and is finished, with nothing outstanding at any level. The label already answers **whose it is**, so the copy never restates it. `BLOCKED` wins any overlap — a review still running while you also owe them a decision is `BLOCKED`, with the in-flight work named beside it — because the reader's question is whether *they* are the gate, and they are.
-3. **Clear** — `SAFE TO CLEAR` or `DO NOT CLEAR`. The label is the verdict and the copy is the reason, so someone who reads the label and nothing else has already been answered.
+2. **Disposition** — exactly one of `RUNNING`, `YOUR TURN`, `COMPLETE`, chosen on a single axis: **what produces the next turn.** Not "is there a problem" — that question mixes a diagnosis into a slot that owes a verdict.
+
+   - `RUNNING` — a machine event will: a dispatched agent, a monitor, a background command, a scheduled wake-up. They can walk away; results arrive without them. **Name the event, and bound the promise** — a dead subagent, a timed-out monitor or a stalled queue silently falsifies "results will arrive", so say what you do if it does not land ("if it is not back in ~10 min I re-check"). An unbounded `RUNNING` can strand someone on a turn that never comes.
+   - `YOUR TURN` — only a human utterance will. Nothing is pending; the session is inert until they speak. The label answers *is it me?*; the **copy leads with the ask, imperative, cheapest form first**, because its three shades cost them very different amounts: *just go* ("say go — nothing else needed"), *decide* ("pick A or B"), *unblock* ("I need push access to the release remote"). Obstruction is one of those shades, not a label of its own — a reason belongs in the copy.
+   - `COMPLETE` — nothing needs to. **A blank slate: you have no next action to propose.** Not "a unit of work finished" — ending a plan while knowing a PR is the obvious next step is `YOUR TURN`. Read this way the label stays rare enough to mean something.
+
+   **Precedence:** if a human utterance is required it is `YOUR TURN` even when something is also running — they are the binding constraint — and the copy names what is in flight, because that fact leaves the label and would otherwise be lost.
+
+   **But do not predict one.** A turn where something is running and a decision *may* be needed once it lands is `RUNNING`, never `YOUR TURN`: you cannot know the decision will be needed, since the job may return "option 1 is clearly correct". This line reports what **is**, never what might be; put the forewarning in the copy.
+3. **Clear** — `SAFE TO CLEAR` or `DO NOT CLEAR`. The label is the verdict and the copy is the reason, so someone who reads the label and nothing else has already been answered. This line answers a different axis from the one above it — not whose move it is, but **what survives a clear** — which is why both are needed.
+
+   **A findings-only turn is not safe to clear until its findings are on disk.** The verdict is defined by disk and process state, so a turn whose entire output is analysis *in the conversation* — an investigation, a comparison, a design you talked through — computes as safe while clearing destroys everything it produced. Persist to `.prawduct/.handoff-notes.md` first, then claim it. The tell that this went wrong is a `SAFE TO CLEAR` whose stated reason **cites the message itself** ("the analysis is above"): a reason that points at the thing a clear deletes is not a reason, it is the defect stated out loud.
+
+   **Write the notes before a long wait, not after it.** If you are about to dispatch something slow, persist first — then a reader who walks away mid-run finds the session already as clearable as it can be, with only the running work blocking, which resolves itself. The worst outcome this line exists to prevent is a multi-hour task landing while they are away and the turn still saying `DO NOT CLEAR`: they return to both a cold cache and a session they cannot leave, purely because bookkeeping trailed the work. **At the conclusion of a long-running task, reaching `SAFE TO CLEAR` is part of the task**, not a report about it.
 
 **Three ways to fail this, all equally expensive.** *Omitting it* — silence gets read as whichever answer they were hoping for, and they clear on top of live work. *Burying it* — the same lines, correct and complete, in the middle of a long summary; a signal above the fold is a signal not sent. *Padding it* — a closing paragraph of prose that has to be parsed is a closing paragraph that gets skipped. None of these is fixed by writing more.
 
-**Outstanding means in flight, not just unstarted — and anything outstanding takes the disposition line, named: `NEXT` when the work is only waiting on the event, `BLOCKED` when you also owe them something, and never `COMPLETE`.** Critic reviewers dispatched but not consolidated; a `/prawduct:pr` reviewer still running; any background agent whose output you have not read; a Critic run this work owes; a governance step that was skipped or failed. The coordinator case is the one that catches people: a `final`/`cumulative` review dispatches three subagents and the fork returns immediately, so your turn ends with the review still running — that turn is `NEXT`, never `COMPLETE`. Never signal safety to close a turn tidily. See `methodology/building.md` "Session Scope Discipline".
+**Outstanding means in flight, not just unstarted — and anything outstanding takes the disposition line, named: `RUNNING` when the work is only waiting on the event, `YOUR TURN` when you also owe them something, and never `COMPLETE`.** Critic reviewers dispatched but not consolidated; a `/prawduct:pr` reviewer still running; any background agent whose output you have not read; a Critic run this work owes; a governance step that was skipped or failed. The coordinator case is the one that catches people: a `final`/`cumulative` review dispatches three subagents and the fork returns immediately, so your turn ends with the review still running — that turn is `RUNNING`, never `COMPLETE`. Never signal safety to close a turn tidily.
+
+**Choosing the label is a procedure, and its first step is not a label at all:**
+
+1. **Is there work you can do right now with what you have? Then do it — do not end the turn.** Handing back to ask permission you do not need costs a round-trip and, if they stepped away, a context replay into a cold cache. This step yields to one hard stop: **a chunk boundary whose review has not run.** There you stop even with work in hand.
+2. Is a machine event pending that will produce the next turn? → `RUNNING`, naming it and what you do if it does not land.
+3. Is everything finished, with nothing outstanding on disk or in flight? → `COMPLETE`.
+4. Otherwise → `YOUR TURN`.
+
+**Four ways to get the label wrong**, each tempting for its own reason: `RUNNING` with nothing actually running — "I'll continue next turn" is `YOUR TURN`; `COMPLETE` with a dispatched review unfinished; `YOUR TURN` reached by skipping step 1, which spends their attention to buy nothing; and the ask buried mid-paragraph instead of leading the copy. See `methodology/building.md` "Session Scope Discipline".
 
 **Forward notes are not a reflection.** A reflection looks back at what happened; `.prawduct/.handoff-notes.md` looks forward at what the next session needs — where you stopped, what you'd do next, what would bite them. It is one of the two session files **you** own — the other is `.prawduct/.session-reflected`, the subject of this guide, which is why the pairing is easy to confuse. The rest of what the next session receives is machine state about the past, plus whatever you curated into the build plan's Context block. The generated `.prawduct/.session-handoff.md` is the machine's: it is rewritten from your notes at every `/clear`, so writing into it directly is how context gets lost.
 

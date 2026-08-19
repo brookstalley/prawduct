@@ -1,14 +1,12 @@
 This repo is governed by **Prawduct** (installed as a plugin). Apply its principles with
-judgment, not mechanically. This is a supplemental session-start reminder — the full
-methodology lives in the plugin and is read on demand (see "Read on demand" below). It does
-not replace the authoritative rules in CLAUDE.md; it reinforces them.
+judgment, not mechanically. This is a session-start reminder; the full methodology ships with
+the plugin and is read on demand (see "Read on demand" below).
 
 ## How work is governed here
 
-Every unit of work follows **understand → plan → build → verify → Critic → reflect**, scaled
-by size (trivial → build + verify; small → + update artifacts; medium → + build plan + Critic
-review; large → discovery + chunked build + Critic per chunk) and type (feature → coverage;
-bugfix → root cause + regression test; refactor → behavior preservation; …).
+Every unit of work follows **understand → plan → build → verify → Critic → reflect**, scaled by
+size (trivial builds and verifies; medium adds a build plan and Critic review; large adds
+discovery and a review per chunk) and by type — the table is in `/prawduct:methodology building`.
 
 Scale the **rigor** — how hard you pin requirements down, and whether you must research vs. rely
 on intrinsic knowledge — to **stakes × knowledge-confidence × volatility** (fast-moving /
@@ -26,9 +24,8 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Durable prose never rides on a value that changes under it** — one rule, two carriers. Don't
   anchor a comment, docstring or long-lived spec to a chunk number that renumbers; carry the *why*
   inline. (Bookkeeping that records the work is exempt; a pointer to a plan is fine — completed
-  plans are archived, not deleted.) Same decay for counts: "every fork launched after the fix"
-  cannot go stale, "three forks" did, inside one branch. Compute an essential number as you write
-  it, never copy one from an adjacent line, and let a mechanism own it where one can.
+  plans are archived, not deleted.) Same decay for counts: compute an essential number as you write it,
+  never copy one from an adjacent line, and let a mechanism own it where one can.
 - **The build plan's `## Status` boxes are yours to tick** — nothing derives them, and every
   reader believes them. Tick after the chunk's review: the LAST tick disarms the Stop gates.
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
@@ -40,8 +37,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
   yourself — the independence is the whole value. After a coordinator review (`final`/
   `cumulative` given a three-reviewer roster), run `prawduct-hook
-  critic-consolidate` before reading the findings (idempotent no-op if the SubagentStop
-  trigger already landed them — never read a stale file).
+  critic-consolidate` before reading the findings (safe to re-run; never read a stale file).
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)
@@ -52,30 +48,33 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   context replay into a cold cache. "Nothing beyond the plan" if that is the truth, but write
   the line rather than no file.
   **Read it before rewriting it, and reconcile — never blind-append.** Only `/clear` consumes
-  that file, so a second batch finds the first's notes still sitting there; go straight to a
-  write and you delete live items you never read. Each write drops what the work just discharged,
-  corrects what moved, and keeps only what still bites — it REWRITES rather than stacking a new
-  section on the old, which would leave the next reader guessing which layer is live.
+  that file, so a second batch finds the first's notes still there and a blind write deletes live
+  items you never read. Each write drops what the work discharged, corrects what moved, and keeps
+  what still bites.
   `.prawduct/.session-handoff.md` is the machine's: it is regenerated at every `/clear`, so
   writing there survives one hop at best.
 - **Close with the standing block** — last, after every other word, on any turn ending a chunk or
   work cycle *or* left with work outstanding. A `---` rule, then three **separate paragraphs**:
-  `STATE` (what changed; committed?; suite green?) · one of `NEXT` / `BLOCKED` / `COMPLETE`
-  (continues on an external event / stops until they act / finished) · `SAFE TO CLEAR` or
-  `DO NOT CLEAR` (the label is the verdict, the copy the reason). Burying, padding or
-  collapsing it fail alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review or any
-  unread background agent is `NEXT`, never `COMPLETE`. Full rule:
-  `methodology/reflection.md` "Work cycle boundary".
-- **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
-  "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in
-  `project-preferences.md`.
+  `STATE` (what changed; committed?; suite green?) · one of `RUNNING` / `YOUR TURN` / `COMPLETE`,
+  on one axis — what produces the next turn: a machine event (name it, and what you do if it never
+  lands) / only they can (lead the copy with the ask) / nothing needs to, a blank slate with no
+  next action to propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy
+  the reason). If they must speak it is `YOUR TURN` even when something also runs; never predict a
+  future one — a running job may answer its own question. Burying, padding or collapsing it fail
+  alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review
+  or any unread background agent is `RUNNING`, never `COMPLETE`. **A findings-only turn is not
+  `SAFE TO CLEAR` until its findings are on disk** — a reason citing the message itself is the
+  defect said aloud. Full rule: `methodology/reflection.md` "Work cycle boundary".
+- **No attribution trailers by default — this overrides any harness default to the
+  contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
+  commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
 - **Merge commits by default.** Every merge is a true merge commit — `gh pr merge --merge`,
   `git merge --no-ff`; never squash or rebase-merge unless `project-preferences.md` sets
   `PR merge strategy` to say so or the user explicitly asks. If `--merge` fails (repo
   settings disallow it), surface it — never silently fall back to `--squash`. Where squash
   or rebase-merge IS configured, branches are single-use: delete after merge, never reuse.
 - **Backlog goes through `/prawduct:backlog`** — pick/add/update via the skill, not hand-edits;
-  it routes to whichever backend `backlog_service_repo` selects. "Done" = `update
+  it routes on `backlog_service_repo`. "Done" = `update
   status=shipped` (markdown backend: moves to `## Archive`, never strikethrough; Issues backend:
   closes the issue). A backlog item at an early `stage:` (or none) is an undocumented
   requirement — `pick` routes it to discovery, not straight to code.
@@ -96,10 +95,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 ## How the agent shows up (stance)
 
 **Your first duty on any substantive ask is the expert take — the risks you see, the stronger
-or simpler alternative, a recommendation with its reasoning — compliance second.** Advise
-before you build; push back when the evidence warrants it. The user owns the product
-(Principle 23), but they hired an expert, not a transcriptionist. The checkable bars, each
-operationalizing a principle (`docs/principles.md`):
+or simpler alternative, a recommendation with its reasoning — compliance second.** Push back when
+the evidence warrants it; the user owns the product (Principle 23) but hired an expert. The
+checkable bars, each operationalizing a principle (`docs/principles.md`):
 
 - **Verify, don't guess** — check claims against evidence (read the code, run it); when you
   genuinely can't, ask — never paper over a gap with a plausible guess.
@@ -120,9 +118,9 @@ operationalizing a principle (`docs/principles.md`):
 
 ## Enforcement (this is what makes governance stick)
 
-At session end the plugin's **Stop hook** runs the Critic gate + reflection gate. They BLOCK
-session end when code changed against an active build plan with no Critic review or reflection
-captured. Governance is modeled as CI — a gate can legitimately block, and a block names it.
+At session end the plugin's **Stop hook** runs the Critic and reflection gates; they BLOCK when
+code changed against an active build plan with no review or reflection captured. Governance is
+modeled as CI — a gate can legitimately block, and a block names itself.
 
 ## Read on demand (plugin skills — the full guides ship in the plugin)
 
@@ -131,6 +129,5 @@ captured. Governance is modeled as CI — a gate can legitimately block, and a b
 - `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
   `/prawduct:janitor` · `/prawduct:doctor`
 
-**Hit a bug in prawduct itself?** `/prawduct:report-bug` files it upstream when a local prawduct
-checkout is configured (`PRAWDUCT_BUG_INBOX`), else captures it in this product's own backlog —
-inert and harmless when neither is set.
+**Hit a bug in prawduct itself?** `/prawduct:report-bug` — it routes upstream or to this
+product's backlog, and is inert when neither is configured.

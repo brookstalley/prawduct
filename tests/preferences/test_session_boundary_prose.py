@@ -39,7 +39,6 @@ SURFACES = [
     PLUGIN / "methodology" / "building.md",
     PLUGIN / "methodology" / "reflection.md",
     PLUGIN / "methodology" / "session-digest.md",
-    PLUGIN / "methodology" / "session-digest-slim.md",
     PLUGIN / "skills" / "critic" / "SKILL.md",
     PLUGIN / "lib" / "critic_marker.py",
 ]
