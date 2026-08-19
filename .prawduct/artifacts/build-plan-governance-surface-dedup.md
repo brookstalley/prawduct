@@ -136,6 +136,35 @@ Also out of scope and ranked **above** this whole plan by owner ruling: **#652**
 
 - [x] Chunk 01: Total-injected-footprint assertion
 - [x] Chunk 02: Collapse the standing block to its carriers
-- [ ] Chunk 03: Retire the slim digest and trim CLAUDE.md
+- [x] Chunk 03: Retire the slim digest and trim CLAUDE.md
 - [ ] Chunk 04: A findings-only turn is not safe to clear
-Context: Chunks 01-02 shipped 2026-08-19 on `fix/governance-surface-dedup`. Chunk 02 = `db877c35` (trim + narrowed pin + paired positive test + ceiling ratchet 4810 -> 4730) and `865b2a99` (change-log). `building.md` 4806 -> 4720 est. tokens. Critic `chunk` (`rev-20260819T043045Z-3b243e8b`): 0 blocking, 1 warning (R-1 unratcheted ceiling -- FIXED in the same commit), 1 note (R-2 change-log outside the manifest -- ACCEPTed, non-judgeable path). `verify-resolutions` (`rev-20260819T044054Z-b0e58371`) confirmed R-1 `fixed` with 0 new findings, so unlike Chunk 01 this chunk carries NO uncovered delta into Chunk 04. Suite green, 4806 passed / 10 skipped, evidence current. One inert clause to fix while Chunk 03 is already editing `tests/test_v5_methodology.py`: the `LAST_MEASURED_TOKENS` comment at ~line 108 still says the freed headroom "is not a budget to spend", written when 90 tokens were free -- 10 are now and the ceiling enforces it structurally, so the clause narrates a condition that no longer obtains (Critic observation, ACCEPTed as not worth its own commit). Next: Chunk 03, which opens on the HIGH-impact roster assumption the owner may want to weigh in on first -- its step 0 measures the CLAUDE.md trim before fixing the new ceiling.
+Context: Chunks 01-03 shipped 2026-08-19 on `fix/governance-surface-dedup`. Chunk 03 = `2a5bbf17`
+(slim digest deleted, `digest.py` reduced to one digest with `is_framework_repo` removed, `CLAUDE.md`
+2527 -> 1339 est. tokens, five digest-pair pins collapsed across four test modules, both ceilings
+ratcheted). Injected footprint: framework 3455 -> 3315 (ceiling 3325), product 2256 -> 2238 (ceiling
+2248). Suite green, 4791 passed / 10 skipped, evidence at tree `ce8f1651`. Critic `chunk`
+(`rev-20260819T120816Z-ccb631c6`): 2 blocking, 1 warning, 2 notes -- R-1 (the no-attribution rule
+lost the clause stating it outranks a contrary harness default; the digest carried the rule but not
+the clause) and R-2 (chunk-ref-missing on the deletion deliverable) FIXED in the commit, R-3 (stale
+evidence) FIXED, R-4/R-5 ACCEPTed with reasons. `verify-resolutions`
+(`rev-20260819T123724Z`): all three confirmed `fixed`, 0 new findings -- so Chunk 03 carries NO
+uncovered delta into Chunk 04.
+
+Two owner decisions landed this session and both bind Chunk 04. (1) The principles roster in
+`CLAUDE.md` became a pointer -- the plan's HIGH-impact assumption, RESOLVED on evidence (13 of 26
+glosses already stated by the digest in point-of-action form). (2) **Chunk 04 gained a second
+deliverable: replacing the disposition labels.** `NEXT`/`BLOCKED`/`COMPLETE` becomes
+`RUNNING`/`YOUR TURN`/`COMPLETE` on one axis -- what produces the next turn. Its section carries the
+full design, two `[DECISION: ...]` records, and FIVE OPEN GAPS awaiting the owner, two of them
+marked required (`COMPLETE` has no scope; the agent procedure's step 1 collides with `building.md`
+Session Scope Discipline). Do not build the label set before those two are settled.
+
+The binding constraint for Chunk 04 is the budget: the digest belongs to BOTH session shapes while
+`CLAUDE.md` belongs to one, so a digest token is charged twice and both ceilings bind it -- ~10
+tokens of headroom each. Chunk 04 adds to the digest twice over, so it must fund itself with an
+in-place digest trim. The plan's original "funded by the cuts" claim was wrong and its AC is
+corrected. Also live off-branch: `brookstalley/prawduct#686` (retire 3 principles, regroup by genus,
+sequenced after Chunk 03).
+
+Next: Chunk 04, the plan's last -- `Critic mode: cumulative`, and read its Carried-coverage note
+first.
