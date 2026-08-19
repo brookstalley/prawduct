@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
@@ -413,6 +413,64 @@ class TestBoundaryDependentInterpretation:
             "clear; it is the operator's only escape from a fresh marker"
         )
 
+    def test_forcing_a_sweep_of_a_live_marker_announces_what_it_destroyed(self, tmp_path):
+        """The destructive branch may not be the quiet one.
+
+        `--force` is the only path that removes a plausibly-live marker, and it
+        was the only branch that printed nothing — while its non-destructive
+        sibling prints four lines for merely RETAINING one. The design calls
+        sweeping a live marker the *silent* governance failure, so leaving the
+        act itself silent is that failure spelled out.
+
+        Pinned on the RECOVERY, not the wording, for the same reason the
+        retention notice is: after the marker is cleared nothing else in the new
+        session knows which review it was, so the id and the restore command are
+        the half that makes the announcement actionable rather than merely
+        informative.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": now}))
+        partials = prawduct / ".critic-partials"
+        partials.mkdir(exist_ok=True)
+        (partials / "manifest.json").write_text(json.dumps({"id": "rev-forced"}))
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        assert not marker.is_file(), "--force must still sweep; this pins the notice, not a refusal"
+        assert "rev-forced" in out, (
+            "the forced sweep did not name the review it unguarded — without "
+            "the id, `critic-restore` cannot be run at all"
+        )
+        assert "critic-restore" in out, (
+            "the forced sweep announced no recovery; the partials are archived "
+            "by the next dispatch, not deleted, so a restore is possible"
+        )
+
+    def test_forcing_a_sweep_of_a_dead_marker_stays_quiet(self, tmp_path):
+        """The discriminating half. An announcement on every `--force` is noise,
+        and noise on the routine case trains the reader past the one case that
+        means something. An EXPIRED marker is what the sweep exists to clear —
+        nothing was destroyed, so nothing is reported.
+        """
+        prawduct = _seed_session(tmp_path)
+        stale = datetime.now(timezone.utc) - timedelta(days=1)
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({
+            "started_at": stale.strftime("%Y-%m-%dT%H:%M:%SZ")
+        }))
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        assert not marker.is_file()
+        assert "swept a LIVE" not in out, (
+            "an expired marker is the sweep's ordinary business; announcing it "
+            "trains the reader past the live case that actually matters"
+        )
+
     def test_the_retained_notice_never_advises_clearing_a_complete_roster(self, tmp_path):
         """The remedy is conditional, and the wrong one is destructive.
 
@@ -465,6 +523,78 @@ class TestBoundaryDependentInterpretation:
         assert "prawduct-hook critic-end" not in out, (
             "the notice offered `critic-end` on a complete roster; following it "
             "discards a finished review's findings"
+        )
+
+    def test_the_retained_notice_names_both_readings_on_an_incomplete_roster(self, tmp_path):
+        """The branch a `/clear` during a live coordinator review actually lands in.
+
+        Three outcomes, and this was the unpinned one — while being the state
+        the feature exists for: reviewers dispatched, partials not all written.
+        Its wrong value is destructive in the direction this bundle has already
+        been bitten in once. The reader has *just* run `/clear`, so a message
+        saying only "if that session is gone they will never land" reads as
+        already satisfied; they run `critic-end`, the marker clears, the
+        in-flight guard stops refusing, and the next dispatch archives partials
+        that reviewers are still writing.
+
+        So the assertion is that BOTH readings are present and the remedy is
+        conditioned on the tell — not merely that the missing role is named. A
+        message naming the role and one reading passes any phrasing check and
+        still sends the reader to the destructive command.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        (prawduct / ".critic-active").write_text(json.dumps({"started_at": now}))
+        partials = prawduct / ".critic-partials"
+        partials.mkdir(exist_ok=True)
+        roster = ["correctness", "design", "sustainability"]
+        (partials / "manifest.json").write_text(json.dumps({
+            "id": "rev-test",
+            "mode": "cumulative (bundle review, ready for merge)",
+            "mode_chosen_by": "test", "roster_chosen_by": "test",
+            "commit_reviewed": "0" * 40,
+            "base_tree": "1" * 40, "head_tree": "2" * 40,
+            "files_reviewed": ["some/file.py"],
+            "files_changed": ["some/file.py"],
+            "roster": roster,
+            "rendezvous": {
+                role: {
+                    "partial": f".prawduct/.critic-partials/{role}.rev-test.json",
+                    "started": f".prawduct/.critic-partials/{role}.rev-test.started",
+                }
+                for role in roster
+            },
+        }))
+        # One reporter, two still out -- the shape of a real coordinator review
+        # interrupted mid-flight.
+        (partials / "correctness.rev-test.json").write_text(json.dumps({"findings": []}))
+        # Guard the fixture, for the reason this class's complete-roster test
+        # already documents: an invalid manifest degrades to "unreadable", which
+        # routes to `critic-end` too -- so the assertions below would grade the
+        # wrong branch and the conditional-remedy check would pass vacuously.
+        from lib.critic_consolidate import pending_state  # noqa: PLC0415
+        assert pending_state(prawduct)[0] == "incomplete", (
+            "fixture does not build an incomplete roster; the assertions below "
+            "would grade a different branch"
+        )
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        for role in ("design", "sustainability"):
+            assert role in out, (
+                f"the notice does not name {role} as outstanding — the reader "
+                "cannot tell what the review is waiting on"
+            )
+        assert "still running" in out, (
+            "the notice omits the reading in which the reviewers are ALIVE. "
+            "At a boundary the reader has just ended a session, so without it "
+            "they conclude the review is dead and run the destructive remedy"
+        )
+        assert "Only if nothing lands" in out, (
+            "the notice offers `critic-end` unconditionally on an incomplete "
+            "roster; following it while reviewers are still writing lets the "
+            "next dispatch archive their partials"
         )
 
     def test_a_swept_marker_is_not_announced(self, tmp_path):

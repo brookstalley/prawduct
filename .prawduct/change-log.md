@@ -74,11 +74,14 @@ ceded is compaction as a reason to *cap cycle length*, not compaction as a hazar
 invariant #687 proposes is sharper than either: the risk is not "context got full", it is
 **unpersisted state**.
 
-**It funded itself.** ~6 tokens net against 10 of headroom, paid by a cut in the same commit: the
-Modes section restated what each of the four Critic modes covers, three lines above its own pointer
-to the file that defines them. It keeps the two facts a reader needs *before* opening that file
+**It funded itself, and then some.** The addition was paid by a cut in the same commit: the Modes
+section restated what each of the four Critic modes covers, three lines above its own pointer to the
+file that defines them. It keeps the two facts a reader needs *before* opening that file
 (`cumulative` feeds the PR gate; `verify-resolutions` alone records resolutions) — the part a
-pointer cannot carry. The ceiling did not move.
+pointer cannot carry. **The cut ran past the addition**, so `building.md` finished *below* where the
+branch started and the ceiling **ratcheted down**, 4730 → 4718. That direction is the precedent
+worth taking from this entry: a re-pricing that overpays ratchets the ceiling with the reading,
+because a ceiling left at its old value after a cut silently re-funds the growth the cut paid for.
 
 **Still open, deliberately.** The cadence question — *should* you clear, and by when — is not
 answered here; it belongs to the standing block's clear paragraph, and putting it in two places is

@@ -298,8 +298,10 @@ ended. `compact` fires mid-session in-process, `fork`'s parent is frequently sti
 `clear` resets context in-process too, so a marker seen at any of the three may be **live**.
 Sweeping a live marker is a *silent* governance failure; retaining a dead one is *loud* and
 recoverable by a named command — that asymmetry, and the honest price of each side, is stated once
-in `plugin/lib/critic_marker.py`'s module docstring. `--force` stays unconditional precisely because
-it is the operator's documented escape from a marker the TTL has not released. A crashed Critic is
+in `plugin/lib/critic_marker.py`'s module docstring. `--force` is unconditional wherever a sweep is
+licensed at all — boundary or guarded — and never on a continuation, precisely because it is the
+operator's documented escape from a marker the TTL has not released, not a way to promote a
+continuation into a boundary. A crashed Critic is
 rescued by the TTL, at whichever check reaches it first.
 
 `fork` is the source most easily overlooked (it postdates the other four and was missing from this

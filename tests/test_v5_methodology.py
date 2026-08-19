@@ -285,7 +285,18 @@ LAST_MEASURED_TOKENS = {
     # no session event releases a live marker, because none proves the reviewer's
     # process died. Stating the rule costs less than enumerating the exceptions
     # to it, which is why a correction that ADDED a reason still came in under.
-    "skills/critic/SKILL.md": 3406,
+    # -6 on 2026-08-19 (Critic R-4, CLASS): the marker paragraph asserted that
+    # "while it is set `prawduct-hook clear` refuses to mutate session state
+    # (from any context)". True only because the boundary used to sweep the
+    # marker BEFORE mutating; gating that sweep falsified every copy of the
+    # claim at once, and this file then taught the opposite of its own closing
+    # paragraph. Narrowed to the act that still refuses -- a *bare* `clear`.
+    # Paid for past the addition by cutting the file's second verbatim copy of
+    # "otherwise it auto-expires after 30 min": the TTL stays where the reader
+    # ACTS on it (the abandon-a-review paragraph), not in the data-plane gloss.
+    # The boundary behaviour is deliberately NOT restated here -- that same
+    # closing paragraph already owns it.
+    "skills/critic/SKILL.md": 3400,
     "skills/critic/framework-checks.md": 1116,
 }
 

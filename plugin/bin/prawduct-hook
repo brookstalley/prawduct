@@ -887,25 +887,64 @@ def _boundary_retained_marker_notice(prawduct_dir: Path) -> str:
     surface that meets the marker.
     """
     head = "PRAWDUCT: a Critic review is still marked active — kept, because no session event proves its reviewers died.\n"
+    # The READING comes from `critic_consolidate.pending_roster_reading`, which
+    # is also what `active_dispatch_refusal` prints. Sharing it is the point:
+    # this surface is the one where a reader has just watched a session end, so
+    # a lone "if that session is gone" reads as already satisfied — and the
+    # command it would send them to archives partials that reviewers may still
+    # be writing. The remedy below stays local; the state does not.
     try:
-        state, missing = _critic_consolidate().pending_state(prawduct_dir)
+        state, _missing, reading = _critic_consolidate().pending_roster_reading(prawduct_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
-        state, missing = "unreadable", []
+        state, reading = "unreadable", "  On disk: unreadable.\n"
     if state == "complete":
-        return head + (
-            "  Every reviewer reported — it needs consolidating, NOT clearing:\n"
+        return head + reading + (
+            "  It needs consolidating, NOT clearing:\n"
             "    prawduct-hook critic-consolidate\n"
             "  (`critic-end` here would discard a finished review's findings.)"
         )
     if state == "incomplete":
-        return head + (
-            f"  Still waiting on {', '.join(missing)}. If that session is gone they will\n"
-            "  never land — abandon the review explicitly, then re-dispatch:\n"
+        return head + reading + (
+            "  Only if nothing lands: abandon the review explicitly, then re-dispatch:\n"
             "    prawduct-hook critic-end"
         )
-    return head + (
-        "  No readable dispatch manifest — nothing here is worth keeping:\n"
+    return head + reading + (
+        "  Nothing here is worth keeping:\n"
         "    prawduct-hook critic-end"
+    )
+
+
+def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> str:
+    """What `--force` just destroyed, when the marker it removed was still live.
+
+    The retention notice's mirror image, and it exists for the same reason that
+    one does: an act nobody is told about cannot be recovered from. `--force` is
+    the operator's documented escape from a marker the TTL has not released, so
+    it is legitimate — but on a LIVE marker it also unguards a review whose
+    reviewers may still be writing, and the next `critic-begin` will archive
+    their partials rather than refuse.
+
+    Reports the review by id and names the recovery, because the partials are
+    not gone: `critic-begin` archives them and `critic-restore <review-id>`
+    brings that review back as itself. Naming the id here is what makes the
+    restore possible at all — after the marker is cleared, nothing else in the
+    new session knows which review it was.
+    """
+    age = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
+    review_id = "(id unavailable — manifest unreadable)"
+    try:
+        review_id = json.loads(
+            (prawduct_dir / ".critic-partials" / "manifest.json").read_text()
+        )["id"]
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        pass
+    return (
+        "PRAWDUCT: --force swept a LIVE Critic review marker "
+        f"({review_id}, dispatched {age}).\n"
+        "  That review is no longer guarded: the next `critic-begin` will archive its\n"
+        "  partials instead of refusing. If it was still running, recover it with\n"
+        f"    prawduct-hook critic-restore {review_id}\n"
+        "  after the next dispatch, or consolidate it now with `critic-consolidate`."
     )
 
 
@@ -1025,8 +1064,19 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         # promotes a continuation (that remains the failure mode, not an
         # override of it), but where a sweep is licensed at all, forcing means
         # forcing.
+        # ANNOUNCE what it destroyed, when the marker was still live. This is
+        # the only branch that removes a plausibly-live marker, and it was the
+        # only one that printed nothing — while its non-destructive sibling
+        # below prints four lines for merely RETAINING one. The design calls
+        # sweeping a live marker the *silent* governance failure; leaving the
+        # act itself silent is that failure spelled out. Read the state BEFORE
+        # clearing, or there is nothing left to report.
         try:
-            _critic_marker().clear_marker(prawduct_dir)
+            marker = _critic_marker()
+            was_live, age_s = marker.review_active(prawduct_dir, sweep=False)
+            marker.clear_marker(prawduct_dir)
+            if was_live:
+                print(_forced_live_sweep_notice(prawduct_dir, age_s))
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
             pass
     elif kind == "BOUNDARY":
