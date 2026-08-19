@@ -795,7 +795,7 @@ class TestNextLineRelayContract:
     def test_the_prefix_does_not_collide_with_the_standing_block(self):
         # `NEXT` reads as framework vocabulary: the turn-closing standing
         # block (session digest, reflection.md) opens a disposition line with a
-        # backticked one-word label, so a bare `NEXT` near the end of a turn is
+        # short backticked label, so a bare `NEXT` near the end of a turn is
         # exactly the shape an agent expects to be a disposition. This line is a paragraph that must be relayed verbatim,
         # so an agent holding both contracts would have a standing instruction
         # to compress the very text it was told to copy.

@@ -136,34 +136,31 @@ Also out of scope and ranked **above** this whole plan by owner ruling: **#652**
 - [x] Chunk 01: Total-injected-footprint assertion
 - [x] Chunk 02: Collapse the standing block to its carriers
 - [x] Chunk 03: Retire the slim digest and trim CLAUDE.md
-- [ ] Chunk 04: A findings-only turn is not safe to clear
-Context: Chunks 01-03 shipped 2026-08-19 on `fix/governance-surface-dedup`. Chunk 03 = `2a5bbf17`
-(slim digest deleted, `digest.py` reduced to one digest with `is_framework_repo` removed, `CLAUDE.md`
-2527 -> 1339 est. tokens, five digest-pair pins collapsed across four test modules, both ceilings
-ratcheted). Injected footprint: framework 3455 -> 3315 (ceiling 3325), product 2256 -> 2238 (ceiling
-2248). Suite green with evidence current at the reviewed tree (`prawduct-hook test-status`). Critic `chunk`
-(`rev-20260819T120816Z-ccb631c6`): 2 blocking, 1 warning, 2 notes -- R-1 (the no-attribution rule
-lost the clause stating it outranks a contrary harness default; the digest carried the rule but not
-the clause) and R-2 (chunk-ref-missing on the deletion deliverable) FIXED in the commit, R-3 (stale
-evidence) FIXED, R-4/R-5 ACCEPTed with reasons. `verify-resolutions`
-(`rev-20260819T123724Z`): all three confirmed `fixed`, 0 new findings -- so Chunk 03 carries NO
-uncovered delta into Chunk 04.
+- [x] Chunk 04: A findings-only turn is not safe to clear
+Context: PLAN COMPLETE -- all four chunks shipped 2026-08-19 on `fix/governance-surface-dedup`.
+Chunk 04 = `c1a01a37` (the disposition labels became `RUNNING`/`YOUR TURN`/`COMPLETE` on one axis --
+what produces the next turn -- plus the findings-only clear rule, #683's original ask), review
+fixes `ca4fc543`, and a final class-sweep commit. Critic `cumulative`
+(`rev-20260819T130559Z-2a29af52`): 0 blocking, 2 warnings, 7 notes; `verify-resolutions`
+(`rev-20260819T132240Z-f9a2824f`) confirmed both warnings `fixed` with 0 new findings. Suite green,
+evidence current at the reviewed tree.
 
-Two owner decisions landed this session and both bind Chunk 04. (1) The principles roster in
-`CLAUDE.md` became a pointer -- the plan's HIGH-impact assumption, RESOLVED on evidence (13 of 26
-glosses already stated by the digest in point-of-action form). (2) **Chunk 04 gained a second
-deliverable: replacing the disposition labels.** `NEXT`/`BLOCKED`/`COMPLETE` becomes
-`RUNNING`/`YOUR TURN`/`COMPLETE` on one axis -- what produces the next turn. Its section carries the
-full design, two `[DECISION: ...]` records, and FIVE OPEN GAPS awaiting the owner, two of them
-marked required (`COMPLETE` has no scope; the agent procedure's step 1 collides with `building.md`
-Session Scope Discipline). Do not build the label set before those two are settled.
+The cumulative pass earned its keep exactly where the Carried-coverage note predicted: Chunk 01's
+`ast`-based extraction in `test_every_injectable_digest_is_budgeted` was written AFTER that chunk's
+review, and this first real look found it blind to `X: tuple[...] = (...)` and to list-shaped
+declarations -- while its own non-empty guard still passed on the surviving constant, so the
+blindness presented as coverage. That is the defect the check exists to catch, inside the check.
 
-The binding constraint for Chunk 04 is the budget: the digest belongs to BOTH session shapes while
-`CLAUDE.md` belongs to one, so a digest token is charged twice and both ceilings bind it -- ~10
-tokens of headroom each. Chunk 04 adds to the digest twice over, so it must fund itself with an
-in-place digest trim. The plan's original "funded by the cuts" claim was wrong and its AC is
-corrected. Also live off-branch: `brookstalley/prawduct#686` (retire 3 principles, regroup by genus,
-sequenced after Chunk 03).
+Final measurements: framework session 3455 -> 3320 (ceiling 3325), product 2256 -> 2243 (ceiling
+2248). `session-digest-slim.md`, `digest.py`'s shape selection and `is_framework_repo` are gone;
+`CLAUDE.md` is 2527 -> ~1339 est. tokens. Chunk 04's ~113 tokens of new rule were funded in place,
+net +5 per shape -- the plan's closing argument, held.
 
-Next: Chunk 04, the plan's last -- `Critic mode: cumulative`, and read its Carried-coverage note
-first.
+Follow-ups OFF this branch, filed not dropped: **#686** (retire principles #12/#19/#20 into their
+neighbours and regroup by genus -- retire numbers, never renumber), **#687** (re-price
+`building.md`'s 1-3 chunk limit; carries a full costed answer), **#688** (reflection.md has no token
+budget; note the dedup finding that **#265** asks the meta-question it defers to). **#683 is
+closed**, delivered by Chunk 04.
+
+Next: nothing in this plan. The branch is PR-ready -- `/prawduct:pr` runs its own gate (composed
+cumulative coverage spanning merge-base -> HEAD, zero unresolved blocking).
