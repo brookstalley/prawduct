@@ -195,6 +195,21 @@ Governance dispositions written at plan time are predictions — re-check them a
 than inheriting them as passes; the one-home disposition claimed conformance before the code existed
 and was wrong within one commit.
 
+**PR-prep round, 2026-08-19.** `cumulative` rev-20260819T200101Z-9523f25c over the whole bundle →
+0 blocking / 4 warnings / 11 notes; resolved in `2030f63b`, verified by
+`verify-resolutions` rev-20260819T202601Z-b89963cd → 0/0/0.
+
+**Its R-1 killed a change rather than correcting one, and that is the entry worth keeping.** A
+post-plan commit (`036d3f72`) had added a mid-plan guard to `infer-critic-mode`'s rule 2, so a chunk
+boundary would stop escalating to a bundle review — the 85-minute over-review this branch measured
+on itself. It did not work: rule 4's clean-tree redirect reaches `cumulative` from the same state
+without consulting the plan, and a chunk boundary IS a clean tree, because `building.md`'s close
+order is "commit, then Critic". The guard's own test passed only because its fixture never commits
+the plan file, leaving the tree dirty and the redirect skipped. **Reverted rather than extended**:
+the escalation is structural in the mode set — on a clean tree `chunk`/`final` have an empty
+interval, so `cumulative` is the only mode that can review anything. The measurement stands and is
+filed; the fix did not.
+
 **Chunk 05 closed 2026-08-19.** `3de7cf41` + the observation fixes. Critic
 `verify-resolutions` rev-20260819T193811Z-e9a21fba → **0 blocking, 0 findings**; all 5 of the prior
 round's warnings verified fixed against the tree, 4 observations demoted and all 4 actioned.

@@ -232,6 +232,36 @@ class TestComposeBodyMergesAnEmbeddedBlock:
         assert out.startswith("Just prose.\n\n")
 
 
+class TestUpsertPreservesEveryBlock:
+    """`upsert_block_field` had `compose_body`'s defect one function over.
+
+    Same pairing: `parse_block` keeps the LAST block, `strip_block` removes them
+    all, and the result emits exactly one — so an earlier block's fields were
+    dropped AND the multi-block warning that was the only signal could never fire
+    afterwards. Swept with the `compose_body` fix rather than left for whoever
+    first sets a field on a body carrying two hand-written blocks.
+    """
+
+    def test_setting_a_field_keeps_an_earlier_blocks_fields(self):
+        body = (
+            "Why.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```\n\n"
+            "```prawduct\nv: 1\nrefs: [owner/repo#9]\n```"
+        )
+        out = encode.upsert_block_field(body, "working_branch", "fix/x")
+        assert out.count("```prawduct") == 1
+        block = encode.parse_block(out)
+        assert block.get("working_branch") == "fix/x"
+        assert block.get("related") == "[owner/repo#7]", (
+            "the earlier block's field was dropped by an upsert — the same "
+            "silent loss `compose_body` was fixed for"
+        )
+        assert block.get("refs") == "[owner/repo#9]"
+
+    def test_clearing_a_field_on_a_blockless_body_stays_a_no_op(self):
+        """The guard that keeps the merge from manufacturing an empty block."""
+        assert encode.upsert_block_field("Just prose.", "related", None) == "Just prose."
+
+
 class TestBlockSerialize:
     def test_version_emitted_first(self):
         out = encode.serialize_block({"id_aliases": "[BKL-0001]", "v": "1"})

@@ -533,6 +533,30 @@ class TestBoundaryDependentInterpretation:
             "`begin_review` refuses on a complete roster at any age, so it will not"
         )
 
+    def test_a_raising_pre_read_still_lets_force_sweep(self, tmp_path):
+        """The path the reorder exists for, which the happy path cannot reach.
+
+        The pre-sweep read and the sweep used to share one broad `except`, so
+        any raise from the read — or a PermissionError from `unlink` — left the
+        marker in place and printed nothing: `--force` silently ignored. That is
+        the same defect `234dfc10` fixed at this call site, arriving by another
+        route, and the happy-path test cannot see it because nothing raises.
+
+        Faults the read by making the marker unparseable AND undatable, which is
+        the state `review_active` treats as "age unknown". The sweep must still
+        happen: `--force`'s whole contract is that it is the operator's escape.
+        """
+        prawduct = _seed_session(tmp_path)
+        marker = prawduct / ".critic-active"
+        marker.write_text("{ not json at all")
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
+        assert res.returncode == 0, res.stderr
+        assert not marker.is_file(), (
+            "--force did not sweep when the pre-read could not classify the "
+            "marker; the read must never be able to take the sweep down with it"
+        )
+
     def test_forcing_a_sweep_of_a_dead_marker_stays_quiet(self, tmp_path):
         """The discriminating half. An announcement on every `--force` is noise,
         and noise on the routine case trains the reader past the one case that

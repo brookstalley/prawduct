@@ -203,6 +203,15 @@ def parse_block(body: str | None) -> Block:
     Zero blocks → an empty ``Block`` (all defaults, no warning). Two+ blocks →
     the **last** wins and each earlier one is flagged (ENC-3). A malformed inner
     line (no ``:`` separator) is skipped with a warning, never an error.
+
+    **This READER and the two WRITERS deliberately disagree about a two-block
+    body.** Reading keeps the last block (a body someone edited twice means the
+    later value); writing — :func:`compose_body` and :func:`upsert_block_field` —
+    merges every block, because a write that kept only the last would *persist*
+    the discard and, since it emits exactly one block, destroy the very
+    multi-block warning that was the discard's only signal. Reading is
+    non-destructive and writing is not, which is why the same input gets two
+    readings on purpose.
     """
     block = Block()
     if not body:
@@ -275,15 +284,23 @@ def upsert_block_field(body: str | None, key: str, value: str | None) -> str:
     fresh ``v: 1`` block if the body had none and a value is being set; clearing a
     field on a blockless body is a no-op (never manufactures an empty block).
     """
-    block = parse_block(body)
+    # Merges EVERY block, for the same reason :func:`compose_body` does: pairing
+    # `parse_block` (last-block-wins) with `strip_block` (removes them all) drops
+    # an earlier block's fields, and since the result emits exactly one block the
+    # multi-block warning can never fire afterwards to signal it. This is that
+    # defect one function over — swept with it rather than left for the body that
+    # happens to carry two hand-written blocks.
+    fields: dict[str, str] = {}
+    for inner in _BLOCK_RE.findall(body or ""):
+        fields.update(_parse_block_fields(inner))
     human = strip_block(body)
     if value is None:
-        block.fields.pop(key, None)
+        fields.pop(key, None)
     else:
-        block.fields[key] = value
-    if not block.fields:
+        fields[key] = value
+    if not fields:
         return human
-    rendered = serialize_block(block.fields)
+    rendered = serialize_block(fields)
     if human:
         return f"{human}\n\n{rendered}\n"
     return f"{rendered}\n"
