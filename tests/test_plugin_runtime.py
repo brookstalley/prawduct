@@ -1834,6 +1834,90 @@ class TestNoRerunRestamp:
         after = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert "mod.py" in after["changes_referenced"]
 
+    def test_restamp_refuses_when_judgeable_content_moved_since_the_run(self, tmp_path):
+        """The reproduction. A restamp asserts test-relevant content is unchanged;
+        nothing checked it, so one taken after tests were added reused the older
+        run's counts and printed them as `recorded: N passed`.
+
+        **Why refuse rather than warn.** A restamp also rewrites `evidence_tree`
+        to the CURRENT tree, so a permitted one makes stale counts vouch for a
+        tree they never ran against — the laundering, not just a misleading
+        line. The downstream freshness gate cannot catch it afterwards, because
+        the restamp is what made it look fresh.
+
+        Seeded with `--from-junit` deliberately: `--from-counts` records no
+        `evidence_tree` by design (hand-typed counts carry no machine tie to the
+        tree), so it exercises the uncheckable branch instead of this one.
+        """
+        repo = self._repo(tmp_path)
+        junit = repo / "r.xml"
+        junit.write_text(
+            '<?xml version="1.0"?><testsuites><testsuite name="s" tests="1" '
+            'failures="0" errors="0" skipped="0" time="1.0">'
+            '<testcase classname="t" name="test_a" time="1.0"/>'
+            "</testsuite></testsuites>"
+        )
+        assert _run_in(repo, "test-evidence", "record", "--from-junit", str(junit)).returncode == 0
+        seeded = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" in seeded, (
+            "fixture must seed a record WITH an evidence_tree or this grades the "
+            "uncheckable branch and proves nothing about the guard"
+        )
+
+        tests_dir = repo / "tests"
+        tests_dir.mkdir(exist_ok=True)
+        (tests_dir / "test_new.py").write_text("def test_new():\n    assert True\n")
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 2, (
+            f"restamp was allowed after a test file was added; stderr={res.stderr}"
+        )
+        assert "test_new.py" in res.stderr, (
+            "the refusal does not name what moved, so the operator cannot tell "
+            "whether their assertion was wrong or the check is over-eager"
+        )
+        # And it did NOT rewrite the record — a refusal that still wrote would
+        # be the defect with an error message attached.
+        after = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert after["timestamp"] == seeded["timestamp"], (
+            "the refused restamp still updated the record"
+        )
+
+    def test_restamp_announces_that_nothing_was_run(self, tmp_path):
+        """The output line was the defect surface: `recorded: N passed` for a
+        reused count is indistinguishable from a fresh measurement, which is how
+        a stale figure passed as one for a whole session.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=7", "failed=0").returncode == 0
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        assert "restamped:" in out, (
+            "a restamp still prints `recorded:`, which reads as a measurement"
+        )
+        assert "REUSED" in out and "nothing was run" in out, (
+            "the line does not say the counts were reused rather than measured"
+        )
+
+    def test_restamp_warns_when_it_cannot_check_the_assertion(self, tmp_path):
+        """`--from-counts` records no `evidence_tree` by design, so the guard has
+        nothing to compare. It must say so rather than pass silently — an
+        unchecked assertion presented as a checked one is the same defect one
+        level down.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=4", "failed=0").returncode == 0
+        seeded = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" not in seeded, "fixture assumption broke"
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 0, res.stderr
+        assert "asserted, not measured" in res.stderr, (
+            "the uncheckable case passes without saying the assertion could "
+            "not be checked"
+        )
+
     def test_restamp_flips_stale_record_to_current(self, tmp_path):
         # The freshness-refresh reason to restamp: a record from before this
         # session reads stale; --no-rerun re-stamps the timestamp (reusing counts,

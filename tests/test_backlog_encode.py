@@ -116,6 +116,66 @@ class TestBlockParse:
         assert block.get("superseded_by") == "octo/repo#123"
 
 
+class TestComposeBodyMergesAnEmbeddedBlock:
+    """A filer's own `prawduct:` block survives filing instead of being buried.
+
+    THE REPRODUCTION. Filing writes a fresh `v: 1` block onto the caller's body,
+    and the caller's body is where a filer declares `related:` — the docs tell
+    them to. The old `compose_body` appended, producing two blocks; parsing is
+    last-block-wins, so the filer's fields were dropped and the loss surfaced
+    only as a warning that reads cosmetic ("carries 2 prawduct blocks; using the
+    last"). Items #690, #691 and #692 all lost their `related:` edges this way
+    on 2026-08-19, and nothing failed.
+    """
+
+    def test_a_filer_supplied_block_yields_exactly_one_block(self):
+        body = "Why this matters.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1"})
+        assert out.count("```prawduct") == 1, (
+            f"composition emitted {out.count('```prawduct')} blocks; a second one "
+            "makes the first unreadable, because parsing is last-block-wins"
+        )
+
+    def test_the_filers_own_fields_survive(self):
+        body = "Why.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1"})
+        # Asserted through the PARSER, not by grepping the text: the defect was
+        # that a field present in the body was invisible to the reader, so a
+        # substring check on the raw body would have passed against it.
+        assert encode.parse_block(out).get("related") == "[owner/repo#7]", (
+            "the filer's `related:` edge did not survive composition — this is "
+            "the exact loss that silently stripped #690/#691/#692"
+        )
+
+    def test_the_human_text_is_kept_once(self):
+        body = "Why this matters.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1"})
+        assert out.count("Why this matters.") == 1
+        assert "```prawduct" not in out.split("Why this matters.")[0]
+
+    def test_the_fresh_fields_win_a_collision(self):
+        """Precedence is not arbitrary: a body must not be able to launder an
+        unattended create into looking human. `automated`/`worker` are the
+        caller's authoritative stamps, so they override anything the body claims.
+        """
+        body = "Why.\n\n```prawduct\nv: 1\nautomated: false\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1", "automated": "true", "worker": "sweep"})
+        block = encode.parse_block(out)
+        assert block.get("automated") == "true", (
+            "a body claiming `automated: false` overrode the caller's stamp — a "
+            "background sweep could then be misattributed to a human"
+        )
+        assert block.get("worker") == "sweep"
+        # ...and the non-colliding field still survives.
+        assert block.get("related") == "[owner/repo#7]"
+
+    def test_a_blockless_body_is_unchanged_in_behaviour(self):
+        """The path everything else already used stays exactly as it was."""
+        out = encode.compose_body("Just prose.", {"v": "1"})
+        assert out.count("```prawduct") == 1
+        assert out.startswith("Just prose.\n\n")
+
+
 class TestBlockSerialize:
     def test_version_emitted_first(self):
         out = encode.serialize_block({"id_aliases": "[BKL-0001]", "v": "1"})

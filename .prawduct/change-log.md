@@ -3,6 +3,44 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: two tools stop losing what they were asked to record
+
+<!-- prawduct: type=fix | scope=clear-cadence -->
+
+Both found by *using* the governed path rather than by reading it, and each has a reproduction in
+this branch's own history.
+
+**`backlog file` silently discarded the filer's metadata.** Filing writes a fresh `prawduct:` block
+onto the caller's body — and the caller's body is where a filer declares `related:`, because the
+docs tell them to. The two were *appended*, and parsing is last-block-wins, so the filer's fields
+were dropped. The only signal was a warning that reads cosmetic: *"issue body carries 2 prawduct
+blocks; using the last and ignoring the earlier one(s)."* Three items filed on 2026-08-19 (#690,
+#691, #692) lost their `related:` edges exactly that way, and nothing failed. Composition now
+**merges**: one block out, the filer's fields preserved, and the caller's fresh fields winning a key
+collision — so a body claiming `automated: false` cannot launder a background sweep into looking
+human. Fixed where the block is composed, not by asking filers to stop writing one.
+
+**`test-evidence record --no-rerun` restamped a count it had not checked.** A restamp is an operator
+*assertion* that the tree's test-relevant content is unchanged since the last real run. Nothing
+verified it, so a restamp taken after tests were added reused the older run's counts — a three-test
+gap — and printed them as `recorded: N passed`, typographically identical to a fresh measurement.
+
+The check is deliberately **not** a content hash (that mechanism was removed pre-v1.4 for chronic
+false positives and is not back). It is the judgeable-path comparison the gates already trust, asked
+against the tree the prior record ran on. Where the assertion is false the restamp is now **refused**
+rather than warned — because a restamp also rewrites `evidence_tree` to the current tree, so
+permitting one makes stale counts vouch for a tree they never ran against, and no downstream gate
+can catch it afterwards. Where the prior record carries no `evidence_tree` (the `--from-counts`
+on-ramp records none by design) nothing can be checked, and it says so instead of passing quietly.
+
+**A capability is withdrawn, and is named rather than buried:** the documented cheap refresh after a
+rename or force-add is refused whenever the prior record came from a real run, because a rename is a
+judgeable path change. The escape is to run the suite or ingest a report — which is what makes the
+evidence sound in the first place.
+
+The output line was the defect surface, so it changed too: a restamp now prints `restamped: …
+[REUSED from the run of <timestamp> — nothing was run]`.
+
 ## 2026-08-19: a live review moves the clear verdict, and the line answers *should you*
 
 <!-- prawduct: type=feature | scope=clear-cadence -->

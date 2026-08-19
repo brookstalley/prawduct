@@ -2732,14 +2732,31 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     ``--no-rerun`` (alias ``--restamp``) reuses the existing record's counts and
     refreshes only the ``timestamp`` + the F4a coverage half against the current
-    tree — the cheap refresh after a rename / force-add shifted
-    ``changes_referenced``, with no suite run and no re-supplied counts. The
-    original ``command`` is preserved. Trust posture matches ``--from-junit``: the
-    operator asserts the tree's test-relevant content is unchanged since the last
-    real run. Compatible with declared ``test_command:``/``test_commands:`` (it
-    introduces no new counts). Requires an existing ``.test-evidence.json``; rejects a second
-    source. (No tree/content hash verifies the assertion — that mechanism was
-    removed pre-v1.4 for chronic false positives and is deliberately not back.)
+    tree, with no suite run and no re-supplied counts. The original ``command``
+    is preserved. Trust posture matches ``--from-junit``: the operator asserts
+    the tree's test-relevant content is unchanged since the last real run.
+    Compatible with declared ``test_command:``/``test_commands:`` (it introduces
+    no new counts). Requires an existing ``.test-evidence.json``; rejects a
+    second source.
+
+    **The assertion is now CHECKED, and a restamp announces itself.** It was
+    unchecked, and a restamp taken after tests were added reused the older
+    run's counts while printing them as ``recorded: N passed`` — typographically
+    identical to a measurement, and a three-test gap on 2026-08-19. The check is
+    not a content hash (removed pre-v1.4 for chronic false positives, and
+    deliberately not back): it is the judgeable-path comparison the gates
+    already trust, run against the tree the prior record ran on. When judgeable
+    paths have moved, the restamp is **refused** — because a restamp also
+    rewrites ``evidence_tree`` to the current tree, so allowing it would make
+    stale counts vouch for a tree they never ran against. When the prior record
+    carries no ``evidence_tree`` (the ``--from-counts`` on-ramp records none by
+    design), nothing can be checked and it warns instead.
+
+    **Cost, stated rather than hidden:** the old "cheap refresh after a rename
+    or force-add shifted ``changes_referenced``" case is refused whenever the
+    prior record came from a real run, because a rename is a judgeable path
+    change. The escape is to run the suite or ingest a report — which is what
+    makes the evidence sound in the first place.
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``) — with ONE
@@ -3012,8 +3029,48 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
+        # THE GUARD. A restamp is an operator ASSERTION that the tree's
+        # test-relevant content is unchanged since the last real run, and until
+        # now nothing checked it — so a restamp taken after tests were added
+        # reused the older run's counts and printed them as `recorded: N
+        # passed`, indistinguishable from a measurement. That shipped a
+        # three-test gap on 2026-08-19.
+        #
+        # The check is not a content hash (removed pre-v1.4 for chronic false
+        # positives, and deliberately not back). It is the judgeable-path
+        # comparison the gates already trust — `_test_evidence_tree_valid`,
+        # the same body `tests_are_current` uses — asked against the tree the
+        # prior record ran on. Refusing rather than warning because this record
+        # feeds a gate VERDICT, and authority fails closed.
+        #
+        # This does cost the documented cheap-refresh-after-a-rename case: a
+        # rename shows as a judgeable path change even though content is
+        # identical. Stated rather than hidden — the escape is to run the suite
+        # (or ingest a report), which is what makes the evidence sound anyway.
+        prior_tree = prior.get("evidence_tree")
+        if prior_tree:
+            ok, why = _gates()._test_evidence_tree_valid(project_dir, prior_tree)
+            if not ok:
+                print(
+                    "error: --no-rerun/--restamp asserts the tree's test-relevant "
+                    f"content is unchanged since the recorded run, and it is not — {why}.\n"
+                    "  Reusing those counts would print a stale figure as though it were "
+                    "measured. Run the suite, or ingest a report you already have:\n"
+                    "    prawduct-hook test-evidence record\n"
+                    "    prawduct-hook test-evidence record --from-junit <report.xml>",
+                    file=sys.stderr,
+                )
+                return 2
+        else:
+            print(
+                "warning: the prior record carries no evidence_tree, so nothing can "
+                "check the restamp's assertion that test-relevant content is "
+                "unchanged. Treat the counts below as asserted, not measured.",
+                file=sys.stderr,
+            )
         duration = prior.get("duration_seconds", 0)
         prior_command = prior.get("command", "(unknown)")
+        prior_timestamp = prior.get("timestamp", "(unknown)")
     elif from_counts is not None:
         # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
         # The F4a overlay below still recomputes the changed-file half against
@@ -3349,9 +3406,18 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
 
+    # A restamp announces itself. The old line said `recorded: N passed` for
+    # both paths, so a reused count was typographically identical to a fresh
+    # measurement — which is the surface that let a stale figure pass as one.
+    verb = "restamped" if no_rerun else "recorded"
+    provenance = (
+        f" [REUSED from the run of {prior_timestamp} — nothing was run]"
+        if no_rerun
+        else ""
+    )
     print(
-        f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
-        f"in {record['duration_seconds']}s ({record['timestamp']})"
+        f"{verb}: {passed} passed, {failed} failed, {skipped} skipped "
+        f"in {record['duration_seconds']}s ({record['timestamp']}){provenance}"
         + (
             _GREEN_IS_EVIDENCE_DIRECTIVE
             if _evidence_changed_judged_code(evidence_path)

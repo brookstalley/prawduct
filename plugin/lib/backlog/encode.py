@@ -284,9 +284,28 @@ def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
     fresh block (``file``, ``import``) goes through here, so the separator/newline
     convention lives in exactly one place and the two paths can never silently
     diverge (Data Model §2). An empty human body yields the block alone.
+
+    **A block already in ``human`` is MERGED, not buried.** Filers write their
+    own ``prawduct:`` block into the body — it is the documented way to declare
+    ``related:`` at filing time — and this used to append a second one beside
+    it. Parsing is last-block-wins, so the filer's fields were then silently
+    discarded and the loss surfaced only as a warning that reads cosmetic
+    ("issue body carries 2 prawduct blocks; using the last"). Three items filed
+    on 2026-08-19 (#690, #691, #692) lost their ``related:`` edges exactly this
+    way. Fixed here, at the point of composition, rather than by asking filers
+    to omit a block the docs tell them to write.
+
+    **Precedence: the fresh fields win a key collision**, and the filer's other
+    fields survive untouched. The caller's fields are the authoritative stamps
+    (``v``, and ``automated``/``worker`` on an unattended create), so a body
+    that claims ``automated: false`` must not be able to launder a background
+    sweep into looking human.
     """
-    rendered = serialize_block(block_fields)
-    text = (human or "").rstrip("\n")
+    embedded = parse_block(human)
+    text = strip_block(human)
+    merged = dict(embedded.fields)
+    merged.update(block_fields)
+    rendered = serialize_block(merged)
     if text:
         return f"{text}\n\n{rendered}\n"
     return f"{rendered}\n"
