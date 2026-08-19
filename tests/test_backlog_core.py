@@ -893,3 +893,42 @@ class TestCommentItem:
         fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
         r = core.comment_item(fake, id_raw=f"{OWNER}/{REPO}#999", body="hi")
         assert r["status"] == "error" and r["error"]["code"] == "not_found"
+
+class TestBodyUpdatePreservesEveryBlock:
+    """`update --body` over a two-block body must not drop the earlier block.
+
+    The third site of one defect: `parse_block` keeps the LAST block,
+    `strip_block` removes them all, and the writer emits exactly one — so the
+    earlier block's fields vanish and the multi-block warning can never fire
+    afterwards to signal it. Here that field is `id_aliases`, which the
+    function's own docstring calls a permanent-alias-loss footgun.
+
+    The first two sites were in `encode.py`. This one is in `core.py`, which is
+    why bounding the class by MODULE missed it — the property is "a writer that
+    persists a body's block", not "a function in encode.py".
+    """
+
+    def test_an_earlier_blocks_id_aliases_survive(self):
+        from lib.backlog import core, encode  # noqa: PLC0415
+
+        body = (
+            "Why.\n\n```prawduct\nv: 1\nid_aliases: [BKL-0001]\n```\n\n"
+            "```prawduct\nv: 1\nrelated: [o/r#9]\n```"
+        )
+        out = core._body_update_preserving_block(body, "New prose.")
+        assert out.count("```prawduct") == 1
+        block = encode.parse_block(out)
+        assert block.get("id_aliases") == "[BKL-0001]", (
+            "the earlier block's id_aliases were dropped by an update --body — "
+            "permanent alias loss, and silent because only one block is emitted"
+        )
+        assert block.get("related") == "[o/r#9]"
+        assert "New prose." in out and "Why." not in out
+
+    def test_a_blockless_old_body_still_gets_a_fresh_block(self):
+        """The path that must not change: no block in, a fresh `v: 1` out."""
+        from lib.backlog import core, encode  # noqa: PLC0415
+
+        out = core._body_update_preserving_block("Old prose.", "New prose.")
+        assert encode.parse_block(out).get("v") == "1"
+        assert "New prose." in out

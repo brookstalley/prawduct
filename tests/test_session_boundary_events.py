@@ -533,29 +533,40 @@ class TestBoundaryDependentInterpretation:
             "`begin_review` refuses on a complete roster at any age, so it will not"
         )
 
-    def test_a_raising_pre_read_still_lets_force_sweep(self, tmp_path):
-        """The path the reorder exists for, which the happy path cannot reach.
+    def test_force_sweeps_a_marker_it_cannot_read(self, tmp_path):
+        """`--force` does not depend on classifying the marker first.
 
-        The pre-sweep read and the sweep used to share one broad `except`, so
-        any raise from the read — or a PermissionError from `unlink` — left the
-        marker in place and printed nothing: `--force` silently ignored. That is
-        the same defect `234dfc10` fixed at this call site, arriving by another
-        route, and the happy-path test cannot see it because nothing raises.
+        **Named for what it proves, after two versions that named what they did
+        not.** The reorder this guards (the pre-read in its own `try`, so
+        `clear_marker` is always reached) was raised against a read that raises
+        — and through this call path it cannot. `_marker_age_seconds` catches
+        `OSError` and falls back to `stat().st_mtime`, which succeeds on a mode
+        `000` file, so `review_active` degrades internally and never propagates.
+        The reorder remains correct as defence in depth; the fault it defends
+        against is unreachable here, and a test claiming to inject it passes as
+        an ordinary sweep. (v1 claimed an unparseable marker was "undatable" —
+        mtime dates it. v2 claimed `chmod 000` made the read raise — `OSError`
+        is caught. Both passed; reverting the reorder left both green.)
 
-        Faults the read by making the marker unparseable AND undatable, which is
-        the state `review_active` treats as "age unknown". The sweep must still
-        happen: `--force`'s whole contract is that it is the operator's escape.
+        What IS true and worth pinning: `--force` is the operator's unconditional
+        escape, so an unreadable marker must not become one it cannot remove.
         """
         prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         marker = prawduct / ".critic-active"
-        marker.write_text("{ not json at all")
-
-        res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
-        assert res.returncode == 0, res.stderr
-        assert not marker.is_file(), (
-            "--force did not sweep when the pre-read could not classify the "
-            "marker; the read must never be able to take the sweep down with it"
-        )
+        marker.write_text(json.dumps({"started_at": now}))
+        marker.chmod(0o000)
+        try:
+            res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
+            assert res.returncode == 0, res.stderr
+            assert not marker.is_file(), (
+                "--force left behind a marker whose contents it could not read; "
+                "unreadable must not mean unremovable, or the operator's "
+                "documented escape has a state it cannot escape"
+            )
+        finally:
+            if marker.is_file():
+                marker.chmod(0o600)
 
     def test_forcing_a_sweep_of_a_dead_marker_stays_quiet(self, tmp_path):
         """The discriminating half. An announcement on every `--force` is noise,

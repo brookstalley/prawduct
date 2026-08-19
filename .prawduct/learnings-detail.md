@@ -4113,3 +4113,30 @@ plugin/CHANGELOG.md` reported `free`, so no review coverage moved and no round w
 "leave it alone" rationale for a free edit is worth one more look; the reason to skip it was never
 cost.
 
+## An UNEXPECTED PASS is a signal, not a result
+
+Three instances in one session on `fix/clear-cadence`, and the difference between the good and bad
+outcomes was entirely whether I opened anything.
+
+**Investigated (correct).** A restamp guard was expected to break 13 existing tests and broke none.
+The reason was principled rather than lucky: those tests seed via `--from-counts`, which records no
+`evidence_tree` by design, so they exercise the *uncheckable* branch of the new guard. Knowing that
+was the difference between shipping a guard and shipping a guard I could describe.
+
+**Banked (wrong).** A mode-inference guard's own new test went green. Its fixture writes the build
+plan but never commits it, so the tree is dirty, the clean-tree redirect it was written to prove is
+skipped, and the test graded a different branch. The fix was inert — it did nothing at the moment it
+targeted — and reached a Critic review before anyone noticed.
+
+**Banked twice more, in the same test, after adding this rule.** A fault-injection test claimed an
+unparseable marker was "undatable"; `_marker_age_seconds` falls back to mtime, so it is dated. v2
+claimed `chmod 000` made the read raise; that function catches `OSError` and falls back to `stat()`,
+which succeeds on a mode-000 file. Both passed, and reverting the code they guarded left both green.
+The fault was unreachable through that call path at all — which is itself the finding, and worth
+more than the test: the defensive reorder it guarded is defence in depth against something this
+caller cannot produce.
+
+**Why it recurs.** Green is overwhelmingly confirmation, so the prior is strong and one plausible
+sentence discharges it. The cheap check is not "is my explanation plausible" but "which branch did
+it take" — print it, or mutate the code and watch the test go red. A mutation that leaves the test
+green is the same signal arriving a second time.

@@ -206,8 +206,8 @@ def parse_block(body: str | None) -> Block:
 
     **This READER and the two WRITERS deliberately disagree about a two-block
     body.** Reading keeps the last block (a body someone edited twice means the
-    later value); writing — :func:`compose_body` and :func:`upsert_block_field` —
-    merges every block, because a write that kept only the last would *persist*
+    later value); writing — every caller of
+    :func:`merge_all_block_fields` — merges every block, because a write that kept only the last would *persist*
     the discard and, since it emits exactly one block, destroy the very
     multi-block warning that was the discard's only signal. Reading is
     non-destructive and writing is not, which is why the same input gets two
@@ -237,9 +237,10 @@ def _parse_block_fields(
 ) -> "dict[str, str] | tuple[dict[str, str], list[str]]":
     """Field dict for ONE block's inner text; last occurrence of a key wins.
 
-    Split out of :func:`parse_block` so :func:`compose_body` can merge *every*
-    block in a body rather than only the last — the two need the same line
-    grammar and must not drift on what counts as a field.
+    Split out of :func:`parse_block` so :func:`merge_all_block_fields` can
+    merge *every* block in a body rather than only the last — the reader and
+    the writers need the same line grammar and must not drift on what counts
+    as a field.
     """
     fields: dict[str, str] = {}
     malformed: list[str] = []
@@ -290,9 +291,7 @@ def upsert_block_field(body: str | None, key: str, value: str | None) -> str:
     # multi-block warning can never fire afterwards to signal it. This is that
     # defect one function over — swept with it rather than left for the body that
     # happens to carry two hand-written blocks.
-    fields: dict[str, str] = {}
-    for inner in _BLOCK_RE.findall(body or ""):
-        fields.update(_parse_block_fields(inner))
+    fields = merge_all_block_fields(body)
     human = strip_block(body)
     if value is None:
         fields.pop(key, None)
@@ -311,6 +310,28 @@ def upsert_block_field(body: str | None, key: str, value: str | None) -> str:
 #: invocation context, so :func:`compose_body` drops them from any block found
 #: in the caller's text before merging. Every other field is the filer's.
 _CALLER_OWNED_FIELDS = frozenset({"automated", "worker"})
+
+
+def merge_all_block_fields(body: str | None) -> dict[str, str]:
+    """Every ``prawduct:`` block in ``body``, merged in document order.
+
+    **The one home for how a WRITER reads a body's blocks**, and it exists
+    because this defect has now been found at three separate sites. The trap is
+    a pairing that looks correct at each one: :func:`parse_block` keeps the LAST
+    block, :func:`strip_block` removes them ALL, and the writer emits exactly
+    one — so an earlier block's fields are dropped *and* the "carries N prawduct
+    blocks" warning that was the only signal can never fire afterwards. The loss
+    is silent and permanent.
+
+    Reading and writing diverge here on purpose (:func:`parse_block` says why),
+    so the divergence needs a named home rather than three open-coded copies.
+    Later blocks win over earlier ones, matching last-block-wins, so a body that
+    was edited twice still means its later value.
+    """
+    fields: dict[str, str] = {}
+    for inner in _BLOCK_RE.findall(body or ""):
+        fields.update(_parse_block_fields(inner))
+    return fields
 
 
 def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
@@ -354,9 +375,7 @@ def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
     # that was the losses' only signal can never fire again. Merging all of them
     # means nothing is lost, which is better than restoring a warning about a
     # loss. Later blocks win over earlier ones, matching last-block-wins.
-    merged: dict[str, str] = {}
-    for inner in _BLOCK_RE.findall(human or ""):
-        merged.update(_parse_block_fields(inner))
+    merged = merge_all_block_fields(human)
     for key in _CALLER_OWNED_FIELDS:
         merged.pop(key, None)
     text = strip_block(human)

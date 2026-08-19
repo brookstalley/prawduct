@@ -243,14 +243,23 @@ def _body_update_preserving_block(old_body: str, new_body: str) -> str:
     The block carries body-authoritative fields (``id_aliases``, ``verified``,
     ``superseded_by`` …) that live ONLY in the body (Data Model §2) — a naive
     full-body replacement would silently drop them (an MG2 / permanent-alias-loss
-    footgun). So: re-parse the existing block, strip any block the caller pasted
-    into the new text (the block is edited through its own fields, not free-text
-    ``--body``), and re-append the preserved block. No existing block → a fresh
-    ``v: 1`` (same as ``file``).
+    footgun). So: merge EVERY block in the existing body, strip any block the
+    caller pasted into the new text (the block is edited through its own fields,
+    not free-text ``--body``), and re-append the preserved block. No existing
+    block → a fresh ``v: 1`` (same as ``file``).
+
+    **Merged, not re-parsed** — via :func:`encode.merge_all_block_fields`, the
+    one home for how a writer reads a body's blocks. Using ``parse_block`` here
+    kept only the LAST block while ``strip_block`` removed them all, so an
+    ``update --body`` over a two-block body dropped the earlier block's
+    ``id_aliases`` — the exact footgun this docstring names — and emitted one
+    block, so the multi-block warning could never fire to signal it. Third site
+    of that pairing found on one branch; the first two were in ``encode.py``,
+    which is why bounding the class by MODULE missed this one.
     """
-    block = encode.parse_block(old_body)
+    fields = encode.merge_all_block_fields(old_body)
     human = encode.strip_block(new_body)
-    rendered = block.reserialize() if block.fields else encode.serialize_block({"v": "1"})
+    rendered = encode.serialize_block(fields) if fields else encode.serialize_block({"v": "1"})
     if human:
         return f"{human}\n\n{rendered}\n"
     return f"{rendered}\n"
