@@ -40,6 +40,12 @@ the same reason: it fails *every* `run_git`, and two advisory callers (`coverage
 correctly read a nonzero rc as "no answer" and go quiet — right for a git failure, wrong for a typo
 in the operator's own environment.
 
+Every route into the slow seed reports through one place, so none of them can be the quiet one —
+including the git-dir lookup failing, which was the last silent branch and would have made the
+chunk's own "no degraded path is silent" criterion false. The message names the seed that
+ACTUALLY replaced the copy: on an unborn HEAD nothing is re-hashed, and claiming a full `read-tree`
+there would be a scarier lie than the truth.
+
 Two smaller repairs at the same site. `PRAWDUCT_GIT_TIMEOUT` now overrides the 15-second budget,
 read per call so an operator on a slow filesystem can raise it without a restart; a malformed value
 is **refused**, never silently replaced by the default, because someone who set the variable wanted

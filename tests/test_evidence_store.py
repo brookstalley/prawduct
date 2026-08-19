@@ -484,6 +484,34 @@ class TestCaptureTree:
         blob = _git(repo, "ls-tree", "-r", result["tree"], "--", "code.py").split()[2]
         assert _git(repo, "cat-file", "-p", blob) == "x = 9"
 
+    def test_capture_during_a_merge_conflict_resolves_to_the_working_tree(self, tmp_path):
+        """The third case where the seeds differ going in and agree coming out.
+
+        A copied index carries stage 1/2/3 entries that `read-tree HEAD` would
+        have flattened. `add -A` re-stages an unmerged path from the working
+        tree either way, so the capture is the conflicted file AS IT SITS ON
+        DISK — markers included. `_seed_temp_index` says so in prose; this is
+        the carrier for that claim, which otherwise rested on argument."""
+        repo = _make_repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "other")
+        (repo / "code.py").write_text("x = 2\n")
+        _git(repo, "commit", "-q", "-am", "other")
+        _git(repo, "checkout", "-q", "-")
+        (repo / "code.py").write_text("x = 3\n")
+        _git(repo, "commit", "-q", "-am", "mine")
+        merge = subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "other"],
+            cwd=str(repo), capture_output=True, text=True, timeout=15,
+        )
+        assert merge.returncode != 0, "fixture must actually conflict"
+        assert _git(repo, "status", "--porcelain").startswith("UU"), "index must be unmerged"
+
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        assert result["seed"] == "index-copy"
+        blob = _git(repo, "ls-tree", "-r", result["tree"], "--", "code.py").split()[2]
+        assert "<<<<<<<" in _git(repo, "cat-file", "-p", blob)
+
     def test_capture_agrees_with_a_verbatim_commit_under_skip_worktree(self, tmp_path):
         """The one case where the two seeds genuinely disagree.
 
@@ -576,10 +604,13 @@ class TestGitTimeoutBudget:
         monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, "1O")
         evidence.capture_tree(_make_repo(tmp_path))
         err = capsys.readouterr().err
-        assert evidence._GIT_TIMEOUT_ENV in err
-        # Deduped: the variable is read on every git call, and capture_tree makes
-        # several — one line, not one per call.
-        assert err.count(evidence._GIT_TIMEOUT_ENV) == 1
+        # Deduped AT THE SOURCE: the variable is read on every git call and
+        # capture_tree makes several, so the refusal announces itself once.
+        announcement = f"evidence: {evidence._GIT_TIMEOUT_ENV}"
+        assert err.count(announcement) == 1
+        # Downstream attribution may quote the refusal as the CAUSE of what it
+        # is reporting — that is the knock-on being traceable, not a repeat.
+        assert "seeding the capture with" in err
 
     def test_timeout_names_the_remedy_and_leaves_no_lock(self, tmp_path, monkeypatch):
         """`GIT_INDEX_FILE` moves git's index lock alongside the temp index,

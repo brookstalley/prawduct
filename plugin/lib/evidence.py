@@ -686,6 +686,28 @@ def _attribute_bad_tree(value: object) -> None:
 _ATTRIBUTED_BAD_TREES: set[str] = set()
 
 
+def _attribute_slow_seed(cause: str, fallback: str) -> None:
+    """Say that the fast seed was lost, and name what replaced it.
+
+    Every route into the fallback goes through here so none of them can be the
+    quiet one — a silent degradation reproduces the exact symptom this whole
+    change exists to remove, and it is the operator, not the code, who has to
+    tell "the fix did not engage" from "the fix was not enough". The message
+    names the ACTUAL fallback: on an unborn HEAD nothing is re-hashed, so
+    claiming a full ``read-tree`` there would be a scarier lie than the truth."""
+    consequence = (
+        "re-hashes the whole working tree and may exceed the capture budget on a "
+        "slow filesystem"
+        if fallback == "read-tree"
+        else "starts from an empty index, which is correct on an unborn HEAD"
+    )
+    print(
+        f"evidence: {cause} — seeding the capture with `{fallback}` instead, which "
+        f"{consequence}",
+        file=sys.stderr,
+    )
+
+
 def _seed_temp_index(
     project_dir: Path, tmp_name: str, env: dict, has_head: bool
 ) -> "tuple[bool, str | None, str]":
@@ -729,10 +751,14 @@ def _seed_temp_index(
     An **unmerged** index (mid-conflict) is the third case where the seeds
     differ on their way in and agree on their way out: the copy carries stage
     1/2/3 entries that ``read-tree HEAD`` would have flattened, and ``add -A``
-    resolves them to the working tree either way — verified against a real
-    conflicted repo, where both seeds capture the conflict markers as content."""
-    rc, git_dir, _ = run_git(project_dir, "rev-parse", "--absolute-git-dir")
-    if rc == 0 and git_dir:
+    resolves them to the working tree either way, so the capture is the
+    conflicted file as it sits on disk — markers included
+    (``test_capture_during_a_merge_conflict_resolves_to_the_working_tree``)."""
+    fallback = "read-tree" if has_head else "empty"
+    rc, git_dir, err = run_git(project_dir, "rev-parse", "--absolute-git-dir")
+    if rc != 0 or not git_dir:
+        _attribute_slow_seed(f"could not locate the git dir ({err or 'no output'})", fallback)
+    else:
         try:
             # copy2, NOT copyfile — the index's own MTIME has to survive the
             # copy. Git's racily-clean rule ("an entry whose mtime is not
@@ -755,12 +781,7 @@ def _seed_temp_index(
                 os.unlink(tmp_name)
             except OSError:
                 pass
-            print(
-                f"evidence: could not copy the repo index ({exc}) — falling back to "
-                "`read-tree HEAD`, which re-hashes the whole working tree and may "
-                "exceed the capture budget on a slow filesystem",
-                file=sys.stderr,
-            )
+            _attribute_slow_seed(f"could not copy the repo index ({exc})", fallback)
     if not has_head:
         return True, None, "empty"  # unborn HEAD: the empty temp index is correct
     rc, _, err = run_git(project_dir, "read-tree", "HEAD", env=env)
@@ -777,8 +798,9 @@ def capture_tree(project_dir: Path) -> dict:
     "seed"}`` or ``{"status": "error", "reason", "seed"}``. ``seed`` names how
     the temp index was filled (:func:`_seed_temp_index`) — it rides on both
     outcomes because a capture that degraded to the slow seed and a capture
-    that never had a fast one to lose are the same symptom and different bugs. The session's real index and working
-    tree are never touched (R1) — asserted by tests, verified by the D3 spike.
+    that never had a fast one to lose are the same symptom and different
+    bugs. The session's real index and working tree are never touched (R1) —
+    asserted by tests, verified by the D3 spike.
     ``clean`` is True when the captured tree equals ``HEAD^{tree}`` (a verbatim
     commit of this state will carry the same tree SHA)."""
     tmp_fd, tmp_name = tempfile.mkstemp(prefix="prawduct-idx-")

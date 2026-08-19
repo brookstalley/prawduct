@@ -56,7 +56,7 @@ Backlog items: **#675** (Chunk 01), **#692** and **#690** (Chunk 02). All three 
 
 ## Status
 
-- [ ] Chunk 01: Tree capture stops re-hashing the world — and cleans up after a timeout
+- [x] Chunk 01: Tree capture stops re-hashing the world — and cleans up after a timeout
 - [ ] Chunk 02: An expiring marker announces itself, and never discards a self-heal
 
 Context: Chunk 01 built, reviewed (`cumulative`, findings resolved) and committed
