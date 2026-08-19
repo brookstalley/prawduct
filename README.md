@@ -98,7 +98,7 @@ Prawduct enforces governance at four levels:
 - **Session reflection** — A session hook blocks completion if no reflection was captured (skipped for doc-only changes)
 - **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
 
-Everything else is governed by a set of principles and four methodology guides that stay in context via CLAUDE.md.
+Everything else is governed by a set of principles, always in context via the session digest, and four methodology guides read on demand.
 
 ### Independent Critic review
 
@@ -271,7 +271,7 @@ against the repo root.
 
 Three layers:
 
-1. **26 Principles** — Always in context via CLAUDE.md. Grouped into Quality, Product, Process, Learning, Judgment, and Evolution. They govern how work gets done but don't enforce process interruptions.
+1. **Principles** — Always in context via the session digest, which carries the roster grouped. They govern how work gets done but don't enforce process interruptions.
 
 2. **Methodology guides** — Narrative essays read when entering each activity (discovery, planning, building, reflection). They teach the approach rather than prescribing rigid steps. Governance depth scales with work size and type.
 
