@@ -105,9 +105,9 @@ LAST_MEASURED_TOKENS = {
     # already been handed the shape by the digest before they open it, so the
     # copy here was a second authoritative statement of a fact with a home
     # (`artifacts/architecture.md` § Direction). What stays is the clause only
-    # this file can make: `SAFE TO CLEAR` binds to ITS steps 1-7. The freed
-    # headroom is not a budget to spend -- the next addition still trims or
-    # relocates.
+    # this file can make: `SAFE TO CLEAR` binds to ITS steps 1-7. The ceiling
+    # was ratcheted down with the cut, so the standing trim-or-relocate rule is
+    # enforced structurally here rather than asserted in prose.
     "methodology/building.md": 4720,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
@@ -283,13 +283,12 @@ def test_recorded_token_count_matches_the_file(rel_path):
 #: What a session pays BEFORE it does any work, grouped by session shape.
 #:
 #: **Why a total, when every one of these files could have its own ceiling.**
-#: A per-file ceiling cannot see a NEW file. `session-digest-slim.md` was added
-#: to save tokens in the framework repo and put ~928 of them into every
-#: framework session; every per-file assertion in this module stayed green,
-#: because none of them was watching the SET. That is the defect this total
-#: exists to catch, and `test_every_injectable_digest_is_budgeted` below is the
-#: half that catches it -- the numbers here only catch growth in files already
-#: known.
+#: A per-file ceiling cannot see a NEW file. A digest variant added to save
+#: tokens in one repo shape can put ~900 of them into every session of that
+#: shape with every per-file assertion in this module still green, because none
+#: of them watches the SET. That is the defect this total exists to catch, and
+#: `test_every_injectable_digest_is_budgeted` below is the half that catches it
+#: -- the numbers here only catch growth in files already known.
 #:
 #: **Why membership is by LOAD EVENT rather than by importance.** Ranking these
 #: files against each other needs a weight nobody can derive, and a weighted
@@ -306,9 +305,9 @@ def test_recorded_token_count_matches_the_file(rel_path):
 #: "unit-cost is the reviewer's payload, what a mode must load, per-mode and
 #: reducible" -- from reviewer payloads to every injected surface.
 INJECTED_SESSION_SHAPES = {
-    # A framework-repo session: the always-loaded CLAUDE.md plus the slim digest
-    # `hooks/digest.py` selects for a repo that IS prawduct.
-    "framework": ("CLAUDE.md", "methodology/session-digest-slim.md"),
+    # A framework-repo session: the always-loaded CLAUDE.md plus the one digest
+    # `hooks/digest.py` emits for every governed repo.
+    "framework": ("CLAUDE.md", "methodology/session-digest.md"),
     # A product session: the thin governance anchor `migrate_plugin` writes into
     # a governed repo's CLAUDE.md, plus the full digest every product receives.
     "product": ("<STATIC_ANCHOR>", "methodology/session-digest.md"),
@@ -319,8 +318,24 @@ INJECTED_SESSION_SHAPES = {
 #: number to write, so a figure is never re-derived by hand or copied forward.
 LAST_MEASURED_INJECTED_TOKENS = {
     # First reading, 2026-08-19, taken with the ceilings below.
-    "framework": 3455,
-    "product": 2256,
+    # framework 3455 -> 3315: the framework repo stopped receiving a digest
+    # variant of its own and now takes the same one every product does, paid
+    # for by trimming CLAUDE.md (-1188) to what that digest does not state --
+    # its principles roster, its commit conventions, and the restatements of
+    # rules the digest already carries. A CUT at the source of the duplication,
+    # not a relocation: no prose moved between two members of this set. The
+    # digest then gave back 18 more: the no-attribution rule regained the
+    # clause stating it outranks a contrary harness default -- which only
+    # CLAUDE.md had carried -- paid for in place by dropping a sentence that
+    # restated "never blind-append" two lines after it was said.
+    #
+    # product 2256 -> 2238: the SAME digest trim, and the only reason this
+    # entry moved. The digest is a member of BOTH shapes while CLAUDE.md is a
+    # member of one, so a digest edit lands on every reading here and a
+    # CLAUDE.md edit lands on one. An edit that updated only the shape being
+    # worked on is what this pin caught.
+    "framework": 3315,
+    "product": 2238,
 }
 
 #: Ceilings. HARD, like the five per-file prose ceilings in this module and
@@ -336,8 +351,16 @@ LAST_MEASURED_INJECTED_TOKENS = {
 #: never between two members, which buys nothing and is banned outright
 #: (owner rule 2026-08-05: total footprint is the only number that matters).
 INJECTED_FOOTPRINT_CEILINGS = {
-    "framework": 3460,
-    "product": 2260,
+    # Ratcheted with the readings they guard (3460 -> 3325, 2260 -> 2248): a
+    # ceiling left at its old value after a cut silently re-funds the growth
+    # the cut paid for. Headroom is ~10 by design, matching every other budget
+    # in this module -- the next addition trims or relocates, it does not bump.
+    #
+    # Both shapes carry the digest, so a digest addition is charged twice and
+    # both ceilings bind it; only a CLAUDE.md edit is charged to `framework`
+    # alone.
+    "framework": 3325,
+    "product": 2248,
 }
 
 
@@ -400,8 +423,8 @@ def test_every_injectable_digest_is_budgeted():
     """Every digest `hooks/digest.py` can inject appears in a budgeted shape.
 
     THE HALF THAT CATCHES THE ACTUAL DEFECT. The totals above only watch files
-    already known; this watches the SET, which is what nothing was doing when
-    `session-digest-slim.md` was added. Derived from `digest.py`'s own
+    already known; this watches the SET, which is what nothing was watching the
+    last time a digest variant was added. Derived from `digest.py`'s own
     `*_RELPATH` constants rather than from a list kept beside them, because a
     hand-kept list has the same blind spot as the per-file ceilings: adding a
     variant and forgetting the list is precisely the mistake being guarded.
@@ -568,16 +591,14 @@ class TestBuildingMethodology:
         unasked costs little and they may continue in place, so the asymmetry
         makes the default unconditional.
 
-        Pinned on all three surfaces because this must be framework behaviour a
+        Pinned on both surfaces because this must be framework behaviour a
         consuming product inherits, not a prawduct-local habit: building.md is
-        read on demand, session-digest.md is injected into every product
-        session, and the slim digest is what framework sessions get.
+        read on demand, and session-digest.md is injected into every session of
+        every governed repo, the framework repo included.
         """
         assert "never *ask* whether to prepare a handoff" in self.content
         digest = read_file("methodology/session-digest.md")
-        slim = read_file("methodology/session-digest-slim.md")
         assert "never ask whether to prepare" in digest
-        assert "Never ask whether to prepare one" in slim
         # The why travels with the always-injected surface, not the on-demand one.
         assert "cold cache" in digest
 
@@ -586,10 +607,10 @@ class TestBuildingMethodology:
 
         What this guards is COVERAGE: the shape has to reach an agent through a
         surface it actually reads. `reflection.md` is canonical and read on
-        demand at the work-cycle boundary; the digests are injected into every
-        session with no opt-out, which is what makes them the carriers that
-        cannot be missed. Drop the rule from a digest and an agent that never
-        opens a guide emits no block at all.
+        demand at the work-cycle boundary; the digest is injected into every
+        session with no opt-out, which is what makes it the carrier that cannot
+        be missed. Drop the rule from the digest and an agent that never opens
+        a guide emits no block at all.
 
         `building.md` is deliberately NOT here (2026-08-19). It used to restate
         the whole shape, but its reader has already been handed that shape by
@@ -612,9 +633,6 @@ class TestBuildingMethodology:
         surfaces = {
             "methodology/reflection.md": read_file("methodology/reflection.md"),
             "methodology/session-digest.md": read_file("methodology/session-digest.md"),
-            "methodology/session-digest-slim.md": read_file(
-                "methodology/session-digest-slim.md"
-            ),
         }
         for name, text in surfaces.items():
             assert "standing block" in text, f"{name} no longer names the standing block"
@@ -723,10 +741,10 @@ class TestBuildingMethodology:
         """
         assert "reconcile" in self.content.lower()
         assert "Never blind-append" in self.content
-        for surface in ("session-digest.md", "session-digest-slim.md"):
-            assert "never blind-append" in read_file(
-                f"methodology/{surface}"
-            ).lower(), surface
+        assert (
+            "never blind-append"
+            in read_file("methodology/session-digest.md").lower()
+        )
 
     def test_handoff_notes_are_read_before_being_rewritten(self):
         """Reconciling requires READING first, and that had to be said.
@@ -739,11 +757,10 @@ class TestBuildingMethodology:
         these notes long predated any instruction to read them.
         """
         assert "read `.prawduct/.handoff-notes.md` before rewriting it" in self.content
-        for surface in ("session-digest.md", "session-digest-slim.md"):
-            content = read_file(f"methodology/{surface}")
-            assert "before rewriting it" in content, surface
-            # The why belongs on the injected surfaces, not the on-demand one.
-            assert "/clear` consumes" in content, surface
+        content = read_file("methodology/session-digest.md")
+        assert "before rewriting it" in content
+        # The why belongs on the injected surface, not the on-demand one.
+        assert "/clear` consumes" in content
 
     def test_chunk_close_routes_backlog_to_skill(self):
         """The chunk-close sequence routes backlog work through /prawduct:backlog
@@ -781,9 +798,8 @@ class TestBuildingMethodology:
         # rules stated earlier in this same file. Surviving coverage checked per
         # item, not assumed: "Silent requirement dropping" -> Working With
         # Specs' closing line + the digest + CLAUDE.md's principle roster;
-        # "Pre-existing dismissal" -> the clean-baseline paragraph + the full
-        # digest (NOT the slim one, so a framework session keeps it only in this
-        # file); "Ignoring the Critic" -> the Blocking-findings paragraph two
+        # "Pre-existing dismissal" -> the clean-baseline paragraph + the
+        # injected digest; "Ignoring the Critic" -> the Blocking-findings paragraph two
         # sections down, and nowhere else — the thinnest of the three, and the
         # first to restore if the ceiling is ever raised. Plus trailing sentences
         # restating their own bullet (multi-hop, PBT, verification theater) and
@@ -822,10 +838,10 @@ class TestBuildingMethodology:
         # stepped away) went to session-digest.md, which is always injected, so
         # every session carries the why without building.md paying for it. The
         # funding was step 7's "nothing beyond the plan is a valid answer"
-        # sentence, which both digests already state verbatim — checked, not
-        # assumed: full digest lines 46-52, slim lines 21-23. That makes this a
-        # dedup rather than a cut; a reader who never opens building.md still
-        # gets the guidance, from a surface they cannot skip.
+        # sentence, which the injected digest already states verbatim in its
+        # forward-notes bullet — checked, not assumed. That makes this a dedup
+        # rather than a cut; a reader who never opens building.md still gets the
+        # guidance, from a surface they cannot skip.
         #
         # 2026-07-30 (record-mechanization Chunk 04) restated the coordinator
         # roster rule on two lines — it is no longer a file count but "a risk

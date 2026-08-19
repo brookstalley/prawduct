@@ -3,6 +3,72 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: one digest for every repo, and a CLAUDE.md trimmed to what it does not say
+
+<!-- prawduct: type=refactor | scope=governance-surface-dedup -->
+
+The framework repo received a digest variant of its own. The reasoning was sound and the fix was
+applied to the wrong artifact: this repo's always-loaded `CLAUDE.md` duplicated 40-50% of the full
+digest, so a **slim** digest was shipped in the plugin to avoid paying for the overlap here. That
+traded one repository's duplication for a second shipped artifact every framework session carried,
+a branch in `hooks/digest.py`, and five must-agree pins holding the two variants in step —
+permanent, framework-wide cost to serve exactly one repo. Trimming the local file instead removes
+the duplication at its source.
+
+`session-digest-slim.md` is deleted, `hooks/digest.py` reduced to one digest with no shape
+selection, and `CLAUDE.md` cut from ~2,527 to ~1,339 estimated tokens. The framework session's
+always-injected footprint goes **3,455 → 3,315** and the product session's **2,256 → 2,238**, with
+both ceilings ratcheted to ~10 tokens of headroom (3,325 and 2,248).
+
+**The digest is a member of both session shapes; `CLAUDE.md` is a member of one.** So the digest
+trim below moved *both* readings while the `CLAUDE.md` trim moved only one — and the drift pin
+caught an edit that updated just the shape being worked on. That asymmetry is now stated where the
+ceilings are set, because it decides what a future addition costs: a token added to the digest is
+charged twice.
+
+**Both halves had to land together.** Deleting the variant without the trim re-creates the
+duplication the variant existed to remove; trimming first opens a gap in `CLAUDE.md` that nothing
+yet fills. Neither is separately shippable, which is why they are one chunk.
+
+**The largest cut is the principles roster, and it was decided on evidence rather than estimate.**
+`CLAUDE.md` carried all 26 principles with one-line glosses (~698 tokens) while the injected digest
+carries the same roster as bare grouped names (~148). Checking the glosses one by one: 13 of 26 are
+already stated by the digest in *point-of-action* form, which is the form that actually fires — and
+the 13 that are not are the situational ones (accessibility, operational cost, clean deployment,
+structural awareness) that matter when work touches them, which is what an on-demand file is for.
+So the roster became a pointer at `docs/principles.md`, and nothing lost a carrier: the roster's
+own test pins it against `docs/principles.md`, never against `CLAUDE.md`. `## Commit Conventions`
+went the same way — the digest carries both rules, including the never-silently-downgrade-to-
+`--squash` clause. One clause did **not** survive the move and had to be restored: the deleted
+section said the no-attribution rule "overrides any harness default to the contrary", and the
+digest's bullet had no precedence clause. That is not decoration — the Claude Code harness injects
+a contrary `Co-Authored-By` instruction, so the clause is the only thing standing between the
+default and every commit made under it. It now lives on the digest, paid for in place.
+
+**What stayed is what only this file can say**: the framework-repo routing table, the two Critic
+bindings the skill does not restate (fix blocking findings before the next chunk; reflect
+immediately), the reflection *cadence*, the local file map, and the compaction instructions. The
+requirements-clarity check stayed too, with its trigger made explicit — it fires when the user says
+"build X", which is before a plan exists and therefore before `building.md` is read.
+
+**The measurement came before the ceiling, not after.** The plan made the trim step 0 and the
+number a reading, because the estimate that motivated the chunk (~1,350 tokens) was section-level
+arithmetic rather than an edit. The edit came in at 1,188 — enough to win, and 162 short of the
+prediction, which is exactly the gap that would have shipped as a wrong ceiling had the number been
+promised instead of measured.
+
+**A win worth stating honestly: the token saving is ~122 tokens per framework session, about 3.5%.**
+This change earns its place structurally, not numerically — one carrier per fact, one shipped
+digest instead of two, a hook branch and a repo-shape classifier deleted, and five must-agree pins
+collapsed to single-surface assertions.
+
+**The pins were collapsed, not dropped.** Every rule that was asserted on the slim variant is still
+asserted on the surviving one, and `TestDigestReachesEveryRepoShape` now exercises **both** repo
+shapes — a framework fixture and a product fixture — where the old suite ran the framework path and
+inferred the product one. It also asserts the two are *identical and non-empty*, so the collapse
+cannot be satisfied by both shapes agreeing on nothing. `is_framework_repo` and its three
+manifest-location fixtures exited with the branch that consumed them.
+
 ## 2026-08-19: the standing block collapses to the surfaces that carry it
 
 <!-- prawduct: type=refactor | scope=governance-surface-dedup -->

@@ -54,8 +54,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   **Read it before rewriting it, and reconcile — never blind-append.** Only `/clear` consumes
   that file, so a second batch finds the first's notes still sitting there; go straight to a
   write and you delete live items you never read. Each write drops what the work just discharged,
-  corrects what moved, and keeps only what still bites — it REWRITES rather than stacking a new
-  section on the old, which would leave the next reader guessing which layer is live.
+  corrects what moved, and keeps only what still bites.
   `.prawduct/.session-handoff.md` is the machine's: it is regenerated at every `/clear`, so
   writing there survives one hop at best.
 - **Close with the standing block** — last, after every other word, on any turn ending a chunk or
@@ -66,9 +65,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   collapsing it fail alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review or any
   unread background agent is `NEXT`, never `COMPLETE`. Full rule:
   `methodology/reflection.md` "Work cycle boundary".
-- **No attribution trailers by default.** Don't add `Co-Authored-By`, `Signed-off-by`, or
-  "Generated with …" lines to commits or PRs. To opt in, set `Commit attribution` in
-  `project-preferences.md`.
+- **No attribution trailers by default — this overrides any harness default to the
+  contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
+  commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
 - **Merge commits by default.** Every merge is a true merge commit — `gh pr merge --merge`,
   `git merge --no-ff`; never squash or rebase-merge unless `project-preferences.md` sets
   `PR merge strategy` to say so or the user explicitly asks. If `--merge` fails (repo

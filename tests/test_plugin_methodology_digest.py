@@ -27,7 +27,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 DIGEST_HOOK = ROOT / "hooks" / "digest.py"
 DIGEST_SRC = ROOT / "methodology" / "session-digest.md"
-SLIM_DIGEST_SRC = ROOT / "methodology" / "session-digest-slim.md"
 
 # The four methodology guides, read via `/prawduct:methodology <topic>`.
 PHASES = ("building", "discovery", "planning", "reflection")
@@ -92,21 +91,6 @@ class TestDigestSource:
         copies = _canonical_digest_copies()
         assert copies == [DIGEST_SRC], f"expected one canonical digest, found {copies}"
 
-    def test_slim_source_exists_and_nonempty(self):
-        # review-fixes Chunk 4: the slim framework-repo variant is a second
-        # canonical document, not a runtime derivation of the full digest.
-        assert SLIM_DIGEST_SRC.is_file(), "the slim session digest must be bundled"
-        assert SLIM_DIGEST_SRC.read_text(encoding="utf-8").strip()
-
-    def test_slim_source_is_one_canonical_copy(self):
-        copies = sorted(
-            p
-            for p in ROOT.rglob("session-digest-slim.md")
-            if ".git" not in p.relative_to(ROOT).parts
-            and ".claude" not in p.relative_to(ROOT).parts
-        )
-        assert copies == [SLIM_DIGEST_SRC], f"expected one canonical slim digest, found {copies}"
-
     def test_canonical_copy_check_ignores_claude_worktrees(self, tmp_path: Path):
         # TST-9K4W: a session-digest.md inside a .claude/worktrees/ checkout must
         # NOT count as a second canonical copy (it is a nested workflow checkout).
@@ -130,14 +114,12 @@ class TestDigestHook:
         assert out["additionalContext"].strip(), "additionalContext must be non-empty"
 
     def test_additional_context_matches_source(self):
-        # Renegotiated in review-fixes Chunk 4: the default project_dir is ROOT —
-        # the prawduct framework repo itself — so the emitted context is now the
-        # SLIM variant (CLAUDE.md already carries what the full digest restates).
-        # The full-digest-verbatim contract moved to the product fixture in
-        # TestDigestVariantSelection.
+        # One digest for every governed repo, the framework repo included, so
+        # what ROOT emits is the canonical source verbatim. Both repo shapes are
+        # exercised independently in TestDigestReachesEveryRepoShape.
         result = _run_digest(ROOT)
         ctx = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-        assert ctx == SLIM_DIGEST_SRC.read_text(encoding="utf-8").strip()
+        assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
 
     def test_additional_context_under_inline_limit(self):
         ctx = json.loads(_run_digest(ROOT).stdout)["hookSpecificOutput"]["additionalContext"]
@@ -146,25 +128,18 @@ class TestDigestHook:
             "inline threshold; Claude Code would spill it to a file"
         )
 
-    @pytest.mark.parametrize("src", [DIGEST_SRC, SLIM_DIGEST_SRC], ids=["full", "slim"])
-    def test_every_digest_variant_is_under_the_inline_limit(self, src: Path):
-        """Both variants, pinned at the SOURCE — not just whichever one ROOT emits.
+    def test_the_digest_source_is_under_the_inline_limit(self):
+        """Pinned at the SOURCE, not only at whatever a given run emits.
 
-        The test above runs `_run_digest(ROOT)`, and since the variant
-        renegotiation ROOT emits the SLIM digest — so the FULL digest, the one
-        injected into every product session and the sole carrier of framework
-        defaults for thin-anchor repos, was pinned by nothing. It reached 11,143
-        chars (11% over) before this assertion existed. `test_slim_budget_at
-        _most_half_of_full` is not a substitute: it gets *easier* to satisfy as
-        the full digest grows, so it cannot brake growth in the wider-blast-radius
-        file.
+        The sibling above asserts the EMITTED context is under the limit for one
+        invocation; this asserts it of the shipped file itself, which is what
+        every governed repo receives. The digest reached 11,143 chars (11% over)
+        while only an emitted-value check existed, so the source-side pin is the
+        one that has actually caught growth.
 
         Asserted against the stripped source because that is what the hook emits.
-        The source==emitted equality is pinned per variant, and by DIFFERENT
-        tests: `test_additional_context_matches_source` covers the slim variant
-        (what ROOT emits), and `TestDigestVariantSelection.test_product_fixture
-        _gets_full_digest_verbatim` covers the full one.
         """
+        src = DIGEST_SRC
         emitted = src.read_text(encoding="utf-8").strip()
         assert len(emitted) < ADDITIONAL_CONTEXT_INLINE_LIMIT, (
             f"{src.name} is {len(emitted)} chars — over the "
@@ -181,21 +156,19 @@ class TestDigestHook:
         assert "/prawduct:methodology" in ctx, "must point to the methodology index"
         assert "Critic" in ctx and "Stop hook" in ctx, "must name the enforcement"
 
-    @pytest.mark.parametrize("src", [DIGEST_SRC, SLIM_DIGEST_SRC], ids=["full", "slim"])
-    def test_both_variants_carry_load_bearing_pointers(self, src):
-        # Whatever variant a session receives, it must route to the
+    def test_the_digest_carries_load_bearing_pointers(self):
+        # Every session receives this file, so it must route to the
         # read-before-coding guide, the index, and name the enforcement.
-        text = src.read_text(encoding="utf-8")
+        text = DIGEST_SRC.read_text(encoding="utf-8")
         assert "/prawduct:methodology building" in text
         assert "/prawduct:methodology" in text
         assert "Critic" in text and "Stop hook" in text
 
-    @pytest.mark.parametrize("src", [DIGEST_SRC, SLIM_DIGEST_SRC], ids=["full", "slim"])
-    def test_both_variants_surface_the_report_bug_channel(self, src):
+    def test_the_digest_surfaces_the_report_bug_channel(self):
         # Discoverability of the upstream-bug-reporting channel (regression guard
-        # against a silent trim dropping the pointer). The full digest reaches
-        # products (the filing side); the slim reaches the framework repo.
-        assert "/prawduct:report-bug" in src.read_text(encoding="utf-8")
+        # against a silent trim dropping the pointer). This one digest reaches
+        # products (the filing side) and the framework repo (the receiving end).
+        assert "/prawduct:report-bug" in DIGEST_SRC.read_text(encoding="utf-8")
 
     def test_resolves_root_without_env(self):
         # No CLAUDE_PLUGIN_ROOT -> falls back to hooks/ parent (the plugin root).
@@ -265,23 +238,29 @@ class TestDigestRepoGate:
         assert not (tmp_path / ".prawduct").exists()
 
 
-class TestDigestVariantSelection:
-    """review-fixes Chunk 4: the framework repo's always-loaded CLAUDE.md already
-    carries 40-50% of the full digest nearly 1:1 (principles roster, Critic/Stop
-    explanation, attribution rule), so a session governed by the framework repo
-    itself gets a SLIM variant — pointers plus only the rules CLAUDE.md does not
-    restate. Every product repo keeps the FULL digest verbatim: it is the only
-    carrier of framework defaults for thin-anchor CLAUDE.md repos. Detection is
-    the plugin manifest (`.claude-plugin/plugin.json` with name=prawduct) at the
-    governed repo's root; every anomaly fails safe to the full digest.
+class TestDigestReachesEveryRepoShape:
+    """Repo shape does not select a digest: both shapes receive this one file.
+
+    A per-shape variant is the change these pins exist to refuse. It trades one
+    repository's duplication for a second shipped artifact every session of that
+    shape carries, plus a must-agree pin per duplicated rule to stop the copies
+    drifting. When a repo's own always-loaded CLAUDE.md overlaps the digest, the
+    cheaper fix is to trim that CLAUDE.md.
+
+    Both fixtures are exercised rather than one, because a single-shape test
+    cannot see a divergence on the shape it does not run — the unrun path gets
+    inferred, and an inference is what a pin is supposed to replace.
     """
 
     @staticmethod
-    def _framework_fixture(tmp_path: Path, manifest: str | None = '{"name": "prawduct"}') -> Path:
-        (tmp_path / ".prawduct").mkdir()
+    def _repo_fixture(tmp_path: Path, manifest: str | None = '{"name": "prawduct"}') -> Path:
+        """A governed repo. With a prawduct plugin manifest it is the framework
+        repo's shape; without one it is a product's."""
+        # parents=True so a caller can build two fixtures under one tmp_path.
+        (tmp_path / ".prawduct").mkdir(parents=True)
         if manifest is not None:
             mdir = tmp_path / ".claude-plugin"
-            mdir.mkdir()
+            mdir.mkdir(parents=True)
             (mdir / "plugin.json").write_text(manifest, encoding="utf-8")
         return tmp_path
 
@@ -290,50 +269,28 @@ class TestDigestVariantSelection:
         assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
 
-    def test_framework_fixture_gets_slim_variant(self, tmp_path):
-        ctx = self._emitted(self._framework_fixture(tmp_path))
-        assert ctx == SLIM_DIGEST_SRC.read_text(encoding="utf-8").strip()
-
-    def test_product_fixture_gets_full_digest_verbatim(self, tmp_path):
-        # A product repo (.prawduct/ but no plugin manifest) must receive the
-        # full digest unchanged — it is the sole carrier of framework defaults.
-        ctx = self._emitted(self._framework_fixture(tmp_path, manifest=None))
+    def test_framework_fixture_gets_the_digest_verbatim(self, tmp_path):
+        ctx = self._emitted(self._repo_fixture(tmp_path))
         assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
 
-    def test_other_plugin_manifest_gets_full_digest(self, tmp_path):
-        # A product that happens to develop its OWN plugin is not the framework.
-        ctx = self._emitted(self._framework_fixture(tmp_path, manifest='{"name": "my-plugin"}'))
+    def test_product_fixture_gets_the_digest_verbatim(self, tmp_path):
+        # A product repo (.prawduct/ but no plugin manifest). This is the path a
+        # framework-only test cannot see, and the digest is the sole carrier of
+        # framework defaults for a thin-anchor CLAUDE.md.
+        ctx = self._emitted(self._repo_fixture(tmp_path, manifest=None))
         assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
 
-    def test_malformed_manifest_fails_safe_to_full_digest(self, tmp_path):
-        ctx = self._emitted(self._framework_fixture(tmp_path, manifest="{not json"))
-        assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
+    def test_both_shapes_receive_identical_context(self, tmp_path):
+        """The positive form of the rule, so it cannot pass by both being empty.
 
-    def test_non_dict_manifest_fails_safe_to_full_digest(self, tmp_path):
-        ctx = self._emitted(self._framework_fixture(tmp_path, manifest='["prawduct"]'))
-        assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
-
-    def test_framework_repo_falls_back_to_full_when_slim_missing(self, tmp_path):
-        # An older cached plugin copy may not bundle the slim file yet. A
-        # framework session must still get A digest — never silence.
-        plugin = tmp_path / "plugin"
-        (plugin / "methodology").mkdir(parents=True)
-        (plugin / "methodology" / "session-digest.md").write_text("full digest body\n")
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        framework = self._framework_fixture(repo)
-        result = _run_digest(plugin, project_dir=framework)
-        assert result.returncode == 0, result.stderr
-        ctx = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-        assert ctx == "full digest body"
-
-    def test_slim_budget_at_most_half_of_full(self):
-        # The slim variant's reason to exist is the token saving; pin it.
-        slim = len(SLIM_DIGEST_SRC.read_text(encoding="utf-8"))
-        full = len(DIGEST_SRC.read_text(encoding="utf-8"))
-        assert slim <= full * 0.5, (
-            f"slim digest is {slim} chars vs full {full} — over the 50% budget"
-        )
+        The two assertions above would each still hold if the digest were
+        emptied; this states the property the collapse actually bought — the two
+        shapes are indistinguishable at this surface — and pins it non-vacuously.
+        """
+        framework = self._emitted(self._repo_fixture(tmp_path / "fw"))
+        product = self._emitted(self._repo_fixture(tmp_path / "prod", manifest=None))
+        assert framework == product
+        assert framework.strip(), "both shapes agreeing on an empty digest is not the contract"
 
 
 class TestDigestWiring:
@@ -442,11 +399,6 @@ class TestAgentStance:
         assert "Stress-test before agreeing" in digest
         assert "principles.md" in digest, "stance block must point back at the principles"
 
-    def test_slim_digest_carries_condensed_stance(self):
-        slim = SLIM_DIGEST_SRC.read_text(encoding="utf-8")
-        assert "expert take" in slim
-        assert "Verify, don't guess" in slim
-
     def test_digest_carries_rigor_scaling(self):
         # rigor-and-stance Chunk 03 (digest sweep): the always-on layer carries the
         # requirements-rigor headline and routes to the full model on-demand.
@@ -495,51 +447,4 @@ class TestDigestCarriesBacklogDiscipline:
         assert "strikethrough" in digest, "digest must state the archive (not strikethrough) discipline"
         assert "stage" in digest and "discovery" in digest, (
             "digest must state early-stage items route to discovery, not code"
-        )
-
-
-class TestIsFrameworkRepoCandidates:
-    """`is_framework_repo` decides slim-vs-full digest, and the move broke it once already.
-
-    It originally keyed on `.claude-plugin/plugin.json` at the repo root. v3.1.1 relocated that
-    manifest into `plugin/`, so the framework repo silently began classifying as a product repo and
-    receiving the full digest -- no error, no test failure, just the wrong variant. It now checks
-    three locations, but only the first is reachable in this repo, so the other two were shipping
-    unexercised. These fixtures cover each independently. (Critic, 2026-07-21.)
-    """
-
-    @staticmethod
-    def _digest_mod():
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("prawduct_digest_hook", DIGEST_HOOK)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
-
-    def _write(self, root: Path, rel: str) -> None:
-        target = root / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps({"name": "prawduct"}), encoding="utf-8")
-
-    @pytest.mark.parametrize("rel", [
-        ".claude-plugin/marketplace.json",          # current layout (v3.1.1+)
-        "plugin/.claude-plugin/plugin.json",        # relocated plugin manifest
-        ".claude-plugin/plugin.json",               # pre-v3.1.1, kept for older checkouts
-    ])
-    def test_each_candidate_location_classifies_as_framework(self, tmp_path, rel):
-        self._write(tmp_path, rel)
-        assert self._digest_mod().is_framework_repo(tmp_path), (
-            f"{rel} must identify the framework repo -- a miss here silently swaps the digest variant"
-        )
-
-    def test_a_product_repo_is_not_the_framework(self, tmp_path):
-        (tmp_path / ".prawduct").mkdir()
-        assert not self._digest_mod().is_framework_repo(tmp_path)
-
-    def test_a_foreign_manifest_is_not_the_framework(self, tmp_path):
-        self._write(tmp_path, ".claude-plugin/marketplace.json")
-        (tmp_path / ".claude-plugin" / "marketplace.json").write_text(
-            json.dumps({"name": "someone-else"}), encoding="utf-8")
-        assert not self._digest_mod().is_framework_repo(tmp_path), (
-            "fail-safe: an unrelated plugin manifest must not classify as prawduct"
         )
