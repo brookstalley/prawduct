@@ -3,6 +3,41 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: the standing block collapses to the surfaces that carry it
+
+<!-- prawduct: type=refactor | scope=governance-surface-dedup -->
+
+Four prose surfaces restated the turn-closing standing block in full: `reflection.md`, which owns
+it, both injected digests, which reach a session whether or not it opens a guide, and
+`building.md`, which is read on demand. The fourth copy was redundant **for its own reader** — an
+agent that opens `building.md` has already been handed the shape by the digest injected at
+session start, so the restatement was a second authoritative statement of a fact that has a home
+(`architecture.md` § Direction).
+
+**One clause there was load-bearing and stays.** `SAFE TO CLEAR` is not a free-standing
+judgement; it is owed against `building.md`'s own chunk-close steps 1-7, and no other surface
+enumerates those steps. So the file keeps the pointer and the binding, and loses the fenced
+shape, the `---` rule, the trigger and the three failure modes — 4806 → 4720 estimated tokens.
+
+**The trim is bounded from below by a paired positive assertion.** A negative pin ("no longer
+restates the shape") passes just as well when the pointer is deleted too, which would leave a
+reader who opened only this guide holding a verdict with no shape to put it in.
+`test_building_md_binds_the_clear_verdict_to_its_own_steps` asserts the pointer, the binding, and
+the absence of the labels together; both directions were mutation-checked red before shipping.
+
+**The surviving pin was re-justified, not merely narrowed.** Its docstring had defended the rule
+as protecting a token trim "funded" by relocating the rationale *into* the digests — accounting
+the 2026-08-05 owner rule disavowed, since moving prose between files reduces no total. What the
+pin actually guards is **coverage**: the shape has to reach an agent through a surface it really
+reads, and dropping it from a digest means an agent that never opens a guide emits no block at
+all.
+
+**The ceiling was ratcheted down with the cut** (4810 → 4730), which the Critic raised
+independently and is the difference between a win and a loan. The drift pin only asks the next
+editor to update the *reading*; the ceiling is the hard gate, so 90 tokens of unratcheted slack
+would have let the next 89 tokens of prose ship green and hand this trim straight back. Every
+other budgeted file in the module sits within ~1-34 tokens of its ceiling.
+
 ## 2026-08-19: a token budget that can see a new file
 
 <!-- prawduct: type=feature | scope=governance-surface-dedup -->
