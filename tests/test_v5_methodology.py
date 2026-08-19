@@ -84,6 +84,47 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: keep a prose copy of a figure a mechanism can own. The narratives stay (they
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
+#: **The on-demand methodology guides carry a READING and no ceiling**
+#: (decision 2026-08-19, #688; owner-selected from three framed options).
+#:
+#: #688's premise was wrong and the correction changed the answer. It said
+#: `reflection.md` was "the only on-demand methodology guide with no entry" —
+#: measured, `discovery.md` (4752) and `planning.md` (4301) were unbudgeted
+#: too, and `discovery.md` is LARGER than budgeted `building.md`. So the real
+#: state was that on-demand guides were unbudgeted **as a class** with
+#: `building.md` the lone exception, which makes this a policy question rather
+#: than a bookkeeping line — and answering it for one file would have left two
+#: larger ones in the state the issue objected to.
+#:
+#: **Why a reading and not a ceiling.** The yield #688 names is *undeclared
+#: growth*, and a reading delivers exactly that: change the file without
+#: restating its size and the assertion below goes red carrying the number to
+#: write. A ceiling is a different control — it blocks the growth itself — and
+#: these files are the ones where growth is CHEAP. Their cost is opt-in, paid
+#: only by a session that opens them, which is precisely why
+#: `governance-surface-dedup` moved the standing block's full shape into
+#: `reflection.md` rather than the always-injected digest. Pricing the cheap
+#: destination would invert the incentive four chunks were spent building
+#: (`reflection.md` went 3001 → 4529 in two days, and most of that was that
+#: relocation working as designed).
+#:
+#: **How this discharges `nonfunctional-requirements.md` § Direction**
+#: ("proportionality ratchets both ways — every new control must emit its yield
+#: observably"). This is an **accounting** control, not a blocking one. It
+#: cannot fire-and-annoy, because it never refuses a change — only an
+#: unrecorded one — so the failure mode the norm targets (repeated firings, no
+#: blocking yield) is unreachable by construction. Its yield IS its emission:
+#: every entry below is dated, carries what caused the delta, and the whole
+#: history is `git log -p` on this dict. Not a machine-readable fact stream,
+#: and it does not need to be for a control that blocks nothing.
+#:
+#: **What would reverse this**, in either direction: an on-demand guide whose
+#: growth is repeatedly recorded and never justified — that is a ceiling's
+#: case, and the readings are what would prove it — or a measured session
+#: opening a guide it did not need, which is an argument about *routing*, not
+#: about size. `skills/critic/SKILL.md` is the standing precedent for the
+#: shape: a reading with no ceiling, and it has held.
+#:
 LAST_MEASURED_TOKENS = {
     # -1 on 2026-08-13: the evidence-model paragraph said a rebase/amend
     # "demands a fresh look", which the base-advance transfer falsified — the PR
@@ -307,6 +348,22 @@ LAST_MEASURED_TOKENS = {
     # spends part of that rather than adding on top of it.
     "skills/critic/SKILL.md": 3403,
     "skills/critic/framework-checks.md": 1116,
+    # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
+    # ceilings; the block above this dict is the decision and its reasoning.
+    # These three are baselines, not achievements: they record where the class
+    # stood when the policy landed, so the NEXT edit is the first one that has
+    # to say what it cost.
+    #
+    # `discovery.md` 4752 — grew 4189 → 4752 across the 2026-08-02 critic
+    # burndown, then flat. `planning.md` 4301 — slowest mover of the three.
+    # `reflection.md` 4529 — the fast one, 3001 → 4529 in two days: the
+    # `governance-surface-dedup` relocation of the standing block's full shape
+    # (3238 → 4083), then the clear-line verdict and its deadline (#687).
+    # That growth is the design working, which is exactly why it is recorded
+    # rather than capped.
+    "methodology/discovery.md": 4752,
+    "methodology/planning.md": 4301,
+    "methodology/reflection.md": 4529,
 }
 
 
@@ -445,6 +502,51 @@ INJECTED_FOOTPRINT_CEILINGS = {
     "framework": 3322,
     "product": 2245,
 }
+
+
+def test_every_methodology_guide_is_accounted_for():
+    """No methodology guide sits outside the #688 answer — including new ones.
+
+    THE HALF THAT MAKES THE DECISION A POLICY RATHER THAN THREE ENTRIES. The
+    readings above only watch files someone remembered to add; this watches the
+    DIRECTORY, which is what nothing was watching when `reflection.md`,
+    `discovery.md` and `planning.md` all went unbudgeted and the issue reporting
+    it named only one of them. Adding `methodology/onboarding.md` tomorrow and
+    forgetting the table is precisely the mistake being guarded, and it is the
+    same blind spot `test_every_injectable_digest_is_budgeted` closes one tier
+    up.
+
+    **Two ways to be accounted for, not one.** A guide is covered either by a
+    per-file reading in `LAST_MEASURED_TOKENS` (the on-demand class) or by
+    membership in an injected session shape, where the total is the budget and a
+    per-file reading would be a second, staler copy of it. `session-digest.md`
+    is the whole reason the check has to allow both: it is a `methodology/*.md`
+    file that is deliberately absent from the readings table because
+    `LAST_MEASURED_INJECTED_TOKENS` already prices it — twice, once per shape.
+
+    Deliberately says nothing about ceilings. Whether a guide gets one is the
+    decision recorded above this dict, and a test asserting the *absence* of an
+    assertion would encode today's answer as structure — which is what makes a
+    policy hard to revisit rather than easy to see.
+    """
+    injected = {m for members in INJECTED_SESSION_SHAPES.values() for m in members}
+    guides = sorted(
+        str(p.relative_to(ROOT))
+        for p in (ROOT / "methodology").glob("*.md")
+    )
+    assert guides, "found no methodology guides at all — ROOT is wrong"
+    unaccounted = [
+        g for g in guides
+        if g not in LAST_MEASURED_TOKENS and g not in injected
+    ]
+    assert not unaccounted, (
+        f"methodology guide(s) with no size accounting: {unaccounted}. Every "
+        "guide is either a per-file reading in LAST_MEASURED_TOKENS (the "
+        "on-demand class — see the decision recorded above that dict) or a "
+        "member of an injected session shape, where the shape total is the "
+        "budget. Add the reading; the sibling assertion will tell you the "
+        "number. Do NOT delete this check to make a new guide green."
+    )
 
 
 def _clear_line_guidance() -> str:
