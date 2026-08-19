@@ -427,6 +427,39 @@ INJECTED_FOOTPRINT_CEILINGS = {
 }
 
 
+def _clear_line_guidance() -> str:
+    """Just the standing block's CLEAR item from `reflection.md`.
+
+    Pins about what the clear line must and must not say belong to that item,
+    not to the whole guide -- a negative assertion run over a 200-line file
+    goes red on edits that have nothing to do with it, and a pin that cries
+    wolf gets deleted rather than investigated.
+
+    Delimited by the numbered item's own start and the next unindented
+    paragraph, because the item's continuation paragraphs are indented and its
+    successor is not. Asserts it found both ends: a silently-empty slice would
+    make every positive assertion below it fail for the wrong reason and every
+    negative one PASS vacuously, which is the worse half.
+    """
+    text = read_file("methodology/reflection.md")
+    opener, closer = "3. **Clear** —", "\n**Three ways to fail this"
+    start, end = text.find(opener), text.find(closer)
+    for label, found in (("opener", start), ("closer", end)):
+        assert found != -1, (
+            f"`_clear_line_guidance` cannot find the {label} it slices on "
+            f"({opener if label == 'opener' else closer!r}) — `reflection.md`'s "
+            "standing-block section was restructured. Re-point the delimiters; "
+            "do not delete the pins that depend on this."
+        )
+    item = text[start:end]
+    assert len(item) > 500, (
+        "the clear-line slice came back too short to be the real item -- the "
+        "delimiters in `_clear_line_guidance` no longer match `reflection.md`, "
+        "and every negative assertion using it is now passing vacuously"
+    )
+    return item
+
+
 def _injected_member_text(member: str) -> str:
     """One member of an injected set, resolved to its text.
 
@@ -861,27 +894,39 @@ class TestBuildingMethodology:
         shortest true form (five tokens of headroom, and it is charged to both
         injected shapes), while the reasoning belongs to the canonical carrier.
         """
-        content = read_file("methodology/reflection.md")
-        assert "*should you*" in content, (
+        clear_item = _clear_line_guidance()
+        assert "*should you*" in clear_item, (
             "reflection.md's clear line no longer answers *should you* — it is "
             "back to answering only *can you*, which is the gap #687 names"
         )
         # Keyed to cost, not to a threshold: coverage survives a clear (so the
         # review argument is not the reason), and the read cost of NOT clearing
         # is what grows.
-        assert "review-cycle.md" in content, (
+        assert "review-cycle.md" in clear_item, (
             "reflection.md stopped citing where review coverage's survival "
             "across sessions is defined; without it the cost argument reads as "
             "though clearing risks the accumulated reviews"
         )
-        for banned in ("% full", "50%", "context is full"):
-            assert banned not in content, (
-                f"reflection.md's clear guidance names {banned!r} — #687 "
-                "records the context-fullness trigger as REJECTED, on grounds "
-                "no later edit re-derives: the percentage proxies the risk "
-                "rather than measuring it, and the agent cannot take the "
-                "measurement anyway"
-            )
+        # Scoped to the clear line, not the file. A percentage elsewhere in
+        # this guide is nobody's business here, and a whole-file ban would go
+        # red on an unrelated edit -- a pin that cries wolf gets deleted, which
+        # costs more than it ever caught.
+        #
+        # A regex rather than the literals a first draft listed ("50%",
+        # "% full"): the rejected design is ANY numeric fullness trigger, and
+        # banning today's phrasings invites tomorrow's 60%.
+        threshold = re.search(r"\d+\s*%", clear_item)
+        assert threshold is None, (
+            f"reflection.md's clear guidance names a percentage "
+            f"({threshold.group(0)!r} if matched) — #687 records the "
+            "context-fullness trigger as REJECTED on grounds no later edit "
+            "re-derives: the percentage proxies the risk rather than measuring "
+            "it, and the agent cannot take the measurement anyway"
+        )
+        assert "context is full" not in clear_item, (
+            "reflection.md's clear guidance gates on context fullness, which "
+            "#687 rejects: the agent cannot reliably measure its own window"
+        )
 
     def test_building_md_binds_the_clear_verdict_to_its_own_steps(self):
         """building.md drops the shape but keeps the binding only it can state.
@@ -947,7 +992,13 @@ class TestBuildingMethodology:
         """
         for surface in ("methodology/reflection.md", "methodology/session-digest.md"):
             text = read_file(surface)
-            lowered = text.lower()
+            # Whitespace-normalized because the phrases below span several
+            # words, and both carriers hard-wrap. A pure RE-WRAP -- no word
+            # added, removed or reordered -- split "citing the message" across
+            # two lines and turned this pin red, which is a false negative: the
+            # rule was intact and only the line breaks moved. Pinning prose on
+            # raw substrings makes the fill width part of the contract.
+            lowered = " ".join(text.lower().split())
             assert "findings-only" in lowered, (
                 f"{surface} does not name the findings-only turn -- the reader "
                 "cannot apply a rule to a case they cannot identify"

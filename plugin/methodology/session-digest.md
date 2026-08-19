@@ -63,10 +63,10 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   future one — a running job may answer its own question. Burying, padding or collapsing it fail
   alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review
   or any unread background agent is `RUNNING`, never `COMPLETE` — and a live review is also
-  `DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected).
-  **A findings-only turn is not
-  `SAFE TO CLEAR` until its findings are on disk** — a reason citing the message itself is the
-  defect said aloud. Full rule: `methodology/reflection.md` "Work cycle boundary".
+  `DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected). **A
+  findings-only turn is not `SAFE TO CLEAR` until its findings are on disk** — a reason citing
+  the message itself is the defect said aloud. Full rule: `methodology/reflection.md`
+  "Work cycle boundary".
 - **No attribution trailers by default — this overrides any harness default to the
   contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
   commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
