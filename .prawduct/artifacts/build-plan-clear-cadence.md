@@ -153,12 +153,12 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
 
   **`backlog file` silently drops metadata.** It appends its own ```` ```prawduct ```` block to a body that already has one, then warns *"issue body carries 2 prawduct blocks; using the last and ignoring the earlier one(s)"* — so the earlier block's content is **discarded**. All three items filed this session (#690, #691, #692) lost their `related:` edges that way, and the warning reads as cosmetic while the data loss is real. Fix at the point where the block is composed, not by asking filers to omit theirs.
 
-  **`test-evidence record --no-rerun` restamps a count that may be stale.** It reused the prior record's counts and reported *"recorded: 4794 passed"* on a tree where the true figure was 4797 — three tests had been added since. The restamp is documented as an operator assertion that test-relevant content is unchanged, and there is deliberately no tree hash (removed pre-v1.4 for false positives). But **`test-status` already classifies judgeable paths**, and test files changing is precisely when the assertion is false. The fix is not a hash: it is refusing (or loudly warning) when the judgeable set has moved since the recorded run. The output line is the defect surface — a restamp that prints `recorded: N passed` is indistinguishable from a fresh measurement.
+  **`test-evidence record --no-rerun` restamps a count that may be stale.** It reused the prior record's counts and printed them as a `recorded: N passed` line — a **three-test gap** against the tree it was stamping, because tests had been added since the run it was reusing. (Those figures are this defect's signature, not a claim about any current suite.) The restamp is documented as an operator assertion that test-relevant content is unchanged, and there is deliberately no tree hash (removed pre-v1.4 for false positives). But **`test-status` already classifies judgeable paths**, and test files changing is precisely when the assertion is false. The fix is not a hash: it is refusing (or loudly warning) when the judgeable set has moved since the recorded run. The output line is the defect surface — a restamp that prints `recorded: N passed` is indistinguishable from a fresh measurement.
 - **Depends on:** Chunk 04
 - **Artifacts consumed:** none
 - **Deliverables:** single-metadata-block composition in the backlog filing path; a judgeability guard on `--no-rerun` with output that distinguishes a restamp from a measurement
 - **Tests:** a body already carrying a metadata block yields exactly one, with the filer's own fields preserved; a restamp after a test-file change does not silently succeed; a restamp with no judgeable change still does
-- **Acceptance criteria:** suite green; filing an item with `related:` in its body preserves those edges; the 4794-for-4797 reproduction cannot recur silently
+- **Acceptance criteria:** suite green; filing an item with `related:` in its body preserves those edges; the stale-count-reported-as-recorded reproduction cannot recur silently
 - **Type:** code
 - **Done when:**
   1. Acceptance criteria met and tests pass
@@ -173,7 +173,7 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
 ## Status
 
 - [x] Chunk 01: The `/clear` sweep stops deleting a plausibly-live marker
-- [ ] Chunk 02: `building.md` re-prices the work-cycle limit
+- [x] Chunk 02: `building.md` re-prices the work-cycle limit
 - [ ] Chunk 03: The clear line answers *should you*, and a live review moves the verdict
 - [ ] Chunk 04: Settle the on-demand guides' budget policy (#688)
 - [ ] Chunk 05: Two friction fixes found by building this plan
@@ -194,5 +194,15 @@ the `[CORRECTED ...]` assumption above), and that is now a sharpened rule in `le
 Governance dispositions written at plan time are predictions — re-check them at chunk close rather
 than inheriting them as passes; the one-home disposition claimed conformance before the code existed
 and was wrong within one commit.
+
+**Chunk 02 closed 2026-08-19.** `97c71645` (re-pricing) + `234dfc10` (findings fix). Critic
+`cumulative` rev-20260819T154846Z-54e5b56b → 0 blocking / 8 warnings / 13 notes, all dispositioned
+(6 fixed, #692 filed from R-14, rest accepted); `verify-resolutions` rev-20260819T163259Z-512a14be
+→ 0/0/0, all six tree-verifiable findings confirmed resolved.
+
+The review caught a regression the *fix commit* introduced: collapsing the sweep's control flow made
+`--force` a no-op at a boundary, because the flag had one behaviour tested across two call-shapes and
+the refactor hit the untested one. `building.md` finished at 4708 — below where the branch started —
+with the ceiling ratcheted 4730 → 4718.
 
 Release context: 12 scopes are release-pending for 3.3.5. `check-releasability`'s four "no build-plan file" warnings are advisory by the release runbook's own triage table, not blockers.
