@@ -638,6 +638,88 @@ class TestRule2Cumulative:
         assert mode == "cumulative"
         assert rationale.startswith("rule-2 cumulative:")
 
+    def test_does_not_fire_at_a_chunk_boundary_mid_plan(self, tmp_path: Path):
+        """THE REPRODUCTION. A chunk boundary is not the bundle-review case.
+
+        Rule 2 exists to recommend the review the PR gate wants, and its
+        clean-tree guard was meant to keep it off mid-build rounds. That guard
+        misses the one moment it matters: at a chunk boundary the builder has
+        just committed, so the tree IS clean — and the only remaining condition,
+        `commits_ahead` against the BASE branch, can never say no because it
+        only grows.
+
+        Measured on `fix/clear-cadence` (2026-08-19): four cumulative dispatches,
+        identical rationale, count climbing 2 → 6 → 9 → 15, for a five-chunk
+        plan — 85 minutes of review wall-clock against the ~29 the per-chunk
+        shape intends, and the escalation grew *more* certain as the plan
+        progressed.
+
+        The fixture is deliberately far past the ≥2 threshold: the defect is not
+        that the threshold is too low, it is that the quantity is monotonic, so
+        a fixture sitting just above the line would under-state it.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feature/work")
+        for i in range(6):
+            _write(tmp_path, f"src/a{i}.py", f"# {i}\n")
+            _commit(tmp_path, f"feat: chunk work {i}")
+        _write_build_plan(
+            tmp_path / ".prawduct",
+            [("x", "Chunk 01"), ("x", "Chunk 02"), (" ", "Chunk 03")],
+        )
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert not rationale.startswith("rule-2"), (
+            f"rule 2 fired at a mid-plan chunk boundary: {rationale}"
+        )
+        assert mode != "cumulative", (
+            f"a chunk boundary escalated to a three-reviewer cumulative: {rationale}"
+        )
+
+    def test_still_fires_once_every_chunk_is_complete(self, tmp_path: Path):
+        """The other half, without which the guard above is over-broad.
+
+        A completed plan on a branch ahead of base IS the PR-prep case rule 2
+        exists for — the cumulative feeds `check-cumulative-critic`. Suppressing
+        it there would trade over-reviewing for a branch that can never satisfy
+        its own PR gate, which is the worse failure.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feature/work")
+        for i in range(3):
+            _write(tmp_path, f"src/a{i}.py", f"# {i}\n")
+            _commit(tmp_path, f"feat: chunk work {i}")
+        _write_build_plan(
+            tmp_path / ".prawduct",
+            [("x", "Chunk 01"), ("x", "Chunk 02"), ("x", "Chunk 03")],
+        )
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "cumulative", rationale
+        assert rationale.startswith("rule-2 cumulative:"), rationale
+
+    def test_a_planless_branch_is_unaffected(self, tmp_path: Path):
+        """The guard keys on an ACTIVE plan, so a branch without one keeps the
+        old behaviour — that is the case rule 2 was written for and the one the
+        existing fixtures in this class exercise.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feature/work")
+        _write(tmp_path, "src/a.py", "# a\n")
+        _commit(tmp_path, "feat: a")
+        _write(tmp_path, "src/b.py", "# b\n")
+        _commit(tmp_path, "feat: b")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "cumulative"
+        assert rationale.startswith("rule-2 cumulative:")
+
     def test_does_not_fire_when_working_tree_dirty(self, tmp_path: Path):
         """Mid-chunk uncommitted work → cumulative blocked by the
         clean-tree guard (keeps it from over-firing on every mid-build

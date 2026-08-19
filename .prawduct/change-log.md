@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: a chunk boundary stops buying a bundle review
+
+<!-- prawduct: type=fix | scope=clear-cadence -->
+
+`infer-critic-mode`'s rule 2 escalated **every** chunk close on a multi-chunk branch to a
+three-reviewer `cumulative`. The rule's own module docstring states the intent — *run cumulative
+when about to PR* — and claimed its clean-tree guard achieved it. It did not, and the gap is exact:
+**a chunk boundary is precisely when the builder has just committed, so the tree IS clean.** The
+only remaining condition then decides, and it cannot say no, because `commits_ahead` counts against
+the *base branch* and on a feature branch that number only grows.
+
+Measured on this branch: five chunk closes, four cumulative dispatches, identical rationale, count
+climbing 2 → 6 → 9 → 15. **85 minutes of review wall-clock against the ~29 the per-chunk shape
+intends** — and the escalation grew *more* certain as the plan progressed, which is backwards, since
+later chunks are smaller and better understood.
+
+It also contradicted guidance shipped three chunks earlier in this same branch: `building.md`'s
+work-cycle limit was re-priced onto *the diff a review must cover* — "the constraint is the
+reviewer's attention" — while rule 2 sized on cumulative branch age, which is neither the diff since
+the last review fact nor attention.
+
+An active plan with chunks still unticked is now rule 4's case (`chunk`), with the bundle review
+landing once the last box is ticked. A completed plan still fires rule 2, because that is the
+PR-prep case it exists for; a branch with no plan is untouched.
+
+**The trade-off, stated rather than buried:** `chunk` mode covers Goals 1-3, so mid-plan rounds stop
+catching Goal 4-7 findings (artifact coherence, design, sustainability) early. They are caught by
+the final/cumulative instead — later, in one pass, which is the cost the per-chunk shape has always
+accepted. A plan that wants the deeper pass per chunk says so with a chunk-level `Critic mode:`
+override, which outranks all inference.
+
 ## 2026-08-19: two tools stop losing what they were asked to record
 
 <!-- prawduct: type=fix | scope=clear-cadence -->
