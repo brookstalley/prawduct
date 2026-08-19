@@ -6,6 +6,45 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When you swap a mechanism's input for a COPY of a file, ask what the original's METADATA was load-bearing for — a byte-identical copy is not an identical input, and the loss is silent
+
+**Where.** `plugin/lib/evidence.py`, `_seed_temp_index` — critic-reliability Chunk 01 (#675),
+2026-08-19.
+
+**The mechanism.** `capture_tree` builds a temp index and runs `git add -A` over it to snapshot
+the working tree as a git tree object. It used to seed that index with `read-tree HEAD`, whose
+entries carry ZEROED stat data — so every tracked file is a cache miss and the whole tree is
+re-hashed on every capture. On a bind-mounted tree that exceeds the capture budget outright,
+`critic-begin` fails, and the PR gate becomes structurally unsatisfiable. Seeding from a copy of
+the repo's own `.git/index` carries real stat data and lets `add -A` skip what did not change.
+
+**The trap.** Git's stat cache skips a file whose size and mtime still match its entry. The escape
+hatch is the racily-clean rule: *an entry whose mtime is not older than the INDEX FILE's own may
+have been edited within the same timestamp tick, so re-read it.* That rule is evaluated against the
+mtime of the index file git is handed. `shutil.copyfile` stamps the copy with the CURRENT time, so
+every entry looks comfortably older than its index, the rule never fires, and a same-tick
+same-size edit is skipped. The captured tree then carries the file's previous content.
+
+**Why it is worse than what it replaced.** The defect being fixed was a timeout — loud, and it
+fails closed (no review records). The defect introduced was a wrong tree — silent, and it fails
+OPEN: the review records, and vouches for a state that never existed.
+
+**How it was caught.** A 1-in-25 flake in `tests/test_evidence_store.py`. The failing assertion
+printed two STABLE tree SHAs across every failure, which is not what randomness looks like — that
+observation is what converted "flaky test, re-run it" into "deterministic defect with a
+probabilistic trigger."
+
+**Pinning it cost three attempts, and the third only worked because of an existing rule.** The
+first two versions of `test_same_second_same_size_edit_is_still_captured` passed against the BROKEN
+implementation: the first forced the index file's mtime instead of the recorded ENTRY mtime (which
+is fixed at `git add` time, not editable afterwards); the second hit git's `core.trustctime`, since
+`os.utime` cannot move ctime, so git re-read the file for the wrong reason. Running each candidate
+against the unfixed code — learnings rule "Prove a new regression test DISCRIMINATES" — is the only
+thing that exposed both. Second confirming instance of that rule on this branch.
+
+**Derivation.** `.prawduct/research/tree-capture-2026-08-19/measure.py` section C runs the race
+directly (`copyfile` loses edits; `copy2` does not) alongside the cost and seed-agreement sections.
+
 ## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite, not its synonym — and it reads as deliberate, so review cannot see it
 
 Six change-log entries on `feat/backlog-cache` carried `release=unreleased | status=shipped`. The

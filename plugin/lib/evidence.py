@@ -51,6 +51,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -85,7 +86,41 @@ KNOWN_KINDS = frozenset({"review", "resolution", "disposition", "guard-refusal"}
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
 
-_GIT_TIMEOUT = 15
+_GIT_TIMEOUT_DEFAULT = 15
+_GIT_TIMEOUT_ENV = "PRAWDUCT_GIT_TIMEOUT"
+
+
+def _git_timeout() -> "tuple[int | None, str | None]":
+    """The per-call git budget in seconds, or ``(None, reason)`` when the
+    environment override is unusable.
+
+    Read per call rather than frozen at import, so an operator on a slow
+    filesystem can raise the budget for one invocation without a restart —
+    which is the whole point of the knob: a working tree reached over a
+    network or bind mount pays mount latency per file, and the default is
+    priced for a local disk.
+
+    A malformed override is REFUSED, never silently replaced by the default.
+    Someone who set the variable wanted a different budget; quietly restoring
+    the default hands them back the timeout they were trying to escape, with
+    nothing on screen to say why."""
+    raw = os.environ.get(_GIT_TIMEOUT_ENV)
+    if raw is None or not raw.strip():
+        return _GIT_TIMEOUT_DEFAULT, None
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return None, (
+            f"{_GIT_TIMEOUT_ENV} is not a whole number of seconds "
+            f"({raw.strip()!r}) — set it to a positive integer, or unset it "
+            f"for the {_GIT_TIMEOUT_DEFAULT}s default"
+        )
+    if value <= 0:
+        return None, (
+            f"{_GIT_TIMEOUT_ENV} must be a positive number of seconds, got "
+            f"{value} — unset it for the {_GIT_TIMEOUT_DEFAULT}s default"
+        )
+    return value, None
 
 
 def store_path(project_dir: Path) -> Path | None:
@@ -573,14 +608,28 @@ def run_git(project_dir: Path, *args: str, env: dict | None = None) -> tuple[int
     shares it — per the module-boundary rule, only this module and git
     helpers touch disk/git, so callers borrow the runner rather than
     growing their own (promoted at first external use, chunk 03)."""
+    timeout, unusable = _git_timeout()
+    if unusable is not None:
+        return 1, "", unusable
     try:
         proc = subprocess.run(
             ["git", *args],
             cwd=str(project_dir),
             capture_output=True,
             text=True,
-            timeout=_GIT_TIMEOUT,
+            timeout=timeout,
             env=env,
+        )
+    except subprocess.TimeoutExpired:
+        # Named before the generic branch below (TimeoutExpired IS a
+        # SubprocessError). The default message says only that a command timed
+        # out, which reads as a git fault; the budget is prawduct's, so the
+        # remedy is prawduct's to state.
+        return 1, "", (
+            f"git {args[0]} exceeded the {timeout}s budget — raise it with "
+            f"{_GIT_TIMEOUT_ENV}=<seconds> if this working tree is reached "
+            "over a network or bind mount, where each file read pays mount "
+            "latency"
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
@@ -617,6 +666,68 @@ def _attribute_bad_tree(value: object) -> None:
 _ATTRIBUTED_BAD_TREES: set[str] = set()
 
 
+def _seed_temp_index(
+    project_dir: Path, tmp_name: str, env: dict, has_head: bool
+) -> "tuple[bool, str | None]":
+    """Fill the temporary index so the ``add -A`` that follows re-hashes only
+    what actually changed. Returns ``(ok, reason)``.
+
+    **Preferred: copy the repo's own index.** Its entries carry STAT DATA —
+    size, mtime, inode, device — so ``git add -A`` can compare a file's stat
+    against the recorded one and skip re-reading it. ``read-tree HEAD`` writes
+    entries with that stat data ZEROED, which makes every tracked file a cache
+    miss and forces a full re-hash of the working tree. On a local disk that is
+    merely wasteful; on a network or bind-mounted tree each read pays mount
+    latency, the capture blows through its budget, and every ``critic-begin``
+    fails — so no review can record and the PR gate becomes unsatisfiable.
+    Measured on this repo's own tree by
+    ``.prawduct/research/tree-capture-2026-08-19/measure.py``.
+
+    **Fallback: ``read-tree HEAD``.** Used when the index cannot be copied — a
+    clone that has never staged anything, or a concurrent git that is mid-
+    rename. Correct, only slower: ``add -A`` overwrites either seed for every
+    path that differs from the working tree.
+
+    **Where the two seeds genuinely disagree, the copy is the RIGHT answer.**
+    An index entry flagged ``--skip-worktree`` (sparse checkout) or
+    ``--assume-unchanged`` is one ``add -A`` deliberately leaves alone. Copying
+    preserves the flag, so the captured tree matches what ``git add -A && git
+    commit`` in that repo would produce — which is exactly the invariant
+    :func:`capture_tree` promises. Seeding from ``read-tree`` drops the flags,
+    so a sparse checkout captured that way stages a DELETION for every file
+    outside the cone."""
+    rc, git_dir, _ = run_git(project_dir, "rev-parse", "--absolute-git-dir")
+    if rc == 0 and git_dir:
+        try:
+            # copy2, NOT copyfile — the index's own MTIME has to survive the
+            # copy. Git's racily-clean rule ("an entry whose mtime is not
+            # older than the index file's own may have changed since it was
+            # recorded — re-read it") is what catches a file edited in the
+            # same filesystem-timestamp tick as the index write, and git
+            # compares whole seconds on platforms built without USE_NSEC.
+            # A copy stamped with the CURRENT time makes every entry look
+            # comfortably older than its index, silences that rule, and lets
+            # `add -A` skip re-hashing a same-second, same-size edit — so the
+            # captured tree would carry the file's PREVIOUS content and the
+            # review would vouch for a tree that never existed.
+            shutil.copy2(Path(git_dir) / "index", tmp_name)
+            return True, None
+        except OSError:
+            # Absent, unreadable, or racing a writer. A copy that failed
+            # PART-way leaves a truncated index that git would reject as
+            # corrupt, so clear it before handing the slot to the fallback.
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+    if not has_head:
+        return True, None  # unborn HEAD: the empty temp index is correct
+    rc, _, err = run_git(project_dir, "read-tree", "HEAD", env=env)
+    if rc != 0:
+        return False, f"read-tree failed: {err}"
+    return True, None
+
+
 def capture_tree(project_dir: Path) -> dict:
     """Capture the working tree (tracked changes + untracked, gitignored
     excluded) as a tree object in the shared odb, via a TEMPORARY index.
@@ -638,11 +749,9 @@ def capture_tree(project_dir: Path) -> dict:
         if head_commit:
             rc, head_tree_out, _ = run_git(project_dir, "rev-parse", "HEAD^{tree}")
             head_tree = head_tree_out if rc == 0 else None
-            # Seed the temp index from HEAD so unchanged paths keep their
-            # entries; on an unborn HEAD the empty temp index is correct.
-            rc, _, err = run_git(project_dir, "read-tree", "HEAD", env=env)
-            if rc != 0:
-                return {"status": "error", "reason": f"read-tree failed: {err}"}
+        ok, reason = _seed_temp_index(project_dir, tmp_name, env, bool(head_commit))
+        if not ok:
+            return {"status": "error", "reason": reason}
         rc, _, err = run_git(project_dir, "add", "-A", env=env)
         if rc != 0:
             return {"status": "error", "reason": f"temp-index add failed: {err}"}
@@ -657,10 +766,16 @@ def capture_tree(project_dir: Path) -> dict:
             "clean": tree == head_tree,
         }
     finally:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass  # already absent — mkstemp file deleted above, git may not have recreated it
+        # The lock as well as the index. `GIT_INDEX_FILE` moves git's index
+        # lock alongside it, so a capture killed mid-`add` (the timeout above)
+        # leaves `<tmp>.lock` behind — never `.git/index.lock`, which is why
+        # this cleanup cannot wedge the session's own repo and why a stale
+        # `.git/index.lock` in the field is NOT this code path.
+        for leftover in (tmp_name, tmp_name + ".lock"):
+            try:
+                os.unlink(leftover)
+            except OSError:
+                pass  # already absent — git may never have created it
 
 
 def tree_diff(

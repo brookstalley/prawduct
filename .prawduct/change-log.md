@@ -3,6 +3,48 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: tree capture stops re-hashing the world
+
+<!-- prawduct: type=fix | scope=critic-reliability -->
+
+`capture_tree` seeded its temporary index with `read-tree HEAD`, whose entries carry **zeroed stat
+data**. Every tracked file was therefore a cache miss and `git add -A` re-hashed the entire working
+tree on every single capture. On a local disk that is waste; on the bind-mounted tree #675 reports
+it is fatal — each read pays mount latency, the capture blows through its budget, `critic-begin`
+fails, and with it the PR gate becomes structurally unsatisfiable, because no review can record.
+
+The seed is now a copy of the repo's own `.git/index`, whose stat data lets `add -A` skip the files
+that did not change; `read-tree HEAD` stays as the fallback when no index can be copied (a clone
+that has never staged, a concurrent git mid-rename, a copy that died part-way). The cost and the
+seed-agreement claims are measured, not asserted:
+`.prawduct/research/tree-capture-2026-08-19/measure.py` — cite the command, never its digits.
+
+**The copy has to preserve the index's MTIME, and that is the sharpest thing this change learned.**
+Git's stat cache skips a file whose size and mtime still match its entry; the only thing that
+catches a same-tick, same-size edit is the racily-clean rule — *an entry whose mtime is not older
+than the index FILE's own may have changed since it was recorded, so re-read it.* A copy stamped
+with the current time makes every entry look comfortably older than its index, silences the rule,
+and lets `add -A` skip the re-hash — so the captured tree carries the file's PREVIOUS content and
+the review vouches for **a tree that never existed**. That is a fail-open in the evidence store,
+strictly worse than the timeout it would have been traded for. It surfaced as a 1-in-25 suite flake
+and was chased to cause rather than re-run; `shutil.copy2` is the fix and
+`test_same_second_same_size_edit_is_still_captured` is the pin, with every timestamp forced so the
+race is not left to the machine's speed.
+
+Two smaller repairs at the same site. `PRAWDUCT_GIT_TIMEOUT` now overrides the 15-second budget,
+read per call so an operator on a slow filesystem can raise it without a restart; a malformed value
+is **refused**, never silently replaced by the default, because someone who set the variable wanted
+a different budget and quietly restoring 15s hands them back the timeout they were trying to escape.
+And a capture that is killed mid-`add` no longer leaves its lock file behind.
+
+**A correction to the report, recorded rather than quietly re-scoped.** #675 attributes a wedged
+repo to a stale `.git/index.lock`. It cannot come from here: `capture_tree` runs every git call
+under `GIT_INDEX_FILE`, git takes its lock next to the index it was given, and a killed `git add -A`
+was observed to leave `<tempdir>/prawduct-idx-XXXX.lock` and no `.git/*.lock` at all — with exactly
+one `git add` call site in the plugin, no other prawduct path produces one either. The leak closed
+here is temp-directory litter. Whatever wedged the reporter's repo has another cause, and a future
+reader of #675 should not believe this fix addressed it.
+
 ## 2026-08-19: the test suite stops taking the whole machine
 
 <!-- prawduct: type=chore | scope=clear-cadence -->

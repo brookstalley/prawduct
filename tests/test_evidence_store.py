@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 
@@ -387,6 +388,136 @@ class TestCaptureTree:
         assert result["status"] == "error"
         assert result["reason"]  # attributed, never a silent empty dict
 
+    def test_seed_copies_the_repo_index_when_it_exists(self, tmp_path):
+        """The stat-data seed, asserted at the mechanism rather than the clock.
+
+        A timing assertion would be flaky on a loaded machine; what actually
+        makes the capture cheap is that the temp index STARTS as a byte-for-
+        byte copy of the repo's own, carrying its stat data, so ``add -A``
+        can skip files whose stat still matches."""
+        repo = _make_repo(tmp_path)
+        seen = {}
+        real_copy2 = evidence.shutil.copy2
+
+        def spy(src, dst, *a, **k):
+            seen["src"] = Path(src)
+            return real_copy2(src, dst, *a, **k)
+
+        evidence.shutil.copy2 = spy
+        try:
+            result = evidence.capture_tree(repo)
+        finally:
+            evidence.shutil.copy2 = real_copy2
+        assert result["status"] == "ok"
+        assert seen["src"] == Path(_git(repo, "rev-parse", "--absolute-git-dir")) / "index"
+
+    def test_seed_falls_back_when_index_is_unreadable(self, tmp_path):
+        """A copy that cannot happen degrades to `read-tree HEAD` — slower,
+        never wrong. Same tree either way."""
+        repo = _make_repo(tmp_path)
+        (repo / "code.py").write_text("x = 9\n")
+        (repo / "extra.py").write_text("e = 1\n")
+        expected = evidence.capture_tree(repo)["tree"]
+
+        real_copy2 = evidence.shutil.copy2
+
+        def refuse(src, dst, *a, **k):
+            raise OSError("index unreadable")
+
+        evidence.shutil.copy2 = refuse
+        try:
+            result = evidence.capture_tree(repo)
+        finally:
+            evidence.shutil.copy2 = real_copy2
+        assert result["status"] == "ok"
+        assert result["tree"] == expected
+
+    def test_seed_falls_back_when_a_partial_copy_is_left_behind(self, tmp_path):
+        """A copy that dies PART-way would leave a truncated index that git
+        rejects as corrupt. The fallback must start from a clean slot."""
+        repo = _make_repo(tmp_path)
+        (repo / "extra.py").write_text("e = 1\n")
+        real_copy2 = evidence.shutil.copy2
+
+        def truncate_then_fail(src, dst, *a, **k):
+            Path(dst).write_bytes(b"DIRC\x00garbage")
+            raise OSError("disk full mid-copy")
+
+        evidence.shutil.copy2 = truncate_then_fail
+        try:
+            result = evidence.capture_tree(repo)
+        finally:
+            evidence.shutil.copy2 = real_copy2
+        assert result["status"] == "ok"
+        names = _git(repo, "ls-tree", "-r", "--name-only", result["tree"])
+        assert "extra.py" in names.splitlines()
+
+    def test_same_second_same_size_edit_is_still_captured(self, tmp_path):
+        """The seed's sharpest failure mode, pinned with fixed timestamps
+        rather than left to a race.
+
+        Git's stat cache skips re-reading a file whose size and mtime still
+        match the index entry. Its racily-clean rule is the escape hatch: an
+        entry whose mtime is not older than the INDEX FILE's own may have been
+        edited within the same timestamp tick, so git re-reads it. A copy of
+        the index stamped with the CURRENT time silences that rule — and a
+        same-second, same-size edit then vanishes from the captured tree,
+        which would make a review vouch for a tree that never existed.
+
+        Every timestamp here is forced equal because on a real clock the race
+        lands only sometimes; the defect it exposes is permanent."""
+        import os as _os
+
+        stamp = 1_600_000_000  # any fixed epoch second — the point is they all MATCH
+        repo = tmp_path / "racy"
+        repo.mkdir()
+        _git(repo, "init", "-q")
+        # `utime` cannot move ctime, and git's default `core.trustctime` would
+        # then re-read the file for the wrong reason, masking the very miss
+        # under test.
+        _git(repo, "config", "core.trustctime", "false")
+        (repo / "code.py").write_text("x = 1\n")
+        _os.utime(repo / "code.py", (stamp, stamp))
+        _git(repo, "add", "-A")  # the entry records mtime == stamp
+        _git(repo, "commit", "-q", "-m", "c1")
+
+        (repo / "code.py").write_text("x = 9\n")  # same byte length as "x = 1\n"
+        _os.utime(repo / "code.py", (stamp, stamp))
+        _os.utime(Path(_git(repo, "rev-parse", "--absolute-git-dir")) / "index", (stamp, stamp))
+
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        blob = _git(repo, "ls-tree", "-r", result["tree"], "--", "code.py").split()[2]
+        assert _git(repo, "cat-file", "-p", blob) == "x = 9"
+
+    def test_capture_agrees_with_a_verbatim_commit_under_skip_worktree(self, tmp_path):
+        """The one case where the two seeds genuinely disagree.
+
+        ``--skip-worktree`` (what sparse checkout sets) tells ``add -A`` to
+        leave a path alone. Copying the index preserves the flag, so the
+        captured tree is what the user's own ``git add -A && git commit``
+        would write — which is precisely the invariant `capture_tree`
+        promises. A `read-tree HEAD` seed drops the flag and would stage a
+        deletion for every file the checkout does not materialise."""
+        repo = _make_repo(tmp_path)
+        (repo / "sparse.py").write_text("s = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "c2")
+        _git(repo, "update-index", "--skip-worktree", "sparse.py")
+        (repo / "sparse.py").unlink()  # outside the cone: not materialised
+
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        assert "sparse.py" in _git(
+            repo, "ls-tree", "-r", "--name-only", result["tree"]
+        ).splitlines()
+        # And the user's own `add -A` agrees: nothing to stage, so a verbatim
+        # commit of this state carries exactly the tree that was captured.
+        _git(repo, "add", "-A")
+        assert _git(repo, "status", "--porcelain") == ""
+        assert result["tree"] == _git(repo, "rev-parse", "HEAD^{tree}")
+        assert result["clean"] is True
+
     def test_capture_on_unborn_head(self, tmp_path):
         repo = tmp_path / "fresh"
         repo.mkdir()
@@ -398,6 +529,71 @@ class TestCaptureTree:
         assert result["clean"] is False
         names = _git(repo, "ls-tree", "-r", "--name-only", result["tree"])
         assert names.splitlines() == ["first.py"]
+
+
+class TestGitTimeoutBudget:
+    """The per-call git budget, and what a capture that runs out of it leaves
+    behind. A working tree reached over a network or bind mount pays mount
+    latency per file, so the budget has to be raisable from outside — and the
+    message that reports the overrun has to say so."""
+
+    def test_default_applies_when_unset(self, monkeypatch):
+        monkeypatch.delenv(evidence._GIT_TIMEOUT_ENV, raising=False)
+        assert evidence._git_timeout() == (evidence._GIT_TIMEOUT_DEFAULT, None)
+
+    def test_blank_is_treated_as_unset(self, monkeypatch):
+        monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, "   ")
+        assert evidence._git_timeout() == (evidence._GIT_TIMEOUT_DEFAULT, None)
+
+    def test_override_reaches_the_subprocess_call(self, tmp_path, monkeypatch):
+        repo = _make_repo(tmp_path)
+        monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, "120")
+        seen = []
+        real_run = evidence.subprocess.run
+
+        def spy(*args, **kwargs):
+            seen.append(kwargs.get("timeout"))
+            return real_run(*args, **kwargs)
+
+        monkeypatch.setattr(evidence.subprocess, "run", spy)
+        assert evidence.capture_tree(repo)["status"] == "ok"
+        assert seen and set(seen) == {120}
+
+    @pytest.mark.parametrize("bad", ["1O", "ten", "5.5", "0", "-3"])
+    def test_malformed_override_is_refused_not_silently_defaulted(
+        self, tmp_path, monkeypatch, bad
+    ):
+        """Someone who set the variable wanted a different budget. Quietly
+        restoring the default hands them back the timeout they were trying to
+        escape, with nothing on screen to say why."""
+        repo = _make_repo(tmp_path)
+        monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, bad)
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "error"
+        assert evidence._GIT_TIMEOUT_ENV in result["reason"]
+
+    def test_timeout_names_the_remedy_and_leaves_no_lock(self, tmp_path, monkeypatch):
+        """`GIT_INDEX_FILE` moves git's index lock alongside the temp index,
+        so a capture killed mid-`add` litters the temp dir — never
+        `.git/index.lock`. Both the litter and the silence about the remedy
+        are cleaned up here."""
+        repo = _make_repo(tmp_path)
+        real_run = evidence.subprocess.run
+
+        def die_on_add(cmd, **kwargs):
+            if "add" in cmd:
+                # what a killed `git add` leaves: the lock it had taken out
+                Path(kwargs["env"]["GIT_INDEX_FILE"] + ".lock").write_text("")
+                raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
+            return real_run(cmd, **kwargs)
+
+        monkeypatch.setattr(evidence.subprocess, "run", die_on_add)
+        before = set(Path(tempfile.gettempdir()).glob("prawduct-idx-*"))
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "error"
+        assert evidence._GIT_TIMEOUT_ENV in result["reason"]
+        assert set(Path(tempfile.gettempdir()).glob("prawduct-idx-*")) == before
+        assert list(Path(_git(repo, "rev-parse", "--absolute-git-dir")).glob("*.lock")) == []
 
 
 # ---------------------------------------------------------------------------

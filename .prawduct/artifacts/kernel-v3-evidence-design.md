@@ -115,7 +115,15 @@ A review fact records the **tree it actually saw**. Reviews usually run on a
 dirty working tree (acceptance → Critic → commit), so the reviewed state is
 captured as a tree object: temp index (`GIT_INDEX_FILE=<tmp> git add -A` +
 `git write-tree`) — writes objects only, **never mutates the session's real
-index or working tree** (R1). When the subsequent commit is made verbatim,
+index or working tree** (R1). **Amended 2026-08-19 (critic-reliability Chunk
+01):** the temp index is seeded by a metadata-preserving COPY of the repo's
+`.git/index`, not by `read-tree HEAD`. Two reasons, both load-bearing: the
+copy's stat data lets `add -A` skip files it would otherwise re-hash (on a
+network or bind-mounted tree the full re-hash exceeds the capture budget, so
+no review can record at all), and the copied file's MTIME is what keeps git's
+racily-clean rule alive — without it a same-tick, same-size edit is skipped
+and the captured tree carries the file's previous content. `read-tree HEAD`
+remains the fallback when no index can be copied. When the subsequent commit is made verbatim,
 `HEAD^{tree}` equals the reviewed tree — so a fact recorded pre-commit vouches
 for the commit, from any worktree, in any later session. This is what
 dissolves mtime freshness, `_record_covers_head`, and the label/chain

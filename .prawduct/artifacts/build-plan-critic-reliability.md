@@ -42,10 +42,12 @@ Backlog items: **#675** (Chunk 01), **#692** and **#690** (Chunk 02). All three 
 
 **Open assumptions / unknowns:**
 
-- [ASSUMPTION: copying `.git/index` is sufficient to preserve stat data, so `git add -A`
-  re-hashes only genuinely-changed paths | HIGH impact | user can correct — Chunk 01's
-  acceptance criteria measure this rather than assuming it, and if the copy does not help,
-  the fallback is the timeout override alone]
+- [RESOLVED 2026-08-19: copying `.git/index` preserves stat data and `git add -A` then
+  re-hashes only genuinely-changed paths — measured, not assumed, by
+  `.prawduct/research/tree-capture-2026-08-19/measure.py` (sections A and B: the copy is
+  materially faster on this repo's own tree, on a local disk, and both seeds write the
+  identical tree). The fallback-to-timeout-override-alone contingency is not needed.
+  Section C added a condition the assumption did not anticipate — see Chunk 01.]
 - [ASSUMPTION: a missing or locked `.git/index` (fresh clone, concurrent git) is rare
   enough to handle by falling back to `read-tree HEAD` rather than failing | MED impact |
   user can override]
@@ -54,7 +56,7 @@ Backlog items: **#675** (Chunk 01), **#692** and **#690** (Chunk 02). All three 
 
 ## Status
 
-- [ ] Chunk 01: Tree capture stops re-hashing the world — and stops wedging the repo
+- [ ] Chunk 01: Tree capture stops re-hashing the world — and cleans up after a timeout
 - [ ] Chunk 02: An expiring marker announces itself, and never discards a self-heal
 
 Context: Plan authored 2026-08-19 from this session's discovery; nothing built yet.
@@ -77,7 +79,7 @@ the two defects in this branch's sibling scope (`clear-cadence`) were both found
 
 ## Build Chunks
 
-### Chunk 01: Tree capture stops re-hashing the world — and stops wedging the repo
+### Chunk 01: Tree capture stops re-hashing the world — and cleans up after a timeout
 
 - **Description:** `capture_tree` seeds a fresh temp index with `read-tree HEAD`, whose
   entries carry zeroed stat data, so the following `git add -A` must re-hash **every**
@@ -89,25 +91,58 @@ the two defects in this branch's sibling scope (`clear-cadence`) were both found
   unconfigurable budget, and the wedge. Fix the cost first — copying the repo's existing
   `.git/index` preserves stat data, so `add -A` re-hashes only what actually changed —
   then keep the budget override and the lock cleanup as the belt to that braces.
+
+  **Correction, from building it (2026-08-19): the wedge is real but it is not in
+  `.git`.** `capture_tree` runs every git call with `GIT_INDEX_FILE` pointed at its temp
+  index, and git takes its index lock *next to the index it was given* — so a capture
+  killed mid-`add` leaves `<tempdir>/prawduct-idx-XXXX.lock`, never `.git/index.lock`.
+  Reproduced directly (kill a real `git add -A` mid-operation under `GIT_INDEX_FILE`: no
+  `.git/*.lock` appears), and there is exactly one `git add` call site in the plugin, so
+  no other prawduct path can produce one either. The leak this chunk closes is therefore
+  temp-directory litter — one stale lock per timeout — and the report's `.git/index.lock`
+  is NOT attributable to this code path. Recorded rather than quietly re-scoped: whatever
+  the reporter saw has another cause, and a future reader of #675 should not believe this
+  fix addressed it.
+
+  **A second requirement surfaced from measurement, and it is a correctness one.** The
+  copy must preserve the index's **mtime** (`shutil.copy2`, not `copyfile`). Git's stat
+  cache skips a file whose size and mtime still match its entry, and the only thing that
+  catches a same-tick, same-size edit is the racily-clean rule — *an entry whose mtime is
+  not older than the index FILE's own may have changed since it was recorded, so re-read
+  it.* A copy stamped with the current time makes every entry look comfortably older than
+  its index, silences that rule, and lets `add -A` skip the re-hash: the captured tree
+  then carries the file's PREVIOUS content and the review vouches for a tree that never
+  existed. This is a fail-open in the evidence store, strictly worse than the timeout it
+  was traded for, and it was found only because the first implementation flaked in the
+  suite. Section C of the derivation runs the race; the deterministic pin is
+  `test_same_second_same_size_edit_is_still_captured`.
 - **Depends on:** none
 - **Artifacts consumed:** `nonfunctional-requirements.md` § Performance (the P0
   review-wall-clock constraint this defect is paid out of)
-- **Deliverables:** `plugin/lib/evidence.py` — `capture_tree` seeds from a copy of
-  `.git/index` with a `read-tree HEAD` fallback when that file is absent or unreadable;
-  `_GIT_TIMEOUT` becomes an env-overridable default (`PRAWDUCT_GIT_TIMEOUT`); a failed
-  capture removes a `.git/index.lock` **it created** and names the remedy in its error
-  string
-- **Tests:** unit — the fallback path when `.git/index` is absent (fresh/unborn HEAD) and
-  when it is unreadable; the env override is honored and a malformed value is refused
-  rather than silently defaulted; a capture failure leaves no lock behind and its message
-  names the remedy. Integration — `capture_tree` on a tree with an uncommitted change
-  still returns the correct tree SHA and leaves the session's real index untouched (the
-  existing R1 invariant, re-asserted against the new seeding path)
+- **Deliverables:** `plugin/lib/evidence.py` — `capture_tree` seeds from a **metadata-
+  preserving** copy of `.git/index` (the mtime is load-bearing, see Description) with a
+  `read-tree HEAD` fallback when that file is absent, unreadable, or only partly copied;
+  `_GIT_TIMEOUT` becomes an env-overridable default (`PRAWDUCT_GIT_TIMEOUT`), refusing a
+  malformed override rather than silently restoring the default; a failed capture removes
+  the temp-index lock **it created** and names the remedy in its error string.
+  `.prawduct/research/tree-capture-2026-08-19/measure.py` — the committed derivation
+  behind the cost claim, the seed-agreement claim, and the mtime claim
+- **Tests:** unit — the seed reads the repo's own index; the fallback path when the copy
+  cannot happen at all and when it dies part-way (a truncated index git would reject);
+  the env override reaches the subprocess call and a malformed value is refused rather
+  than silently defaulted; a capture failure leaves no lock behind and its message names
+  the remedy; a same-tick, same-size edit is still captured (the racily-clean pin, with
+  every timestamp forced so the race is not left to the machine's speed); a
+  `--skip-worktree` entry still agrees with a verbatim commit. Integration —
+  `capture_tree` on a tree with an uncommitted change still returns the correct tree SHA
+  and leaves the session's real index untouched (the existing R1 invariant, re-asserted
+  against the new seeding path)
 - **Acceptance criteria:** capture returns an identical tree SHA to the current
-  implementation for the same working tree (the change is a cost fix, not a semantic one);
-  elapsed capture time on this repo's tree improves measurably against the `read-tree`
-  path, recorded by a committed derivation rather than a quoted figure; a forced timeout
-  leaves no `.git/index.lock`
+  implementation for the same working tree (the change is a cost fix, not a semantic one),
+  including for an edit made within one filesystem tick of the index write; elapsed
+  capture time on this repo's tree improves measurably against the `read-tree` path,
+  recorded by a committed derivation rather than a quoted figure; a forced timeout leaves
+  no lock file behind and says how to raise the budget
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
