@@ -100,6 +100,7 @@ Each chunk's real verification is the suite plus a **re-measurement**, because t
 - **Acceptance criteria:** suite green; the Chunk 01 total still under ceiling after the addition — which is the plan's own closing argument, since this addition is funded by the cuts rather than by a raise
 - **Type:** doc-only
 - **Critic mode:** cumulative
+- **Carried coverage — read before running this chunk's review:** Chunk 01's `chunk` review anchored its PRE-commit working tree; the `ast`-based extraction in `test_every_injectable_digest_is_budgeted` was written AFTER that review, so the committed tree at `2ebfa3b8` carries logic no reviewer has seen. A `verify-resolutions` round was deliberately NOT run for it: this chunk's cumulative pass spans `merge-base...HEAD` and is its first real review, so a round then would have bought coverage this one already schedules — the fix-churn round #167 exists to refuse. Recorded here rather than assumed, because an unrecorded deferral is a drop.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
@@ -116,8 +117,8 @@ Also out of scope and ranked **above** this whole plan by owner ruling: **#652**
 
 ## Status
 
-- [ ] Chunk 01: Total-injected-footprint assertion
+- [x] Chunk 01: Total-injected-footprint assertion
 - [ ] Chunk 02: Collapse the standing block to its carriers
 - [ ] Chunk 03: Retire the slim digest and trim CLAUDE.md
 - [ ] Chunk 04: A findings-only turn is not safe to clear
-Context: Plan authored 2026-08-19 on `fix/governance-surface-dedup`, nothing built yet. Baseline suite green (`test-status` exit 0). Owner rulings folded in: the total-footprint assertion is HARD (not advisory), and retiring the slim digest proceeds for the pins even though the token win is modest. Next: Chunk 01.
+Context: Chunk 01 shipped 2026-08-19 on `fix/governance-surface-dedup` (`2ebfa3b8` + change-log `1982ff64`). Critic `chunk` review: 0 blocking, 1 warning (governed-by gap — fixed, this file's `governed_by` now disposes all 8 architecture and 3 NFR norms), 1 note (grooming stamp — ACCEPTed, committed separately as `cc66ef30`). Suite green, 4805 passed / 10 skipped, evidence current. Measured baseline now asserted: framework session 3455 tok, product session 2256 tok. Next: Chunk 02. The one thing that may want the owner before Chunk 03 is the HIGH-impact roster assumption above.
