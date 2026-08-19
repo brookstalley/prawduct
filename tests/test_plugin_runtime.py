@@ -1809,11 +1809,25 @@ class TestNoRerunRestamp:
         assert (after["passed"], after["failed"], after["skipped"]) == (7, 0, 0)
         assert _run_in(repo, "validate-evidence").returncode == 0
 
-    def test_refreshes_changes_referenced_against_current_tree(self, tmp_path):
-        # The feature's stated purpose: restamp re-derives the F4a coverage half
-        # against the CURRENT tree. Seed on a clean tree (nothing changed vs
-        # main), then modify a referenced source file and restamp — the changed
-        # file must now appear in changes_referenced, with no suite run.
+    def test_refreshes_changes_referenced_on_an_uncheckable_record(self, tmp_path):
+        """Renamed 2026-08-19: this seeds via `--from-counts`, which records no
+        `evidence_tree` by design, so the restamp guard cannot check the
+        operator's assertion and warns rather than refusing. That is the branch
+        this exercises.
+
+        The old name — "against current tree" — claimed the feature's stated
+        purpose, and after the guard landed it no longer covers that purpose for
+        a record from a REAL run: there, a judgeable change refuses (see
+        `test_restamp_refuses_when_judgeable_content_moved_since_the_run`). The
+        coverage-refresh case is withdrawn for real-run records, deliberately
+        and on the record; leaving this name would have let the suite read as
+        though it were still guarded.
+        """
+        # Restamp re-derives the F4a coverage half against the CURRENT tree.
+        # Seed on a clean tree (nothing changed vs main), then modify a
+        # referenced source file and restamp — the changed file must now appear
+        # in changes_referenced, with no suite run. Reachable here only because
+        # `--from-counts` leaves the record uncheckable; see the docstring.
         repo = tmp_path / "nr2"
         repo.mkdir()
         (repo / ".prawduct").mkdir()

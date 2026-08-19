@@ -176,7 +176,7 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
 - [x] Chunk 02: `building.md` re-prices the work-cycle limit
 - [x] Chunk 03: The clear line answers *should you*, and a live review moves the verdict
 - [x] Chunk 04: Settle the on-demand guides' budget policy (#688)
-- [ ] Chunk 05: Two friction fixes found by building this plan
+- [x] Chunk 05: Two friction fixes found by building this plan
 
 ## Context
 
@@ -194,6 +194,21 @@ the `[CORRECTED ...]` assumption above), and that is now a sharpened rule in `le
 Governance dispositions written at plan time are predictions — re-check them at chunk close rather
 than inheriting them as passes; the one-home disposition claimed conformance before the code existed
 and was wrong within one commit.
+
+**Chunk 05 closed 2026-08-19.** `3de7cf41` + the observation fixes. Critic
+`verify-resolutions` rev-20260819T193811Z-e9a21fba → **0 blocking, 0 findings**; all 5 of the prior
+round's warnings verified fixed against the tree, 4 observations demoted and all 4 actioned.
+
+`backlog file` now merges a filer's metadata block instead of burying it, and
+`test-evidence record --no-rerun` checks the assertion it always claimed to make. The restamp guard
+**refuses** rather than warns for one specific reason worth keeping: a restamp rewrites
+`evidence_tree` to the current tree, so permitting one lets stale counts vouch for a tree they never
+ran against — and no downstream gate can catch it afterwards, because the restamp is what made the
+record look fresh. That withdraws the documented cheap-refresh-after-a-rename case, named in the
+docstring, the change-log and here rather than buried.
+
+**All five chunks are `[x]`.** The plan is complete. A `cumulative` spanning merge-base → HEAD is
+still owed for the PR gate — `/prawduct:pr` requests it — and PRs are not created proactively.
 
 **Chunk 04 closed 2026-08-19.** `27c6cae4` (the decision) + the findings fix. Critic
 `cumulative` rev-20260819T185939Z-aa2e9524 → **0 blocking** / 5 warnings / 15 notes. Suite green.

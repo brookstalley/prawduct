@@ -153,6 +153,26 @@ class TestComposeBodyMergesAnEmbeddedBlock:
         assert out.count("Why this matters.") == 1
         assert "```prawduct" not in out.split("Why this matters.")[0]
 
+    def test_a_body_cannot_claim_the_attribution_stamps(self):
+        """The direction precedence alone does not cover.
+
+        An ATTENDED create passes only `{"v": "1"}`, so a body that self-declared
+        `automated: true` meets no colliding key and would survive a plain merge
+        — misattributing a human's filing to a background sweep. `automated` and
+        `worker` describe *who filed this*, which the filed text never gets to
+        assert; every other block field is the filer's to set.
+        """
+        body = "Why.\n\n```prawduct\nv: 1\nautomated: true\nworker: ghost\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1"})
+        block = encode.parse_block(out)
+        assert block.get("automated") is None, (
+            "a body declared itself automated on an attended create — a human's "
+            "filing would be attributed to a sweep"
+        )
+        assert block.get("worker") is None
+        # The filer's own field is untouched: this strips two keys, not the block.
+        assert block.get("related") == "[owner/repo#7]"
+
     def test_the_fresh_fields_win_a_collision(self):
         """Precedence is not arbitrary: a body must not be able to launder an
         unattended create into looking human. `automated`/`worker` are the

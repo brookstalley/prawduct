@@ -276,6 +276,13 @@ def upsert_block_field(body: str | None, key: str, value: str | None) -> str:
     return f"{rendered}\n"
 
 
+#: Block fields that describe WHO FILED an item rather than what it is. A body
+#: never gets to assert these: they are stamped by the command from its own
+#: invocation context, so :func:`compose_body` drops them from any block found
+#: in the caller's text before merging. Every other field is the filer's.
+_CALLER_OWNED_FIELDS = frozenset({"automated", "worker"})
+
+
 def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
     """Compose an issue body from human text + a fresh ``prawduct:`` block's fields.
 
@@ -286,9 +293,10 @@ def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
     diverge (Data Model §2). An empty human body yields the block alone.
 
     **A block already in ``human`` is MERGED, not buried.** Filers write their
-    own ``prawduct:`` block into the body — it is the documented way to declare
-    ``related:`` at filing time — and this used to append a second one beside
-    it. Parsing is last-block-wins, so the filer's fields were then silently
+    own ``prawduct:`` block into the body, and this used to append a second one
+    beside it. (The docs steer filers to the flags and ``link`` instead, and
+    still do — but "the docs told you not to" is no reason for a silent data
+    loss, and the warning it produced reads like housekeeping.) Parsing is last-block-wins, so the filer's fields were then silently
     discarded and the loss surfaced only as a warning that reads cosmetic
     ("issue body carries 2 prawduct blocks; using the last"). Three items filed
     on 2026-08-19 (#690, #691, #692) lost their ``related:`` edges exactly this
@@ -296,14 +304,23 @@ def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
     to omit a block the docs tell them to write.
 
     **Precedence: the fresh fields win a key collision**, and the filer's other
-    fields survive untouched. The caller's fields are the authoritative stamps
-    (``v``, and ``automated``/``worker`` on an unattended create), so a body
-    that claims ``automated: false`` must not be able to launder a background
-    sweep into looking human.
+    fields survive untouched. The caller's fields are the authoritative stamps,
+    so a body claiming ``automated: false`` cannot launder a background sweep
+    into looking human.
+
+    The attribution stamps are stripped from the embedded block **in both
+    directions**, which precedence alone does not cover: an *attended* create
+    passes only ``{"v": "1"}``, so with a plain merge a body that self-declared
+    ``automated: true`` would face no colliding key and survive — misattributing
+    a human's filing to a sweep. These two keys describe *who filed this*, which
+    is never something the filed text gets to assert; every other block field is
+    the filer's to set.
     """
     embedded = parse_block(human)
     text = strip_block(human)
-    merged = dict(embedded.fields)
+    merged = {
+        k: v for k, v in embedded.fields.items() if k not in _CALLER_OWNED_FIELDS
+    }
     merged.update(block_fields)
     rendered = serialize_block(merged)
     if text:
