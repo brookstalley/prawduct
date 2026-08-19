@@ -254,7 +254,14 @@ LAST_MEASURED_TOKENS = {
     # skill and was, until now, the only growth nobody had to declare.
     # No ceiling is asserted with this first measurement; the entry exists so the
     # next change to this file has to state what paid for it.
-    "skills/critic/SKILL.md": 3411,
+    # -5 on 2026-08-19: the abandon-a-review parenthetical said the marker "is
+    # swept at the next session boundary — `startup` or `/clear`", which the
+    # TTL-gated sweep made false for BOTH sources it named, on the payload every
+    # reviewer reads. Replaced by the predicate rather than a longer source list:
+    # no session event releases a live marker, because none proves the reviewer's
+    # process died. Stating the rule costs less than enumerating the exceptions
+    # to it, which is why a correction that ADDED a reason still came in under.
+    "skills/critic/SKILL.md": 3406,
     "skills/critic/framework-checks.md": 1116,
 }
 
