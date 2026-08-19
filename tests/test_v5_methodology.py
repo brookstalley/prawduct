@@ -84,6 +84,47 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: keep a prose copy of a figure a mechanism can own. The narratives stay (they
 #: record *why* an edit was affordable, which no test can); the current reading
 #: lives here, where a wrong number fails instead of misleading.
+#: **The on-demand methodology guides carry a READING and no ceiling**
+#: (decision 2026-08-19, #688; owner-selected from three framed options).
+#:
+#: #688's premise was wrong and the correction changed the answer. It said
+#: `reflection.md` was "the only on-demand methodology guide with no entry" —
+#: measured, `discovery.md` (4752) and `planning.md` (4301) were unbudgeted
+#: too, and `discovery.md` is LARGER than budgeted `building.md`. So the real
+#: state was that on-demand guides were unbudgeted **as a class** with
+#: `building.md` the lone exception, which makes this a policy question rather
+#: than a bookkeeping line — and answering it for one file would have left two
+#: larger ones in the state the issue objected to.
+#:
+#: **Why a reading and not a ceiling.** The yield #688 names is *undeclared
+#: growth*, and a reading delivers exactly that: change the file without
+#: restating its size and the assertion below goes red carrying the number to
+#: write. A ceiling is a different control — it blocks the growth itself — and
+#: these files are the ones where growth is CHEAP. Their cost is opt-in, paid
+#: only by a session that opens them, which is precisely why
+#: `governance-surface-dedup` moved the standing block's full shape into
+#: `reflection.md` rather than the always-injected digest. Pricing the cheap
+#: destination would invert the incentive four chunks were spent building
+#: (`reflection.md` went 3001 → 4529 in two days, and most of that was that
+#: relocation working as designed).
+#:
+#: **How this discharges `nonfunctional-requirements.md` § Direction**
+#: ("proportionality ratchets both ways — every new control must emit its yield
+#: observably"). This is an **accounting** control, not a blocking one. It
+#: cannot fire-and-annoy, because it never refuses a change — only an
+#: unrecorded one — so the failure mode the norm targets (repeated firings, no
+#: blocking yield) is unreachable by construction. Its yield IS its emission:
+#: every entry below is dated, carries what caused the delta, and the whole
+#: history is `git log -p` on this dict. Not a machine-readable fact stream,
+#: and it does not need to be for a control that blocks nothing.
+#:
+#: **What would reverse this**, in either direction: an on-demand guide whose
+#: growth is repeatedly recorded and never justified — that is a ceiling's
+#: case, and the readings are what would prove it — or a measured session
+#: opening a guide it did not need, which is an argument about *routing*, not
+#: about size. `skills/critic/SKILL.md` is the standing precedent for the
+#: shape: a reading with no ceiling, and it has held.
+#:
 LAST_MEASURED_TOKENS = {
     # -1 on 2026-08-13: the evidence-model paragraph said a rebase/amend
     # "demands a fresh look", which the base-advance transfer falsified — the PR
@@ -108,7 +149,31 @@ LAST_MEASURED_TOKENS = {
     # this file can make: `SAFE TO CLEAR` binds to ITS steps 1-7. The ceiling
     # was ratcheted down with the cut, so the standing trim-or-relocate rule is
     # enforced structurally here rather than asserted in prose.
-    "methodology/building.md": 4720,
+    # +6 on 2026-08-19 (#687): the work-cycle limit was re-priced. It stated one
+    # rule on TWO rationales with different expiry dates and a chunk count
+    # proxying for both. The compaction half is CEDED (Principle 26 — the
+    # cession itself is recorded in the change-log, which is where a re-pricing
+    # belongs; purpose.md's responsibility ledger, its eventual home, is not
+    # built); the review-scope half survives, re-justified on the reviewer's
+    # ATTENTION rather than its window, which is why larger windows do not erode
+    # it; the number retires in favour of the diff-size unit the roster rule
+    # already uses. Paid for in place, NOT by a bump: the Modes section restated
+    # what each of the four modes covers, three lines above its own pointer to
+    # the file that defines them and that the reader is told to open. What it
+    # keeps is the two facts a reader needs BEFORE opening it (`cumulative`
+    # feeds the PR gate; `verify-resolutions` alone records resolutions), which
+    # is the part a pointer cannot carry.
+    #
+    # The cut went FURTHER than the addition, which is why this reading is below
+    # where the branch started: the Modes section named
+    # `skills/critic/review-cycle.md` three times in five lines — once in the
+    # gloss, once in a fail-safe sentence, once in a following aside — while the
+    # first draft of the trim ADDED a fourth by pointing at a "per-mode table
+    # below" that is not in this file. Merged to one pointer carrying both the
+    # per-mode table and the fail-safe. CEILING RATCHETED 4730 -> 4718 with the
+    # cut, per the standing rule: slack left behind is a loan the next edit
+    # collects silently and green.
+    "methodology/building.md": 4708,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -254,8 +319,63 @@ LAST_MEASURED_TOKENS = {
     # skill and was, until now, the only growth nobody had to declare.
     # No ceiling is asserted with this first measurement; the entry exists so the
     # next change to this file has to state what paid for it.
-    "skills/critic/SKILL.md": 3411,
+    # -5 on 2026-08-19: the abandon-a-review parenthetical said the marker "is
+    # swept at the next session boundary — `startup` or `/clear`", which the
+    # TTL-gated sweep made false for BOTH sources it named, on the payload every
+    # reviewer reads. Replaced by the predicate rather than a longer source list:
+    # no session event releases a live marker, because none proves the reviewer's
+    # process died. Stating the rule costs less than enumerating the exceptions
+    # to it, which is why a correction that ADDED a reason still came in under.
+    # -6 on 2026-08-19 (Critic R-4, CLASS): the marker paragraph asserted that
+    # "while it is set `prawduct-hook clear` refuses to mutate session state
+    # (from any context)". True only because the boundary used to sweep the
+    # marker BEFORE mutating; gating that sweep falsified every copy of the
+    # claim at once, and this file then taught the opposite of its own closing
+    # paragraph. Narrowed to the act that still refuses -- a *bare* `clear`.
+    # Paid for past the addition by cutting the file's second verbatim copy of
+    # "otherwise it auto-expires after 30 min": the TTL stays where the reader
+    # ACTS on it (the abandon-a-review paragraph), not in the data-plane gloss.
+    # The boundary behaviour is deliberately NOT restated here -- that same
+    # closing paragraph already owns it.
+    #
+    # +3 on 2026-08-19 (verify-resolutions): R-4 was closed at the two sites it
+    # NAMED and the class was left open. Its own prescribed search still
+    # returned three survivors, one of them the frontmatter comment 24 lines
+    # above the fix -- which is injected verbatim into every Critic fork's
+    # prompt, so the reviewer reading it had been handed the false claim while
+    # reviewing the correction. Same narrowing applied there. Net for the
+    # branch is still -3 (3406 -> 3403): the TTL cut above overpaid, and this
+    # spends part of that rather than adding on top of it.
+    "skills/critic/SKILL.md": 3403,
     "skills/critic/framework-checks.md": 1116,
+    # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
+    # ceilings; the block above this dict is the decision and its reasoning.
+    # These three are baselines, not achievements: they record where the class
+    # stood when the policy landed, so the NEXT edit is the first one that has
+    # to say what it cost.
+    #
+    # `discovery.md` 4752 — grew 4189 → 4752 across the 2026-08-02 critic
+    # burndown, then flat. `planning.md` 4301 — slowest mover of the three.
+    # `reflection.md` 4529 — the fast one, 3001 → 4529 in two days: the
+    # `governance-surface-dedup` relocation of the standing block's full shape
+    # (3238 → 4083), then the clear-line verdict and its deadline (#687).
+    # That growth is the design working, which is exactly why it is recorded
+    # rather than capped.
+    "methodology/discovery.md": 4752,
+    "methodology/planning.md": 4301,
+    # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
+    # the assertion went red the moment the file changed without its reading,
+    # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
+    # branch on the live-review deadline. Recorded, not capped, which is the
+    # decision above working as intended: the growth is a correction to an
+    # instruction that could not be followed in a fresh clone.
+    # 4644 -> 4702 on 2026-08-19 (Critic R-5): the deadline recipe named a
+    # filter `review-stats` does not accept (it takes none — the figure is a row
+    # of its `by role x model x mode` block), and stated the sample floor as "a
+    # handful" one clause after citing `MIN_PRICED_SAMPLE`, which is 5. Both
+    # were instructions an agent executes at every turn a review is live, so the
+    # cost buys a recipe that runs instead of one that reads well.
+    "methodology/reflection.md": 4702,
 }
 
 
@@ -343,7 +463,46 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # preamble's second argument for its own first sentence, and four
     # explanations of rules the same bullet had already stated. Net +5 is what
     # the trim could not reach; both ceilings still hold.
-    "framework": 3320,
+    #
+    # -3 on both shapes, 2026-08-19 (#687): the standing block's CLEAR line
+    # gained the binding it never had. The in-flight rule bound only the
+    # DISPOSITION line, so `RUNNING` beside `SAFE TO CLEAR` was emittable --
+    # and this repo emitted it three times with a Critic review live. A live
+    # review now moves the verdict, and its copy carries a computed deadline
+    # rather than only a reason, because the reader about to step away is
+    # asking by WHEN to check back.
+    #
+    # Paid for in place and past the addition, by cutting a CLASS rather than
+    # words: three section headings carried a parenthetical restating a fact
+    # the preamble or their own body already stated -- `## Principles (apply
+    # with judgment, not mechanically)` is verbatim the opening sentence,
+    # `## Read on demand (plugin skills -- the full guides ship in the plugin)`
+    # is the rest of it, and `## Enforcement (this is what makes governance
+    # stick)` is the claim its two sentences go on to make. `(stance)` on the
+    # fourth heading is a LABEL, not a restatement, and stays.
+    #
+    # +3 on both shapes, 2026-08-19 (Critic R-7): the deadline recipe told the
+    # agent to compute an expected total and forbade a constant, while naming
+    # no branch for the case where the ledger cannot price one — and the ledger
+    # is gitignored, so it is EMPTY in every fresh clone and every newly
+    # onboarded product. The digest now says "expected when priceable"; the
+    # full rule (report elapsed and the roster, name the expectation
+    # unavailable, and why a one-sample median is a missing number rather than
+    # a small one) lives in `reflection.md`, which is the split this bullet
+    # already uses. Three tokens rather than the eight a fuller phrasing cost:
+    # the first draft spelled out "where the ledger can price one" and broke
+    # the ceiling, which is the ceiling doing its job.
+    #
+    # +1 on `framework` only, 2026-08-19 (Critic R-8): CLAUDE.md was the FOURTH
+    # member of the class three earlier commits narrowed — a surface asserting
+    # the marker's guarantee without the *bare*-invocation qualifier. It sat
+    # outside the earlier sweeps because those bounded the class by CONTAINER
+    # (`plugin/**`) rather than by PROPERTY, and this file is at the repo root.
+    # Closed by dropping the mechanism clause rather than qualifying it — the
+    # sentence is already a pointer to `SKILL.md`, which owns the fact, so
+    # restating it precisely would have been a more accurate second home. One
+    # token is what a pointer costs over a claim.
+    "framework": 3321,
     "product": 2243,
 }
 
@@ -368,9 +527,93 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # Both shapes carry the digest, so a digest addition is charged twice and
     # both ceilings bind it; only a CLAUDE.md edit is charged to `framework`
     # alone.
-    "framework": 3325,
-    "product": 2248,
+    #
+    # -3 on both, 2026-08-19: ratcheted with the readings again. The clear-line
+    # binding cost less than the heading-parenthetical class that funded it, so
+    # both readings landed BELOW where the branch started; leaving the ceilings
+    # would have banked that difference as headroom for the next addition,
+    # which is the re-funding this comment's first paragraph forbids.
+    "framework": 3322,
+    "product": 2245,
 }
+
+
+def test_every_methodology_guide_is_accounted_for():
+    """No methodology guide sits outside the #688 answer — including new ones.
+
+    THE HALF THAT MAKES THE DECISION A POLICY RATHER THAN THREE ENTRIES. The
+    readings above only watch files someone remembered to add; this watches the
+    DIRECTORY, which is what nothing was watching when `reflection.md`,
+    `discovery.md` and `planning.md` all went unbudgeted and the issue reporting
+    it named only one of them. Adding `methodology/onboarding.md` tomorrow and
+    forgetting the table is precisely the mistake being guarded, and it is the
+    same blind spot `test_every_injectable_digest_is_budgeted` closes one tier
+    up.
+
+    **Two ways to be accounted for, not one.** A guide is covered either by a
+    per-file reading in `LAST_MEASURED_TOKENS` (the on-demand class) or by
+    membership in an injected session shape, where the total is the budget and a
+    per-file reading would be a second, staler copy of it. `session-digest.md`
+    is the whole reason the check has to allow both: it is a `methodology/*.md`
+    file that is deliberately absent from the readings table because
+    `LAST_MEASURED_INJECTED_TOKENS` already prices it — twice, once per shape.
+
+    Deliberately says nothing about ceilings. Whether a guide gets one is the
+    decision recorded above this dict, and a test asserting the *absence* of an
+    assertion would encode today's answer as structure — which is what makes a
+    policy hard to revisit rather than easy to see.
+    """
+    injected = {m for members in INJECTED_SESSION_SHAPES.values() for m in members}
+    guides = sorted(
+        str(p.relative_to(ROOT))
+        for p in (ROOT / "methodology").glob("*.md")
+    )
+    assert guides, "found no methodology guides at all — ROOT is wrong"
+    unaccounted = [
+        g for g in guides
+        if g not in LAST_MEASURED_TOKENS and g not in injected
+    ]
+    assert not unaccounted, (
+        f"methodology guide(s) with no size accounting: {unaccounted}. Every "
+        "guide is either a per-file reading in LAST_MEASURED_TOKENS (the "
+        "on-demand class — see the decision recorded above that dict) or a "
+        "member of an injected session shape, where the shape total is the "
+        "budget. Add the reading; the sibling assertion will tell you the "
+        "number. Do NOT delete this check to make a new guide green."
+    )
+
+
+def _clear_line_guidance() -> str:
+    """Just the standing block's CLEAR item from `reflection.md`.
+
+    Pins about what the clear line must and must not say belong to that item,
+    not to the whole guide -- a negative assertion run over a 200-line file
+    goes red on edits that have nothing to do with it, and a pin that cries
+    wolf gets deleted rather than investigated.
+
+    Delimited by the numbered item's own start and the next unindented
+    paragraph, because the item's continuation paragraphs are indented and its
+    successor is not. Asserts it found both ends: a silently-empty slice would
+    make every positive assertion below it fail for the wrong reason and every
+    negative one PASS vacuously, which is the worse half.
+    """
+    text = read_file("methodology/reflection.md")
+    opener, closer = "3. **Clear** —", "\n**Three ways to fail this"
+    start, end = text.find(opener), text.find(closer)
+    for label, found in (("opener", start), ("closer", end)):
+        assert found != -1, (
+            f"`_clear_line_guidance` cannot find the {label} it slices on "
+            f"({opener if label == 'opener' else closer!r}) — `reflection.md`'s "
+            "standing-block section was restructured. Re-point the delimiters; "
+            "do not delete the pins that depend on this."
+        )
+    item = text[start:end]
+    assert len(item) > 500, (
+        "the clear-line slice came back too short to be the real item -- the "
+        "delimiters in `_clear_line_guidance` no longer match `reflection.md`, "
+        "and every negative assertion using it is now passing vacuously"
+    )
+    return item
 
 
 def _injected_member_text(member: str) -> str:
@@ -728,6 +971,119 @@ class TestBuildingMethodology:
             # when the block is owed.
             assert "work outstanding" in text, f"{name} states a different trigger"
 
+    def test_a_live_review_moves_the_clear_verdict_on_every_carrier(self):
+        """A live Critic review is `DO NOT CLEAR`, and the copy carries a deadline.
+
+        THE GAP THIS CLOSES. The in-flight rule binds the *disposition* line
+        only — "a dispatched review is `RUNNING`, never `COMPLETE`" — and
+        nothing bound the line below it, so `RUNNING` beside `SAFE TO CLEAR`
+        was a reachable emission. It is not a hypothetical: this repo emitted
+        that pair three times on 2026-08-19 with a review live.
+
+        **Asserted on the verdict, not on the mention.** A carrier that merely
+        names a running review in the clear copy — "a review is in flight, but
+        the work is committed" — satisfies any pin that greps for "review",
+        while being exactly the copy-only phrasing this rule replaces. So the
+        discriminating content is the verdict token adjacent to the live-review
+        subject, plus the deadline the copy owes; both halves have to be there,
+        because a verdict with no clock answers *may I clear* and leaves *by
+        when must I check back* unanswered, and that second question is the one
+        the person stepping away is actually asking.
+
+        Pinned on both carriers for the same reason the shape is: the digest is
+        injected with no opt-out, so an agent that never opens a guide gets the
+        binding anyway, and `reflection.md` is where a reader sent by the
+        digest's pointer arrives.
+        """
+        for name in (
+            "methodology/reflection.md",
+            "methodology/session-digest.md",
+        ):
+            # Normalized because the digest wraps mid-clause: the subject and
+            # its verdict sit on different source lines there, and a raw
+            # substring match would pin the line-breaking rather than the rule.
+            text = " ".join(read_file(name).split())
+            assert re.search(r"live (Critic )?review is (also )?`DO NOT CLEAR`", text), (
+                f"{name} no longer states that a live review MOVES the clear "
+                "verdict. Naming the review in the copy is not this rule — the "
+                "pair `RUNNING` + `SAFE TO CLEAR` stays emittable under it."
+            )
+            # The clock. `DO NOT CLEAR` with a live review is a deadline, not
+            # just a refusal, and the copy owes what it is computed from.
+            assert "deadline" in text, (
+                f"{name} dropped the deadline the `DO NOT CLEAR` copy owes — "
+                "without it the line answers *may I clear* and leaves *by when "
+                "must I check back* unanswered"
+            )
+            for input_name in ("elapsed", "roster"):
+                assert input_name in text, (
+                    f"{name} stopped naming {input_name!r} as an input to the "
+                    "deadline. A deadline with no stated derivation invites the "
+                    "constant this rule exists to keep out"
+                )
+        # The nuance lives on the canonical carrier alone, and is load-bearing:
+        # the rule is NOT "`RUNNING` implies `DO NOT CLEAR`". Work a clear
+        # leaves alone is legitimately both, and over-reading this into a
+        # blanket implication would make the clear line a restatement of the
+        # disposition line — which is the collapse the two-axis design exists
+        # to prevent (see the "different axis" clause the shape pin guards).
+        canonical = read_file("methodology/reflection.md")
+        assert "for work a clear leaves alone it is correct" in canonical, (
+            "reflection.md dropped the clause scoping the new binding to work "
+            "a clear DESTROYS. Without it the rule reads as `RUNNING` implying "
+            "`DO NOT CLEAR`, collapsing two lines that answer different axes."
+        )
+
+    def test_the_clear_line_answers_should_you_without_a_threshold(self):
+        """*Should you clear* is answered, and answered without a number.
+
+        #687 scopes every numeric threshold OUT until rebuild cost and
+        per-turn growth are measured from real `/clear`s, and separately
+        records why a context-fullness gate was rejected: an agent cannot
+        reliably measure its own window, and a gate that fires routinely trains
+        dismissal. So this pin has a positive and a negative half, and the
+        negative is the one that matters — a later edit "helpfully" adding
+        "clear when context passes 50%" ships the rejected design, and the
+        positive half alone would stay green through it.
+
+        `reflection.md` only: the digest carries the VERDICT binding in its
+        shortest true form (five tokens of headroom, and it is charged to both
+        injected shapes), while the reasoning belongs to the canonical carrier.
+        """
+        clear_item = _clear_line_guidance()
+        assert "*should you*" in clear_item, (
+            "reflection.md's clear line no longer answers *should you* — it is "
+            "back to answering only *can you*, which is the gap #687 names"
+        )
+        # Keyed to cost, not to a threshold: coverage survives a clear (so the
+        # review argument is not the reason), and the read cost of NOT clearing
+        # is what grows.
+        assert "review-cycle.md" in clear_item, (
+            "reflection.md stopped citing where review coverage's survival "
+            "across sessions is defined; without it the cost argument reads as "
+            "though clearing risks the accumulated reviews"
+        )
+        # Scoped to the clear line, not the file. A percentage elsewhere in
+        # this guide is nobody's business here, and a whole-file ban would go
+        # red on an unrelated edit -- a pin that cries wolf gets deleted, which
+        # costs more than it ever caught.
+        #
+        # A regex rather than the literals a first draft listed ("50%",
+        # "% full"): the rejected design is ANY numeric fullness trigger, and
+        # banning today's phrasings invites tomorrow's 60%.
+        threshold = re.search(r"\d+\s*%", clear_item)
+        assert threshold is None, (
+            f"reflection.md's clear guidance names a percentage "
+            f"({threshold.group(0)!r} if matched) — #687 records the "
+            "context-fullness trigger as REJECTED on grounds no later edit "
+            "re-derives: the percentage proxies the risk rather than measuring "
+            "it, and the agent cannot take the measurement anyway"
+        )
+        assert "context is full" not in clear_item, (
+            "reflection.md's clear guidance gates on context fullness, which "
+            "#687 rejects: the agent cannot reliably measure its own window"
+        )
+
     def test_building_md_binds_the_clear_verdict_to_its_own_steps(self):
         """building.md drops the shape but keeps the binding only it can state.
 
@@ -792,7 +1148,13 @@ class TestBuildingMethodology:
         """
         for surface in ("methodology/reflection.md", "methodology/session-digest.md"):
             text = read_file(surface)
-            lowered = text.lower()
+            # Whitespace-normalized because the phrases below span several
+            # words, and both carriers hard-wrap. A pure RE-WRAP -- no word
+            # added, removed or reordered -- split "citing the message" across
+            # two lines and turned this pin red, which is a false negative: the
+            # rule was intact and only the line breaks moved. Pinning prose on
+            # raw substrings makes the fill width part of the contract.
+            lowered = " ".join(text.lower().split())
             assert "findings-only" in lowered, (
                 f"{surface} does not name the findings-only turn -- the reader "
                 "cannot apply a rule to a case they cannot identify"
@@ -884,6 +1246,48 @@ class TestBuildingMethodology:
         assert "before rewriting it" in content
         # The why belongs on the injected surface, not the on-demand one.
         assert "/clear` consumes" in content
+
+    def test_work_cycle_size_is_priced_on_diff_not_chunk_count(self):
+        """The re-priced rule (#687) states the rationale that survived, in the
+        unit that survived with it.
+
+        The rule used to read "limit work cycles to 1-3 chunks — Critic quality
+        degrades across a large diff, and long-session compaction can lose
+        governance context." Two rationales, different expiry dates. The
+        compaction half was ceded; the review-scope half was not, because a
+        large diff is hard to review through the reviewer's ATTENTION, not its
+        context window — so a bigger window does not ease it, and arguably makes
+        it worse by removing the friction that was incidentally holding diffs
+        small.
+
+        Pinned on the DISCRIMINATING content, not on the absence of "1-3". A
+        negative-only assertion passes against a sentence that names no unit at
+        all, which is the likeliest way this decays: the count is easy to delete
+        and the replacement unit is easy to never write. So this asserts the
+        attention/window distinction (without which a future reader re-derives
+        the ceded rationale and re-adds it) and that a diff-shaped unit is
+        named.
+        """
+        assert "1-3 chunks" not in self.content, (
+            "the chunk-count proxy retired with the rationales it stood for"
+        )
+        lowered = self.content.lower()
+        assert "attention" in lowered and "window" in lowered, (
+            "building.md no longer says WHY the review-scope rationale survives "
+            "a larger context window — without the attention/window distinction "
+            "the ceded compaction argument reads as still live"
+        )
+        assert "judgeable files" in self.content, (
+            "the rule names no diff-shaped unit, so 'size by the diff' is "
+            "unactionable — deleting the count is not the same as replacing it"
+        )
+        # Compaction's REAL invariant is untouched and must stay: what was ceded
+        # is compaction as a reason to cap cycle length, not the rule that
+        # unpersisted state dies at a compaction boundary.
+        assert "must be written to a file first" in self.content, (
+            "the ceded rationale took the persistence rule with it; only the "
+            "cycle-length argument was ceded"
+        )
 
     def test_chunk_close_routes_backlog_to_skill(self):
         """The chunk-close sequence routes backlog work through /prawduct:backlog
@@ -1116,6 +1520,9 @@ class TestBuildingMethodology:
         # consolidate's parenthetical about the SubagentStop trigger, and two
         # words apiece in the research-presentation and cheap-check lines.
         tokens = estimate_tokens(self.content)
+        # LOWERED 4730 -> 4718 (2026-08-19, #687): the work-cycle re-pricing was
+        # funded by collapsing the Modes section's three pointers to one, and the
+        # cut exceeded the addition. Ratcheted in the same commit.
         # LOWERED 4810 -> 4730 (2026-08-19), the same commit that cut the
         # standing-block restatement. A cut that leaves its own slack behind is
         # a cut the next edit spends silently: the drift pin only asks the next
@@ -1124,7 +1531,7 @@ class TestBuildingMethodology:
         # other budgeted file in this module sits within ~1-34 tokens of its
         # ceiling; this restores building.md to that posture and keeps the
         # trim-or-relocate rule meaning what it says.
-        assert tokens < 4730, f"building.md is ~{tokens} tokens, should be <4730"
+        assert tokens < 4718, f"building.md is ~{tokens} tokens, should be <4718"
 
 
 # =============================================================================

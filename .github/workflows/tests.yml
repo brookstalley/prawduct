@@ -20,11 +20,22 @@
 # third-party action would be pinned to a SHA instead — the supply-chain exposure
 # there is somebody else's account, not GitHub's own org.
 #
-# **No pytest flags here.** `-n auto`, `--dist loadfile`, `--timeout` and
-# `testpaths` all live in `pyproject.toml`, and repeating them in this file would
-# make it a second home for the same fact — the next person to tune parallelism
-# would tune one of the two. Same reason the dependency list is read out of the
-# `dev` extra rather than restated: `pip install ".[dev]"` is a reference to it.
+# **Almost no pytest flags here.** Distribution mode, timeouts and `testpaths`
+# all live in `pyproject.toml`, and are deliberately not named here — repeating a
+# value makes this a second home for it, and the next person to tune one would
+# tune one of the two. (That is not hypothetical: this comment used to spell out
+# `-n auto`, and when the worker count was repriced on 2026-08-19 the copy here
+# was left behind asserting the retired value.) Same reason the dependency list
+# is read out of the `dev` extra rather than restated: `pip install ".[dev]"` is
+# a reference to it.
+#
+# That includes the worker count, which is pinned at 5 for a developer's machine
+# and therefore OVERSUBSCRIBES a 4-core runner. Accepted rather than overridden
+# here, and named so it is a known state rather than an oversight: an override
+# would be a pytest flag in this file, which is what the paragraph above forbids,
+# and no CI timing has been measured to justify amending that. If runs start
+# timing out under contention, the fix is to make the count environment-driven
+# WITH that evidence — not to inline a flag here.
 
 name: tests
 

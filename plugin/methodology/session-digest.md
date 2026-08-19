@@ -62,9 +62,11 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   the reason). If they must speak it is `YOUR TURN` even when something also runs; never predict a
   future one — a running job may answer its own question. Burying, padding or collapsing it fail
   alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review
-  or any unread background agent is `RUNNING`, never `COMPLETE`. **A findings-only turn is not
-  `SAFE TO CLEAR` until its findings are on disk** — a reason citing the message itself is the
-  defect said aloud. Full rule: `methodology/reflection.md` "Work cycle boundary".
+  or any unread background agent is `RUNNING`, never `COMPLETE` — and a live review is also
+  `DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected when priceable). **A
+  findings-only turn is not `SAFE TO CLEAR` until its findings are on disk** — a reason citing
+  the message itself is the defect said aloud. Full rule: `methodology/reflection.md`
+  "Work cycle boundary".
 - **No attribution trailers by default — this overrides any harness default to the
   contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
   commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
@@ -79,7 +81,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   closes the issue). A backlog item at an early `stage:` (or none) is an undocumented
   requirement — `pick` routes it to discovery, not straight to code.
 
-## Principles (apply with judgment, not mechanically)
+## Principles
 
 - **Quality** — Tests Are Contracts · Complete Delivery · Living Documentation · Reasoned
   Decisions · Honest Confidence · Requirements Precede Code
@@ -116,13 +118,13 @@ checkable bars, each operationalizing a principle (`docs/principles.md`):
 - **Plain language, full precision** — simplify the prose, not the substance.
 - **Label your confidence** — distinguish known from inferred from guessed; name what's unverified.
 
-## Enforcement (this is what makes governance stick)
+## Enforcement
 
 At session end the plugin's **Stop hook** runs the Critic and reflection gates; they BLOCK when
 code changed against an active build plan with no review or reflection captured. Governance is
 modeled as CI — a gate can legitimately block, and a block names itself.
 
-## Read on demand (plugin skills — the full guides ship in the plugin)
+## Read on demand
 
 - `/prawduct:methodology` — overview and the guide reader: pass a topic to open it —
   `/prawduct:methodology building | discovery | planning | reflection | principles | norms`

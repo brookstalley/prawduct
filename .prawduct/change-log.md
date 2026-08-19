@@ -3,6 +3,232 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: the test suite stops taking the whole machine
+
+<!-- prawduct: type=chore | scope=clear-cadence -->
+
+pytest-xdist is pinned to **5 workers** instead of `-n auto` (owner ruling). `auto` takes every
+core, so a full-suite run owned the developer's machine for its whole duration — observed at a load
+average of 24 on a 10-core box with a run in flight. Worker count is now a **developer-ergonomics**
+setting rather than a throughput one, which is why it is a fixed number and not a fraction of
+`auto`.
+
+**Routed as a norm amendment, not a config tweak.** `Parallelization` is a `project-preferences.md`
+norm with a test enforcing it, so editing `pyproject.toml` alone would have left the norm
+contradicting the tree — doc-drift-to-sync, which this repo forbids. The preference row carries the
+ruling, its date and its why; the test pins the new value **and** asserts `auto` is gone, since a
+revert is the regression and a check for "some `-n` value" sails through it.
+
+**CI inherits it and is therefore oversubscribed by one worker** on a 4-core runner — accepted
+deliberately, not overlooked, and named at all three sites rather than denied at one. Overriding it
+in `tests.yml` would put a pytest flag in a workflow that carries none by norm, and no CI timing was
+measured that would justify amending *that* norm; a first attempt did exactly this, tripped the
+norm's test, and was reverted rather than the norm amended. If runs begin timing out under
+contention, the fix is an environment-driven count *with* that evidence.
+
+## 2026-08-19: two tools stop losing what they were asked to record
+
+<!-- prawduct: type=fix | scope=clear-cadence -->
+
+Both found by *using* the governed path rather than by reading it, and each has a reproduction in
+this branch's own history.
+
+**`backlog` silently discarded metadata in FOUR places.** It began as a filing bug: filing writes a
+fresh `prawduct:` block onto the caller's body — and the caller's body is where a filer declares
+`related:`, because the docs tell them to. The two were *appended*, and parsing is last-block-wins,
+so the filer's fields were dropped. The only signal was a warning that reads cosmetic: *"issue body
+carries 2 prawduct blocks; using the last and ignoring the earlier one(s)."* Three items filed on
+2026-08-19 (#690, #691, #692) lost their `related:` edges that way, and nothing failed.
+
+**The class was wider than the bug, and three sweeps bounded it wrong before one bounded it right.**
+The property is *a writer that persists a body's block*; the trap is `parse_block` (last-block-wins)
+paired with `strip_block` (removes them all) in a writer that emits exactly one — which discards an
+earlier block's fields **and** destroys the multi-block warning that was the loss's only signal.
+Found at four sites: `compose_body` (filing), `upsert_block_field`, `core._body_update_preserving_block`
+— where `backlog update --body` was permanently dropping an earlier block's `id_aliases`, the
+alias-loss footgun that function's own docstring names — and `_related`, whose read-modify-write
+computed its new list from a last-block read and wrote it over a merged one. All four now route
+through `encode.merge_all_block_fields`, the property's one home. Bounding the class by *module*
+rather than by property is what left the last two standing; the closure was verified by enumerating
+every `parse_block` call site in the package, not by re-checking the sites the findings named.
+
+Precedence: the caller's fresh fields win a key collision, and the attribution stamps
+(`automated`/`worker`) are stripped from an embedded block in both directions — a body must not be
+able to launder a background sweep into looking human, nor a human's filing into looking automated.
+
+**`test-evidence record --no-rerun` restamped a count it had not checked.** A restamp is an operator
+*assertion* that the tree's test-relevant content is unchanged since the last real run. Nothing
+verified it, so a restamp taken after tests were added reused the older run's counts — a three-test
+gap — and printed them as `recorded: N passed`, typographically identical to a fresh measurement.
+
+The check is deliberately **not** a content hash (that mechanism was removed pre-v1.4 for chronic
+false positives and is not back). It is the judgeable-path comparison the gates already trust, asked
+against the tree the prior record ran on. Where the assertion is false the restamp is now **refused**
+rather than warned — because a restamp also rewrites `evidence_tree` to the current tree, so
+permitting one makes stale counts vouch for a tree they never ran against, and no downstream gate
+can catch it afterwards. Where the prior record carries no `evidence_tree` (the `--from-counts`
+on-ramp records none by design) nothing can be checked, and it says so instead of passing quietly.
+
+**A capability is withdrawn, and is named rather than buried:** the documented cheap refresh after a
+rename or force-add is refused whenever the prior record came from a real run, because a rename is a
+judgeable path change. The escape is to run the suite or ingest a report — which is what makes the
+evidence sound in the first place.
+
+The output line was the defect surface, so it changed too: a restamp now prints `restamped: …
+[REUSED from the run of <timestamp> — nothing was run]`.
+
+## 2026-08-19: the on-demand methodology guides get size accounting, not size limits
+
+<!-- prawduct: type=feature | scope=clear-cadence -->
+
+`discovery.md`, `planning.md` and `reflection.md` now carry entries in `LAST_MEASURED_TOKENS`, and
+deliberately **no ceilings**. `skills/critic/SKILL.md` was already a reading without a ceiling, so
+this applies an existing shape to a class rather than inventing a control.
+
+**The premise of the request was wrong, and the correction changed the answer.** It named
+`reflection.md` as the only unbudgeted on-demand guide; measured, `discovery.md` (4752) and
+`planning.md` (4301) were unbudgeted too, and `discovery.md` is *larger than* budgeted
+`building.md`. So the question was about the class, and answering it for one file would have left
+two larger ones in the state being objected to.
+
+**The distinction that settled it:** a **reading** catches undeclared growth; a **ceiling** blocks
+growth itself. The stated yield was undeclared growth, so the reading discharges it in full — while
+these are precisely the files where growth is *cheap*, paid only by a session that opens them.
+Pricing them would invert the incentive four chunks of `governance-surface-dedup` were spent
+building, when the standing block's full shape was moved into `reflection.md` rather than the
+always-injected digest. (`reflection.md` went 3001 → 4529 in two days as that worked.)
+
+This is an **accounting** control, not a blocking one, which is how it discharges the proportionality
+norm: it never refuses a change, only an *unrecorded* one, so "repeated firings, no blocking yield"
+is unreachable by construction, and each dated entry stating its cause is the emission.
+
+Made self-enforcing for guides that do not exist yet: `test_every_methodology_guide_is_accounted_for`
+walks `methodology/*.md` and requires each to be covered by a per-file reading or by injected-shape
+membership (how `session-digest.md` is priced — by shape total, twice). Nothing watched the
+*directory* before, which is the blind spot that produced the request.
+
+## 2026-08-19: a live review moves the clear verdict, and the line answers *should you*
+
+<!-- prawduct: type=feature | scope=clear-cadence -->
+
+The turn-closing standing block's in-flight rule bound only the **disposition** line — a dispatched
+review is `RUNNING`, never `COMPLETE`. Nothing bound the line below it on the surface that reaches
+every session, so `RUNNING` beside `SAFE TO CLEAR` was emittable, and this repo emitted that pair
+three times in one day with a coordinator review live. A live Critic review now moves the **clear
+verdict** to `DO NOT CLEAR`.
+
+**The copy owes a clock, not only a reason.** Someone about to step away is not asking *may I
+clear* — they are asking *by when must I check back*, which is a deadline. It is computed, never
+quoted: elapsed from `.critic-active`'s `started_at`, the roster from the per-role started markers,
+the expected total from `prawduct-hook review-stats` for the `critic` role and the review's mode.
+Being computable is what makes this a verdict rather than a caveat, and a constant written into a
+guide would be stale the moment the ledger it came from grew.
+
+**The line also answers *should you*.** Clearing costs nothing in review coverage — the evidence
+store records trees, so a plan's accumulated reviews span sessions untouched — while *not* clearing
+compounds, because every turn re-reads the whole prefix and a session's read cost therefore grows
+with the square of its turns. Cadence is the only control that keeps it linear. Deliberately **no
+threshold and no context-fullness gate**: an agent cannot reliably measure its own window, and a
+prompt that fires every turn trains the reader to skip the one turn it mattered on. That rejected
+design is recorded so it is not re-proposed as-is.
+
+**Paid for in place, and the ceilings ratcheted down.** The always-injected payload had five tokens
+of headroom and is charged to both session shapes. The funding was a *class*, not a word-trim: three
+section headings carried a parenthetical restating what the preamble or their own body already said.
+The cut ran past the addition, so both readings finished below where the branch started and both
+ceilings moved down with them — a ceiling left at its old value after a cut silently re-funds the
+growth the cut paid for.
+
+Alongside, from the review: the boundary retained-marker notice and `critic-begin`'s in-flight
+refusal now share **one owner** for what a pending roster means, so two surfaces can differ on the
+remedy but never on the state; and `--force` announces a live marker it sweeps — naming the review
+and `critic-restore` — instead of being the one destructive path that printed nothing.
+
+## 2026-08-19: `/clear` stops deleting a Critic review's liveness marker
+
+<!-- prawduct: type=fix | scope=clear-cadence -->
+
+A session boundary swept `.critic-active` unconditionally. What licenses deleting a marker someone
+else wrote is that **the process that dispatched the review is gone** — and the boundary/continuation
+split sorts `SessionStart` sources on a different question: *was the transcript restored?*
+
+Those agree at `startup`. They come apart at **`/clear`**, which discards the transcript **without
+ending the process** — so a review subagent dispatched before it may still be running. `compact` and
+`fork` were excluded from the sweep for exactly this reason; `clear` was missed because it *passes*
+the transcript test the other two fail.
+
+**What went wrong when it fired.** Deleting a live marker disarms two things at once: the guard that
+stops an independent reviewer clobbering the session it is reviewing, and the Stop hook's
+abandoned-review backstop — which does not merely block, it **consolidates** a review whose
+reviewers all reported. So a wrongly-swept marker destroyed a recovery, not just a signal.
+
+**The fix keys on the marker, not the source.** A boundary now sweeps only a marker the 30-minute
+TTL has already released. That answers the real question at every source and needs no finer matcher
+— `startup` and `/clear` share one hook entry and are indistinguishable to the command. The
+crashed-Critic rescue the sweep exists for is unchanged. `--force` stays unconditional wherever a
+sweep is licensed: it is the operator's escape from a marker the TTL has *not* released, which is
+the one case it serves.
+
+**What retention costs, stated honestly because it is not free.** Two readers hold different
+liveness predicates. A dispatch refusal keys on the TTL and is *not* `--force`-overridable, so a
+dead-but-fresh marker blocks the next `/prawduct:critic` until it expires; the Stop backstop reads
+raw presence and has **no TTL** at all. Both are loud and recoverable by a command the refusal
+prints. That is the trade: sweeping a live marker fails *silently*, retaining a dead one fails
+*loudly*.
+
+**A new session is now told when a marker was kept** — the session that most needs telling, since
+`/clear` just discarded the context in which the review was dispatched. The remedy it offers is
+conditional on the roster, because the wrong one is destructive: a complete roster is routed to
+`critic-consolidate`, never to `critic-end`, which would discard a finished review's findings.
+
+## 2026-08-19: the work-cycle limit is re-priced, and a rationale is formally ceded
+
+<!-- prawduct: type=refactor | scope=clear-cadence -->
+
+`building.md` said: *"Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades
+across a large diff, and long-session compaction can lose governance context."* One rule, two
+rationales, **different expiry dates** — and a chunk count proxying for both.
+
+**What is ceded (Principle 26).** *Long-session compaction can lose governance context.* The
+mechanism carried a runtime assumption about context windows, the runtime changed, and the honest
+response is to re-price rather than let it ride. This is a cession, not a deletion: the rule was
+correct when written, and what retired it is a change in the world, not a defect in the reasoning.
+Recorded here because **it has nowhere else to go** — `documentation/purpose.md` names a
+*responsibility ledger* as the instrument for exactly this act and says outright it is not yet built
+(Cycle 3 of the cession program). Filed, so the gap is tracked rather than implied.
+
+**What survives, re-justified on one reason instead of two.** *Critic quality degrades across a
+large diff* — and this half does **not** erode, because the binding constraint is the reviewer's
+**attention**, not its context window. A larger window arguably makes it *worse*, by removing the
+friction that was incidentally keeping diffs small. So the rule stands with one rationale, which is
+stronger than standing with two when only one is load-bearing.
+
+**The number retires.** `1-3 chunks` was a proxy for both halves and is now a proxy for neither. The
+honest unit is the one the coordinator roster rule already keys on — a risk surface, or 12+
+judgeable files — so cycle size is priced on the diff its review must cover. A second site carried
+the same retiring number (*"when you've completed 2-3 chunks"*); it went in the same pass, because
+sweeping the instance and leaving its sibling is how a retired rule comes back.
+
+**What was NOT ceded, and the distinction matters.** Compaction's real invariant is untouched:
+anything that must survive — plans, decisions, rationale — is written to a file first. What was
+ceded is compaction as a reason to *cap cycle length*, not compaction as a hazard. The replacement
+invariant #687 proposes is sharper than either: the risk is not "context got full", it is
+**unpersisted state**.
+
+**It funded itself, and then some.** The addition was paid by a cut in the same commit: the Modes
+section restated what each of the four Critic modes covers, three lines above its own pointer to the
+file that defines them. It keeps the two facts a reader needs *before* opening that file
+(`cumulative` feeds the PR gate; `verify-resolutions` alone records resolutions) — the part a
+pointer cannot carry. **The cut ran past the addition**, so `building.md` finished *below* where the
+branch started and the ceiling **ratcheted down**, 4730 → 4718. That direction is the precedent
+worth taking from this entry: a re-pricing that overpays ratchets the ceiling with the reading,
+because a ceiling left at its old value after a cut silently re-funds the growth the cut paid for.
+
+**Still open, deliberately.** The cadence question — *should* you clear, and by when — is not
+answered here; it belongs to the standing block's clear paragraph, and putting it in two places is
+the failure this release already spent four chunks fixing. And no numeric threshold ships until
+rebuild cost and per-turn growth are measured from real `/clear`s.
+
 ## 2026-08-19: the turn-closing block answers whose move it is
 
 <!-- prawduct: type=refactor | scope=governance-surface-dedup -->

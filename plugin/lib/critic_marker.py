@@ -26,27 +26,54 @@ independent corrections, no one of which has to be perfect:
    stops counting as active (and is swept on the next read).
 2. **Session-boundary sweep** — a genuine session boundary (``clear
    --session-start`` *without* ``--brief-only``: only ``startup`` and ``clear``)
-   deletes any marker. What licenses deleting a marker someone else wrote is that
-   a review is dispatched by a process, so an in-flight review dies with the
-   session that died — a marker outliving its session is stale by construction.
+   deletes a marker **that has already failed the TTL above**. What licenses
+   deleting a marker someone else wrote is that a review is dispatched by a
+   process, so the sweep's real question is *is that process gone?*
 
-   That premise is scoped, and the sweep is scoped to match (SCN-5B8Q): it does
-   **not** fire on continuations. ``compact`` fires mid-session *in-process*, and
+   Source is only a proxy for that question, and the sweep is scoped twice
+   because the proxy leaks in both directions. It does **not** fire on
+   continuations (SCN-5B8Q): ``compact`` fires mid-session *in-process* and
    ``fork``'s parent session is frequently still running, so a marker seen there
-   is very likely **live** — sweeping it would disarm this guard and the Stop
-   hook's abandoned-review backstop while a reviewer is genuinely working. The
-   asymmetry decides it: sweeping a live marker is a silent governance failure,
-   whereas leaving a dead one costs at most the TTL below, with two loud
-   overrides. A crashed Critic is therefore rescued by the next real boundary,
-   not by a resume.
+   is very likely **live**. And at a boundary it is gated on freshness rather
+   than fired outright, because ``clear`` discards the transcript *without*
+   ending the process — it passes the was-the-transcript-restored test that
+   sorts the boundary column, while failing the process-death test this act
+   actually needs, so a subagent dispatched before it may still be writing.
+
+   The asymmetry decides every uncertain case, and both halves are worth
+   pricing honestly:
+
+   *Sweeping a live marker* is a **silent** governance failure. It disarms this
+   guard and the Stop hook's abandoned-review backstop — which does not merely
+   block on the marker but **consolidates** a review whose reviewers all
+   reported, so a wrongly-swept marker destroys a recovery, not just a signal.
+
+   *Retaining a dead one* is **loud**, and costs more than the TTL below —
+   do not state it as TTL-bounded. Two readers hold different liveness
+   predicates. ``critic_consolidate.begin_review`` refuses a new dispatch while
+   this marker is within the TTL, and that refusal is **not** overridable by
+   ``--force``, so a dead-but-fresh marker blocks the next ``/prawduct:critic``
+   until it expires. The Stop hook's backstop reads :func:`marker_present`,
+   which has **no TTL at all** and so keeps firing past it. Both are recoverable
+   by a named command the refusal prints (``critic-end``, ``critic-discard``),
+   which is what keeps this the cheaper error — but "at most the TTL" is false
+   for the second reader and understates the first.
 3. **Explicit override** — the refusal message tells the operator/agent how to
    clear a stale marker (``rm``) or force the one command (``clear --force``).
 
-**Failure stance.** A missing, corrupt, or unparseable marker is treated as
-*not active* (fail toward availability, not toward blocking) — the override
-exists regardless, and a corrupt marker is far more likely junk than a live
-review. The freshness signal is the embedded ``started_at`` timestamp when
-parseable, falling back to the file's mtime.
+**Failure stance — decided by AGE, not by readability.** A *missing* marker is
+not active. A *corrupt or unparseable* one is not therefore dead: the freshness
+signal is the embedded ``started_at`` when parseable and **falls back to the
+file's mtime**, so a recently-written corrupt marker still counts as active
+(protective, and pinned by ``test_corrupt_marker_falls_back_to_mtime``) while an
+old one expires like any other. Only when neither signal is readable at all is
+the marker treated as not active.
+
+That distinction is load-bearing now that the session-boundary sweep keys on
+this predicate (:func:`sweep_unless_live`): "corrupt ⇒ swept" would delete a
+marker a reviewer had just written and mangled, which is the silent failure the
+gate exists to close. The two loud overrides (``--force``, ``rm``) are what keep
+the protective direction from bricking anyone.
 """
 
 from __future__ import annotations
@@ -108,6 +135,27 @@ def clear_marker(prawduct_dir: Path) -> bool:
         return False
 
 
+def sweep_unless_live(prawduct_dir: Path) -> bool:
+    """The session-boundary sweep: release the marker **unless** it is still
+    within its TTL. Returns ``True`` when a live marker was **retained** — i.e.
+    when this call swept *nothing*.
+
+    Read the name and the return together: the function's job is the sweep, and
+    the value it hands back is the exception to it, because the caller's only
+    reason to branch is the marker it did *not* remove. An earlier name for this
+    (``sweep_if_expired``) returned ``True`` on the path where it had swept
+    nothing at all, so a second caller written from the name alone would take the
+    wrong branch — the silent direction this whole guard exists to close.
+
+    It delegates to :func:`review_active`, whose sweeping default does exactly
+    this. The reason a boundary may not simply delete the marker is in this
+    module's docstring; this function is how the call site names which of the two
+    acts it is performing, instead of calling a predicate for its side effect.
+    """
+    retained, _age = review_active(prawduct_dir)
+    return retained
+
+
 def marker_present(prawduct_dir: Path) -> bool:
     """Is the critic-active marker file present right now? Non-mutating.
 
@@ -150,8 +198,13 @@ def review_active(prawduct_dir: Path, sweep: bool = True) -> tuple[bool, float |
 
     Returns ``(active, age_seconds)``. ``active`` is True only when the marker
     exists AND its age is within :data:`CRITIC_ACTIVE_TTL_SECONDS`. A
-    stale/unreadable marker is swept (best-effort ``unlink``) and reported as
-    not active, so a crashed review self-heals on the next check.
+    marker whose age puts it past the TTL is swept (best-effort ``unlink``) and
+    reported as not active, so a crashed review self-heals on the next check.
+    **Unreadable is not the same as stale** — the module docstring's "decided by
+    AGE, not by readability" is the rule, and ``_marker_age_seconds`` falls back
+    to mtime, so a freshly-written corrupt marker is still ACTIVE and survives.
+    Only a marker whose age cannot be determined by either signal is swept for
+    unreadability.
 
     ``sweep=False`` answers the same question WITHOUT unlinking, and exists
     because the sweep is a side effect that not every caller can afford. The

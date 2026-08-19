@@ -1133,9 +1133,9 @@ def _mark_cache_superseded(prawduct_dir: Path, review_id: str) -> bool:
     the marker keys is preserved byte-for-byte.
 
     **The marker states a fact about the record, not a liveness claim.**
-    "A review is in flight" would go false on its own: a dispatched review can
-    expire by TTL or be swept at a session boundary, and neither path passes
-    through here to retract anything. "Review X was dispatched after this
+    "A review is in flight" would go false on its own: a dispatched review
+    expires by TTL and is swept at a session boundary thereafter, and neither
+    path passes through here to retract anything. "Review X was dispatched after this
     record was written, so this is not X's result" stays true forever, and a
     reader that meets it after an abandoned review learns exactly why the
     newest record is older than it expected. Consolidation rewrites the whole
@@ -2031,6 +2031,60 @@ def pending_state(prawduct_dir: Path) -> tuple[str, list[str]]:
     return "complete", []
 
 
+def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
+    """What a pending roster MEANS — the one home, for every surface that advises on one.
+
+    Two functions compose advice from :func:`pending_state`: this module's
+    :func:`active_dispatch_refusal` (a ``critic-begin`` that refuses) and the
+    retained-marker notice in ``bin/prawduct-hook`` (a session boundary that
+    kept a live marker). They should differ in what they tell the reader to DO
+    — one is refusing a dispatch, the other is announcing a retention — and
+    must not differ in what they say the on-disk state IS. They did: only one
+    of them was taught the fact below, and the untaught one sits at the more
+    dangerous surface.
+
+    **The ``incomplete`` reading is why this is shared rather than duplicated.**
+    A marker now survives ``/clear`` (``lib/critic_marker`` states why: no
+    session event proves a reviewer died, so only the TTL releases one). That
+    makes this state reachable two ways — reviewers still writing, or a
+    dispatcher that is gone — and only one of them is safe to act on. A message
+    naming just the second reads as already-satisfied to someone who has *just*
+    run ``/clear``, and the command it points at (``critic-end``) clears the
+    marker, which lets the next dispatch archive partials that reviewers are
+    still writing. So the reading carries both possibilities and the tell that
+    separates them, and it carries them everywhere at once.
+
+    Returns ``(state, reading)`` — deliberately NOT the ``missing`` role list.
+    The reading already names the outstanding roles in prose, and a third
+    element no caller consumed read as an obligation to use it; both call sites
+    had bound it to ``_missing``. A caller that needs the roles programmatically
+    should ask :func:`pending_state`, which is what this wraps.
+
+    The reading is indented two spaces to match every caller's block, states
+    only what is on disk, and deliberately names no command: the remedy is
+    surface-specific and stays with the caller.
+    """
+    state, missing = pending_state(prawduct_dir)
+    if state == "complete":
+        reading = (
+            "  On disk: every reviewer has reported. That review is FINISHED and needs\n"
+            "  only consolidation.\n"
+        )
+    elif state == "incomplete":
+        reading = (
+            f"  On disk: still waiting on {', '.join(missing)}. Either those reviewers\n"
+            "  are still running — consolidation fires as they finish, so wait — or the\n"
+            "  session that dispatched them ended (a `/clear` retains the marker; it does\n"
+            "  not release it). If nothing lands, they are gone.\n"
+        )
+    else:
+        reading = (
+            "  On disk: no readable dispatch manifest — a review set the marker but\n"
+            "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
+        )
+    return state, reading
+
+
 def active_dispatch_refusal(
     prawduct_dir: Path, age_seconds: float | None, active: bool = True
 ) -> str:
@@ -2066,23 +2120,17 @@ def active_dispatch_refusal(
         prior_id = json.loads(manifest_path(prawduct_dir).read_text())["id"]
     except (OSError, json.JSONDecodeError, KeyError, TypeError):
         pass
-    state, missing = pending_state(prawduct_dir)
+    # The READING is shared with the boundary retained-marker notice
+    # (:func:`pending_roster_reading` says why); only the remedy below is local
+    # to refusing a dispatch.
+    state, situation = pending_roster_reading(prawduct_dir)
     if state == "complete":
-        situation = (
-            "  On disk: every reviewer has reported. That review is FINISHED and needs\n"
-            "  only consolidation — dispatching now would discard it:\n"
+        situation += (
+            "  Dispatching now would discard it:\n"
             "    prawduct-hook critic-consolidate\n"
         )
     elif state == "incomplete":
-        situation = (
-            f"  On disk: still waiting on {', '.join(missing)}. Those reviewers are\n"
-            "  most likely still running — consolidation fires as they finish. Wait.\n"
-        )
-    else:
-        situation = (
-            "  On disk: no readable dispatch manifest — a review set the marker but\n"
-            "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
-        )
+        situation += "  If they are gone, that is `critic-end`, below.\n"
 
     # The remedy has to REACH the state that is refusing, and the two conditions
     # strand a caller differently. A live marker expires and `critic-end` clears

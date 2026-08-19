@@ -875,6 +875,123 @@ def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None
         )
 
 
+def _boundary_retained_marker_notice(prawduct_dir: Path) -> str:
+    """What to tell a new session about a marker the boundary kept.
+
+    The remedy is CONDITIONAL and getting it wrong is destructive, which is why
+    this asks the roster before advising. `critic-end` clears the marker only —
+    on a **complete** roster that discards the Stop hook's self-heal, which would
+    otherwise consolidate the review and append its fact. So a complete roster is
+    told to consolidate; an incomplete one is told what it is waiting on. This is
+    the same split `active_dispatch_refusal` already makes, applied at the other
+    surface that meets the marker.
+    """
+    head = "PRAWDUCT: a Critic review is still marked active — kept, because no session event proves its reviewers died.\n"
+    # The READING comes from `critic_consolidate.pending_roster_reading`, which
+    # is also what `active_dispatch_refusal` prints. Sharing it is the point:
+    # this surface is the one where a reader has just watched a session end, so
+    # a lone "if that session is gone" reads as already satisfied — and the
+    # command it would send them to archives partials that reviewers may still
+    # be writing. The remedy below stays local; the state does not.
+    try:
+        state, reading = _critic_consolidate().pending_roster_reading(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        # An exception means NO reading was taken, so this path must not claim
+        # one — and must not inherit the `unreadable` remedy either. That branch
+        # says "nothing here is worth keeping" and offers `critic-end`, a
+        # conclusion drawn from having successfully read an unusable manifest.
+        # Reaching it because the lib failed to import would advise discarding a
+        # review nobody looked at. Say what is actually known: nothing.
+        return head + (
+            "  Could not read the review's state (the consolidation lib failed to\n"
+            "  answer), so this cannot say whether it is finished or still running —\n"
+            "  and the safe remedies differ. Inspect before acting:\n"
+            "    prawduct-hook evidence status\n"
+            "  then `critic-consolidate` if every reviewer reported, `critic-end` only\n"
+            "  if the review is genuinely abandoned."
+        )
+    if state == "complete":
+        return head + reading + (
+            "  It needs consolidating, NOT clearing:\n"
+            "    prawduct-hook critic-consolidate\n"
+            "  (`critic-end` here would discard a finished review's findings.)"
+        )
+    if state == "incomplete":
+        return head + reading + (
+            "  Only if nothing lands: abandon the review explicitly, then re-dispatch:\n"
+            "    prawduct-hook critic-end"
+        )
+    return head + reading + (
+        "  Nothing here is worth keeping:\n"
+        "    prawduct-hook critic-end"
+    )
+
+
+def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> str:
+    """What `--force` just destroyed, when the marker it removed was still live.
+
+    The retention notice's mirror image — and being a mirror means asking the
+    same question, not merely facing the same way. The first cut of this called
+    itself the mirror while asking nothing, and was wrong on a complete roster
+    in both directions: `begin_review` refuses on `roster_state == "complete"`
+    at any age, so the next dispatch does NOT archive those partials, and the
+    consequence it failed to name is the one that matters — the Stop hook's
+    self-heal keys on ``marker_present``, so sweeping the marker is what removes
+    the automatic consolidation a finished review was about to get.
+
+    **The recovery's timing is load-bearing.** ``restore_review`` refuses while
+    partials are present or a marker is active, and a dispatch makes both true,
+    so "restore after the next dispatch" named the one moment the command
+    cannot run — and the refusal it lands on offers ``critic-discard``, i.e.
+    discarding the review that is running right then. The archive notice at
+    ``cmd_critic_begin`` already had the correct phrasing; this now matches it.
+
+    Reports the review by id because after the marker is cleared nothing else in
+    the new session knows which review it was, and the id is what makes any
+    recovery addressable at all.
+    """
+    age = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
+    review_id = "(id unavailable — manifest unreadable)"
+    state = "unknown"
+    try:
+        consolidate = _critic_consolidate()
+        # Ask the module that OWNS the layout. Building
+        # `.critic-partials/manifest.json` by hand here put a second copy of
+        # that path in a file that already reaches `manifest_path()`, under a
+        # broad except that would have degraded a rename to "id unavailable" —
+        # silently losing the one field this notice exists to carry.
+        review_id = json.loads(
+            consolidate.manifest_path(prawduct_dir).read_text()
+        )["id"]
+        state, _reading = consolidate.pending_roster_reading(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        pass
+
+    head = (
+        "PRAWDUCT: --force swept a LIVE Critic review marker "
+        f"({review_id}, dispatched {age}).\n"
+    )
+    if state == "complete":
+        # Every reviewer reported, so nothing is going to archive these
+        # partials — but nothing is going to consolidate them either, which is
+        # what the sweep just cost.
+        return head + (
+            "  Every reviewer had reported. Those findings are still on disk, but the\n"
+            "  Stop hook's self-heal keys on the marker — so the automatic consolidation\n"
+            "  they were about to get no longer fires. Run it yourself:\n"
+            "    prawduct-hook critic-consolidate"
+        )
+    return head + (
+        "  That review is no longer guarded: the next `critic-begin` will archive its\n"
+        "  partials instead of refusing. They are archived, not deleted — recover that\n"
+        "  review once the next one has consolidated:\n"
+        f"    prawduct-hook critic-restore {review_id}\n"
+        "  (Not before: `critic-restore` refuses while partials or a marker are present,\n"
+        "  which a dispatch makes true.) If its reviewers had all reported, consolidate\n"
+        "  now instead: `prawduct-hook critic-consolidate`."
+    )
+
+
 def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     """Orient a session, and at a genuine boundary also reset it (plugin runtime: no sync).
 
@@ -890,8 +1007,9 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
        the pre-split behaviour gave it.
     2. *Boundary-dependent readers* — they destroy nothing but interpret session
        state as a **finished** session's: the critic-active marker sweep (it
-       deletes a marker on the theory that its writer's process is gone) and the
-       previous-session gate check. Both are boundary-only for that reason.
+       releases a marker on the theory that its writer's process is gone, and so
+       fires only once the TTL agrees — no session event proves that on its own)
+       and the previous-session gate check. Both are boundary-only for that reason.
     3. *Orientation* — the briefing, advisories, untracking committed session
        files, the size/preferences checks, the subagent briefing. Safe on every
        source.
@@ -904,7 +1022,10 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     proceeds. ``--brief-only`` runs orientation only and skips both (1) and (2);
     it is orthogonal to ``--session-start`` rather than replacing it, so the
     boundary is ``--session-start`` *without* ``--brief-only``. ``--force`` is
-    the operator override for a stale marker and sweeps it. A bare ``clear``
+    the operator override for a marker the TTL has **not** released — a stale one
+    needs no override, since every sweeping path already takes it — and it sweeps
+    unconditionally wherever a sweep is licensed at all (boundary or guarded),
+    never on a continuation. A bare ``clear``
     (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
     while a Critic review is plausibly in progress so an independent reviewer
     cannot clobber the session it is reviewing. A continuation neither sweeps nor
@@ -963,26 +1084,69 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Critic-active session-mutation guard (CRT-3X9D). cmd_clear is destructive
     # (it archives/deletes .session-reflected, rewrites .session-start, recaptures
     # the git baseline). An independent reviewer must never mutate the session it
-    # is reviewing. A genuine session BOUNDARY (--session-start without
-    # --brief-only) or an explicit --force sweeps any marker and proceeds; a bare
-    # clear refuses while a review is plausibly in progress. The check fails OPEN
-    # on a lib import error so an incomplete install never blocks session start (a
-    # broken lib also means the Critic can't run, so there is no review to protect).
+    # is reviewing. A bare clear refuses while a review is plausibly in progress;
+    # a genuine session BOUNDARY (--session-start without --brief-only) proceeds
+    # and sweeps the marker only once the TTL has released it; an explicit --force
+    # proceeds and sweeps unconditionally. The check fails OPEN on a lib import
+    # error so an incomplete install never blocks session start (a broken lib also
+    # means the Critic can't run, so there is no review to protect).
     #
-    # The sweep is BOUNDARY-only, not orientation (SCN-5B8Q review R-1/R-6). What
-    # licenses deleting someone else's marker is that an in-flight review dies with
-    # the process that dispatched it, so a marker outliving its session is stale by
-    # construction. That premise holds for a session that ENDED. It is false for
-    # `compact`, which fires mid-session *in-process*, and often false for `fork`,
-    # whose parent session is frequently still running — sweeping there would
-    # disarm this very guard, and the Stop hook's abandoned-review backstop (which
-    # keys on the marker's presence), while a reviewer is genuinely alive. The
-    # asymmetry decides it: sweeping a live marker is a silent governance failure,
-    # while not sweeping a dead one costs at most the 30-minute TTL, with `--force`
-    # and `rm` as loud, documented overrides.
-    if kind == "BOUNDARY" or (kind == "GUARDED" and force):
+    # Why the boundary sweep is gated rather than outright: `lib/critic_marker.py`'s
+    # module docstring. The one fact local to this call site is that a boundary
+    # here cannot tell `startup` from `clear` — `hooks.json` gives them one entry
+    # carrying no source — so the gate is on the marker, not on the source, and a
+    # finer matcher would buy nothing the TTL does not already decide.
+    #
+    # `--force` is orthogonal to the gate and stays UNCONDITIONAL wherever it is
+    # passed. It is the operator's documented escape from a marker the TTL has
+    # not released, so gating it would disable the one case it exists for — and
+    # an earlier cut of this split consulted it only on GUARDED, which silently
+    # made `--session-start --force` a no-op while three comments still promised
+    # otherwise, including the message below that recommends it.
+    if force and kind != "CONTINUATION":
+        # Unconditional, at BOTH kinds that can carry it. `--force` never
+        # promotes a continuation (that remains the failure mode, not an
+        # override of it), but where a sweep is licensed at all, forcing means
+        # forcing.
+        # ANNOUNCE what it destroyed, when the marker was still live. This is
+        # the only branch that removes a plausibly-live marker, and it was the
+        # only one that printed nothing — while its non-destructive sibling
+        # below prints four lines for merely RETAINING one. The design calls
+        # sweeping a live marker the *silent* governance failure; leaving the
+        # act itself silent is that failure spelled out. Read the state BEFORE
+        # clearing, or there is nothing left to report.
+        # The READ is wrapped separately from the SWEEP, and the ordering is the
+        # whole point: with both under one `except`, any raise from the read —
+        # or a PermissionError from `unlink` — leaves the marker in place and
+        # prints nothing, i.e. `--force` silently ignored. That is exactly the
+        # defect this branch already fixed once at this call site, arriving by a
+        # different route. `clear_marker` must always be reached; the reporting
+        # values degrade to "not live" rather than taking the sweep down.
+        was_live, age_s = False, None
+        try:
+            was_live, age_s = _critic_marker().review_active(prawduct_dir, sweep=False)
+        except Exception:  # prawduct:allow prawduct/broad-except -- a pre-sweep read must never block the sweep
+            pass
         try:
             _critic_marker().clear_marker(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
+            pass
+        if was_live:
+            try:
+                print(_forced_live_sweep_notice(prawduct_dir, age_s))
+            except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+                pass
+    elif kind == "BOUNDARY":
+        # Announce a RETAINED marker. This branch has two outcomes and printed
+        # nothing for either, and the session most in need of the signal is
+        # exactly this one: `/clear` just discarded the context in which the
+        # review was dispatched, so nothing else in the new session knows it is
+        # pending. The remedy is CONDITIONAL on the roster — telling someone to
+        # `critic-end` a complete roster destroys the Stop hook's self-heal — so
+        # the notice asks the state before it advises.
+        try:
+            if _critic_marker().sweep_unless_live(prawduct_dir):
+                print(_boundary_retained_marker_notice(prawduct_dir))
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
             pass
     elif kind == "CONTINUATION":
@@ -1008,9 +1172,10 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
                 "    rm .prawduct/.critic-active        # then retry\n"
                 "  or override this one invocation:\n"
                 "    prawduct-hook clear --force\n"
-                "  (The marker also auto-expires after 30 min, or is swept at the next session "
-                "BOUNDARY — a fresh start or /clear. Resuming, forking or compacting this session "
-                "does NOT sweep it: a review may still be running in the session those continue.)",
+                "  (The marker also auto-expires after 30 min, and a session boundary — a fresh "
+                "start or /clear — sweeps it once expired. No session event sweeps it sooner: "
+                "a review may still be running in a session that /clear, resume, fork or compact "
+                "leaves alive.)",
                 file=sys.stderr,
             )
             return 2
@@ -1177,8 +1342,8 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
 
 def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     """Dispatch one Critic review: derive + write the manifest (code, never a
-    model — kernel v3 D8) and set the critic-active marker so session-mutating
-    `clear` refuses to run.
+    model — kernel v3 D8) and set the critic-active marker so a session-mutating
+    bare `clear` — the form a reviewer subagent can issue — refuses to run.
 
     Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
            [--chosen-by <rationale>] [--chunk <id>] [--scope <s>] [--tier <t>]
@@ -1396,10 +1561,10 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
 def cmd_critic_end(project_dir: Path) -> int:
     """Clear the critic-active marker at the end of a review. Idempotent — exit 0
-    whether or not a marker was present (a crashed review's marker also expires
-    by TTL, and is swept at the next session BOUNDARY — `startup`/`clear` only,
-    never a resume/compact/fork, which may be continuing the session a reviewer
-    is still running in)."""
+    whether or not a marker was present (a crashed review's marker expires by TTL,
+    and is then swept at the next session BOUNDARY — `startup`/`clear` only, and
+    only once expired, since any session event may leave the reviewer's process
+    alive)."""
     prawduct_dir = get_prawduct_dir(project_dir)
     _critic_marker().clear_marker(prawduct_dir)
     return 0
@@ -2580,14 +2745,31 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     ``--no-rerun`` (alias ``--restamp``) reuses the existing record's counts and
     refreshes only the ``timestamp`` + the F4a coverage half against the current
-    tree — the cheap refresh after a rename / force-add shifted
-    ``changes_referenced``, with no suite run and no re-supplied counts. The
-    original ``command`` is preserved. Trust posture matches ``--from-junit``: the
-    operator asserts the tree's test-relevant content is unchanged since the last
-    real run. Compatible with declared ``test_command:``/``test_commands:`` (it
-    introduces no new counts). Requires an existing ``.test-evidence.json``; rejects a second
-    source. (No tree/content hash verifies the assertion — that mechanism was
-    removed pre-v1.4 for chronic false positives and is deliberately not back.)
+    tree, with no suite run and no re-supplied counts. The original ``command``
+    is preserved. Trust posture matches ``--from-junit``: the operator asserts
+    the tree's test-relevant content is unchanged since the last real run.
+    Compatible with declared ``test_command:``/``test_commands:`` (it introduces
+    no new counts). Requires an existing ``.test-evidence.json``; rejects a
+    second source.
+
+    **The assertion is now CHECKED, and a restamp announces itself.** It was
+    unchecked, and a restamp taken after tests were added reused the older
+    run's counts while printing them as ``recorded: N passed`` — typographically
+    identical to a measurement, and a three-test gap on 2026-08-19. The check is
+    not a content hash (removed pre-v1.4 for chronic false positives, and
+    deliberately not back): it is the judgeable-path comparison the gates
+    already trust, run against the tree the prior record ran on. When judgeable
+    paths have moved, the restamp is **refused** — because a restamp also
+    rewrites ``evidence_tree`` to the current tree, so allowing it would make
+    stale counts vouch for a tree they never ran against. When the prior record
+    carries no ``evidence_tree`` (the ``--from-counts`` on-ramp records none by
+    design), nothing can be checked and it warns instead.
+
+    **Cost, stated rather than hidden:** the old "cheap refresh after a rename
+    or force-add shifted ``changes_referenced``" case is refused whenever the
+    prior record came from a real run, because a rename is a judgeable path
+    change. The escape is to run the suite or ingest a report — which is what
+    makes the evidence sound in the first place.
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``) — with ONE
@@ -2860,8 +3042,48 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
+        # THE GUARD. A restamp is an operator ASSERTION that the tree's
+        # test-relevant content is unchanged since the last real run, and until
+        # now nothing checked it — so a restamp taken after tests were added
+        # reused the older run's counts and printed them as `recorded: N
+        # passed`, indistinguishable from a measurement. That shipped a
+        # three-test gap on 2026-08-19.
+        #
+        # The check is not a content hash (removed pre-v1.4 for chronic false
+        # positives, and deliberately not back). It is the judgeable-path
+        # comparison the gates already trust — `_test_evidence_tree_valid`,
+        # the same body `tests_are_current` uses — asked against the tree the
+        # prior record ran on. Refusing rather than warning because this record
+        # feeds a gate VERDICT, and authority fails closed.
+        #
+        # This does cost the documented cheap-refresh-after-a-rename case: a
+        # rename shows as a judgeable path change even though content is
+        # identical. Stated rather than hidden — the escape is to run the suite
+        # (or ingest a report), which is what makes the evidence sound anyway.
+        prior_tree = prior.get("evidence_tree")
+        if prior_tree:
+            ok, why = _gates()._test_evidence_tree_valid(project_dir, prior_tree)
+            if not ok:
+                print(
+                    "error: --no-rerun/--restamp asserts the tree's test-relevant "
+                    f"content is unchanged since the recorded run, and it is not — {why}.\n"
+                    "  Reusing those counts would print a stale figure as though it were "
+                    "measured. Run the suite, or ingest a report you already have:\n"
+                    "    prawduct-hook test-evidence record\n"
+                    "    prawduct-hook test-evidence record --from-junit <report.xml>",
+                    file=sys.stderr,
+                )
+                return 2
+        else:
+            print(
+                "warning: the prior record carries no evidence_tree, so nothing can "
+                "check the restamp's assertion that test-relevant content is "
+                "unchanged. Treat the counts below as asserted, not measured.",
+                file=sys.stderr,
+            )
         duration = prior.get("duration_seconds", 0)
         prior_command = prior.get("command", "(unknown)")
+        prior_timestamp = prior.get("timestamp", "(unknown)")
     elif from_counts is not None:
         # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
         # The F4a overlay below still recomputes the changed-file half against
@@ -3197,9 +3419,18 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
 
+    # A restamp announces itself. The old line said `recorded: N passed` for
+    # both paths, so a reused count was typographically identical to a fresh
+    # measurement — which is the surface that let a stale figure pass as one.
+    verb = "restamped" if no_rerun else "recorded"
+    provenance = (
+        f" [REUSED from the run of {prior_timestamp} — nothing was run]"
+        if no_rerun
+        else ""
+    )
     print(
-        f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
-        f"in {record['duration_seconds']}s ({record['timestamp']})"
+        f"{verb}: {passed} passed, {failed} failed, {skipped} skipped "
+        f"in {record['duration_seconds']}s ({record['timestamp']}){provenance}"
         + (
             _GREEN_IS_EVIDENCE_DIRECTIVE
             if _evidence_changed_judged_code(evidence_path)

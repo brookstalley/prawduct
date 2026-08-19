@@ -32,7 +32,7 @@ never by dropping them.
 ## When you retire a MECHANISM, sort its rules into three piles before deleting any — died / rewritten / **INVERTED**. "The tool is gone" reads like a licence to drop the lot, and the lesson usually outlived the tool. The third pile is the one nobody looks for and the only one that leaves a harmful rule standing. Tell: the rule is a prohibition whose reason was the tool — [learnings-detail.md]
 <!-- anchor: the-derived-views-retirement -->
 
-## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite — and it reads as deliberate, so review cannot see it. `release=unreleased` hid a finished branch from its own release. Ask the CONSUMER, not the reader: run the probe that acts on the field. Guard by BLAST RADIUS — `status=` was guarded, `release=` (drops a whole scope) was not — [learnings-detail.md]
+## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite — it reads as deliberate, so review cannot see it. `release=unreleased` hid a finished branch from its own release. Ask the CONSUMER, not the reader, and guard by BLAST RADIUS. **Never write "verified" against a reader-check** — it promotes a guess to a fact review reads as settled — [learnings-detail.md]
 
 ## `grep -rn <new symbol> tests/` before calling a behaviour change done — a guard with no test is one a regression deletes silently. Three rounds running found that, the last two in code written to FIX the previous instance: applying a rule to the finding in front of you is not applying it to the code you write while applying it
 
@@ -535,3 +535,5 @@ never by dropping them.
 ## A clean sweep usually indicts your QUERY, not the tree — grep returns sites phrased in your words, so survivors are the ones that paraphrase, assert the opposite in prose, or say nothing (silence satisfies an assert-absent guard). Name the state the change makes true or false, search two vocabularies sharing no word, pin positively. Tell: every hit used your words — [learnings-detail.md]
 
 ## Bound a class by the PROPERTY that justifies it, never by the container it sits in — a path prefix, a line range, or a fixture built from the feature's own subject each look complete while bounding the wrong set, so the claim reads as verified at the fixture's scope rather than the requirement's BREADTH. Tell: your boundary is a location, your rationale is a verb — [learnings-detail.md]
+
+## An UNEXPECTED PASS is a signal, not a result — when a change you believed would break tests doesn't, find out which branch they are on before banking it, because green usually means confirmation and here it means your fixture never reached the subject. Tell: you predicted red, got green, and explained it to yourself in one sentence without opening anything — [learnings-detail.md]

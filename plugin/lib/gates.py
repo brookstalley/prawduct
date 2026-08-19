@@ -203,6 +203,17 @@ def _test_evidence_tree_valid(
     Fails toward *not valid* (the caller keeps the timestamp verdict) whenever
     the tree cannot be captured or diffed, so a git failure can only leave
     evidence stale — never flip it fresh. Returns ``(is_valid, reason)``.
+
+    **One caller uses this as a REFUSAL authority, not an additive clause**, and
+    the coupling is deliberate rather than inherited: ``test-evidence record
+    --no-rerun`` asks it whether the restamp's assertion holds, and a ``False``
+    hard-blocks at exit 2. That includes the "cannot capture / cannot diff"
+    answers — so a git failure refuses a restamp that might have been
+    legitimate. Correct by design (a restamp rewrites ``evidence_tree``, so
+    permitting an unverifiable one lets stale counts vouch for a tree they never
+    ran against), and survivable because the reason string is printed and the
+    escape is to run the suite. Read this before widening the ``False`` cases:
+    each one is now a refusal somewhere, not only a stale verdict.
     """
     if target_tree is None:
         capture = evidence.capture_tree(project_dir)

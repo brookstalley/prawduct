@@ -192,8 +192,8 @@ def _assert_no_dispatch_state(repo: Path) -> None:
 
     The refusal returns before the manifest write and before the critic-active
     marker, so a leftover of either would mean it fired too late — and a stray
-    marker is worse than a wasted review, because `clear` refuses to run while
-    one is live.
+    marker is worse than a wasted review, because a bare `clear` refuses to run
+    while one is live.
 
     Call :func:`_seed_leftover_partial` first: the partials clause below only
     means something when there is something there to disturb.
