@@ -369,7 +369,13 @@ LAST_MEASURED_TOKENS = {
     # branch on the live-review deadline. Recorded, not capped, which is the
     # decision above working as intended: the growth is a correction to an
     # instruction that could not be followed in a fresh clone.
-    "methodology/reflection.md": 4644,
+    # 4644 -> 4702 on 2026-08-19 (Critic R-5): the deadline recipe named a
+    # filter `review-stats` does not accept (it takes none — the figure is a row
+    # of its `by role x model x mode` block), and stated the sample floor as "a
+    # handful" one clause after citing `MIN_PRICED_SAMPLE`, which is 5. Both
+    # were instructions an agent executes at every turn a review is live, so the
+    # cost buys a recipe that runs instead of one that reads well.
+    "methodology/reflection.md": 4702,
 }
 
 
@@ -486,7 +492,17 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # already uses. Three tokens rather than the eight a fuller phrasing cost:
     # the first draft spelled out "where the ledger can price one" and broke
     # the ceiling, which is the ceiling doing its job.
-    "framework": 3320,
+    #
+    # +1 on `framework` only, 2026-08-19 (Critic R-8): CLAUDE.md was the FOURTH
+    # member of the class three earlier commits narrowed — a surface asserting
+    # the marker's guarantee without the *bare*-invocation qualifier. It sat
+    # outside the earlier sweeps because those bounded the class by CONTAINER
+    # (`plugin/**`) rather than by PROPERTY, and this file is at the repo root.
+    # Closed by dropping the mechanism clause rather than qualifying it — the
+    # sentence is already a pointer to `SKILL.md`, which owns the fact, so
+    # restating it precisely would have been a more accurate second home. One
+    # token is what a pointer costs over a claim.
+    "framework": 3321,
     "product": 2243,
 }
 

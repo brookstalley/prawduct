@@ -1115,14 +1115,27 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         # sweeping a live marker the *silent* governance failure; leaving the
         # act itself silent is that failure spelled out. Read the state BEFORE
         # clearing, or there is nothing left to report.
+        # The READ is wrapped separately from the SWEEP, and the ordering is the
+        # whole point: with both under one `except`, any raise from the read —
+        # or a PermissionError from `unlink` — leaves the marker in place and
+        # prints nothing, i.e. `--force` silently ignored. That is exactly the
+        # defect this branch already fixed once at this call site, arriving by a
+        # different route. `clear_marker` must always be reached; the reporting
+        # values degrade to "not live" rather than taking the sweep down.
+        was_live, age_s = False, None
         try:
-            marker = _critic_marker()
-            was_live, age_s = marker.review_active(prawduct_dir, sweep=False)
-            marker.clear_marker(prawduct_dir)
-            if was_live:
-                print(_forced_live_sweep_notice(prawduct_dir, age_s))
+            was_live, age_s = _critic_marker().review_active(prawduct_dir, sweep=False)
+        except Exception:  # prawduct:allow prawduct/broad-except -- a pre-sweep read must never block the sweep
+            pass
+        try:
+            _critic_marker().clear_marker(prawduct_dir)
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
             pass
+        if was_live:
+            try:
+                print(_forced_live_sweep_notice(prawduct_dir, age_s))
+            except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+                pass
     elif kind == "BOUNDARY":
         # Announce a RETAINED marker. This branch has two outcomes and printed
         # nothing for either, and the session most in need of the signal is

@@ -3,37 +3,6 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-08-19: a chunk boundary stops buying a bundle review
-
-<!-- prawduct: type=fix | scope=clear-cadence -->
-
-`infer-critic-mode`'s rule 2 escalated **every** chunk close on a multi-chunk branch to a
-three-reviewer `cumulative`. The rule's own module docstring states the intent — *run cumulative
-when about to PR* — and claimed its clean-tree guard achieved it. It did not, and the gap is exact:
-**a chunk boundary is precisely when the builder has just committed, so the tree IS clean.** The
-only remaining condition then decides, and it cannot say no, because `commits_ahead` counts against
-the *base branch* and on a feature branch that number only grows.
-
-Measured on this branch: five chunk closes, four cumulative dispatches, identical rationale, count
-climbing 2 → 6 → 9 → 15. **85 minutes of review wall-clock against the ~29 the per-chunk shape
-intends** — and the escalation grew *more* certain as the plan progressed, which is backwards, since
-later chunks are smaller and better understood.
-
-It also contradicted guidance shipped three chunks earlier in this same branch: `building.md`'s
-work-cycle limit was re-priced onto *the diff a review must cover* — "the constraint is the
-reviewer's attention" — while rule 2 sized on cumulative branch age, which is neither the diff since
-the last review fact nor attention.
-
-An active plan with chunks still unticked is now rule 4's case (`chunk`), with the bundle review
-landing once the last box is ticked. A completed plan still fires rule 2, because that is the
-PR-prep case it exists for; a branch with no plan is untouched.
-
-**The trade-off, stated rather than buried:** `chunk` mode covers Goals 1-3, so mid-plan rounds stop
-catching Goal 4-7 findings (artifact coherence, design, sustainability) early. They are caught by
-the final/cumulative instead — later, in one pass, which is the cost the per-chunk shape has always
-accepted. A plan that wants the deeper pass per chunk says so with a chunk-level `Critic mode:`
-override, which outranks all inference.
-
 ## 2026-08-19: two tools stop losing what they were asked to record
 
 <!-- prawduct: type=fix | scope=clear-cadence -->
@@ -71,6 +40,36 @@ evidence sound in the first place.
 
 The output line was the defect surface, so it changed too: a restamp now prints `restamped: …
 [REUSED from the run of <timestamp> — nothing was run]`.
+
+## 2026-08-19: the on-demand methodology guides get size accounting, not size limits
+
+<!-- prawduct: type=feature | scope=clear-cadence -->
+
+`discovery.md`, `planning.md` and `reflection.md` now carry entries in `LAST_MEASURED_TOKENS`, and
+deliberately **no ceilings**. `skills/critic/SKILL.md` was already a reading without a ceiling, so
+this applies an existing shape to a class rather than inventing a control.
+
+**The premise of the request was wrong, and the correction changed the answer.** It named
+`reflection.md` as the only unbudgeted on-demand guide; measured, `discovery.md` (4752) and
+`planning.md` (4301) were unbudgeted too, and `discovery.md` is *larger than* budgeted
+`building.md`. So the question was about the class, and answering it for one file would have left
+two larger ones in the state being objected to.
+
+**The distinction that settled it:** a **reading** catches undeclared growth; a **ceiling** blocks
+growth itself. The stated yield was undeclared growth, so the reading discharges it in full — while
+these are precisely the files where growth is *cheap*, paid only by a session that opens them.
+Pricing them would invert the incentive four chunks of `governance-surface-dedup` were spent
+building, when the standing block's full shape was moved into `reflection.md` rather than the
+always-injected digest. (`reflection.md` went 3001 → 4529 in two days as that worked.)
+
+This is an **accounting** control, not a blocking one, which is how it discharges the proportionality
+norm: it never refuses a change, only an *unrecorded* one, so "repeated firings, no blocking yield"
+is unreachable by construction, and each dated entry stating its cause is the emission.
+
+Made self-enforcing for guides that do not exist yet: `test_every_methodology_guide_is_accounted_for`
+walks `methodology/*.md` and requires each to be covered by a per-file reading or by injected-shape
+membership (how `session-digest.md` is priced — by shape total, twice). Nothing watched the
+*directory* before, which is the blind spot that produced the request.
 
 ## 2026-08-19: a live review moves the clear verdict, and the line answers *should you*
 

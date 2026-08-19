@@ -153,6 +153,42 @@ class TestComposeBodyMergesAnEmbeddedBlock:
         assert out.count("Why this matters.") == 1
         assert "```prawduct" not in out.split("Why this matters.")[0]
 
+    def test_two_embedded_blocks_both_survive(self):
+        """The residual loss the first fix left — and made silent.
+
+        `parse_block` keeps only the LAST block while `strip_block` removes them
+        all, so merging via `parse_block` still dropped an earlier block's
+        fields. Worse than before: composition now emits exactly one block, so
+        the downstream "carries N prawduct blocks" warning — the only signal the
+        2026-08-19 losses ever produced — could never fire again. Merging every
+        block means nothing is lost, which beats restoring a warning about a
+        loss.
+        """
+        body = (
+            "Why.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```\n\n"
+            "More prose.\n\n```prawduct\nv: 1\nrefs: [owner/repo#9]\n```"
+        )
+        out = encode.compose_body(body, {"v": "1"})
+        assert out.count("```prawduct") == 1
+        block = encode.parse_block(out)
+        assert block.get("related") == "[owner/repo#7]", (
+            "the EARLIER block's field was dropped — last-block-wins reasserted "
+            "itself through the merge, and now with no warning at all"
+        )
+        assert block.get("refs") == "[owner/repo#9]"
+
+    def test_a_later_block_wins_a_collision_between_two(self):
+        """Merging all blocks must not invent a new precedence: last still wins,
+        matching `parse_block`'s own rule, so the two cannot disagree about which
+        value a body means.
+        """
+        body = (
+            "```prawduct\nv: 1\nrelated: [owner/repo#1]\n```\n\n"
+            "```prawduct\nv: 1\nrelated: [owner/repo#2]\n```"
+        )
+        out = encode.compose_body(body, {"v": "1"})
+        assert encode.parse_block(out).get("related") == "[owner/repo#2]"
+
     def test_a_body_cannot_claim_the_attribution_stamps(self):
         """The direction precedence alone does not cover.
 

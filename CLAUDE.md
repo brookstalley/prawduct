@@ -54,8 +54,8 @@ reviews are the richest source of methodology insights, and the insight decays f
 
 Everything else is read with the plugin, not from here: `plugin/skills/critic/SKILL.md` for the
 mechanics (the no-execution contract, the `critic-begin` → partials → `critic-consolidate` data
-plane over the shared evidence store, and the invariant that a live review blocks `prawduct-hook
-clear`), `review-cycle.md` for modes and the evidence model, `review-protocol.md` for goals and
+plane over the shared evidence store, and what a live review's marker does and does not
+block), `review-cycle.md` for modes and the evidence model, `review-protocol.md` for goals and
 severity, and `plugin/methodology/building.md` for the builder-side steps the skill does not
 address to you.
 

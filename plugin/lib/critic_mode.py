@@ -55,26 +55,13 @@ lands in ``mode_chosen_by`` — says the relation is assumed rather than shown.
 
 Deviation from build-plan rule 2: the spec reads "branch ahead of base by
 ≥2 commits AND no cumulative-mode record exists for the current HEAD"
-with no working-tree-clean guard. Implemented WITH two guards, and the
-second exists because the first did not deliver what this note claimed.
-
-The intent is *run cumulative when about to PR* — the proportionality
-thread that motivated the whole helper was about review latency, and
-over-firing cumulative undoes it. The **clean-tree** guard was meant to
-keep the rule off mid-chunk rounds, and it misses the one moment that
-matters: at a chunk boundary the builder has just committed, so the tree
-IS clean. The remaining condition then decides, and it cannot say no —
-``commits_ahead`` counts against the *base branch*, so on a feature
-branch it only grows. Measured on ``fix/clear-cadence`` (2026-08-19):
-every one of five chunk closes escalated to a three-reviewer cumulative,
-rationale identical, count climbing 2 → 6 → 9 → 15; 85 minutes of review
-wall-clock against the ~29 the per-chunk shape intends, with the
-escalation growing *more* certain as the plan progressed.
-
-So the **mid-plan** guard is the one that actually expresses the intent:
-an active plan with chunks still unticked belongs to rule 4, and rule 2
-fires once the last box is ticked, which is when "about to PR" is true.
-:func:`_rule_cumulative_fires` carries the trade-off this accepts.
+with no working-tree-clean guard. Implemented WITH the clean-tree guard
+so the rule doesn't over-fire mid-chunk-3-of-5 (which would silently
+demote ``chunk``-mode reviews to 4-10 min ``cumulative`` runs at every
+commit). The user-feedback motivation for the whole proportionality
+thread was reducing review latency for small fixes — over-firing
+cumulative would undo that. The guard preserves the spec's intent (run
+cumulative when about to PR) without the cost.
 
 Pure-ish: takes ``project_dir``, reads files under it, runs ``git``
 subprocesses against it. Deterministic given fixed git state. Imports only
@@ -217,7 +204,7 @@ def infer_mode(
             f"rule-1b verify-resolutions (post-cumulative fix): {postfix_reason}"
         )
 
-    cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir, total, complete)
+    cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
     if cumulative_reason:
         return "cumulative", f"rule-2 cumulative: {cumulative_reason}"
 
@@ -494,50 +481,12 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
 
 
 def _rule_cumulative_fires(
-    prawduct_dir: Path, project_dir: Path, total: int = 0, complete: int = 0
+    prawduct_dir: Path, project_dir: Path
 ) -> str:
-    """Rule 2: plan not mid-flight + no code in flight + ≥2 commits ahead + no
-    fresh cumulative record.
+    """Rule 2: no code in flight + ≥2 commits ahead + no fresh cumulative record.
 
     Returns rationale string when the rule fires, empty string otherwise.
-
-    **The mid-plan guard, and why the clean-tree one was not enough.** This
-    rule's purpose is the bundle review the PR gate wants, so it should fire
-    when a branch is *heading for a PR* — not at every chunk boundary of a
-    multi-chunk plan. The clean-tree guard was meant to express that ("keeps it
-    from over-firing on every mid-build review") and misses the one moment it
-    matters: a chunk boundary is exactly when the builder has just committed and
-    the tree IS clean.
-
-    The remaining condition then decides it, and it cannot say no:
-    ``commits_ahead`` counts against the *base branch*, so on a feature branch it
-    only grows. Every chunk close after the second commit escalated to a
-    three-reviewer cumulative, and the escalation got *more* certain as the plan
-    progressed — backwards, since later chunks are smaller and better understood.
-    Measured on `fix/clear-cadence` (2026-08-19): four cumulative dispatches,
-    rationale identical each time, count climbing 2 → 6 → 9 → 15; 85 minutes of
-    review wall-clock against the ~29 the per-chunk shape intends.
-
-    So an active plan with chunks still unticked is **not** rule 2's case: it is
-    rule 4's (``chunk``), with the final/cumulative landing once the last box is
-    ticked — which is the shape ``methodology/building.md`` describes and which
-    the roster rule already sizes on *the diff a review must cover* rather than
-    on branch age. A plan whose chunks are all complete still fires here, because
-    that is the PR-prep case this rule exists for.
-
-    **The trade-off, stated:** ``chunk`` mode covers Goals 1-3 only, so
-    mid-plan rounds stop catching Goal 4-7 findings (artifact coherence, design,
-    sustainability) that a cumulative would surface early. They are caught by
-    the final/cumulative instead — later, in one pass, which is the cost the
-    per-chunk shape has always accepted. A plan that genuinely wants the deeper
-    pass per chunk says so with a chunk-level ``**Critic mode:**`` override,
-    which is honoured above all inference.
     """
-    # An active plan with work left is mid-flight: the chunk boundary belongs to
-    # rule 4. Checked FIRST because it is free and because every condition below
-    # it answers a question about the branch, not about the plan.
-    if total > 0 and complete < total:
-        return ""
     # No CODE in flight — deliberately the metadata-stripped predicate, not the
     # strict :func:`_working_tree_is_empty` that rule 4's redirect uses. The two
     # ask different questions and the difference is load-bearing in opposite

@@ -217,22 +217,35 @@ def parse_block(body: str | None) -> Block:
             "and ignoring the earlier one(s)"
         )
 
-    inner = matches[-1]
+    fields, malformed = _parse_block_fields(matches[-1], collect_malformed=True)
+    block.fields.update(fields)
+    block.warnings.extend(f"ignored malformed block line: {m!r}" for m in malformed)
+    return block
+
+
+def _parse_block_fields(
+    inner: str, collect_malformed: bool = False
+) -> "dict[str, str] | tuple[dict[str, str], list[str]]":
+    """Field dict for ONE block's inner text; last occurrence of a key wins.
+
+    Split out of :func:`parse_block` so :func:`compose_body` can merge *every*
+    block in a body rather than only the last — the two need the same line
+    grammar and must not drift on what counts as a field.
+    """
+    fields: dict[str, str] = {}
+    malformed: list[str] = []
     for raw_line in inner.splitlines():
         line = raw_line.rstrip()
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue  # blank or comment — not a field
-        if ":" not in line:
-            block.warnings.append(f"ignored malformed block line: {stripped!r}")
-            continue
-        key, _, value = line.partition(":")
+        key, sep, value = line.partition(":")
         key = key.strip()
-        if not key:
-            block.warnings.append(f"ignored malformed block line: {stripped!r}")
+        if not sep or not key:
+            malformed.append(stripped)
             continue
-        block.fields[key] = value.strip()  # last occurrence wins
-    return block
+        fields[key] = value.strip()
+    return (fields, malformed) if collect_malformed else fields
 
 
 def strip_block(body: str | None) -> str:
@@ -316,11 +329,20 @@ def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
     is never something the filed text gets to assert; every other block field is
     the filer's to set.
     """
-    embedded = parse_block(human)
+    # EVERY block in the body is merged, in document order, not just the last.
+    # `parse_block` keeps only the last (its own last-block-wins rule) while
+    # `strip_block` removes them ALL — so merging via `parse_block` would still
+    # drop an earlier block's fields, and now silently: the composed body emits
+    # exactly one block, so the downstream "carries N prawduct blocks" warning
+    # that was the losses' only signal can never fire again. Merging all of them
+    # means nothing is lost, which is better than restoring a warning about a
+    # loss. Later blocks win over earlier ones, matching last-block-wins.
+    merged: dict[str, str] = {}
+    for inner in _BLOCK_RE.findall(human or ""):
+        merged.update(_parse_block_fields(inner))
+    for key in _CALLER_OWNED_FIELDS:
+        merged.pop(key, None)
     text = strip_block(human)
-    merged = {
-        k: v for k, v in embedded.fields.items() if k not in _CALLER_OWNED_FIELDS
-    }
     merged.update(block_fields)
     rendered = serialize_block(merged)
     if text:
