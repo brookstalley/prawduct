@@ -174,7 +174,7 @@ Chunks 02-04 are prose and budgets, where the suite *is* the executable contract
 
 - [x] Chunk 01: The `/clear` sweep stops deleting a plausibly-live marker
 - [x] Chunk 02: `building.md` re-prices the work-cycle limit
-- [ ] Chunk 03: The clear line answers *should you*, and a live review moves the verdict
+- [x] Chunk 03: The clear line answers *should you*, and a live review moves the verdict
 - [ ] Chunk 04: Settle the on-demand guides' budget policy (#688)
 - [ ] Chunk 05: Two friction fixes found by building this plan
 
@@ -194,6 +194,22 @@ the `[CORRECTED ...]` assumption above), and that is now a sharpened rule in `le
 Governance dispositions written at plan time are predictions — re-check them at chunk close rather
 than inheriting them as passes; the one-home disposition claimed conformance before the code existed
 and was wrong within one commit.
+
+**Chunk 03 closed 2026-08-19.** `1ba185cf` (the two carriers) + `622ae77e` (self-scrub) +
+`a3dcd2c8` (findings fix). Critic `cumulative` rev-20260819T165646Z-1854a3ce → **0 blocking** / 4
+warnings / 11 notes, all 15 dispositioned (8 fixed, 6 accepted, R-14 filed). Suite green
+4807/10 skipped from a real JUnit run.
+
+**The plan's own problem statement was wrong, and the chunk shipped the corrected version.** This
+entry says so because the Deliverables were built against it: the description asserts "nothing binds
+the *clear* line", but `building.md` already required "nothing outstanding, in flight included". The
+real defect is narrower — the **always-injected** carrier bound only the disposition line, so an
+agent that never opens a guide received no clear-line binding at all. That is a coverage gap, and
+coverage is what the surface pin now asserts. A build plan's problem statement is an author's claim
+like its Deliverables are; it gets verified at the chunk that implements it, not transcribed.
+
+Both injected ceilings **ratcheted down** (3325→3322, 2248→2245) because the funding cut ran past
+the addition — three section headings whose parentheticals restated the preamble or their own body.
 
 **Chunk 02 closed 2026-08-19.** `97c71645` (re-pricing) + `234dfc10` (findings fix). Critic
 `cumulative` rev-20260819T154846Z-54e5b56b → 0 blocking / 8 warnings / 13 notes, all dispositioned

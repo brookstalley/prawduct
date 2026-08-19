@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: a live review moves the clear verdict, and the line answers *should you*
+
+<!-- prawduct: type=feature | scope=clear-cadence -->
+
+The turn-closing standing block's in-flight rule bound only the **disposition** line — a dispatched
+review is `RUNNING`, never `COMPLETE`. Nothing bound the line below it on the surface that reaches
+every session, so `RUNNING` beside `SAFE TO CLEAR` was emittable, and this repo emitted that pair
+three times in one day with a coordinator review live. A live Critic review now moves the **clear
+verdict** to `DO NOT CLEAR`.
+
+**The copy owes a clock, not only a reason.** Someone about to step away is not asking *may I
+clear* — they are asking *by when must I check back*, which is a deadline. It is computed, never
+quoted: elapsed from `.critic-active`'s `started_at`, the roster from the per-role started markers,
+the expected total from `prawduct-hook review-stats` for the `critic` role and the review's mode.
+Being computable is what makes this a verdict rather than a caveat, and a constant written into a
+guide would be stale the moment the ledger it came from grew.
+
+**The line also answers *should you*.** Clearing costs nothing in review coverage — the evidence
+store records trees, so a plan's accumulated reviews span sessions untouched — while *not* clearing
+compounds, because every turn re-reads the whole prefix and a session's read cost therefore grows
+with the square of its turns. Cadence is the only control that keeps it linear. Deliberately **no
+threshold and no context-fullness gate**: an agent cannot reliably measure its own window, and a
+prompt that fires every turn trains the reader to skip the one turn it mattered on. That rejected
+design is recorded so it is not re-proposed as-is.
+
+**Paid for in place, and the ceilings ratcheted down.** The always-injected payload had five tokens
+of headroom and is charged to both session shapes. The funding was a *class*, not a word-trim: three
+section headings carried a parenthetical restating what the preamble or their own body already said.
+The cut ran past the addition, so both readings finished below where the branch started and both
+ceilings moved down with them — a ceiling left at its old value after a cut silently re-funds the
+growth the cut paid for.
+
+Alongside, from the review: the boundary retained-marker notice and `critic-begin`'s in-flight
+refusal now share **one owner** for what a pending roster means, so two surfaces can differ on the
+remedy but never on the state; and `--force` announces a live marker it sweeps — naming the review
+and `critic-restore` — instead of being the one destructive path that printed nothing.
+
 ## 2026-08-19: `/clear` stops deleting a Critic review's liveness marker
 
 <!-- prawduct: type=fix | scope=clear-cadence -->
