@@ -334,8 +334,17 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # member of one, so a digest edit lands on every reading here and a
     # CLAUDE.md edit lands on one. An edit that updated only the shape being
     # worked on is what this pin caught.
-    "framework": 3315,
-    "product": 2238,
+    #
+    # +5 on both shapes, 2026-08-19: the disposition labels became
+    # `RUNNING`/`YOUR TURN`/`COMPLETE` on one axis (what produces the next turn)
+    # and the findings-only clear rule landed. That is ~113 tokens of new rule
+    # funded almost entirely IN PLACE -- the size/type table the digest restated
+    # from `building.md`, a worked example of the stale-count rule, the stance
+    # preamble's second argument for its own first sentence, and four
+    # explanations of rules the same bullet had already stated. Net +5 is what
+    # the trim could not reach; both ceilings still hold.
+    "framework": 3320,
+    "product": 2243,
 }
 
 #: Ceilings. HARD, like the five per-file prose ceilings in this module and
@@ -641,23 +650,40 @@ class TestBuildingMethodology:
             # without reading. Owner-requested 2026-07-31 — the block was
             # correct and complete and still scanned as prose.
             # The disposition and clear lines carry the VERDICT in the label,
-            # not the topic. Owner-requested 2026-08-18: the labels are the only
-            # coloured tokens near the bottom of a turn, so a label the reader
-            # must read past to learn the answer has spent its colour on
-            # nothing. `NEXT`/`BLOCKED`/`COMPLETE` are chosen on one axis — what
-            # happens if the reader walks away — which is what makes them
-            # exhaustive and mutually exclusive; an earlier draft scoped
-            # `BLOCKED` as "cannot proceed without user interaction" and that
-            # swallows every turn, because a turn-based CLI always ends waiting.
+            # not the topic: the labels are the only coloured tokens near the
+            # bottom of a turn, so a label the reader must read past to learn
+            # the answer has spent its colour on nothing.
+            #
+            # The disposition set is chosen on ONE axis -- what produces the
+            # next turn: a machine event, a human utterance, or nothing. That
+            # is what makes it exhaustive and mutually exclusive. `BLOCKED` is
+            # deliberately absent: obstruction is a REASON, and this line owes a
+            # verdict, so obstruction rides in the copy as one shade of
+            # `YOUR TURN`. Two labels both meaning "you must speak" force a
+            # choice an agent makes inconsistently at the boundary.
             for label in (
                 "`STATE`",
-                "`NEXT`",
-                "`BLOCKED`",
+                "`RUNNING`",
+                "`YOUR TURN`",
                 "`COMPLETE`",
                 "`SAFE TO CLEAR`",
                 "`DO NOT CLEAR`",
             ):
                 assert label in text, f"{name} dropped the {label} label"
+            # THE HALF A PRESENT-LABEL CHECK CANNOT SEE. A half-done rename
+            # leaves BOTH vocabularies live on the same surface, which is worse
+            # than either alone -- a reader meets two answers to one question
+            # and an agent picks whichever it saw last. The positive loop above
+            # passes throughout that state.
+            for retired, absorbed_by in (
+                ("`NEXT`", "`RUNNING`"),
+                ("`BLOCKED`", "`YOUR TURN`"),
+            ):
+                assert retired not in text, (
+                    f"{name} still carries the retired {retired} label; it was "
+                    f"replaced by {absorbed_by}. Two live vocabularies for one "
+                    "slot is worse than either alone."
+                )
             # Deliberately NOT asserting `**State**` is absent. `reflection.md`
             # keeps a bolded "what each line owes" list that *explains* the
             # three lines rather than being the emitted shape, and forbidding
@@ -744,6 +770,98 @@ class TestBuildingMethodology:
         assert (
             "never blind-append"
             in read_file("methodology/session-digest.md").lower()
+        )
+
+    def test_a_findings_only_turn_must_persist_before_claiming_safe_to_clear(self):
+        """The clear verdict is computed from disk and process state, so a turn
+        whose whole output is analysis IN THE CONVERSATION scores as safe while
+        clearing destroys everything it produced.
+
+        Pinned for the DISCRIMINATING content, not the phrase. A deliverable of
+        INSTRUCTIONS passes every size and word-presence check while having no
+        effect on a reader, so the assertions below name the condition
+        (findings-only => persist first) and the self-contradiction tell (a
+        `SAFE TO CLEAR` whose stated reason cites the message a clear deletes).
+        A rule that merely said "persist your findings" would satisfy a phrase
+        check and leave the reader unable to recognise the case they are in.
+        """
+        for surface in ("methodology/reflection.md", "methodology/session-digest.md"):
+            text = read_file(surface)
+            lowered = text.lower()
+            assert "findings-only" in lowered, (
+                f"{surface} does not name the findings-only turn -- the reader "
+                "cannot apply a rule to a case they cannot identify"
+            )
+            # The condition, not just the topic: persistence PRECEDES the claim.
+            assert ".prawduct/.handoff-notes.md" in text, (
+                f"{surface} states the findings-only rule without naming where "
+                "the findings go, which leaves it unactionable"
+            )
+            # The self-contradiction tell. This is the half that models the
+            # reader: it lets them catch the failure in their OWN draft, which
+            # a bare instruction to persist does not.
+            assert "cites the message" in lowered or "citing the message" in lowered, (
+                f"{surface} dropped the tell -- a `SAFE TO CLEAR` whose reason "
+                "points at the thing a clear deletes is the defect said aloud, "
+                "and naming it is what makes the rule self-checkable"
+            )
+
+    def test_disposition_label_rules_carry_their_discriminating_content(self):
+        """The label set differs from a rename by two rules; pin those, not the names.
+
+        `test_standing_block_is_on_every_surface_that_claims_it` proves the
+        three labels are present and the retired two are gone. That check passes
+        for a pure rename -- which would leave the set no better than what it
+        replaced. What makes it behave differently is the precedence rule (a
+        human utterance outranks a running job, so the reader is never told to
+        act when they cannot) and the refusal to PREDICT a human turn (an agent
+        cannot know a running job will need a decision; it may answer its own
+        question). Both are reasoning rules, so both are pinned by their
+        substance.
+        """
+        for surface in ("methodology/reflection.md", "methodology/session-digest.md"):
+            text = read_file(surface)
+            lowered = text.lower()
+            # The axis itself. Without it the three labels are just words and an
+            # agent picks by vibe at every boundary.
+            assert "what produces the next turn" in lowered, (
+                f"{surface} no longer states the axis the labels are chosen on"
+            )
+            # Precedence: the human wins an overlap, and the copy carries what
+            # is in flight -- otherwise that fact leaves the block entirely.
+            assert "`YOUR TURN` even when" in text or "`YOUR TURN` even though" in text, (
+                f"{surface} dropped the precedence rule -- without it a turn "
+                "that needs the reader AND has work running has two defensible "
+                "labels, and the choice gets made inconsistently"
+            )
+            # The no-prediction rule, which is the one an agent is most tempted
+            # to break because forecasting feels helpful.
+            assert "predict" in lowered, (
+                f"{surface} dropped the no-prediction rule: a decision that will "
+                "be needed only ONCE a running job lands is `RUNNING`, because "
+                "the job may answer its own question"
+            )
+
+    def test_reaching_safe_to_clear_is_part_of_finishing_a_long_task(self):
+        """The worst outcome in this space is caused by the agent, not the user.
+
+        A multi-hour task lands while they are away and the turn still says
+        `DO NOT CLEAR`: they return to a cold cache they pay full price to
+        reload AND a session they cannot leave -- purely because bookkeeping
+        trailed the work. Canonical guide only: the rule is about how the agent
+        SEQUENCES a long task, which is the on-demand guide's subject, and the
+        injected digest is budget-bound to the rules it must carry unconditionally.
+        """
+        text = read_file("methodology/reflection.md")
+        lowered = text.lower()
+        assert "before a long wait" in lowered or "before the wait" in lowered, (
+            "reflection.md does not say WHEN to write the forward notes for a "
+            "long-running task. 'Prepare it, don't ask' is silent on timing, and "
+            "notes written after the wait leave an away-reader stranded during it"
+        )
+        assert "part of the task" in lowered, (
+            "reflection.md no longer states that reaching `SAFE TO CLEAR` is part "
+            "of finishing a long task rather than a report about it"
         )
 
     def test_handoff_notes_are_read_before_being_rewritten(self):

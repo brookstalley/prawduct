@@ -3,6 +3,74 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: the turn-closing block answers whose move it is
+
+<!-- prawduct: type=refactor | scope=governance-surface-dedup -->
+
+The standing block's middle line offered `NEXT` / `BLOCKED` / `COMPLETE`, which mixed two questions
+into one slot: *is there a problem?* (`BLOCKED`) and *what comes next?* (`NEXT`). Neither got
+answered cleanly. The tell was in the spec itself — the injected digest had to **gloss** its own
+label (*"Outstanding includes work in flight: a dispatched review … is `NEXT`"*), and when a spec
+must translate its label to make it land, the translation is the better label.
+
+One variable does the whole job: **what produces the next turn?** `RUNNING` — a machine event
+will, so the reader can walk away. `YOUR TURN` — only a human utterance will; the session is inert
+until they speak. `COMPLETE` — nothing needs to.
+
+**`BLOCKED` retires because it was a reason wearing a verdict's clothes.** This block's own rule is
+that the label is the verdict and the copy is the reason; obstruction is a reason. It now rides as
+one of three shades of `YOUR TURN` — *just go*, *decide*, *unblock* — which the copy distinguishes
+by leading with the ask and its cost. Two labels both meaning "you must speak" would force a choice
+an agent makes inconsistently at the boundary.
+
+**A premise the earlier design rested on was simply false, and correcting it is what unlocked the
+set.** It held that every turn end waits for the user, so waiting could not discriminate — which is
+why an earlier draft had narrowed `BLOCKED` rather than fixing the axis. Machine-resumed turns are
+common: this branch's own reviews, monitors and background suites all resumed sessions with no
+human input. Turn-ownership discriminates precisely because that is true.
+
+**Two rules make this more than a rename, and both are pinned by their substance.** *Precedence:* a
+human utterance outranks a running job, so a turn needing the reader is `YOUR TURN` even when work
+is in flight, with the copy naming what runs. *No prediction:* a turn where something runs and a
+decision may be needed **once it lands** is `RUNNING` — the agent cannot know the decision will be
+needed, since the job may return "option 1 is clearly correct". This line reports what **is**, never
+what might be.
+
+**`COMPLETE` gained the scope it never had.** "Complete of what?" had no answer, so a finished chunk
+inside an unfinished plan attracted the rarest label. It now means a **blank slate** — no next
+action to propose. Ending a plan while knowing a PR is the obvious next step is `YOUR TURN`.
+
+**The original ask (#683) landed alongside it.** The clear verdict is computed from disk and process
+state, so a turn whose whole output is analysis *in the conversation* scored as safe while clearing
+destroyed everything it produced. A findings-only turn now persists to `.prawduct/.handoff-notes.md`
+before claiming `SAFE TO CLEAR`, and the self-contradiction tell is named so a reader can catch it
+in their own draft: a `SAFE TO CLEAR` whose stated reason **cites the message itself** points at the
+thing a clear deletes.
+
+**The sequencing rule is the operationally sharp half.** The worst outcome in this space is a
+multi-hour task landing while the reader is away and the turn still saying `DO NOT CLEAR` — they
+return to a cold cache they pay full price to reload *and* a session they cannot leave, purely
+because bookkeeping trailed the work. So: write the forward notes **before** a long wait, not after
+it, and treat reaching `SAFE TO CLEAR` as part of finishing a long task rather than a report about
+it. The existing "never ask whether to prepare a handoff — prepare it" rule was silent on *when*.
+
+**It funded itself, which was the plan's closing argument.** ~113 tokens of new rule against ~10
+tokens of headroom, paid almost entirely in place: the digest was restating `building.md`'s
+size/type table, carrying a worked example of the stale-count rule, arguing the stance preamble's
+own first sentence a second time, and explaining four rules the same bullet had already stated. Net
++5 on each shape — framework 3320/3325, product 2243/2248.
+
+**`building.md` needed no edit at all.** Chunk 02 had already collapsed its standing-block copy to a
+pointer, so it never carried the labels — the payoff that chunk predicted, arriving on schedule.
+`plugin/CHANGELOG.md` keeps `NEXT`/`BLOCKED`: it is history, and history is not renamed.
+
+**The pins model the reader, not the vocabulary.** A present-label check passes throughout a
+half-done rename — the worst state, since both vocabularies are live and an agent picks whichever it
+saw last — so the pin also asserts the retired labels are **gone**. And because a rename would
+satisfy every name check while changing nothing, the axis, the precedence rule and the
+no-prediction rule are each pinned by their discriminating content. All four assertions were
+mutation-checked red before shipping.
+
 ## 2026-08-19: one digest for every repo, and a CLAUDE.md trimmed to what it does not say
 
 <!-- prawduct: type=refactor | scope=governance-surface-dedup -->
