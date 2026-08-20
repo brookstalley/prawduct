@@ -84,17 +84,28 @@ and cost the routes. That closes the only Medium item; nothing else is waiting o
 
 ## Status
 
-- [ ] Chunk 01: The Scope rule reaches every mode that raises findings, and its vocabulary covers the mandated notes
+- [x] Chunk 01: The Scope rule reaches every mode that raises findings, and its vocabulary covers the mandated notes
 - [ ] Chunk 02: The unscoped-plan blind spot gets a published fact, and its consumers state their coverage
 - [ ] Chunk 03: The base-advance transfer's silent outcome gets a voice and a falsifiable record
 - [ ] Chunk 04: A release-pending scope missing from the consumer digest is warned, advisory-only
 
-Context: Plan authored 2026-08-20 from a read-only survey of `../discodon` one day after it picked
-up v3.4.0 (it tracks the marketplace clone, which sits on `develop`; the owner has confirmed that
-version gap is intentional and out of scope). Nothing built yet. Next: Chunk 01, starting with its
-step 0 design decision. Backlog items this plan advances: `#199` (Chunk 01), `#642` remaining
-cause 1 (Chunk 02), `#655` follow-on and `#672`'s diagnostic-wording half (Chunk 03), `#702`
-(Chunk 04).
+Context: **Chunk 01 is complete** (2026-08-20). Built as `code`, not the `doc-only` the plan
+first estimated — step 0 found the rule is the ~110-token clause at `review-protocol.md` § Severity
+Levels, not the format line, so it ships as `FINDING_SCOPE_DIRECTIVE` handed at dispatch to
+`GOALS_1_3_MODES`. Cumulative `rev-20260820T224159Z-c381f3cc` raised 2 blocking / 6 warning /
+9 note; all 15 actionable findings plus two self-found items landed in one commit (`7be36bf0`) and
+`rev-20260820T230441Z-00a47ee2` graded every one `fixed`. `check-cumulative-critic` reports
+0 unresolved blocking. Suite 4903 / 0 / 11.
+
+Next: Chunk 02. Two accepted observations from Chunk 01's verify round are owed a ride on its
+commit — they are recorded in `.prawduct/.handoff-notes.md` under "Riding Chunk 02's commit", and
+riding a commit made anyway costs no round while a commit of their own would.
+
+One item genuinely needs the owner and blocks nothing: the category ruling recorded on
+architecture.md's "every fact has one home" norm carries no owner attribution, where its two
+siblings say "Owner decision, 2026-07-31" / "Owner amendment, 2026-08-11". It is captured in the
+vetoable `[DECISION: … | user can veto/override]` shape, so it conforms — but a reader cannot tell
+proposed from ratified at a glance.
 
 ## Scaffolding
 
