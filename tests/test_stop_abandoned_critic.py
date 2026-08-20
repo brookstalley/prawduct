@@ -225,10 +225,13 @@ class TestAbandonedReviewBlocks:
         # Actionable: names the re-run path and the escape hatch (Chunk 05 dropped
         # the interim "run critic-end" advice — consolidate now owns persistence).
         assert "/prawduct:critic" in result.stderr
-        assert "rm .prawduct/.critic-active" in result.stderr
-        # The waiver must also clean up leftover partials — otherwise the next
-        # dispatch at the same HEAD could merge a stale partial as current work.
-        assert "rm -rf .prawduct/.critic-partials" in result.stderr
+        # The escape hatch clears the leftover partials — otherwise the next
+        # dispatch at the same HEAD could merge a stale partial as current work —
+        # but it does so through `critic-discard`, which ARCHIVES them. The two
+        # `rm` lines this once asserted destroyed a roster that may be one
+        # consolidation from being recorded; TestTheEscapeHatchNeverDestroys
+        # below binds that for every branch, not just this one.
+        assert "critic-discard" in result.stderr
 
     def test_abandoned_block_suppresses_generic_findings_block(self, tmp_path):
         """One cause → one block. With the marker present AND no findings, the
@@ -411,7 +414,86 @@ class TestChunk05ConsolidateOrBlock:
         assert (prawduct / ".critic-active").is_file()
 
 
-class TestASelfHealSurvivesTheSessionBoundary:
+class TestTheEscapeHatchNeverDestroys:
+    """Every state that prints the escape hatch is a state holding reviewer output.
+
+    The class, stated as the reason it broke: *one `_escape` string is appended to
+    every abandoned-review branch, and each of those branches is reached only when
+    reviewer output is on disk.* That sentence names the string, not any one
+    branch — so pinning the branches individually would leave the next branch
+    someone adds free to ship the old recipe again. These drive all four wedged
+    states and assert the property on whatever each one emits.
+
+    `rm -rf .prawduct/.critic-partials` was the shipped advice, on all four. On the
+    complete-roster-but-consolidation-failed branch it destroys a review one
+    deterministic step from being recorded — the exact loss `boundary_sweep`'s
+    roster question and `write_marker`'s guard exist to prevent. `critic-discard`
+    reaches the same end state (marker cleared, partials out of the way, next
+    dispatch unblocked) and archives, printing `critic-restore <id>`.
+    """
+
+    def _stderr_for(self, tmp_path, state: str) -> str:
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        if state == "complete":
+            # The consolidation-FAILED branch, and the one that matters most:
+            # every reviewer reported, so the roster is complete, but the
+            # partials cannot be consolidated. `pending_state` is presence-only
+            # by design (it is the cheap liveness read), so a malformed partial
+            # reads as complete and fails inside `consolidate` — which is the
+            # real-world shape too. A wrong commit_reviewed does NOT produce this
+            # state: the self-heal succeeds and the generic coverage gate fires
+            # instead, with no escape hatch in it.
+            _write_manifest(prawduct)
+            _write_partial(prawduct, "correctness")
+            _write_partial(prawduct, "design")
+            rid = _review_id(prawduct)
+            (prawduct / ".critic-partials" / f"sustainability.{rid}.json").write_text(
+                "{not json"
+            )
+        elif state == "incomplete":
+            _write_manifest(prawduct)
+            _write_partial(prawduct, "correctness")
+        elif state == "unreadable":
+            d = prawduct / ".critic-partials"
+            d.mkdir()
+            (d / "manifest.json").write_text("{not json")
+        elif state != "none":
+            raise AssertionError(f"unknown wedged state {state!r}")
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2, (
+            f"state={state!r} must block. stderr={result.stderr!r}"
+        )
+        return result.stderr
+
+    def test_every_wedged_state_names_critic_discard(self, tmp_path):
+        for state in ("complete", "incomplete", "none", "unreadable"):
+            stderr = self._stderr_for(tmp_path / state, state)
+            assert "prawduct-hook critic-discard" in stderr, (
+                f"state={state!r} printed an escape hatch that does not name "
+                f"critic-discard: {stderr!r}"
+            )
+
+    def test_no_wedged_state_recommends_deleting_reviewer_output(self, tmp_path):
+        for state in ("complete", "incomplete", "none", "unreadable"):
+            stderr = self._stderr_for(tmp_path / state, state)
+            for destructive in (
+                "rm .prawduct/.critic-active",
+                "rm -rf .prawduct/.critic-partials",
+                "rm -r .prawduct/.critic-partials",
+            ):
+                assert destructive not in stderr, (
+                    f"state={state!r} recommends {destructive!r} — that discards "
+                    f"reviewer output with no archive. Use critic-discard."
+                )
+
+    def test_the_escape_hatch_still_names_the_waiver(self, tmp_path):
+        """The hatch has two halves and only one of them changed: clearing the
+        review, and declaring the waiver that stops the gate re-firing. Dropping
+        the second would trade a destructive recipe for an incomplete one."""
+        stderr = self._stderr_for(tmp_path, "none")
+        assert ".prawduct/.gates-waived" in stderr
+        assert '"critic"' in stderr
     """The retention and the self-heal are one behaviour across two invocations.
 
     Each half passes on its own while the pair is broken, which is how the

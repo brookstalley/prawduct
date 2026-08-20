@@ -33,8 +33,11 @@ source is only a proxy for the question it asks. What licenses deleting someone
 else's marker is that the dispatching process is gone — and `clear` discards the
 transcript WITHOUT ending the process, so it passes the test that sorts this
 column while failing the one the sweep needs. At a boundary the sweep therefore
-fires only on a marker that has already failed the 30-minute TTL; a fresh one
-survives every session event.
+asks two questions, not one: the TTL answers *is the dispatching process gone*,
+and the roster answers *is there anything left to finish*. A fresh marker
+survives every session event, and so does an expired one whose reviewers have
+all reported — that review is one deterministic consolidation from being
+recorded, and the Stop hook's backstop runs that step itself.
 
 The premise was verified empirically before this was built, not reasoned about:
 a headless session was given a codeword, resumed by session id, and returned the
@@ -247,8 +250,11 @@ class TestBoundaryDependentInterpretation:
 
         This replaces test_resume_still_sweeps_a_stale_critic_marker, which pinned
         the opposite. That test asserted a real defect, so this is a correction,
-        not a relaxation: the marker's three independent recoveries (30-min TTL,
-        `--force`, `rm`) all survive, and the boundary sweep below still fires.
+        not a relaxation: the marker's three independent recoveries (TTL expiry,
+        the boundary sweep, and an explicit named act — `critic-end`,
+        `critic-discard`, `clear --force`) all survive, and the boundary sweep
+        below still fires. A bare `rm` is NOT among them: it does the same damage
+        while saying nothing.
         """
         prawduct = _seed_session(tmp_path)
         marker = prawduct / ".critic-active"

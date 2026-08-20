@@ -2323,13 +2323,24 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  will run as they finish. (Deferred while background work is in flight.)\n"
             ))
         else:
+            # The escape hatch names `critic-discard`, never a bare `rm` of the
+            # partials. Every branch this string is appended to is a state where
+            # reviewer output is ON DISK — a complete roster one deterministic
+            # consolidation from being recorded, or a partial set a re-dispatch
+            # can still use. `critic-discard` archives that set and prints the
+            # `critic-restore <id>` that brings it back; `rm -rf` destroys it
+            # while saying nothing, which is the silence this guard exists to
+            # remove (lib/critic_marker, "Explicit override").
             _escape = (
                 "\n"
-                "  Escape hatch: if a review genuinely cannot complete this session, clear\n"
-                "  the marker and declare a waiver so this gate stops re-firing every turn:\n"
-                "    rm .prawduct/.critic-active\n"
-                "    rm -rf .prawduct/.critic-partials\n"
+                "  Escape hatch: if a review genuinely cannot complete this session,\n"
+                "  discard it and declare a waiver so this gate stops re-firing every turn:\n"
+                "    prawduct-hook critic-discard\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                "  critic-discard archives the reviewer partials rather than deleting\n"
+                "  them and names the `critic-restore <id>` that brings the review back\n"
+                "  as itself. Do not `rm` the marker or .critic-partials by hand: the\n"
+                "  states above are exactly the ones holding reviewer output.\n"
                 "  Empty reasons are rejected; the file clears at the next session boundary\n"
                 "  (a fresh start or /clear), so it outlives a resume/compact/fork.\n"
             )
