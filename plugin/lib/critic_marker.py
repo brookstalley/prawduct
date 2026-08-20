@@ -71,8 +71,11 @@ independent corrections, no one of which has to be perfect:
    Announced, not silent: age-plus-complete is precisely the state an operator
    is entitled to hear about, since nothing else in the new session knows a
    review is sitting there consolidated-but-unrecorded.
-3. **Explicit override** — the refusal message tells the operator/agent how to
-   clear a stale marker (``rm``) or force the one command (``clear --force``).
+3. **Explicit override** — the refusal message names the act that ends a review
+   (``critic-end``, and what that costs on one whose reviewers all reported) or
+   forces the one command (``clear --force``). Not ``rm``: a bare delete does
+   the same damage while saying nothing, which is the silence this guard is
+   built to remove.
 
 **Failure stance — decided by AGE, not by readability.** A *missing* marker is
 not active. A *corrupt or unparseable* one is not therefore dead: the freshness

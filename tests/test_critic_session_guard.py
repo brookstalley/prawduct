@@ -552,7 +552,8 @@ class TestConcurrentDispatchGuard:
         """The Stop hook's abandoned-review branch is gated on `marker_present`
         and is what prints the manual-recovery remedy. A dispatch that swept a
         stale marker on its way past would delete the signal producing those
-        instructions — so the guard reads with `sweep=False`."""
+        instructions — so the dispatch path only ASKS. `review_active` removes
+        nothing at all now; releasing a marker has one home."""
         repo = self._dispatch(tmp_path)
         prawduct = repo / ".prawduct"
         self._complete_the_roster(repo)

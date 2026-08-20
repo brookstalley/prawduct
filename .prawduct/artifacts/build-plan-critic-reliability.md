@@ -57,13 +57,24 @@ Backlog items: **#675** (Chunk 01), **#692** and **#690** (Chunk 02). All three 
 ## Status
 
 - [x] Chunk 01: Tree capture stops re-hashing the world — and cleans up after a timeout
-- [ ] Chunk 02: An expiring marker announces itself, and never discards a self-heal
+- [x] Chunk 02: An expiring marker announces itself, and never discards a self-heal
 
-Context: Chunk 01 built, reviewed (`cumulative`, findings resolved) and committed
-2026-08-19. Next: Chunk 02, which is independent of it. Chunk order was deliberate —
-Chunk 01 is the field-breaking bug, so it can ship even if Chunk 02's review runs long
-against the release cut. Chunk 01 corrected two things in its own spec as it was built;
-both corrections are in its Description and neither should be re-litigated.
+Context: **Both chunks are built, reviewed and committed (2026-08-19).** The plan's single
+`cumulative` (`Type: cumulative-final`) ran at Chunk 02 and covered the whole branch: 2
+blocking, 3 warnings, 11 notes, all dispositioned in one pass, and the follow-up
+`verify-resolutions` verified all five blocking/warning resolutions with zero new findings.
+Backlog: #675, #692 and #690 are closed on GitHub with their reasoning in close comments
+(#692 as a recorded disposition, not an implementation — the TTL was deliberately not
+re-priced). #699 was filed for a gap found on the way: `adapter-mode.md` claims a close
+records `closed_by` and no write path exists, so the scope handle on those three closes is
+prose, not machine-readable.
+
+Each chunk corrected its own spec as it was built and the corrections are in the
+Descriptions below — the wedge is not in `.git`, the index copy must preserve mtime, a
+shared reading has to be true at the surface that just acted, and the retention rule had a
+second home. None should be re-litigated.
+
+Nothing remains but the PR, which is the owner's call (`/prawduct:pr`).
 
 ## Verification Strategy
 
