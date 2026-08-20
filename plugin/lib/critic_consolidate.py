@@ -818,14 +818,22 @@ def _archive_leftovers(prawduct_dir: Path, caller: str = "critic-begin") -> Path
     operator deliberately discarding their own review — and an operator who ran
     ``critic-discard`` cannot act on a line that says ``critic-begin``.
 
-    **A None return is two outcomes, and one of them destroyed something.**
-    Nothing was there to archive, or an ``OSError`` hit mid-archive and this
-    degraded to delete. (An unsafe manifest id is *not* a third: it falls
-    through to the ``unmanifested-`` name and still archives.) A caller that
-    reports the first wording on the second path tells the operator their
-    partials are safe on the one path where they are gone. :func:`had_partials`
-    is how a caller tells them apart; ``bin/prawduct-hook``'s ``critic-discard``
-    does exactly that.
+    **A None return is three outcomes, and only the middle one is benign.**
+
+    1. Nothing was there to archive.
+    2. The directory could not be READ — nothing is archived and, because
+       :func:`remove_partials` cannot list it either, nothing is deleted. The
+       partials survive, unreachable until the permission is fixed.
+    3. An ``OSError`` hit mid-archive (the ``mkdir``/``rename``): this degraded
+       to delete, and the caller's ``remove_partials`` finishes the job.
+
+    (An unsafe manifest id is not among them — it falls through to the
+    ``unmanifested-`` name and still archives.)
+
+    Only 3 destroys anything, so a caller that reports "nothing was there" on
+    it tells the operator their partials are safe on the one path where they are
+    gone. :func:`had_partials` separates 1 from 2-and-3; the stderr diagnostic
+    printed here is what distinguishes 2 from 3, and it names its ``caller``.
 
     Named after the abandoned review's id when its manifest is readable, else
     a timestamp — partials can outlive their manifest (a late reviewer writing
@@ -3178,7 +3186,19 @@ def remove_partials(prawduct_dir: Path) -> None:
     pdir = partials_dir(prawduct_dir)
     if not pdir.is_dir():
         return
-    for child in pdir.iterdir():
+    # The LISTING is guarded, not only the per-child unlink. Both callers reach
+    # here one line after `_archive_leftovers`, which degrades rather than
+    # raising when this same directory cannot be read — so leaving this
+    # `iterdir` bare re-raised the exception that function had just absorbed,
+    # and did it AFTER its caller had printed that the partials were deleted but
+    # BEFORE the marker was cleared. The operator was told the destructive thing
+    # happened, and left in the wedged state anyway. Hygiene must never be the
+    # step that strands someone.
+    try:
+        children = list(pdir.iterdir())
+    except OSError:
+        children = []
+    for child in children:
         try:
             child.unlink()
         except OSError:

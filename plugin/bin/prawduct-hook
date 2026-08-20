@@ -1767,6 +1767,13 @@ def cmd_critic_discard(project_dir: Path) -> int:
     existed = consolidate.had_partials(prawduct_dir)
     archived = consolidate._archive_leftovers(prawduct_dir, caller="critic-discard")
     consolidate.remove_partials(prawduct_dir)
+    # And the POST-state, because the two non-archiving failures cost opposite
+    # things and the return value cannot tell them apart: an unreadable dir
+    # leaves the partials intact (unreachable, but there), while a failed
+    # mkdir/rename degrades to delete and `remove_partials` completes it.
+    # Claiming either wording on the other path is a lie in one direction or
+    # the other, so this asks the disk instead of guessing.
+    survived = consolidate.had_partials(prawduct_dir)
     _critic_marker().clear_marker(prawduct_dir)
     if archived:
         print(
@@ -1776,9 +1783,24 @@ def cmd_critic_discard(project_dir: Path) -> int:
             "brings that review back as itself. The archive keeps the newest "
             f"{consolidate._ARCHIVE_KEEP} reviews — restore before that window closes."
         )
+    elif existed and survived:
+        # Unreadable directory: nothing archived AND nothing deleted. The marker
+        # is cleared regardless, so the operator is unwedged — but a dispatch
+        # will meet these partials again, so the remedy is a permission fix, not
+        # a re-run.
+        print(
+            "PRAWDUCT: critic-active marker cleared, but the reviewer partials "
+            "could NOT be read (cause on stderr above) — they were neither "
+            "archived nor deleted, and are still on disk. Fix the permissions on "
+            ".prawduct/.critic-partials/, then re-run `prawduct-hook "
+            "critic-discard` to archive them properly.",
+            file=sys.stderr,
+        )
     elif existed:
-        # The degraded path. `_archive_leftovers` has already named the OSError
-        # on stderr; this says what it COST, which the diagnostic does not.
+        # Degraded to delete: the archive's mkdir/rename failed and
+        # `remove_partials` finished the job. `_archive_leftovers` has already
+        # named the OSError on stderr; this says what it COST, which the
+        # diagnostic does not.
         print(
             "PRAWDUCT: discarded the dispatched review, but archiving FAILED "
             "(cause on stderr above) — the reviewer partials were deleted, not "

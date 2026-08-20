@@ -586,6 +586,50 @@ class TestConcurrentDispatchGuard:
         # The primary job still got done: dispatch is unblocked.
         assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 0
 
+    def test_an_unreadable_partials_dir_still_clears_the_marker(self, tmp_path):
+        """End-to-end, because guarding one function was not enough.
+
+        The first cut of this fix wrapped `_archive_leftovers`' `iterdir` and
+        stopped there — but both callers run `remove_partials` on the SAME
+        directory one line later, and its listing was bare. Every input that
+        reached the new guard hit an unhandled raise immediately after it, and
+        did so AFTER the caller printed that the partials were deleted and
+        BEFORE `clear_marker` ran: the operator was told the destructive thing
+        happened and left wedged anyway. A unit test on either function alone
+        passes while the PATH is broken, so this drives the command.
+
+        The escape hatch prints `critic-discard` as the way out of a wedged
+        review, so "exits 0 and the marker is gone" is the property that makes
+        that advice true.
+        """
+        repo, prawduct = self._strand_a_complete_roster(tmp_path)
+        pdir = prawduct / ".critic-partials"
+        assert any(pdir.iterdir()), "fixture must actually place partials"
+        pdir.chmod(0o000)
+        try:
+            discard = _run_real("critic-discard", repo)
+        finally:
+            pdir.chmod(0o700)  # always restore, or tmp cleanup fails
+
+        assert discard.returncode == 0, (
+            f"an unreadable partials dir must not traceback out of the escape "
+            f"hatch: {discard.stderr}"
+        )
+        assert "Traceback" not in discard.stderr
+        assert not (prawduct / cm.MARKER_NAME).is_file(), (
+            "the marker MUST be cleared — leaving it is the wedged state this "
+            "command exists to end"
+        )
+        combined = discard.stdout + discard.stderr
+        assert "could NOT be read" in combined
+        assert "still on disk" in combined, (
+            "nothing was deleted on this path; claiming otherwise sends the "
+            "operator looking for a restore instead of fixing permissions"
+        )
+        assert "were deleted, not archived" not in combined, (
+            "that is the mkdir/rename degrade path's wording, and it is false here"
+        )
+
     def test_a_clean_discard_still_reports_the_restore_window(self, tmp_path):
         """The undo `critic-discard` promises has an eviction bound, and an undo
         whose expiry is unstated is one an operator finds out about too late."""
