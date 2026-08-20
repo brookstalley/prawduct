@@ -515,7 +515,7 @@ build_state:
 # its own frontmatter and this line is not consulted. The scalar is deliberately
 # kept and kept current: it is the answer on every other branch, and retiring it
 # is out of that pass's scope.
-active_build_plan: .prawduct/artifacts/build-plan-instance-vs-class.md
+active_build_plan: null
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

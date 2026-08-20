@@ -17,7 +17,13 @@ governed_by:
       - "the plugin writes nothing into a governed repo except its own state and reconciled seams → inapplicable because no plugin writer changes; the CLAUDE.md edited here is prawduct-the-product's own file"
       - "prawduct is written in Python and must never be specific to Python → inapplicable because this cycle ships prose and test-contract updates only"
 last_validated: 2026-08-13
+lifecycle: completed
+archived: 2026-08-20
+released_in: v3.4.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

@@ -25,7 +25,13 @@ governed_by:
       - "a new preference or norm assigns a mechanism and an audit home; a named mechanism that does not yet exist is filed as backlog work at the norm's birth → BINDS Chunk 02. The cession it records has no mechanism home: `documentation/purpose.md` names a **responsibility ledger** as the instrument for re-pricings and says outright it is not yet built (Cycle 3). The record therefore lands in the durable change-log entry, and the gap is filed rather than papered over"
       - "model floor and coherence pass → conforms — this session runs on Opus; no sub-Fable stage to compensate for"
 last_validated: 2026-08-19
+lifecycle: completed
+archived: 2026-08-20
+released_in: v3.4.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

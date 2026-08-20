@@ -21,7 +21,13 @@ governed_by:
       - "proportionality ratchets both ways — a new control names its expected yield AND emits it observably → conforms, and the obligation applies at birth (this control is added 2026-08-19, after the norm's dated 2026-07-29 boundary). **Expected yield:** it catches (a) growth in an already-budgeted injected file that nobody declared, and (b) a newly injectable digest variant that no shape budgets — the second is the defect that actually happened and went unseen. **How the yield is observable, which is the arm that usually fails:** a hard suite failure cannot be printed-and-forgotten the way a canary finding can — every firing forces an edit to `LAST_MEASURED_INJECTED_TOKENS`, and those edits are in `git log` with the commit that paid for them, so the control's firing history is queryable after the fact without building a new emission path. **What evidence would retire it:** a sustained period in which no firing ever named an unbudgeted variant AND every total edit was a deliberate declared change rather than a catch — at which point the set-membership half has stopped earning its place and the totals could fall back to the janitor's Norm Health sweep"
       - "state-file growth past its size threshold is advisory, never a hard block → inapplicable because this budgets SHIPPED PROSE PAYLOADS, not `.prawduct/` state files; the five existing per-file prose ceilings are already hard. Recorded rather than assumed because the norm's wording ('size threshold') would otherwise read as covering it. [DECISION: the total-footprint assertion is a HARD test failure | owner ruling 2026-08-19; an advisory would not have caught the defect this plan exists to fix, since nothing was blocked when the injected set grew | user can veto]"
 last_validated: 2026-08-19
+lifecycle: completed
+archived: 2026-08-20
+released_in: v3.4.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

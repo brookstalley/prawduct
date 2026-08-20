@@ -32,7 +32,13 @@ governed_by:
       - "exit codes are the contract; errors attributed, never stack traces across the boundary → conforms: the probe returns `[]` on any unreadable input and never raises into the sync path"
       - "additive-first evolution → conforms: one probe added to the registry; nothing repurposed"
 last_validated: 2026-08-14
+lifecycle: completed
+archived: 2026-08-20
+released_in: v3.4.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

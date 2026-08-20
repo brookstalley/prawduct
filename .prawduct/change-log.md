@@ -5,7 +5,7 @@
 
 ## 2026-08-19: the escape hatch stops recommending the deletion this release guards against
 
-<!-- prawduct: type=fix | scope=critic-reliability -->
+<!-- prawduct: type=fix | scope=critic-reliability | release=v3.4.0 -->
 
 The Stop hook's abandoned-review blocker prints an escape hatch for the case where a review
 genuinely cannot finish this session. It said:
@@ -92,7 +92,7 @@ that `boundary_sweep` replaced with a two-question one.
 
 ## 2026-08-19: an expiring Critic marker announces itself, and never discards a self-heal
 
-<!-- prawduct: type=fix | scope=critic-reliability -->
+<!-- prawduct: type=fix | scope=critic-reliability | release=v3.4.0 -->
 
 Two field reports in one mechanism, both created by making the 30-minute TTL the **sole**
 liveness verdict at a session boundary.
@@ -165,7 +165,7 @@ summary among them. Adding a reader costs one line and one test, which is the po
 
 ## 2026-08-19: tree capture stops re-hashing the world
 
-<!-- prawduct: type=fix | scope=critic-reliability -->
+<!-- prawduct: type=fix | scope=critic-reliability | release=v3.4.0 -->
 
 `capture_tree` seeded its temporary index with `read-tree HEAD`, whose entries carry **zeroed stat
 data**. Every tracked file was therefore a cache miss and `git add -A` re-hashed the entire working
@@ -222,7 +222,7 @@ reader of #675 should not believe this fix addressed it.
 
 ## 2026-08-19: the test suite stops taking the whole machine
 
-<!-- prawduct: type=chore | scope=clear-cadence -->
+<!-- prawduct: type=chore | scope=clear-cadence | release=v3.4.0 -->
 
 pytest-xdist is pinned to **5 workers** instead of `-n auto` (owner ruling). `auto` takes every
 core, so a full-suite run owned the developer's machine for its whole duration — observed at a load
@@ -245,7 +245,7 @@ contention, the fix is an environment-driven count *with* that evidence.
 
 ## 2026-08-19: two tools stop losing what they were asked to record
 
-<!-- prawduct: type=fix | scope=clear-cadence -->
+<!-- prawduct: type=fix | scope=clear-cadence | release=v3.4.0 -->
 
 Both found by *using* the governed path rather than by reading it, and each has a reproduction in
 this branch's own history.
@@ -296,7 +296,7 @@ The output line was the defect surface, so it changed too: a restamp now prints 
 
 ## 2026-08-19: the on-demand methodology guides get size accounting, not size limits
 
-<!-- prawduct: type=feature | scope=clear-cadence -->
+<!-- prawduct: type=feature | scope=clear-cadence | release=v3.4.0 -->
 
 `discovery.md`, `planning.md` and `reflection.md` now carry entries in `LAST_MEASURED_TOKENS`, and
 deliberately **no ceilings**. `skills/critic/SKILL.md` was already a reading without a ceiling, so
@@ -326,7 +326,7 @@ membership (how `session-digest.md` is priced — by shape total, twice). Nothin
 
 ## 2026-08-19: a live review moves the clear verdict, and the line answers *should you*
 
-<!-- prawduct: type=feature | scope=clear-cadence -->
+<!-- prawduct: type=feature | scope=clear-cadence | release=v3.4.0 -->
 
 The turn-closing standing block's in-flight rule bound only the **disposition** line — a dispatched
 review is `RUNNING`, never `COMPLETE`. Nothing bound the line below it on the surface that reaches
@@ -363,7 +363,7 @@ and `critic-restore` — instead of being the one destructive path that printed 
 
 ## 2026-08-19: `/clear` stops deleting a Critic review's liveness marker
 
-<!-- prawduct: type=fix | scope=clear-cadence -->
+<!-- prawduct: type=fix | scope=clear-cadence | release=v3.4.0 -->
 
 A session boundary swept `.critic-active` unconditionally. What licenses deleting a marker someone
 else wrote is that **the process that dispatched the review is gone** — and the boundary/continuation
@@ -400,7 +400,7 @@ conditional on the roster, because the wrong one is destructive: a complete rost
 
 ## 2026-08-19: the work-cycle limit is re-priced, and a rationale is formally ceded
 
-<!-- prawduct: type=refactor | scope=clear-cadence -->
+<!-- prawduct: type=refactor | scope=clear-cadence | release=v3.4.0 -->
 
 `building.md` said: *"Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades
 across a large diff, and long-session compaction can lose governance context."* One rule, two
@@ -448,7 +448,7 @@ rebuild cost and per-turn growth are measured from real `/clear`s.
 
 ## 2026-08-19: the turn-closing block answers whose move it is
 
-<!-- prawduct: type=refactor | scope=governance-surface-dedup -->
+<!-- prawduct: type=refactor | scope=governance-surface-dedup | release=v3.4.0 -->
 
 The standing block's middle line offered `NEXT` / `BLOCKED` / `COMPLETE`, which mixed two questions
 into one slot: *is there a problem?* (`BLOCKED`) and *what comes next?* (`NEXT`). Neither got
@@ -516,7 +516,7 @@ mutation-checked red before shipping.
 
 ## 2026-08-19: one digest for every repo, and a CLAUDE.md trimmed to what it does not say
 
-<!-- prawduct: type=refactor | scope=governance-surface-dedup -->
+<!-- prawduct: type=refactor | scope=governance-surface-dedup | release=v3.4.0 -->
 
 The framework repo received a digest variant of its own. The reasoning was sound and the fix was
 applied to the wrong artifact: this repo's always-loaded `CLAUDE.md` duplicated 40-50% of the full
@@ -582,7 +582,7 @@ manifest-location fixtures exited with the branch that consumed them.
 
 ## 2026-08-19: the standing block collapses to the surfaces that carry it
 
-<!-- prawduct: type=refactor | scope=governance-surface-dedup -->
+<!-- prawduct: type=refactor | scope=governance-surface-dedup | release=v3.4.0 -->
 
 Four prose surfaces restated the turn-closing standing block in full: `reflection.md`, which owns
 it, both injected digests, which reach a session whether or not it opens a guide, and
@@ -617,7 +617,7 @@ other budgeted file in the module sits within ~1-34 tokens of its ceiling.
 
 ## 2026-08-19: a token budget that can see a new file
 
-<!-- prawduct: type=feature | scope=governance-surface-dedup -->
+<!-- prawduct: type=feature | scope=governance-surface-dedup | release=v3.4.0 -->
 
 Every token budget in this framework is asserted per-file, and a per-file ceiling cannot see a
 **new** file. That is not a hypothetical: `session-digest-slim.md` was added to save tokens in
@@ -658,7 +658,7 @@ there hide growth here, which is the failure this control exists to prevent.
 
 ## 2026-08-18: the turn-closing block puts the answer in the label, not beside it
 
-<!-- prawduct: type=feature | scope=standing-block-expressive-labels -->
+<!-- prawduct: type=feature | scope=standing-block-expressive-labels | release=v3.4.0 -->
 
 Owner report, and it names a gap the block's own rationale already implied without acting on it.
 `reflection.md` argues that the backticked labels are the only coloured tokens near the bottom of
@@ -742,7 +742,7 @@ re-require the shape this change removed, so they are replaced by label assertio
 
 ## 2026-08-18: the change-log gate stops calling session metadata "code"
 
-<!-- prawduct: type=bugfix | scope=change-log-gate-predicate -->
+<!-- prawduct: type=bugfix | scope=change-log-gate-predicate | release=v3.4.0 -->
 
 Reported from a consuming repo, verified here, and already on the backlog as **#245** — whose
 title is literally the remedy. On a branch whose diff is only `.prawduct/*.json` plus `.md`, the
@@ -814,7 +814,7 @@ drift apart in the first place. Both fail against the old inline classifier.
 
 ## 2026-08-18: the cumulative review's two warnings close by construction, and both were class-shaped
 
-<!-- prawduct: type=fix | scope=instance-vs-class -->
+<!-- prawduct: type=fix | scope=instance-vs-class | release=v3.4.0 -->
 
 `rev-20260818T175424Z-bd5c4bf5` returned 0 blocking, 2 warning, 10 note over
 `bbc31edeabf2...437e7b9a`. **Every finding carried the `Scope:` slot the same bundle added**, and
@@ -885,7 +885,7 @@ prose-forbidden is a decision, not a defect to patch here.
 
 ## 2026-08-18: a finding says whether it is an instance or a class, and the remedy is graded
 
-<!-- prawduct: type=chore | scope=instance-vs-class -->
+<!-- prawduct: type=chore | scope=instance-vs-class | release=v3.4.0 -->
 
 Three times in one session on `fleet-feedback-661`, a finding named a site, the builder fixed
 that site, and the class survived — caught by a reviewer each time. `update-gitignore` fixed
@@ -958,7 +958,7 @@ a class by the container instead of the property, inside the change that forbids
 
 ## 2026-08-18: the Critic's protocol pays for its next rule by upleveling, not by raising a ceiling
 
-<!-- prawduct: type=chore | scope=instance-vs-class -->
+<!-- prawduct: type=chore | scope=instance-vs-class | release=v3.4.0 -->
 
 Chunk 01 needs room in `review-protocol.md`, whose budget comment has said for five edits
 running that the next addition trims or relocates. A measured scan found 634 of 3799 tokens
@@ -1014,7 +1014,7 @@ test pinning prose pins WHERE a rule lives; move the rule before deleting its on
 
 ## 2026-08-17: seventeen learnings rules become three, and the corpus stops burying its own general rule
 
-<!-- prawduct: type=chore | scope=instance-vs-class -->
+<!-- prawduct: type=chore | scope=instance-vs-class | release=v3.4.0 -->
 
 `fleet-feedback-661` produced three instances of one defect: a fix lands at the site a finding
 named and the class survives. The corpus already had the rule — eight times, in eight
@@ -1073,7 +1073,7 @@ a second is exactly what the previous commit added. Folded in; the section walk 
 
 ## 2026-08-17: four defects an external fleet report found, and the one shape they share
 
-<!-- prawduct: type=bugfix | scope=fleet-feedback-661 -->
+<!-- prawduct: type=bugfix | scope=fleet-feedback-661 | release=v3.4.0 -->
 
 Issue #661 analysed ~840 reflection and learning entries across ten governed repos and returned
 four still-live defects. Each was re-verified here before any code moved — three by reading the
@@ -1178,7 +1178,7 @@ Corrected, including which nine remain unverified. A written contract that overs
 same defect class as a check that cannot run: both read as assurance.
 ## 2026-08-18: the reopen version is guessed LOW, and that is a correctness rule
 
-<!-- prawduct: type=fix | scope=release-cut-checklist -->
+<!-- prawduct: type=fix | scope=release-cut-checklist | release=v3.4.0 -->
 
 The spanning cumulative (`rev-20260818T192844Z-d7391015`) blocked on the reopen step telling the
 operator to guess the next **minor**, on two independent grounds, and the second is the one that
@@ -1221,7 +1221,7 @@ the runbook had already retracted.
 
 ## 2026-08-18: the reopen step gets the three blockers its first review found
 
-<!-- prawduct: type=fix | scope=release-cut-checklist -->
+<!-- prawduct: type=fix | scope=release-cut-checklist | release=v3.4.0 -->
 
 The branch's first cumulative review (`rev-20260818T185932Z-a1b20a37`) returned **3 blocking, 4
 warning, 4 note**. All three blockers were the same shape — a step added at one site while the
@@ -1266,7 +1266,7 @@ one-site-of-three defect the blockers were, caught in the same review.
 
 ## 2026-08-18: develop identifies itself as a prerelease
 
-<!-- prawduct: type=feature | scope=release-cut-checklist -->
+<!-- prawduct: type=feature | scope=release-cut-checklist | release=v3.4.0 -->
 
 Between releases, develop carried the released version string. Harmless until the verdict
 cache keyed on that string: successive develop pushes all claiming `3.3.4` can replay
@@ -1288,7 +1288,7 @@ release boundary. `-dev.N` is what would buy the rest, and it is permitted but n
 
 ## 2026-08-18: purpose.md stops claiming the responsibility ledger exists
 
-<!-- prawduct: type=bugfix | scope=release-cut-checklist -->
+<!-- prawduct: type=bugfix | scope=release-cut-checklist | release=v3.4.0 -->
 
 `documentation/purpose.md` described the responsibility ledger in the present tense; it is
 Cycle 3 of the cession program and unbuilt. Pre-release audit finding (2026-08-18). The line
@@ -1296,7 +1296,7 @@ now says "planned" and names the cycle — the doc-vs-reality shape this repo po
 
 ## 2026-08-15: a plan-less scope is an absence, not a check that failed
 
-<!-- prawduct: type=bugfix | scope=scope-widened-demotion -->
+<!-- prawduct: type=bugfix | scope=scope-widened-demotion | release=v3.4.0 -->
 
 Record-lint rates `chunk-ref-missing unchecked — …` BLOCKING, by string and not by judgment, because
 a deliverable check that could not run is indistinguishable from one that passed. One shape reached
@@ -1332,7 +1332,7 @@ blocking read, since a witness that cannot be consulted proves nothing.
 
 ## 2026-08-15: the widened-scope demotion names a mode that can see the delta
 
-<!-- prawduct: type=bugfix | scope=scope-widened-demotion -->
+<!-- prawduct: type=bugfix | scope=scope-widened-demotion | release=v3.4.0 -->
 
 `critic-begin --mode verify-resolutions` refuses when the delta since the prior review outgrows the
 prior surface, and told the reviewer to "run a full review" — which the skill spelled `final`,
@@ -1390,7 +1390,7 @@ ripple of this fix.
 
 ## 2026-08-14: the retired test count now announces itself
 
-<!-- prawduct: type=feature | scope=test-tracking-advisory -->
+<!-- prawduct: type=feature | scope=test-tracking-advisory | release=v3.4.0 -->
 
 Removing `build_state.test_tracking` shipped with two entry points and one gap: **both need someone
 to decide to run them.** `/prawduct:doctor` repairs an already-onboarded repo and the cutover
@@ -1434,7 +1434,7 @@ A preferences test caught the module's first name. `plugin/lib/test_tracking_pro
 
 ## 2026-08-14: the test count ten products maintain and nothing reads
 
-<!-- prawduct: type=fix | scope=test-tracking-treadmill -->
+<!-- prawduct: type=fix | scope=test-tracking-treadmill | release=v3.4.0 -->
 
 `build_state.test_tracking` is a hand-maintained copy of a fact the evidence store already holds
 per tree. Nothing in the runtime reads it, no template scaffolds it, and prawduct's own state file
@@ -1555,7 +1555,7 @@ the apply will do, rather than promising an edit the apply declines.
 
 ## 2026-08-13: the change log recommends its own merge driver
 
-<!-- prawduct: type=feature | scope=tactical-efficiency -->
+<!-- prawduct: type=feature | scope=tactical-efficiency | release=v3.4.0 -->
 
 On both forced base syncs measured on a consumer repo, **100% of the merge conflicts were
 prawduct's own record files**, led by this one. Every branch writes its entry at the TOP of the
@@ -1592,7 +1592,7 @@ copy that goes stale on the next change.
 
 ## 2026-08-13: the plan declares its branch
 
-<!-- prawduct: type=feature | scope=tactical-efficiency -->
+<!-- prawduct: type=feature | scope=tactical-efficiency | release=v3.4.0 -->
 
 Which build plan is active is **branch state**, and it was stored in `active_build_plan:` — one
 scalar, at product level, in a file both of two concurrent branches edit. Two branches therefore
@@ -1672,7 +1672,7 @@ consumer repos, and the release-side scope enumeration (already pointer-free).
 
 ## 2026-08-13: the batch-fix golden path, stated at the point of action
 
-<!-- prawduct: type=feature | scope=tactical-efficiency -->
+<!-- prawduct: type=feature | scope=tactical-efficiency | release=v3.4.0 -->
 
 Five consecutive 0/0/0 verify passes on one branch, 1,270 seconds, each one bought by the builder
 electing to fix the previous pass's demoted observations. The discipline that prevents this already
@@ -1725,7 +1725,7 @@ and refusing would strand the gate uncovered.
 
 ## 2026-08-13: prose findings priced honestly
 
-<!-- prawduct: type=feature | scope=tactical-efficiency -->
+<!-- prawduct: type=feature | scope=tactical-efficiency | release=v3.4.0 -->
 
 Comment and doc wording is 42% of finding volume, and the mechanism that produced it was a gap
 between two rules. Goal 4 rated any comment/code contradiction WARNING; the NOTE ceiling for
@@ -1768,7 +1768,7 @@ exist, so it is net-subtractive and the observable-yield obligation does not att
 
 ## 2026-08-13: the cumulative's eight warnings, resolved
 
-<!-- prawduct: type=fix | scope=tactical-efficiency -->
+<!-- prawduct: type=fix | scope=tactical-efficiency | release=v3.4.0 -->
 
 The branch cumulative (`rev-20260813T174223Z-0cc2fd49`) returned 0 blocking and 8 warnings. Three
 were real defects in what had already shipped, and all three came from the same place — a claim
@@ -1808,7 +1808,7 @@ purpose-and-cession plan", which this branch's own pointer flip would have made 
 
 ## 2026-08-13: accepted findings stop being re-litigated, and one defect reads as one
 
-<!-- prawduct: type=feat | scope=tactical-efficiency -->
+<!-- prawduct: type=feat | scope=tactical-efficiency | release=v3.4.0 -->
 
 **Dispositions have been facts for a while; nothing put one where a REVIEWER could see it.** A
 cumulative dispatched after an `--accept` handed its reviewers a diff and no memory, so they found
@@ -1859,7 +1859,7 @@ both to 1–2 tokens of headroom, which their own budget comments record.
 
 ## 2026-08-13: syncing a base no longer clears the PR gate and blocks at session end
 
-<!-- prawduct: type=fix | scope=tactical-efficiency -->
+<!-- prawduct: type=fix | scope=tactical-efficiency | release=v3.4.0 -->
 
 **Two gates asked the same composition question and only one could answer it by transfer.**
 `/prawduct:pr` Step 1 prescribes syncing the base before the review gates; that span passes the PR
@@ -1912,7 +1912,7 @@ attributed on stderr and the correct verdict stands.
 
 ## 2026-08-13: the PR gate answers in constant time
 
-<!-- prawduct: type=perf | scope=tactical-efficiency -->
+<!-- prawduct: type=perf | scope=tactical-efficiency | release=v3.4.0 -->
 
 **Asking whether a review was needed cost more than some reviews.** Nine `check-cumulative-critic`
 invocations in one consumer session ran 29–120 s each; two hit the 2-minute Bash ceiling (one
@@ -1950,7 +1950,7 @@ cost. Same contract, same direction, applied to the parameter that now holds it.
 
 ## 2026-08-13: a clean base sync no longer voids review coverage
 
-<!-- prawduct: type=feat | scope=tactical-efficiency -->
+<!-- prawduct: type=feat | scope=tactical-efficiency | release=v3.4.0 -->
 
 **A base advance moved the PR span's start node, so a branch whose own diff had not moved a byte
 read `uncovered` and bought a full re-review.** Measured in the busiest consumer repo (which merges
@@ -2001,7 +2001,7 @@ substantive and does not re-run the PR reviewer.
 
 ## 2026-08-13: a model floor, and a frontier coherence pass over every cycle
 
-<!-- prawduct: type=docs | scope=purpose-and-cession -->
+<!-- prawduct: type=docs | scope=purpose-and-cession | release=v3.4.0 -->
 
 Owner decision 2026-08-13: **Sonnet is the minimum model for any prawduct work**, main session or
 subagent — Haiku-class models are never used — and any cycle whose substantive stages ran below
@@ -2017,7 +2017,7 @@ the session model. Recorded in `project-preferences.md`; the per-cycle mapping f
 
 ## 2026-08-13: the four-cycle program gets a durable home
 
-<!-- prawduct: type=docs | scope=purpose-and-cession -->
+<!-- prawduct: type=docs | scope=purpose-and-cession | release=v3.4.0 -->
 
 **The parent requirement document for Cycles 2–4 lived only in a gitignored file that `/clear`
 regenerates.** `.prawduct/.handoff-notes.md` carried the owner-ratified program — the #181
@@ -2035,7 +2035,7 @@ the model-floor norm; this file carries only the per-cycle model mapping.
 
 ## 2026-08-13: principles 25 and 26 — the moving-target posture, codified
 
-<!-- prawduct: type=docs | scope=purpose-and-cession -->
+<!-- prawduct: type=docs | scope=purpose-and-cession | release=v3.4.0 -->
 
 New `## Evolution` section in `plugin/docs/principles.md` (owner decision 2026-08-12, per
 Principle 19): **#25 Third Rework Is a Deletion Signal** (proposed by the 2026-07-02 efficiency
@@ -2047,7 +2047,7 @@ session-digest roster line (paid in-file; net −2 chars).
 
 ## 2026-08-13: the framework records its own purpose
 
-<!-- prawduct: type=docs | scope=purpose-and-cession -->
+<!-- prawduct: type=docs | scope=purpose-and-cession | release=v3.4.0 -->
 
 **Prawduct required every product to record its vision and never recorded its own** — verified
 against full git history: nothing purpose-shaped ever existed, and six artifact frontmatters
@@ -2068,7 +2068,7 @@ second chunk.
 
 ## 2026-08-12: an agent worktree on a real branch is not disposable
 
-<!-- prawduct: type=fix | scope=durable-agent-worktrees -->
+<!-- prawduct: type=fix | scope=durable-agent-worktrees | release=v3.4.0 -->
 
 **The Critic gate was unsatisfiable for any branch worked in an agent worktree, with no
 workaround.** `is_ephemeral_worktree` classified from the directory name alone — anything under

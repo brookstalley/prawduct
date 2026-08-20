@@ -15,7 +15,13 @@ governed_by:
       - "published surfaces are read-only and allowlistable → conforms — no exit code on
         `version` or `print-install-reference` moves"
 last_validated: 2026-08-17
+lifecycle: completed
+archived: 2026-08-20
+released_in: v3.4.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

@@ -25,7 +25,13 @@ governed_by:
       - "proportionality ratchets both ways — a new control names the yield it expects AND emits it observably → conforms. Chunk 02 adds no blocking control: the announcement IS its own observable emission, so it cannot become a control that fires unmeasured. The roster check in the sweep is a skip condition, not a gate."
       - "state-file growth past its size threshold is advisory → inapplicable because this cycle adds no state file and changes no size threshold."
 last_validated: 2026-08-19
+lifecycle: completed
+archived: 2026-08-20
+released_in: v3.4.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

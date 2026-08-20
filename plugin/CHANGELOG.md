@@ -10,18 +10,31 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.3.5-dev
+## v3.4.0
 
-**Prerelease under test — this build is the develop branch ahead of the next release.** The
-version now says so wherever it appears, so a repo pinned to the develop ref can
-tell what it is running, and a cached review verdict from the released plugin is
-no longer replayed against this one. Rolling release notes accumulate here and
-this section is renamed to the release number at the cut.
+**The review gates stop charging more than the reviews they guard.** Asking whether a review was needed cost 29–120 s per call in a live consumer session — nine calls in one session, two of them killed by the 2-minute Bash ceiling. It is now **20.0 s → 0.35 s**, and a base sync no longer throws away review coverage the branch already earned.
 
-*What this does not yet do:* the verdict cache keys on the version **string**, which
-stays fixed across every push in the cycle — so it separates prerelease from
-release, not one develop push from the next. `-dev.N` is permitted for that and is
-not yet produced.
+### Asking the question got cheap
+
+Profiled before anything was built: reading the evidence store is 0.06 s and merge-base resolution 0.07 s, while composing the coverage verdict was **17.4 s cold** — the free-edge search keys every tree the store mentions, one `git ls-tree` each (701 trees on this repo, and an append-only store only grows). Every session on the old build paid more of that than the last.
+
+`verdict_cache.VerdictCache` memoizes the composed verdict, keyed on a content hash of every input it is a function of: both endpoint trees and a SHA-256 of the whole evidence store. The three call sites needing a composed verdict — the span itself, the fix-churn diagnosis, the base-advance transfer — share one cache, bounded at 64 entries, living beside the evidence store in the per-clone `.git/prawduct/` area. Miss, unreadable cache, corrupt entry, foreign schema or unreadable store all recompute.
+
+**A cached verdict cannot be a false PASS.** Git objects are immutable and content-addressed, so they are not in the key and do not need to be; a missing object makes the tree key `None`, which denies a free edge and can never manufacture one. Git-side degradation moves the verdict only toward denial. The residual, stated rather than implied: an `uncovered` computed while an object was transiently unreadable is replayed until the store's next append.
+
+### Syncing your base no longer buys a re-review
+
+**A base advance moved the PR span's start node, so a branch whose own diff had not moved a byte read `uncovered` and bought a full re-review.** Measured in the busiest consumer repo (which merges its base ~20×/day): two of three cumulative rounds on one branch existed only for this reason, and the round after a sync re-raised six of the previous round's findings verbatim — roughly half of a 6-fix branch's review time was base tax.
+
+Both gates — the PR gate and the session-end Stop gate — now attempt a computed **transfer** before reporting `uncovered`. A covered span transfers to the required one when the two spans' judgeable changed-file sets are identical, every one of those files is byte-identical on both ends, and a saved suite run has met the resulting tree. Computed, never stored. Any condition that cannot be verified denies the transfer and today's remedy stands.
+
+The soundness boundary is **byte equality across contexts**, not content equivalence within one: any edit at all to a branch file, comments included, denies it. Candidates are selected by content rather than commit ancestry, which is what makes the rebase case work — rebasing rewrites the commits a branch's facts anchor to while leaving the trees they vouch for identical. A transfer denied *only* by stale test evidence says so, naming a suite run rather than a review round. Granted transfers append a `guard-refusal` fact under guard `base-advance-transfer`, so the rounds this saves are auditable rather than asserted (`prawduct-hook evidence list --kind guard-refusal`).
+
+### Also on cost
+
+**The change log recommends its own merge driver.** On both forced base syncs measured on a consumer repo, 100% of the merge conflicts were prawduct's own record files. **The plan declares its own branch**, so two concurrent branches no longer fight over one product-level `active_build_plan:` scalar. And review prose is priced honestly: comment and doc wording was 42% of finding volume, and the ceiling that produced it is fixed.
+
+**Known gap, stated rather than discovered later:** the verdict cache keys on the version **string**, which is fixed across a development cycle — so it separates a prerelease build from a release, not one `develop` push from the next. Irrelevant to `main`-pinned installs, which is the documented install reference.
 
 **A Critic finding now says whether it found an instance or a class — and fixing the sites it named is no longer a resolution.** The most expensive review failure is the cheap-looking one: a finding names two files, you fix those two, and the same defect is still in four more. It costs a full extra round every time, and the reviewer usually knew.
 

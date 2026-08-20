@@ -5,7 +5,13 @@ scope: fleet-feedback-661
 branch: fix/661-fleet-feedback
 depends_on: []
 last_validated: 2026-08-17
+lifecycle: completed
+archived: 2026-08-20
+released_in: v3.4.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

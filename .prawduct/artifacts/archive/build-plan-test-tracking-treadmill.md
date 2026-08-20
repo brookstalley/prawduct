@@ -31,7 +31,13 @@ governed_by:
       - "exit codes are the contract on a documented scheme; errors are attributed, never raised as stack traces across the boundary → conforms: no exit code changes meaning. `strip_state_file` and `retired_state_keys` each return empty on an unreadable state file rather than raising, so a cutover is never abandoned half-done by a file it could not decode"
       - "additive-first evolution: existing flag names, exit-code meanings and `--json` keys are never repurposed → conforms: `lifecycle-repair` and `migrate-plugin` gain removals inside their existing contracts; no flag or key changes meaning. `lint_records`' `records` key widens its membership, which is additive to its documented meaning (the record subset of the changed paths) and its readers are tests only"
 last_validated: 2026-08-14
+lifecycle: completed
+archived: 2026-08-20
+released_in: v3.4.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

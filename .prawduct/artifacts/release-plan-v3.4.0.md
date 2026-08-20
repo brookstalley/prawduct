@@ -1,6 +1,6 @@
 # Release Plan — v3.4.0, Whole-Develop Promotion
 
-**Status:** DRAFT — not yet cut. Phase 0 classification below; Phases 1–3 pending.
+**Status:** Phase 1 complete — release prep committed on `develop` (change-log entries tagged `release=v3.4.0`, all three version carriers bumped, `plugin/CHANGELOG.md` section renamed, `active_build_plan` cleared and ten plans archived). Phases 2–3 pending.
 
 **Version:** v3.4.0 — **minor**, and the call is recorded rather than reflexive because the ratified
 norm pulls the other way. The norm (`operational-spec.md` `## Direction`, 2026-07-17) is
