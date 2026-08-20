@@ -63,12 +63,26 @@ caught this entry's own consumer-facing twin on its first run, which is the beha
 **`critic-discard` stops reporting success on the one path where it destroys something.**
 `_archive_leftovers` returns `None` for three outcomes, one being *an `OSError` hit mid-archive, so
 I degraded to delete* — and the command read that single `None` and printed `nothing to discard (no
-partials on disk)`. Tolerable while this was a command you went looking for; making it the printed
+partials on disk)`. The three are worth naming, because two look alike and cost opposite things:
+nothing was there; the directory could not be *read*, so nothing is archived **and** nothing is
+deleted; or the archive's `mkdir`/`rename` failed, which degrades to delete and completes it. Only
+the last destroys anything. Tolerable while this was a command you went looking for; making it the printed
 remedy in states that hold reviewer output is what promoted it. A `had_partials` read taken BEFORE
-the attempt separates the no-op from the loss, the failure path now says the partials were deleted
-and there is nothing to restore, and the underlying diagnostic names the command the operator
-actually ran instead of hardcoding `critic-begin`. The clean path also states the restore window —
-an undo with an unstated eviction bound is one you learn about too late.
+the attempt separates the no-op from the loss; each failure path says what it actually cost —
+deleted-with-nothing-to-restore for the degrade, still-on-disk-fix-the-permissions for the
+unreadable dir — read off the POST-state rather than guessed from a return value that cannot tell
+them apart; and the underlying diagnostic names the command the operator actually ran instead of
+hardcoding `critic-begin`. The clean path also states the restore window — an undo with an unstated
+eviction bound is one you learn about too late.
+
+**That guard's first cut held for one function and not for the path, which the review caught.**
+`_archive_leftovers` stopped raising on an unreadable directory; `remove_partials` ran the identical
+unguarded listing one line later, so every input reaching the new guard hit an unhandled raise
+immediately after it — and did so *after* the caller announced the partials were deleted and
+*before* the marker was cleared. Strictly worse than the bug it replaced: told the destructive thing
+happened, still wedged. Every `iterdir`/`glob` over the partials and archive directories now sits
+inside an `OSError` guard, and the pin drives `critic-discard` against a `chmod 000` directory
+rather than unit-testing either function, because either passes alone while the path is broken.
 
 Also here: `tests/test_session_boundary_events.py`'s two stale prose claims, which the previous
 cycle deliberately deferred to the next commit touching `tests/` — this one. It named `rm` as one
