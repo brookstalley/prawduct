@@ -548,6 +548,99 @@ class TestConcurrentDispatchGuard:
         again = _run_real("critic-begin", repo, "--mode", "chunk")
         assert again.returncode == 0, f"discard must unblock dispatch: {again.stderr}"
 
+    def test_a_failed_archive_says_the_partials_were_destroyed(self, tmp_path):
+        """The one path where `critic-discard` loses reviewer output must not
+        report the no-op wording.
+
+        `_archive_leftovers` returns None for three different outcomes, one of
+        them "an OSError hit mid-archive, so I degraded to delete". Reading that
+        single None, the command used to print `nothing to discard (no partials
+        on disk)` — telling the operator their partials were never there, on the
+        one path where they existed and are now gone. That mattered less while
+        this was a command you had to go looking for; the Stop hook's escape
+        hatch now sends people here FROM the states that hold reviewer output.
+
+        The archive is made to fail by planting a non-directory where the
+        archive root must be created, which is what an OSError looks like from
+        `dest.mkdir(parents=True)`.
+        """
+        repo, prawduct = self._strand_a_complete_roster(tmp_path)
+        # A regular file where `.critic-partials-archive/` needs to be a dir.
+        (prawduct / ".critic-partials-archive").write_text("not a directory")
+
+        discard = _run_real("critic-discard", repo)
+
+        assert discard.returncode == 0, "degrading must never brick the escape"
+        combined = discard.stdout + discard.stderr
+        assert "nothing to discard" not in combined, (
+            "reported a no-op on the path that destroyed the partials"
+        )
+        assert "archiving FAILED" in combined
+        assert "nothing to restore" in combined, (
+            "must not leave the operator hunting for a restore that cannot work"
+        )
+        assert "critic-discard: leftover archive failed" in discard.stderr, (
+            "the underlying diagnostic must name the command the operator ran, "
+            "not critic-begin"
+        )
+        # The primary job still got done: dispatch is unblocked.
+        assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 0
+
+    def test_an_unreadable_partials_dir_still_clears_the_marker(self, tmp_path):
+        """End-to-end, because guarding one function was not enough.
+
+        The first cut of this fix wrapped `_archive_leftovers`' `iterdir` and
+        stopped there — but both callers run `remove_partials` on the SAME
+        directory one line later, and its listing was bare. Every input that
+        reached the new guard hit an unhandled raise immediately after it, and
+        did so AFTER the caller printed that the partials were deleted and
+        BEFORE `clear_marker` ran: the operator was told the destructive thing
+        happened and left wedged anyway. A unit test on either function alone
+        passes while the PATH is broken, so this drives the command.
+
+        The escape hatch prints `critic-discard` as the way out of a wedged
+        review, so "exits 0 and the marker is gone" is the property that makes
+        that advice true.
+        """
+        repo, prawduct = self._strand_a_complete_roster(tmp_path)
+        pdir = prawduct / ".critic-partials"
+        assert any(pdir.iterdir()), "fixture must actually place partials"
+        pdir.chmod(0o000)
+        try:
+            discard = _run_real("critic-discard", repo)
+        finally:
+            pdir.chmod(0o700)  # always restore, or tmp cleanup fails
+
+        assert discard.returncode == 0, (
+            f"an unreadable partials dir must not traceback out of the escape "
+            f"hatch: {discard.stderr}"
+        )
+        assert "Traceback" not in discard.stderr
+        assert not (prawduct / cm.MARKER_NAME).is_file(), (
+            "the marker MUST be cleared — leaving it is the wedged state this "
+            "command exists to end"
+        )
+        combined = discard.stdout + discard.stderr
+        assert "could NOT be read" in combined
+        assert "still on disk" in combined, (
+            "nothing was deleted on this path; claiming otherwise sends the "
+            "operator looking for a restore instead of fixing permissions"
+        )
+        assert "were deleted, not archived" not in combined, (
+            "that is the mkdir/rename degrade path's wording, and it is false here"
+        )
+
+    def test_a_clean_discard_still_reports_the_restore_window(self, tmp_path):
+        """The undo `critic-discard` promises has an eviction bound, and an undo
+        whose expiry is unstated is one an operator finds out about too late."""
+        repo, prawduct = self._strand_a_complete_roster(tmp_path)
+        discard = _run_real("critic-discard", repo)
+        assert discard.returncode == 0, discard.stderr
+        assert "critic-restore" in discard.stdout
+        assert "keeps the newest" in discard.stdout, (
+            "the restore window is part of the offer, not a footnote elsewhere"
+        )
+
     def test_a_refused_dispatch_does_not_sweep_the_marker(self, tmp_path):
         """The Stop hook's abandoned-review branch is gated on `marker_present`
         and is what prints the manual-recovery remedy. A dispatch that swept a

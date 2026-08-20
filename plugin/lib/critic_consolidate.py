@@ -785,7 +785,26 @@ def archive_dir(prawduct_dir: Path) -> Path:
     return prawduct_dir / ARCHIVE_DIRNAME
 
 
-def _archive_leftovers(prawduct_dir: Path) -> Path | None:
+def had_partials(prawduct_dir: Path) -> bool:
+    """Was there reviewer output on disk *before* an archive attempt?
+
+    The one thing :func:`_archive_leftovers`' ``None`` cannot say. Read it
+    BEFORE calling that function: together they separate "there was nothing to
+    archive" from "there was something and archiving it failed", which is the
+    difference between a no-op and a destroyed review.
+    """
+    pdir = partials_dir(prawduct_dir)
+    if not pdir.is_dir():
+        return False
+    try:
+        return any(c.is_file() for c in pdir.iterdir())
+    except OSError:
+        # Unreadable is not empty. Claiming "nothing was there" off a failed
+        # read is the same false reassurance this function exists to prevent.
+        return True
+
+
+def _archive_leftovers(prawduct_dir: Path, caller: str = "critic-begin") -> Path | None:
     """Move a pending review's files aside rather than deleting them.
 
     Returns the archive directory the files landed in, or None when there was
@@ -793,13 +812,48 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
     :func:`remove_partials` either way, so a failed archive degrades to
     exactly the old delete behavior, never to a blocked dispatch).
 
+    ``caller`` names the command in the degraded-archive diagnostic. It is a
+    parameter rather than a constant because the two callers reach this by
+    opposite routes — a dispatch sweeping someone else's leftovers, and an
+    operator deliberately discarding their own review — and an operator who ran
+    ``critic-discard`` cannot act on a line that says ``critic-begin``.
+
+    **A None return is three outcomes, and only the middle one is benign.**
+
+    1. Nothing was there to archive.
+    2. The directory could not be READ — nothing is archived and, because
+       :func:`remove_partials` cannot list it either, nothing is deleted. The
+       partials survive, unreachable until the permission is fixed.
+    3. An ``OSError`` hit mid-archive (the ``mkdir``/``rename``): this degraded
+       to delete, and the caller's ``remove_partials`` finishes the job.
+
+    (An unsafe manifest id is not among them — it falls through to the
+    ``unmanifested-`` name and still archives.)
+
+    Only 3 destroys anything, so a caller that reports "nothing was there" on
+    it tells the operator their partials are safe on the one path where they are
+    gone. :func:`had_partials` separates 1 from 2-and-3; the stderr diagnostic
+    printed here is what distinguishes 2 from 3, and it names its ``caller``.
+
     Named after the abandoned review's id when its manifest is readable, else
     a timestamp — partials can outlive their manifest (a late reviewer writing
     into an already-consolidated review re-creates the directory)."""
     pdir = partials_dir(prawduct_dir)
     if not pdir.is_dir():
         return None
-    children = [c for c in pdir.iterdir() if c.is_file()]
+    try:
+        children = [c for c in pdir.iterdir() if c.is_file()]
+    except OSError as exc:
+        # An unreadable partials dir must degrade like any other archive
+        # failure, not traceback. This function is the escape hatch's
+        # prescribed remedy for a wedged review, so raising here strands the
+        # operator in the state the remedy exists to clear — with a stack
+        # trace instead of the marker they came to release.
+        print(
+            f"{caller}: cannot read {pdir} ({exc}) — falling back to delete",
+            file=sys.stderr,
+        )
+        return None
     if not children:
         return None
     name: str | None = None
@@ -831,7 +885,7 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
         # Name the reason before degrading — a silent fallback would make
         # "why is the archive empty?" undiagnosable after the fact.
         print(
-            f"critic-begin: leftover archive failed ({exc}) — "
+            f"{caller}: leftover archive failed ({exc}) — "
             "falling back to delete",
             file=sys.stderr,
         )
@@ -3132,7 +3186,19 @@ def remove_partials(prawduct_dir: Path) -> None:
     pdir = partials_dir(prawduct_dir)
     if not pdir.is_dir():
         return
-    for child in pdir.iterdir():
+    # The LISTING is guarded, not only the per-child unlink. Both callers reach
+    # here one line after `_archive_leftovers`, which degrades rather than
+    # raising when this same directory cannot be read — so leaving this
+    # `iterdir` bare re-raised the exception that function had just absorbed,
+    # and did it AFTER its caller had printed that the partials were deleted but
+    # BEFORE the marker was cleared. The operator was told the destructive thing
+    # happened, and left in the wedged state anyway. Hygiene must never be the
+    # step that strands someone.
+    try:
+        children = list(pdir.iterdir())
+    except OSError:
+        children = []
+    for child in children:
         try:
             child.unlink()
         except OSError:

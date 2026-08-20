@@ -3,6 +3,93 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: the escape hatch stops recommending the deletion this release guards against
+
+<!-- prawduct: type=fix | scope=critic-reliability -->
+
+The Stop hook's abandoned-review blocker prints an escape hatch for the case where a review
+genuinely cannot finish this session. It said:
+
+```
+rm .prawduct/.critic-active
+rm -rf .prawduct/.critic-partials
+```
+
+**The states that print that string are the states holding reviewer output.** There are four —
+`consolidation failed`, `incomplete`, `not completed (no manifest)` and `unreadable manifest` —
+reached through **three** `+ _escape` sites, since the `else` serves both of the last two. On
+`consolidation failed`, every reviewer has reported and the set is one deterministic consolidation
+from being recorded; the Stop hook's own backstop runs that step. The recipe deleted it, unarchived,
+and said nothing about what was lost. (`none` is the exception, and it is the argument for one safe
+recipe rather than two: there may be nothing on disk to lose, and the operator cannot tell which
+state they are in from the message alone.)
+That is precisely the loss `boundary_sweep`'s roster question and `write_marker`'s guard were built
+this cycle to prevent — so the release was about to ship the protection and the contradicting advice
+together, which is worse than shipping neither, because the operator now has reason to trust the
+mechanism.
+
+The hatch names `prawduct-hook critic-discard` instead. It reaches the same end state — marker
+cleared, partials out of the way, next dispatch unblocked — and archives rather than deletes,
+printing the `critic-restore <id>` that brings the review back **as itself**. The deferred worry
+that it might not survive the wedged states does not hold: `_archive_leftovers` reads the manifest
+raw *because* it must also work when the manifest is unreadable, and falls back to an
+`unmanifested-<stamp>` name. All four states archive.
+
+**Pinned as a class, because the defect is one.** Say why it broke in one sentence — *one shared
+escape string is appended to four branches, each reached only when reviewer output exists* — and
+that sentence names the string, not any branch. A per-branch assertion would leave the next branch
+someone adds free to reintroduce the recipe. `TestTheEscapeHatchNeverDestroys` drives all four
+wedged states and asserts the property on whatever each emits: names `critic-discard`, contains no
+hand-delete of either file, and still names the waiver (the hatch has two halves, and only one of
+them changed). A sweep of the plugin, docs and runbooks confirms the escape hatch was the class's
+only remaining home.
+
+**Two assertions were deleted, and that is a correction rather than a relaxation.** The old test
+asserted `rm .prawduct/.critic-active` and `rm -rf .prawduct/.critic-partials` were present — it
+pinned the defect, exactly as `test_resume_still_sweeps_a_stale_critic_marker` once pinned the
+sweep this cycle removed. Checked by reverting the recipe: both new pins fail against the shipped
+v3.3.4 string and pass against the fix, so they discriminate rather than pass vacuously.
+
+**The review found the class had no construction, and that is the durable half.** Guidance
+sanctioning the bare delete has now been fixed at three surfaces in three commits this cycle — the
+marker-refusal remedy, `lib/critic_marker`'s own prose, and this `_escape` string — each pinned only
+where it was found, so each fix left the next surface free. `TestNoShippedSurfaceSanctionsTheBareDelete`
+derives its subject from the tree instead: every shipped file under `plugin/`, matched on the act
+rather than a spelling, failing on a surface nobody has thought of. One exemption, `plugin/CHANGELOG.md`,
+because a release record quotes what was removed and that is not advice — and a second test asserts
+that exemption stays one file, since a growing list is how the class would quietly reopen. The pin
+caught this entry's own consumer-facing twin on its first run, which is the behaviour wanted.
+
+**`critic-discard` stops reporting success on the one path where it destroys something.**
+`_archive_leftovers` returns `None` for three outcomes, one being *an `OSError` hit mid-archive, so
+I degraded to delete* — and the command read that single `None` and printed `nothing to discard (no
+partials on disk)`. The three are worth naming, because two look alike and cost opposite things:
+nothing was there; the directory could not be *read*, so nothing is archived **and** nothing is
+deleted; or the archive's `mkdir`/`rename` failed, which degrades to delete and completes it. Only
+the last destroys anything. Tolerable while this was a command you went looking for; making it the printed
+remedy in states that hold reviewer output is what promoted it. A `had_partials` read taken BEFORE
+the attempt separates the no-op from the loss; each failure path says what it actually cost —
+deleted-with-nothing-to-restore for the degrade, still-on-disk-fix-the-permissions for the
+unreadable dir — read off the POST-state rather than guessed from a return value that cannot tell
+them apart; and the underlying diagnostic names the command the operator actually ran instead of
+hardcoding `critic-begin`. The clean path also states the restore window — an undo with an unstated
+eviction bound is one you learn about too late.
+
+**That guard's first cut held for one function and not for the path, which the review caught.**
+`_archive_leftovers` stopped raising on an unreadable directory; `remove_partials` ran the identical
+unguarded listing one line later, so every input reaching the new guard hit an unhandled raise
+immediately after it — and did so *after* the caller announced the partials were deleted and
+*before* the marker was cleared. Strictly worse than the bug it replaced: told the destructive thing
+happened, still wedged. Every `iterdir`/`glob` over the partials and archive directories now sits
+inside an `OSError` guard, and the pin drives `critic-discard` against a `chmod 000` directory
+rather than unit-testing either function, because either passes alone while the path is broken.
+
+Also here: `tests/test_session_boundary_events.py`'s two stale prose claims, which the previous
+cycle deliberately deferred to the next commit touching `tests/` — this one. It named `rm` as one
+of the marker's three recoveries (the third is an explicit named act: `critic-end`,
+`critic-discard`, `clear --force`), and its module docstring still stated the TTL-alone sweep rule
+that `boundary_sweep` replaced with a two-question one.
+
 ## 2026-08-19: an expiring Critic marker announces itself, and never discards a self-heal
 
 <!-- prawduct: type=fix | scope=critic-reliability -->
