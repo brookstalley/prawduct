@@ -18,10 +18,13 @@ governed_by:
     dispositions:
       - "authority fails closed; advice fails soft → conforms — every surface this plan touches is advice (a survey, a diagnostic, a release warning) and every one degrades to a note, never silence. `[[L342]]`: advice fails soft is not advice fails silent, which is this plan's whole subject"
       - "a language with no populated rules is reported as unchecked, never silently passed → conforms, and its stated reason — a silent no-op and a clean pass are indistinguishable at the output — is the ratified posture Chunk 02 applies to unscoped plans. The norm's own subject is language dispatch; the reason generalizes and is cited as such, not stretched"
-      - "every fact has one home; a fact is the whole predicate, not a token inside it → RULING NEEDED, and it is Chunk 01's design question: the Scope rule's home is review-protocol.md, and two of the four modes that raise findings do not read that file"
+      - "every fact has one home; a fact is the whole predicate, not a token inside it → RULED 2026-08-20, at the category level, recorded on the norm in architecture.md § Direction: a rule whose readers load disjoint payloads may carry one statement per carrier when a construction pins their agreement. Chunk 01 is that case and tests/test_finding_scope_rule.py is the construction"
       - "prawduct is written in Python and must never be specific to Python → conforms — markdown structure, evidence records and prose; no language-specific parsing"
       - "goals and verification bind; prescribed method is advice → conforms — the call sites named in deliverables are the author's best guess, made before the code was re-read at build time; a builder finding a better route takes it and records why"
       - "the plugin writes nothing into a governed repo except its own state and the shared evidence store → conforms — Chunk 03's only new write is a guard-refusal fact in the existing store"
+      - "an independent reviewer never mutates the session it reviews → conforms — no chunk changes what a reviewer may write; Chunk 01 adds output a reviewer READS at dispatch, which is the coordinator side, not the reviewer side"
+      - "local-first: governance coordination is process-spawn, atomically-written files and the git object database, no network and no third-party runtime dependency → conforms — every chunk is stdlib, files and git"
+      - "prawduct guides and reviews; it never implements, and never re-implements what a product's own tooling owns → conforms — no chunk adds a check an ecosystem linter owns; Chunk 01 hands a reviewer a rule rather than mechanizing a judgement"
   - artifact: data-model
     dispositions:
       - "guard-refusal fact body: `guard` is the grouping key every yield query groups on; the interval is nested under `interval`, never spread to the body's top level; the kind is purely observational and cannot become authoritative; single sink `evidence.append_guard_refusal` → conforms — Chunk 03 adds no fact kind and no schema change, reuses the sink, and keeps the nesting its granted sibling already uses. This is the most specific norm governing Chunk 03 and it is why that chunk is cheap"
@@ -29,6 +32,10 @@ governed_by:
       - "governance verdicts are computed from the append-only ledger, never from model-written state → conforms — no chunk puts a model in a fact's write path"
       - "derived views are disposable and never authoritative → conforms — Chunk 02's published unscoped-plan fact is diagnostic; no gate reads it to reach a verdict"
       - "archival: a governance document reaches a terminal state; readers prune `archive/` at directory level; a resolver goes live-first then archive → conforms, and note this norm NAMES `plan_index.iter_scoped_plan_candidates` as one of its mechanisms. Chunk 02 therefore does not change what that walk yields; it publishes the skipped set beside it"
+      - "every issue written to the backlog store conforms to the issue standard's title rules → inapplicable because no chunk writes a backlog item; the items this plan advances are dispositioned, not authored"
+      - "a fact written by a newer schema than the reader is surfaced as a loud block, never silently dropped → conforms, and it is the posture Chunk 02 applies one level up: an unreadable-to-the-map plan becomes a reported figure rather than a silent omission"
+      - "two stores, two lifetimes — shared committed answers kept distinct from per-clone gitignored nags and caches → conforms — Chunk 03 appends to the shared evidence store, which is where its sibling grant already writes; nothing moves between the two"
+      - "`backlog_service_repo` selects the authoritative backlog store and readers reach it through /prawduct:backlog → conforms — this plan read the backlog only through `backlog cache-query`, and files nothing"
   - artifact: observability-strategy
     dispositions:
       - "stable severity-prefix vocabulary with a stdout/stderr channel split → conforms — Chunk 03's denial line and Chunk 04's warning adopt the existing prefixes and channels rather than inventing wording"
@@ -45,9 +52,11 @@ last_validated: 2026-08-20
 function and line where it holds — and three were also observed firing in a consumer repo
 (`../discodon`) within one day of its v3.4.0 upgrade. Chunks 02–04 are High on their own: the
 requirement, the success test and the shape of the fix are each statable in one sentence, and each
-has a working in-repo precedent to copy. The plan is Medium because **Chunk 01's delivery route is
-undecided** and is constrained by a pinned token ceiling with ~2 tokens of headroom, where the
-governing learnings pull in opposite directions (see that chunk's step 0).
+has a working in-repo precedent to copy. The plan was Medium because Chunk 01's delivery route was
+undecided under a pinned token ceiling. **That is now RULED and built** (see Chunk 01's
+`[DECISION]` and the category ruling recorded on architecture.md's norm), so nothing in the plan
+is waiting on information any longer. The level stays Medium as the honest record of what was
+true when the chunks were authored; the three assumptions below are what remain vetoable.
 
 **Open assumptions / unknowns:**
 

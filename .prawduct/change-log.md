@@ -43,11 +43,31 @@ wording by dropping a worked example that was also Python-specific, in a file go
 framework whose architecture norm says it must never be — net zero against its ceiling, and
 `goals-1-3.md` was not touched at all.
 
-`tests/test_finding_scope_rule.py` pins the map rather than the carriers: the mode set is read
-from `MODE_TOKEN_TO_VERBOSE`, and every member must be accounted for by one carrier or the other,
-so a fifth mode or a further payload split fails until someone says which carrier serves it. Both
-mutations were exercised — removing `none` from the protocol reddens `final`/`cumulative`,
-and spelling the emission's mode set at the call site reddens the delivery pin.
+`tests/test_finding_scope_rule.py` pins the map rather than the carriers, and pins DELIVERY by
+running the dispatch. Three things are derived rather than listed: the mode set from
+`MODE_TOKEN_TO_VERBOSE`, so a fifth mode fails until someone says which carrier serves it; the
+mode→payload map from `review-cycle.md`'s `Protocol read` row, so re-routing a mode in the docs
+reddens the map instead of silently leaving that mode with no rule; and delivery from
+`critic-begin`'s stdout per mode, positive and negative.
+
+**The first draft of that file got delivery wrong in the shape the rule it pins describes**, and
+two reviewers found it independently. It asserted `"FINDING_SCOPE_DIRECTIVE" in begin_src` — a
+grep of the hook's source — and that string also occurs in the comment above the emission, so
+deleting the `print` left the pin green. The natural refactor `if verbose_mode in
+GOALS_1_3_MODES` (comparing a verbose string against a set of tokens) dropped the directive for
+both modes with the whole suite still green. Four mutations are now exercised: both of those,
+re-routing `cumulative` in `review-cycle.md`, and removing `none` from the protocol.
+
+Unit-cost is also metered per MODE now, not per file. `nonfunctional-requirements.md` § Direction
+governs "what a given mode must load to answer its goals", and until this pin existed only the
+files were measured — so moving a rule out of a full payload into a directive left every
+individual meter green while raising what the reader loads. A `chunk` reviewer loads ~2395 tokens
+and `verify-resolutions` ~3382; both are pinned.
+
+The category ruling the plan opened as RULING NEEDED is recorded on architecture.md's own norm: a
+rule whose readers load disjoint payloads may carry one statement per carrier, provided a
+construction pins their agreement. It is at category level because the same edge had already been
+decided twice case-by-case and a third case still re-derived it from scratch.
 
 ## 2026-08-20: v3.4.0 is cut, and develop reopens on 3.4.1-dev
 

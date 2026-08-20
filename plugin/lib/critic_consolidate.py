@@ -407,7 +407,7 @@ def next_action_line(
 #: prior finding, not after it has.
 #:
 #: Public because its print site is ``cmd_critic_begin`` in ``bin/prawduct-hook``;
-#: it lives here so the two directives the review data plane emits are read and
+#: it lives here so the directives the review data plane emits are read and
 #: edited together.
 #:
 #: **Why dispatch and not consolidation.** The obvious slot is beside
@@ -572,6 +572,23 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
 )
 
 
+#: The modes whose reviewer payload is ``skills/critic/goals-1-3.md`` — which is
+#: exactly the set that must be handed a finding-format rule at dispatch,
+#: because the file they read cannot afford to carry one and the file that does
+#: carry one is the file they are forbidden to open. Named here rather than
+#: spelled at the emission site, so a fifth mode is a change to THIS line rather
+#: than a silent omission at a call site.
+#:
+#: **This is the CODE home of the mode→payload map, not its only one.** The
+#: reviewer's own instructions carry it too — ``review-cycle.md``'s
+#: ``Protocol read`` table row and ``SKILL.md`` step 2 — and a re-route edits
+#: those, not this. ``tests/test_finding_scope_rule.py`` derives the map from
+#: the table and asserts it equals this set, so those two cannot drift; SKILL.md
+#: is not yet tied, and a re-route that edits only SKILL.md is the remaining
+#: hole. Stated rather than implied, because a comment claiming one home for a
+#: fact with three is the defect this module's neighbours keep finding.
+GOALS_1_3_MODES = frozenset({"chunk", "verify-resolutions"})
+
 #: Delivered at `chunk` and `verify-resolutions` DISPATCH — the two modes whose
 #: payload is ``skills/critic/goals-1-3.md``. `final` and `cumulative` read the
 #: same rule from ``review-protocol.md`` § Severity Levels, which they load and
@@ -603,15 +620,6 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
 #: finding as the instance. So the rule is followed by the act, by the test
 #: that decides it, and by an instruction to spend it on the finding whose fix
 #: looks most obvious — which is the one a general rule never reaches.
-#: The modes whose reviewer payload is ``skills/critic/goals-1-3.md`` — which is
-#: exactly the set that must be handed a finding-format rule at dispatch,
-#: because the file they read cannot afford to carry one and the file that does
-#: carry one is the file they are forbidden to open. Named here rather than
-#: spelled at the emission site so the question "which modes read which payload"
-#: has one answer, and so a fifth mode is a change to THIS line rather than a
-#: silent omission at a call site.
-GOALS_1_3_MODES = frozenset({"chunk", "verify-resolutions"})
-
 FINDING_SCOPE_DIRECTIVE = (
     "PRAWDUCT: a site-naming finding answers `instance` or `class` FIRST in its"
     " `recommendation`. Say why it broke in one sentence — a sentence that does"
