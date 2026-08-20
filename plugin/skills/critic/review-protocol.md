@@ -103,7 +103,7 @@ downgrade.
 - **Coupling**: Changes in one module shouldn't force changes in unrelated modules. Watch for god objects/functions that concentrate too many responsibilities, and for modules that know too much about each other's internals. → **WARNING** if coupling is inappropriate.
 - **Simplification**: Could the same result be achieved with less complexity? Unnecessary abstractions, premature generalization, dead code paths, over-engineering for hypothetical requirements. → **WARNING** if simpler approach exists. **Unnecessary backwards compatibility** — migration paths or shims with no deployment to migrate → **WARNING**.
 - **Deduplication**: Duplicated logic that should be extracted. Copy-paste patterns across files. Near-identical implementations that vary only in superficial ways. → **WARNING** for meaningful duplication.
-- **Idiomatic language usage**: Non-idiomatic code that ignores language best practices (e.g., `for i in range(len(items))` vs `for item in items`) → **WARNING**. Check `project-preferences.md` for declared conventions.
+- **Idiomatic language usage**: Non-idiomatic code that ignores language best practices → **WARNING**. Check `project-preferences.md` for declared conventions.
 - **Unmodeled state-based problems**: When correctness depends on multiple parts of the code agreeing which discrete condition the system is in, but state is reconstructed from interdependent booleans / scattered order-of-events conditionals rather than a single-source-of-truth model. Mechanism is an implementation choice — flag absence of the *model*. **BLOCKING** when invalid combos are reachable, double-transitions possible, or persisted state can diverge. **WARNING** when 3+ interdependent state signals lack a SoT and transition logic spans multiple call sites. **NOTE** borderline (two signals, localized). Enumerate the conditions you observed.
 
 Applies proportionally — a 2-line helper needs no design review. Prioritize what compounds: leaked abstractions others build on, spreading coupling, accumulating complexity.
@@ -121,7 +121,7 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 - **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
 - **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
 - **NOTE**: Genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly — Goal 4's actively-misleading **BLOCKING**, and its stale-artifact **WARNING**, both stand. That covers record-only text (change-log, learnings, plan text) and comment, docstring and doc wording, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
-- **Scope grades the remedy**: a site-naming finding answers `instance` or `class` in its `recommendation`. Say why it broke in one sentence; one that does not name the site you found names a **class** and bounds it — say what to search, and expect members outside the diff. An instance closes by fixing it; an unbounded class closes only by a **construction** — one owner every member passes through, or a check derived from the source of truth — never by a longer list.
+- **Scope grades the remedy**: a site-naming finding answers `instance` or `class` in its `recommendation` (`none` for a mandated cross-check carrying no defect). Say why it broke in one sentence; one that does not name the site you found names a **class** and bounds it — say what to search, and expect members outside the diff. An instance closes by fixing it; an unbounded class closes only by a **construction** — one owner every member passes through, or a check derived from the source of truth — never by a longer list.
 - **Prose remedies**: stale prose gets one of three — delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
 ## Review Execution
@@ -164,7 +164,7 @@ Persistence is **decoupled from the review**: reviewers write partials; `critic-
 
 #### [Finding]
 **Goal:** [Which goal this relates to]
-**Scope:** instance | class — [why it broke, in one sentence]
+**Scope:** instance | class | none — [why it broke, in one sentence]
 **Severity:** blocking | warning | note
 **Recommendation:** [What to do]
 

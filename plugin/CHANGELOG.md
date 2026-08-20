@@ -17,6 +17,28 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+### Correction: v3.4.0 claimed the instance-or-class rule reached `verify-resolutions`. It did not.
+
+v3.4.0's note named `chunk` as the one mode still missing the rule and said `final`, `cumulative`
+and `verify-resolutions` all had it. The first clause was wrong, and the note collapsed a real
+distinction to get there.
+
+**Two halves ship separately.** The *grading* half — re-run the finding's own reason as a search
+before writing `fixed` — did reach `verify-resolutions`. The *authoring* half — label the findings
+you raise — was stated only in the protocol file that `final` and `cumulative` load, and the other
+two modes are forbidden to open it. So a `verify-resolutions` reviewer was told to grade a class
+finding rigorously and never told to label the ones it raised.
+
+**Both modes now get the rule at dispatch**, handed to them by code rather than by the payload
+they read — the payload has a hard size pin and three tokens of room, and the grading half took
+this same route for the same reason. `chunk`, which v3.4.0 named as a known gap, is fixed by the
+same change rather than left for a later one.
+
+**A finding that bounds no defect now has an answer.** The mandated cross-checks — priors,
+learnings, backlog reconciliation — must report even when clean, and their reviewers were already
+coining `Scope: none` for it. It is a stated value now, in both carriers, rather than an invented
+one.
+
 ## v3.4.0
 
 **Less waiting on the gates, fewer rounds in review.** Gate checks stop timing out, syncing your base no longer buys a re-review, and a finding tells you whether the defect is only where it pointed.
@@ -67,7 +89,7 @@ At `verify-resolutions`, a reviewer grading your fix is now told to re-run the f
 
 Every one of the Critic's seven goals is already prose, and the observed defect was that *this* prose was absent — not that prose does not work. The escalation trigger is written down rather than left to judgement: if a review after this produces a site-naming finding that does not answer instance-or-class, the answer becomes machine-checkable.
 
-**Known gap, stated rather than discovered later:** `chunk`-mode reviews do not carry the rule yet — their instruction payload is at its size ceiling. `final`, `cumulative` and `verify-resolutions` all have it, and a `chunk`-mode finding meets the rule one round later when its fix is graded.
+**Known gap, stated rather than discovered later:** `chunk`-mode reviews do not carry the rule yet — their instruction payload is at its size ceiling. `final` and `cumulative` have it, and a `chunk`-mode finding meets the rule one round later when its fix is graded.
 
 ### Also in this release
 

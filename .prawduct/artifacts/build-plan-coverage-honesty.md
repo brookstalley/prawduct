@@ -144,9 +144,27 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
     not behind a reference. That narrows the space: a shared file both payloads open is likely the
     wrong answer for this rule even though it is the tidiest answer to "one home".
 
-  `[DECISION: the delivery route for the Scope authoring rule | to be recorded at step 0 against
-  the "every fact has one home" norm, the four constraints above, and the ceiling pin | user can
-  veto the recorded choice]`
+  `[DECISION: the authoring rule is delivered by CODE at dispatch (`FINDING_SCOPE_DIRECTIVE`,
+  emitted by `critic-begin` to the modes `GOALS_1_3_MODES` names), not by prose in
+  `goals-1-3.md` | the plan budgeted an ~11-token format line; step 0 found the real rule is the
+  ~110-token clause at `review-protocol.md` § Severity Levels, against 3 tokens of headroom — and
+  the repo has already ruled this exact case, twice: the GRADING half of this same rule took the
+  code route for the identical reason, and `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`'s docstring
+  records the general precedent that for the modes it serves a rating can live nowhere but the
+  directive | user can veto]`
+
+  **What step 0 changed about this chunk, recorded because the plan said something else.** The
+  plan called Chunk 01 `doc-only` and priced it as a prose edit. It is a code change: the rule
+  was never an 11-token format line, and the grep that suggested it was had matched
+  `review-protocol.md:167`'s Output Format entry while missing the actual rule at line 124, which
+  uses backticks. The plan's estimate was wrong in the direction that matters — it under-priced
+  the work — and the governance checkpoint after this chunk is where that gets weighed.
+
+  **A second finding worth naming: the `none` value cost a second budget negotiation.** Adding it
+  to `review-protocol.md` needed ~13 tokens against 6 of headroom, funded by dropping a worked
+  example that was *also* Python-specific in a file whose architecture norm forbids exactly that.
+  That is the same rivalry this plan cited when declining `#644` — and it arrived inside the
+  chunk that made the argument, which is the strongest available evidence the argument was right.
 
   **Third value.** Three findings in the observed consumer review used `Scope: none` — the priors
   cross-check, the learnings cross-check, and the backlog reconciliation. All three are mandated
@@ -175,10 +193,8 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
 - **Acceptance criteria:** `python3 -m pytest` passes; the new per-mode test fails when the rule is
   removed from any one mode's payload; `plugin/CHANGELOG.md` no longer claims coverage that does
   not exist
-- **Type:** doc-only
-  <!-- Payload prose and release notes. If step 0 picks the code-emitted route this becomes `code`
-       — under-declaring Type is safe, over-declaring is not, so change it at step 0 rather than
-       leaving this comment as cover. -->
+  <!-- Type is the default `code`: step 0 chose the code-emitted route, so the `doc-only` this
+       chunk was planned as would now be an over-declaration, which is the unsafe direction. -->
 - **Done when:**
   0. Step 0 — cost the routes against the four constraints and the ceiling pin; record the choice as
      the `[DECISION]` above, in this chunk, before editing a payload file

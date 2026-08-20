@@ -571,6 +571,59 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " point."
 )
 
+
+#: Delivered at `chunk` and `verify-resolutions` DISPATCH — the two modes whose
+#: payload is ``skills/critic/goals-1-3.md``. `final` and `cumulative` read the
+#: same rule from ``review-protocol.md`` § Severity Levels, which they load and
+#: these two are forbidden to open.
+#:
+#: **Why this is code and not payload prose, which is the whole decision.** The
+#: rule is ~110 tokens in the form that works; ``goals-1-3.md`` carries a hard
+#: token pin and sat 3 tokens under it. Porting the rule there means finding
+#: ~110 tokens in the tightest payload in the system, and the receipts for what
+#: is already in that file are written into its own pin's docstring. The route
+#: is not novel: the GRADING half of this same rule — re-run the finding's own
+#: reason as a search before writing `fixed` — took it in
+#: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` for the identical reason, and
+#: :data:`VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`'s docstring records the
+#: precedent in general form: for the modes it serves, a rating can live
+#: nowhere but here.
+#:
+#: **It closes an asymmetry that shipped.** Those two directives told a
+#: `verify-resolutions` reviewer to GRADE a class finding rigorously while
+#: nothing told it to LABEL the ones it raises, so the labelling reached only
+#: the modes that read the protocol. A consumer's first post-upgrade
+#: `verify-resolutions` raised a site-naming blocking finding with no scope
+#: answer, an hour after a `cumulative` labelled 29 of 30.
+#:
+#: **The descent is load-bearing, for the reason
+#: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s docstring gives at length.** A
+#: reviewer agrees that findings should name their breadth and then writes the
+#: two file paths in front of it, because nothing made it recognize THIS
+#: finding as the instance. So the rule is followed by the act, by the test
+#: that decides it, and by an instruction to spend it on the finding whose fix
+#: looks most obvious — which is the one a general rule never reaches.
+#: The modes whose reviewer payload is ``skills/critic/goals-1-3.md`` — which is
+#: exactly the set that must be handed a finding-format rule at dispatch,
+#: because the file they read cannot afford to carry one and the file that does
+#: carry one is the file they are forbidden to open. Named here rather than
+#: spelled at the emission site so the question "which modes read which payload"
+#: has one answer, and so a fifth mode is a change to THIS line rather than a
+#: silent omission at a call site.
+GOALS_1_3_MODES = frozenset({"chunk", "verify-resolutions"})
+
+FINDING_SCOPE_DIRECTIVE = (
+    "PRAWDUCT: a site-naming finding answers `instance` or `class` FIRST in its"
+    " `recommendation`. Say why it broke in one sentence — a sentence that does"
+    " not name the site you found names a CLASS: bound it, say what to search"
+    " for, and expect members outside this delta. An instance closes by being"
+    " fixed; an unbounded class closes only by a CONSTRUCTION — one owner every"
+    " member passes through, or a check derived from the source of truth —"
+    " never by a longer list of names. A mandated cross-check carrying no"
+    " defect to bound answers `none`. Spend this on the finding whose fix looks"
+    " most obvious: that is the one whose siblings nobody goes looking for."
+)
+
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
 

@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-20: the finding-scope rule reaches the two modes whose payload had no room for it
+
+<!-- prawduct: type=fix | scope=coverage-honesty -->
+
+v3.4.0 shipped the instance-or-class rule stated in exactly one place — `review-protocol.md`
+§ Severity Levels, which `final` and `cumulative` load. `chunk` and `verify-resolutions` load
+`goals-1-3.md` and are forbidden to open the protocol, so for those two the rule did not exist.
+The release note claimed otherwise: it named `chunk` as the one known gap and asserted that
+`final`, `cumulative` and `verify-resolutions` all had it.
+
+**What was actually true, and it is a distinction the note collapsed.** Two halves of the rule
+ship separately. The GRADING half — re-run the finding's own reason as a search before writing
+`fixed` — does reach `verify-resolutions`, through `RESOLUTION_IS_A_CLAIM_DIRECTIVE`. The
+AUTHORING half — label the findings you raise — reached only the protocol's readers. So a
+`verify-resolutions` reviewer was told to grade a class finding rigorously and never told to
+label the ones it raises. A consumer repo's first post-upgrade `verify-resolutions` raised a
+site-naming blocking finding with no scope answer, an hour after a `cumulative` on the same
+branch labelled 29 of 30.
+
+**Why this is a directive and not payload prose.** The rule is ~110 tokens in the form that
+works and `goals-1-3.md` sat 3 tokens under a hard pin. Porting it means finding ~110 tokens in
+the tightest payload in the system, against receipts recorded in that pin's own docstring. The
+route is not novel — the grading half took it for the identical reason, and
+`VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE` already records the general precedent that for the modes
+it serves, a rating can live nowhere but in the dispatch directive. `FINDING_SCOPE_DIRECTIVE` is
+delivered at `critic-begin` to the modes named by `GOALS_1_3_MODES`, so the set that reads
+`goals-1-3.md` and the set handed the rule cannot drift apart at a call site.
+
+**The vocabulary gained a third value it was already being asked for.** Three findings in that
+same consumer review answered `Scope: none` — the priors cross-check, the learnings cross-check
+and the backlog reconciliation, all mandated passes that must report even when clean and so bound
+no defect. The protocol defined only `instance | class`, so the reviewers coined one. `none` is
+now stated in both carriers.
+
+**Cost, stated rather than absorbed.** The directive is ~148 tokens on every `chunk` and
+`verify-resolutions` dispatch, pinned with a ceiling. `review-protocol.md` paid for its `none`
+wording by dropping a worked example that was also Python-specific, in a file governing a
+framework whose architecture norm says it must never be — net zero against its ceiling, and
+`goals-1-3.md` was not touched at all.
+
+`tests/test_finding_scope_rule.py` pins the map rather than the carriers: the mode set is read
+from `MODE_TOKEN_TO_VERBOSE`, and every member must be accounted for by one carrier or the other,
+so a fifth mode or a further payload split fails until someone says which carrier serves it. Both
+mutations were exercised — removing `none` from the protocol reddens `final`/`cumulative`,
+and spelling the emission's mode set at the call site reddens the delivery pin.
+
 ## 2026-08-20: v3.4.0 is cut, and develop reopens on 3.4.1-dev
 
 <!-- prawduct: type=chore | scope=release-v3.4.0 -->

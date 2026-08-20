@@ -1711,8 +1711,24 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     # rates the delta BEFORE it judges the prior findings, so the severity
     # narrowing comes first and the resolution warning stays adjacent to the
     # claim it governs — the only one of the two that can weaken a gate.
-    if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
+    #
+    # FINDING_SCOPE_DIRECTIVE rides the same slot for a different reason: it is
+    # owed to whichever modes read `goals-1-3.md`, which has no room for it,
+    # and `verify-resolutions` is in both sets. It sits between the two because
+    # it governs how a finding is WRITTEN, so it belongs after the rule that
+    # decides whether there is a finding at all and before the one governing
+    # `resolutions` — which must stay last, adjacent to the claim it governs.
+    verbose_mode = manifest["mode"]
+    is_verify = verbose_mode == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
+    if is_verify:
         print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
+    reads_goals_1_3 = {
+        consolidate.MODE_TOKEN_TO_VERBOSE[token]
+        for token in consolidate.GOALS_1_3_MODES
+    }
+    if verbose_mode in reads_goals_1_3:
+        print(consolidate.FINDING_SCOPE_DIRECTIVE)
+    if is_verify:
         print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
     return 0
 
