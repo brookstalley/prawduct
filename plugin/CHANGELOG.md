@@ -10,11 +10,22 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.4.1-dev
+
+**Prerelease under test — this build is the develop branch ahead of the next release.** The version
+says so wherever it appears, so a repo pinned to the develop ref can tell what it is running, and a
+cached review verdict from the released plugin is not replayed against this one. Rolling release
+notes accumulate here, and this section is renamed to the release number at the cut.
+
 ## v3.4.0
 
-**Governance gets out of your way.** The review gates are **57× faster** (20 s → 0.35 s), so they stop timing out mid-session. Syncing your base no longer costs you a re-review. And a Critic finding now tells you whether the defect is only where it pointed, or everywhere that pattern appears.
+**Less waiting on the gates, fewer rounds in review.** Gate checks stop timing out, syncing your base no longer buys a re-review, and a finding tells you whether the defect is only where it pointed.
 
-### The gates got 57× faster
+- **Gate checks stop timing out**, because the coverage verdict is memoized instead of rescanning every tree in the evidence store (20 s → 0.35 s). *This is the check for whether a review is needed — not the review, which costs what it always did.*
+- **Syncing your base no longer buys a re-review**, because coverage transfers when the branch's judgeable files are byte-identical across the two spans.
+- **One fix round instead of two**, because a finding now says whether the defect is only where it pointed or everywhere that pattern appears.
+
+### The gate check got 57× faster — the review itself is unchanged
 
 **Asking whether a review was needed cost 29–120 s per call** in a live consumer session — nine calls in one session, two of them killed by the 2-minute Bash ceiling, and the agent resorted to `timeout 200`. It is now 0.35 s.
 

@@ -3,6 +3,57 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-20: v3.4.0 is cut, and develop reopens on 3.4.1-dev
+
+<!-- prawduct: type=chore | scope=release-v3.4.0 -->
+
+v3.4.0 shipped: fourteen release-pending scopes, all of them, no pruning — `main`'s tree is
+`develop`'s and `check-released v3.4.0` reports 3 of 3 verified. The version decision (minor rather
+than the norm's default patch) and the classification table are in
+`.prawduct/artifacts/release-plan-v3.4.0.md`; this entry records the cut, not the reasoning.
+
+**Two things in the cut were judgement rather than procedure, and both are worth the next cutter's
+attention.**
+
+The prerelease section still carried its seeded `**Prerelease under test …**` placeholder as its
+first non-empty line, which is the exact line `banner.py` shows every upgrading consumer. Phase 1
+step 10 says to replace it; it had accumulated eight weeks of notes underneath and nobody had. The
+step is doing its job — but the failure mode is silent, because a section full of good notes reads
+as a finished section.
+
+The headline took three drafts and **each rewrite fixed a different defect**, which is why it is
+worth recording as three rather than as one.
+
+*Draft 1* led with the measurement (29–120 s per call, nine calls, the 2-minute ceiling) — the
+release plan's framing, which is an argument for *cutting* addressed to the maintainer. **The release
+plan's "why cut this" and the CHANGELOG's "what you get" are different documents for different
+readers, and copying the first into the second is the default mistake.**
+
+*Draft 2* — "Governance gets out of your way. The review gates are 57× faster" — was the more
+expensive error, and it was **factually wrong in the direction that flatters the release**. 57× is
+the *gate check*, the question "does this need a review". The review itself costs exactly what it
+did. The owner caught it against lived experience: reviews are still slow, so the sentence promises
+something the consumer will immediately find untrue. A benefit framing does not license a wider
+claim than the measurement supports, and the tell was that no number in the release could be
+attached to the sentence actually written.
+
+*Draft 3* names the check rather than "the gates", states *the review itself is unchanged* inline,
+and drops to `benefit, because reason` bullets. **Residual, stated rather than left to be
+discovered:** draft 2 shipped in the tag's tree for the window between publish and correction, so
+any repo that installed inside it sees the over-promise once in its banner. The Releases page was
+edited, and `develop`'s digest carries draft 3, so every later reader crossing 3.4.0 gets the
+corrected text — but a published banner line cannot be recalled, only outlived.
+
+Also taken here rather than deferred: `tactical-efficiency` — nine change-log entries, the
+verdict cache and the base-advance transfer, the release plan's own stated reason to cut — had **no
+consumer-facing notes at all** in `plugin/CHANGELOG.md`. The rolling-notes model accumulates what
+someone remembers to write during the cycle, and nothing checks the accumulated set against the
+shipping scope list at the cut. `check-releasability` enumerates the scopes; nothing asks whether
+each one reached the public digest. That is a real gap, filed rather than fixed mid-cut.
+
+Reopened on `3.4.1-dev` — low guess by the runbook's rule, since every possible next cut is then a
+forward move for a develop-pinned consumer.
+
 ## 2026-08-19: the escape hatch stops recommending the deletion this release guards against
 
 <!-- prawduct: type=fix | scope=critic-reliability | release=v3.4.0 -->
