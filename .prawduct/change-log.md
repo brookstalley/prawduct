@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-20: the rule that says "write this last" was not last, and stopped firing
+
+<!-- prawduct: type=fix | scope=standing-block-descent -->
+
+Reported from a consumer repo on v3.4.1-dev: sessions had stopped closing with the standing
+block — `STATE` / `RUNNING`|`YOUR TURN`|`COMPLETE` / `SAFE TO CLEAR`. This repo's own sessions
+had too.
+
+**It was not delivery, and checking that first is what left the real cause visible.**
+`hooks/digest.py` gates only on `.prawduct/` existing; the consumer worktree has it; and the
+installed 3.4.1-dev digest is byte-identical to the branch's, standing block included. The
+~10,000-character `additionalContext` spill threshold — which would have silently disabled *all*
+governance, not one rule — was never crossed either: 9,811 characters, and the tightest reading
+in the rule's whole history was 9,996 at the commit that added it. That cliff is asserted twice
+in `test_plugin_methodology_digest.py`, so it was defended, not merely lucky.
+
+**The cause is placement, and it is the failure mode the rule itself names.** The instruction sat
+at line 56 of 130 — 43% through, one bullet among twelve in "The hardest rules", with six more
+rules, four whole sections and ~5,500 characters after it. Attribution trailers, merge strategy
+and backlog routing were all more recent to the reader than the instruction telling them what to
+write *last*. The rule's own words are "last, after every other word" and "the bottom is all they
+read", and it was not at the bottom.
+
+That stopped being cosmetic when `governance-surface-dedup` (v3.4.0) made this digest the rule's
+**only** always-loaded carrier — a repo's own `CLAUDE.md` is trimmed where it overlaps rather
+than kept as a duplicate. That is the right call for one-carrier discipline, and its consequence
+was never priced: with one carrier, placement inside that carrier does all the work, and
+placement was left where a second carrier had been compensating for it.
+
+So the block is now the digest's closing section, `## Closing the turn`, with nothing after it.
+Three tests hold it there — the rule is still carried, no section follows it, and no text follows
+it — because the way it got buried the first time was other rules arriving afterwards, and
+nothing was watching for that.
+
+**Paid for in place, and past the addition.** The heading is funded by two phrases in the block
+that lose no rule: "last," (the heading says it) and "on one axis" (the clause right after it
+already says the same thing in the plain language this digest's own stance section asks for).
+Both injected readings land 3 tokens **below** where the branch started, and both ceilings
+ratchet down with them so the next addition cannot spend the difference.
+
+Two trims were reverted because tests refused them: dropping the deadline's
+`(elapsed, roster, expected when priceable)` broke the pin that a deadline must name its
+derivation, and a rewrap split `work outstanding` across a line and broke the shared-trigger pin.
+Both are contracts; both won.
+
 ## 2026-08-20: v3.4.0 is cut, and develop reopens on 3.4.1-dev
 
 <!-- prawduct: type=chore | scope=release-v3.4.0 -->

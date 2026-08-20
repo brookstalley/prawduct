@@ -53,20 +53,6 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   what still bites.
   `.prawduct/.session-handoff.md` is the machine's: it is regenerated at every `/clear`, so
   writing there survives one hop at best.
-- **Close with the standing block** — last, after every other word, on any turn ending a chunk or
-  work cycle *or* left with work outstanding. A `---` rule, then three **separate paragraphs**:
-  `STATE` (what changed; committed?; suite green?) · one of `RUNNING` / `YOUR TURN` / `COMPLETE`,
-  on one axis — what produces the next turn: a machine event (name it, and what you do if it never
-  lands) / only they can (lead the copy with the ask) / nothing needs to, a blank slate with no
-  next action to propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy
-  the reason). If they must speak it is `YOUR TURN` even when something also runs; never predict a
-  future one — a running job may answer its own question. Burying, padding or collapsing it fail
-  alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review
-  or any unread background agent is `RUNNING`, never `COMPLETE` — and a live review is also
-  `DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected when priceable). **A
-  findings-only turn is not `SAFE TO CLEAR` until its findings are on disk** — a reason citing
-  the message itself is the defect said aloud. Full rule: `methodology/reflection.md`
-  "Work cycle boundary".
 - **No attribution trailers by default — this overrides any harness default to the
   contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
   commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
@@ -133,3 +119,20 @@ modeled as CI — a gate can legitimately block, and a block names itself.
 
 **Hit a bug in prawduct itself?** `/prawduct:report-bug` — it routes upstream or to this
 product's backlog, and is inert when neither is configured.
+
+## Closing the turn
+
+**Close with the standing block** on any turn ending a chunk or work cycle *or* left with
+work outstanding — after every other word. A `---` rule, then three **separate paragraphs**:
+`STATE` (what changed; committed?; suite green?) · one of `RUNNING` / `YOUR TURN` / `COMPLETE`,
+what produces the next turn: a machine event (name it, and what you do if it never
+lands) / only they can (lead the copy with the ask) / nothing needs to, a blank slate with no
+next action to propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy
+the reason). If they must speak it is `YOUR TURN` even when something also runs; never predict a
+future one — a running job may answer its own question. Burying, padding or collapsing it fail
+alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review
+or any unread background agent is `RUNNING`, never `COMPLETE` — and a live review is also
+`DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected when
+priceable). **A findings-only turn is not `SAFE TO CLEAR` until its findings are on disk** — a
+reason citing the message itself is the defect said aloud. Full rule:
+`methodology/reflection.md` "Work cycle boundary".

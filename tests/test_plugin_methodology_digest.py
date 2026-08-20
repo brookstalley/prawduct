@@ -407,6 +407,60 @@ class TestAgentStance:
         assert "volatility" in digest.lower(), "digest must name the volatility driver"
 
 
+class TestTheStandingBlockIsTheDigestsLastWord:
+    """A closing instruction has to be the closing text.
+
+    The rule says it itself — *last, after every other word* and *the bottom is
+    all they read* — and it was carried as one bullet at 43% depth, with six
+    more rules, four whole sections and ~5,500 characters after it. Every one of
+    those is more recent to the reader than the instruction telling them what to
+    write last. The digest was committing the failure mode its own rule names.
+
+    That placement stopped being merely untidy when the second carrier went
+    away: the `governance-surface-dedup` work made this digest the only
+    always-loaded home for the rule, since a repo's own `CLAUDE.md` is trimmed
+    where it overlaps rather than kept as a duplicate. One carrier means
+    placement inside that carrier does all the work.
+    """
+
+    def _digest(self) -> str:
+        return DIGEST_SRC.read_text(encoding="utf-8").strip()
+
+    def test_the_rule_is_still_carried(self):
+        digest = self._digest()
+        assert "Close with the standing block" in digest
+        for token in ("STATE", "RUNNING", "YOUR TURN", "COMPLETE", "SAFE TO CLEAR", "DO NOT CLEAR"):
+            assert token in digest, f"the standing block lost its {token} label"
+
+    def test_no_section_follows_it(self):
+        """The property, not the position: a new `## ` section appended after
+        this one silently re-buries the rule, and that is exactly how it got
+        buried the first time — by other rules arriving after it."""
+        digest = self._digest()
+        headings = [line for line in digest.splitlines() if line.startswith("## ")]
+        assert headings, "the digest lost its section structure"
+
+        last_heading_at = digest.rindex(headings[-1])
+        rule_at = digest.index("Close with the standing block")
+        assert rule_at > last_heading_at, (
+            f"the standing block sits above the digest's final section "
+            f"({headings[-1]!r}), so that section's rules are the last thing the "
+            "reader sees. A rule that says 'last, after every other word' has to "
+            "BE last — append new sections above it, never below."
+        )
+
+    def test_nothing_but_the_rule_follows_the_rule(self):
+        """The tail after the instruction is the instruction. A trailing
+        pointer, sign-off or note would put words after the words that say they
+        come last."""
+        digest = self._digest()
+        tail = digest[digest.index("Close with the standing block"):]
+        assert tail.rstrip().endswith('"Work cycle boundary".'), (
+            "text was appended after the standing block; the digest's last "
+            f"words are now: {tail.rstrip()[-120:]!r}"
+        )
+
+
 class TestCommitAttributionDefault:
     """The framework default is NO commit/PR attribution trailers, opt-in via
     ``project-preferences.md`` (``Commit attribution``). The carrier is the

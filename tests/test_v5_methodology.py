@@ -523,8 +523,30 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # sentence is already a pointer to `SKILL.md`, which owns the fact, so
     # restating it precisely would have been a more accurate second home. One
     # token is what a pointer costs over a claim.
-    "framework": 3321,
-    "product": 2243,
+    #
+    # -3 on both shapes, 2026-08-20: the standing block became the digest's
+    # closing SECTION instead of a bullet at 43% depth, which is what the rule
+    # itself asks for -- "last, after every other word", "the bottom is all
+    # they read" -- and what it was not getting. It had six more rules, four
+    # sections and ~5,500 characters after it, every one of them more recent to
+    # the reader than the instruction saying what to write last. That stopped
+    # being cosmetic when `governance-surface-dedup` made this digest the rule's
+    # ONLY always-loaded carrier: with one carrier, placement inside it does all
+    # the work.
+    #
+    # The new `## Closing the turn` heading is paid for out of the block's own
+    # prose, twice over: "last," goes because the heading says it, and "on one
+    # axis" goes because the clause immediately after it -- "what produces the
+    # next turn" -- is the same statement in the plain language this digest's
+    # own stance section asks for. Two phrases nobody loses a rule to.
+    #
+    # Two trims were REVERTED because tests held them: dropping the deadline's
+    # `(elapsed, roster, expected when priceable)` broke the pin that a deadline
+    # must name its derivation (a bare "deadline" invites the constant the rule
+    # exists to keep out), and a rewrap split "work outstanding" across a line,
+    # breaking the shared-trigger pin. Both are contracts and both won.
+    "framework": 3318,
+    "product": 2240,
 }
 
 #: Ceilings. HARD, like the five per-file prose ceilings in this module and
@@ -554,8 +576,13 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # both readings landed BELOW where the branch started; leaving the ceilings
     # would have banked that difference as headroom for the next addition,
     # which is the re-funding this comment's first paragraph forbids.
-    "framework": 3322,
-    "product": 2245,
+    #
+    # -3 on both, 2026-08-20: ratcheted with the readings a second time, for
+    # the same reason. Moving the standing block to the digest's tail landed
+    # both readings below where the branch started; a ceiling left where it was
+    # would hand the next addition three tokens the move paid for.
+    "framework": 3319,
+    "product": 2242,
 }
 
 
