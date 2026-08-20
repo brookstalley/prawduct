@@ -12,9 +12,11 @@ release process keeps the two in sync (one headline per shipped release).
 
 ## v3.4.0
 
-**The review gates stop charging more than the reviews they guard.** Asking whether a review was needed cost 29–120 s per call in a live consumer session — nine calls in one session, two of them killed by the 2-minute Bash ceiling. It is now **20.0 s → 0.35 s**, and a base sync no longer throws away review coverage the branch already earned.
+**Governance gets out of your way.** The review gates are **57× faster** (20 s → 0.35 s), so they stop timing out mid-session. Syncing your base no longer costs you a re-review. And a Critic finding now tells you whether the defect is only where it pointed, or everywhere that pattern appears.
 
-### Asking the question got cheap
+### The gates got 57× faster
+
+**Asking whether a review was needed cost 29–120 s per call** in a live consumer session — nine calls in one session, two of them killed by the 2-minute Bash ceiling, and the agent resorted to `timeout 200`. It is now 0.35 s.
 
 Profiled before anything was built: reading the evidence store is 0.06 s and merge-base resolution 0.07 s, while composing the coverage verdict was **17.4 s cold** — the free-edge search keys every tree the store mentions, one `git ls-tree` each (701 trees on this repo, and an append-only store only grows). Every session on the old build paid more of that than the last.
 
