@@ -6,6 +6,51 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When you rewrite a MEASUREMENT into a BENEFIT, re-attach the number to the sentence you actually wrote
+<!-- anchor: benefit-framing-widens-the-claim -->
+
+Found at the v3.4.0 cut, 2026-08-20.
+
+The v3.4.0 CHANGELOG headline is the single most-read consumer surface prawduct has: the
+version-delta banner shows exactly that line to every repo crossing the version. It took three
+drafts, and each rewrite fixed a different defect.
+
+**Draft 1** led with the measurement — 29–120 s per call, nine calls in one session, the 2-minute
+Bash ceiling. That is the release plan's framing, and the release plan is an argument for *cutting*
+addressed to the maintainer. The CHANGELOG is addressed to a consumer and answers *what do I get*.
+Copying the first document into the second is the default mistake, because the first one is written,
+adjacent, and about the same subject.
+
+**Draft 2 is the one worth storing.** "Governance gets out of your way. The review gates are 57×
+faster." Correcting draft 1's *audience* problem introduced a *truth* problem: 57× is the gate
+check — `check-cumulative-critic`, the question "does this need a review". The review itself costs
+exactly what it did. The owner caught it in one line, against lived experience: *"that seems
+over-promising. we often see reviews being slow."*
+
+**The mechanism, and why it is not carelessness.** "The gate check for whether a review is needed"
+is six words; "the review gates" is three. Benefit framing rewards compression, and compression
+generalizes: the specific mechanism that was measured gets replaced by the category it belongs to,
+and the category is bigger than the evidence. Nothing in the draft-2 sentence is a lie about a
+number — the number is right. The *noun it attaches to* moved.
+
+**The tell is available without knowing the subject:** point at the number behind each claim in the
+sentence you just wrote. No measurement in v3.4.0 could be attached to "the review gates are 57×
+faster," because nothing measured a review. A claim whose evidence you cannot name in one breath
+has widened, whether or not you can see how.
+
+**Why this surface has no other defence.** Every other artifact in this repo is graded by something:
+`check-releasability` grades the scope partition, `check-released` grades the version carriers, CI
+re-grades with a token, the Critic grades judgeable code, the PR reviewer grades release readiness.
+The consumer-facing digest is graded by one instruction in one runbook step, addressed to a human
+who has just spent an hour on mechanics — and it is the one artifact in the repo where the incentive
+runs toward *overstating*. Honest Confidence has no automation here.
+
+**Residual from the instance:** draft 2 shipped in the tag's tree for the window between publish and
+correction, so a repo installing inside it sees the over-promise once. The Releases page was edited
+and `develop`'s digest carries draft 3, so later readers crossing 3.4.0 get the corrected text. A
+published banner line cannot be recalled, only outlived.
+
+
 ## When you swap a mechanism's input for a COPY of a file, ask what the original's METADATA was load-bearing for — a byte-identical copy is not an identical input, and the loss is silent
 
 **Where.** `plugin/lib/evidence.py`, `_seed_temp_index` — critic-reliability Chunk 01 (#675),

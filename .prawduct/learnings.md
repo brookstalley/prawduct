@@ -26,6 +26,9 @@ never by dropping them.
 ## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
+## When you rewrite a MEASUREMENT into a BENEFIT, re-attach the number to the sentence you actually wrote — the rewrite is where a claim silently widens past its evidence, because the benefit sentence is shorter and short sentences generalize. v3.4.0 shipped *"the review gates are 57× faster"*; 57× was the gate CHECK, and reviews cost what they always did. Tell: you cannot point at the number behind the noun you just chose — [learnings-detail.md]
+<!-- anchor: benefit-framing-widens-the-claim -->
+
 ## When a criterion, plan or rule DESCRIBES an artifact, open the artifact before building to the description — it was written from a framing and inherits that framing's blind spot. "Does not touch a block carrying other keys", authored before anyone read the block, would have left 7 of 8 repos broken. Tell: you can satisfy it fully without ever reading the thing it names — [learnings-detail.md]
 <!-- anchor: build-from-the-thing-not-its-description -->
 
