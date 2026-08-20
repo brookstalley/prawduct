@@ -628,11 +628,18 @@ class TestGitTimeoutBudget:
             return real_run(cmd, **kwargs)
 
         monkeypatch.setattr(evidence.subprocess, "run", die_on_add)
-        before = set(Path(tempfile.gettempdir()).glob("prawduct-idx-*"))
+        # A PRIVATE temp dir, because the assertion below is about what THIS
+        # capture left behind. `capture_tree` names its temp index from the
+        # process-wide temp dir, and the suite runs workers in parallel — so a
+        # snapshot of the shared one catches another worker's in-flight index
+        # and fails on litter this test never created.
+        private_tmp = tmp_path / "idxtmp"
+        private_tmp.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(private_tmp))
         result = evidence.capture_tree(repo)
         assert result["status"] == "error"
         assert evidence._GIT_TIMEOUT_ENV in result["reason"]
-        assert set(Path(tempfile.gettempdir()).glob("prawduct-idx-*")) == before
+        assert list(private_tmp.iterdir()) == []
         assert list(Path(_git(repo, "rev-parse", "--absolute-git-dir")).glob("*.lock")) == []
 
 
