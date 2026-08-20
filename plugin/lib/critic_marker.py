@@ -88,8 +88,8 @@ the marker treated as not active.
 That distinction is load-bearing now that the session-boundary sweep keys on
 this predicate (:func:`boundary_sweep`): "corrupt ⇒ swept" would delete a
 marker a reviewer had just written and mangled, which is the silent failure the
-gate exists to close. The two loud overrides (``--force``, ``rm``) are what keep
-the protective direction from bricking anyone.
+gate exists to close. The named overrides above are what keep the protective
+direction from bricking anyone.
 """
 
 from __future__ import annotations
