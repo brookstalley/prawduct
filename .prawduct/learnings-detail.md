@@ -4179,3 +4179,27 @@ caller cannot produce.
 sentence discharges it. The cheap check is not "is my explanation plausible" but "which branch did
 it take" — print it, or mutate the code and watch the test go red. A mutation that leaves the test
 green is the same signal arriving a second time.
+
+## One home stops DIVERGENCE, not staleness — when you add a caller to shared copy, re-read the shared sentence AS THAT SURFACE'S READER, because a clause true of every existing caller can be flatly false at the new one and composition hands it over unexamined. Tell: you satisfied "route it through the one home" and never read the composed output
+
+**The case.** `critic_consolidate.pending_roster_reading()` is the single home for what a pending
+Critic roster MEANS, deliberately shared so a refusal and a session-boundary notice cannot tell
+different stories about what is on disk. Its `incomplete` reading carried the reassurance "a
+`/clear` retains the marker; it does not release it" — true of both surfaces that existed when it
+was written, both of which retain. A third surface was then added that *sweeps*: the boundary
+notice reporting an expired marker with an incomplete roster. Composing through the one home was
+the right call and the plan required it, and it delivered a notice that told the reader *waiting is
+safe* three lines above *the marker is gone and no gate will raise this again*.
+
+**Why it recurs.** The one-home rule is enforced by checking that callers don't restate the fact,
+and that check passes perfectly here — the defect is in the fact, not the plumbing. Nothing about
+routing a new caller through shared copy prompts you to re-examine the copy, because the discipline
+you are exercising is *not writing anything new*. The staleness arrives precisely when the shared
+sentence describes behaviour that the new caller is the exception to, which is the normal reason a
+new caller is being added at all.
+
+**The cheap check.** Run the composed output and read it as its reader — not diff it, not verify
+the call site. The contradiction was invisible in the code (two correct functions, one correct
+call) and unmissable in eight lines of terminal text. Where the shared text asserts a behaviour,
+prefer a clause that names its condition over a flat statement: a conditional survives a new caller,
+an absolute has to be found and rewritten by someone who has no reason to look.

@@ -26,9 +26,10 @@ independent corrections, no one of which has to be perfect:
    stops counting as active (and is swept on the next read).
 2. **Session-boundary sweep** — a genuine session boundary (``clear
    --session-start`` *without* ``--brief-only``: only ``startup`` and ``clear``)
-   deletes a marker **that has already failed the TTL above**. What licenses
-   deleting a marker someone else wrote is that a review is dispatched by a
-   process, so the sweep's real question is *is that process gone?*
+   deletes a marker that has already failed the TTL above **and whose review
+   nothing can still recover**. What licenses deleting a marker someone else
+   wrote is that a review is dispatched by a process, so the sweep's first
+   question is *is that process gone?*
 
    Source is only a proxy for that question, and the sweep is scoped twice
    because the proxy leaks in both directions. It does **not** fire on
@@ -58,6 +59,17 @@ independent corrections, no one of which has to be perfect:
    by a named command the refusal prints (``critic-end``, ``critic-discard``),
    which is what keeps this the cheaper error — but "at most the TTL" is false
    for the second reader and understates the first.
+
+   The TTL answers only that first question, and answering it is not enough to
+   license the delete. A review whose reviewers have **all reported** is one
+   deterministic step from being recorded — the Stop hook's backstop runs that
+   step itself, keyed on :func:`marker_present` — so removing the marker there
+   throws away a finished review's findings to tidy up after a process that
+   already did its job. The sweep therefore asks the roster too
+   (:func:`boundary_sweep`), and a complete one is retained at any age.
+   Announced, not silent: age-plus-complete is precisely the state an operator
+   is entitled to hear about, since nothing else in the new session knows a
+   review is sitting there consolidated-but-unrecorded.
 3. **Explicit override** — the refusal message tells the operator/agent how to
    clear a stale marker (``rm``) or force the one command (``clear --force``).
 
@@ -70,7 +82,7 @@ old one expires like any other. Only when neither signal is readable at all is
 the marker treated as not active.
 
 That distinction is load-bearing now that the session-boundary sweep keys on
-this predicate (:func:`sweep_unless_live`): "corrupt ⇒ swept" would delete a
+this predicate (:func:`boundary_sweep`): "corrupt ⇒ swept" would delete a
 marker a reviewer had just written and mangled, which is the silent failure the
 gate exists to close. The two loud overrides (``--force``, ``rm``) are what keep
 the protective direction from bricking anyone.
@@ -89,6 +101,22 @@ from .core import atomic_write_text
 #: while a crashed marker frees within the window. One knob, deliberately
 #: generous — over-blocking is recoverable (override); under-protecting is the
 #: bug this guards against.
+#:
+#: **Do not re-price this from the review-duration ledger.** The obvious move —
+#: take the distribution of recorded ``duration_seconds`` and set the window
+#: above its tail — measures the wrong quantity twice over. That figure is
+#: SELF-REPORTED by the reviewing agent, and a coordinator review records the
+#: ``max()`` across its reviewers; what this constant governs is marker
+#: WALL-CLOCK age, which spans dispatch plus every reviewer plus consolidation
+#: plus coordinator turn latency, and is therefore strictly longer than any
+#: self-report. A comfortable margin between the two is an artefact of
+#: comparing them, not evidence that the window is safe. The derivation is
+#: committed at ``.prawduct/research/critic-liveness-2026-08-19/measure.py``
+#: (section A) — run it rather than quoting its digits.
+#:
+#: What makes the number tolerable is that expiry no longer decides alone:
+#: :func:`boundary_sweep` retains a marker whose reviewers have all reported,
+#: at any age, so a review that outruns this window loses nothing by doing so.
 CRITIC_ACTIVE_TTL_SECONDS = 1800
 
 MARKER_NAME = ".critic-active"
@@ -103,8 +131,17 @@ def write_marker(prawduct_dir: Path) -> bool:
 
     Returns True if written, False if ``prawduct_dir`` does not exist (the
     Critic only runs inside an onboarded repo; outside one this is a no-op).
-    Re-writing refreshes the timestamp, so an over-running review can renew its
-    own protection.
+
+    **Nothing renews a marker mid-review, and this docstring used to say
+    otherwise.** ``critic-begin`` is the only caller, so the timestamp is a
+    *dispatch* time and the TTL runs from it untouched — a review that takes
+    longer than the TTL does not extend its own protection by working harder,
+    because no code path re-writes the file while reviewers are running. A
+    re-write here is a NEW dispatch, not a renewal, which is why
+    ``begin_review`` refuses to reach it while a review is still live. What
+    actually protects an over-running review is the pair below: the boundary
+    keeps a marker whose roster is complete (:func:`boundary_sweep`), and
+    whichever way the marker goes, the act says so.
     """
     if not prawduct_dir.is_dir():
         return False
@@ -135,25 +172,98 @@ def clear_marker(prawduct_dir: Path) -> bool:
         return False
 
 
-def sweep_unless_live(prawduct_dir: Path) -> bool:
-    """The session-boundary sweep: release the marker **unless** it is still
-    within its TTL. Returns ``True`` when a live marker was **retained** — i.e.
-    when this call swept *nothing*.
+#: What :func:`boundary_sweep` did — a token, deliberately not a bool.
+#:
+#: The act has four outcomes and only ONE of them means "a marker is still
+#: there for a reason", so a caller branching on truthiness would announce a
+#: retention on the path where there was nothing to retain. That is the exact
+#: shape of the defect this function's own history records: an earlier name
+#: (``sweep_if_expired``) returned ``True`` where it had swept nothing at all,
+#: and a caller written from the name alone took the wrong branch. The
+#: successor bool (``sweep_unless_live``) then had to grow a second retention
+#: reason, at which point one bit could no longer say which act happened — so
+#: the return became these, and the function was RENAMED with them. A call site
+#: still written against the bool now raises ``AttributeError`` at the boundary
+#: instead of quietly reading ``"absent"`` as "retained".
+SWEEP_ABSENT = "absent"
+SWEEP_RETAINED_LIVE = "retained-live"
+SWEEP_RETAINED_COMPLETE = "retained-complete"
+SWEEP_RETAINED_UNKNOWN = "retained-unknown"
+SWEEP_SWEPT = "swept"
 
-    Read the name and the return together: the function's job is the sweep, and
-    the value it hands back is the exception to it, because the caller's only
-    reason to branch is the marker it did *not* remove. An earlier name for this
-    (``sweep_if_expired``) returned ``True`` on the path where it had swept
-    nothing at all, so a second caller written from the name alone would take the
-    wrong branch — the silent direction this whole guard exists to close.
+#: The tokens on which a marker survives the boundary. Named as a set so a
+#: caller asks "was anything kept?" without re-listing the reasons — a new
+#: retention reason then reaches every caller by being added here.
+SWEEP_RETAINED = frozenset(
+    {SWEEP_RETAINED_LIVE, SWEEP_RETAINED_COMPLETE, SWEEP_RETAINED_UNKNOWN}
+)
 
-    It delegates to :func:`review_active`, whose sweeping default does exactly
-    this. The reason a boundary may not simply delete the marker is in this
-    module's docstring; this function is how the call site names which of the two
-    acts it is performing, instead of calling a predicate for its side effect.
+
+def _roster_is_complete(prawduct_dir: Path) -> bool | None:
+    """Has every reviewer of the pending review reported? ``None`` = unanswerable.
+
+    Three-valued on purpose. "No" and "cannot tell" license different acts here,
+    and collapsing them would make an import failure delete a review nobody
+    looked at.
+
+    The import is lazy because ``critic_consolidate`` imports THIS module at its
+    top — a module-level import back would be a cycle — and because it keeps a
+    3000-line module off the session-start path in the overwhelmingly common
+    case: the only caller reaches this after establishing that a marker file
+    exists at all, which happens only when a review was dispatched and never
+    ended. An unreadable manifest is a real answer of "not complete", not an
+    unanswerable one; ``pending_state`` already classifies it.
     """
-    retained, _age = review_active(prawduct_dir)
-    return retained
+    try:
+        from . import critic_consolidate  # noqa: PLC0415 — import cycle + hot path, see docstring
+
+        state, _missing = critic_consolidate.pending_state(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an unanswerable roster must not take the boundary down
+        return None
+    return state == "complete"
+
+
+def boundary_sweep(prawduct_dir: Path) -> str:
+    """The session-boundary sweep: release the marker unless its review can
+    still be finished. Returns one of the ``SWEEP_*`` tokens above.
+
+    Two conditions retain, and they are different questions:
+
+    * **Live** — inside :data:`CRITIC_ACTIVE_TTL_SECONDS`. The reviewers may
+      still be writing; ``clear`` discards a transcript without ending the
+      process that dispatched them.
+    * **Complete roster** — every reviewer reported, at *any* age. The TTL has
+      released the marker as a liveness claim, and deleting it anyway would be
+      the expensive direction: the Stop hook's backstop keys on
+      :func:`marker_present` and consolidates such a review by itself, so the
+      marker is not a stale flag here but the handle on a finished review's
+      findings. A review that outruns the TTL is exactly the review that most
+      needs recording.
+
+    Anything else is swept — and the caller is told, because this is the branch
+    that destroys something. The module docstring prices the asymmetry: sweeping
+    is the *silent* failure, so the one thing the sweep may not do is happen
+    quietly.
+
+    The liveness read is deliberately ``sweep=False``: :func:`review_active`'s
+    sweeping default would delete the marker before the roster question is even
+    asked, which is the bug this function exists to close.
+    """
+    if not _marker_path(prawduct_dir).is_file():
+        return SWEEP_ABSENT
+    live, _age = review_active(prawduct_dir, sweep=False)
+    if live:
+        return SWEEP_RETAINED_LIVE
+    complete = _roster_is_complete(prawduct_dir)
+    if complete is None:
+        # Unanswerable → retain. The module's asymmetry decides it: retaining a
+        # dead marker is loud and reversible by a named command, sweeping a
+        # recoverable one is silent and costs a whole review round.
+        return SWEEP_RETAINED_UNKNOWN
+    if complete:
+        return SWEEP_RETAINED_COMPLETE
+    clear_marker(prawduct_dir)
+    return SWEEP_SWEPT
 
 
 def marker_present(prawduct_dir: Path) -> bool:

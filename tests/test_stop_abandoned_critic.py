@@ -169,6 +169,43 @@ def _write_partial(prawduct: Path, role: str, *, commit: str = _MOCK_HEAD) -> No
     }))
 
 
+def _dispatched_real_repo(tmp_path: Path) -> tuple[Path, Path, dict]:
+    """A real git repo with an active plan, a session edit, and a dispatched
+    review. Returns ``(repo, prawduct_dir, env)``.
+
+    Real git rather than the mock: the dispatch manifest and the gate's own tree
+    capture have to agree on real tree SHAs, so a faked HEAD makes the self-heal
+    unreachable for a reason that has nothing to do with what is being tested.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run([*git, "init", "-q", "-b", "main"], cwd=str(repo), check=True, timeout=15)
+    (repo / ".gitignore").write_text(".prawduct/\n")
+    (repo / "src").mkdir()
+    (repo / "src" / "app.py").write_text("x = 1\n")
+    subprocess.run([*git, "add", "-A"], cwd=str(repo), check=True, timeout=15)
+    subprocess.run([*git, "commit", "-q", "-m", "c1"], cwd=str(repo), check=True, timeout=15)
+    prawduct = _active_plan_repo(repo)
+    (repo / "src" / "app.py").write_text("x = 2\n")  # the session's edit
+
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True)
+    env = {
+        "HOME": str(home),
+        "CLAUDE_PROJECT_DIR": str(repo),
+        "CLAUDE_PLUGIN_ROOT": str(ROOT),
+        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    begin = subprocess.run(
+        ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
+        capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+    )
+    assert begin.returncode == 0, begin.stderr
+    return repo, prawduct, env
+
+
 def _write_complete_review(prawduct: Path, *, commit: str = _MOCK_HEAD) -> None:
     _write_manifest(prawduct, commit=commit)
     for role in _ROSTER:
@@ -298,40 +335,7 @@ class TestChunk05ConsolidateOrBlock:
         chunk 04 — self-heal feeds the coverage gate rather than bypassing it),
         so the session ends clean. Real git throughout: the dispatch manifest
         and the gate's tree capture must agree on real tree SHAs."""
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "init", "-q", "-b", "main"],
-            cwd=str(repo), check=True, timeout=15,
-        )
-        (repo / ".gitignore").write_text(".prawduct/\n")
-        (repo / "src").mkdir()
-        (repo / "src" / "app.py").write_text("x = 1\n")
-        subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"],
-            cwd=str(repo), check=True, timeout=15,
-        )
-        subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "c1"],
-            cwd=str(repo), check=True, timeout=15,
-        )
-        prawduct = _active_plan_repo(repo)
-        (repo / "src" / "app.py").write_text("x = 2\n")  # the session's edit
-
-        home = repo.parent / "_home"
-        home.mkdir(exist_ok=True)
-        env = {
-            "HOME": str(home),
-            "CLAUDE_PROJECT_DIR": str(repo),
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
-        begin = subprocess.run(
-            ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
-            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
-        )
-        assert begin.returncode == 0, begin.stderr
+        repo, prawduct, env = _dispatched_real_repo(tmp_path)
         # Single-pass roster: one "reviewer" partial, then abandon (no
         # consolidate) — the background-by-default failure shape.
         manifest = json.loads(
@@ -405,3 +409,68 @@ class TestChunk05ConsolidateOrBlock:
         _write_partial(prawduct, "correctness")
         _run_stop(tmp_path, status=_CODE_DIFF)
         assert (prawduct / ".critic-active").is_file()
+
+
+class TestASelfHealSurvivesTheSessionBoundary:
+    """The retention and the self-heal are one behaviour across two invocations.
+
+    Each half passes on its own while the pair is broken, which is how the
+    defect shipped: the boundary swept every expired marker, and a review that
+    ran long enough to expire one lost the backstop that would have consolidated
+    it. Nothing in the boundary's own session could observe that — the cost
+    lands on the NEXT invocation, so this is where it has to be asserted.
+    """
+
+    def test_a_complete_roster_kept_by_the_boundary_still_self_heals(self, tmp_path):
+        repo, prawduct, env = _dispatched_real_repo(tmp_path)
+        manifest = json.loads(
+            (prawduct / ".critic-partials" / "manifest.json").read_text()
+        )
+        _write_partial(prawduct, "reviewer", commit=manifest["commit_reviewed"])
+        # The review outran the TTL. `_set_marker` stamps a fixed past instant,
+        # so "expired" is decided by the stamp alone and every reader here — this
+        # process and both subprocesses — reads it against the same wall clock.
+        _set_marker(prawduct)
+
+        boundary = subprocess.run(
+            ["python3", str(HOOK), "clear", "--session-start"],
+            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+        )
+        assert boundary.returncode == 0, boundary.stderr
+        assert (prawduct / ".critic-active").is_file(), (
+            "the boundary must keep a complete roster's marker — it is the handle "
+            "the backstop below consolidates from"
+        )
+
+        # The new session does what a new session does: it edits, and it
+        # reflects. The boundary re-captured the git baseline and consumed the
+        # reflection, so both have to come back or Stop never reaches the gate
+        # under test — and the assertions below would pass on a Stop that judged
+        # nothing. A NEW file, because the baseline already carries a modified
+        # `src/app.py`: editing it again leaves `git status` byte-identical.
+        (repo / "src" / "new.py").write_text("y = 1\n")
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: continued after the boundary; suite green."
+        )
+        result = subprocess.run(
+            ["python3", str(HOOK), "stop"],
+            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+        )
+
+        # The self-heal ran: the review was consolidated, its fact recorded, and
+        # the marker cleared by the act that consumed it.
+        assert "self-healed" in result.stderr, (
+            "the session boundary must not have cost this review its self-heal. "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert (prawduct / ".critic-findings.json").is_file()
+        assert not (prawduct / ".critic-active").is_file()
+        assert not (prawduct / ".critic-partials").exists()
+        assert _ABANDONED_MSG not in result.stderr
+        assert "CRITIC REVIEW (incomplete)" not in result.stderr
+        # Deliberately NOT asserting a clean exit. This session edited a file
+        # AFTER the review it healed, so the coverage gate has a real gap to
+        # report — a different gate answering a different question. Pinning
+        # rc == 0 here would make this test fail whenever the fixture's
+        # post-boundary edit changes, for a reason that has nothing to do with
+        # whether the boundary preserved the self-heal.

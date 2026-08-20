@@ -875,7 +875,7 @@ def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None
         )
 
 
-def _boundary_retained_marker_notice(prawduct_dir: Path) -> str:
+def _boundary_retained_marker_notice(prawduct_dir: Path, outcome: str) -> str:
     """What to tell a new session about a marker the boundary kept.
 
     The remedy is CONDITIONAL and getting it wrong is destructive, which is why
@@ -885,8 +885,22 @@ def _boundary_retained_marker_notice(prawduct_dir: Path) -> str:
     told to consolidate; an incomplete one is told what it is waiting on. This is
     the same split `active_dispatch_refusal` already makes, applied at the other
     surface that meets the marker.
+
+    The HEAD varies with `outcome` because the two retentions rest on different
+    evidence and a reader acts on the difference. "No session event proves its
+    reviewers died" is a statement about *time* and is simply false once the TTL
+    has released the marker — saying it there would tell someone a 40-minute-old
+    review might still be running. A complete roster is retained on the opposite
+    ground: the reviewers demonstrably finished, and what is being protected is
+    their output, not their liveness.
     """
-    head = "PRAWDUCT: a Critic review is still marked active — kept, because no session event proves its reviewers died.\n"
+    if outcome == _critic_marker().SWEEP_RETAINED_COMPLETE:
+        head = (
+            "PRAWDUCT: a Critic review outlived its liveness window with every reviewer "
+            "reported — kept, because the marker is the handle on those findings.\n"
+        )
+    else:
+        head = "PRAWDUCT: a Critic review is still marked active — kept, because no session event proves its reviewers died.\n"
     # The READING comes from `critic_consolidate.pending_roster_reading`, which
     # is also what `active_dispatch_refusal` prints. Sharing it is the point:
     # this surface is the one where a reader has just watched a session end, so
@@ -924,6 +938,73 @@ def _boundary_retained_marker_notice(prawduct_dir: Path) -> str:
     return head + reading + (
         "  Nothing here is worth keeping:\n"
         "    prawduct-hook critic-end"
+    )
+
+
+def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
+    """What the boundary just removed, on the branch that removes something.
+
+    This branch used to unlink and say nothing, which is the failure mode
+    `lib/critic_marker` prices as the expensive one: sweeping is SILENT, and
+    the marker is not merely a flag but the Stop hook's only handle on an
+    unfinished review. Once it is gone the abandoned-review blocker cannot fire
+    — so the sweep does not just end a review, it ends every later chance of
+    being told about it. That makes this notice the whole signal, not a
+    courtesy on top of one.
+
+    Reached only for a roster that is NOT complete (`boundary_sweep` retains a
+    complete one at any age), so the readings below are the incomplete and
+    manifestless ones. It still asks rather than assumes: the reading is the
+    same shared one `active_dispatch_refusal` and the retention notice print,
+    and this surface must not invent a fourth account of what is on disk.
+
+    The review id is reported because after the sweep nothing else in the new
+    session knows which review it was, and the id is what makes `critic-restore`
+    addressable — the same reason `_forced_live_sweep_notice` carries it.
+    """
+    # Matches the shared reading's own words: `pending_state` returns "none" for
+    # an ABSENT manifest and "unreadable" for an invalid one, and both land in
+    # the same reading — so the id's excuse must cover both too.
+    review_id = "(id unavailable — no readable dispatch manifest)"
+    state, reading = "unknown", ""
+    try:
+        consolidate = _critic_consolidate()
+        state, reading = consolidate.pending_roster_reading(prawduct_dir)
+        review_id = json.loads(
+            consolidate.manifest_path(prawduct_dir).read_text()
+        )["id"]
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        pass
+
+    head = (
+        "PRAWDUCT: swept a Critic review marker that outlived its "
+        f"{_critic_marker().CRITIC_ACTIVE_TTL_SECONDS // 60}-minute liveness window "
+        f"({review_id}).\n"
+    )
+    if state == "incomplete":
+        return head + reading + (
+            "  Not every reviewer reported, so there was nothing to consolidate and the\n"
+            "  marker was released. This notice is the ONLY report you get: the Stop\n"
+            "  hook's abandoned-review blocker keys on that marker, so it will not fire\n"
+            "  for this review again. Its partials are still on disk and the next\n"
+            "  `critic-begin` archives them; re-run the review when you are ready:\n"
+            "    /prawduct:critic\n"
+            f"  To go back to this one instead: prawduct-hook critic-restore {review_id}\n"
+            "  (after the next dispatch has consolidated — `critic-restore` refuses while\n"
+            "  partials or a marker are present)."
+        )
+    if state == "unknown":
+        return head + (
+            "  Could not read the review's state (the consolidation lib failed to\n"
+            "  answer), so this cannot say what the sweep left behind. The marker is\n"
+            "  gone either way, and with it the Stop hook's abandoned-review blocker.\n"
+            "  Inspect before acting:\n"
+            "    prawduct-hook evidence status"
+        )
+    return head + reading + (
+        "  Nothing recoverable was attached to it, and no gate will mention this review\n"
+        "  again. Re-run the review when you are ready:\n"
+        "    /prawduct:critic"
     )
 
 
@@ -1137,17 +1218,33 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
             except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
                 pass
     elif kind == "BOUNDARY":
-        # Announce a RETAINED marker. This branch has two outcomes and printed
-        # nothing for either, and the session most in need of the signal is
-        # exactly this one: `/clear` just discarded the context in which the
-        # review was dispatched, so nothing else in the new session knows it is
-        # pending. The remedy is CONDITIONAL on the roster — telling someone to
-        # `critic-end` a complete roster destroys the Stop hook's self-heal — so
-        # the notice asks the state before it advises.
+        # Announce whichever act happened. The session most in need of the
+        # signal is exactly this one: `/clear` just discarded the context in
+        # which the review was dispatched, so nothing else in the new session
+        # knows a review is pending — and on the swept path nothing ever will,
+        # because the marker was the Stop hook's only handle on it. The remedy
+        # is CONDITIONAL on the roster — telling someone to `critic-end` a
+        # complete roster destroys the self-heal — so both notices ask the
+        # state before they advise.
+        #
+        # The SWEEP and the REPORTING are wrapped separately, for the reason
+        # spelled out in the `--force` branch above: one `except` around both
+        # lets a raise from the notice suppress the act, or an act that already
+        # happened go unreported. The sweep runs first and alone; the notice is
+        # advisory and may degrade to silence-with-a-stack-free-skip without
+        # taking session start down.
+        marker = _critic_marker()
+        outcome = marker.SWEEP_ABSENT
         try:
-            if _critic_marker().sweep_unless_live(prawduct_dir):
-                print(_boundary_retained_marker_notice(prawduct_dir))
+            outcome = marker.boundary_sweep(prawduct_dir)
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
+            pass
+        try:
+            if outcome == marker.SWEEP_SWEPT:
+                print(_boundary_swept_marker_notice(prawduct_dir))
+            elif outcome in marker.SWEEP_RETAINED:
+                print(_boundary_retained_marker_notice(prawduct_dir, outcome))
+        except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
             pass
     elif kind == "CONTINUATION":
         # Mutates no session state, so there is nothing for the guard to protect —
@@ -2124,7 +2221,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # lingering marker is the out-of-fork signal, and it lives OUTSIDE the flow
     # that fails (so it catches a review that never reached its writeback). The
     # backstop now CONSOLIDATES-OR-BLOCKS as a pure function of the partials on
-    # disk (Chunk 02's pending_state / consolidate):
+    # disk (`critic_consolidate.pending_state` / `consolidate`):
     #   • complete partials → self-heal: run critic-consolidate (deterministic, no
     #     model re-run). Success clears the marker + appends the review fact, so
     #     the composition gate below judges the healed evidence like any other

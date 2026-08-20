@@ -3,6 +3,60 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: an expiring Critic marker announces itself, and never discards a self-heal
+
+<!-- prawduct: type=fix | scope=critic-reliability -->
+
+Two field reports in one mechanism, both created by making the 30-minute TTL the **sole**
+liveness verdict at a session boundary.
+
+**The session boundary was throwing away finished reviews.** The Stop hook's abandoned-review
+backstop does not merely block on the `.critic-active` marker — it *consolidates* a review whose
+reviewers have all reported, keyed on raw marker presence with no TTL at all. An expired marker is
+exactly the state that reaches it, and the boundary sweep deleted that marker first. The longer a
+review ran, the likelier it was to lose its own findings. `boundary_sweep` now asks two questions
+instead of one: the TTL answers *is the dispatching process gone*, and the roster answers *is there
+anything left to finish*. A complete roster is retained at any age. The two halves each passed on
+their own while the pair was broken, so the pin is a multi-hop one —
+`test_a_complete_roster_kept_by_the_boundary_still_self_heals` drives the boundary and then the
+Stop hook that has to still find it.
+
+**And the sweep no longer happens in silence.** Sweeping is the branch that destroys something, and
+it destroys the only handle any later gate has on the review — so after it, nothing else will ever
+raise the subject. The notice is therefore the whole signal rather than a courtesy on top of one:
+it names the review by id, says what was on disk, and says plainly that the abandoned-review
+blocker will not fire for it again. A retention was already announced; the destructive branch was
+the quiet one.
+
+**Sharing a reading means it has to be true at the surface that just acted.** Both notices compose
+through `pending_roster_reading()`, the one home for what a pending roster MEANS — and the
+`incomplete` reading said "a `/clear` retains the marker; it does not release it", true of every
+surface that existed when it was written and false at the one added here. Read as an operator, the
+sweep notice said *waiting is safe* three lines above *the marker is gone*. The clause now names its
+condition. This was found by running the announcement, not by reading it.
+
+**The TTL was NOT re-priced, and the reason is the deliverable.** #692 asks for a value grounded in
+the review-stats distribution. That grounding is unavailable: `duration_seconds` is self-reported by
+the reviewing agent and a coordinator review records `max()` across its partials, while marker
+wall-clock age — the quantity the TTL governs — spans dispatch + every reviewer + consolidation +
+coordinator turn latency, so it is strictly longer than any self-report. No recorded review exceeds
+the TTL and that margin is *not* evidence; it is an artefact of comparing two different quantities.
+The derivation is committed at `.prawduct/research/critic-liveness-2026-08-19/measure.py` — cite the
+command, never its digits. The reasoning now sits at the constant itself, where anyone reaching for
+that re-price will land. What makes the number tolerable is that expiry no longer decides alone.
+
+`write_marker`'s docstring claimed an over-running review could "renew its own protection". Nothing
+renews a marker mid-review — `critic-begin` is the only writer, so the timestamp is a dispatch time
+and the TTL is a deadline, not a rolling window. The claim is reconciled to the code and pinned
+structurally, because a prose claim about how many writers exist stops being true the day someone
+adds one.
+
+**The readers are enumerated rather than argued safe.** Twice, a change here was reasoned safe from
+the `clear` guard alone and twice the reader that broke was outside the session. A test now scans
+the plugin for every site that calls the marker API or names either file, and fails on any site the
+inventory does not list together with the test that exercises it — 26 sites, `briefing`'s findings
+summary among them. Adding a reader costs one line and one test, which is the point.
+
 ## 2026-08-19: tree capture stops re-hashing the world
 
 <!-- prawduct: type=fix | scope=critic-reliability -->

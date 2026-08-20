@@ -2044,15 +2044,24 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
     dangerous surface.
 
     **The ``incomplete`` reading is why this is shared rather than duplicated.**
-    A marker now survives ``/clear`` (``lib/critic_marker`` states why: no
-    session event proves a reviewer died, so only the TTL releases one). That
-    makes this state reachable two ways — reviewers still writing, or a
+    A marker survives ``/clear`` while its review could still land
+    (``lib/critic_marker`` states why: no session event proves a reviewer died).
+    That makes this state reachable two ways — reviewers still writing, or a
     dispatcher that is gone — and only one of them is safe to act on. A message
     naming just the second reads as already-satisfied to someone who has *just*
     run ``/clear``, and the command it points at (``critic-end``) clears the
     marker, which lets the next dispatch archive partials that reviewers are
     still writing. So the reading carries both possibilities and the tell that
     separates them, and it carries them everywhere at once.
+
+    **Being shared means being true at every surface, including the one that
+    just acted.** ``critic_marker.boundary_sweep`` DOES release an expired
+    marker whose roster is incomplete, and the boundary notice that reports
+    that sweep prints this same reading — so a flat "a ``/clear`` retains the
+    marker" (what this said while only retaining surfaces existed) landed as
+    "waiting is safe" directly above a paragraph explaining that the marker was
+    gone. The clause names the condition instead. A new caller here is a new
+    place this sentence has to hold.
 
     Returns ``(state, reading)`` — deliberately NOT the ``missing`` role list.
     The reading already names the outstanding roles in prose, and a third
@@ -2074,8 +2083,9 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
         reading = (
             f"  On disk: still waiting on {', '.join(missing)}. Either those reviewers\n"
             "  are still running — consolidation fires as they finish, so wait — or the\n"
-            "  session that dispatched them ended (a `/clear` retains the marker; it does\n"
-            "  not release it). If nothing lands, they are gone.\n"
+            "  session that dispatched them ended (a `/clear` keeps the marker while they\n"
+            "  could still land, and releases it once the liveness window has passed).\n"
+            "  If nothing lands, they are gone.\n"
         )
     else:
         reading = (

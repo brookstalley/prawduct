@@ -191,6 +191,16 @@ the two defects in this branch's sibling scope (`clear-cadence`) were both found
   reasoning about the `clear` guard does **not** clear a cross-session reader. Enumerate
   every reader of the marker and the findings record explicitly — `briefing`'s findings
   summary among them — rather than deriving their safety.
+
+  **Correction, from building it (2026-08-19): sharing a reading means it has to be true
+  at the surface that just ACTED.** The swept notice composes through
+  `pending_roster_reading()` as specified — and the `incomplete` reading it inherited said
+  "a `/clear` retains the marker; it does not release it", which was true of every surface
+  that existed when it was written and is false at the one this chunk adds. Read as an
+  operator, the sweep notice therefore said *waiting is safe* three lines above *the marker
+  is gone and no gate will raise this again*. The clause now names its condition rather
+  than asserting the retention flat. Found by running the announcement, not by reading it —
+  which is what this plan's Verification Strategy predicted for this branch's scope.
 - **Depends on:** none (independent of Chunk 01; ordered second only by release risk)
 - **Artifacts consumed:** `architecture.md` § Direction (the reviewer-non-mutation norm,
   whose Mechanism clause describes the retention this chunk widens)

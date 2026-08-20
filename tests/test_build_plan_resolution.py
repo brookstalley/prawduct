@@ -1731,7 +1731,7 @@ class TestPathShapedAmbiguityIsReported:
 
 
 def test_the_heading_label_reaches_the_completed_chunk_join():
-    """`--chunk "Chunk 01"` must normalize for BOTH uses of the id.
+    r"""`--chunk "Chunk 01"` must normalize for BOTH uses of the id.
 
     The label strip first landed only in the section walk, leaving
     `_normalize_chunk_id(chunk_id) in completed` comparing a label against bare
