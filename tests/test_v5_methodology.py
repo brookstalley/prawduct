@@ -358,7 +358,16 @@ LAST_MEASURED_TOKENS = {
     # restarting the session is not a way to clear it", which the sentence
     # before it already establishes. The remaining +18 is the condition itself:
     # it cannot be inferred from anything else the file says.
-    "skills/critic/SKILL.md": 3421,
+    # +24 on 2026-08-19 (3421 -> 3445). `critic-discard` became the Stop hook's
+    # printed escape hatch, so the caveat that it degrades to DELETE when the
+    # archive cannot be written is now load-bearing at the surface an operator
+    # reaches for while wedged — the paragraph offered an undo with no failure
+    # mode. Paid down from the first draft (+44) by pointing at the dispatch
+    # sweep's identical caveat ("same degrade-to-delete caveat as the dispatch
+    # sweep") instead of restating it, and by trimming the restore bound to
+    # "the newest few" rather than naming the constant, which would be a second
+    # carrier for a number `_ARCHIVE_KEEP` already owns.
+    "skills/critic/SKILL.md": 3445,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.

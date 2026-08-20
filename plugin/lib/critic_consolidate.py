@@ -818,12 +818,14 @@ def _archive_leftovers(prawduct_dir: Path, caller: str = "critic-begin") -> Path
     operator deliberately discarding their own review — and an operator who ran
     ``critic-discard`` cannot act on a line that says ``critic-begin``.
 
-    **A None return is three outcomes, and one of them destroyed something.**
-    Nothing was there / the manifest named nothing safe / an ``OSError`` hit
-    mid-archive and this degraded to delete. A caller that reports the first
-    wording on the third path tells the operator their partials are safe on the
-    one path where they are gone. :func:`had_partials` is how a caller tells
-    them apart; ``bin/prawduct-hook``'s ``critic-discard`` does exactly that.
+    **A None return is two outcomes, and one of them destroyed something.**
+    Nothing was there to archive, or an ``OSError`` hit mid-archive and this
+    degraded to delete. (An unsafe manifest id is *not* a third: it falls
+    through to the ``unmanifested-`` name and still archives.) A caller that
+    reports the first wording on the second path tells the operator their
+    partials are safe on the one path where they are gone. :func:`had_partials`
+    is how a caller tells them apart; ``bin/prawduct-hook``'s ``critic-discard``
+    does exactly that.
 
     Named after the abandoned review's id when its manifest is readable, else
     a timestamp — partials can outlive their manifest (a late reviewer writing
@@ -831,7 +833,19 @@ def _archive_leftovers(prawduct_dir: Path, caller: str = "critic-begin") -> Path
     pdir = partials_dir(prawduct_dir)
     if not pdir.is_dir():
         return None
-    children = [c for c in pdir.iterdir() if c.is_file()]
+    try:
+        children = [c for c in pdir.iterdir() if c.is_file()]
+    except OSError as exc:
+        # An unreadable partials dir must degrade like any other archive
+        # failure, not traceback. This function is the escape hatch's
+        # prescribed remedy for a wedged review, so raising here strands the
+        # operator in the state the remedy exists to clear — with a stack
+        # trace instead of the marker they came to release.
+        print(
+            f"{caller}: cannot read {pdir} ({exc}) — falling back to delete",
+            file=sys.stderr,
+        )
+        return None
     if not children:
         return None
     name: str | None = None

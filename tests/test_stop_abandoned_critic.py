@@ -589,9 +589,37 @@ class TestNoShippedSurfaceSanctionsTheBareDelete:
     _RECORD_FILES = frozenset({"CHANGELOG.md"})
 
     #: The act, not its spellings: an `rm` (any flags) reaching either file.
-    _SANCTIONS_DELETE = re.compile(
-        r"\brm\b[^\n`]{0,40}?\.(?:prawduct/\.)?critic-(?:active|partials)"
+    #: Backticks are allowed through — a prohibition often quotes the command
+    #: it forbids, and relying on punctuation to tell those apart is what made
+    #: the first cut of this pin fire on the sentence doing the forbidding.
+    _NAMES_THE_ACT = re.compile(
+        r"\brm\b[^\n]{0,40}?\.(?:prawduct/\.)?critic-(?:active|partials)"
     )
+
+    #: What separates advice from prohibition is the sentence's stance, so that
+    #: is what is matched — not the presence of backticks around the command.
+    #: A line that tells you NOT to do it is the pin working, not a violation.
+    #: Prohibition markers only. A bare ``not`` was deliberately left out: it is
+    #: common enough that it would excuse a genuine recommendation that happened
+    #: to contain one, and every prohibition this guards actually leads with one
+    #: of these.
+    _FORBIDS = re.compile(
+        r"\b(?:do not|don't|never|must not|no longer|rather than|instead of)\b",
+        re.IGNORECASE,
+    )
+
+    def _sanctions_delete(self, line: str) -> bool:
+        """Does this line RECOMMEND the delete, as opposed to forbidding it?
+
+        The residual bypass is stated rather than left to be discovered: a line
+        that both recommends the act and happens to contain a negation ("do not
+        wait — rm .prawduct/.critic-partials") reads as a prohibition here. That
+        is the safe direction for a *style* pin and the wrong one for a security
+        check; this is the former. Narrowing it further would cost the property
+        that makes the pin worth having, which is that it needs no maintenance
+        as surfaces are reworded.
+        """
+        return bool(self._NAMES_THE_ACT.search(line)) and not self._FORBIDS.search(line)
 
     def _shipped_files(self) -> list[Path]:
         skip = {".git", "__pycache__", ".critic-partials", ".critic-partials-archive"}
@@ -622,7 +650,7 @@ class TestNoShippedSurfaceSanctionsTheBareDelete:
             except (OSError, UnicodeDecodeError):
                 continue
             for lineno, line in enumerate(text.splitlines(), 1):
-                if self._SANCTIONS_DELETE.search(line):
+                if self._sanctions_delete(line):
                     rel = path.relative_to(ROOT.parent)
                     offenders.append(f"{rel}:{lineno}: {line.strip()}")
         assert not offenders, (
@@ -644,15 +672,23 @@ class TestNoShippedSurfaceSanctionsTheBareDelete:
             "rm -r .prawduct/.critic-partials",
             "run `rm .critic-active` to clear it",
         ):
-            assert self._SANCTIONS_DELETE.search(shipped), (
+            assert self._sanctions_delete(shipped), (
                 f"the pattern cannot see {shipped!r} — it would pass over a "
                 "reintroduction of the very recipe it exists to catch"
             )
         for innocent in (
             "critic-discard archives the partials rather than deleting them",
             "the marker is removed by name — critic-end, critic-discard",
+            # The live PROHIBITION, quoted from the escape hatch it guards.
+            # Today only the backticks keep the pattern off it, which is
+            # incidental rather than designed — a rewording that drops them
+            # would make this pin fire on the sentence forbidding the act.
+            # Listed so that rewording fails HERE, next to the reason, rather
+            # than as a mystery failure in the sweep above.
+            "Do not `rm` the marker or .critic-partials by hand: most states",
+            "Do not rm the marker or .critic-partials by hand",
         ):
-            assert not self._SANCTIONS_DELETE.search(innocent), (
+            assert not self._sanctions_delete(innocent), (
                 f"the pattern fires on {innocent!r} — a pin that cries wolf gets "
                 "waived, which is how the class reopens"
             )

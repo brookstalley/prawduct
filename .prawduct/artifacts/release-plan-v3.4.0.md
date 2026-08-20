@@ -72,7 +72,9 @@ suppressed.
 
 Gathered 2026-08-19 on `develop` at `0ff8fe73`, plus the `fix/escape-hatch-archives` commit below.
 
-- **Suite green** — 4870 passed, 10 skipped, 0 failed (`test-evidence record --from-junit`).
+- **Suite green** — zero failures, recorded into the evidence store from a JUnit report rather than
+  asserted. Cite `prawduct-hook test-status` for the figures; a total copied into prose here is one
+  more carrier to keep in sync and nothing reads it (`building.md`, "a count nothing reads").
 - **Nothing half-landed** — all ten live build plans have every `## Status` chunk ticked. No
   partially-built scope is riding along.
 - **`develop` == `origin/develop`**, tree clean.
