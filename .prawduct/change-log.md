@@ -15,11 +15,14 @@ rm .prawduct/.critic-active
 rm -rf .prawduct/.critic-partials
 ```
 
-**Every branch that prints that string is a branch reached only when reviewer output is on disk.**
-There are four — `consolidation failed`, `incomplete`, `not completed (no manifest)` and
-`unreadable manifest` — and they share one `_escape` string. On the first, every reviewer has
-reported and the set is one deterministic consolidation from being recorded; the Stop hook's own
-backstop runs that step. The recipe deleted it, unarchived, and said nothing about what was lost.
+**The states that print that string are the states holding reviewer output.** There are four —
+`consolidation failed`, `incomplete`, `not completed (no manifest)` and `unreadable manifest` —
+reached through **three** `+ _escape` sites, since the `else` serves both of the last two. On
+`consolidation failed`, every reviewer has reported and the set is one deterministic consolidation
+from being recorded; the Stop hook's own backstop runs that step. The recipe deleted it, unarchived,
+and said nothing about what was lost. (`none` is the exception, and it is the argument for one safe
+recipe rather than two: there may be nothing on disk to lose, and the operator cannot tell which
+state they are in from the message alone.)
 That is precisely the loss `boundary_sweep`'s roster question and `write_marker`'s guard were built
 this cycle to prevent — so the release was about to ship the protection and the contradicting advice
 together, which is worse than shipping neither, because the operator now has reason to trust the
@@ -46,6 +49,26 @@ asserted `rm .prawduct/.critic-active` and `rm -rf .prawduct/.critic-partials` w
 pinned the defect, exactly as `test_resume_still_sweeps_a_stale_critic_marker` once pinned the
 sweep this cycle removed. Checked by reverting the recipe: both new pins fail against the shipped
 v3.3.4 string and pass against the fix, so they discriminate rather than pass vacuously.
+
+**The review found the class had no construction, and that is the durable half.** Guidance
+sanctioning the bare delete has now been fixed at three surfaces in three commits this cycle — the
+marker-refusal remedy, `lib/critic_marker`'s own prose, and this `_escape` string — each pinned only
+where it was found, so each fix left the next surface free. `TestNoShippedSurfaceSanctionsTheBareDelete`
+derives its subject from the tree instead: every shipped file under `plugin/`, matched on the act
+rather than a spelling, failing on a surface nobody has thought of. One exemption, `plugin/CHANGELOG.md`,
+because a release record quotes what was removed and that is not advice — and a second test asserts
+that exemption stays one file, since a growing list is how the class would quietly reopen. The pin
+caught this entry's own consumer-facing twin on its first run, which is the behaviour wanted.
+
+**`critic-discard` stops reporting success on the one path where it destroys something.**
+`_archive_leftovers` returns `None` for three outcomes, one being *an `OSError` hit mid-archive, so
+I degraded to delete* — and the command read that single `None` and printed `nothing to discard (no
+partials on disk)`. Tolerable while this was a command you went looking for; making it the printed
+remedy in states that hold reviewer output is what promoted it. A `had_partials` read taken BEFORE
+the attempt separates the no-op from the loss, the failure path now says the partials were deleted
+and there is nothing to restore, and the underlying diagnostic names the command the operator
+actually ran instead of hardcoding `critic-begin`. The clean path also states the restore window —
+an undo with an unstated eviction bound is one you learn about too late.
 
 Also here: `tests/test_session_boundary_events.py`'s two stale prose claims, which the previous
 cycle deliberately deferred to the next commit touching `tests/` — this one. It named `rm` as one

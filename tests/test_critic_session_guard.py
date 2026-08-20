@@ -548,6 +548,55 @@ class TestConcurrentDispatchGuard:
         again = _run_real("critic-begin", repo, "--mode", "chunk")
         assert again.returncode == 0, f"discard must unblock dispatch: {again.stderr}"
 
+    def test_a_failed_archive_says_the_partials_were_destroyed(self, tmp_path):
+        """The one path where `critic-discard` loses reviewer output must not
+        report the no-op wording.
+
+        `_archive_leftovers` returns None for three different outcomes, one of
+        them "an OSError hit mid-archive, so I degraded to delete". Reading that
+        single None, the command used to print `nothing to discard (no partials
+        on disk)` — telling the operator their partials were never there, on the
+        one path where they existed and are now gone. That mattered less while
+        this was a command you had to go looking for; the Stop hook's escape
+        hatch now sends people here FROM the states that hold reviewer output.
+
+        The archive is made to fail by planting a non-directory where the
+        archive root must be created, which is what an OSError looks like from
+        `dest.mkdir(parents=True)`.
+        """
+        repo, prawduct = self._strand_a_complete_roster(tmp_path)
+        # A regular file where `.critic-partials-archive/` needs to be a dir.
+        (prawduct / ".critic-partials-archive").write_text("not a directory")
+
+        discard = _run_real("critic-discard", repo)
+
+        assert discard.returncode == 0, "degrading must never brick the escape"
+        combined = discard.stdout + discard.stderr
+        assert "nothing to discard" not in combined, (
+            "reported a no-op on the path that destroyed the partials"
+        )
+        assert "archiving FAILED" in combined
+        assert "nothing to restore" in combined, (
+            "must not leave the operator hunting for a restore that cannot work"
+        )
+        assert "critic-discard: leftover archive failed" in discard.stderr, (
+            "the underlying diagnostic must name the command the operator ran, "
+            "not critic-begin"
+        )
+        # The primary job still got done: dispatch is unblocked.
+        assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 0
+
+    def test_a_clean_discard_still_reports_the_restore_window(self, tmp_path):
+        """The undo `critic-discard` promises has an eviction bound, and an undo
+        whose expiry is unstated is one an operator finds out about too late."""
+        repo, prawduct = self._strand_a_complete_roster(tmp_path)
+        discard = _run_real("critic-discard", repo)
+        assert discard.returncode == 0, discard.stderr
+        assert "critic-restore" in discard.stdout
+        assert "keeps the newest" in discard.stdout, (
+            "the restore window is part of the offer, not a footnote elsewhere"
+        )
+
     def test_a_refused_dispatch_does_not_sweep_the_marker(self, tmp_path):
         """The Stop hook's abandoned-review branch is gated on `marker_present`
         and is what prints the manual-recovery remedy. A dispatch that swept a

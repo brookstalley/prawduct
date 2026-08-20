@@ -22,6 +22,7 @@ observable end-to-end inside `cmd_stop`.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -494,6 +495,9 @@ class TestTheEscapeHatchNeverDestroys:
         stderr = self._stderr_for(tmp_path, "none")
         assert ".prawduct/.gates-waived" in stderr
         assert '"critic"' in stderr
+
+
+class TestASelfHealSurvivesTheSessionBoundary:
     """The retention and the self-heal are one behaviour across two invocations.
 
     Each half passes on its own while the pair is broken, which is how the
@@ -556,3 +560,99 @@ class TestTheEscapeHatchNeverDestroys:
         # rc == 0 here would make this test fail whenever the fixture's
         # post-boundary edit changes, for a reason that has nothing to do with
         # whether the boundary preserved the self-heal.
+
+
+class TestNoShippedSurfaceSanctionsTheBareDelete:
+    """The construction, because three per-site pins did not stop a fourth site.
+
+    Guidance sanctioning `rm` of the critic marker or partials has been fixed at
+    three separate surfaces in three commits — the marker-refusal remedy,
+    `lib/critic_marker`'s own prose, and the Stop hook's escape hatch. Each was
+    pinned only where it was found, so each fix left the NEXT surface free to
+    reintroduce it. A per-site assertion cannot close a class whose next member
+    has not been written yet.
+
+    This derives its subject from the tree instead: every shipped file under
+    `plugin/`, matched against the act rather than any one spelling of it. It
+    fails on a surface nobody has thought of, which is the whole point.
+
+    Scoped to `plugin/` because that is what consumers execute and read, minus
+    the release record: a change-log DESCRIBES the retired recipe, and quoting
+    what was removed is how a record works. `.prawduct/change-log.md` is out of
+    scope by living outside `plugin/`; `plugin/CHANGELOG.md` ships inside it and
+    so is named below. That exemption is one file and is asserted to stay one —
+    a record is the only genre where the string is not advice, and widening the
+    list is how the class would quietly reopen.
+    """
+
+    #: Record-genre files: they quote the retired recipe rather than advise it.
+    _RECORD_FILES = frozenset({"CHANGELOG.md"})
+
+    #: The act, not its spellings: an `rm` (any flags) reaching either file.
+    _SANCTIONS_DELETE = re.compile(
+        r"\brm\b[^\n`]{0,40}?\.(?:prawduct/\.)?critic-(?:active|partials)"
+    )
+
+    def _shipped_files(self) -> list[Path]:
+        skip = {".git", "__pycache__", ".critic-partials", ".critic-partials-archive"}
+        out = [
+            p
+            for p in ROOT.rglob("*")
+            if p.is_file()
+            and p.suffix in {".py", ".md", ".json", ""}
+            and not any(part in skip for part in p.parts)
+        ]
+        assert len(out) > 20, f"tree walk found only {len(out)} files — wrong root?"
+        return out
+
+    def test_the_record_exemption_stays_one_file(self):
+        """A one-file exemption is a judgement; a growing one is a loophole."""
+        assert self._RECORD_FILES == {"CHANGELOG.md"}, (
+            "the record-genre exemption grew. Each added file is a surface this "
+            "pin no longer protects — justify it here or drop it."
+        )
+
+    def test_no_shipped_file_recommends_deleting_the_marker_or_partials(self):
+        offenders: list[str] = []
+        for path in self._shipped_files():
+            if path.name in self._RECORD_FILES:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            for lineno, line in enumerate(text.splitlines(), 1):
+                if self._SANCTIONS_DELETE.search(line):
+                    rel = path.relative_to(ROOT.parent)
+                    offenders.append(f"{rel}:{lineno}: {line.strip()}")
+        assert not offenders, (
+            "a shipped surface tells the operator to delete the critic marker or "
+            "partials by hand. That destroys a roster that may be one "
+            "consolidation from being recorded, and says nothing. Use "
+            "`prawduct-hook critic-discard`, which archives and can be restored.\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_the_pattern_actually_matches_the_recipe_it_retired(self):
+        """The pin above passes when the tree is clean AND when the pattern is
+        broken. This tells the two apart by feeding it the exact string that
+        shipped in v3.3.4, plus the spellings a re-introduction would plausibly
+        use."""
+        for shipped in (
+            "    rm .prawduct/.critic-active",
+            "    rm -rf .prawduct/.critic-partials",
+            "rm -r .prawduct/.critic-partials",
+            "run `rm .critic-active` to clear it",
+        ):
+            assert self._SANCTIONS_DELETE.search(shipped), (
+                f"the pattern cannot see {shipped!r} — it would pass over a "
+                "reintroduction of the very recipe it exists to catch"
+            )
+        for innocent in (
+            "critic-discard archives the partials rather than deleting them",
+            "the marker is removed by name — critic-end, critic-discard",
+        ):
+            assert not self._SANCTIONS_DELETE.search(innocent), (
+                f"the pattern fires on {innocent!r} — a pin that cries wolf gets "
+                "waived, which is how the class reopens"
+            )

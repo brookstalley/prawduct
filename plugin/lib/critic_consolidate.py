@@ -785,13 +785,45 @@ def archive_dir(prawduct_dir: Path) -> Path:
     return prawduct_dir / ARCHIVE_DIRNAME
 
 
-def _archive_leftovers(prawduct_dir: Path) -> Path | None:
+def had_partials(prawduct_dir: Path) -> bool:
+    """Was there reviewer output on disk *before* an archive attempt?
+
+    The one thing :func:`_archive_leftovers`' ``None`` cannot say. Read it
+    BEFORE calling that function: together they separate "there was nothing to
+    archive" from "there was something and archiving it failed", which is the
+    difference between a no-op and a destroyed review.
+    """
+    pdir = partials_dir(prawduct_dir)
+    if not pdir.is_dir():
+        return False
+    try:
+        return any(c.is_file() for c in pdir.iterdir())
+    except OSError:
+        # Unreadable is not empty. Claiming "nothing was there" off a failed
+        # read is the same false reassurance this function exists to prevent.
+        return True
+
+
+def _archive_leftovers(prawduct_dir: Path, caller: str = "critic-begin") -> Path | None:
     """Move a pending review's files aside rather than deleting them.
 
     Returns the archive directory the files landed in, or None when there was
     nothing to archive (or archiving failed — the caller falls through to
     :func:`remove_partials` either way, so a failed archive degrades to
     exactly the old delete behavior, never to a blocked dispatch).
+
+    ``caller`` names the command in the degraded-archive diagnostic. It is a
+    parameter rather than a constant because the two callers reach this by
+    opposite routes — a dispatch sweeping someone else's leftovers, and an
+    operator deliberately discarding their own review — and an operator who ran
+    ``critic-discard`` cannot act on a line that says ``critic-begin``.
+
+    **A None return is three outcomes, and one of them destroyed something.**
+    Nothing was there / the manifest named nothing safe / an ``OSError`` hit
+    mid-archive and this degraded to delete. A caller that reports the first
+    wording on the third path tells the operator their partials are safe on the
+    one path where they are gone. :func:`had_partials` is how a caller tells
+    them apart; ``bin/prawduct-hook``'s ``critic-discard`` does exactly that.
 
     Named after the abandoned review's id when its manifest is readable, else
     a timestamp — partials can outlive their manifest (a late reviewer writing
@@ -831,7 +863,7 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
         # Name the reason before degrading — a silent fallback would make
         # "why is the archive empty?" undiagnosable after the fact.
         print(
-            f"critic-begin: leftover archive failed ({exc}) — "
+            f"{caller}: leftover archive failed ({exc}) — "
             "falling back to delete",
             file=sys.stderr,
         )

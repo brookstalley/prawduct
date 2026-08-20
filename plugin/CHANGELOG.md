@@ -47,13 +47,19 @@ Every one of the Critic's seven goals is already prose, and the observed defect 
 
 **The Critic's escape hatch stops telling you to delete the review it is blocking on.** When a
 review cannot finish and the session-end gate keeps firing, the block prints a way out. It used to
-print `rm -rf .prawduct/.critic-partials` — and every state that prints it is a state where reviewer
-output is sitting on disk. In the worst of them every reviewer has already reported and the review
+print `rm -rf .prawduct/.critic-partials` — and the states that reach it are the ones holding
+reviewer output. In the worst of them every reviewer has already reported and the review
 is one deterministic step from being recorded, which is the step the gate itself would have run. The
 hatch now names `prawduct-hook critic-discard`, which reaches the same place and **archives** rather
 than deletes, printing the `critic-restore <id>` that brings the review back as itself. This
 release is the one that taught the marker to protect a finished-but-unrecorded review, so shipping
 the guard and the contradicting recipe together would have been worse than shipping neither.
+
+In the same pass, `critic-discard` stopped reporting a clean no-op on the one path where it does
+destroy something: if archiving fails part-way it falls back to deleting, and it used to say
+"nothing to discard" — that now says the partials were deleted and there is nothing to restore. It
+also tells you the restore window, because an undo with an unstated expiry is one you find out about
+too late.
 
 **The learnings corpus stopped burying its own general rule.** Seventeen rules across three families became three sharp ones — the fix has relatives, your search under-reports, and bound a class by its property rather than its container. All seventeen were saying versions of the same thing in different vocabularies, and none of them fired.
 

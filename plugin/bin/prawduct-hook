@@ -1759,7 +1759,13 @@ def cmd_critic_discard(project_dir: Path) -> int:
         print("PRAWDUCT: not an onboarded repo — nothing to discard.")
         return 0
     consolidate = _critic_consolidate()
-    archived = consolidate._archive_leftovers(prawduct_dir)
+    # Read the pre-state FIRST: `_archive_leftovers` returns None for "nothing
+    # was there" and for "something was there and archiving it failed", and the
+    # abandoned-review escape hatch now sends operators here from states that
+    # hold reviewer output. Reporting the no-op wording on the failure path
+    # would promise their partials are safe on the one path where they are gone.
+    existed = consolidate.had_partials(prawduct_dir)
+    archived = consolidate._archive_leftovers(prawduct_dir, caller="critic-discard")
     consolidate.remove_partials(prawduct_dir)
     _critic_marker().clear_marker(prawduct_dir)
     if archived:
@@ -1767,7 +1773,18 @@ def cmd_critic_discard(project_dir: Path) -> int:
             f"PRAWDUCT: discarded the dispatched review — partials archived to "
             f"{archived} (not deleted). A fresh `/prawduct:critic` can now dispatch; "
             f"to change your mind, `prawduct-hook critic-restore {archived.name}` "
-            "brings that review back as itself."
+            "brings that review back as itself. The archive keeps the newest "
+            f"{consolidate._ARCHIVE_KEEP} reviews — restore before that window closes."
+        )
+    elif existed:
+        # The degraded path. `_archive_leftovers` has already named the OSError
+        # on stderr; this says what it COST, which the diagnostic does not.
+        print(
+            "PRAWDUCT: discarded the dispatched review, but archiving FAILED "
+            "(cause on stderr above) — the reviewer partials were deleted, not "
+            "archived. There is nothing to restore. A fresh `/prawduct:critic` "
+            "can dispatch; the review it replaces is gone.",
+            file=sys.stderr,
         )
     else:
         print(
@@ -2324,10 +2341,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             ))
         else:
             # The escape hatch names `critic-discard`, never a bare `rm` of the
-            # partials. Every branch this string is appended to is a state where
-            # reviewer output is ON DISK — a complete roster one deterministic
+            # partials. It is appended to three sites below, and on two of them
+            # reviewer output is on disk: a complete roster one deterministic
             # consolidation from being recorded, or a partial set a re-dispatch
-            # can still use. `critic-discard` archives that set and prints the
+            # can still use. (The third site serves both `none` and
+            # `unreadable`; under `none` there may be nothing to lose — which is
+            # an argument for one safe recipe everywhere, not for two.)
+            # `critic-discard` archives whatever is there and prints the
             # `critic-restore <id>` that brings it back; `rm -rf` destroys it
             # while saying nothing, which is the silence this guard exists to
             # remove (lib/critic_marker, "Explicit override").
@@ -2337,10 +2357,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  discard it and declare a waiver so this gate stops re-firing every turn:\n"
                 "    prawduct-hook critic-discard\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  critic-discard archives the reviewer partials rather than deleting\n"
+                "  critic-discard archives any reviewer partials rather than deleting\n"
                 "  them and names the `critic-restore <id>` that brings the review back\n"
-                "  as itself. Do not `rm` the marker or .critic-partials by hand: the\n"
-                "  states above are exactly the ones holding reviewer output.\n"
+                "  as itself (the archive keeps the newest few — restore promptly).\n"
+                "  Do not `rm` the marker or .critic-partials by hand: most states that\n"
+                "  reach this message are holding reviewer output.\n"
                 "  Empty reasons are rejected; the file clears at the next session boundary\n"
                 "  (a fresh start or /clear), so it outlives a resume/compact/fork.\n"
             )
