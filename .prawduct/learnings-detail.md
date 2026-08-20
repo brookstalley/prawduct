@@ -4273,3 +4273,28 @@ change in place, what does this one do? A predicate that mutates while answering
 member of such a class, because its callers read as questions and act as acts — which is also the
 fix worth reaching for first: make the rule a construction both surfaces call, not a branch each
 implements.
+
+## When you bundle work by "it touches the same file", ask whether that file is a LOCATION or a BUDGET — a co-editor of a token-ceilinged payload, a size-capped artifact, or any shared cap is a RIVAL for the same allowance, so co-location predicts contention and an extra negotiation rather than a saved round. Tell: your bundling rationale is "same file" and the file has a pinning test on its size
+
+**The case.** Asked to scrub the backlog for items worth bundling into a fix plan for efficiency,
+the by-file query returned `#644` touching both `plugin/skills/critic/goals-1-3.md` and
+`plugin/skills/critic/review-protocol.md` — the exact two files the plan's first chunk opens. Read
+as "same two files, one pass, one review round saved," it was the obvious bundle. It was the
+opposite. `goals-1-3.md` is under a pinned token ceiling and
+`tests/test_critic_consolidate.py` records it sat **2 tokens under** that ceiling when the previous
+clause was written — which is why that clause took a code-emitted route instead of landing in the
+file. A second editor of that file does not share a location with the first; it competes for the
+same allowance, and both edits then have to justify a trim or a ratchet that neither would have
+needed alone.
+
+**Why the instinct is wrong in a specific way.** Bundling by file normally saves the fixed costs of
+opening a surface: the read, the mental model, the review round. Those costs are per-*visit*. A cap
+is per-*content*: it does not care how many visits produced the bytes, and it is spent in full by
+either edit. So the two savings arguments point in opposite directions, and the file being shared
+is exactly what makes them collide. The tell is cheap — if the file has a pinning test on its own
+size, the shared thing is a budget.
+
+**The cheap check.** Before bundling, grep the candidate file for a size or token pin
+(`ceiling`, `budget`, a test asserting a count against it). If one exists, price the bundle as *two
+budget negotiations*, not one visit — and prefer sequencing the items across releases so each pays
+its own ratchet with its own justification, which is also what `[[L80]]` requires of any trim.
