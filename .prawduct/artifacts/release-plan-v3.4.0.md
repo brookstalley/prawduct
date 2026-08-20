@@ -116,11 +116,18 @@ Both are already in `plugin/CHANGELOG.md`, where consumers read them:
 
 These are the steps this repo has rediscovered at past cuts; the runbook owns the full procedure.
 
-1. **Rename `## v3.3.5-dev` to `## v3.4.0` in `plugin/CHANGELOG.md`.** `banner.py`'s
-   `_SEMVER_HEADER` matches the prerelease spelling, so a section left named `-dev` resolves to
-   version `3.3.5-dev`, which never equals `3.4.0` — consumers crossing the release would get **no
-   headline**. The runbook's frontmatter carries `last_verified: null` precisely because this step
-   was added after the v3.3.4 cut and has never been executed.
+1. **Rename `## v3.3.5-dev` to `## v3.4.0` in `plugin/CHANGELOG.md`.** The runbook's frontmatter
+   carries `last_verified: null` precisely because this step was added after the v3.3.4 cut and has
+   never been executed.
+
+   *What actually goes wrong if it is missed, checked against `banner.py` rather than assumed:*
+   `_SEMVER_HEADER` matches the prerelease spelling, and `version_tuple("3.3.5-dev")` is
+   `(3,3,5,0,0)`, which **does** fall inside a v3.3.4 → v3.4.0 consumer's `lo < v <= hi` window. So
+   the headline is **not** lost — it renders, mislabeled `v3.3.5-dev`, telling a consumer who just
+   received the release that they are on a prerelease build. The one case that loses the entry
+   outright is a **develop-pinned** repo already reporting `3.3.5-dev`: there `lo` equals the
+   entry's own tuple, the comparison is strict, and the section is skipped. Cosmetic for nearly
+   everyone, silent for the few on `develop` — still rename it.
 2. **Bump all three version carriers**: `plugin/.claude-plugin/plugin.json`, `plugin/VERSION`,
    `pyproject.toml`. The version is the update cache key — a promotion without it does not ship.
 3. **Clear `active_build_plan` BEFORE running `plan-backfill`.** The sweep refuses to archive the
