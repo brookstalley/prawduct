@@ -541,3 +541,5 @@ never by dropping them.
 ## An UNEXPECTED PASS is a signal, not a result — when a change you believed would break tests doesn't, find out which branch they are on before banking it, because green usually means confirmation and here it means your fixture never reached the subject. Tell: you predicted red, got green, and explained it to yourself in one sentence without opening anything — [learnings-detail.md]
 
 ## One home stops DIVERGENCE, not staleness — when you add a caller to shared copy, re-read the shared sentence AS THAT SURFACE'S READER, because a clause true of every existing caller can be flatly false at the new one and composition hands it over unexamined. Tell: you satisfied "route it through the one home" and never read the composed output — [learnings-detail.md]
+
+## When you add a rule to the site that motivated it, ENUMERATE the siblings that perform the same ACT before calling it done — a criterion can be false at a surface your chunk never opened, and listing a reader is not asking whether the change reaches it. Tell: your fix names one call site and your acceptance criterion names a class ("cannot X without Y") — [learnings-detail.md]

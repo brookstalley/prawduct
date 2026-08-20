@@ -4203,3 +4203,28 @@ the call site. The contradiction was invisible in the code (two correct function
 call) and unmissable in eight lines of terminal text. Where the shared text asserts a behaviour,
 prefer a clause that names its condition over a flat statement: a conditional survives a new caller,
 an absolute has to be found and rewritten by someone who has no reason to look.
+
+## When you add a rule to the site that motivated it, ENUMERATE the siblings that perform the same ACT before calling it done — a criterion can be false at a surface your chunk never opened, and listing a reader is not asking whether the change reaches it. Tell: your fix names one call site and your acceptance criterion names a class ("cannot X without Y")
+
+**The case.** A chunk taught `critic_marker.boundary_sweep` to keep a Critic marker whose reviewers
+had all reported, so a session boundary could no longer discard a review the Stop hook was about to
+consolidate. Its acceptance criterion was a class statement: *a review that outruns the TTL cannot
+lose its marker without a signal*. But `review_active` unlinked an expired marker as a side effect
+of ANSWERING, and a bare `prawduct-hook clear` — the exact invocation the guard was written for,
+after a reviewer subagent ran it and clobbered the session under review — asked that question and
+destroyed the review the boundary had just been taught to protect. Two independent reviewers found
+it from opposite goals.
+
+**Why the enumeration was there and still did not fire.** The same chunk added a mechanical
+inventory of every reader of the marker, precisely because reasoning about this subsystem had gone
+wrong twice before. The inventory NAMED the bare-clear site — and mapped it to a test covering only
+the live-marker case. Enumerating the readers answers "who touches this"; it does not answer "does
+my new rule reach them". The second question has to be asked per row, out loud, at the moment the
+rule is written.
+
+**The cheap check.** Take the acceptance criterion's verb — *release*, *delete*, *notify* — and grep
+for every site that performs it, not for the symbol you just changed. Then ask of each: with my
+change in place, what does this one do? A predicate that mutates while answering is the sneakiest
+member of such a class, because its callers read as questions and act as acts — which is also the
+fix worth reaching for first: make the rule a construction both surfaces call, not a branch each
+implements.

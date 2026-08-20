@@ -346,7 +346,19 @@ LAST_MEASURED_TOKENS = {
     # reviewing the correction. Same narrowing applied there. Net for the
     # branch is still -3 (3406 -> 3403): the TTL cut above overpaid, and this
     # spends part of that rather than adding on top of it.
-    "skills/critic/SKILL.md": 3403,
+    #
+    # +18 on 2026-08-19 (3403 -> 3421). Expiry stopped being sufficient grounds
+    # to release the marker — a review whose reviewers have all reported is kept
+    # at any age — so this file's abandon-a-review paragraph was stating a rule
+    # an agent acts on and would now get wrong, relying on a boundary to release
+    # a marker that a boundary keeps. Paid down from the first draft (+60) by
+    # naming the state once ("a **complete roster**", the term the same
+    # paragraph already uses two sentences later) instead of spelling out
+    # "a review whose reviewers have all reported", and by cutting "so
+    # restarting the session is not a way to clear it", which the sentence
+    # before it already establishes. The remaining +18 is the condition itself:
+    # it cannot be inferred from anything else the file says.
+    "skills/critic/SKILL.md": 3421,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.

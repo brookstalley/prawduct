@@ -192,6 +192,17 @@ the two defects in this branch's sibling scope (`clear-cadence`) were both found
   every reader of the marker and the findings record explicitly — `briefing`'s findings
   summary among them — rather than deriving their safety.
 
+  **Second correction, from the review (2026-08-19): the retention rule had two homes and
+  only one was taught.** `boundary_sweep` learned to keep a complete roster; `review_active`
+  kept unlinking an expired marker as a side effect of *answering*, and a bare
+  `prawduct-hook clear` — the invocation this whole guard exists for — asked it and destroyed
+  exactly the review the boundary now protects. Two reviewers found it independently, from
+  opposite goals. The fix is a construction, not a second branch: `review_active` is now a
+  pure predicate, one function decides whether a marker may go, and both surfaces that meet
+  one without forcing route through the same call plus its notices. The deliverable's own
+  acceptance criterion was false at a surface the chunk never opened, which is the shape to
+  look for — a rule added to the site that motivated it, while its siblings keep the old one.
+
   **Correction, from building it (2026-08-19): sharing a reading means it has to be true
   at the surface that just ACTED.** The swept notice composes through
   `pending_roster_reading()` as specified — and the `incomplete` reading it inherited said
@@ -204,7 +215,7 @@ the two defects in this branch's sibling scope (`clear-cadence`) were both found
 - **Depends on:** none (independent of Chunk 01; ordered second only by release risk)
 - **Artifacts consumed:** `architecture.md` § Direction (the reviewer-non-mutation norm,
   whose Mechanism clause describes the retention this chunk widens)
-- **Deliverables:** `plugin/lib/critic_marker.py` — `sweep_unless_live` consults
+- **Deliverables:** `plugin/lib/critic_marker.py` — the boundary sweep consults
   consolidation state and retains a marker whose roster is complete; the acting path emits
   a notice instead of unlinking silently; `write_marker`'s renewal language reconciled to
   what the code does. `plugin/lib/critic_consolidate.py` — the notice composes through

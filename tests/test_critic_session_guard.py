@@ -104,15 +104,18 @@ class TestCriticMarkerUnit:
         prawduct = _prawduct(tmp_path)
         assert cm.review_active(prawduct) == (False, None)
 
-    def test_stale_marker_is_swept(self, tmp_path):
-        # A marker older than the TTL is not active AND is swept on read, so a
-        # crashed review self-heals (resilience layer 1).
+    def test_stale_marker_is_not_active_and_asking_removes_nothing(self, tmp_path):
+        """A marker past the TTL blocks nothing — and finding that out must not
+        be what deletes it. Expiry makes a marker REMOVABLE; `boundary_sweep`
+        decides whether it may actually go, because a complete roster is kept at
+        any age. A predicate that unlinked while answering would be a second,
+        silent home for that decision, reachable by any caller who only asked."""
         prawduct = _prawduct(tmp_path)
         old = datetime.now(timezone.utc) - timedelta(seconds=cm.CRITIC_ACTIVE_TTL_SECONDS + 120)
         marker = _write_marker(prawduct, started_at=_iso(old))
         active, age = cm.review_active(prawduct)
         assert active is False
-        assert not marker.is_file(), "stale marker must be swept"
+        assert marker.is_file(), "asking whether a review is live must not remove anything"
 
     def test_boundary_just_inside_ttl_is_active(self, tmp_path):
         prawduct = _prawduct(tmp_path)
@@ -125,7 +128,7 @@ class TestCriticMarkerUnit:
         # Unparseable started_at → age falls back to the file mtime. A freshly
         # written corrupt marker is recent by mtime, so it still counts as active
         # (protective); an old one expires. Either way `clear` is never bricked —
-        # the override exists, and old markers are swept.
+        # the override exists, and an expired marker blocks nothing.
         prawduct = _prawduct(tmp_path)
         _write_marker(prawduct, raw="not json at all")
         active, _ = cm.review_active(prawduct)
@@ -139,7 +142,7 @@ class TestCriticMarkerUnit:
         os.utime(marker, (old, old))
         active, _ = cm.review_active(prawduct)
         assert active is False
-        assert not marker.is_file()
+        assert marker.is_file(), "the predicate reports; it does not release"
 
 
 # =============================================================================
@@ -164,7 +167,14 @@ class TestClearGuardCLI:
         assert "independent reviewer" in result.stderr
         assert "CRT-3X9D" not in result.stderr
         # Actionable override (the waiver-style correction path).
-        assert "--force" in result.stderr and "rm .prawduct/.critic-active" in result.stderr
+        # The remedy is the NAMED act, not a bare `rm`. `critic-end` clears the
+        # marker and nothing else, so the refusal has to say what that costs on a
+        # review whose reviewers all reported — `rm` said nothing at all while
+        # doing exactly the same damage.
+        assert "--force" in result.stderr
+        assert "prawduct-hook critic-end" in result.stderr
+        assert "prawduct-hook critic-consolidate" in result.stderr
+        assert "rm .prawduct/.critic-active" not in result.stderr
         # No mutation occurred.
         assert (prawduct / ".session-reflected").read_text() == "builder reflection — must survive"
         assert (prawduct / cm.MARKER_NAME).is_file(), "guard must not remove the marker"
@@ -1147,7 +1157,7 @@ class TestBoundarySweepDecidesByRecoverability:
         _expired(prawduct)
         _dispatched(prawduct, complete=True)
         assert cc.pending_state(prawduct) == ("complete", []), "precondition"
-        assert cm.review_active(prawduct, sweep=False)[0] is False, "precondition"
+        assert cm.review_active(prawduct)[0] is False, "precondition"
 
         assert cm.boundary_sweep(prawduct) == cm.SWEEP_RETAINED_COMPLETE
         assert (prawduct / cm.MARKER_NAME).is_file(), (
@@ -1322,9 +1332,13 @@ class TestMarkerAndFindingsReaderInventory:
         ("plugin/bin/prawduct-hook", "cmd_clear", "review_active()"):
             "tests/test_critic_session_guard.py::TestClearGuardCLI"
             "::test_bare_clear_refuses_with_active_marker",
-        ("plugin/bin/prawduct-hook", "cmd_clear", "boundary_sweep()"):
-            "tests/test_critic_session_guard.py::TestBoundaryAnnouncesWhicheverActItTook"
-            "::test_a_retained_complete_roster_is_told_to_consolidate_not_clear",
+        # ONE construction for both surfaces that meet a marker without forcing.
+        # The bare-clear path used to release markers by side effect of asking
+        # `review_active`, which is why the row below covers a `clear` with no
+        # `--session-start` as well as a boundary.
+        ("plugin/bin/prawduct-hook", "_release_or_keep_marker", "boundary_sweep()"):
+            "tests/test_critic_session_guard.py::TestBareClearUsesTheSameReleaseRule"
+            "::test_a_bare_clear_keeps_a_complete_roster_and_says_why",
         ("plugin/bin/prawduct-hook", "cmd_clear", "clear_marker()"):
             "tests/test_critic_session_guard.py::TestClearGuardCLI"
             "::test_force_overrides_active_marker",
@@ -1545,3 +1559,139 @@ class _ReaderSiteVisitor:
             self.sites.add((self.rel, self._where(), node.value))
         for child in ast.iter_child_nodes(node):
             self.visit(child)
+
+
+class TestBareClearUsesTheSameReleaseRule:
+    """A bare `prawduct-hook clear` is the invocation this whole guard exists
+    for — a reviewer subagent ran exactly it and clobbered the session under
+    review — and it is also a surface that meets an expired marker.
+
+    It used to release one by SIDE EFFECT: it asked `review_active` whether to
+    refuse and the answer came back with the marker already unlinked. So a
+    review whose reviewers had all reported lost the Stop hook's self-heal
+    silently, at the one call site the guard was written to protect, while the
+    boundary beside it had just been taught not to do that. The rule now has one
+    home and both callers route through it.
+    """
+
+    def test_a_bare_clear_keeps_a_complete_roster_and_says_why(self, tmp_path):
+        prawduct = _prawduct(tmp_path)
+        _expired(prawduct)
+        _dispatched(prawduct, complete=True)
+
+        result = run_plugin_hook("clear", tmp_path, git_status=" M a.py")
+
+        assert result.returncode == 0, result.stderr
+        assert (prawduct / cm.MARKER_NAME).is_file(), (
+            "a bare clear must not discard a finished review's self-heal — the "
+            "boundary beside it does not, and this is the same decision"
+        )
+        assert "prawduct-hook critic-consolidate" in result.stdout
+        assert (prawduct / ".session-start").is_file(), "the clear itself still runs"
+
+    def test_a_bare_clear_still_releases_a_marker_with_nothing_attached(self, tmp_path):
+        """The other half: a crashed review must not brick `clear` forever, so
+        an expired marker with nothing recoverable behind it still goes — now
+        with the notice the boundary gives it."""
+        prawduct = _prawduct(tmp_path)
+        _expired(prawduct)
+
+        result = run_plugin_hook("clear", tmp_path, git_status=" M a.py")
+
+        assert result.returncode == 0, result.stderr
+        assert not (prawduct / cm.MARKER_NAME).is_file()
+        assert "swept" in result.stdout
+        assert (prawduct / ".session-start").is_file()
+
+    def test_a_live_marker_still_refuses_a_bare_clear(self, tmp_path):
+        """The guard's original job, unchanged by sharing the release rule."""
+        prawduct = _prawduct(tmp_path)
+        cm.write_marker(prawduct)
+
+        result = run_plugin_hook("clear", tmp_path)
+
+        assert result.returncode == 2
+        assert (prawduct / cm.MARKER_NAME).is_file()
+        assert not (prawduct / ".session-start").is_file()
+
+
+class TestAnUnanswerableRosterIsAnnouncedAsItself:
+    """The third retention token had no head of its own and inherited the
+    liveness one — "no session event proves its reviewers died", a claim about
+    TIME, printed for a marker the TTL had already released. The body then said
+    the state could not be read, so the notice argued with itself, and the head
+    is the half that tells someone waiting is fine."""
+
+    def test_the_unknown_head_names_its_own_ground_and_carries_the_cause(self, tmp_path):
+        prawduct = _prawduct(tmp_path)
+        _expired(prawduct)
+
+        def explode(_prawduct_dir):
+            raise RuntimeError("consolidation lib unavailable")
+
+        import unittest.mock as mock  # noqa: PLC0415 — one test needs the lib to fail
+
+        with mock.patch.object(cc, "pending_state", explode):
+            outcome = cm.boundary_sweep(prawduct)
+
+        assert outcome == cm.SWEEP_RETAINED_UNKNOWN
+        assert (prawduct / cm.MARKER_NAME).is_file()
+        # The CAUSE, not a paraphrase: on the one path where the lib is genuinely
+        # broken, the exception is the only thing that says which way.
+        assert "RuntimeError" in (cm.LAST_ROSTER_ERROR or "")
+        assert "consolidation lib unavailable" in (cm.LAST_ROSTER_ERROR or "")
+
+    def test_the_notice_for_an_unanswerable_roster_does_not_claim_liveness(self, tmp_path):
+        """The head an operator actually reads. Loaded in-process rather than
+        driven through the CLI: the branch is reachable only when the
+        consolidation lib cannot answer, and there is no honest way to arrange
+        that across a subprocess boundary without breaking the install itself.
+        """
+        import importlib.machinery  # noqa: PLC0415 — the extensionless hook script
+        import importlib.util  # noqa: PLC0415
+        import unittest.mock as mock  # noqa: PLC0415
+
+        loader = importlib.machinery.SourceFileLoader(
+            "prawduct_hook_retention_notice",
+            str(Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"),
+        )
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        hook = importlib.util.module_from_spec(spec)
+        loader.exec_module(hook)
+
+        prawduct = _prawduct(tmp_path)
+        _expired(prawduct)
+        with mock.patch.object(cc, "pending_state", side_effect=RuntimeError("lib is broken")):
+            assert cm.boundary_sweep(prawduct) == cm.SWEEP_RETAINED_UNKNOWN
+            notice = hook._boundary_retained_marker_notice(prawduct, cm.SWEEP_RETAINED_UNKNOWN)
+
+        head = notice.splitlines()[0]
+        assert "no session event proves its reviewers died" not in head, (
+            "that is a claim about TIME, and this marker has already expired — "
+            "printed here it tells the reader the reviewers may still be running"
+        )
+        assert "could not be assessed" in head
+        assert "RuntimeError" in head and "lib is broken" in head, (
+            "the cause is the only thing that says which way, on the one path "
+            "where the consolidation lib is genuinely broken"
+        )
+
+    def test_a_successful_roster_read_clears_the_recorded_cause(self, tmp_path):
+        """A stale cause is worse than none — it would be printed beside the
+        NEXT retention, attributing a failure that did not happen."""
+        prawduct = _prawduct(tmp_path)
+        _expired(prawduct)
+
+        def explode(_prawduct_dir):
+            raise RuntimeError("transient")
+
+        import unittest.mock as mock  # noqa: PLC0415 — one test needs the lib to fail
+
+        with mock.patch.object(cc, "pending_state", explode):
+            cm.boundary_sweep(prawduct)
+        assert cm.LAST_ROSTER_ERROR is not None
+
+        _expired(prawduct)
+        _dispatched(prawduct, complete=True)
+        assert cm.boundary_sweep(prawduct) == cm.SWEEP_RETAINED_COMPLETE
+        assert cm.LAST_ROSTER_ERROR is None

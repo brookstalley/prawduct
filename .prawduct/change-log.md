@@ -51,6 +51,17 @@ and the TTL is a deadline, not a rolling window. The claim is reconciled to the 
 structurally, because a prose claim about how many writers exist stops being true the day someone
 adds one.
 
+**The rule had a second home, and the review found it.** `boundary_sweep` was taught to keep a
+complete roster; `review_active` went on unlinking an expired marker as a side effect of
+*answering*, so a bare `prawduct-hook clear` — the invocation the guard exists for, and the one a
+reviewer subagent actually ran in the incident behind it — destroyed exactly the review the
+boundary now protects. `review_active` is a pure predicate now: asking is free and changes nothing,
+one function decides whether a marker may go, and both surfaces that meet one without forcing share
+that call and its notices. Removal otherwise happens only by name — `critic-end`, `critic-discard`,
+a successful consolidation, `--force`. Two reviewers found this independently from opposite goals,
+which is the argument for the enumeration below rather than against it: the inventory NAMED the
+site and pointed it at a test covering only the live case.
+
 **The readers are enumerated rather than argued safe.** Twice, a change here was reasoned safe from
 the `clear` guard alone and twice the reader that broke was outside the session. A test now scans
 the plugin for every site that calls the marker API or names either file, and fails on any site the

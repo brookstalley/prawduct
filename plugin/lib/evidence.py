@@ -686,7 +686,7 @@ def _attribute_bad_tree(value: object) -> None:
 _ATTRIBUTED_BAD_TREES: set[str] = set()
 
 
-def _attribute_slow_seed(cause: str, fallback: str) -> None:
+def _attribute_slow_seed(cause: str, fallback: str, *, in_repo: bool) -> None:
     """Say that the fast seed was lost, and name what replaced it.
 
     Every route into the fallback goes through here so none of them can be the
@@ -694,13 +694,22 @@ def _attribute_slow_seed(cause: str, fallback: str) -> None:
     change exists to remove, and it is the operator, not the code, who has to
     tell "the fix did not engage" from "the fix was not enough". The message
     names the ACTUAL fallback: on an unborn HEAD nothing is re-hashed, so
-    claiming a full ``read-tree`` there would be a scarier lie than the truth."""
+    claiming a full ``read-tree`` there would be a scarier lie than the truth.
+
+    ``empty`` is reached two ways and only one of them makes it *correct*: an
+    unborn HEAD, where there is nothing to seed from, and a git-dir lookup that
+    failed, where the directory may not be a repository at all. ``in_repo``
+    separates them, passed by the caller that knows rather than sniffed out of
+    ``cause`` — a consequence clause keyed on the wording of a message is one
+    rephrasing away from asserting a repository state nobody observed."""
     consequence = (
         "re-hashes the whole working tree and may exceed the capture budget on a "
         "slow filesystem"
         if fallback == "read-tree"
-        else "starts from an empty index, which is correct on an unborn HEAD"
+        else "starts from an empty index"
     )
+    if fallback == "empty" and in_repo:
+        consequence += ", which is correct on an unborn HEAD"
     print(
         f"evidence: {cause} — seeding the capture with `{fallback}` instead, which "
         f"{consequence}",
@@ -757,7 +766,9 @@ def _seed_temp_index(
     fallback = "read-tree" if has_head else "empty"
     rc, git_dir, err = run_git(project_dir, "rev-parse", "--absolute-git-dir")
     if rc != 0 or not git_dir:
-        _attribute_slow_seed(f"could not locate the git dir ({err or 'no output'})", fallback)
+        _attribute_slow_seed(
+            f"could not locate the git dir ({err or 'no output'})", fallback, in_repo=False
+        )
     else:
         try:
             # copy2, NOT copyfile — the index's own MTIME has to survive the
@@ -781,7 +792,9 @@ def _seed_temp_index(
                 os.unlink(tmp_name)
             except OSError:
                 pass
-            _attribute_slow_seed(f"could not copy the repo index ({exc})", fallback)
+            _attribute_slow_seed(
+                f"could not copy the repo index ({exc})", fallback, in_repo=True
+            )
     if not has_head:
         return True, None, "empty"  # unborn HEAD: the empty temp index is correct
     rc, _, err = run_git(project_dir, "read-tree", "HEAD", env=env)

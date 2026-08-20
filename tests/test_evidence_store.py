@@ -665,6 +665,37 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+class TestSeedReachesTheDurableRecord:
+    """The seed answers a question asked AFTER the fact, on someone else's
+    machine: did the fast seed engage, or is a slow capture still slow? A stderr
+    line lives in scrollback only, so the dispatch manifest — the record
+    `critic-begin` already writes — carries it."""
+
+    def test_the_dispatch_manifest_records_which_seed_the_capture_used(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        (repo / ".prawduct").mkdir()
+        (repo / "app.py").write_text("x = 2\n")  # a dirty diff to dispatch against
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "critic-begin", "--mode", "chunk"],
+            cwd=str(repo), capture_output=True, text=True, timeout=30,
+            env={
+                "HOME": str(tmp_path / "_home2"),
+                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+                "CLAUDE_PROJECT_DIR": str(repo),
+                "CLAUDE_PLUGIN_ROOT": str(Path(HOOK).resolve().parent.parent),
+            },
+        )
+        assert result.returncode == 0, result.stderr
+        manifest = json.loads(
+            (repo / ".prawduct" / ".critic-partials" / "manifest.json").read_text()
+        )
+        assert manifest["seed"] == "index-copy", (
+            "a healthy repo seeds from its own index; recording the slow seed here "
+            "is what lets a verifier tell 'the fix did not engage' from 'the fix "
+            "was not enough' without the original terminal"
+        )
+
+
 class TestEvidenceCli:
     def test_status_on_empty_store(self, tmp_path):
         repo = _make_repo(tmp_path)
