@@ -2,7 +2,7 @@
 artifact: api-contract
 version: 1
 depends_on:
-  - artifact: product-brief   # vision lives in README.md + CLAUDE.md
+  - artifact: product-brief   # purpose lives in documentation/purpose.md
   - artifact: data-model
   - artifact: security-model
 last_validated: null
@@ -186,9 +186,57 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   working tree by default — buy a review round? Asks the gates' own `is_judgeable_path`, so it
   cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
   to `unknown` rather than a reassuring `free`).
-- **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
-  `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`, `plan-backfill`,
-  `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
+- **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
+  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`,
+  `plan-backfill`, `repo-disable`, `bug-inbox` (dry-run-by-default where they mutate, with
+  one stated exception). **`update-gitignore` is the exception: it repairs by default and
+  previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
+  which is why the default is the mutating one — but a reader who assumed the blanket
+  claim above got the opposite of the truth, and for a while so did the command: it took
+  no argv at all, so `--dry-run` could not reach it and the reconcile ran anyway. Both
+  halves are fixed; the asymmetry that remains is deliberate and is stated here rather
+  than left for the next reader to discover by running it.
+
+**Argument shape is checked before dispatch, for every subcommand.** An argument a
+subcommand has no parameter to receive is refused with exit 2 and nothing runs — the
+usage-error convention already used by `_reject_unknown_args`. The check sits ahead of
+the dispatch chain (and ahead of project-dir resolution) rather than inside each command,
+because a per-command guard misses whichever command nobody thought of; that is the same
+placement `_check_binary_skew` and `_check_ephemeral_worktree` already use. Two carve-outs
+are deliberate and are the only ones:
+
+- **`stop` / `subagent-stop` name the stray argument on stderr and still run.** These are
+  the harness's own calls, never typed. A usage error on a Stop hook does not protect a
+  caller — it blocks the session and feeds the refusal back as a turn, which is a worse
+  failure than the silence it would close.
+- **`stamp-merged` is unchecked and silent.** It is retired-but-callable and its
+  deprecation contract is exit 0 for any input, so a copied release script keeps working.
+  An inert command cannot act on an argument it ignored, so there is no surprise to
+  prevent — the harm this guard exists for is a command that *did* something other than
+  what was asked.
+
+**Commands that DO receive `argv` refuse their own unknown tokens** — the dispatcher cannot
+speak for them, because they can see their arguments and it cannot know their vocabulary.
+Flag-only ones (`--json` / `--apply` style, detected with `"--flag" in argv`) call
+`_reject_unknown_args`, because that idiom reads an unrecognised token as *absent*.
+
+That bucket is the part worth reading carefully, because it was filled twice by
+enumeration and was wrong both times. `update-gitignore` was fixed and `coverage-scaffold`
+was missed — it mutates under `--apply`, and `--apply --dry-run` wrote the stub artifacts
+while the caller believed they had asked for a preview. Those two were fixed and
+`migrate-plugin` and `init-product` were missed: the cutover and the scaffolder, the two
+most destructive commands on the surface. A list is something the next command is not on,
+so the coverage is now asserted structurally —
+`tests/test_hook_argument_shape.py::test_every_argv_taking_command_refuses_what_it_cannot_read`
+derives the argv-taking set from `_dispatch`'s own source and fails for any member with
+neither a guard nor a recorded reason.
+
+**Nine of those recorded reasons are honest gaps, not clearances.** `backlog`,
+`test-evidence`, `advisory`, `ledger-append`, `critic-begin`, `critic-restore`, `handoff`,
+`disposition` and `archive-plan` each error on a bare invocation, so the bare-vs-unknown
+probe cannot distinguish a refusal from that pre-existing error, and they were not
+individually audited. They are named in the test rather than folded into a confident-looking
+allowlist; `#667` carries the audit.
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
@@ -209,7 +257,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
 
 ## Inputs & Outputs
 
-- **Inputs:** subcommand argv (each subcommand parses its own flags; unknown flags are rejected),
+- **Inputs:** subcommand argv (each subcommand parses its own flags; unknown flags are rejected
+  except where § Operations records otherwise — five deliberate non-refusers and nine unaudited),
   and — for the hook subcommands — a JSON event payload on **stdin** (e.g. `stop` reads
   `background_tasks`; `subagent-stop` reads `cwd`/`agent_type`).
 - **Human-readable output:** most subcommands print prefixed text (see Error Model). Skills consume

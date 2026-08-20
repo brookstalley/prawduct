@@ -129,6 +129,11 @@ def resolve_project_dir(env_project_dir: str | None, cwd: Path) -> Path:
 # source bug report proposed — would silence governance in every one of them,
 # which is a worse failure than the silent strand this predicate exists to
 # close. The parent is therefore necessary but never sufficient.
+#
+# The DIRECTORY is likewise necessary but not sufficient for `agent-`: the
+# branch decides, because the branch is what carries a write out of the tree.
+# `is_ephemeral_worktree` owns that reasoning; the two patterns below are only
+# the harness's naming.
 _EPHEMERAL_DIR_PATTERNS = (
     (re.compile(r"^agent-[0-9a-f]{6,}$"), "agent"),
     (re.compile(r"^wf_[0-9a-z_-]{4,}$", re.IGNORECASE), "workflow"),
@@ -151,18 +156,37 @@ def _under_claude_worktrees(project_dir: Path) -> bool:
     )
 
 
-def ephemeral_worktree_kind_of_path(path: str | Path) -> str | None:
-    """Classify a worktree PATH as disposable — no git, no stat, no filesystem.
+def _dir_label(name: str) -> str | None:
+    """``"agent"``/``"workflow"``/``None`` from a worktree's basename alone.
 
-    Shares :data:`_EPHEMERAL_DIR_PATTERNS` with :func:`is_ephemeral_worktree`
-    rather than being called by it, so neither can drift from the other while
-    each keeps its own single ancestor test.
+    One body for every caller of :data:`_EPHEMERAL_DIR_PATTERNS`, so the
+    directory half can never be spelled two ways.
+    """
+    for pattern, label in _EPHEMERAL_DIR_PATTERNS:
+        if pattern.match(name):
+            return label
+    return None
 
-    Exists for readers that must classify a path they cannot probe: an
-    evidence fact records ``actor.worktree`` as a string, and by the time
-    anyone reads it that worktree is usually deleted, so the branch fallback
-    below would answer ``None`` for every historical record. Path shape is the
-    only signal that survives the tree it describes.
+
+def ephemeral_kind_of(path: str | Path, branch: str | None) -> str | None:
+    """Classify a worktree from its path and branch — no git, no filesystem.
+
+    THE decision function. :func:`is_ephemeral_worktree` probes git for the
+    branch and delegates here; :func:`ephemeral_worktree_kind_of_path` passes
+    ``branch=None``. Both answers therefore come from one body, which is what
+    keeps a live tree and the historical record of that same tree from
+    disagreeing about whether it was disposable (#648).
+
+    ``branch=None`` means *unknown or none* — a detached HEAD, a failed probe,
+    or a stored record that predates branch capture. It resolves to the
+    restrictive answer for an ``agent-`` path: such a tree has no branch that
+    could carry a write out, a failing probe must not become a way to unlock
+    the guard, and every agent-path fact recorded before this change was in
+    fact disposable (the guard refused the durable case), so historical records
+    keep exactly the reading they had.
+
+    Why the branch decides at all, and why only for ``agent-``, is in
+    :func:`is_ephemeral_worktree`.
     """
     try:
         candidate = Path(path)
@@ -170,10 +194,35 @@ def ephemeral_worktree_kind_of_path(path: str | Path) -> str | None:
         return None
     if not _under_claude_worktrees(candidate):
         return None
-    for pattern, label in _EPHEMERAL_DIR_PATTERNS:
-        if pattern.match(candidate.name):
-            return label
-    return None
+    dir_label = _dir_label(candidate.name)
+    if dir_label == "workflow":
+        return "workflow"
+    # Normalize `branch` HERE, not in each caller. `path` is already defended
+    # two lines up, and a decision function that guards one argument but not
+    # the other invites exactly the caller that forgets. A non-string reaches
+    # the same answer as absent — the restrictive side — so a malformed field
+    # can never promote a disposable tree to durable.
+    if not isinstance(branch, str) or not branch:
+        branch = None
+    scratch = branch is not None and _EPHEMERAL_BRANCH_PATTERN.match(branch) is not None
+    if dir_label == "agent":
+        return "agent" if (branch is None or scratch) else None
+    return "agent" if scratch else None
+
+
+def ephemeral_worktree_kind_of_path(path: str | Path) -> str | None:
+    """Classify a worktree PATH alone as disposable, with no branch to consult.
+
+    Exists for readers that must classify a path they cannot probe: an evidence
+    fact records ``actor.worktree`` as a string, and by the time anyone reads it
+    that worktree is usually deleted, so no live git probe is possible. Path
+    shape is the only signal that survives the tree it describes.
+
+    Prefer :func:`ephemeral_kind_of` wherever a recorded branch IS available —
+    since #648 the path alone cannot distinguish a disposable agent worktree
+    from a durable one, so this answers the restrictive default for both.
+    """
+    return ephemeral_kind_of(path, None)
 
 
 def is_ephemeral_worktree(project_dir: Path) -> str | None:
@@ -198,9 +247,41 @@ def is_ephemeral_worktree(project_dir: Path) -> str | None:
     Detection is a conjunction: the ``.claude/worktrees`` ancestor locates the
     harness's worktree root, and the ``agent-``/``wf_`` id shape distinguishes a
     disposable tree from an ``EnterWorktree`` session worktree living under the
-    same parent (see :data:`_EPHEMERAL_DIR_PATTERNS`). The branch name is
-    consulted only as a fallback, so a future harness change to the directory
-    naming degrades to one more signal rather than to silence.
+    same parent (see :data:`_EPHEMERAL_DIR_PATTERNS`).
+
+    **For ``agent-`` the branch is a second conjunct, not a fallback (#648).**
+    What makes a tree disposable is that its code commit returns while its
+    ``.prawduct/`` write does not — the two are *separated*, so the write
+    strands and the agent is told it succeeded. That separation exists only for
+    the harness's own scratch branch. On a real named branch the two are
+    inseparable: the branch is what lands, so a ``.prawduct/`` write on it is
+    carried; and if the branch is discarded the code goes with it, leaving
+    nothing silently ungoverned. Classifying an agent-path tree on
+    ``fix/whatever`` as disposable refused every governance write on a branch
+    someone was really working — making the Critic gate unsatisfiable with no
+    workaround short of evicting the worktree (brookstalley/discodon#2213).
+
+    **That inseparability is ASSUMED, not measured (#648).** It has not been
+    verified against the harness's actual disposal policy — doing so means
+    dispatching a probe agent, which the session that made this change was
+    asked not to do. The falsifier is precise: *if the harness ever merges a
+    code commit off a named branch while discarding that branch*, the two are
+    separable after all and #594's silent-strand defect returns for exactly
+    that case. Anything relying on this predicate to refuse a worktree
+    subagent's ``.prawduct/`` write is relying on that assumption too.
+
+    An agent-path tree whose branch cannot be read — detached HEAD, git probe
+    failure — is disposable. That is the restrictive answer, and it is the
+    right one twice over: a detached HEAD has no branch to carry a write out,
+    and a failing probe must not become an accidental way to unlock the guard.
+
+    ``wf_`` stays path-only. A workflow stage gets no named branch of its own,
+    so there the path IS the identity; adding the branch conjunct would
+    classify every workflow worktree as durable.
+
+    The branch is still consulted as a *fallback* when the directory matches
+    nothing, so a future harness change to the directory naming degrades to one
+    more signal rather than to silence.
 
     Never raises (lib convention) — every probe inside fails open to ``None``,
     which is today's behavior: govern the tree normally.
@@ -214,14 +295,16 @@ def is_ephemeral_worktree(project_dir: Path) -> str | None:
     # subprocess, which is what keeps this off the hook's hot path.
     if not _under_claude_worktrees(project_dir):
         return None
-    for pattern, label in _EPHEMERAL_DIR_PATTERNS:
-        if pattern.match(project_dir.name):
-            return label
 
-    branch = current_branch(project_dir)
-    if branch is not None and _EPHEMERAL_BRANCH_PATTERN.match(branch):
-        return "agent"
-    return None
+    # Only an `agent-` tree's answer depends on the branch, so only it pays for
+    # the `current_branch` subprocess — a workflow worktree stays exactly as
+    # cheap as it was. This skips the PROBE, never the decision: the answer
+    # still comes from `ephemeral_kind_of` on every path, so there is one body
+    # to change and no second copy that could mask a defect in the first.
+    needs_branch = _dir_label(project_dir.name) != "workflow"
+    return ephemeral_kind_of(
+        project_dir, current_branch(project_dir) if needs_branch else None
+    )
 
 
 def git_status_output(project_dir: Path) -> str | None:
@@ -241,12 +324,63 @@ def git_status_output(project_dir: Path) -> str | None:
         return None
 
 
+def _branch_from_head_file(project_dir: Path) -> tuple[bool, str | None]:
+    """``(answered, branch)`` read straight out of git's ``HEAD`` file.
+
+    A fast path for :func:`current_branch`, whose subprocess costs ~70 ms of
+    process spawn to read one line — enough that the session briefing calls it
+    five times and pays a third of a second for it. This reads the same line.
+
+    ``(False, None)`` means **this reader could not answer**, never "no branch":
+    the caller falls back to ``git symbolic-ref``, which searches upward from a
+    subdirectory, understands ``.git`` layouts this does not, and is the
+    definition of correct. Only ``(True, …)`` is an answer — a detached HEAD
+    (raw object id) is ``(True, None)``, which is the same ``None`` the
+    subprocess reports, reached without spawning it.
+
+    Linked worktrees are handled because that is where this runs most: their
+    ``.git`` is a FILE naming the real git dir, and every worktree has its own
+    ``HEAD`` inside it, so reading the shared common dir would report the
+    primary checkout's branch — a silent wrong-branch answer, which is exactly
+    what :func:`current_branch` exists to prevent.
+    """
+    git_path = project_dir / ".git"
+    try:
+        if git_path.is_file():
+            pointer = git_path.read_text(encoding="utf-8").strip()
+            if not pointer.startswith("gitdir:"):
+                return (False, None)
+            git_dir = Path(pointer[len("gitdir:"):].strip())
+            if not git_dir.is_absolute():
+                git_dir = project_dir / git_dir
+        elif git_path.is_dir():
+            git_dir = git_path
+        else:
+            return (False, None)
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return (False, None)
+    prefix = "ref: refs/heads/"
+    if head.startswith(prefix):
+        return (True, head[len(prefix):].strip() or None)
+    if head.startswith("ref: "):
+        return (False, None)  # symbolic, but outside refs/heads — let git name it
+    return (True, None)  # a raw object id: detached HEAD
+
+
 def current_branch(project_dir: Path) -> str | None:
     """The current branch name, ``None`` on a detached HEAD or git failure.
 
     Used to make the tree a review resolved to VISIBLE (PDT-WT9K) — a silent
     wrong-tree review is the failure this surfaces, so a detached/failed probe
-    returns ``None`` rather than a misleading value."""
+    returns ``None`` rather than a misleading value.
+
+    Answers from git's ``HEAD`` file when it can (:func:`_branch_from_head_file`)
+    and shells out otherwise. One function, one contract — the fast path either
+    produces the same answer or declines to produce one."""
+    answered, branch = _branch_from_head_file(project_dir)
+    if answered:
+        return branch
     try:
         result = subprocess.run(
             ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
@@ -259,6 +393,29 @@ def current_branch(project_dir: Path) -> str | None:
             return None
         branch = result.stdout.strip()
         return branch or None
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
+        return None
+
+
+def local_branches(project_dir: Path) -> set[str] | None:
+    """Every local branch name, or ``None`` when git could not be asked.
+
+    ``None`` and ``set()`` are deliberately different answers, and the caller
+    must keep them apart: this exists to tell an operator that a plan claims a
+    branch nobody has, and "I could not list the branches" is not evidence that
+    the branch is missing. Treating the two alike would turn a failed probe into
+    a confident accusation on every repo where git is unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads/"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return None
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
     except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
         return None
 
@@ -606,6 +763,75 @@ def git_paths_ignored(project_dir: Path, rel_paths: "list[str]") -> "set[str]":
     if result.returncode != 0:
         return set()
     return {p for p in result.stdout.split("\0") if p}
+
+
+def git_path_is_tracked(project_dir: Path, rel_path: str) -> bool | None:
+    """True if ``rel_path`` is tracked, False if not, ``None`` if git could not
+    be asked.
+
+    Three answers, not two, for the same reason :func:`local_branches` returns
+    ``None``: "git says this path is untracked" and "I could not run git" are
+    different facts, and a caller that collapses them turns a failed probe into a
+    confident claim about the repository. Callers keep them apart.
+
+    ``git ls-files`` exits 0 whether or not anything matched — an empty stdout is
+    the "untracked" answer — so only a non-zero exit (no repo, no git, a broken
+    index) means unknown. The pathspec is sent ``:(literal)`` because ls-files
+    matches wildmatch by default: a path containing ``*``, ``?`` or ``[`` would
+    otherwise match some *other* file and report it tracked.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", f":(literal){rel_path}"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash a probe
+        return None
+    if result.returncode != 0:
+        return None
+    return any(p for p in result.stdout.split("\0"))
+
+
+def git_merge_attribute(project_dir: Path, rel_path: str) -> str | None:
+    """The ``merge`` gitattribute git resolves for ``rel_path``, or ``None``.
+
+    Returns git's own answer verbatim — a driver name such as ``union``, or
+    ``unspecified``/``unset`` when no attribute applies — so the caller compares
+    against the value it needs rather than re-implementing attribute precedence.
+    ``None`` means **git could not be asked** (no repo, no git, unparseable
+    output), which is not the same answer as ``unspecified`` and must not be
+    read as one.
+
+    Deliberately the *effective* answer for this working copy: it includes
+    ``.git/info/attributes`` and the global attributes file, not only the
+    committed ``.gitattributes``. What a caller wants to know is what git will
+    actually do at merge time here; a per-clone override genuinely protects this
+    clone, and only this one.
+
+    ``-z`` output is ``path NUL attr NUL value NUL``, which sidesteps both the
+    C-quoting of non-ASCII paths and the ambiguity of the plain format's
+    ``path: attr: value`` when the path itself contains a colon. ``check-attr``
+    takes pathnames rather than pathspecs, so nothing here is glob-expanded.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "check-attr", "-z", "merge", "--", rel_path],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash a probe
+        return None
+    if result.returncode != 0:
+        return None
+    fields = result.stdout.split("\0")
+    if len(fields) < 3:
+        return None
+    return fields[2]
 
 
 def _get_session_changed_files(project_dir: Path, status_output: str | None = None) -> list[str]:

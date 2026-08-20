@@ -456,8 +456,11 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
     " now\" is never something you verified. A finding you could not settle from"
     " the tree is LEFT OUT of `resolutions`: omitting it keeps it blocking,"
     " which is the answer that fails closed. Two that read as resolved and are"
-    " not — a diff read instead of the file it changed, and a finding whose"
-    " second site is in a file this delta does not touch. Spend this on the"
+    " not — a diff read instead of the file it changed, and a finding that named"
+    " a CLASS but was closed at the sites it happened to name: re-run the"
+    " finding's own reason as a search before you write `fixed`, because the"
+    " members that survive are the ones outside this delta, and a longer list of"
+    " names is not a resolution. Spend this on the"
     " finding you feel surest about: a rule you agree with and do not apply to"
     " the disposition actually in front of you has done nothing."
 )
@@ -595,6 +598,74 @@ def _scope_widened(delta_count: int, prior_count: int) -> bool:
     return delta_count > 2 * prior_count + 5
 
 
+def _widened_fallback_mode(
+    project_dir: Path, committed_head_tree: str, committed_differs: bool
+) -> tuple[str, str]:
+    """Which full-review mode actually COVERS the delta that just widened.
+
+    "Run a full review" meant `final`, unconditionally — and `final`'s interval
+    is HEAD-tree → working-tree, the *uncommitted* diff. So a delta that widened
+    because commits landed since the prior review demoted to the one mode that
+    cannot see them: the refused interval was too wide, and its replacement was
+    strictly NARROWER. Observed 2026-08-15 on a 95-file widening (a base-branch
+    merge plus the chunk's own fix commit): the demoted `final` reviewed the two
+    untracked strays the working tree happened to hold and reported them as the
+    chunk's review. Nothing caught it, because both dispatches succeeded.
+
+    Where the delta LIVES decides the mode, and `begin_review` has already
+    computed that. Returns ``(mode, why)``; ``why`` ships in the refusal so the
+    reader can tell a recommendation from a default.
+
+    ``cumulative`` is not a superset of what widened, and must not be sold as
+    one: a base-branch merge moves the merge-base forward, so merge-base…HEAD
+    EXCLUDES the merged-in files that inflated the delta. That is the right
+    answer rather than a shortfall — those files were reviewed on the base
+    branch, and what this branch owes is its own work, which is exactly the
+    span.
+
+    ``committed_head_tree`` is spelled out because the caller's own ``head_tree``
+    at this point is the ANCHOR head, which may be the working tree — and
+    committed-vs-working is the exact distinction this function exists to keep
+    straight. Comparing the merge-base against the wrong one of the two would
+    reintroduce the defect inside its own fix.
+    """
+    if not committed_differs:
+        return "final", (
+            "every change since the prior review is uncommitted, which is "
+            "exactly `final`'s HEAD-tree → working-tree interval"
+        )
+    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    # Both guards below keep this from recommending `cumulative` where it would
+    # refuse for want of a span — recommending a mode that cannot run being the
+    # very failure fixed here. `final` is then the remaining full review rather
+    # than the covering one, and says so; on a clean tree it too refuses (empty
+    # diff), which is the honest end state when no mode's interval holds the
+    # committed remainder. The coverage gate is where that remainder surfaces.
+    if resolved["status"] != "ok":
+        return "final", (
+            "the delta includes committed work, but no merge-base resolves "
+            f"({resolved['reason']}), so `cumulative` cannot dispatch — `final` "
+            "sees only the uncommitted part"
+        )
+    if resolved["tree"] == committed_head_tree:
+        # TREE equality, and the message says so. "HEAD is at the merge-base" is
+        # the common cause but not the condition: a branch that commits and then
+        # reverts sits far ahead of the merge-base with an identical tree, takes
+        # this path correctly, and would be told something false about itself.
+        return "final", (
+            "the delta includes committed work, but HEAD's tree matches the "
+            "merge-base's, so `cumulative`'s interval is empty — `final` sees "
+            "only the uncommitted part"
+        )
+    return "cumulative", (
+        "the delta includes committed work, which `final`'s HEAD-tree → "
+        "working-tree interval cannot see; `cumulative` spans merge-base…HEAD — "
+        "the work this branch owes, and the PR gate's own span"
+    )
+
+
 def partials_dir(prawduct_dir: Path) -> Path:
     return prawduct_dir / PARTIALS_DIRNAME
 
@@ -714,7 +785,26 @@ def archive_dir(prawduct_dir: Path) -> Path:
     return prawduct_dir / ARCHIVE_DIRNAME
 
 
-def _archive_leftovers(prawduct_dir: Path) -> Path | None:
+def had_partials(prawduct_dir: Path) -> bool:
+    """Was there reviewer output on disk *before* an archive attempt?
+
+    The one thing :func:`_archive_leftovers`' ``None`` cannot say. Read it
+    BEFORE calling that function: together they separate "there was nothing to
+    archive" from "there was something and archiving it failed", which is the
+    difference between a no-op and a destroyed review.
+    """
+    pdir = partials_dir(prawduct_dir)
+    if not pdir.is_dir():
+        return False
+    try:
+        return any(c.is_file() for c in pdir.iterdir())
+    except OSError:
+        # Unreadable is not empty. Claiming "nothing was there" off a failed
+        # read is the same false reassurance this function exists to prevent.
+        return True
+
+
+def _archive_leftovers(prawduct_dir: Path, caller: str = "critic-begin") -> Path | None:
     """Move a pending review's files aside rather than deleting them.
 
     Returns the archive directory the files landed in, or None when there was
@@ -722,13 +812,48 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
     :func:`remove_partials` either way, so a failed archive degrades to
     exactly the old delete behavior, never to a blocked dispatch).
 
+    ``caller`` names the command in the degraded-archive diagnostic. It is a
+    parameter rather than a constant because the two callers reach this by
+    opposite routes — a dispatch sweeping someone else's leftovers, and an
+    operator deliberately discarding their own review — and an operator who ran
+    ``critic-discard`` cannot act on a line that says ``critic-begin``.
+
+    **A None return is three outcomes, and only the middle one is benign.**
+
+    1. Nothing was there to archive.
+    2. The directory could not be READ — nothing is archived and, because
+       :func:`remove_partials` cannot list it either, nothing is deleted. The
+       partials survive, unreachable until the permission is fixed.
+    3. An ``OSError`` hit mid-archive (the ``mkdir``/``rename``): this degraded
+       to delete, and the caller's ``remove_partials`` finishes the job.
+
+    (An unsafe manifest id is not among them — it falls through to the
+    ``unmanifested-`` name and still archives.)
+
+    Only 3 destroys anything, so a caller that reports "nothing was there" on
+    it tells the operator their partials are safe on the one path where they are
+    gone. :func:`had_partials` separates 1 from 2-and-3; the stderr diagnostic
+    printed here is what distinguishes 2 from 3, and it names its ``caller``.
+
     Named after the abandoned review's id when its manifest is readable, else
     a timestamp — partials can outlive their manifest (a late reviewer writing
     into an already-consolidated review re-creates the directory)."""
     pdir = partials_dir(prawduct_dir)
     if not pdir.is_dir():
         return None
-    children = [c for c in pdir.iterdir() if c.is_file()]
+    try:
+        children = [c for c in pdir.iterdir() if c.is_file()]
+    except OSError as exc:
+        # An unreadable partials dir must degrade like any other archive
+        # failure, not traceback. This function is the escape hatch's
+        # prescribed remedy for a wedged review, so raising here strands the
+        # operator in the state the remedy exists to clear — with a stack
+        # trace instead of the marker they came to release.
+        print(
+            f"{caller}: cannot read {pdir} ({exc}) — falling back to delete",
+            file=sys.stderr,
+        )
+        return None
     if not children:
         return None
     name: str | None = None
@@ -760,7 +885,7 @@ def _archive_leftovers(prawduct_dir: Path) -> Path | None:
         # Name the reason before degrading — a silent fallback would make
         # "why is the archive empty?" undiagnosable after the fact.
         print(
-            f"critic-begin: leftover archive failed ({exc}) — "
+            f"{caller}: leftover archive failed ({exc}) — "
             "falling back to delete",
             file=sys.stderr,
         )
@@ -930,10 +1055,10 @@ def restore_review(prawduct_dir: Path, review_id: str) -> dict:
         present = sorted(p.name for p in pdir.iterdir() if p.is_file())
     except OSError:
         present = []
-    # `sweep=False` for the same reason `begin_review` reads it that way:
-    # refusing is not the moment to also decide a crashed review is over, and the
-    # Stop hook's abandoned-review branch is gated on the marker it would delete.
-    active, _age = critic_marker.review_active(prawduct_dir, sweep=False)
+    # Asking only. `review_active` cannot remove a marker, so refusing here can
+    # never also decide that a crashed review is over — which matters because the
+    # Stop hook's abandoned-review branch is gated on that marker.
+    active, _age = critic_marker.review_active(prawduct_dir)
     if present or active:
         return {
             "status": "error",
@@ -1062,9 +1187,9 @@ def _mark_cache_superseded(prawduct_dir: Path, review_id: str) -> bool:
     the marker keys is preserved byte-for-byte.
 
     **The marker states a fact about the record, not a liveness claim.**
-    "A review is in flight" would go false on its own: a dispatched review can
-    expire by TTL or be swept at a session boundary, and neither path passes
-    through here to retract anything. "Review X was dispatched after this
+    "A review is in flight" would go false on its own: a dispatched review
+    expires by TTL and is swept at a session boundary thereafter, and neither
+    path passes through here to retract anything. "Review X was dispatched after this
     record was written, so this is not X's result" stays true forever, and a
     reader that meets it after an abandoned review learns exactly why the
     newest record is older than it expected. Consolidation rewrites the whole
@@ -1236,12 +1361,14 @@ def begin_review(
     Returns ``{"status": "ok", "id", "roster", "path", "notes": [...],
     "cleared_leftovers": bool, "manifest": {...}}`` or ``{"status": "error",
     "reason", "kind"?}`` where ``kind == "scope-widened"`` tells the CLI to
-    exit 2 (the skill's fall-back-to-final signal), or ``{"status":
+    exit 2 (the skill's demote-to-a-full-review signal), or ``{"status":
     "no-review-needed", "reason", "free_files"}`` when the interval holds no
     judgeable file and no finding this mode could resolve — the CLI exits 3.
     That is a NO-OP, not a failure: the coverage gate already composes such an
     interval as a free edge, so the review would record a fact nothing needs.
-    ``force=True`` dispatches anyway.
+    ``force=True`` dispatches anyway. A ``scope-widened`` result also carries
+    ``fallback_mode`` — the full-review mode that covers the widened delta,
+    named in ``reason`` so the re-dispatch does not have to guess it.
 
     Per-mode interval (design D8, chunk-03 refinements):
 
@@ -1295,13 +1422,13 @@ def begin_review(
     # own documented TTL for precisely this question. Reusing the number while
     # changing the signal would CREATE the second notion of "live" rather than
     # avoid it.
-    # `sweep=False`: refusing a dispatch is not the moment to also decide a
-    # crashed review is over. The Stop hook's abandoned-review branch is gated on
-    # `marker_present` and is what prints the manual-recovery remedy, so sweeping
-    # here would delete the signal that produces those instructions — the first
-    # refused dispatch past the TTL would strip the correct advice out of the
-    # subsystem. `clear` keeps the sweeping default; see `critic_marker`.
-    active, age_s = critic_marker.review_active(prawduct_dir, sweep=False)
+    # Refusing a dispatch is not the moment to decide a crashed review is over:
+    # the Stop hook's abandoned-review branch is gated on `marker_present` and is
+    # what prints the manual-recovery remedy, so a read that deleted on the way
+    # past would strip that advice out of the subsystem at the first refused
+    # dispatch past the TTL. `review_active` only asks; removal has one home
+    # (`critic_marker.boundary_sweep`) and the explicit end/discard acts.
+    active, age_s = critic_marker.review_active(prawduct_dir)
     roster_state, _missing = pending_state(prawduct_dir)
     if active or roster_state == "complete":
         return {
@@ -1459,8 +1586,10 @@ def begin_review(
                         "working tree dirty with judgeable uncommitted files and no "
                         "committed delta since the prior review — this fact vouches "
                         "for the WORKING tree, but the cumulative/PR gate targets "
-                        "committed HEAD, so it will read `uncovered` until you commit "
-                        "(or stash) the fix and re-run verify-resolutions"
+                        "committed HEAD, so it reads `uncovered` until you commit. "
+                        "Commit this tree VERBATIM and no further pass is needed: the "
+                        "commit carries the very tree this one vouched for. Only a "
+                        "selective or further-edited commit leaves a gap to close"
                     )
         delta = evidence.tree_diff(project_dir, base_tree, head_tree)
         if delta is None:
@@ -1475,13 +1604,17 @@ def begin_review(
             f for f in (prior_body.get("files_reviewed") or []) if isinstance(f, str)
         ]
         if _scope_widened(len(delta), len(prior_files)):
+            fallback, why = _widened_fallback_mode(
+                project_dir, capture["head_tree"], committed_differs
+            )
             return {
                 "status": "error",
                 "kind": "scope-widened",
+                "fallback_mode": fallback,
                 "reason": (
                     f"scope-widened: {len(delta)} files changed since the prior "
                     f"review of {len(prior_files)} — a partial re-review would "
-                    "mislead; run a full review"
+                    f"mislead. Re-dispatch as `{fallback}`: {why}."
                 ),
             }
         prior_counts = prior_body.get("counts") or {}
@@ -1618,6 +1751,27 @@ def begin_review(
         project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope
     )
 
+    # Answers already given about findings in these files, so a fresh review can
+    # decline to re-litigate them. Dispositions have been facts for a while;
+    # nothing put them where a REVIEWER could see one, so a cumulative
+    # dispatched after an `--accept` handed its reviewers a diff and no memory.
+    # Advisory like `record_lint` beside it: it rides the manifest, and nothing
+    # downstream gates on it.
+    from . import dispositions  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    try:
+        priors = dispositions.prior_dispositions(
+            evidence.read_facts(project_dir), files_changed, scope=scope
+        )
+    except (OSError, ValueError, TypeError) as exc:  # pragma: no cover - defensive
+        # A block that cannot be built must not cost a review its dispatch. Loud,
+        # though: an empty block and an unbuilt one are different facts about the
+        # world, and a reviewer told "nothing was dispositioned here" when the
+        # join failed would be told something false. This catches an unexpected
+        # shape; the two DEGRADED store states are returned rather than raised,
+        # so `prior_dispositions` answers those itself, in the same words.
+        priors = dispositions._unavailable(f"{type(exc).__name__}: {exc}")
+
     manifest = {
         "id": review_id,
         "mode": verbose,
@@ -1646,6 +1800,15 @@ def begin_review(
         "worktree": str(project_dir),
         "branch": gitstate.current_branch(project_dir),
         "record_lint": lint,
+        "prior_dispositions": priors,
+        # Which seed `capture_tree` used for THIS dispatch. The stderr line a
+        # degraded capture prints lives only in scrollback, and the question it
+        # answers — did the fast seed engage, or is a slow capture still slow —
+        # is asked after the fact, by someone verifying the fix on the machine
+        # that reported the symptom. So it rides the durable record the dispatch
+        # already writes. Advisory: nothing gates on it, and an older manifest
+        # without the key is still valid.
+        "seed": capture.get("seed"),
     }
     ok, reason = validate_manifest(manifest)
     if not ok:
@@ -1930,6 +2093,70 @@ def pending_state(prawduct_dir: Path) -> tuple[str, list[str]]:
     return "complete", []
 
 
+def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
+    """What a pending roster MEANS — the one home, for every surface that advises on one.
+
+    Two functions compose advice from :func:`pending_state`: this module's
+    :func:`active_dispatch_refusal` (a ``critic-begin`` that refuses) and the
+    retained-marker notice in ``bin/prawduct-hook`` (a session boundary that
+    kept a live marker). They should differ in what they tell the reader to DO
+    — one is refusing a dispatch, the other is announcing a retention — and
+    must not differ in what they say the on-disk state IS. They did: only one
+    of them was taught the fact below, and the untaught one sits at the more
+    dangerous surface.
+
+    **The ``incomplete`` reading is why this is shared rather than duplicated.**
+    A marker survives ``/clear`` while its review could still land
+    (``lib/critic_marker`` states why: no session event proves a reviewer died).
+    That makes this state reachable two ways — reviewers still writing, or a
+    dispatcher that is gone — and only one of them is safe to act on. A message
+    naming just the second reads as already-satisfied to someone who has *just*
+    run ``/clear``, and the command it points at (``critic-end``) clears the
+    marker, which lets the next dispatch archive partials that reviewers are
+    still writing. So the reading carries both possibilities and the tell that
+    separates them, and it carries them everywhere at once.
+
+    **Being shared means being true at every surface, including the one that
+    just acted.** ``critic_marker.boundary_sweep`` DOES release an expired
+    marker whose roster is incomplete, and the notice reporting that release
+    prints this same reading — so a flat "a ``/clear`` retains the marker"
+    lands as "waiting is safe" directly above a paragraph explaining that the
+    marker is gone. Every clause here names its condition for that reason. A
+    new caller is a new place these sentences have to hold, and the check is to
+    read the composed output as that surface's reader.
+
+    Returns ``(state, reading)`` — deliberately NOT the ``missing`` role list.
+    The reading already names the outstanding roles in prose, and a third
+    element no caller consumed read as an obligation to use it; both call sites
+    had bound it to ``_missing``. A caller that needs the roles programmatically
+    should ask :func:`pending_state`, which is what this wraps.
+
+    The reading is indented two spaces to match every caller's block, states
+    only what is on disk, and deliberately names no command: the remedy is
+    surface-specific and stays with the caller.
+    """
+    state, missing = pending_state(prawduct_dir)
+    if state == "complete":
+        reading = (
+            "  On disk: every reviewer has reported. That review is FINISHED and needs\n"
+            "  only consolidation.\n"
+        )
+    elif state == "incomplete":
+        reading = (
+            f"  On disk: still waiting on {', '.join(missing)}. Either those reviewers\n"
+            "  are still running — consolidation fires as they finish, so wait — or the\n"
+            "  session that dispatched them ended (a `/clear` keeps the marker while they\n"
+            "  could still land, and releases it once the liveness window has passed).\n"
+            "  If nothing lands, they are gone.\n"
+        )
+    else:
+        reading = (
+            "  On disk: no readable dispatch manifest — a review set the marker but\n"
+            "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
+        )
+    return state, reading
+
+
 def active_dispatch_refusal(
     prawduct_dir: Path, age_seconds: float | None, active: bool = True
 ) -> str:
@@ -1965,23 +2192,17 @@ def active_dispatch_refusal(
         prior_id = json.loads(manifest_path(prawduct_dir).read_text())["id"]
     except (OSError, json.JSONDecodeError, KeyError, TypeError):
         pass
-    state, missing = pending_state(prawduct_dir)
+    # The READING is shared with the boundary retained-marker notice
+    # (:func:`pending_roster_reading` says why); only the remedy below is local
+    # to refusing a dispatch.
+    state, situation = pending_roster_reading(prawduct_dir)
     if state == "complete":
-        situation = (
-            "  On disk: every reviewer has reported. That review is FINISHED and needs\n"
-            "  only consolidation — dispatching now would discard it:\n"
+        situation += (
+            "  Dispatching now would discard it:\n"
             "    prawduct-hook critic-consolidate\n"
         )
     elif state == "incomplete":
-        situation = (
-            f"  On disk: still waiting on {', '.join(missing)}. Those reviewers are\n"
-            "  most likely still running — consolidation fires as they finish. Wait.\n"
-        )
-    else:
-        situation = (
-            "  On disk: no readable dispatch manifest — a review set the marker but\n"
-            "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
-        )
+        situation += "  If they are gone, that is `critic-end`, below.\n"
 
     # The remedy has to REACH the state that is refusing, and the two conditions
     # strand a caller differently. A live marker expires and `critic-end` clears
@@ -1994,10 +2215,19 @@ def active_dispatch_refusal(
     if active:
         escape = (
             "  If that review is genuinely dead, abandon it explicitly and re-dispatch:\n"
-            "    prawduct-hook critic-end\n"
-            f"  The marker also expires on its own after "
-            f"{critic_marker.CRITIC_ACTIVE_TTL_SECONDS // 60} minutes."
+            "    prawduct-hook critic-end"
         )
+        # "Wait it out" is only an escape where waiting reaches something. On a
+        # COMPLETE roster this refusal does not turn on the marker at all — a
+        # finished review is refused at any age — so naming the TTL there offers
+        # a remedy that never arrives, and the situation above has already given
+        # the one that does.
+        if state != "complete":
+            escape += (
+                f"\n  The marker also stops blocking after "
+                f"{critic_marker.CRITIC_ACTIVE_TTL_SECONDS // 60} minutes — though a `clear`"
+                "\n  releases it only once nothing recoverable is attached to it."
+            )
     else:
         escape = (
             "  No live marker — these partials are STRANDED, most likely by a\n"
@@ -2089,14 +2319,35 @@ _TITLE_NOISE = frozenset(
     which while who with would""".split()
 )
 
-#: Jaccard overlap of significant title words above which two findings from
-#: DIFFERENT reviewers are reported as probably one defect. Calibrated on this
-#: repo's 254 recorded reviews: the true pair that prompted this sat at 0.44,
-#: and every pair surfaced at 0.4 spot-checked as a genuine duplicate (23 pairs
-#: across 16 of 209 reviews with findings, including one defect found by three
-#: reviewers). Set low deliberately — the output is advisory, so a false
-#: positive costs a hint while a miss costs a silently double-counted finding.
+#: Title-word overlap above which two findings from DIFFERENT reviewers are
+#: reported as probably one defect. Calibrated on this repo's 254 recorded
+#: reviews: the true pair that prompted this sat at 0.44, and every pair
+#: surfaced at 0.4 spot-checked as a genuine duplicate (23 pairs across 16 of
+#: 209 reviews with findings, including one defect found by three reviewers).
+#: Set low deliberately — the output is advisory, so a false positive costs a
+#: hint while a miss costs a silently double-counted finding.
 DUPLICATE_SIMILARITY = 0.4
+
+#: The same bar, applied to the OVERLAP coefficient rather than Jaccard, and
+#: only when the two findings cite the same files. Jaccard divides by the union,
+#: so it is punished by length asymmetry: three reviewers meeting one defect
+#: describe it at whatever length their goal calls for, and a terse title inside
+#: a verbose one scores low while sharing every word it has. The observed
+#: triplicate (R-1/R-5/R-11 on one branch — same file, same claim) reported as
+#: `[]` for exactly that reason. Overlap coefficient — |A∩B| / min(|A|,|B|) — is
+#: the length-insensitive form of the same question, and it is gated on
+#: identical file attributions because that is the condition under which a
+#: contained title is evidence of one defect rather than of two findings about
+#: the same subsystem.
+DUPLICATE_CONTAINMENT = 0.6
+
+#: Significant words the SHORTER title must carry before containment may group.
+#: Without it the rule is degenerate: a one- or two-word title ("Ordering") is
+#: trivially contained in any title that happens to use the same word, so every
+#: terse finding would join whichever neighbour shared a noun. Three is the
+#: floor at which containment says something — the observed triplicate's
+#: shortest title carries five.
+DUPLICATE_MIN_WORDS = 3
 
 
 def _title_words(title: str) -> frozenset:
@@ -2118,9 +2369,19 @@ def likely_duplicate_groups(findings: list[dict]) -> list[list[str]]:
     this reports and the builder decides.
 
     Candidates must come from different goals (hence different reviewers) and
-    have file attributions that are not disjoint; then their significant title
-    words must overlap by :data:`DUPLICATE_SIMILARITY`. Grouping is transitive,
-    so one defect found by all three reviewers reports as a single group.
+    have file attributions that are not disjoint. Two ways they then qualify,
+    and the second exists because the first missed the case this was built for:
+
+    - Jaccard over significant title words ≥ :data:`DUPLICATE_SIMILARITY`.
+    - **Identical** file attributions and overlap coefficient ≥
+      :data:`DUPLICATE_CONTAINMENT` — the length-insensitive test. Jaccard
+      divides by the union, so a terse title wholly contained in a verbose one
+      scores low while sharing every word it has, which is exactly how three
+      reviewers describing one defect at three levels of detail reported as no
+      group at all.
+
+    Grouping is transitive, so one defect found by all three reviewers reports
+    as a single group.
     """
     entries = [
         (
@@ -2150,7 +2411,14 @@ def likely_duplicate_groups(findings: list[dict]) -> list[list[str]]:
                 continue
             if not words_a or not words_b:
                 continue
-            if len(words_a & words_b) / len(words_a | words_b) >= DUPLICATE_SIMILARITY:
+            shared = len(words_a & words_b)
+            jaccard = shared / len(words_a | words_b)
+            containment = shared / min(len(words_a), len(words_b))
+            same_files = bool(files_a) and files_a == files_b
+            long_enough = min(len(words_a), len(words_b)) >= DUPLICATE_MIN_WORDS
+            if jaccard >= DUPLICATE_SIMILARITY or (
+                same_files and long_enough and containment >= DUPLICATE_CONTAINMENT
+            ):
                 root_a, root_b = find(fid_a), find(fid_b)
                 if root_a != root_b:
                     parent[root_a] = root_b
@@ -2168,6 +2436,64 @@ def likely_duplicate_groups(findings: list[dict]) -> list[list[str]]:
 def distinct_finding_count(findings: list[dict], groups: list[list[str]]) -> int:
     """``findings`` counted with each likely-duplicate group collapsed to one."""
     return len(findings) - sum(len(group) - 1 for group in groups)
+
+
+def _render_duplicate_groups(findings: list[dict], groups: list[list[str]]) -> str:
+    """Each likely-duplicate group as ONE defect line carrying N attributions.
+
+    Reporting "2 likely-duplicate groups" and then leaving the builder to read
+    three separately-worded findings does not save the second and third
+    disposition — the count is a claim about the list, and the list is what gets
+    worked. So the group gets a line of its own, with the shortest title as the
+    defect (a terse title is the one the three reviewers agree on; the verbose
+    ones carry each goal's framing) and every fid named after it.
+
+    Presentation only. `merge_findings` still keys exactly, every finding
+    survives in the fact and in `.critic-findings.json`, and each fid is printed
+    — so a WRONG group costs a reader one confusing line and can never hide a
+    finding. That asymmetry is what lets the grouping bar sit low.
+    """
+    if not groups:
+        return ""
+    by_fid = {
+        f["fid"]: f
+        for f in findings
+        if isinstance(f, dict) and isinstance(f.get("fid"), str)
+    }
+    lines = [
+        "",
+        f"  {len(groups)} defect(s) below were each filed by more than one reviewer — "
+        "dispose of the group once, not once per fid:",
+    ]
+    for group in groups:
+        entries = [by_fid[fid] for fid in group if fid in by_fid]
+        if not entries:
+            continue
+        lead = min(
+            entries,
+            key=lambda f: len(str(f.get("title") or f.get("summary") or "")),
+        )
+        title = str(lead.get("title") or lead.get("summary") or "<no title>")
+        # The severity is the group's MAXIMUM, never the lead's. The lead is
+        # chosen for its wording (shortest = the claim the reviewers agree on),
+        # and wording has nothing to do with severity — so a BLOCKING found by
+        # one reviewer and noted by another would have printed as [NOTE] and
+        # been dispositioned as one. A group is one defect; its severity is the
+        # most severe reading any reviewer gave it.
+        severity = max(
+            (str(f.get("severity") or "").lower() for f in entries),
+            key=lambda s: _SEVERITY_RANK.get(s, -1),
+            default="",
+        ).upper() or "?"
+        goals = ", ".join(
+            sorted({str(f.get("goal")) for f in entries if f.get("goal")})
+        )
+        lines.append(
+            f"    - [{severity}] {title}  ({'+'.join(group)}"
+            + (f"; goals: {goals}" if goals else "")
+            + ")"
+        )
+    return "\n".join(lines)
 
 
 def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
@@ -2804,12 +3130,21 @@ def consolidate(project_dir: Path) -> int:
         if groups
         else ""
     )
+    # ...and then RENDER each group as one defect. The summary line above tells
+    # the builder a number; what they act on is the list, and a list of three
+    # separately-worded findings reads as three pieces of work no matter what
+    # the count said. Every fid stays visible — this is a presentation of an
+    # advisory grouping, never a merge, so nothing can be dropped by a wrong
+    # group (the standing reason `merge_findings` refuses fuzzy keys in the
+    # WRITE path).
+    group_lines = _render_duplicate_groups(all_findings, groups)
     print(
         f"consolidated: {counts.get('blocking', 0)} blocking, "
         f"{counts.get('warning', 0)} warning, {counts.get('note', 0)} note"
         f"{dupe_note} "
         f"from {len(partials)} reviewer(s) → fact {review_id}{res_note} + "
         f"{findings_path.name} + ledger anchor; marker cleared."
+        + group_lines
         # Only when there is something to fix — a clean pass that ended with a
         # fix strategy attached would read as work it does not have.
         + (_BATCH_FIX_DIRECTIVE if all_findings else "")
@@ -2851,7 +3186,19 @@ def remove_partials(prawduct_dir: Path) -> None:
     pdir = partials_dir(prawduct_dir)
     if not pdir.is_dir():
         return
-    for child in pdir.iterdir():
+    # The LISTING is guarded, not only the per-child unlink. Both callers reach
+    # here one line after `_archive_leftovers`, which degrades rather than
+    # raising when this same directory cannot be read — so leaving this
+    # `iterdir` bare re-raised the exception that function had just absorbed,
+    # and did it AFTER its caller had printed that the partials were deleted but
+    # BEFORE the marker was cleared. The operator was told the destructive thing
+    # happened, and left in the wedged state anyway. Hygiene must never be the
+    # step that strands someone.
+    try:
+        children = list(pdir.iterdir())
+    except OSError:
+        children = []
+    for child in children:
         try:
             child.unlink()
         except OSError:

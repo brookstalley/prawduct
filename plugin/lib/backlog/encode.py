@@ -203,6 +203,15 @@ def parse_block(body: str | None) -> Block:
     Zero blocks → an empty ``Block`` (all defaults, no warning). Two+ blocks →
     the **last** wins and each earlier one is flagged (ENC-3). A malformed inner
     line (no ``:`` separator) is skipped with a warning, never an error.
+
+    **This READER and the WRITERS deliberately disagree about a two-block
+    body.** Reading keeps the last block (a body someone edited twice means the
+    later value); writing — every caller of
+    :func:`merge_all_block_fields` — merges every block, because a write that kept only the last would *persist*
+    the discard and, since it emits exactly one block, destroy the very
+    multi-block warning that was the discard's only signal. Reading is
+    non-destructive and writing is not, which is why the same input gets two
+    readings on purpose.
     """
     block = Block()
     if not body:
@@ -217,22 +226,36 @@ def parse_block(body: str | None) -> Block:
             "and ignoring the earlier one(s)"
         )
 
-    inner = matches[-1]
+    fields, malformed = _parse_block_fields(matches[-1], collect_malformed=True)
+    block.fields.update(fields)
+    block.warnings.extend(f"ignored malformed block line: {m!r}" for m in malformed)
+    return block
+
+
+def _parse_block_fields(
+    inner: str, collect_malformed: bool = False
+) -> "dict[str, str] | tuple[dict[str, str], list[str]]":
+    """Field dict for ONE block's inner text; last occurrence of a key wins.
+
+    Split out of :func:`parse_block` so :func:`merge_all_block_fields` can
+    merge *every* block in a body rather than only the last — the reader and
+    the writers need the same line grammar and must not drift on what counts
+    as a field.
+    """
+    fields: dict[str, str] = {}
+    malformed: list[str] = []
     for raw_line in inner.splitlines():
         line = raw_line.rstrip()
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue  # blank or comment — not a field
-        if ":" not in line:
-            block.warnings.append(f"ignored malformed block line: {stripped!r}")
-            continue
-        key, _, value = line.partition(":")
+        key, sep, value = line.partition(":")
         key = key.strip()
-        if not key:
-            block.warnings.append(f"ignored malformed block line: {stripped!r}")
+        if not sep or not key:
+            malformed.append(stripped)
             continue
-        block.fields[key] = value.strip()  # last occurrence wins
-    return block
+        fields[key] = value.strip()
+    return (fields, malformed) if collect_malformed else fields
 
 
 def strip_block(body: str | None) -> str:
@@ -262,18 +285,53 @@ def upsert_block_field(body: str | None, key: str, value: str | None) -> str:
     fresh ``v: 1`` block if the body had none and a value is being set; clearing a
     field on a blockless body is a no-op (never manufactures an empty block).
     """
-    block = parse_block(body)
+    # Merges EVERY block, for the same reason :func:`compose_body` does: pairing
+    # `parse_block` (last-block-wins) with `strip_block` (removes them all) drops
+    # an earlier block's fields, and since the result emits exactly one block the
+    # multi-block warning can never fire afterwards to signal it. This is that
+    # defect one function over — swept with it rather than left for the body that
+    # happens to carry two hand-written blocks.
+    fields = merge_all_block_fields(body)
     human = strip_block(body)
     if value is None:
-        block.fields.pop(key, None)
+        fields.pop(key, None)
     else:
-        block.fields[key] = value
-    if not block.fields:
+        fields[key] = value
+    if not fields:
         return human
-    rendered = serialize_block(block.fields)
+    rendered = serialize_block(fields)
     if human:
         return f"{human}\n\n{rendered}\n"
     return f"{rendered}\n"
+
+
+#: Block fields that describe WHO FILED an item rather than what it is. A body
+#: never gets to assert these: they are stamped by the command from its own
+#: invocation context, so :func:`compose_body` drops them from any block found
+#: in the caller's text before merging. Every other field is the filer's.
+_CALLER_OWNED_FIELDS = frozenset({"automated", "worker"})
+
+
+def merge_all_block_fields(body: str | None) -> dict[str, str]:
+    """Every ``prawduct:`` block in ``body``, merged in document order.
+
+    **The one home for how a WRITER reads a body's blocks**, and it exists
+    because this defect has now been found at three separate sites. The trap is
+    a pairing that looks correct at each one: :func:`parse_block` keeps the LAST
+    block, :func:`strip_block` removes them ALL, and the writer emits exactly
+    one — so an earlier block's fields are dropped *and* the "carries N prawduct
+    blocks" warning that was the only signal can never fire afterwards. The loss
+    is silent and permanent.
+
+    Reading and writing diverge here on purpose (:func:`parse_block` says why),
+    so the divergence needs a named home rather than three open-coded copies.
+    Later blocks win over earlier ones, matching last-block-wins, so a body that
+    was edited twice still means its later value.
+    """
+    fields: dict[str, str] = {}
+    for inner in _BLOCK_RE.findall(body or ""):
+        fields.update(_parse_block_fields(inner))
+    return fields
 
 
 def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
@@ -284,9 +342,45 @@ def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
     fresh block (``file``, ``import``) goes through here, so the separator/newline
     convention lives in exactly one place and the two paths can never silently
     diverge (Data Model §2). An empty human body yields the block alone.
+
+    **A block already in ``human`` is MERGED, not buried.** Filers write their
+    own ``prawduct:`` block into the body, and this used to append a second one
+    beside it. (The docs steer filers to the flags and ``link`` instead, and
+    still do — but "the docs told you not to" is no reason for a silent data
+    loss, and the warning it produced reads like housekeeping.) Parsing is last-block-wins, so the filer's fields were then silently
+    discarded and the loss surfaced only as a warning that reads cosmetic
+    ("issue body carries 2 prawduct blocks; using the last"). Three items filed
+    on 2026-08-19 (#690, #691, #692) lost their ``related:`` edges exactly this
+    way. Fixed here, at the point of composition, rather than by asking filers
+    to omit a block the docs tell them to write.
+
+    **Precedence: the fresh fields win a key collision**, and the filer's other
+    fields survive untouched. The caller's fields are the authoritative stamps,
+    so a body claiming ``automated: false`` cannot launder a background sweep
+    into looking human.
+
+    The attribution stamps are stripped from the embedded block **in both
+    directions**, which precedence alone does not cover: an *attended* create
+    passes only ``{"v": "1"}``, so with a plain merge a body that self-declared
+    ``automated: true`` would face no colliding key and survive — misattributing
+    a human's filing to a sweep. These two keys describe *who filed this*, which
+    is never something the filed text gets to assert; every other block field is
+    the filer's to set.
     """
-    rendered = serialize_block(block_fields)
-    text = (human or "").rstrip("\n")
+    # EVERY block in the body is merged, in document order, not just the last.
+    # `parse_block` keeps only the last (its own last-block-wins rule) while
+    # `strip_block` removes them ALL — so merging via `parse_block` would still
+    # drop an earlier block's fields, and now silently: the composed body emits
+    # exactly one block, so the downstream "carries N prawduct blocks" warning
+    # that was the losses' only signal can never fire again. Merging all of them
+    # means nothing is lost, which is better than restoring a warning about a
+    # loss. Later blocks win over earlier ones, matching last-block-wins.
+    merged = merge_all_block_fields(human)
+    for key in _CALLER_OWNED_FIELDS:
+        merged.pop(key, None)
+    text = strip_block(human)
+    merged.update(block_fields)
+    rendered = serialize_block(merged)
     if text:
         return f"{text}\n\n{rendered}\n"
     return f"{rendered}\n"

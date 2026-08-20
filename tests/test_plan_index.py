@@ -667,3 +667,102 @@ class TestAgainstTheRealArtifactsDirectory:
             for path in after.values()
             if plan_index.ARCHIVE_DIR_NAME in path.parts
         ]
+
+
+class TestBranchClaimingPlans:
+    """The walk behind branch-scoped plan resolution.
+
+    Same tree, same archive prune, same recursion as the scope map — it differs
+    only in which frontmatter key it reads and in returning EVERY claim, because
+    its caller must tell "two plans claim this branch" apart from "one does".
+    """
+
+    def _plan(self, artifacts: Path, rel: str, body: str) -> Path:
+        path = artifacts / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+        return path
+
+    def test_collects_claims_with_their_paths(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        a = self._plan(artifacts, "a.md", "---\nartifact: build-plan\nbranch: feat/a\n---\n")
+        b = self._plan(artifacts, "b.md", "---\nartifact: build-plan\nbranch: feat/b\n---\n")
+        self._plan(artifacts, "c.md", "---\nartifact: build-plan\n---\n")
+        assert plan_index.branch_claiming_plans(artifacts) == [(a, "feat/a"), (b, "feat/b")]
+
+    def test_two_plans_may_claim_the_same_branch(self, tmp_path: Path):
+        # The scan REPORTS the collision; refusing to resolve it is the
+        # resolver's job. A scan that returned the first match could not tell
+        # this apart from a single claim.
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        for name in ("a", "b"):
+            self._plan(
+                artifacts, f"{name}.md", "---\nartifact: build-plan\nbranch: feat/x\n---\n"
+            )
+        assert [b for _p, b in plan_index.branch_claiming_plans(artifacts)] == [
+            "feat/x", "feat/x"
+        ]
+
+    def test_the_archive_is_never_descended(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        (artifacts / plan_index.ARCHIVE_DIR_NAME).mkdir(parents=True)
+        self._plan(
+            artifacts,
+            f"{plan_index.ARCHIVE_DIR_NAME}/old.md",
+            "---\nartifact: build-plan\nbranch: feat/x\n---\n",
+        )
+        assert plan_index.branch_claiming_plans(artifacts) == []
+
+    def test_a_nested_archive_is_pruned_too(self, tmp_path: Path):
+        # The same rule at every depth the scope walk applies it at — repos that
+        # nest plans as `plans/<id>/` archive beside the plan.
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        self._plan(
+            artifacts,
+            f"plans/007/{plan_index.ARCHIVE_DIR_NAME}/old.md",
+            "---\nartifact: build-plan\nbranch: feat/x\n---\n",
+        )
+        assert plan_index.branch_claiming_plans(artifacts) == []
+
+    def test_a_declared_non_plan_artifact_cannot_claim(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        self._plan(
+            artifacts, "note.md", "---\nartifact: design\nbranch: feat/x\n---\n"
+        )
+        assert plan_index.branch_claiming_plans(artifacts) == []
+
+    def test_an_unreadable_file_does_not_blind_the_scan(self, tmp_path: Path):
+        # One malformed file must not cost every other plan its claim — the same
+        # call the scope walk makes, for the same reason.
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "binary.md").write_bytes(b"\xff\xfe\x00garbage")
+        good = self._plan(
+            artifacts, "good.md", "---\nartifact: build-plan\nbranch: feat/x\n---\n"
+        )
+        assert plan_index.branch_claiming_plans(artifacts) == [(good, "feat/x")]
+
+    def test_a_missing_artifacts_dir_is_no_claims(self, tmp_path: Path):
+        assert plan_index.branch_claiming_plans(tmp_path / "nope") == []
+
+    def test_frontmatter_past_the_probe_is_re_read_whole(self, tmp_path: Path):
+        """The bounded head read must not be a silent correctness knob.
+
+        Without the re-read, a plan whose frontmatter outgrows the probe reads as
+        declaring nothing at all — and nothing says so, which is the failure mode
+        that makes a bound worse than no bound.
+        """
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        filler = "\n".join(f"note_{i}: {'x' * 200}" for i in range(200))
+        path = self._plan(
+            artifacts,
+            "verbose.md",
+            f"---\nartifact: build-plan\n{filler}\nbranch: feat/x\n---\n\n# P\n",
+        )
+        assert len(path.read_text()) > plan_index._FRONTMATTER_PROBE_CHARS
+        assert plan_index.branch_claiming_plans(artifacts) == [(path, "feat/x")]

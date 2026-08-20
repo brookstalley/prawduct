@@ -553,6 +553,44 @@ class TestRule1bPostCumulativeFix:
         mode, rationale = infer_mode(tmp_path, None)
         assert not rationale.startswith("rule-1b"), rationale
 
+    def test_fires_for_a_governance_protected_md_delta(self, tmp_path: Path):
+        """The direction the judgeability predicate changed, pinned.
+
+        Rule 1b used to ask `not any(not f.endswith(".md") for f in delta)` — a
+        bare suffix test — and now asks `coverage_algebra.judgeable_files`. The
+        two agree on `src/a.py` (both fire) and on `docs.md` (both suppress), and
+        **every existing 1b fixture sits inside that agreement region**, so
+        reverting the change left the suite green.
+
+        They disagree on exactly one population: governance-protected `.md`
+        (`skills/`, `methodology/`, `templates/`, root `CLAUDE.md`), where skill
+        prose is behavioral logic and IS judgeable. A committed delta of only
+        skill prose used to suppress the verify-resolutions recommendation as
+        though nothing reviewable had landed. That is the case this pins —
+        `learnings.md`: pin the DIRECTION separately, on a fixture from the
+        population the predicate is worst at.
+
+        Kept beside `test_does_not_fire_for_doc_only_delta` on purpose: the pair
+        is what shows the predicate discriminates rather than just firing more.
+        """
+        reviewed = self._reviewed_branch_repo(tmp_path)
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=reviewed,
+            files_reviewed=["src/a.py", "src/b.py"],
+            include_finding=False,
+        )
+        _write(tmp_path, "plugin/skills/pr/SKILL.md", "# skill\nbehavioral prose\n")
+        _commit(tmp_path, "docs: skill prose after review")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert rationale.startswith("rule-1b"), (
+            "a committed delta of governance-protected skill prose is judgeable "
+            f"and must recommend a verify pass; got {mode!r} via {rationale!r}"
+        )
+        assert mode == "verify-resolutions"
+
     def test_does_not_fire_when_delta_widens_past_threshold(self, tmp_path: Path):
         # prior surface 1 file → threshold 2*1+5 = 7; 8 changed files would
         # demote inside the verify pass, so 1b must not recommend it.
@@ -1057,6 +1095,119 @@ class TestRule4ChunkDefault:
         _git(tmp_path, "checkout", "-b", "fix/live", "--quiet")
         assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "live"
 
+    def test_a_declared_branch_resolves_a_scope_no_name_rule_could(self, tmp_path: Path):
+        """The observed miss this closes, in its real shape.
+
+        `feat/tactical-efficiency-pass` matches the scope `tactical-efficiency`
+        under neither candidate rule (whole name, last segment), so every
+        dispatch from such a branch resolved NO scope — the ledger row said
+        `(none)` and every scope-filtered consumer stayed inert. The plan's own
+        `branch:` declaration is a statement, not a guess, so it answers.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feat/tactical-efficiency-pass")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-te.md").write_text(
+            "---\nartifact: build-plan\nscope: tactical-efficiency\n"
+            "branch: feat/tactical-efficiency-pass\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == (
+            "tactical-efficiency"
+        )
+
+        # The paired negative: strip the declaration and the name rules are back
+        # in charge, which is exactly what could not resolve this branch.
+        (artifacts / "build-plan-te.md").write_text(
+            "---\nartifact: build-plan\nscope: tactical-efficiency\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+
+    def test_a_declared_branch_beats_a_name_match_on_another_plan(self, tmp_path: Path):
+        """Precedence, where the two routes disagree — otherwise the ordering is
+        untested and either arrangement passes."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "fix/guessable")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-guessable.md").write_text(
+            "---\nartifact: build-plan\nscope: guessable\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        (artifacts / "build-plan-declared.md").write_text(
+            "---\nartifact: build-plan\nscope: declared\nbranch: fix/guessable\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "declared"
+
+    def test_a_finished_declared_plan_still_claims_its_branch(self, tmp_path: Path):
+        """The liveness narrowing does NOT apply to a declaration.
+
+        It exists to keep a *guess* from attributing work to a plan that shipped
+        long ago. A plan that names this branch is not guessing, and the window
+        the narrowing opens — every box ticked, branch not yet merged — is
+        exactly when the `cumulative` review and the last gate run happen.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feat/all-done")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-done.md").write_text(
+            "---\nartifact: build-plan\nscope: done\nbranch: feat/all-done\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: done\n"
+        )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "done"
+
+    def test_two_plans_claiming_one_branch_infer_no_scope(self, tmp_path: Path):
+        """Advice declines rather than picking; the resolver is where the refusal
+        is raised, and a scope inference that failed closed would block advice on
+        a condition authority already blocks on."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feat/contested")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        for name in ("a", "b"):
+            (artifacts / f"build-plan-{name}.md").write_text(
+                f"---\nartifact: build-plan\nscope: {name}\nbranch: feat/contested\n---\n\n"
+                "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+            )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+
+    def test_a_declared_plan_with_no_scope_infers_nothing(self, tmp_path: Path):
+        """A branch claim is not a scope. Inventing one would tag a change-log
+        entry and a ledger row with a string no plan declares."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "feat/scopeless")
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "build-plan-scopeless.md").write_text(
+            "---\nartifact: build-plan\nbranch: feat/scopeless\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+        )
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+
     def test_archived_plans_do_not_shadow_their_live_siblings(self, tmp_path: Path):
         """Discovery went recursive; `archive/` had to stop being discoverable.
 
@@ -1174,6 +1325,54 @@ class TestPlanCriticModeOverride:
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "final"
         assert rationale == "plan-override: final"
+
+    def test_an_unparseable_heading_escalates_instead_of_demoting(self, tmp_path: Path):
+        """A plan carrying a heading nothing can parse must not yield `chunk`.
+
+        The gap gate stops this reader from trusting a section whose end was
+        never detected. If it merely declined, inference would walk to rule 4
+        and answer `chunk` — the NARROWEST mode — on the strength of a plan it
+        could not read, with a rationale that never mentions the plan. That is
+        CRT-3M8Q's silent demotion by another door, so the read escalates and
+        carries the reason.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _write_build_plan_with_chunks(
+            tmp_path / ".prawduct",
+            [("x", "Chunk 01: keystone"), (" ", "Chunk 02: widget")],
+        )
+        plan = tmp_path / ".prawduct" / "artifacts" / "build-plan.md"
+        # An H4 announces a chunk and no matcher accepts it, so it also fails to
+        # close the section above it.
+        plan.write_text(plan.read_text() + "\n#### Chunk 9: unparseable\n")
+        _write(tmp_path, "src/widget.py", "# chunk 2 work\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "final", rationale
+        assert "plan unreadable" in rationale, rationale
+        assert "Chunk 9" in rationale, rationale
+
+    def test_a_chunk_without_a_detail_section_still_infers(self, tmp_path: Path):
+        """The discriminator, and the reason the escalation is not the gap gate.
+
+        A Status roster whose later chunks are not written up yet is ordinary,
+        not corrupt: the plan reads perfectly and simply declares no mode. If
+        this escalated too, every not-yet-detailed chunk would review as `final`.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        _write_build_plan(
+            tmp_path / ".prawduct",
+            [("x", "Chunk 01: done"), (" ", "Chunk 02: widget"), (" ", "Chunk 03: later")],
+        )
+        _write(tmp_path, "src/widget.py", "# chunk 2 work\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk", rationale
+        assert rationale.startswith("rule-4 chunk:"), rationale
 
     def test_explicit_args_still_beats_plan_override(self, tmp_path: Path):
         """The slash-command argument is the per-invocation override and wins

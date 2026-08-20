@@ -32,6 +32,7 @@ is recorded, a re-run is a no-op.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from . import core, learnings_obligation
@@ -338,13 +339,23 @@ def _take_value(argv: list[str], i: int) -> tuple[str, int]:
 
 def _parse_argv(
     argv: list[str],
-) -> tuple[str | None, str | None, str | None, bool, bool]:
-    """Parse ``<target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]``."""
+) -> tuple[str | None, str | None, str | None, bool, bool, list[str]]:
+    """Parse ``<target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]``.
+
+    The sixth element is every token no branch below claimed. It exists because
+    the final ``elif`` accepts only a bare positional, so an unrecognised flag —
+    or a second positional — used to fall off the chain and vanish: this command
+    SCAFFOLDS under ``--apply``, so ``--apply --dry-run`` wrote a repo while the
+    caller believed they had asked for a preview. Returned rather than raised so
+    the caller reports every offending token at once, the way a person retyping
+    the command needs to see them.
+    """
     apply = False
     as_json = False
     target: str | None = None
     name: str | None = None
     backlog_repo: str | None = None
+    unknown: list[str] = []
     i = 0
     while i < len(argv):
         arg = argv[i]
@@ -362,13 +373,30 @@ def _parse_argv(
             backlog_repo = arg.split("=", 1)[1]
         elif not arg.startswith("-") and target is None:
             target = arg
+        else:
+            unknown.append(arg)
         i += 1
-    return target, name, backlog_repo, apply, as_json
+    return target, name, backlog_repo, apply, as_json, unknown
 
 
 def run(argv: list[str]) -> int:
     """CLI entry: ``prawduct-hook init-product <target> --name "<name>" [--backlog-repo owner/repo] [--apply] [--json]``."""
-    target, name, backlog_repo, apply, as_json = _parse_argv(argv)
+    target, name, backlog_repo, apply, as_json, unknown = _parse_argv(argv)
+    if unknown:
+        # Exit 2 is the hook's usage-error convention, and nothing runs: a
+        # scaffold that proceeds on a misread invocation writes a repo the
+        # caller did not ask for.
+        offending = ", ".join(repr(tok) for tok in unknown)
+        msg = (
+            f"init-product: unrecognized argument(s) {offending} — nothing ran. "
+            "Recognized: <target> --name \"<name>\" [--backlog-repo owner/repo] "
+            "[--apply] [--json]"
+        )
+        if as_json:
+            print(json.dumps({"error": msg}))
+        else:
+            print(msg, file=sys.stderr)
+        return 2
     if not target or not name:
         msg = (
             "usage: prawduct-hook init-product <target> --name \"<name>\" "

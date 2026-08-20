@@ -148,12 +148,19 @@ read-your-writes, so an item filed seconds ago is invisible to it, which is exac
 check is asked. If the cache exits 6, say the dedup check could not run; do **not** report "no
 duplicates found".
 
-**Never hand-author a ```` ```prawduct ```` block inside `--body`.** The serializer appends its own
-block after whatever you pass, and the reader takes the **last** block — so every field you wrote by
-hand is silently dropped, including edges like `related:`. This surfaces only as a `WARNING:` line
-(`issue body carries N prawduct blocks; using the last and ignoring the earlier one(s)` —
-`lib/backlog/encode.py`), so a caller who does not read the warnings believes the fields landed. Pass
-prose in `--body`, set fields with the documented flags, and set edges with `link` (below).
+**A ```` ```prawduct ```` block inside `--body` is merged, not dropped** (since 2026-08-19).
+Composition parses any block already in the body, folds its fields under the ones the command itself
+sets, and emits exactly one — so an edge like `related:` written at filing time now lands. On a key
+collision the command's own fields win, because `automated`/`worker` are attribution stamps a body
+must not be able to overwrite.
+
+Until that fix the two blocks were *appended* and the reader took the **last**, so hand-written
+fields were silently discarded — surfacing only as a `WARNING:` line that reads like housekeeping
+(`issue body carries N prawduct blocks; using the last and ignoring the earlier one(s)`). Items
+#690, #691 and #692 lost their `related:` edges that way. **Prefer the documented flags and `link`
+regardless**: they are checked, they are what the cache indexes, and a hand-written block is still
+free-text you can typo. The merge means a mistake there costs you a wrong field rather than a
+missing one.
 
 ### update `<id>`
 Route by what changed:
@@ -196,8 +203,9 @@ whole `update` op, not to any one field above.
 ### pick
 `prawduct-hook backlog pick --repo <r> [--limit N] [--include-working]` → the adapter returns
 ranked ready-work (blocker-aware; items carrying a `working-branch` are excluded). Render 1–3
-candidates + a one-line *why*. Keep the skill's framing on top: **build-plan overlap** (read
-`active_build_plan`, surface overlapping candidates first) and **stage-aware routing** (don't
+candidates + a one-line *why*. Keep the skill's framing on top: **build-plan overlap** (resolve the
+active plan as the skill says — `branch:` claim first, `active_build_plan` second — and surface
+overlapping candidates first) and **stage-aware routing** (don't
 present an early-stage item as buildable). `--include-working` adds back the items someone is on,
 each naming its branch, for when you deliberately want to see contested work.
 

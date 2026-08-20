@@ -13,14 +13,18 @@ consumer migration, C9 tier 1).
 **Envelope (D2).** One JSON object per line::
 
     {"schema": 1, "kind": "review", "id": "...", "ts": "...",
-     "actor": {"session": ..., "worktree": ..., "plugin": ...}, "body": {...}}
+     "actor": {"session": ..., "worktree": ..., "plugin": ..., "branch": ...},
+     "body": {...}}
 
 ``schema`` rides on every record so readers can reject-or-skip explicitly
 (C7); ``kind`` namespaces the store (``review``/``resolution``/``disposition``
 now; ``test-run``/``pr-review``/``promotion`` reserved for later constituent
 plans); ``id`` is fixed at dispatch time so consolidation is idempotent
 (CRT-4B7X) and readers dedupe. ``actor`` answers the debugging question
-("who wrote this, when, from where, under which plugin") — Q7.
+("who wrote this, when, from where, under which plugin") — Q7. Its ``branch``
+is OPTIONAL and omitted (never null) when HEAD is detached or unreadable; it
+was added by #648 because ``worktree`` alone stopped being able to say whether
+a tree was disposable, and no reader can probe a tree that is already deleted.
 
 **Keying (D3).** Facts reference *tree SHAs* captured via a temporary index
 (``capture_tree``): objects are written to the shared odb, the session's real
@@ -44,8 +48,10 @@ converted here.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -80,7 +86,61 @@ KNOWN_KINDS = frozenset({"review", "resolution", "disposition", "guard-refusal"}
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
 
-_GIT_TIMEOUT = 15
+_GIT_TIMEOUT_DEFAULT = 15
+_GIT_TIMEOUT_ENV = "PRAWDUCT_GIT_TIMEOUT"
+
+
+def _git_timeout() -> "tuple[int | None, str | None]":
+    """The per-call git budget in seconds, or ``(None, reason)`` when the
+    environment override is unusable.
+
+    Read per call rather than frozen at import, so an operator on a slow
+    filesystem can raise the budget for one invocation without a restart —
+    which is the whole point of the knob: a working tree reached over a
+    network or bind mount pays mount latency per file, and the default is
+    priced for a local disk.
+
+    A malformed override is REFUSED, never silently replaced by the default.
+    Someone who set the variable wanted a different budget; quietly restoring
+    the default hands them back the timeout they were trying to escape, with
+    nothing on screen to say why."""
+    raw = os.environ.get(_GIT_TIMEOUT_ENV)
+    if raw is None or not raw.strip():
+        return _GIT_TIMEOUT_DEFAULT, None
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return None, _attribute_bad_timeout(
+            f"{_GIT_TIMEOUT_ENV} is not a whole number of seconds "
+            f"({raw.strip()!r}) — set it to a positive integer, or unset it "
+            f"for the {_GIT_TIMEOUT_DEFAULT}s default"
+        )
+    if value <= 0:
+        return None, _attribute_bad_timeout(
+            f"{_GIT_TIMEOUT_ENV} must be a positive number of seconds, got "
+            f"{value} — unset it for the {_GIT_TIMEOUT_DEFAULT}s default"
+        )
+    return value, None
+
+
+def _attribute_bad_timeout(reason: str) -> str:
+    """Say a refused override out loud, once, and hand the reason back.
+
+    A refusal has to be visible at the SOURCE, not only wherever it first bites.
+    Every ``run_git`` call fails while the variable is malformed, and not every
+    caller reports the reason — ``coverage`` and ``record_lint`` both read a
+    nonzero rc as an honest 'no answer' and go quiet, which is right for a real
+    git failure and wrong for a typo in the operator's own environment. Without
+    this line an unnoticed `PRAWDUCT_GIT_TIMEOUT=1O` mutes two advisories with
+    nothing on screen. Deduped per process: the variable is read on every git
+    call, and the tenth identical line teaches nothing."""
+    if reason not in _ATTRIBUTED_BAD_TIMEOUTS:
+        _ATTRIBUTED_BAD_TIMEOUTS.add(reason)
+        print(f"evidence: {reason}", file=sys.stderr)
+    return reason
+
+
+_ATTRIBUTED_BAD_TIMEOUTS: set[str] = set()
 
 
 def store_path(project_dir: Path) -> Path | None:
@@ -146,16 +206,30 @@ def append_fact(
             "lives in the clone's git common dir and has no fallback location",
         }
 
+    actor = {
+        "session": _session_epoch(project_dir),
+        "worktree": str(project_dir),
+        "plugin": _plugin_version(),
+    }
+    # `actor.branch` (#648) — additive, and OMITTED (never null) on a detached
+    # HEAD or a failed probe. Since #648 the worktree path alone cannot say
+    # whether a tree was disposable: an `agent-<hex>` path is disposable on the
+    # harness's scratch branch and durable on a real named one. The reader
+    # cannot probe a tree that is usually deleted by the time it looks, so the
+    # answer has to be captured here, at write time, or it is unavailable
+    # forever. Omitted-not-null makes "no branch recorded" mean exactly one
+    # thing on read — the historical shape and the unreadable-branch shape
+    # agree, and `gitstate.ephemeral_kind_of` lands both on the restrictive
+    # answer. No schema version moves: absent is a valid, meaningful state.
+    branch = gitstate.current_branch(project_dir)
+    if branch:
+        actor["branch"] = branch
     envelope = {
         "schema": SCHEMA_VERSION,
         "kind": kind,
         "id": fact_id,
         "ts": _now_iso(),
-        "actor": {
-            "session": _session_epoch(project_dir),
-            "worktree": str(project_dir),
-            "plugin": _plugin_version(),
-        },
+        "actor": actor,
         "body": body,
     }
     line = json.dumps(envelope) + "\n"
@@ -189,7 +263,14 @@ def append_fact(
     return {"status": "appended", "path": str(path), "id": fact_id}
 
 
-def append_guard_refusal(project_dir: Path, guard: str, body: dict) -> dict:
+def append_guard_refusal(
+    project_dir: Path,
+    guard: str,
+    body: dict,
+    *,
+    dedupe_key: "str | None" = None,
+    known_facts: "list[dict] | None" = None,
+) -> dict:
     """Record that a pre-dispatch guard fired. One sink for the whole class.
 
     A guard that declines to spend something leaves no trace by default: its
@@ -244,11 +325,62 @@ def append_guard_refusal(project_dir: Path, guard: str, body: dict) -> dict:
     lands, so a store error must never convert it into an error exit. It must
     not be silent either (``learnings.md``: "'advice fails soft' is not 'advice
     fails silent'") — attribute it on stderr and carry on.
+
+    **``dedupe_key`` is for a guard that fires on a POLLED path**, where the
+    default one-record-per-firing shape is wrong twice over. ``critic-begin``
+    runs once per dispatch, so a fresh id per firing counts dispatches; a gate
+    is re-asked several times a session about an unchanged repo, so the same id
+    per *observation* is what counts events. It also has to be that way for a
+    reason outside this module: ``verdict_cache`` keys the composed coverage
+    verdict on a content hash of this whole store, so a record appended on every
+    poll would invalidate every memoized verdict on every poll and put the gate
+    back on its cold path. With a key, the id is a digest of ``(guard,
+    dedupe_key)`` — no timestamp, no uuid — and the second observation of the
+    same event appends nothing at all, leaving the store byte-identical.
+
+    A deduped call returns ``{"status": "duplicate", "id": ...}``, which is a
+    SUCCESS: the event is already on the record. Callers checking for a degraded
+    write must test for it (``status not in ("appended", "duplicate")``), not
+    for ``!= "appended"``.
+
+    ``known_facts`` is the probe's input when the caller has already read the
+    store — every gate caller has, and on a large store that read is a
+    substantial fraction of the gate's whole budget, so re-reading it here would
+    charge the transfer's observability to the latency the memo exists to
+    protect. Passing the same read the caller is acting on also keeps one moment
+    (the pairing :meth:`verdict_cache.VerdictCache.for_read` makes structural for
+    the same reason). Omit it and the probe reads the store itself. Either way
+    the failure direction is a redundant line, never a missing one: two
+    processes racing the same event can both append, and ``read_facts`` dedupes
+    ``(kind, id)`` on the way back out.
     """
     if not isinstance(guard, str) or not guard.strip():
         return {"status": "error", "reason": "guard name must be a non-empty string"}
     if not isinstance(body, dict):
         return {"status": "error", "reason": "fact body must be an object"}
+    if dedupe_key is not None:
+        if not isinstance(dedupe_key, str) or not dedupe_key.strip():
+            return {
+                "status": "error",
+                "reason": "dedupe key must be a non-empty string",
+            }
+        digest = hashlib.sha256(
+            "\0".join((guard.strip(), dedupe_key)).encode("utf-8", "surrogateescape")
+        ).hexdigest()[:16]
+        fact_id = f"guard-{guard.strip()}-{digest}"
+        already = (
+            any(
+                f.get("id") == fact_id and f.get("kind") == "guard-refusal"
+                for f in known_facts
+            )
+            if isinstance(known_facts, list)
+            else has_fact(project_dir, "guard-refusal", fact_id)
+        )
+        if already:
+            return {"status": "duplicate", "id": fact_id}
+        return append_fact(
+            project_dir, "guard-refusal", fact_id, {**body, "guard": guard.strip()}
+        )
     fact_id = "guard-{}-{}-{}".format(
         guard.strip(),
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
@@ -268,7 +400,29 @@ def read_facts(project_dir: Path) -> dict:
         {"status": "ok"|"empty"|"error", "reason"?: str,
          "facts": [envelope, ...],          # schema-supported, deduped, in order
          "schema_ahead": [{"line", "schema", "kind", "id"}, ...],
-         "excluded": int, "duplicates": int}
+         "excluded": int, "duplicates": int,
+         "fingerprint": str | None}
+
+    ``fingerprint`` is a SHA-256 over exactly the text these facts were parsed
+    from, and ``None`` whenever there was none to parse (no repo, no store,
+    unreadable). Deterministic over what was parsed rather than over the bytes
+    on disk: ``read_text`` applies universal-newline translation, so on a CRLF
+    store the digest is of the normalized text — which is the right subject,
+    since it is the parse the caller is keying a function of.
+
+    It exists so a caller memoizing a function OF these facts can key on it
+    without hashing the parsed structure — and, more to the point, without
+    opening the store a second time: the store is shared by every worktree of
+    the clone, so a separate read is a separate moment, and a sibling's append
+    between the two silently decouples the key from the facts it is supposed to
+    describe. Handing it back from the one read makes that impossible rather
+    than unlikely.
+
+    It covers the WHOLE file, not the returned ``facts``. That is deliberate and
+    is not the same set: ``schema_ahead`` lines are filtered out of what this
+    returns, so a fingerprint over the filtered view would be blind to a newer
+    plugin's appends — the exact writes a reader most needs to notice it has not
+    seen.
 
     ``schema_ahead`` records were written by a NEWER plugin than this reader —
     they are never silently dropped into ``excluded``: gate callers must treat
@@ -285,6 +439,7 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
+            "fingerprint": None,
         }
     if not path.is_file():
         return {
@@ -293,6 +448,7 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
+            "fingerprint": None,
         }
     try:
         raw_text = path.read_text(encoding="utf-8")
@@ -304,8 +460,10 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
+            "fingerprint": None,
         }
 
+    fingerprint = hashlib.sha256(raw_text.encode('utf-8')).hexdigest()
     raw_lines = raw_text.splitlines()
     facts: list[dict] = []
     schema_ahead: list[dict] = []
@@ -410,6 +568,7 @@ def read_facts(project_dir: Path) -> dict:
         "schema_ahead": schema_ahead,
         "excluded": excluded,
         "duplicates": duplicates,
+        "fingerprint": fingerprint,
     }
 
 
@@ -469,14 +628,28 @@ def run_git(project_dir: Path, *args: str, env: dict | None = None) -> tuple[int
     shares it — per the module-boundary rule, only this module and git
     helpers touch disk/git, so callers borrow the runner rather than
     growing their own (promoted at first external use, chunk 03)."""
+    timeout, unusable = _git_timeout()
+    if unusable is not None:
+        return 1, "", unusable
     try:
         proc = subprocess.run(
             ["git", *args],
             cwd=str(project_dir),
             capture_output=True,
             text=True,
-            timeout=_GIT_TIMEOUT,
+            timeout=timeout,
             env=env,
+        )
+    except subprocess.TimeoutExpired:
+        # Named before the generic branch below (TimeoutExpired IS a
+        # SubprocessError). The default message says only that a command timed
+        # out, which reads as a git fault; the budget is prawduct's, so the
+        # remedy is prawduct's to state.
+        return 1, "", (
+            f"git {args[0]} exceeded the {timeout}s budget — raise it with "
+            f"{_GIT_TIMEOUT_ENV}=<seconds> if this working tree is reached "
+            "over a network or bind mount, where each file read pays mount "
+            "latency"
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
@@ -513,13 +686,134 @@ def _attribute_bad_tree(value: object) -> None:
 _ATTRIBUTED_BAD_TREES: set[str] = set()
 
 
+def _attribute_slow_seed(cause: str, fallback: str, *, in_repo: bool) -> None:
+    """Say that the fast seed was lost, and name what replaced it.
+
+    Every route into the fallback goes through here so none of them can be the
+    quiet one — a silent degradation reproduces the exact symptom this whole
+    change exists to remove, and it is the operator, not the code, who has to
+    tell "the fix did not engage" from "the fix was not enough". The message
+    names the ACTUAL fallback: on an unborn HEAD nothing is re-hashed, so
+    claiming a full ``read-tree`` there would be a scarier lie than the truth.
+
+    ``empty`` is reached two ways and only one of them makes it *correct*: an
+    unborn HEAD, where there is nothing to seed from, and a git-dir lookup that
+    failed, where the directory may not be a repository at all. ``in_repo``
+    separates them, passed by the caller that knows rather than sniffed out of
+    ``cause`` — a consequence clause keyed on the wording of a message is one
+    rephrasing away from asserting a repository state nobody observed."""
+    consequence = (
+        "re-hashes the whole working tree and may exceed the capture budget on a "
+        "slow filesystem"
+        if fallback == "read-tree"
+        else "starts from an empty index"
+    )
+    if fallback == "empty" and in_repo:
+        consequence += ", which is correct on an unborn HEAD"
+    print(
+        f"evidence: {cause} — seeding the capture with `{fallback}` instead, which "
+        f"{consequence}",
+        file=sys.stderr,
+    )
+
+
+def _seed_temp_index(
+    project_dir: Path, tmp_name: str, env: dict, has_head: bool
+) -> "tuple[bool, str | None, str]":
+    """Fill the temporary index so the ``add -A`` that follows re-hashes only
+    what actually changed. Returns ``(ok, reason, seed)``, where ``seed`` names
+    which path was taken — ``index-copy``, ``read-tree``, or ``empty``.
+
+    **The seed is reported because the fallback is the failure that looks like
+    success.** A capture that silently degrades to ``read-tree`` is slow again,
+    and on the filesystem this whole change exists for that means the timeout
+    comes back — at which point an operator raises the budget, gets a working
+    capture, and closes the bug while the fix never engaged. Naming the seed in
+    the result (and in the timeout message) is what makes that distinguishable
+    from the fix simply not being enough.
+
+    **Preferred: copy the repo's own index.** Its entries carry STAT DATA —
+    size, mtime, inode, device — so ``git add -A`` can compare a file's stat
+    against the recorded one and skip re-reading it. ``read-tree HEAD`` writes
+    entries with that stat data ZEROED, which makes every tracked file a cache
+    miss and forces a full re-hash of the working tree. On a local disk that is
+    merely wasteful; on a network or bind-mounted tree each read pays mount
+    latency, the capture blows through its budget, and every ``critic-begin``
+    fails — so no review can record and the PR gate becomes unsatisfiable.
+    Measured on this repo's own tree by
+    ``.prawduct/research/tree-capture-2026-08-19/measure.py``.
+
+    **Fallback: ``read-tree HEAD``.** Used when the index cannot be copied — a
+    clone that has never staged anything, or a concurrent git that is mid-
+    rename. Correct, only slower: ``add -A`` overwrites either seed for every
+    path that differs from the working tree.
+
+    **Where the two seeds genuinely disagree, the copy is the RIGHT answer.**
+    An index entry flagged ``--skip-worktree`` (sparse checkout) or
+    ``--assume-unchanged`` is one ``add -A`` deliberately leaves alone. Copying
+    preserves the flag, so the captured tree matches what ``git add -A && git
+    commit`` in that repo would produce — which is exactly the invariant
+    :func:`capture_tree` promises. Seeding from ``read-tree`` drops the flags,
+    so a sparse checkout captured that way stages a DELETION for every file
+    outside the cone.
+
+    An **unmerged** index (mid-conflict) is the third case where the seeds
+    differ on their way in and agree on their way out: the copy carries stage
+    1/2/3 entries that ``read-tree HEAD`` would have flattened, and ``add -A``
+    resolves them to the working tree either way, so the capture is the
+    conflicted file as it sits on disk — markers included
+    (``test_capture_during_a_merge_conflict_resolves_to_the_working_tree``)."""
+    fallback = "read-tree" if has_head else "empty"
+    rc, git_dir, err = run_git(project_dir, "rev-parse", "--absolute-git-dir")
+    if rc != 0 or not git_dir:
+        _attribute_slow_seed(
+            f"could not locate the git dir ({err or 'no output'})", fallback, in_repo=False
+        )
+    else:
+        try:
+            # copy2, NOT copyfile — the index's own MTIME has to survive the
+            # copy. Git's racily-clean rule ("an entry whose mtime is not
+            # older than the index file's own may have changed since it was
+            # recorded — re-read it") is what catches a file edited in the
+            # same filesystem-timestamp tick as the index write, and git
+            # compares whole seconds on platforms built without USE_NSEC.
+            # A copy stamped with the CURRENT time makes every entry look
+            # comfortably older than its index, silences that rule, and lets
+            # `add -A` skip re-hashing a same-second, same-size edit — so the
+            # captured tree would carry the file's PREVIOUS content and the
+            # review would vouch for a tree that never existed.
+            shutil.copy2(Path(git_dir) / "index", tmp_name)
+            return True, None, "index-copy"
+        except OSError as exc:
+            # Absent, unreadable, or racing a writer. A copy that failed
+            # PART-way leaves a truncated index that git would reject as
+            # corrupt, so clear it before handing the slot to the fallback.
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            _attribute_slow_seed(
+                f"could not copy the repo index ({exc})", fallback, in_repo=True
+            )
+    if not has_head:
+        return True, None, "empty"  # unborn HEAD: the empty temp index is correct
+    rc, _, err = run_git(project_dir, "read-tree", "HEAD", env=env)
+    if rc != 0:
+        return False, f"read-tree failed: {err}", "read-tree"
+    return True, None, "read-tree"
+
+
 def capture_tree(project_dir: Path) -> dict:
     """Capture the working tree (tracked changes + untracked, gitignored
     excluded) as a tree object in the shared odb, via a TEMPORARY index.
 
-    Returns ``{"status": "ok", "tree", "head_commit", "head_tree", "clean"}``
-    or ``{"status": "error", "reason"}``. The session's real index and working
-    tree are never touched (R1) — asserted by tests, verified by the D3 spike.
+    Returns ``{"status": "ok", "tree", "head_commit", "head_tree", "clean",
+    "seed"}`` or ``{"status": "error", "reason", "seed"}``. ``seed`` names how
+    the temp index was filled (:func:`_seed_temp_index`) — it rides on both
+    outcomes because a capture that degraded to the slow seed and a capture
+    that never had a fast one to lose are the same symptom and different
+    bugs. The session's real index and working tree are never touched (R1) —
+    asserted by tests, verified by the D3 spike.
     ``clean`` is True when the captured tree equals ``HEAD^{tree}`` (a verbatim
     commit of this state will carry the same tree SHA)."""
     tmp_fd, tmp_name = tempfile.mkstemp(prefix="prawduct-idx-")
@@ -534,38 +828,91 @@ def capture_tree(project_dir: Path) -> dict:
         if head_commit:
             rc, head_tree_out, _ = run_git(project_dir, "rev-parse", "HEAD^{tree}")
             head_tree = head_tree_out if rc == 0 else None
-            # Seed the temp index from HEAD so unchanged paths keep their
-            # entries; on an unborn HEAD the empty temp index is correct.
-            rc, _, err = run_git(project_dir, "read-tree", "HEAD", env=env)
-            if rc != 0:
-                return {"status": "error", "reason": f"read-tree failed: {err}"}
+        ok, reason, seed = _seed_temp_index(project_dir, tmp_name, env, bool(head_commit))
+        if not ok:
+            return {"status": "error", "reason": reason, "seed": seed}
         rc, _, err = run_git(project_dir, "add", "-A", env=env)
         if rc != 0:
-            return {"status": "error", "reason": f"temp-index add failed: {err}"}
+            return {
+                "status": "error",
+                "reason": f"temp-index add failed (seed: {seed}) — {err}",
+                "seed": seed,
+            }
         rc, tree, err = run_git(project_dir, "write-tree", env=env)
         if rc != 0 or not tree:
-            return {"status": "error", "reason": f"write-tree failed: {err}"}
+            return {
+                "status": "error",
+                "reason": f"write-tree failed (seed: {seed}) — {err}",
+                "seed": seed,
+            }
         return {
             "status": "ok",
             "tree": tree,
             "head_commit": head_commit,
             "head_tree": head_tree,
             "clean": tree == head_tree,
+            "seed": seed,
         }
     finally:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass  # already absent — mkstemp file deleted above, git may not have recreated it
+        # The lock as well as the index. `GIT_INDEX_FILE` moves git's index
+        # lock alongside it, so a capture killed mid-`add` (the timeout above)
+        # leaves `<tmp>.lock` behind — never `.git/index.lock`, which is why
+        # this cleanup cannot wedge the session's own repo and why a stale
+        # `.git/index.lock` in the field is NOT this code path.
+        for leftover in (tmp_name, tmp_name + ".lock"):
+            try:
+                os.unlink(leftover)
+            except OSError:
+                pass  # already absent — git may never have created it
 
 
-def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None":
+def tree_diff(
+    project_dir: Path, tree_a: str, tree_b: str, paths: "list[str] | None" = None
+) -> "list[str] | None":
     """Paths changed between two tree objects (``git diff --name-only``),
     or ``None`` when the diff cannot be computed (missing object, git
     failure) — never guessed, matching ``coverage_algebra.DiffFn``'s
     contract. This is the diff the gates inject into the algebra and the
     dispatch side uses for its ``files_changed`` snapshot, so the recorded
     set and the composed edge-validity check agree by construction.
+
+    ``paths`` narrows the question to a pathspec: *do these two trees differ on
+    THESE files?* Asked of a whole tree the answer costs a full tree walk; asked
+    of a handful of paths it costs a pruned one, which is what makes a per-file
+    equality check affordable across many candidate trees
+    (``coverage.diagnose_base_advance_transfer``). The comparison stays git's
+    own, so a mode-only change (``chmod +x``, a file becoming a symlink at the
+    same blob) still reports as a difference — the fail-OPEN that a
+    ``(path, object id)`` comparison would introduce, and that
+    :func:`tree_entries` documents at length, never arises.
+
+    **A path this function reports must be a path it can be asked back about,
+    and two separate git conventions break that round trip.** Both matter here
+    because the returned list becomes the pathspec of the next call
+    (``coverage.diagnose_base_advance_transfer`` asks "do these trees differ on
+    the files you just told me changed?"), and both are answered at this
+    boundary rather than by each caller.
+
+    - ``-z``, so paths come back RAW. ``--name-only`` alone honours
+      ``core.quotepath``, which is on by default, so a non-ASCII filename is
+      returned C-quoted — ``"caf\\303\\251.py"``, surrounding quotes included.
+      Handed back as a pathspec that string matches nothing on disk, git
+      reports no difference over a file it never compared, and a caller reading
+      emptiness as agreement gets a fail-OPEN. ``-c core.quotepath=false`` is
+      NOT sufficient: a name containing ``"`` or ``\\`` stays quoted regardless
+      (pinned in ``tests/test_record_lint.py``), so only ``-z`` closes it. Same
+      reasoning, same fix as :func:`tree_entries`.
+    - ``:(literal)`` on each pathspec, because pathspecs are wildmatch patterns
+      and real filenames carry glob metacharacters (``app/[id]/page.tsx`` is an
+      ordinary route convention). Measured rather than assumed (2026-08-13):
+      git compares a pathspec literally *as well as* by wildmatch, so a path
+      does select its own spelling — but ``x[a].py`` ALSO selects ``xa.py``, so
+      an unrelated file can answer a question asked about this one. That
+      direction is a spurious *denial* rather than a wrong pass, but it is
+      silent, and ``:(literal)`` removes the class instead of leaving
+      correctness resting on git's match ORDER.
+
+    (``--`` stops option injection; it does nothing about either of these.)
 
     A tree id that is not a full-length object id never reaches git argv — it
     is a malformed fact, and a malformed fact yields no answer here for the
@@ -577,10 +924,13 @@ def tree_diff(project_dir: Path, tree_a: str, tree_b: str) -> "list[str] | None"
         if not gitstate.is_object_id(value):
             _attribute_bad_tree(value)
             return None
-    rc, out, _err = run_git(project_dir, "diff", "--name-only", tree_a, tree_b)
+    pathspec = ["--", *(f":(literal){p}" for p in paths)] if paths else []
+    rc, out, _err = run_git(
+        project_dir, "diff", "--name-only", "-z", tree_a, tree_b, *pathspec
+    )
     if rc != 0:
         return None
-    return [line for line in out.splitlines() if line.strip()]
+    return [path for path in out.split("\0") if path]
 
 
 def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | None":
@@ -697,14 +1047,31 @@ def is_ephemeral_fact(fact: dict) -> bool:
     worktree = actor.get("worktree")
     if not isinstance(worktree, str):
         return False
-    return gitstate.ephemeral_worktree_kind_of_path(worktree) is not None
+    # `actor.branch` when the writer recorded one (#648). A non-string is
+    # treated as absent rather than rejected: same reader convention as the
+    # opaque envelope above, and absence lands on the restrictive answer, so a
+    # malformed field cannot quietly promote a disposable tree to durable.
+    branch = actor.get("branch")
+    if not isinstance(branch, str) or not branch:
+        branch = None
+    return gitstate.ephemeral_kind_of(worktree, branch) is not None
 
 
 def ephemeral_facts(facts: list[dict]) -> list[dict]:
-    """Facts recorded from a disposable worktree, by ``actor.worktree`` shape.
+    """Facts recorded from a disposable worktree, by ``actor`` path + branch.
 
-    Derived on READ, never stored: schema 1 already carries the path, so no
-    version moves and every fact already in the store classifies retroactively.
+    Classification is derived on READ, so no schema version moves and every
+    fact already in the store still classifies. What #648 changed is that the
+    *inputs* now include ``actor.branch``, which only facts written since then
+    carry — a branch-less record keeps exactly the reading it always had (see
+    :func:`gitstate.ephemeral_kind_of`), and is almost always genuinely
+    disposable, since the guard refused the durable case for as long as that
+    shape existed. Two carve-outs make that "almost": a write forced with
+    ``PRAWDUCT_ALLOW_EPHEMERAL_WRITES=1``, and the harness-invoked commands the
+    guard exempts — either could have recorded a branch-less fact from a tree
+    that was not disposable. Both are rare and neither is worth a schema move;
+    the classification is restrictive, so such a fact reads as covering
+    nothing, which understates coverage rather than overstating it.
 
     These facts are **not** filtered out of anything. Tree-keying already makes
     them cover nothing — a fact recorded against a disposable worktree's tree

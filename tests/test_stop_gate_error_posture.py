@@ -87,7 +87,7 @@ class TestGateErrorFailsClosedAndLoud:
         monkeypatch.setattr(
             gates,
             "session_review_verdict",
-            lambda project_dir: (_ for _ in ()).throw(RuntimeError("boom-XYZ")),
+            lambda project_dir, **_kw: (_ for _ in ()).throw(RuntimeError("boom-XYZ")),
         )
 
         rc = _hook.cmd_stop(repo, {})
@@ -113,3 +113,66 @@ class TestGateErrorFailsClosedAndLoud:
         assert rc == 2
         assert "no composed review coverage" in err
         assert "CRITIC REVIEW (gate error)" not in err
+
+
+class TestAmbiguousPlanBlocksRatherThanEndingClean:
+    """A plan-resolution refusal must leave `cmd_stop` at 2, never at 1.
+
+    `cmd_stop` reaches `resolve_branch_plan` BEFORE any gate runs, so two live
+    plans claiming the branch raise there. `api-contract.md` § Error Model gives
+    the harness-hook row exactly two outcomes — 0 clean, 2 block — so letting the
+    refusal escape to `main`'s `return 1` ends the session CLEAN with the
+    reflection, coverage and PR gates never having fired. That is the fail-OPEN
+    inverse of what the refusal exists for, on the one state it invents.
+    """
+
+    def _contested(self, tmp_path: Path) -> Path:
+        repo = _blocking_session(tmp_path)
+        artifacts = repo / ".prawduct" / "artifacts"
+        for name in ("a", "b"):
+            (artifacts / f"build-plan-{name}.md").write_text(
+                "---\nartifact: build-plan\nbranch: main\n---\n\n"
+                "## Status\n\n- [ ] Chunk 01: work\n"
+            )
+        return repo
+
+    def test_it_blocks_at_two_and_names_both_plans(self, tmp_path, capsys):
+        repo = self._contested(tmp_path)
+
+        rc = _hook.cmd_stop(repo, {})
+        err = capsys.readouterr().err
+
+        assert rc == 2, "a refused gate is a blocked gate — 1 ends the session clean"
+        assert "BLOCKED" in err
+        assert "resolution refused" in err
+        # The operator cannot act on "ambiguous" alone.
+        assert "build-plan-a.md" in err and "build-plan-b.md" in err
+
+    def test_background_work_does_not_defer_it(self, tmp_path, capsys):
+        """Deferral means "the diff isn't final, ask again when it is". No amount
+        of background work resolves two plans claiming one branch, so deferring
+        would return 0 — ending the session clean by a different route."""
+        repo = self._contested(tmp_path)
+
+        rc = _hook.cmd_stop(repo, {"background_tasks": [{"description": "a task"}]})
+        err = capsys.readouterr().err
+
+        assert rc == 2, "the refusal is not deferrable"
+        assert "resolution refused" in err
+
+    def test_one_claimant_reaches_the_ordinary_gates(self, tmp_path, capsys):
+        """The control: without the collision the same session renders its real
+        blocker, so the assertions above are about the refusal and not about a
+        fixture that blocks for any reason."""
+        repo = _blocking_session(tmp_path)
+        (repo / ".prawduct" / "artifacts" / "build-plan-a.md").write_text(
+            "---\nartifact: build-plan\nbranch: main\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: work\n"
+        )
+
+        rc = _hook.cmd_stop(repo, {})
+        err = capsys.readouterr().err
+
+        assert rc == 2
+        assert "resolution refused" not in err
+        assert "no composed review coverage" in err

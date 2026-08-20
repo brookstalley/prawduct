@@ -33,10 +33,29 @@ review **fact**, so "how often did record-lint fire, and on what" is a query
 over the evidence store rather than an argument. The yield *query* is the
 janitor's Norm Health sweep, deliberately not here.
 
-**Records are markdown.** A record is a ``.md`` file — prose is where
-hand-authored claims live, and classifying by suffix keeps this language-neutral
-(``architecture.md`` § Direction: Python-implemented, never Python-specific).
-Archived history is excluded: it is not being asserted any more.
+**Records are markdown, plus the governance state under ``.prawduct/``.** Prose
+is where most hand-authored claims live, so ``.md`` anywhere in the repo is a
+record. But it is not where they *all* live, and the gap was not hypothetical:
+this module's suite-total tripwire swept the plugin's markdown clean while ten
+governed products carried a hand-maintained test count in
+``.prawduct/project-state.yaml`` — one of them on a single line of roughly 52 KB
+— and markdown-only could not see any of it. So a YAML file **directly under a
+``.prawduct/`` directory** is a record too: that file is hand-authored, it is
+asserted as a product's source of truth, and it is exactly as prone to a claim
+that drifts. Classification stays by path and suffix — no content is read and no
+language is classified (``architecture.md`` § Direction: Python-implemented,
+never Python-specific).
+
+**Scoped to governance state, never to YAML generally.** A product's CI config,
+its lockfiles and its own app config are its data, not governance records;
+linting them would put this control in the business of grading product content.
+The three markdown-specific checks are unaffected because each already selects
+its own inputs — ``learnings-entry-shape`` by filename, ``governed-by-gap`` by
+build-plan name (``.md$``) — rather than trusting the record set to be markdown;
+tests pin that, so widening the set here cannot silently widen them.
+
+Archived history is excluded whatever its suffix: it is not being asserted any
+more.
 """
 
 from __future__ import annotations
@@ -127,13 +146,22 @@ _BUILD_PLAN_RE = re.compile(r"(^|/)(?:build-plan[^/]*|[^/]*-plan)\.md$")
 # ---------------------------------------------------------------------------
 
 
+#: Governance state files: YAML sitting directly inside a ``.prawduct/`` dir.
+#: Anchored on the directory rather than on the name so a product that adds a
+#: second state file is covered, while a YAML one level deeper — under
+#: ``.prawduct/artifacts/`` or a product's own tree — is not: nesting is how
+#: this stays a check on a repo's declared state rather than on its data.
+_STATE_RECORD_RE = re.compile(r"(^|/)\.prawduct/[^/]+\.ya?ml$")
+
+
 def is_record(path: str) -> bool:
     """True when ``path`` is a governance record this module lints.
 
-    Markdown, and not archived. Suffix-only by design: no content is read to
-    decide, and no language is classified.
+    Markdown anywhere, or YAML directly under a ``.prawduct/`` directory; never
+    archived. Path and suffix only by design: no content is read to decide, and
+    no language is classified.
     """
-    if not path.endswith(".md"):
+    if not (path.endswith(".md") or _STATE_RECORD_RE.search(path)):
         return False
     return not any(marker in f"/{path}" for marker in _ARCHIVE_MARKERS)
 
@@ -431,6 +459,56 @@ def _read_text(path: Path) -> "str | None":
         return None
 
 
+def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bool:
+    """Does any change-log entry declare ``scope``?
+
+    This is the discriminator between the two shapes that both reach
+    "the dispatch names a scope no build plan declares":
+
+    - a **typo'd or stale** scope, which names nothing anywhere. Grading must
+      not proceed and must not go quiet — a deliverable check that silently
+      skipped is indistinguishable from one that passed, which is the whole
+      reason the `unchecked` prefix blocks.
+    - a **real, deliberately plan-less** scope — the ordinary shape of a
+      framework-only fix, which prawduct's own methodology says needs no build
+      plan (`building.md`: small = build + verify, no plan). There is no
+      deliverable set to grade, no `--chunk` that could supply one, and no edit
+      to the diff that clears it. Blocking that is a false blocker with no
+      remedy, and the only exits left to a builder are inventing a retroactive
+      plan or departing from the rule silently. Three consecutive reviews took
+      the second.
+
+    The change-log is the witness because a code-changing branch cannot open a
+    PR without ADDING an entry (`check-change-log-entry`, enforced at the PR
+    boundary), and the `scope=` tag on that entry is what the release flow
+    reads to enumerate what is still unshipped. So the declaration already
+    exists by the time any review runs, and it lives in a durable, reviewed,
+    release-tracked record.
+
+    Be precise about the strength of that: the PR probe requires the entry, not
+    the tag, so a builder who writes `scope=` is still declaring something
+    rather than having it forced out of them. What this buys over the
+    alternatives — a `--scope-has-no-plan` dispatch flag, or an allowlist key —
+    is not unforgeability, it is that the declaration is durable, is read by
+    the release flow for an unrelated purpose, and is visible in the diff a
+    reviewer reads. A transient flag on one dispatch is none of those. A typo'd
+    scope, meanwhile, is declared nowhere by construction, which is the case
+    this branch actually has to separate.
+    """
+    if not scope or not scope.strip():
+        return False
+    text = _read_text(prawduct_dir / "change-log.md")
+    if text is None:
+        return False  # unreadable witness proves nothing — keep the block
+    from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    try:
+        entries = change_log.parse_change_log(text)
+    except Exception:  # prawduct:allow prawduct/broad-except -- a malformed change-log must not decide severity; fail closed to the blocking read
+        return False
+    return any(e.tags.get("scope") == scope.strip() for e in entries)
+
+
 def _norm_field_re():
     """What a norm entry IS, imported from its one home in ``norm_probes``:
     ``(field marker, blockquote prefix)``.
@@ -674,6 +752,12 @@ def _check_chunk_refs(
     """
     plan = buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope)
     if plan.path is None and plan.gap:
+        if _scope_declared_in_change_log(prawduct_dir, scope):
+            return [], (
+                f"chunk-ref-missing no-subject — {plan.gap}; the change-log "
+                f"declares scope {scope!r}, so the scope is real and carries no "
+                "plan — there is no declared deliverable set to grade"
+            ), None, None
         return [], f"chunk-ref-missing unchecked — {plan.gap}", None, None
 
     assumed = False
@@ -713,7 +797,7 @@ def _check_chunk_refs(
             "dispatch carried no chunk — Status names the first UNCHECKED chunk, "
             "so this may be the next chunk rather than the reviewed one"
         )
-    if plan.source == "active-pointer" and plan.gap:
+    if plan.source == buildplan_refs.SOURCE_ACTIVE_PLAN and plan.gap:
         assumptions.append(plan.gap)
     gap = None
     if assumptions:

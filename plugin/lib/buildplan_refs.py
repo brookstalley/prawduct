@@ -12,10 +12,11 @@ Depends on its lib siblings ``gitstate`` (for ``_is_metadata_path``), ``core``
 (``resolve_build_plan_path``, ``read_str_yaml_key``), ``coverage``
 (``_resolve_base_branch``) and ``plan_index`` (the canonical frontmatter ``scope:``
 reader) plus the stdlib — still a clean DAG node, since ``coverage`` depends only
-on ``core`` and ``plan_index`` on nothing in ``lib`` at all. The hook's inline build-plan-resolution
-mirror (``_resolve_build_plan_path``) stays in the hook for its import-light hot
-path; this module is a lib citizen and reaches the canonical resolver in
-``lib.core`` directly, exactly as ``critic_mode`` and ``change_log`` do.
+on ``core`` and ``plan_index`` on nothing in ``lib`` at all. This module reaches the
+canonical resolver in ``lib.core`` directly, exactly as ``critic_mode`` and
+``change_log`` do — there is one resolver now, the hook's inline mirror of it
+having been retired once branch-scoped resolution left it with no caller and no
+import-light claim.
 
 Every read of the plan — here and in every other module that reads it — is
 explicitly UTF-8, and every guarded read catches ``UnicodeDecodeError`` beside
@@ -166,10 +167,56 @@ def _iter_status_section_items(content: str):
 # disagreement cannot recur — but the widening stays, because the plans that
 # provoked it are still on disk. A one-sided widening of a shared contract is not a partial
 # fix, it is a new defect.
+#
+# Two more authoring forms are accepted for the same reason: plans in the wild
+# write them, and neither errors when it fails to parse.
+#   * A **dotted id** (`Chunk 1.2`) — sub-chunk numbering. `(\w+)` stopped at the
+#     `1`, and `.` is not a separator, so the whole heading fell through.
+#   * A **leading checkbox** (`### [ ] Chunk 7:`, `- [x]` bullet included) — plans
+#     that carry the roster's tick marks into the body headings. The checkbox
+#     occupies the position the matcher expected `Chunk` in.
+# The dotted id is `\w+(?:\.\w+)*` rather than `[\w.]+`, so a heading ending in a
+# sentence period (`### Chunk 1. Name`) still fails to match instead of yielding
+# the id `1.` — that form did not parse before and gains nothing by parsing as a
+# chunk nobody's Status roster names.
+# Both widenings land on BOTH matchers, which is the rule the paragraph above
+# records: the heading form and the Status-item form are one authoring
+# vocabulary read by two regexes, and a form accepted by one alone reproduces
+# the split-brain exactly — the section resolves while the roster entry returns
+# None, so completeness "cannot be told", every forward-ref exemption is kept,
+# and the check passes having verified nothing.
+# `_CHUNK_ITEM_RE`'s callers hand it Status-item text with the `- [ ] ` prefix
+# already stripped, so the checkbox alternative is unreachable on today's paths;
+# it is there so that a caller passing a raw Status LINE gets the same answer as
+# the heading matcher does, rather than a second silent gap to discover later.
 _CHUNK_ID_SEP = r"\s*(?:[:—–(-]|\*\*|$)"
 _CHUNK_BOLD = r"(?:\*\*\s*)?"
-_CHUNK_HEADING_RE = re.compile(r"^#{2,3}\s+" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + _CHUNK_ID_SEP)
-_CHUNK_ITEM_RE = re.compile(r"^" + _CHUNK_BOLD + r"Chunk\s+(\w+)" + _CHUNK_ID_SEP)
+_CHUNK_CHECKBOX = r"(?:(?:[-*+]\s+)?\[[ xX]\]\s+)?"
+_CHUNK_ID = r"(\w+(?:\.\w+)*)"
+#: Strips a leading ``Chunk`` label so the flag accepts what the heading prints.
+_CHUNK_LABEL_PREFIX_RE = re.compile(r"^[Cc]hunk\s+")
+_CHUNK_HEADING_RE = re.compile(
+    r"^#{2,3}\s+" + _CHUNK_CHECKBOX + _CHUNK_BOLD + r"Chunk\s+" + _CHUNK_ID + _CHUNK_ID_SEP
+)
+_CHUNK_ITEM_RE = re.compile(
+    r"^" + _CHUNK_CHECKBOX + _CHUNK_BOLD + r"Chunk\s+" + _CHUNK_ID + _CHUNK_ID_SEP
+)
+
+# A heading line that ANNOUNCES a chunk without parsing as one — deliberately
+# looser than `_CHUNK_HEADING_RE` on every axis it can afford to be: any heading
+# depth (`#### Chunk 01:` is the classic silent defeat), any short run of
+# punctuation between the hashes and the word, any dotted id, and any separator
+# after it. What it will not accept is the two shapes that make a heading prose
+# rather than an announcement:
+#   * a WORD after the id — `### Chunk 1 build-session decisions` is a notes
+#     sub-heading living inside chunk 1's body, and treating it as a boundary is
+#     a defect this module already fixed once;
+#   * an APOSTROPHE after the id — `## Chunk 01's review` is possessive prose.
+# It is used only to explain a failure, never to locate a section: nothing is
+# parsed out of it, so being loose costs a sentence and never a wrong id.
+_CHUNK_ANNOUNCE_RE = re.compile(
+    r"^#{1,6}\s+[^A-Za-z0-9]{0,8}Chunk\s+[\w.]+\s*(?:[^\w\s'’]|$)"
+)
 
 
 def unticked_chunk_items(content: str) -> list[str]:
@@ -246,8 +293,8 @@ def _count_build_plan_chunks(
 ) -> tuple[int, int]:
     """Count chunks in the active build plan's Status section.
 
-    Resolves the plan via the ``active_build_plan:`` pointer (falls back to
-    ``artifacts/build-plan.md``), so scope-named plans are counted too —
+    Resolves this repo's active build plan (``core.resolve_build_plan_path``,
+    which owns what "active" means), so scope-named plans are counted too —
     unless ``plan_path`` names one, which the gate paths pass so that
     "is there governed work" and "what does it declare" read one file.
     Returns ``(total, complete)``; ``(0, 0)`` if the plan or its Status section
@@ -302,10 +349,19 @@ def _count_build_plan_chunks(
 # pattern missed, and every subject it newly drops is a prose reference. Other
 # idioms ("resolve Chunk 02 Critic findings") fall to this control's documented
 # failure mode, silence — enumerating verbs is the slide this stops short of.
+# The id shape tracks the plan-side matchers deliberately. When `_CHUNK_HEADING_RE`
+# and `_CHUNK_ITEM_RE` learned dotted ids, this reader kept `\d+` and so read
+# `Chunk 1.2` in a subject as id `1` — a *wrong* attribution, not a missed one,
+# which is worse: the commit reports against a chunk it does not belong to. A
+# chunk vocabulary has three readers, and widening two of them is the one-sided
+# widening the comment above `_CHUNK_HEADING_RE` already warns is a new defect.
+# Still digits-and-dots only, NOT `\w+`: the surrounding forms are prose-adjacent,
+# and a bare word would match "close Chunk work" as an id.
+_CHUNK_ID_IN_SUBJECT = r"(\d+(?:\.\d+)*)"
 _CHUNK_COMMIT_RE = re.compile(
-    r"\(Chunk\s+(\d+)\)"
-    r"|:\s*Chunk\s+(\d+)\b"
-    r"|\bclos(?:e|es|ed)\s+Chunk\s+(\d+)\b"
+    rf"\(Chunk\s+{_CHUNK_ID_IN_SUBJECT}\)"
+    rf"|:\s*Chunk\s+{_CHUNK_ID_IN_SUBJECT}\b"
+    rf"|\bclos(?:e|es|ed)\s+Chunk\s+{_CHUNK_ID_IN_SUBJECT}\b"
 )
 # Conventional-commit scope: `fix(session-boundary-events): … (Chunk 01)`.
 _COMMIT_SCOPE_RE = re.compile(r"^\w+\(([^)]+)\)!?:")
@@ -401,7 +457,7 @@ def _committed_chunk_ids(
                 # One group per anchored form; exactly one is ever set, and
                 # reading `group(1)` alone would silently drop forms 2 and 3.
                 cid = next(g for g in m.groups() if g is not None)
-                out.setdefault(cid.lstrip("0") or "0", subject)
+                out.setdefault(_normalize_chunk_id(cid), subject)
         return out
 
     subjects = proc.stdout.splitlines()
@@ -450,6 +506,24 @@ class ChunkProgress(NamedTuple):
     has_status_items: bool
 
 
+#: How :func:`resolve_reviewed_plan` reached the plan it graded. Constants
+#: rather than bare strings because the value is a **cross-module contract**:
+#: ``record_lint`` tests for ``SOURCE_ACTIVE_PLAN`` to decide whether to attach
+#: the "this need not be the plan this branch is building" caveat, and
+#: ``critic_mode`` tests for ``SOURCE_SCOPE_NAMED``. Two literals typed in two
+#: files agree only until one of them is renamed, and the failure is silent in
+#: the direction that matters — the caveat quietly stops being emitted and a
+#: reviewer grades chunk refs against a possibly-unrelated plan with nothing
+#: saying so.
+#:
+#: ``SOURCE_ACTIVE_PLAN`` deliberately does not name a ROUTE. Which one produced
+#: the path is ``core.resolve_build_plan_path``'s business — the branch-claiming
+#: plan first, the ``active_build_plan`` pointer after — and this module does not
+#: choose between them, so it must not claim to know which answered.
+SOURCE_SCOPE_NAMED = "scope-named"
+SOURCE_ACTIVE_PLAN = "active-plan"
+
+
 class ReviewedPlan(NamedTuple):
     """Which build plan a review is actually about, and how that was decided.
 
@@ -468,7 +542,7 @@ class ReviewedPlan(NamedTuple):
     path: Path | None
     rel: str | None
     scope: str | None
-    source: str  # "scope-named" | "active-pointer" | "none"
+    source: str  # SOURCE_SCOPE_NAMED | SOURCE_ACTIVE_PLAN | "none"
     gap: str | None
 
 
@@ -521,12 +595,21 @@ def infer_scope_from_branch(
 ) -> str | None:
     """The scope this branch is building, or ``None`` when it cannot be shown.
 
-    A **match against declared data, never a guess**: the branch name's last
-    segment (and the whole name, for branches without a prefix) is accepted only
-    when some build plan under ``artifacts/`` declares it as a frontmatter
-    ``scope:``. ``fix/backlog-burndown`` → ``backlog-burndown`` because
-    ``build-plan-backlog-burndown.md`` says so; ``develop`` → ``None`` because
-    nothing declares it.
+    **A plan's own ``branch:`` declaration is consulted first**, and it is the
+    only route that is not an inference: the plan states which branch it governs,
+    so its ``scope:`` is the answer with nothing left to guess. Neither narrowing
+    below applies to it — they exist to make a *guess* safe, and there is no
+    guess. This is what closes the common miss, where a branch is named for the
+    work rather than for the scope tag: ``feat/tactical-efficiency-pass`` matches
+    the scope ``tactical-efficiency`` under no name rule, so before plans could
+    declare a branch, every dispatch from such a branch resolved no scope at all.
+
+    Failing that, a **match against declared data, never a guess**: the branch
+    name's last segment (and the whole name, for branches without a prefix) is
+    accepted only when some build plan under ``artifacts/`` declares it as a
+    frontmatter ``scope:``. ``fix/backlog-burndown`` → ``backlog-burndown``
+    because ``build-plan-backlog-burndown.md`` says so; ``develop`` → ``None``
+    because nothing declares it.
 
     ``known`` is a prebuilt scope→plan map — pass it to share one walk of
     ``artifacts/`` with a caller that also resolves the plan (:func:`resolve_branch_plan`).
@@ -551,11 +634,14 @@ def infer_scope_from_branch(
     branch = gitstate.current_branch(project_dir)
     if not branch:
         return None  # detached HEAD — nothing to read a scope from
+    if known is None:
+        known = _scope_plan_map(prawduct_dir)
+    declared = _scope_of_branch_claiming_plan(prawduct_dir, branch, known)
+    if declared is not None:
+        return declared
     candidates = [branch]
     if "/" in branch:
         candidates.append(branch.rsplit("/", 1)[1])
-    if known is None:
-        known = _scope_plan_map(prawduct_dir)
     for candidate in candidates:
         plan_path = known.get(candidate)
         if plan_path is not None and _has_unfinished_chunk(plan_path):
@@ -563,10 +649,42 @@ def infer_scope_from_branch(
     return None
 
 
+def _scope_of_branch_claiming_plan(
+    prawduct_dir: Path, branch: str, known: dict[str, Path]
+) -> str | None:
+    """The declared ``scope:`` of the live plan declaring ``branch: <branch>``.
+
+    ``known`` is the scope→plan map already built by the caller, so the scope is
+    read back out of it rather than re-parsed: a plan that declares a branch but
+    no scope has no scope to return, and inventing one would tag a change-log
+    entry and a ledger row with a string no plan declares.
+
+    Two plans claiming one branch resolves to ``None`` rather than a pick.
+    :func:`core.resolve_build_plan_path` is where that refusal is raised; making
+    a scope *inference* fail closed too would block advice on a condition the
+    authority path already blocks on, so this simply declines and lets the
+    caller's own routes answer.
+    """
+    matched = [
+        path
+        for path, claimed in plan_index.branch_claiming_plans(prawduct_dir / "artifacts")
+        if claimed == branch
+    ]
+    if len(matched) != 1:
+        return None
+    for scope, plan_path in known.items():
+        if plan_path == matched[0]:
+            return scope
+    return None
+
+
 def _has_unfinished_chunk(plan_path: Path) -> bool:
     """True when ``plan_path``'s Status section still holds an unchecked chunk.
 
-    The liveness signal for :func:`infer_scope_from_branch`.
+    The liveness signal for :func:`infer_scope_from_branch` and for the session
+    briefing's "claims a branch this repo does not have" advisory, which fires
+    only for a plan with work left — a finished plan whose merged branch is gone
+    is the documented end state, not a finding.
 
     **The signal is blunt, and the bluntness is now universal — worth knowing,
     because it used to be sharp on some repos.** The boxes flip per chunk, so a
@@ -609,13 +727,14 @@ def resolve_reviewed_plan(
     known: "dict[str, Path] | None" = None,
 ) -> ReviewedPlan:
     """Resolve the build plan a review is about, preferring the reviewed SCOPE's
-    plan over the ``active_build_plan`` pointer.
+    plan over this repo's active build plan.
 
-    The pointer answers "which plan is in progress in this repo," which is not
-    the same question as "which plan is this review of" — and on a repo running
-    several plans across worktrees the two legitimately differ. The pointer is
-    then *correct* and still the wrong answer here, which is why this resolves
-    around it rather than asking anyone to repoint it.
+    Active-plan resolution (``core.resolve_build_plan_path``) answers "which plan
+    is in progress in this repo," which is not the same question as "which plan
+    is this review of" — and on a repo running several plans across worktrees the
+    two legitimately differ. That answer is then *correct* and still the wrong one
+    here, which is why this resolves around it rather than asking anyone to
+    repoint anything.
 
     ``known`` is a prebuilt scope→plan map, so a caller resolving both halves
     pays one walk of ``artifacts/`` rather than two — see
@@ -624,14 +743,18 @@ def resolve_reviewed_plan(
 
     Three outcomes:
 
-    - **scope names a plan** → that plan, ``gap=None``. The pointer is not the
-      subject and needs no comment; ``rel`` names the file that was graded.
-    - **scope names no plan** → ``path=None`` and a ``gap``. Falling back to the
-      pointer here is precisely the silent grade of an unrelated plan, so the
-      caller must report instead of answering.
-    - **no scope** → the pointer's plan, with a ``gap`` stating the assumption.
-      A plan-less repo yields ``path=None`` and no gap: that is an absence, not
-      a failure.
+    - **scope names a plan** → that plan, ``gap=None``. How the repo's active
+      plan would have resolved is not the subject and needs no comment; ``rel``
+      names the file that was graded.
+    - **scope names no plan** → ``path=None`` and a ``gap``. Falling back here is
+      precisely the silent grade of an unrelated plan, so the caller must report
+      instead of answering.
+    - **no scope** → the repo's active plan, with a ``gap`` stating the
+      assumption. Which route produced it is :func:`core.resolve_build_plan_path`'s
+      business — the branch-claiming plan first, the ``active_build_plan``
+      pointer after — so the ``source`` label and the gap say "active plan"
+      rather than naming a route this function did not choose. A plan-less repo
+      yields ``path=None`` and no gap: that is an absence, not a failure.
     """
     if scope and scope.strip():
         scope = scope.strip()
@@ -643,10 +766,10 @@ def resolve_reviewed_plan(
                 scope,
                 "none",
                 f"the dispatch names scope {scope!r} but no build plan under "
-                "artifacts/ declares it — grading the active_build_plan pointer's "
-                "plan would grade a different subject",
+                "artifacts/ declares it — grading this repo's active plan "
+                "would grade a different subject",
             )
-        return ReviewedPlan(match, _repo_rel(prawduct_dir, match), scope, "scope-named", None)
+        return ReviewedPlan(match, _repo_rel(prawduct_dir, match), scope, SOURCE_SCOPE_NAMED, None)
 
     pointer = resolve_build_plan_path(prawduct_dir)
     if not pointer.is_file():
@@ -664,12 +787,14 @@ def resolve_reviewed_plan(
         pointer,
         rel,
         None,
-        "active-pointer",
+        SOURCE_ACTIVE_PLAN,
         (
-            f"graded {rel}, resolved from the active_build_plan pointer because "
-            "the dispatch carried no scope — the pointer names the plan in "
-            "progress in this repo, which need not be the plan this branch is "
-            "building, and this repo declares several"
+            f"graded {rel}, resolved as this repo's active plan because the "
+            "dispatch carried no scope — which need not be the plan this branch "
+            "is building, and this repo declares several. Naming the pointer here "
+            "would be a guess: resolution takes the branch-claiming plan first "
+            "and the active_build_plan pointer only after, and reaching this line "
+            "means no plan claimed the branch"
         )
         if ambiguous
         else None,
@@ -705,11 +830,11 @@ def resolve_chunk_progress(
     rather than walking Status for itself, which is what
     ``TestOneCurrentChunkImplementation`` pins.
 
-    ``plan_path`` overrides which plan is read. It defaults to the
-    ``active_build_plan`` pointer, so every existing caller is unchanged; mode
-    inference passes the branch's own plan when :func:`resolve_reviewed_plan`
-    found one, so "which chunk is current" and "which plan the record names"
-    cannot answer about two different files.
+    ``plan_path`` overrides which plan is read. It defaults to this repo's
+    active build plan, so every existing caller is unchanged; mode inference
+    passes the branch's own plan when :func:`resolve_reviewed_plan` found one,
+    so "which chunk is current" and "which plan the record names" cannot answer
+    about two different files.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if plan_path is None:
@@ -751,6 +876,17 @@ def _resolve_chunk_progress_from(content: str) -> ChunkProgress:
 # transcript, which lives outside this repo, so asserting a specific counting
 # command would be a mechanism claim nothing in the tree implements.
 UNTICKED_CHUNK_TOKEN = "unticked-committed-chunk"
+
+
+def _chunk_sort_key(chunk_id: str) -> tuple[int, ...]:
+    """Numeric sort for a chunk id, dotted ids included.
+
+    ``int`` was safe only while every id was a digit string. The commit and
+    Status matchers both accept ``1.2`` now, so an id reaching here can carry
+    a dot — and this sort sits outside the caller's except-set, so raising
+    here tracebacks two callers that promise a ``cannot-verify:`` line.
+    """
+    return tuple(int(part) for part in chunk_id.split("."))
 
 
 def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
@@ -839,13 +975,8 @@ def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
         return None
     # Numeric order, and the key is TOTAL on this domain rather than merely
     # usually-right: the input is a SET, so a key with ties would leave the
-    # tied ids in set-iteration order and the same repo could print the same
-    # finding two ways on two runs. Every key here is a digit string because
-    # every `_CHUNK_COMMIT_RE` group captures `\d+` — which also means a plan using
-    # non-numeric chunk ids (`Chunk A`) gets no report at all, since no commit
-    # subject can ever match one. That is a real gap in this control's coverage,
-    # not a case handled elsewhere.
-    flagged = sorted(set(unticked) & set(committed), key=int)
+    # tied ids in set-iteration order and the same repo could print the same notice twice.
+    flagged = sorted(set(unticked) & set(committed), key=_chunk_sort_key)
     if not flagged:
         return None
     lines = [
@@ -886,8 +1017,8 @@ def _parse_build_plan_status(
     description, size, type, current_chunk, context, governance_level.
     Returns empty dict if no build plan or no Status section.
 
-    ``plan_path`` overrides which plan is read, defaulting to the
-    ``active_build_plan`` pointer (see :func:`resolve_chunk_progress`).
+    ``plan_path`` overrides which plan is read, defaulting to this repo's
+    active build plan (see :func:`resolve_chunk_progress`).
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if plan_path is None:
@@ -1215,23 +1346,169 @@ def _ref_path_part(token: str) -> str:
     return _BUILD_PLAN_LINE_SUFFIX_RE.sub("", path_part)
 
 
-def _chunk_section_lines(
-    content: str, chunk_id: str
-) -> tuple[bool, list[tuple[int, str]]]:
+class ChunkSection(NamedTuple):
+    """The result of one chunk-section walk — THREE states, not two.
+
+    ``found`` / ``lines`` are the answer; ``unparsed`` is why an answer may be
+    worth nothing. A two-state return is what let this walk fail silently: an
+    unparseable heading yields ``found=False`` with an empty ``lines``, which is
+    the same shape a plan that simply has no such chunk produces, and empty
+    reads downstream as "nothing to check."
+
+    ``unparsed`` names every heading-position chunk announcement in the WHOLE
+    plan that :data:`_CHUNK_HEADING_RE` rejected, as ``[(line_num, text), ...]``
+    — not only the ones near the requested chunk, because the damage is not
+    local. A heading that does not match also does not TERMINATE the preceding
+    section, so the chunk before it absorbs its body and answers a deliverable
+    check with a confident, non-empty, wrong set. That failure lands on a
+    different, perfectly parseable chunk than the malformed one, so a signal
+    raised only at the malformed chunk's own lookup would never reach it.
+
+    Hence the plan-level rule, the same one
+    :func:`incompleteness_reason` and :func:`_has_unfinished_chunk` apply: a
+    plan whose chunk boundaries cannot all be read is not evidence about any of
+    its chunks. A plan with no chunk headings at all leaves ``unparsed`` empty
+    and stays quiet — that is an absence, not a check that failed, and the two
+    must not collapse into one signal.
+    """
+
+    found: bool
+    lines: list[tuple[int, str]]
+    unparsed: list[tuple[int, str]]
+
+
+#: The marker :func:`unparsed_chunk_heading_reason` stamps on its prose so a
+#: consumer can recognize it without matching a sentence. The reason text is
+#: long, narrative and rewritten whenever the parser's advice improves; a reader
+#: that greps a phrase out of it goes silently dead on the first reword, and the
+#: only session-end surfacing of an unparseable plan heading is what goes quiet.
+#: Producer-owned by construction: the string a consumer tests for is the string
+#: this module writes, so the two cannot drift apart.
+UNPARSED_HEADING_MARKER = "unparseable-chunk-heading"
+
+
+#: The prefix :func:`chunk_type` stamps on an unrecognized ``Type:`` value. Same
+#: rule, same reason, and it is a constant for the same one: the sentence after
+#: it names the allowed values and will grow as they do.
+UNKNOWN_TYPE_PREFIX = "unknown type:"
+
+
+def is_unparsed_heading_error(reason: str | None) -> bool:
+    """Whether ``reason`` is :func:`unparsed_chunk_heading_reason`'s output.
+
+    The predicate rather than the marker is the export callers should reach for:
+    it keeps *how* the reason is recognized on this side of the boundary, so a
+    future change of mechanism (a marker, a prefix, a structured error) touches
+    one function instead of every consumer.
+    """
+    return bool(reason) and UNPARSED_HEADING_MARKER in reason
+
+
+def is_reportable_type_error(reason: str | None) -> bool:
+    """Whether a ``Type:`` read's error is one a session-end surface should show.
+
+    Both members of the class in one predicate, because they are one question —
+    *did the plan's own text defeat the parser in a way an author can fix?* — and
+    a caller asking it twice is a caller that can come to answer it once.
+    """
+    return bool(reason) and (
+        reason.startswith(UNKNOWN_TYPE_PREFIX) or is_unparsed_heading_error(reason)
+    )
+
+
+def unparsed_chunk_heading_reason(section: ChunkSection) -> str | None:
+    """Prose for a caller to report ``section``'s unparseable headings, or
+    ``None`` when every chunk heading in the plan parsed.
+
+    The reason names lines, because the remedy is an edit to one of them and a
+    reader who cannot find the offending heading cannot make it. Callers append
+    this to their own "could not verify" message rather than replacing it: which
+    chunk was asked for is still the first thing to say.
+    """
+    if not section.unparsed:
+        return None
+    shown = "; ".join(f"line {num}: {text!r}" for num, text in section.unparsed[:3])
+    if len(section.unparsed) > 3:
+        shown += f"; …and {len(section.unparsed) - 3} more"
+    return (
+        f"{UNPARSED_HEADING_MARKER}: {len(section.unparsed)} chunk heading(s) in this "
+        f"plan announce a chunk but do not parse as one ({shown}) — an unparseable "
+        "heading also fails to close the section before it, so no chunk boundary in "
+        "this plan can be trusted"
+    )
+
+
+def chunk_section_gap(chunk_id: str, section: ChunkSection) -> str | None:
+    """Why ``section`` cannot answer about ``chunk_id``, or ``None`` when it can.
+
+    **The one gate every consumer of the walk goes through**, so that a reader
+    added later inherits the refusal instead of having to remember it. Three
+    outcomes, and the first two must not share a sentence:
+
+    - **Not located, plan reads cleanly** → the plan genuinely has no such
+      chunk. That is the plan's answer, and it names no line to go fix.
+    - **Not located, plan has unreadable headings** → the chunk may well be
+      there, under a heading nothing can parse. The remedy is an edit to a named
+      line, so the reason names it.
+    - **Located, plan has unreadable headings** → refused anyway, and this is
+      the case worth the words. A heading that does not parse does not close the
+      section before it either, so the section that *did* resolve runs on
+      through its neighbour's body and answers with a confident, non-empty,
+      wrong set — a deliverable check that verifies another chunk's files and
+      passes, a ``Type:`` or ``Trivial because:`` read off a declaration written
+      for different work.
+    """
+    unparsed = unparsed_chunk_heading_reason(section)
+    if not section.found:
+        base = f"chunk {chunk_id!r} not found in build-plan"
+        return f"{base} — {unparsed}" if unparsed else base
+    if unparsed:
+        return (
+            f"chunk {chunk_id!r} resolved, but its boundaries are not trustworthy: "
+            f"{unparsed}"
+        )
+    return None
+
+
+def _unparsed_chunk_headings(content: str) -> list[tuple[int, str]]:
+    """Heading lines that announce a chunk but that the chunk matcher rejects.
+
+    Fenced spans are skipped: a plan that documents the heading forms in a
+    ``text`` block is describing them, not declaring chunks, and such a line
+    cannot bleed anyway — the walk drops fenced lines from every section body.
+    """
+    found: list[tuple[int, str]] = []
+    in_fence = False
+    for line_num, line in enumerate(content.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if _CHUNK_ANNOUNCE_RE.match(stripped) and not _CHUNK_HEADING_RE.match(stripped):
+            found.append((line_num, stripped))
+    return found
+
+
+def _chunk_section_lines(content: str, chunk_id: str) -> ChunkSection:
     """Locate the ``Chunk <chunk_id>`` section and return its body lines.
 
     The one canonical chunk-section walk: name-anchored with leading-zero
-    tolerance (``"02"`` matches ``### Chunk 2:`` and vice versa), matches both
-    supported heading forms (``### Chunk NN: Name`` and ``## Chunk N (ID) — Name``
-    via ``_CHUNK_HEADING_RE``), stops at the next sibling chunk heading or a
+    tolerance (``"02"`` matches ``### Chunk 2:`` and vice versa), matches every
+    supported heading form (``### Chunk NN: Name``, ``## Chunk N (ID) — Name``,
+    ``### **Chunk A** — Name``, dotted ids and a leading checkbox — see
+    ``_CHUNK_HEADING_RE``), stops at the next sibling chunk heading or a
     non-chunk ``## `` heading, and drops fenced code blocks (project-structure
-    diagrams aren't load-bearing prose). Returns
-    ``(found, [(line_num, raw_line), ...])`` with 1-based line numbers into
-    ``content``. This skeleton was previously copied in the three chunk-field
-    parsers below and ``lib.critic_mode``'s ``**Critic mode:**`` reader; all
-    four now fold onto it.
+    diagrams aren't load-bearing prose). Line numbers in the returned
+    :class:`ChunkSection` are 1-based into ``content``. This skeleton was
+    previously copied in the three chunk-field parsers below and
+    ``lib.critic_mode``'s ``**Critic mode:**`` reader; all four now fold onto it.
+
+    Returns a :class:`ChunkSection`, whose docstring carries the contract every
+    caller owes the third field.
     """
-    target = chunk_id.lstrip("0") or "0"
+    target = _normalize_chunk_id(chunk_id)
     in_section = False
     in_fence = False
     section_lines: list[tuple[int, str]] = []
@@ -1239,7 +1516,7 @@ def _chunk_section_lines(
         stripped = line.strip()
         heading = _CHUNK_HEADING_RE.match(stripped)
         if heading:
-            head_norm = heading.group(1).lstrip("0") or "0"
+            head_norm = _normalize_chunk_id(heading.group(1))
             if in_section:
                 # Entered a sibling chunk; stop accumulating.
                 break
@@ -1257,11 +1534,18 @@ def _chunk_section_lines(
         if in_fence:
             continue
         section_lines.append((line_num, line))
-    return in_section, section_lines
+    return ChunkSection(in_section, section_lines, _unparsed_chunk_headings(content))
 
 
 def _normalize_chunk_id(chunk_id: str) -> str:
-    """Leading-zero-normalized chunk id (``01`` -> ``1``), for comparison only.
+    """Chunk id reduced to its comparable form — label stripped, zeros trimmed.
+
+    Accepts the string a plan's own heading prints (``Chunk 01``) as well as the
+    bare id the matchers capture. That widening lived inline in the section walk
+    for one commit, which left the completed-chunk join below comparing a label
+    against bare ids: the membership test could never be true, so a completed
+    chunk's forward-ref exemption never expired and the deliverable check
+    reported zero refs while claiming it ran.
 
     **The only chunk-id normalizer in the tree.** A stronger one — casefolding
     and unifying ``_``/``-`` — lived in the derived-view module and went with it,
@@ -1271,8 +1555,18 @@ def _normalize_chunk_id(chunk_id: str) -> str:
     grew to cover the retired one's extra folding, because nothing asked for it;
     if a caller ever needs case- or separator-insensitive matching, widen this
     one rather than adding a second.
+
+    **Total on the dotted grammar, which it was not when that grammar widened.**
+    ``lstrip("0")`` reads the id as one token, so ``"0.2"`` lost the leading zero
+    of its FIRST component and returned ``".2"`` — truthy, so the ``or "0"`` guard
+    could not fire — and ``_chunk_sort_key`` then evaluated ``int("")`` and raised
+    past an except-set that does not catch it. The trim is per COMPONENT because
+    that is what the grammar makes it: a normalizer written against the old
+    grammar keeps typechecking against the new one and answers wrongly, which is
+    why this is fixed here rather than guarded at the sort.
     """
-    return chunk_id.lstrip("0") or "0"
+    bare = _CHUNK_LABEL_PREFIX_RE.sub("", chunk_id.strip())
+    return ".".join(part.lstrip("0") or "0" for part in bare.split("."))
 
 
 def _qualifier_scope_lines(
@@ -1335,11 +1629,10 @@ def _parse_build_plan_chunk_refs(
     """Extract backticked file-path references from a single chunk's section
     in ``.prawduct/artifacts/build-plan.md``.
 
-    ``plan_path`` names the plan to read; it defaults to the
-    ``active_build_plan`` pointer, which is right for ``verify-chunk-refs``
-    (a repo-level question) and wrong for a review (a question about the plan
-    the DISPATCH named). The review path passes
-    :func:`resolve_reviewed_plan`'s answer.
+    ``plan_path`` names the plan to read; it defaults to this repo's active
+    build plan, which is right for ``verify-chunk-refs`` (a repo-level question)
+    and wrong for a review (a question about the plan the DISPATCH named). The
+    review path passes :func:`resolve_reviewed_plan`'s answer.
 
     The section is located by ``_chunk_section_lines`` (both the ``### Chunk NN:``
     and ``## Chunk N (ID) — Name`` heading forms, leading zeros tolerant), and
@@ -1374,10 +1667,12 @@ def _parse_build_plan_chunk_refs(
         result["error"] = f"unreadable build-plan: {exc}"
         return result
 
-    found, section_lines = _chunk_section_lines(content, chunk_id)
-    if not found:
-        result["error"] = f"chunk {chunk_id!r} not found in build-plan"
+    section = _chunk_section_lines(content, chunk_id)
+    gap = chunk_section_gap(chunk_id, section)
+    if gap:
+        result["error"] = gap
         return result
+    section_lines = section.lines
 
     # A path the chunk declares with the `new ` qualifier is a forward reference
     # for the WHOLE chunk section, not just the occurrence carrying the word.
@@ -1460,8 +1755,8 @@ def _parse_build_plan_chunk_type(
 ) -> tuple[str | None, str | None]:
     """Extract the `Type:` declaration from a chunk's build-plan section.
 
-    ``plan_path`` names the plan to read, defaulting to the ``active_build_plan``
-    pointer. It exists so a caller that has already resolved *which plan* — via
+    ``plan_path`` names the plan to read, defaulting to this repo's active
+    build plan. It exists so a caller that has already resolved *which plan* — via
     :func:`resolve_reviewed_plan` — reads this chunk field from the same file it
     read the others from. Two chunk-level fields resolving from two different
     plans is the same "one question, two answers" defect one field over.
@@ -1487,12 +1782,16 @@ def _parse_build_plan_chunk_type(
     except (OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable build-plan: {exc}"
 
-    found, section_lines = _chunk_section_lines(content, chunk_id)
-    if not found:
-        return None, f"chunk {chunk_id!r} not found in build-plan"
+    # Fail-closed here means REPORTING the gap, not falling back to the `code`
+    # default: that default exists for a field nobody wrote, and this is a field
+    # nobody can attribute.
+    section = _chunk_section_lines(content, chunk_id)
+    gap = chunk_section_gap(chunk_id, section)
+    if gap:
+        return None, gap
 
     declared: str | None = None
-    for _line_num, line in section_lines:
+    for _line_num, line in section.lines:
         m = _BUILD_PLAN_TYPE_RE.match(line)
         if m:
             declared = m.group(1)
@@ -1502,7 +1801,7 @@ def _parse_build_plan_chunk_type(
         return "code", None  # fail-closed default
     if declared not in _BUILD_PLAN_ALLOWED_TYPES:
         allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES))
-        return None, f"unknown type: {declared!r} (allowed: {allowed})"
+        return None, f"{UNKNOWN_TYPE_PREFIX} {declared!r} (allowed: {allowed})"
     return declared, None
 
 
@@ -1536,13 +1835,18 @@ def _parse_build_plan_chunk_trivial_rationale(
     except (OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable build-plan: {exc}"
 
-    found, section_lines = _chunk_section_lines(content, chunk_id)
-    if not found:
-        return None, f"chunk {chunk_id!r} not found in build-plan"
+    # Same gate as the `Type:` reader one function up, and it earns its place
+    # here for a sharper reason: a rationale written for a LATER chunk would
+    # otherwise justify this chunk's trivial declaration, which is the one thing
+    # the field exists to stop.
+    section = _chunk_section_lines(content, chunk_id)
+    gap = chunk_section_gap(chunk_id, section)
+    if gap:
+        return None, gap
 
     capturing = False
     rationale_lines: list[str] = []
-    for _line_num, line in section_lines:
+    for _line_num, line in section.lines:
         stripped = line.strip()
         m = _BUILD_PLAN_TRIVIAL_RATIONALE_RE.match(line)
         if m:

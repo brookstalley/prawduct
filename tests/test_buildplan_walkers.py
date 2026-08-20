@@ -24,6 +24,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from lib import buildplan_refs, critic_mode, gates, gitstate
 from lib.buildplan_refs import (
     _chunk_id_from_item_text,
@@ -167,35 +169,35 @@ class TestCountAndIds:
 class TestChunkSectionLines:
     def test_leading_zero_tolerance_both_directions(self):
         # Plan heading "### Chunk 1:" found via id "01"; "### Chunk 02:" via "2".
-        found, lines = _chunk_section_lines(PLAN, "01")
+        found, lines, _unparsed = _chunk_section_lines(PLAN, "01")
         assert found
         assert any("**Critic mode:** chunk" in ln for _n, ln in lines)
-        found2, lines2 = _chunk_section_lines(PLAN, "2")
+        found2, lines2, _unparsed2 = _chunk_section_lines(PLAN, "2")
         assert found2
         assert any("**Type:** doc-only" in ln for _n, ln in lines2)
 
     def test_fenced_block_is_dropped(self):
-        found, lines = _chunk_section_lines(PLAN, "1")
+        found, lines, _unparsed = _chunk_section_lines(PLAN, "1")
         assert found
         body = [ln for _n, ln in lines]
         assert not any("cumulative" in ln for ln in body)
         assert any("body line after fence" in ln for ln in body)
 
     def test_stops_at_sibling_chunk(self):
-        _found, lines = _chunk_section_lines(PLAN, "1")
+        _found, lines, _unparsed = _chunk_section_lines(PLAN, "1")
         assert not any("doc-only" in ln for _n, ln in lines)
 
     def test_stops_at_next_h2(self):
-        _found, lines = _chunk_section_lines(PLAN, "02")
+        _found, lines, _unparsed = _chunk_section_lines(PLAN, "02")
         assert not any("not a status item" in ln for _n, ln in lines)
 
     def test_not_found(self):
-        found, lines = _chunk_section_lines(PLAN, "42")
+        found, lines, _unparsed = _chunk_section_lines(PLAN, "42")
         assert not found
         assert lines == []
 
     def test_line_numbers_are_one_based_into_content(self):
-        _found, lines = _chunk_section_lines(PLAN, "1")
+        _found, lines, _unparsed = _chunk_section_lines(PLAN, "1")
         content_lines = PLAN.splitlines()
         for line_num, line in lines:
             assert content_lines[line_num - 1] == line
@@ -235,28 +237,28 @@ Context: mid-plan.
 
 class TestH2ChunkHeadingForm:
     def test_h2_paren_id_section_located(self):
-        found, lines = _chunk_section_lines(PLAN_H2, "1")
+        found, lines, _unparsed = _chunk_section_lines(PLAN_H2, "1")
         assert found
         body = [ln for _n, ln in lines]
         assert any("lib/research_trace.py" in ln for ln in body)
 
     def test_leading_zero_tolerance_on_h2_form(self):
         # "## Chunk 2 (…)" located via id "02".
-        found, lines = _chunk_section_lines(PLAN_H2, "02")
+        found, lines, _unparsed = _chunk_section_lines(PLAN_H2, "02")
         assert found
         assert any("docs/obs.md" in ln for _n, ln in lines)
 
     def test_notes_subheading_does_not_end_section(self):
         # "### Chunk 1 build-session decisions" has no separator after the id,
         # so it is body, not a sibling boundary — chunk 1 keeps its later refs.
-        _found, lines = _chunk_section_lines(PLAN_H2, "1")
+        _found, lines, _unparsed = _chunk_section_lines(PLAN_H2, "1")
         body = [ln for _n, ln in lines]
         assert any("lib/still_chunk_one.py" in ln for ln in body)
         # …but the genuine sibling "## Chunk 2" still ends it.
         assert not any("docs/obs.md" in ln for ln in body)
 
     def test_h2_sibling_boundary_still_stops(self):
-        _found, lines = _chunk_section_lines(PLAN_H2, "2")
+        _found, lines, _unparsed = _chunk_section_lines(PLAN_H2, "2")
         body = [ln for _n, ln in lines]
         assert any("docs/obs.md" in ln for ln in body)
         assert not any("research_trace" in ln for ln in body)
@@ -287,6 +289,326 @@ class TestChunkIdFromItemText:
         # (BLD-7K3Q).
         _write_plan(tmp_path / ".prawduct", PLAN_H2)
         assert _current_chunk_id_from_status(tmp_path) == "1"
+
+
+# ---------------------------------------------------------------------------
+# 1b. The dotted-id and leading-checkbox heading forms, and the third state
+#     an unparseable heading has to produce.
+# ---------------------------------------------------------------------------
+
+
+# Five heading forms in one plan, in the order that makes the bleed visible: the
+# unparseable ones follow a parseable one, so a section that fails to close
+# swallows them. Chunk A is the victim, not the culprit — its deliverable set
+# comes back NON-empty and wrong, which is the shape nobody notices.
+PLAN_FORMS = """# Build Plan — Heading Forms
+
+## Status
+
+- [ ] Chunk 01: colon form
+- [ ] Chunk 2 (RES-K3QP) — paren form
+- [ ] **Chunk A** — bold form
+- [ ] Chunk 1.2: dotted form
+- [ ] Chunk 7: checkbox form
+
+## Build Chunks
+
+### Chunk 01: colon form
+
+- **Deliverables:** `plugin/lib/core.py`
+
+### Chunk 2 (RES-K3QP) — paren form
+
+- **Deliverables:** `plugin/lib/plan_index.py`
+
+### **Chunk A** — bold form
+
+- **Deliverables:** `plugin/lib/waivers.py`
+
+### Chunk 1.2: dotted form
+
+- **Deliverables:** `plugin/lib/gates.py`
+
+### [ ] Chunk 7: checkbox form
+
+- **Deliverables:** `plugin/lib/critic_mode.py`
+"""
+
+
+class TestWidenedChunkHeadingForms:
+    """Dotted ids and a leading checkbox parse; nothing that parsed stops."""
+
+    @pytest.mark.parametrize(
+        "heading,expected",
+        [
+            # Previously working — every one must keep working.
+            ("### Chunk 01: Name", "01"),
+            ("## Chunk 2 (RES-K3QP) — Name", "2"),
+            ("### **Chunk A** — Name", "A"),
+            ("### Chunk 01 – Name", "01"),
+            ("### Chunk 01 - Name", "01"),
+            ("### Chunk A3", "A3"),
+            # Newly accepted.
+            ("### Chunk 1.2: Name", "1.2"),
+            ("## Chunk 1.2 — Name", "1.2"),
+            ("### **Chunk 1.2** — Name", "1.2"),
+            ("### Chunk 1.2.3: Name", "1.2.3"),
+            ("### [ ] Chunk 7: Name", "7"),
+            ("### [x] Chunk 7 — Name", "7"),
+            ("### - [ ] Chunk 7: Name", "7"),
+            ("### - [X] Chunk 1.2: Name", "1.2"),
+        ],
+    )
+    def test_heading_matcher_accepts(self, heading: str, expected: str):
+        m = buildplan_refs._CHUNK_HEADING_RE.match(heading)
+        assert m is not None and m.group(1) == expected
+
+    @pytest.mark.parametrize(
+        "heading",
+        [
+            # A notes sub-heading: a WORD after the id, so still not a boundary.
+            "### Chunk 1 build-session decisions",
+            # A sentence period is not a dotted id.
+            "### Chunk 1. Name",
+            # Depth outside `#{2,3}` still silently defeats the parser — which is
+            # exactly what the unparsed-heading signal below now reports.
+            "#### Chunk 01: Name",
+            "Chunky monkey business",
+        ],
+    )
+    def test_heading_matcher_still_rejects(self, heading: str):
+        assert buildplan_refs._CHUNK_HEADING_RE.match(heading) is None
+
+    @pytest.mark.parametrize(
+        "item,expected",
+        [
+            ("Chunk 1.2: A", "1.2"),
+            ("Chunk 1.2 — A", "1.2"),
+            ("**Chunk 1.2** — A", "1.2"),
+            ("[ ] Chunk 7: A", "7"),
+            ("- [x] Chunk 1.2 — A", "1.2"),
+            # Unchanged forms.
+            ("Chunk 01: A", "01"),
+            ("Chunk 2 (RES-K3QP) — eval", "2"),
+            ("Chunk 3", "3"),
+        ],
+    )
+    def test_item_matcher_accepts_the_same_vocabulary(self, item: str, expected: str):
+        assert _chunk_id_from_item_text(item) == expected
+
+    @pytest.mark.parametrize(
+        "form", ["Chunk 1.2: A", "**Chunk 1.2** — A", "Chunk 7: A", "Chunk A3"]
+    )
+    def test_the_pair_agrees(self, form: str):
+        """The heading matcher and the Status-item matcher are one contract read
+        twice. A form one accepts and the other does not is the split-brain that
+        made a plan read as having no current chunk while its section resolved —
+        so they are asserted against the same strings, not separate lists."""
+        heading = buildplan_refs._CHUNK_HEADING_RE.match(f"### {form}")
+        assert heading is not None
+        assert _chunk_id_from_item_text(form) == heading.group(1)
+
+    def test_dotted_and_checkbox_sections_resolve_end_to_end(self):
+        for chunk_id, deliverable in (("1.2", "gates.py"), ("7", "critic_mode.py")):
+            section = _chunk_section_lines(PLAN_FORMS, chunk_id)
+            assert section.found, chunk_id
+            assert any(deliverable in ln for _n, ln in section.lines), chunk_id
+
+    def test_a_widened_heading_closes_the_section_before_it(self):
+        """The bleed, stated as the property that fixes it: chunk A's body ends
+        at chunk 1.2's heading. Before the widening it ran to the end of the
+        plan and chunk A answered with `gates.py` and `critic_mode.py`."""
+        section = _chunk_section_lines(PLAN_FORMS, "A")
+        body = [ln for _n, ln in section.lines]
+        assert any("waivers.py" in ln for ln in body)
+        assert not any("gates.py" in ln for ln in body)
+        assert not any("critic_mode.py" in ln for ln in body)
+
+    def test_the_whole_status_roster_resolves(self):
+        ids = [
+            _chunk_id_from_item_text(text)
+            for _checked, text in _iter_status_section_items(PLAN_FORMS)
+        ]
+        assert ids == ["01", "2", "A", "1.2", "7"]
+
+
+# A heading form still outside the matcher (wrong depth), placed after a
+# parseable chunk so it bleeds. This is the shape part 2 exists for: whatever
+# form arrives next, it must not be silent.
+PLAN_UNPARSED = """# Build Plan — Unreadable Heading
+
+## Status
+
+- [ ] Chunk 01: first
+- [ ] Chunk 09: unreadable heading
+
+## Build Chunks
+
+### Chunk 01: first
+
+- **Type:** doc-only
+- **Trivial because:** it is one line
+- **Critic mode:** chunk
+- **Deliverables:** `plugin/lib/core.py`
+
+#### Chunk 09: unreadable heading
+
+- **Type:** code
+- **Critic mode:** final
+- **Deliverables:** `plugin/lib/gates.py`
+"""
+
+PLAN_NO_CHUNKS = """# Build Plan — No Chunk Headings
+
+## Status
+
+- [ ] tidy the docs
+
+## Notes
+
+- nothing here announces a chunk
+"""
+
+
+class TestUnparsedChunkHeadingsAreLoud:
+    """An unreadable chunk heading must not be reportable as a pass — and an
+    absence of chunk headings must stay quiet. Same rule `incompleteness_reason`
+    and `_has_unfinished_chunk` apply to an unreadable roster."""
+
+    def test_unparsed_is_reported_for_every_lookup_in_the_plan(self):
+        # Including the lookup that SUCCEEDS: chunk 01 is the section that
+        # absorbs the unreadable one, so its answer is the corrupted one.
+        found_section = _chunk_section_lines(PLAN_UNPARSED, "01")
+        assert found_section.found
+        assert [text for _n, text in found_section.unparsed] == [
+            "#### Chunk 09: unreadable heading"
+        ]
+        missing_section = _chunk_section_lines(PLAN_UNPARSED, "09")
+        assert not missing_section.found
+        assert missing_section.unparsed == found_section.unparsed
+
+    def test_a_plan_with_no_chunk_headings_stays_quiet(self):
+        section = _chunk_section_lines(PLAN_NO_CHUNKS, "01")
+        assert not section.found
+        assert section.unparsed == []
+        assert buildplan_refs.unparsed_chunk_heading_reason(section) is None
+
+    def test_a_clean_plan_stays_quiet(self):
+        assert (
+            buildplan_refs.unparsed_chunk_heading_reason(
+                _chunk_section_lines(PLAN_FORMS, "01")
+            )
+            is None
+        )
+
+    def test_the_shared_gate_passes_only_a_clean_located_section(self):
+        gate = buildplan_refs.chunk_section_gap
+        assert gate("01", _chunk_section_lines(PLAN_FORMS, "01")) is None
+        # Absent chunk, readable plan: an answer, not a parser failure.
+        assert gate("42", _chunk_section_lines(PLAN_FORMS, "42")) == (
+            "chunk '42' not found in build-plan"
+        )
+        # Located, unreadable plan: refused, and it says which line to fix.
+        located = gate("01", _chunk_section_lines(PLAN_UNPARSED, "01"))
+        assert located is not None and "Chunk 09" in located
+
+    def test_the_reason_names_the_line(self):
+        reason = buildplan_refs.unparsed_chunk_heading_reason(
+            _chunk_section_lines(PLAN_UNPARSED, "01")
+        )
+        assert reason is not None
+        line_num = PLAN_UNPARSED.splitlines().index("#### Chunk 09: unreadable heading") + 1
+        assert f"line {line_num}" in reason and "Chunk 09" in reason
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            # Possessive prose about a chunk, not a heading for one.
+            "## Chunk 01's review, and what rides into Chunk 02",
+            # The notes sub-heading form, which is body by design.
+            "### Chunk 1 build-session decisions (2026-07-18, finalized)",
+            # Not a heading at all.
+            "- [ ] Chunk 1.2: a Status item",
+        ],
+    )
+    def test_prose_is_not_an_unparsed_heading(self, line: str):
+        plan = f"## Build Chunks\n\n### Chunk 01: a\n\n{line}\n"
+        assert _chunk_section_lines(plan, "01").unparsed == []
+
+    def test_a_fenced_example_heading_is_not_an_unparsed_heading(self):
+        plan = (
+            "## Build Chunks\n\n### Chunk 01: a\n\n"
+            "```text\n#### Chunk 09: an example of the wrong depth\n```\n"
+        )
+        assert _chunk_section_lines(plan, "01").unparsed == []
+
+
+class TestUnparsedHeadingReachesEveryCaller:
+    """The signal is only worth what it reaches. Each consumer of the walk is
+    checked at the boundary the rest of the runtime reads."""
+
+    def _plan(self, tmp_path: Path, content: str) -> tuple[Path, Path]:
+        prawduct = tmp_path / ".prawduct"
+        _write_plan(prawduct, content)
+        return prawduct, prawduct / "artifacts" / "build-plan.md"
+
+    def test_ref_parse_refuses_a_resolved_but_untrustworthy_section(
+        self, tmp_path: Path
+    ):
+        prawduct, plan = self._plan(tmp_path, PLAN_UNPARSED)
+        refs = buildplan_refs._parse_build_plan_chunk_refs(prawduct, "01", plan)
+        assert refs["error"] and "Chunk 09" in refs["error"]
+        # And it must not hand back the absorbed chunk's deliverable as its own.
+        assert refs["file_paths"] == []
+
+    def test_ref_parse_distinguishes_absent_from_unreadable(self, tmp_path: Path):
+        prawduct, plan = self._plan(tmp_path, PLAN_FORMS)
+        refs = buildplan_refs._parse_build_plan_chunk_refs(prawduct, "42", plan)
+        assert refs["error"] == "chunk '42' not found in build-plan"
+
+    def test_ref_parse_still_passes_a_clean_plan(self, tmp_path: Path):
+        prawduct, plan = self._plan(tmp_path, PLAN_FORMS)
+        refs = buildplan_refs._parse_build_plan_chunk_refs(prawduct, "1.2", plan)
+        assert refs["error"] is None
+        assert [entry["ref"] for entry in refs["file_paths"]] == ["plugin/lib/gates.py"]
+
+    def test_type_reader_refuses_rather_than_defaulting(self, tmp_path: Path):
+        prawduct, plan = self._plan(tmp_path, PLAN_UNPARSED)
+        chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan
+        )
+        assert chunk_type is None
+        assert error and "Chunk 09" in error
+
+    def test_trivial_rationale_reader_refuses(self, tmp_path: Path):
+        prawduct, plan = self._plan(tmp_path, PLAN_UNPARSED)
+        rationale, error = buildplan_refs._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01", plan
+        )
+        assert rationale is None
+        assert error and "Chunk 09" in error
+
+    def test_critic_mode_reader_declines_rather_than_reading_a_neighbour(
+        self, tmp_path: Path
+    ):
+        """Chunk 01 declares `chunk`; the absorbed chunk 09 declares `final`.
+        The reader must return neither — an override it cannot attribute is not
+        an override.
+
+        But it must not merely decline, either: a bare "no override" sends
+        inference down to rule 4 and a confident `chunk`, on a plan nobody could
+        read. So the read carries the reason, and the caller escalates on it.
+        """
+        prawduct, plan = self._plan(tmp_path, PLAN_UNPARSED)
+        read = critic_mode._critic_mode_for_chunk(prawduct, "01", plan)
+        assert read.mode is None
+        assert read.unreadable and "do not parse as one" in read.unreadable
+
+    def test_critic_mode_reader_still_reads_a_clean_plan(self, tmp_path: Path):
+        prawduct, plan = self._plan(tmp_path, PLAN)
+        read = critic_mode._critic_mode_for_chunk(prawduct, "01", plan)
+        assert read.mode == "chunk"
+        assert read.unreadable is None
 
 
 # ---------------------------------------------------------------------------
@@ -426,3 +748,194 @@ class TestStatusSectionBoundsStaySingular:
 
     def test_no_status_section_reads_as_absent_not_as_the_whole_document(self):
         assert buildplan_refs.status_section_bounds("# Plan\n- [ ] x".splitlines()) is None
+
+
+class TestChunkIdFormsReachTheWalk:
+    """Two defects, one file, both about an id the code could not accept.
+
+    The dotted-id sort: `unticked_committed_chunk_notice` sorted with `key=int`
+    under a comment asserting every id is a digit string. Widening the commit
+    and Status matchers falsified both halves, so `int('1.2')` became reachable
+    outside the caller's except-set. The first pin written for it was VACUOUS —
+    it called the helper directly and asserted `int('1.2')` raises, a property
+    of the stdlib — so it stayed green with the fix reverted. This one drives
+    the notice.
+
+    The label form: `--chunk "Chunk 01"`, the string the plan's own heading
+    prints, never matched a matcher that captures a bare id, and record-lint
+    rates an unrunnable deliverable check BLOCKING — so a correct plan bought a
+    whole extra review round.
+    """
+
+    def test_a_dotted_chunk_id_does_not_raise_through_the_notice(self, tmp_path: Path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (tmp_path / "_home").mkdir()
+        _init_repo(repo)
+        _write(repo, ".prawduct/project-state.yaml", "base_branch: main\n")
+        _write_plan(
+            repo / ".prawduct",
+            "---\nartifact: build-plan\nscope: dotted\n---\n\n## Status\n\n"
+            "- [ ] Chunk 1.2: the dotted one\n",
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "chore: plan")
+        _git(repo, "checkout", "-b", "feature/x", "--quiet")
+        _write(repo, "src/x.py", "x = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "feat(dotted): land it (Chunk 1.2)")
+        # With key=int this raises ValueError instead of returning. The assertion
+        # matters as much as the call: `sorted()` never invokes the key on an empty
+        # set, so a fixture that stopped producing an intersection would go green
+        # while testing nothing.
+        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
+        assert notice is not None and "1.2" in notice
+
+    def test_dotted_ids_sort_numerically(self):
+        """Restored: the deleted pin's non-vacuous half. A string key passes
+        everything else green while ordering 1.10 before 1.2."""
+        from lib.buildplan_refs import _chunk_sort_key
+        assert sorted(["1.10", "1.2", "2", "01"], key=_chunk_sort_key) == [
+            "01", "1.2", "1.10", "2"
+        ]
+
+    def test_the_normalizer_is_total_on_the_dotted_grammar(self):
+        """A leading zero on ANY component, not just the first token.
+
+        `lstrip("0")` read the id as one string, so `"0.2"` normalized to `".2"`
+        — truthy, so the `or "0"` fallback could not fire — and `_chunk_sort_key`
+        then evaluated `int("")` and raised past an except-set of
+        `(OSError, subprocess.SubprocessError)` that cannot catch a ValueError.
+        Two of the three callers are unguarded, so a plan numbering `Chunk 0.1`
+        tracebacked where the error model promises a diagnostic.
+
+        Every case here is asserted THROUGH the sort as well as the normalizer:
+        normalizing correctly and still raising downstream is the failure that
+        actually reached users, and a pin on the string alone would not see it.
+        """
+        from lib.buildplan_refs import _chunk_sort_key, _normalize_chunk_id
+
+        for raw, norm, key in (
+            ("0.2", "0.2", (0, 2)),
+            ("00.2", "0.2", (0, 2)),
+            ("1.02", "1.2", (1, 2)),
+            ("Chunk 0.1", "0.1", (0, 1)),
+            ("00", "0", (0,)),
+            ("01", "1", (1,)),
+            ("1.10", "1.10", (1, 10)),
+        ):
+            got = _normalize_chunk_id(raw)
+            assert got == norm, f"{raw!r} normalized to {got!r}, expected {norm!r}"
+            assert _chunk_sort_key(got) == key, (
+                f"{raw!r} normalizes to {got!r} which does not sort — the "
+                "normalizer and the sort disagree about the id grammar"
+            )
+
+    def test_one_normalizer_owns_the_zero_trim(self):
+        """The docstring claims to be the only chunk-id normalizer in the tree;
+        this is what makes the claim true rather than aspirational.
+
+        Two callers had `lstrip("0") or "0"` inline, so both sides of the
+        `unticked & committed` intersection agreed on a wrong answer — agreement
+        that reads as corroboration. A second copy is how the class comes back.
+        """
+        source = (
+            Path(buildplan_refs.__file__).read_text(encoding="utf-8").split("\n")
+        )
+        offenders = [
+            (i + 1, ln.strip())
+            for i, ln in enumerate(source)
+            if 'lstrip("0")' in ln and "def _normalize_chunk_id" not in ln
+        ]
+        # The one legitimate site is inside _normalize_chunk_id's own body.
+        outside = [
+            (num, text) for num, text in offenders
+            if not text.startswith("return \".\".join(")
+            and not text.startswith("``lstrip")
+        ]
+        assert not outside, (
+            f"a second zero-trim exists outside the one normalizer: {outside}. "
+            "Route the caller through _normalize_chunk_id instead."
+        )
+
+    def test_the_type_error_discriminator_is_producer_owned(self, tmp_path):
+        """The session-end surfacing recognizes BOTH producers' real output.
+
+        `cmd_stop` used to match `"do not parse as one" in type_error` and
+        `type_error.startswith("unknown type:")` — a cross-module coupling on two
+        literal prose substrings, with nothing that fails when the prose is
+        reworded. Both messages are long, narrative, and edited whenever the
+        parser's advice improves; rewording either silently disabled the ONLY
+        session-end surfacing of a plan heading nothing can parse, and the author
+        of the broken plan never learned which line to fix.
+
+        **The strings here are PRODUCED, never written by hand.** A test that
+        hand-writes the sentence it expects re-creates the coupling one layer up:
+        it goes green against a producer that has drifted, because the fixture
+        drifted with the assertion instead of with the code.
+        """
+        from lib.buildplan_refs import (
+            ChunkSection,
+            _parse_build_plan_chunk_type,
+            is_reportable_type_error,
+            unparsed_chunk_heading_reason,
+        )
+
+        unparsed = unparsed_chunk_heading_reason(
+            ChunkSection(False, [], [(7, "### Chunk 02 & 03 — combined")])
+        )
+        assert unparsed, "the fixture stopped producing an unparsed reason"
+        assert is_reportable_type_error(unparsed), (
+            "the predicate no longer recognizes its own module's unparsed-heading "
+            "reason — the session-end surfacing is silently off"
+        )
+
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        plan = prawduct / "plan.md"
+        plan.write_text(
+            "### Chunk 01: a chunk\n\n- **Type:** nonsense-value\n",
+            encoding="utf-8",
+        )
+        chunk_type, type_error = _parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None and type_error, (
+            "the fixture stopped producing an unknown-type error"
+        )
+        assert is_reportable_type_error(type_error), (
+            "the predicate no longer recognizes an unrecognized Type: value"
+        )
+
+        # And it stays quiet on the states that are not authoring defects, or the
+        # surfacing becomes noise at every session end and gets muted wholesale.
+        assert not is_reportable_type_error(None)
+        assert not is_reportable_type_error("")
+
+    def test_the_hook_asks_the_predicate_rather_than_the_prose(self):
+        """Where the rule is enforced is the substance, so it is pinned.
+
+        The predicate only helps if the consumer calls it; a hook that keeps its
+        own substring match is unaffected by the producer owning the string.
+        """
+        hook = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "bin" / "prawduct-hook"
+        ).read_text(encoding="utf-8")
+        assert "is_reportable_type_error(" in hook, (
+            "the stop hook no longer asks buildplan_refs whether a Type: error is "
+            "reportable — it is back to matching prose it does not own"
+        )
+        for literal in ('"do not parse as one"', '"unknown type:"'):
+            assert literal not in hook, (
+                f"the hook matches {literal} directly again; the producer owns "
+                "that string and the consumer must ask, not grep"
+            )
+
+    def test_the_heading_label_is_an_accepted_chunk_id(self):
+        """`--chunk "Chunk 01"` must find what `--chunk 01` finds."""
+        bare = _chunk_section_lines(PLAN, "01")
+        labelled = _chunk_section_lines(PLAN, "Chunk 01")
+        assert labelled.found and labelled.found == bare.found
+        assert [ln for _n, ln in labelled.lines] == [ln for _n, ln in bare.lines]
+        assert _chunk_section_lines(PLAN, "chunk 2").found

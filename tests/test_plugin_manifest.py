@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -58,10 +59,25 @@ class TestPluginManifest:
         )
 
     def test_version_is_semver(self, manifest):
-        parts = manifest["version"].split(".")
+        # Bare major.minor.patch, or the one permitted prerelease form: a
+        # `-dev` / `-dev.N` suffix, which develop carries between releases so
+        # the verdict cache's version key and the session banner distinguish a
+        # prerelease plugin from the release it precedes. Releases stay bare
+        # because the runbook's step 7 overwrites all three version files with
+        # the bare number — that is the only PREVENTIVE control.
+        # `check_version_files` compares against `git show <tag>:…`, so it runs
+        # after the tag exists: it detects a `-dev` residue that shipped, it
+        # cannot stop one.
+        version = manifest["version"]
+        base, dash, prerelease = version.partition("-")
+        parts = base.split(".")
         assert len(parts) == 3 and all(p.isdigit() for p in parts), (
-            f"version must be semver major.minor.patch, got {manifest['version']!r}"
+            f"version must be semver major.minor.patch, got {version!r}"
         )
+        if dash:
+            assert re.fullmatch(r"dev(\.\d+)?", prerelease), (
+                f"the only permitted prerelease suffix is -dev or -dev.N, got {version!r}"
+            )
 
 
 class TestHooksJson:

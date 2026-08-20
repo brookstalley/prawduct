@@ -179,6 +179,19 @@ BUILD_PLAN_POINTER_KEY = "active_build_plan"
 DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
 
 
+class AmbiguousPlanBranchError(RuntimeError):
+    """Two or more live build plans declare the same frontmatter ``branch:``.
+
+    Authority fails closed. Either plan could be the one its author meant, so
+    governing the session by whichever sorted first would run every gate against
+    a plan nobody pointed at — the failure class where controls keep passing
+    while reading the wrong document. The resolver refuses instead, and every
+    caller inherits the refusal: the gates by propagating it (a refused gate is
+    a blocked gate), the session briefing by reporting it and carrying on
+    (advice fails soft).
+    """
+
+
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """Value of a top-level (column-0) ``key: value`` scalar, or None.
 
@@ -193,7 +206,14 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """
     try:
         content = state_path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # A file that is not decodable text is *unreadable*, which is what this
+        # promises to fail soft on. `UnicodeDecodeError` is a `ValueError`, so
+        # catching only `OSError` let it escape — and every caller reads this
+        # through a guard shaped for None, so the raise surfaced far from here.
+        # `already_migrated` is the sharp case: it calls this first, so an
+        # undecodable state file aborted the cutover before any of the later
+        # steps could reach their own decode guards.
         return None
     needle = f"{key}:"
     for raw in content.splitlines():
@@ -248,7 +268,10 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
         return False
     try:
         content = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # Same hole as `read_str_yaml_key`: undecodable is unreadable, and this
+        # promises to fail soft on unreadable. Fixed in both, because the two
+        # are documented as siblings sharing one idiom.
         return False
     needle = f"{key}:"
     for raw in content.splitlines():
@@ -262,26 +285,78 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
     return False
 
 
+def _branch_claimed_plan(prawduct_dir: Path) -> Path | None:
+    """The live plan whose ``branch:`` names the checked-out branch, or ``None``.
+
+    Falls through to ``None`` — and therefore to the pointer — on a detached
+    HEAD, outside a work tree, and when no live plan claims this branch.
+
+    **The plan scan runs before the branch probe deliberately.** A repo where no
+    plan has opted in gets its answer from a walk it was already paying for on
+    every session boundary, and never spawns git; ordering it the other way
+    would add a subprocess to every resolve in every repo to answer a question
+    that is almost always "nobody claims anything."
+
+    Raises :class:`AmbiguousPlanBranchError` when more than one live plan claims
+    the branch.
+    """
+    from . import plan_index  # noqa: PLC0415 — lazy: core's top level stays stdlib-only
+
+    artifacts_dir = prawduct_dir / "artifacts"
+    claims = plan_index.branch_claiming_plans(artifacts_dir)
+    if not claims:
+        return None
+
+    from . import gitstate  # noqa: PLC0415 — same reason; also a git subprocess
+
+    branch = gitstate.current_branch(prawduct_dir.parent)
+    if not branch:
+        return None
+    matched = [path for path, claimed in claims if claimed == branch]
+    if len(matched) > 1:
+        named = ", ".join(plan_index.display_path(p, artifacts_dir) for p in matched)
+        raise AmbiguousPlanBranchError(
+            f"{len(matched)} live build plans declare `branch: {branch}` ({named}) — "
+            "nothing can tell which one governs, so plan resolution refuses rather "
+            "than picking one. Keep the `branch:` frontmatter on the plan that "
+            "governs this branch and remove it from the other(s), or archive the "
+            "one that is finished (`prawduct-hook archive-plan <path> --state …`)."
+        )
+    return matched[0] if matched else None
+
+
 def resolve_build_plan_path(prawduct_dir: Path) -> Path:
-    """Resolve the active build-plan path (supports standard + scope-named plans).
+    """Resolve the active build-plan path. Branch-scoped first, pointer second.
 
-    Reads an optional ``active_build_plan:`` pointer (a path relative to the
-    ``.prawduct/`` dir) from ``project-state.yaml``; when set, that file is the
-    active plan, letting a project name its plan by scope
-    (``artifacts/v1.6.0-foo-plan.md``). When the pointer is absent, falls back to
-    the conventional ``artifacts/build-plan.md`` — so repos that don't set it
-    behave exactly as before. The returned path may not exist; callers treat a
-    missing plan as "no active build plan."
+    Precedence:
 
-    Kept in sync with the inline mirror in ``bin/prawduct-hook``
-    (``_resolve_build_plan_path``), which cannot import this module in product
-    repos — a parity test pins the two together.
+    1. **The live plan that claims this branch.** A build plan may declare
+       ``branch: <name>`` in its frontmatter; the non-archived plan under
+       ``artifacts/`` whose declaration matches the checked-out branch is the
+       active plan. Which branch a plan governs is a fact about the plan, so the
+       plan is where it belongs — held in a product-level scalar instead, two
+       concurrent branches conflict on one line every time, and after the merge
+       one of the two plans is invisible to every pointer-resolved surface.
+    2. **The ``active_build_plan:`` pointer** in ``project-state.yaml`` (a path
+       relative to the ``.prawduct/`` dir), letting a project name its plan by
+       scope (``artifacts/v1.6.0-foo-plan.md``).
+    3. **The conventional** ``artifacts/build-plan.md``.
+
+    A repo whose plans declare no ``branch:`` therefore resolves exactly as it
+    did before step 1 existed — opting in is per plan, and nothing migrates.
+
+    The returned path may not exist; callers treat a missing plan as "no active
+    build plan." Two live plans claiming one branch raise
+    :class:`AmbiguousPlanBranchError` rather than resolving.
 
     The pointer is ``.prawduct/``-relative, but the natural repo-relative
     spelling (``.prawduct/artifacts/x-plan.md``) is accepted by stripping the
     prefix — that spelling once shipped and silently disabled the gates for a
     work cycle (STH-5P2W).
     """
+    claimed = _branch_claimed_plan(prawduct_dir)
+    if claimed is not None:
+        return claimed
     pointer = read_str_yaml_key(prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY)
     if pointer and pointer.startswith(".prawduct/"):
         pointer = pointer[len(".prawduct/"):]
@@ -382,14 +457,20 @@ def gitignore_contract_drift(target: Path) -> dict:
     return _contract_diff(existing_lines)
 
 
-def update_gitignore(target: Path) -> dict:
+def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     """Add prawduct entries to .gitignore and remove incorrect ones.
 
     Managed files (MANAGED_FILES) should be committed, not gitignored.
     Session files (GITIGNORE_ENTRIES) should be gitignored.
-    Returns dict with 'modified' bool and 'unignored' list of paths
-    that were removed from .gitignore (caller should advise user to
-    git-add these).
+    Returns dict with 'modified' bool, 'unignored' list of paths that were
+    removed from .gitignore (caller should advise user to git-add these), and
+    'missing' list of session entries that were added.
+
+    ``dry_run=True`` computes the same three answers and skips the write, so a
+    caller can PREVIEW the reconcile. The whole point is that the preview and
+    the repair share one body: a separate "what would change" implementation is
+    free to drift from the fixer, and a preview that disagrees with the fix is
+    worse than no preview.
     """
     gitignore = target / ".gitignore"
 
@@ -434,7 +515,7 @@ def update_gitignore(target: Path) -> dict:
         content += "".join(parts)
         modified = True
 
-    if modified:
+    if modified and not dry_run:
         gitignore.write_text(content)
 
-    return {"modified": modified, "unignored": unignored}
+    return {"modified": modified, "unignored": unignored, "missing": list(missing)}

@@ -1,0 +1,4 @@
+# The change log is append-at-the-top: every branch writes its entry to the same
+# first lines, so two branches conflict there on every merge while never actually
+# disagreeing. The union driver keeps both sides' entries instead.
+.prawduct/change-log.md merge=union

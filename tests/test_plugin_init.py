@@ -280,11 +280,12 @@ def test_value_flags_do_not_swallow_the_next_flag():
 
     # `--name` with its value forgotten: the name is empty (caught by run()'s
     # usage check) and BOTH following flags survive.
-    target, name, backlog_repo, apply, as_json = _parse_argv(
+    target, name, backlog_repo, apply, as_json, unknown = _parse_argv(
         ["/t", "--name", "--json", "--apply"]
     )
     assert (name, backlog_repo) == ("", None)
     assert apply is True and as_json is True, "a swallowed flag silently changes the run"
+    assert unknown == [], "every token here is recognized; none should be reported"
 
     # Valueless must stay distinguishable from absent: `--backlog-repo` with no
     # value is a shape error (loud), while omitting it is the markdown-first
@@ -332,3 +333,22 @@ def test_backlog_repo_ignored_on_reapply(scaffolded: Path):
     assert "backlog_service_repo" not in (
         scaffolded / ".prawduct" / "project-state.yaml"
     ).read_text()
+
+
+def test_an_unrecognized_token_refuses_before_scaffolding(tmp_path):
+    """`init-product` WRITES a repo under `--apply`, and its parser's final
+    branch accepts only a bare positional — so an unrecognized flag used to fall
+    off the chain and vanish. `--apply --dry-run` then scaffolded while the
+    caller believed they had asked for a preview: the reported `update-gitignore`
+    defect, in the command that creates repositories.
+    """
+    from lib.init_product import _parse_argv, run
+
+    assert _parse_argv(["/t", "--name", "P", "--dry-run"])[5] == ["--dry-run"]
+    # A second positional is unclaimed too — the first wins and the rest vanished.
+    assert _parse_argv(["/t", "/other", "--name", "P"])[5] == ["/other"]
+
+    target = tmp_path / "newrepo"
+    rc = run([str(target), "--name", "P", "--apply", "--dry-run"])
+    assert rc == 2, "a misread invocation must not scaffold"
+    assert not target.exists(), "nothing may be written when nothing ran"

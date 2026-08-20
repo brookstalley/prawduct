@@ -22,6 +22,7 @@ observable end-to-end inside `cmd_stop`.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -169,6 +170,43 @@ def _write_partial(prawduct: Path, role: str, *, commit: str = _MOCK_HEAD) -> No
     }))
 
 
+def _dispatched_real_repo(tmp_path: Path) -> tuple[Path, Path, dict]:
+    """A real git repo with an active plan, a session edit, and a dispatched
+    review. Returns ``(repo, prawduct_dir, env)``.
+
+    Real git rather than the mock: the dispatch manifest and the gate's own tree
+    capture have to agree on real tree SHAs, so a faked HEAD makes the self-heal
+    unreachable for a reason that has nothing to do with what is being tested.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run([*git, "init", "-q", "-b", "main"], cwd=str(repo), check=True, timeout=15)
+    (repo / ".gitignore").write_text(".prawduct/\n")
+    (repo / "src").mkdir()
+    (repo / "src" / "app.py").write_text("x = 1\n")
+    subprocess.run([*git, "add", "-A"], cwd=str(repo), check=True, timeout=15)
+    subprocess.run([*git, "commit", "-q", "-m", "c1"], cwd=str(repo), check=True, timeout=15)
+    prawduct = _active_plan_repo(repo)
+    (repo / "src" / "app.py").write_text("x = 2\n")  # the session's edit
+
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True)
+    env = {
+        "HOME": str(home),
+        "CLAUDE_PROJECT_DIR": str(repo),
+        "CLAUDE_PLUGIN_ROOT": str(ROOT),
+        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    begin = subprocess.run(
+        ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
+        capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+    )
+    assert begin.returncode == 0, begin.stderr
+    return repo, prawduct, env
+
+
 def _write_complete_review(prawduct: Path, *, commit: str = _MOCK_HEAD) -> None:
     _write_manifest(prawduct, commit=commit)
     for role in _ROSTER:
@@ -188,10 +226,13 @@ class TestAbandonedReviewBlocks:
         # Actionable: names the re-run path and the escape hatch (Chunk 05 dropped
         # the interim "run critic-end" advice — consolidate now owns persistence).
         assert "/prawduct:critic" in result.stderr
-        assert "rm .prawduct/.critic-active" in result.stderr
-        # The waiver must also clean up leftover partials — otherwise the next
-        # dispatch at the same HEAD could merge a stale partial as current work.
-        assert "rm -rf .prawduct/.critic-partials" in result.stderr
+        # The escape hatch clears the leftover partials — otherwise the next
+        # dispatch at the same HEAD could merge a stale partial as current work —
+        # but it does so through `critic-discard`, which ARCHIVES them. The two
+        # `rm` lines this once asserted destroyed a roster that may be one
+        # consolidation from being recorded; TestTheEscapeHatchNeverDestroys
+        # below binds that for every branch, not just this one.
+        assert "critic-discard" in result.stderr
 
     def test_abandoned_block_suppresses_generic_findings_block(self, tmp_path):
         """One cause → one block. With the marker present AND no findings, the
@@ -298,40 +339,7 @@ class TestChunk05ConsolidateOrBlock:
         chunk 04 — self-heal feeds the coverage gate rather than bypassing it),
         so the session ends clean. Real git throughout: the dispatch manifest
         and the gate's tree capture must agree on real tree SHAs."""
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "init", "-q", "-b", "main"],
-            cwd=str(repo), check=True, timeout=15,
-        )
-        (repo / ".gitignore").write_text(".prawduct/\n")
-        (repo / "src").mkdir()
-        (repo / "src" / "app.py").write_text("x = 1\n")
-        subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"],
-            cwd=str(repo), check=True, timeout=15,
-        )
-        subprocess.run(
-            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "c1"],
-            cwd=str(repo), check=True, timeout=15,
-        )
-        prawduct = _active_plan_repo(repo)
-        (repo / "src" / "app.py").write_text("x = 2\n")  # the session's edit
-
-        home = repo.parent / "_home"
-        home.mkdir(exist_ok=True)
-        env = {
-            "HOME": str(home),
-            "CLAUDE_PROJECT_DIR": str(repo),
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
-        begin = subprocess.run(
-            ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
-            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
-        )
-        assert begin.returncode == 0, begin.stderr
+        repo, prawduct, env = _dispatched_real_repo(tmp_path)
         # Single-pass roster: one "reviewer" partial, then abandon (no
         # consolidate) — the background-by-default failure shape.
         manifest = json.loads(
@@ -405,3 +413,282 @@ class TestChunk05ConsolidateOrBlock:
         _write_partial(prawduct, "correctness")
         _run_stop(tmp_path, status=_CODE_DIFF)
         assert (prawduct / ".critic-active").is_file()
+
+
+class TestTheEscapeHatchNeverDestroys:
+    """Every state that prints the escape hatch is a state holding reviewer output.
+
+    The class, stated as the reason it broke: *one `_escape` string is appended to
+    every abandoned-review branch, and each of those branches is reached only when
+    reviewer output is on disk.* That sentence names the string, not any one
+    branch — so pinning the branches individually would leave the next branch
+    someone adds free to ship the old recipe again. These drive all four wedged
+    states and assert the property on whatever each one emits.
+
+    `rm -rf .prawduct/.critic-partials` was the shipped advice, on all four. On the
+    complete-roster-but-consolidation-failed branch it destroys a review one
+    deterministic step from being recorded — the exact loss `boundary_sweep`'s
+    roster question and `write_marker`'s guard exist to prevent. `critic-discard`
+    reaches the same end state (marker cleared, partials out of the way, next
+    dispatch unblocked) and archives, printing `critic-restore <id>`.
+    """
+
+    def _stderr_for(self, tmp_path, state: str) -> str:
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        if state == "complete":
+            # The consolidation-FAILED branch, and the one that matters most:
+            # every reviewer reported, so the roster is complete, but the
+            # partials cannot be consolidated. `pending_state` is presence-only
+            # by design (it is the cheap liveness read), so a malformed partial
+            # reads as complete and fails inside `consolidate` — which is the
+            # real-world shape too. A wrong commit_reviewed does NOT produce this
+            # state: the self-heal succeeds and the generic coverage gate fires
+            # instead, with no escape hatch in it.
+            _write_manifest(prawduct)
+            _write_partial(prawduct, "correctness")
+            _write_partial(prawduct, "design")
+            rid = _review_id(prawduct)
+            (prawduct / ".critic-partials" / f"sustainability.{rid}.json").write_text(
+                "{not json"
+            )
+        elif state == "incomplete":
+            _write_manifest(prawduct)
+            _write_partial(prawduct, "correctness")
+        elif state == "unreadable":
+            d = prawduct / ".critic-partials"
+            d.mkdir()
+            (d / "manifest.json").write_text("{not json")
+        elif state != "none":
+            raise AssertionError(f"unknown wedged state {state!r}")
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2, (
+            f"state={state!r} must block. stderr={result.stderr!r}"
+        )
+        return result.stderr
+
+    def test_every_wedged_state_names_critic_discard(self, tmp_path):
+        for state in ("complete", "incomplete", "none", "unreadable"):
+            stderr = self._stderr_for(tmp_path / state, state)
+            assert "prawduct-hook critic-discard" in stderr, (
+                f"state={state!r} printed an escape hatch that does not name "
+                f"critic-discard: {stderr!r}"
+            )
+
+    def test_no_wedged_state_recommends_deleting_reviewer_output(self, tmp_path):
+        for state in ("complete", "incomplete", "none", "unreadable"):
+            stderr = self._stderr_for(tmp_path / state, state)
+            for destructive in (
+                "rm .prawduct/.critic-active",
+                "rm -rf .prawduct/.critic-partials",
+                "rm -r .prawduct/.critic-partials",
+            ):
+                assert destructive not in stderr, (
+                    f"state={state!r} recommends {destructive!r} — that discards "
+                    f"reviewer output with no archive. Use critic-discard."
+                )
+
+    def test_the_escape_hatch_still_names_the_waiver(self, tmp_path):
+        """The hatch has two halves and only one of them changed: clearing the
+        review, and declaring the waiver that stops the gate re-firing. Dropping
+        the second would trade a destructive recipe for an incomplete one."""
+        stderr = self._stderr_for(tmp_path, "none")
+        assert ".prawduct/.gates-waived" in stderr
+        assert '"critic"' in stderr
+
+
+class TestASelfHealSurvivesTheSessionBoundary:
+    """The retention and the self-heal are one behaviour across two invocations.
+
+    Each half passes on its own while the pair is broken, which is how the
+    defect shipped: the boundary swept every expired marker, and a review that
+    ran long enough to expire one lost the backstop that would have consolidated
+    it. Nothing in the boundary's own session could observe that — the cost
+    lands on the NEXT invocation, so this is where it has to be asserted.
+    """
+
+    def test_a_complete_roster_kept_by_the_boundary_still_self_heals(self, tmp_path):
+        repo, prawduct, env = _dispatched_real_repo(tmp_path)
+        manifest = json.loads(
+            (prawduct / ".critic-partials" / "manifest.json").read_text()
+        )
+        _write_partial(prawduct, "reviewer", commit=manifest["commit_reviewed"])
+        # The review outran the TTL. `_set_marker` stamps a fixed past instant,
+        # so "expired" is decided by the stamp alone and every reader here — this
+        # process and both subprocesses — reads it against the same wall clock.
+        _set_marker(prawduct)
+
+        boundary = subprocess.run(
+            ["python3", str(HOOK), "clear", "--session-start"],
+            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+        )
+        assert boundary.returncode == 0, boundary.stderr
+        assert (prawduct / ".critic-active").is_file(), (
+            "the boundary must keep a complete roster's marker — it is the handle "
+            "the backstop below consolidates from"
+        )
+
+        # The new session does what a new session does: it edits, and it
+        # reflects. The boundary re-captured the git baseline and consumed the
+        # reflection, so both have to come back or Stop never reaches the gate
+        # under test — and the assertions below would pass on a Stop that judged
+        # nothing. A NEW file, because the baseline already carries a modified
+        # `src/app.py`: editing it again leaves `git status` byte-identical.
+        (repo / "src" / "new.py").write_text("y = 1\n")
+        (prawduct / ".session-reflected").write_text(
+            "Session reflection: continued after the boundary; suite green."
+        )
+        result = subprocess.run(
+            ["python3", str(HOOK), "stop"],
+            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+        )
+
+        # The self-heal ran: the review was consolidated, its fact recorded, and
+        # the marker cleared by the act that consumed it.
+        assert "self-healed" in result.stderr, (
+            "the session boundary must not have cost this review its self-heal. "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert (prawduct / ".critic-findings.json").is_file()
+        assert not (prawduct / ".critic-active").is_file()
+        assert not (prawduct / ".critic-partials").exists()
+        assert _ABANDONED_MSG not in result.stderr
+        assert "CRITIC REVIEW (incomplete)" not in result.stderr
+        # Deliberately NOT asserting a clean exit. This session edited a file
+        # AFTER the review it healed, so the coverage gate has a real gap to
+        # report — a different gate answering a different question. Pinning
+        # rc == 0 here would make this test fail whenever the fixture's
+        # post-boundary edit changes, for a reason that has nothing to do with
+        # whether the boundary preserved the self-heal.
+
+
+class TestNoShippedSurfaceSanctionsTheBareDelete:
+    """The construction, because three per-site pins did not stop a fourth site.
+
+    Guidance sanctioning `rm` of the critic marker or partials has been fixed at
+    three separate surfaces in three commits — the marker-refusal remedy,
+    `lib/critic_marker`'s own prose, and the Stop hook's escape hatch. Each was
+    pinned only where it was found, so each fix left the NEXT surface free to
+    reintroduce it. A per-site assertion cannot close a class whose next member
+    has not been written yet.
+
+    This derives its subject from the tree instead: every shipped file under
+    `plugin/`, matched against the act rather than any one spelling of it. It
+    fails on a surface nobody has thought of, which is the whole point.
+
+    Scoped to `plugin/` because that is what consumers execute and read, minus
+    the release record: a change-log DESCRIBES the retired recipe, and quoting
+    what was removed is how a record works. `.prawduct/change-log.md` is out of
+    scope by living outside `plugin/`; `plugin/CHANGELOG.md` ships inside it and
+    so is named below. That exemption is one file and is asserted to stay one —
+    a record is the only genre where the string is not advice, and widening the
+    list is how the class would quietly reopen.
+    """
+
+    #: Record-genre files: they quote the retired recipe rather than advise it.
+    _RECORD_FILES = frozenset({"CHANGELOG.md"})
+
+    #: The act, not its spellings: an `rm` (any flags) reaching either file.
+    #: Backticks are allowed through — a prohibition often quotes the command
+    #: it forbids, and relying on punctuation to tell those apart is what made
+    #: the first cut of this pin fire on the sentence doing the forbidding.
+    _NAMES_THE_ACT = re.compile(
+        r"\brm\b[^\n]{0,40}?\.(?:prawduct/\.)?critic-(?:active|partials)"
+    )
+
+    #: What separates advice from prohibition is the sentence's stance, so that
+    #: is what is matched — not the presence of backticks around the command.
+    #: A line that tells you NOT to do it is the pin working, not a violation.
+    #: Prohibition markers only. A bare ``not`` was deliberately left out: it is
+    #: common enough that it would excuse a genuine recommendation that happened
+    #: to contain one, and every prohibition this guards actually leads with one
+    #: of these.
+    _FORBIDS = re.compile(
+        r"\b(?:do not|don't|never|must not|no longer|rather than|instead of)\b",
+        re.IGNORECASE,
+    )
+
+    def _sanctions_delete(self, line: str) -> bool:
+        """Does this line RECOMMEND the delete, as opposed to forbidding it?
+
+        The residual bypass is stated rather than left to be discovered: a line
+        that both recommends the act and happens to contain a negation ("do not
+        wait — rm .prawduct/.critic-partials") reads as a prohibition here. That
+        is the safe direction for a *style* pin and the wrong one for a security
+        check; this is the former. Narrowing it further would cost the property
+        that makes the pin worth having, which is that it needs no maintenance
+        as surfaces are reworded.
+        """
+        return bool(self._NAMES_THE_ACT.search(line)) and not self._FORBIDS.search(line)
+
+    def _shipped_files(self) -> list[Path]:
+        skip = {".git", "__pycache__", ".critic-partials", ".critic-partials-archive"}
+        out = [
+            p
+            for p in ROOT.rglob("*")
+            if p.is_file()
+            and p.suffix in {".py", ".md", ".json", ""}
+            and not any(part in skip for part in p.parts)
+        ]
+        assert len(out) > 20, f"tree walk found only {len(out)} files — wrong root?"
+        return out
+
+    def test_the_record_exemption_stays_one_file(self):
+        """A one-file exemption is a judgement; a growing one is a loophole."""
+        assert self._RECORD_FILES == {"CHANGELOG.md"}, (
+            "the record-genre exemption grew. Each added file is a surface this "
+            "pin no longer protects — justify it here or drop it."
+        )
+
+    def test_no_shipped_file_recommends_deleting_the_marker_or_partials(self):
+        offenders: list[str] = []
+        for path in self._shipped_files():
+            if path.name in self._RECORD_FILES:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            for lineno, line in enumerate(text.splitlines(), 1):
+                if self._sanctions_delete(line):
+                    rel = path.relative_to(ROOT.parent)
+                    offenders.append(f"{rel}:{lineno}: {line.strip()}")
+        assert not offenders, (
+            "a shipped surface tells the operator to delete the critic marker or "
+            "partials by hand. That destroys a roster that may be one "
+            "consolidation from being recorded, and says nothing. Use "
+            "`prawduct-hook critic-discard`, which archives and can be restored.\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_the_pattern_actually_matches_the_recipe_it_retired(self):
+        """The pin above passes when the tree is clean AND when the pattern is
+        broken. This tells the two apart by feeding it the exact string that
+        shipped in v3.3.4, plus the spellings a re-introduction would plausibly
+        use."""
+        for shipped in (
+            "    rm .prawduct/.critic-active",
+            "    rm -rf .prawduct/.critic-partials",
+            "rm -r .prawduct/.critic-partials",
+            "run `rm .critic-active` to clear it",
+        ):
+            assert self._sanctions_delete(shipped), (
+                f"the pattern cannot see {shipped!r} — it would pass over a "
+                "reintroduction of the very recipe it exists to catch"
+            )
+        for innocent in (
+            "critic-discard archives the partials rather than deleting them",
+            "the marker is removed by name — critic-end, critic-discard",
+            # The live PROHIBITION, quoted from the escape hatch it guards.
+            # Today only the backticks keep the pattern off it, which is
+            # incidental rather than designed — a rewording that drops them
+            # would make this pin fire on the sentence forbidding the act.
+            # Listed so that rewording fails HERE, next to the reason, rather
+            # than as a mystery failure in the sweep above.
+            "Do not `rm` the marker or .critic-partials by hand: most states",
+            "Do not rm the marker or .critic-partials by hand",
+        ):
+            assert not self._sanctions_delete(innocent), (
+                f"the pattern fires on {innocent!r} — a pin that cries wolf gets "
+                "waived, which is how the class reopens"
+            )

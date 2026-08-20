@@ -60,6 +60,144 @@ class _FakeProc:
         self.stdout = stdout
 
 
+def _plan(prawduct: Path, rel: str, body: str) -> Path:
+    path = prawduct / "artifacts" / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body)
+    return path
+
+
+class TestBranchScopedPlanBriefing:
+    """What the briefing says about `branch:`-declaring plans.
+
+    All three are advice — the briefing must still be produced. The refusal that
+    stops the GATES is reported here rather than met later as a failed command.
+    """
+
+    def test_a_plan_claiming_a_missing_branch_is_reported(self, tmp_path: Path):
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+        _plan(
+            prawduct,
+            "build-plan-gone.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: a chunk\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert any("feat/long-merged" in f and "not a branch in this repo" in f
+                   for f in findings), findings
+
+    def test_a_FINISHED_plan_claiming_a_missing_branch_says_nothing(self, tmp_path: Path):
+        """The gitflow retention window, which is the whole point of the narrowing.
+
+        A merged branch goes away, so a plan with every box ticked and a claim on
+        a branch that is gone is the documented end state — `/prawduct:pr` step 7
+        says to RETAIN it there until the release archives it. Firing would nag
+        every session for weeks with the one remedy that flow forbids.
+
+        This is the test that fails if the `_has_unfinished_chunk` filter is
+        deleted; the sibling above passes either way, because its plan has an
+        open chunk.
+        """
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+        _plan(
+            prawduct,
+            "build-plan-merged.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: a chunk\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert not any("not a branch in this repo" in f for f in findings), findings
+
+    def test_a_plan_claiming_an_existing_branch_is_not_reported(self, tmp_path: Path):
+        # The paired negative, or the assertion above passes against a scan that
+        # reports every branch-declaring plan.
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+        _plan(
+            prawduct,
+            "build-plan-live.md",
+            "---\nartifact: build-plan\nbranch: work\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: a chunk\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert not any("not a branch in this repo" in f for f in findings), findings
+
+    def test_an_unaskable_git_accuses_nobody(self, tmp_path: Path, monkeypatch):
+        # `local_branches` returning None means "could not ask", which is not
+        # evidence that the branch is missing. Treating the two alike would
+        # accuse every plan in every repo where git is unavailable — the
+        # fail-open shape, pointed the other way.
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+        _plan(
+            prawduct,
+            "build-plan-gone.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: a chunk\n",
+        )
+        monkeypatch.setattr(gitstate, "local_branches", lambda _p: None)
+        findings = briefing.staleness_scan(tmp_path)
+        assert not any("not a branch in this repo" in f for f in findings), findings
+
+    def test_two_claimants_are_reported_and_the_briefing_survives(self, tmp_path: Path):
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+        for name in ("a", "b"):
+            _plan(
+                prawduct,
+                f"build-plan-{name}.md",
+                "---\nartifact: build-plan\nbranch: work\n---\n\n"
+                "## Status\n\n- [ ] Chunk 01: a chunk\n",
+            )
+        findings = briefing.staleness_scan(tmp_path)
+        assert any("live build plans declare" in f for f in findings), findings
+        # And the briefing itself is still produced, carrying the refusal — a
+        # session that only learns of this by watching a gate fail has been
+        # told too late.
+        text = briefing.assemble_session_briefing(tmp_path, findings)
+        assert "== SESSION BRIEFING ==" in text
+        assert "build-plan resolution REFUSES" in text
+
+    def test_the_dangling_pointer_warning_defers_to_a_branch_claim(self, tmp_path: Path):
+        # A plan claiming this branch outranks the scalar, so a stale pointer
+        # misleads nobody — and a ⚠ that is usually wrong trains the reader to
+        # scroll past it.
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-vanished.md\n"
+        )
+        _plan(
+            prawduct,
+            "build-plan-live.md",
+            "---\nartifact: build-plan\nbranch: work\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: a chunk\n",
+        )
+        text = briefing.assemble_session_briefing(tmp_path, [])
+        assert "points at a MISSING file" not in text
+
+    def test_the_dangling_pointer_warning_still_fires_without_a_claim(
+        self, tmp_path: Path
+    ):
+        """STH-5P2W's guard, unchanged where it is still true — the case the
+        narrowing above must not have swallowed."""
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "artifacts").mkdir(exist_ok=True)
+        (prawduct / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-vanished.md\n"
+        )
+        text = briefing.assemble_session_briefing(tmp_path, [])
+        assert "points at a MISSING file" in text
+
+
 # --------------------------------------------------------------------------- #
 # _extract_dependency_names
 # --------------------------------------------------------------------------- #
@@ -564,7 +702,7 @@ class TestCheckPreviousSessionGates:
         )
         monkeypatch.setattr(briefing.gates, "_has_build_plan_in_state", lambda d: False)
         monkeypatch.setattr(
-            briefing.gates, "session_review_verdict", lambda d: {"status": "uncovered", "reason": "no facts"}
+            briefing.gates, "session_review_verdict", lambda d, **_kw: {"status": "uncovered", "reason": "no facts"}
         )
 
     def test_no_changes_short_circuits(self, tmp_path, monkeypatch):

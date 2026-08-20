@@ -177,6 +177,28 @@ When `develop` is ready to release as `vX.Y.Z`:
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
    gate newly active in the range.
 
+10. **Reopen `develop` at the next `-dev` version.** Bump the same three files from step 2 to the
+    next **patch** plus a `-dev` suffix (after cutting `v3.4.0`, write `3.4.1-dev`), open a
+    `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md` with a non-empty first line, and
+    add a `.prawduct/change-log.md` entry — all in one commit on `develop`.
+
+    > **Why `develop` must never report the released number:** the verdict cache keys on the
+    > plugin version, so a prerelease codebase reporting the released number replays `covered`
+    > verdicts across a judgeability change; and a consumer pinned to the `develop` ref can only
+    > tell which plugin it is running if the banner says so. `-dev` and `-dev.N` are the only
+    > suffixes `test_version_is_semver` permits. The CHANGELOG section is not optional —
+    > `test_changelog_has_current_version_entry` requires one for the current version, so the
+    > version files and the digest move together or `develop` goes red.
+
+    > **Guess low.** A prerelease sorts just below its own release, so from `3.4.1-dev` every
+    > possible next cut is a forward move; from a high guess like `3.5.0-dev` a patch cut is a
+    > *downgrade*, and the banner is empty on a downgrade — no notes, no gate announcement. It
+    > is also the ratified conservative-versioning norm: a minor bump is a recorded decision,
+    > not a reflex.
+
+    Full procedure, including what to do when the guessed number is wrong at the next cut:
+    `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 3.
+
 ### Two states, carried by the presence or absence of `release=`
 
 - **Release-pending** — tagged `scope=`, **no `release=`**. The entry merged to `develop`

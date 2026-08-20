@@ -37,7 +37,7 @@ backlog_service_repo: brookstalley/prawduct
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-08-07
+backlog_last_groomed_at: 2026-08-19
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -494,6 +494,27 @@ build_state:
 # the branch that removes its cause.
 # Repointed 2026-08-11 on branch fix/v3.3.4-batch: this branch builds the
 # v3.3.4 batch plan (four independent scopes plus two governance stamps).
+# REPOINTED 2026-08-12 on branch fix/durable-agent-worktrees: this branch builds
+# the durable-agent-worktrees plan (#648/#649 — the ephemeral guard's branch
+# conjunct plus the historical reader's reconciliation). The plan stays LIVE past
+# its merge to develop: the base is the integration branch, so the work is
+# release-pending and the plan is archived at the develop->main release, not here.
+# Repointed 2026-08-13 (purpose-and-cession Cycle 1) while durable-agent-worktrees
+# is release-pending — a recorded departure, mirroring 2026-08-08: the pointer must
+# track the plan under review or the gates grade the wrong plan, so it moves at the
+# NEW plan's birth; the release-pending plan STAYS LIVE in artifacts/ (gitflow RETAIN
+# rule, pr/SKILL.md) and is archived by the develop->main release, which stamps its
+# release=. An early archive here was made and reverted on a blocking Critic finding
+# (rev-20260813T042938Z-81decaea): plan-backfill refuses names already in archive/.
+#
+# DEMOTED TO SECOND 2026-08-13 (tactical-efficiency Chunk 06). A build plan may
+# now declare `branch: <name>` in its frontmatter, and resolution takes the live
+# plan claiming the checked-out branch BEFORE this scalar, falling back to
+# artifacts/build-plan.md after it. The plan below declares this branch and is
+# the repo's first opt-in, so on feat/tactical-efficiency-pass it is resolved by
+# its own frontmatter and this line is not consulted. The scalar is deliberately
+# kept and kept current: it is the answer on every other branch, and retiring it
+# is out of that pass's scope.
 active_build_plan: null
 
 # =============================================================================

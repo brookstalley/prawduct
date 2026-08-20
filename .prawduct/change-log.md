@@ -3,6 +3,2114 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-19: the escape hatch stops recommending the deletion this release guards against
+
+<!-- prawduct: type=fix | scope=critic-reliability | release=v3.4.0 -->
+
+The Stop hook's abandoned-review blocker prints an escape hatch for the case where a review
+genuinely cannot finish this session. It said:
+
+```
+rm .prawduct/.critic-active
+rm -rf .prawduct/.critic-partials
+```
+
+**The states that print that string are the states holding reviewer output.** There are four —
+`consolidation failed`, `incomplete`, `not completed (no manifest)` and `unreadable manifest` —
+reached through **three** `+ _escape` sites, since the `else` serves both of the last two. On
+`consolidation failed`, every reviewer has reported and the set is one deterministic consolidation
+from being recorded; the Stop hook's own backstop runs that step. The recipe deleted it, unarchived,
+and said nothing about what was lost. (`none` is the exception, and it is the argument for one safe
+recipe rather than two: there may be nothing on disk to lose, and the operator cannot tell which
+state they are in from the message alone.)
+That is precisely the loss `boundary_sweep`'s roster question and `write_marker`'s guard were built
+this cycle to prevent — so the release was about to ship the protection and the contradicting advice
+together, which is worse than shipping neither, because the operator now has reason to trust the
+mechanism.
+
+The hatch names `prawduct-hook critic-discard` instead. It reaches the same end state — marker
+cleared, partials out of the way, next dispatch unblocked — and archives rather than deletes,
+printing the `critic-restore <id>` that brings the review back **as itself**. The deferred worry
+that it might not survive the wedged states does not hold: `_archive_leftovers` reads the manifest
+raw *because* it must also work when the manifest is unreadable, and falls back to an
+`unmanifested-<stamp>` name. All four states archive.
+
+**Pinned as a class, because the defect is one.** Say why it broke in one sentence — *one shared
+escape string is appended to four branches, each reached only when reviewer output exists* — and
+that sentence names the string, not any branch. A per-branch assertion would leave the next branch
+someone adds free to reintroduce the recipe. `TestTheEscapeHatchNeverDestroys` drives all four
+wedged states and asserts the property on whatever each emits: names `critic-discard`, contains no
+hand-delete of either file, and still names the waiver (the hatch has two halves, and only one of
+them changed). A sweep of the plugin, docs and runbooks confirms the escape hatch was the class's
+only remaining home.
+
+**Two assertions were deleted, and that is a correction rather than a relaxation.** The old test
+asserted `rm .prawduct/.critic-active` and `rm -rf .prawduct/.critic-partials` were present — it
+pinned the defect, exactly as `test_resume_still_sweeps_a_stale_critic_marker` once pinned the
+sweep this cycle removed. Checked by reverting the recipe: both new pins fail against the shipped
+v3.3.4 string and pass against the fix, so they discriminate rather than pass vacuously.
+
+**The review found the class had no construction, and that is the durable half.** Guidance
+sanctioning the bare delete has now been fixed at three surfaces in three commits this cycle — the
+marker-refusal remedy, `lib/critic_marker`'s own prose, and this `_escape` string — each pinned only
+where it was found, so each fix left the next surface free. `TestNoShippedSurfaceSanctionsTheBareDelete`
+derives its subject from the tree instead: every shipped file under `plugin/`, matched on the act
+rather than a spelling, failing on a surface nobody has thought of. One exemption, `plugin/CHANGELOG.md`,
+because a release record quotes what was removed and that is not advice — and a second test asserts
+that exemption stays one file, since a growing list is how the class would quietly reopen. The pin
+caught this entry's own consumer-facing twin on its first run, which is the behaviour wanted.
+
+**`critic-discard` stops reporting success on the one path where it destroys something.**
+`_archive_leftovers` returns `None` for three outcomes, one being *an `OSError` hit mid-archive, so
+I degraded to delete* — and the command read that single `None` and printed `nothing to discard (no
+partials on disk)`. The three are worth naming, because two look alike and cost opposite things:
+nothing was there; the directory could not be *read*, so nothing is archived **and** nothing is
+deleted; or the archive's `mkdir`/`rename` failed, which degrades to delete and completes it. Only
+the last destroys anything. Tolerable while this was a command you went looking for; making it the printed
+remedy in states that hold reviewer output is what promoted it. A `had_partials` read taken BEFORE
+the attempt separates the no-op from the loss; each failure path says what it actually cost —
+deleted-with-nothing-to-restore for the degrade, still-on-disk-fix-the-permissions for the
+unreadable dir — read off the POST-state rather than guessed from a return value that cannot tell
+them apart; and the underlying diagnostic names the command the operator actually ran instead of
+hardcoding `critic-begin`. The clean path also states the restore window — an undo with an unstated
+eviction bound is one you learn about too late.
+
+**That guard's first cut held for one function and not for the path, which the review caught.**
+`_archive_leftovers` stopped raising on an unreadable directory; `remove_partials` ran the identical
+unguarded listing one line later, so every input reaching the new guard hit an unhandled raise
+immediately after it — and did so *after* the caller announced the partials were deleted and
+*before* the marker was cleared. Strictly worse than the bug it replaced: told the destructive thing
+happened, still wedged. Every `iterdir`/`glob` over the partials and archive directories now sits
+inside an `OSError` guard, and the pin drives `critic-discard` against a `chmod 000` directory
+rather than unit-testing either function, because either passes alone while the path is broken.
+
+Also here: `tests/test_session_boundary_events.py`'s two stale prose claims, which the previous
+cycle deliberately deferred to the next commit touching `tests/` — this one. It named `rm` as one
+of the marker's three recoveries (the third is an explicit named act: `critic-end`,
+`critic-discard`, `clear --force`), and its module docstring still stated the TTL-alone sweep rule
+that `boundary_sweep` replaced with a two-question one.
+
+## 2026-08-19: an expiring Critic marker announces itself, and never discards a self-heal
+
+<!-- prawduct: type=fix | scope=critic-reliability | release=v3.4.0 -->
+
+Two field reports in one mechanism, both created by making the 30-minute TTL the **sole**
+liveness verdict at a session boundary.
+
+**The session boundary was throwing away finished reviews.** The Stop hook's abandoned-review
+backstop does not merely block on the `.critic-active` marker — it *consolidates* a review whose
+reviewers have all reported, keyed on raw marker presence with no TTL at all. An expired marker is
+exactly the state that reaches it, and the boundary sweep deleted that marker first. The longer a
+review ran, the likelier it was to lose its own findings. `boundary_sweep` now asks two questions
+instead of one: the TTL answers *is the dispatching process gone*, and the roster answers *is there
+anything left to finish*. A complete roster is retained at any age. The two halves each passed on
+their own while the pair was broken, so the pin is a multi-hop one —
+`test_a_complete_roster_kept_by_the_boundary_still_self_heals` drives the boundary and then the
+Stop hook that has to still find it.
+
+**And the sweep no longer happens in silence.** Sweeping is the branch that destroys something, and
+it destroys the only handle any later gate has on the review — so after it, nothing else will ever
+raise the subject. The notice is therefore the whole signal rather than a courtesy on top of one:
+it names the review by id, says what was on disk, and says plainly that the abandoned-review
+blocker will not fire for it again. A retention was already announced; the destructive branch was
+the quiet one.
+
+**Sharing a reading means it has to be true at the surface that just acted.** Both notices compose
+through `pending_roster_reading()`, the one home for what a pending roster MEANS — and the
+`incomplete` reading said "a `/clear` retains the marker; it does not release it", true of every
+surface that existed when it was written and false at the one added here. Read as an operator, the
+sweep notice said *waiting is safe* three lines above *the marker is gone*. The clause now names its
+condition. This was found by running the announcement, not by reading it.
+
+**The TTL was NOT re-priced, and the reason is the deliverable.** #692 asks for a value grounded in
+the review-stats distribution. That grounding is unavailable: `duration_seconds` is self-reported by
+the reviewing agent and a coordinator review records `max()` across its partials, while marker
+wall-clock age — the quantity the TTL governs — spans dispatch + every reviewer + consolidation +
+coordinator turn latency, so it is strictly longer than any self-report. No recorded review exceeds
+the TTL and that margin is *not* evidence; it is an artefact of comparing two different quantities.
+The derivation is committed at `.prawduct/research/critic-liveness-2026-08-19/measure.py` — cite the
+command, never its digits. The reasoning now sits at the constant itself, where anyone reaching for
+that re-price will land. What makes the number tolerable is that expiry no longer decides alone.
+
+`write_marker`'s docstring claimed an over-running review could "renew its own protection". Nothing
+renews a marker mid-review — `critic-begin` is the only writer, so the timestamp is a dispatch time
+and the TTL is a deadline, not a rolling window. The claim is reconciled to the code and pinned
+structurally, because a prose claim about how many writers exist stops being true the day someone
+adds one.
+
+**The rule had a second home, and the review found it.** `boundary_sweep` was taught to keep a
+complete roster; `review_active` went on unlinking an expired marker as a side effect of
+*answering*, so a bare `prawduct-hook clear` — the invocation the guard exists for, and the one a
+reviewer subagent actually ran in the incident behind it — destroyed exactly the review the
+boundary now protects. `review_active` is a pure predicate now: asking is free and changes nothing,
+one function decides whether a marker may go, and both surfaces that meet one without forcing share
+that call and its notices. Removal otherwise happens only by name — `critic-end`, `critic-discard`,
+a successful consolidation, `--force`. Two reviewers found this independently from opposite goals,
+which is the argument for the enumeration below rather than against it: the inventory NAMED the
+site and pointed it at a test covering only the live case.
+
+**One sanctioned `rm` survives, deliberately.** The Stop hook's escape hatch still prints
+`rm .prawduct/.critic-active` / `rm -rf .prawduct/.critic-partials`, and it is reached from the
+consolidation-FAILED branch — the complete-roster state this entry exists to protect. Swapping that
+recipe for `critic-discard` needs the command verified against the wedged states first, so it is
+deferred to **#604** rather than changed blind here; recording the residue in the narrative, not
+only in a commit body, is what keeps it from reading as an oversight. `tests/test_session_boundary_events.py`
+still names `rm` among the marker's recoveries for the same reason and rides the next `tests/` commit.
+
+**The readers are enumerated rather than argued safe.** Twice, a change here was reasoned safe from
+the `clear` guard alone and twice the reader that broke was outside the session. A test now scans
+the plugin for every site that calls the marker API or names either file, and fails on any site the
+inventory does not list together with the test that exercises it — 26 sites, `briefing`'s findings
+summary among them. Adding a reader costs one line and one test, which is the point.
+
+## 2026-08-19: tree capture stops re-hashing the world
+
+<!-- prawduct: type=fix | scope=critic-reliability | release=v3.4.0 -->
+
+`capture_tree` seeded its temporary index with `read-tree HEAD`, whose entries carry **zeroed stat
+data**. Every tracked file was therefore a cache miss and `git add -A` re-hashed the entire working
+tree on every single capture. On a local disk that is waste; on the bind-mounted tree #675 reports
+it is fatal — each read pays mount latency, the capture blows through its budget, `critic-begin`
+fails, and with it the PR gate becomes structurally unsatisfiable, because no review can record.
+
+The seed is now a copy of the repo's own `.git/index`, whose stat data lets `add -A` skip the files
+that did not change; `read-tree HEAD` stays as the fallback when no index can be copied (a clone
+that has never staged, a concurrent git mid-rename, a copy that died part-way). The cost and the
+seed-agreement claims are measured, not asserted:
+`.prawduct/research/tree-capture-2026-08-19/measure.py` — cite the command, never its digits.
+
+**The copy has to preserve the index's MTIME, and that is the sharpest thing this change learned.**
+Git's stat cache skips a file whose size and mtime still match its entry; the only thing that
+catches a same-tick, same-size edit is the racily-clean rule — *an entry whose mtime is not older
+than the index FILE's own may have changed since it was recorded, so re-read it.* A copy stamped
+with the current time makes every entry look comfortably older than its index, silences the rule,
+and lets `add -A` skip the re-hash — so the captured tree carries the file's PREVIOUS content and
+the review vouches for **a tree that never existed**. That is a fail-open in the evidence store,
+strictly worse than the timeout it would have been traded for. It surfaced as a 1-in-25 suite flake
+and was chased to cause rather than re-run; `shutil.copy2` is the fix and
+`test_same_second_same_size_edit_is_still_captured` is the pin, with every timestamp forced so the
+race is not left to the machine's speed.
+
+**No degraded path is silent**, which is the other thing the review sharpened. A fallback to
+`read-tree` produces exactly the original symptom — a slow capture that times out on the
+filesystem this change exists for — so an operator would raise the budget, get a working capture,
+and close #675 while the fix never engaged. The capture result now reports which seed it used and
+a fallback says so on stderr. A refused `PRAWDUCT_GIT_TIMEOUT` is announced once per process for
+the same reason: it fails *every* `run_git`, and two advisory callers (`coverage`, `record_lint`)
+correctly read a nonzero rc as "no answer" and go quiet — right for a git failure, wrong for a typo
+in the operator's own environment.
+
+Every route into the slow seed reports through one place, so none of them can be the quiet one —
+including the git-dir lookup failing, which was the last silent branch and would have made the
+chunk's own "no degraded path is silent" criterion false. The message names the seed that
+ACTUALLY replaced the copy: on an unborn HEAD nothing is re-hashed, and claiming a full `read-tree`
+there would be a scarier lie than the truth.
+
+Two smaller repairs at the same site. `PRAWDUCT_GIT_TIMEOUT` now overrides the 15-second budget,
+read per call so an operator on a slow filesystem can raise it without a restart; a malformed value
+is **refused**, never silently replaced by the default, because someone who set the variable wanted
+a different budget and quietly restoring 15s hands them back the timeout they were trying to escape.
+And a capture that is killed mid-`add` no longer leaves its lock file behind.
+
+**A correction to the report, recorded rather than quietly re-scoped.** #675 attributes a wedged
+repo to a stale `.git/index.lock`. It cannot come from here: `capture_tree` runs every git call
+under `GIT_INDEX_FILE`, git takes its lock next to the index it was given, and a killed `git add -A`
+was observed to leave `<tempdir>/prawduct-idx-XXXX.lock` and no `.git/*.lock` at all — with exactly
+one `git add` call site in the plugin, no other prawduct path produces one either. The leak closed
+here is temp-directory litter. Whatever wedged the reporter's repo has another cause, and a future
+reader of #675 should not believe this fix addressed it.
+
+## 2026-08-19: the test suite stops taking the whole machine
+
+<!-- prawduct: type=chore | scope=clear-cadence | release=v3.4.0 -->
+
+pytest-xdist is pinned to **5 workers** instead of `-n auto` (owner ruling). `auto` takes every
+core, so a full-suite run owned the developer's machine for its whole duration — observed at a load
+average of 24 on a 10-core box with a run in flight. Worker count is now a **developer-ergonomics**
+setting rather than a throughput one, which is why it is a fixed number and not a fraction of
+`auto`.
+
+**Routed as a norm amendment, not a config tweak.** `Parallelization` is a `project-preferences.md`
+norm with a test enforcing it, so editing `pyproject.toml` alone would have left the norm
+contradicting the tree — doc-drift-to-sync, which this repo forbids. The preference row carries the
+ruling, its date and its why; the test pins the new value **and** asserts `auto` is gone, since a
+revert is the regression and a check for "some `-n` value" sails through it.
+
+**CI inherits it and is therefore oversubscribed by one worker** on a 4-core runner — accepted
+deliberately, not overlooked, and named at all three sites rather than denied at one. Overriding it
+in `tests.yml` would put a pytest flag in a workflow that carries none by norm, and no CI timing was
+measured that would justify amending *that* norm; a first attempt did exactly this, tripped the
+norm's test, and was reverted rather than the norm amended. If runs begin timing out under
+contention, the fix is an environment-driven count *with* that evidence.
+
+## 2026-08-19: two tools stop losing what they were asked to record
+
+<!-- prawduct: type=fix | scope=clear-cadence | release=v3.4.0 -->
+
+Both found by *using* the governed path rather than by reading it, and each has a reproduction in
+this branch's own history.
+
+**`backlog` silently discarded metadata in FOUR places.** It began as a filing bug: filing writes a
+fresh `prawduct:` block onto the caller's body — and the caller's body is where a filer declares
+`related:`, because the docs tell them to. The two were *appended*, and parsing is last-block-wins,
+so the filer's fields were dropped. The only signal was a warning that reads cosmetic: *"issue body
+carries 2 prawduct blocks; using the last and ignoring the earlier one(s)."* Three items filed on
+2026-08-19 (#690, #691, #692) lost their `related:` edges that way, and nothing failed.
+
+**The class was wider than the bug, and three sweeps bounded it wrong before one bounded it right.**
+The property is *a writer that persists a body's block*; the trap is `parse_block` (last-block-wins)
+paired with `strip_block` (removes them all) in a writer that emits exactly one — which discards an
+earlier block's fields **and** destroys the multi-block warning that was the loss's only signal.
+Found at four sites: `compose_body` (filing), `upsert_block_field`, `core._body_update_preserving_block`
+— where `backlog update --body` was permanently dropping an earlier block's `id_aliases`, the
+alias-loss footgun that function's own docstring names — and `_related`, whose read-modify-write
+computed its new list from a last-block read and wrote it over a merged one. All four now route
+through `encode.merge_all_block_fields`, the property's one home. Bounding the class by *module*
+rather than by property is what left the last two standing; the closure was verified by enumerating
+every `parse_block` call site in the package, not by re-checking the sites the findings named.
+
+Precedence: the caller's fresh fields win a key collision, and the attribution stamps
+(`automated`/`worker`) are stripped from an embedded block in both directions — a body must not be
+able to launder a background sweep into looking human, nor a human's filing into looking automated.
+
+**`test-evidence record --no-rerun` restamped a count it had not checked.** A restamp is an operator
+*assertion* that the tree's test-relevant content is unchanged since the last real run. Nothing
+verified it, so a restamp taken after tests were added reused the older run's counts — a three-test
+gap — and printed them as `recorded: N passed`, typographically identical to a fresh measurement.
+
+The check is deliberately **not** a content hash (that mechanism was removed pre-v1.4 for chronic
+false positives and is not back). It is the judgeable-path comparison the gates already trust, asked
+against the tree the prior record ran on. Where the assertion is false the restamp is now **refused**
+rather than warned — because a restamp also rewrites `evidence_tree` to the current tree, so
+permitting one makes stale counts vouch for a tree they never ran against, and no downstream gate
+can catch it afterwards. Where the prior record carries no `evidence_tree` (the `--from-counts`
+on-ramp records none by design) nothing can be checked, and it says so instead of passing quietly.
+
+**A capability is withdrawn, and is named rather than buried:** the documented cheap refresh after a
+rename or force-add is refused whenever the prior record came from a real run, because a rename is a
+judgeable path change. The escape is to run the suite or ingest a report — which is what makes the
+evidence sound in the first place.
+
+The output line was the defect surface, so it changed too: a restamp now prints `restamped: …
+[REUSED from the run of <timestamp> — nothing was run]`.
+
+## 2026-08-19: the on-demand methodology guides get size accounting, not size limits
+
+<!-- prawduct: type=feature | scope=clear-cadence | release=v3.4.0 -->
+
+`discovery.md`, `planning.md` and `reflection.md` now carry entries in `LAST_MEASURED_TOKENS`, and
+deliberately **no ceilings**. `skills/critic/SKILL.md` was already a reading without a ceiling, so
+this applies an existing shape to a class rather than inventing a control.
+
+**The premise of the request was wrong, and the correction changed the answer.** It named
+`reflection.md` as the only unbudgeted on-demand guide; measured, `discovery.md` (4752) and
+`planning.md` (4301) were unbudgeted too, and `discovery.md` is *larger than* budgeted
+`building.md`. So the question was about the class, and answering it for one file would have left
+two larger ones in the state being objected to.
+
+**The distinction that settled it:** a **reading** catches undeclared growth; a **ceiling** blocks
+growth itself. The stated yield was undeclared growth, so the reading discharges it in full — while
+these are precisely the files where growth is *cheap*, paid only by a session that opens them.
+Pricing them would invert the incentive four chunks of `governance-surface-dedup` were spent
+building, when the standing block's full shape was moved into `reflection.md` rather than the
+always-injected digest. (`reflection.md` went 3001 → 4529 in two days as that worked.)
+
+This is an **accounting** control, not a blocking one, which is how it discharges the proportionality
+norm: it never refuses a change, only an *unrecorded* one, so "repeated firings, no blocking yield"
+is unreachable by construction, and each dated entry stating its cause is the emission.
+
+Made self-enforcing for guides that do not exist yet: `test_every_methodology_guide_is_accounted_for`
+walks `methodology/*.md` and requires each to be covered by a per-file reading or by injected-shape
+membership (how `session-digest.md` is priced — by shape total, twice). Nothing watched the
+*directory* before, which is the blind spot that produced the request.
+
+## 2026-08-19: a live review moves the clear verdict, and the line answers *should you*
+
+<!-- prawduct: type=feature | scope=clear-cadence | release=v3.4.0 -->
+
+The turn-closing standing block's in-flight rule bound only the **disposition** line — a dispatched
+review is `RUNNING`, never `COMPLETE`. Nothing bound the line below it on the surface that reaches
+every session, so `RUNNING` beside `SAFE TO CLEAR` was emittable, and this repo emitted that pair
+three times in one day with a coordinator review live. A live Critic review now moves the **clear
+verdict** to `DO NOT CLEAR`.
+
+**The copy owes a clock, not only a reason.** Someone about to step away is not asking *may I
+clear* — they are asking *by when must I check back*, which is a deadline. It is computed, never
+quoted: elapsed from `.critic-active`'s `started_at`, the roster from the per-role started markers,
+the expected total from `prawduct-hook review-stats` for the `critic` role and the review's mode.
+Being computable is what makes this a verdict rather than a caveat, and a constant written into a
+guide would be stale the moment the ledger it came from grew.
+
+**The line also answers *should you*.** Clearing costs nothing in review coverage — the evidence
+store records trees, so a plan's accumulated reviews span sessions untouched — while *not* clearing
+compounds, because every turn re-reads the whole prefix and a session's read cost therefore grows
+with the square of its turns. Cadence is the only control that keeps it linear. Deliberately **no
+threshold and no context-fullness gate**: an agent cannot reliably measure its own window, and a
+prompt that fires every turn trains the reader to skip the one turn it mattered on. That rejected
+design is recorded so it is not re-proposed as-is.
+
+**Paid for in place, and the ceilings ratcheted down.** The always-injected payload had five tokens
+of headroom and is charged to both session shapes. The funding was a *class*, not a word-trim: three
+section headings carried a parenthetical restating what the preamble or their own body already said.
+The cut ran past the addition, so both readings finished below where the branch started and both
+ceilings moved down with them — a ceiling left at its old value after a cut silently re-funds the
+growth the cut paid for.
+
+Alongside, from the review: the boundary retained-marker notice and `critic-begin`'s in-flight
+refusal now share **one owner** for what a pending roster means, so two surfaces can differ on the
+remedy but never on the state; and `--force` announces a live marker it sweeps — naming the review
+and `critic-restore` — instead of being the one destructive path that printed nothing.
+
+## 2026-08-19: `/clear` stops deleting a Critic review's liveness marker
+
+<!-- prawduct: type=fix | scope=clear-cadence | release=v3.4.0 -->
+
+A session boundary swept `.critic-active` unconditionally. What licenses deleting a marker someone
+else wrote is that **the process that dispatched the review is gone** — and the boundary/continuation
+split sorts `SessionStart` sources on a different question: *was the transcript restored?*
+
+Those agree at `startup`. They come apart at **`/clear`**, which discards the transcript **without
+ending the process** — so a review subagent dispatched before it may still be running. `compact` and
+`fork` were excluded from the sweep for exactly this reason; `clear` was missed because it *passes*
+the transcript test the other two fail.
+
+**What went wrong when it fired.** Deleting a live marker disarms two things at once: the guard that
+stops an independent reviewer clobbering the session it is reviewing, and the Stop hook's
+abandoned-review backstop — which does not merely block, it **consolidates** a review whose
+reviewers all reported. So a wrongly-swept marker destroyed a recovery, not just a signal.
+
+**The fix keys on the marker, not the source.** A boundary now sweeps only a marker the 30-minute
+TTL has already released. That answers the real question at every source and needs no finer matcher
+— `startup` and `/clear` share one hook entry and are indistinguishable to the command. The
+crashed-Critic rescue the sweep exists for is unchanged. `--force` stays unconditional wherever a
+sweep is licensed: it is the operator's escape from a marker the TTL has *not* released, which is
+the one case it serves.
+
+**What retention costs, stated honestly because it is not free.** Two readers hold different
+liveness predicates. A dispatch refusal keys on the TTL and is *not* `--force`-overridable, so a
+dead-but-fresh marker blocks the next `/prawduct:critic` until it expires; the Stop backstop reads
+raw presence and has **no TTL** at all. Both are loud and recoverable by a command the refusal
+prints. That is the trade: sweeping a live marker fails *silently*, retaining a dead one fails
+*loudly*.
+
+**A new session is now told when a marker was kept** — the session that most needs telling, since
+`/clear` just discarded the context in which the review was dispatched. The remedy it offers is
+conditional on the roster, because the wrong one is destructive: a complete roster is routed to
+`critic-consolidate`, never to `critic-end`, which would discard a finished review's findings.
+
+## 2026-08-19: the work-cycle limit is re-priced, and a rationale is formally ceded
+
+<!-- prawduct: type=refactor | scope=clear-cadence | release=v3.4.0 -->
+
+`building.md` said: *"Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades
+across a large diff, and long-session compaction can lose governance context."* One rule, two
+rationales, **different expiry dates** — and a chunk count proxying for both.
+
+**What is ceded (Principle 26).** *Long-session compaction can lose governance context.* The
+mechanism carried a runtime assumption about context windows, the runtime changed, and the honest
+response is to re-price rather than let it ride. This is a cession, not a deletion: the rule was
+correct when written, and what retired it is a change in the world, not a defect in the reasoning.
+Recorded here because **it has nowhere else to go** — `documentation/purpose.md` names a
+*responsibility ledger* as the instrument for exactly this act and says outright it is not yet built
+(Cycle 3 of the cession program). Filed, so the gap is tracked rather than implied.
+
+**What survives, re-justified on one reason instead of two.** *Critic quality degrades across a
+large diff* — and this half does **not** erode, because the binding constraint is the reviewer's
+**attention**, not its context window. A larger window arguably makes it *worse*, by removing the
+friction that was incidentally keeping diffs small. So the rule stands with one rationale, which is
+stronger than standing with two when only one is load-bearing.
+
+**The number retires.** `1-3 chunks` was a proxy for both halves and is now a proxy for neither. The
+honest unit is the one the coordinator roster rule already keys on — a risk surface, or 12+
+judgeable files — so cycle size is priced on the diff its review must cover. A second site carried
+the same retiring number (*"when you've completed 2-3 chunks"*); it went in the same pass, because
+sweeping the instance and leaving its sibling is how a retired rule comes back.
+
+**What was NOT ceded, and the distinction matters.** Compaction's real invariant is untouched:
+anything that must survive — plans, decisions, rationale — is written to a file first. What was
+ceded is compaction as a reason to *cap cycle length*, not compaction as a hazard. The replacement
+invariant #687 proposes is sharper than either: the risk is not "context got full", it is
+**unpersisted state**.
+
+**It funded itself, and then some.** The addition was paid by a cut in the same commit: the Modes
+section restated what each of the four Critic modes covers, three lines above its own pointer to the
+file that defines them. It keeps the two facts a reader needs *before* opening that file
+(`cumulative` feeds the PR gate; `verify-resolutions` alone records resolutions) — the part a
+pointer cannot carry. **The cut ran past the addition**, so `building.md` finished *below* where the
+branch started and the ceiling **ratcheted down**, 4730 → 4718. That direction is the precedent
+worth taking from this entry: a re-pricing that overpays ratchets the ceiling with the reading,
+because a ceiling left at its old value after a cut silently re-funds the growth the cut paid for.
+
+**Still open, deliberately.** The cadence question — *should* you clear, and by when — is not
+answered here; it belongs to the standing block's clear paragraph, and putting it in two places is
+the failure this release already spent four chunks fixing. And no numeric threshold ships until
+rebuild cost and per-turn growth are measured from real `/clear`s.
+
+## 2026-08-19: the turn-closing block answers whose move it is
+
+<!-- prawduct: type=refactor | scope=governance-surface-dedup | release=v3.4.0 -->
+
+The standing block's middle line offered `NEXT` / `BLOCKED` / `COMPLETE`, which mixed two questions
+into one slot: *is there a problem?* (`BLOCKED`) and *what comes next?* (`NEXT`). Neither got
+answered cleanly. The tell was in the spec itself — the injected digest had to **gloss** its own
+label (*"Outstanding includes work in flight: a dispatched review … is `NEXT`"*), and when a spec
+must translate its label to make it land, the translation is the better label.
+
+One variable does the whole job: **what produces the next turn?** `RUNNING` — a machine event
+will, so the reader can walk away. `YOUR TURN` — only a human utterance will; the session is inert
+until they speak. `COMPLETE` — nothing needs to.
+
+**`BLOCKED` retires because it was a reason wearing a verdict's clothes.** This block's own rule is
+that the label is the verdict and the copy is the reason; obstruction is a reason. It now rides as
+one of three shades of `YOUR TURN` — *just go*, *decide*, *unblock* — which the copy distinguishes
+by leading with the ask and its cost. Two labels both meaning "you must speak" would force a choice
+an agent makes inconsistently at the boundary.
+
+**A premise the earlier design rested on was simply false, and correcting it is what unlocked the
+set.** It held that every turn end waits for the user, so waiting could not discriminate — which is
+why an earlier draft had narrowed `BLOCKED` rather than fixing the axis. Machine-resumed turns are
+common: this branch's own reviews, monitors and background suites all resumed sessions with no
+human input. Turn-ownership discriminates precisely because that is true.
+
+**Two rules make this more than a rename, and both are pinned by their substance.** *Precedence:* a
+human utterance outranks a running job, so a turn needing the reader is `YOUR TURN` even when work
+is in flight, with the copy naming what runs. *No prediction:* a turn where something runs and a
+decision may be needed **once it lands** is `RUNNING` — the agent cannot know the decision will be
+needed, since the job may return "option 1 is clearly correct". This line reports what **is**, never
+what might be.
+
+**`COMPLETE` gained the scope it never had.** "Complete of what?" had no answer, so a finished chunk
+inside an unfinished plan attracted the rarest label. It now means a **blank slate** — no next
+action to propose. Ending a plan while knowing a PR is the obvious next step is `YOUR TURN`.
+
+**The original ask (#683) landed alongside it.** The clear verdict is computed from disk and process
+state, so a turn whose whole output is analysis *in the conversation* scored as safe while clearing
+destroyed everything it produced. A findings-only turn now persists to `.prawduct/.handoff-notes.md`
+before claiming `SAFE TO CLEAR`, and the self-contradiction tell is named so a reader can catch it
+in their own draft: a `SAFE TO CLEAR` whose stated reason **cites the message itself** points at the
+thing a clear deletes.
+
+**The sequencing rule is the operationally sharp half.** The worst outcome in this space is a
+multi-hour task landing while the reader is away and the turn still saying `DO NOT CLEAR` — they
+return to a cold cache they pay full price to reload *and* a session they cannot leave, purely
+because bookkeeping trailed the work. So: write the forward notes **before** a long wait, not after
+it, and treat reaching `SAFE TO CLEAR` as part of finishing a long task rather than a report about
+it. The existing "never ask whether to prepare a handoff — prepare it" rule was silent on *when*.
+
+**It funded itself, which was the plan's closing argument.** ~113 tokens of new rule against ~10
+tokens of headroom, paid almost entirely in place: the digest was restating `building.md`'s
+size/type table, carrying a worked example of the stale-count rule, arguing the stance preamble's
+own first sentence a second time, and explaining four rules the same bullet had already stated. Net
++5 on each shape — framework 3320/3325, product 2243/2248.
+
+**`building.md` needed no edit at all.** Chunk 02 had already collapsed its standing-block copy to a
+pointer, so it never carried the labels — the payoff that chunk predicted, arriving on schedule.
+`plugin/CHANGELOG.md` keeps `NEXT`/`BLOCKED`: it is history, and history is not renamed.
+
+**The pins model the reader, not the vocabulary.** A present-label check passes throughout a
+half-done rename — the worst state, since both vocabularies are live and an agent picks whichever it
+saw last — so the pin also asserts the retired labels are **gone**. And because a rename would
+satisfy every name check while changing nothing, the axis, the precedence rule and the
+no-prediction rule are each pinned by their discriminating content. All four assertions were
+mutation-checked red before shipping.
+
+## 2026-08-19: one digest for every repo, and a CLAUDE.md trimmed to what it does not say
+
+<!-- prawduct: type=refactor | scope=governance-surface-dedup | release=v3.4.0 -->
+
+The framework repo received a digest variant of its own. The reasoning was sound and the fix was
+applied to the wrong artifact: this repo's always-loaded `CLAUDE.md` duplicated 40-50% of the full
+digest, so a **slim** digest was shipped in the plugin to avoid paying for the overlap here. That
+traded one repository's duplication for a second shipped artifact every framework session carried,
+a branch in `hooks/digest.py`, and five must-agree pins holding the two variants in step —
+permanent, framework-wide cost to serve exactly one repo. Trimming the local file instead removes
+the duplication at its source.
+
+`session-digest-slim.md` is deleted, `hooks/digest.py` reduced to one digest with no shape
+selection, and `CLAUDE.md` cut from ~2,527 to ~1,339 estimated tokens. The framework session's
+always-injected footprint goes **3,455 → 3,315** and the product session's **2,256 → 2,238**, with
+both ceilings ratcheted to ~10 tokens of headroom (3,325 and 2,248).
+
+**The digest is a member of both session shapes; `CLAUDE.md` is a member of one.** So the digest
+trim below moved *both* readings while the `CLAUDE.md` trim moved only one — and the drift pin
+caught an edit that updated just the shape being worked on. That asymmetry is now stated where the
+ceilings are set, because it decides what a future addition costs: a token added to the digest is
+charged twice.
+
+**Both halves had to land together.** Deleting the variant without the trim re-creates the
+duplication the variant existed to remove; trimming first opens a gap in `CLAUDE.md` that nothing
+yet fills. Neither is separately shippable, which is why they are one chunk.
+
+**The largest cut is the principles roster, and it was decided on evidence rather than estimate.**
+`CLAUDE.md` carried all 26 principles with one-line glosses (~698 tokens) while the injected digest
+carries the same roster as bare grouped names (~148). Checking the glosses one by one: 13 of 26 are
+already stated by the digest in *point-of-action* form, which is the form that actually fires — and
+the 13 that are not are the situational ones (accessibility, operational cost, clean deployment,
+structural awareness) that matter when work touches them, which is what an on-demand file is for.
+So the roster became a pointer at `docs/principles.md`, and nothing lost a carrier: the roster's
+own test pins it against `docs/principles.md`, never against `CLAUDE.md`. `## Commit Conventions`
+went the same way — the digest carries both rules, including the never-silently-downgrade-to-
+`--squash` clause. One clause did **not** survive the move and had to be restored: the deleted
+section said the no-attribution rule "overrides any harness default to the contrary", and the
+digest's bullet had no precedence clause. That is not decoration — the Claude Code harness injects
+a contrary `Co-Authored-By` instruction, so the clause is the only thing standing between the
+default and every commit made under it. It now lives on the digest, paid for in place.
+
+**What stayed is what only this file can say**: the framework-repo routing table, the two Critic
+bindings the skill does not restate (fix blocking findings before the next chunk; reflect
+immediately), the reflection *cadence*, the local file map, and the compaction instructions. The
+requirements-clarity check stayed too, with its trigger made explicit — it fires when the user says
+"build X", which is before a plan exists and therefore before `building.md` is read.
+
+**The measurement came before the ceiling, not after.** The plan made the trim step 0 and the
+number a reading, because the estimate that motivated the chunk (~1,350 tokens) was section-level
+arithmetic rather than an edit. The edit came in at 1,188 — enough to win, and 162 short of the
+prediction, which is exactly the gap that would have shipped as a wrong ceiling had the number been
+promised instead of measured.
+
+**A win worth stating honestly: the token saving is ~122 tokens per framework session, about 3.5%.**
+This change earns its place structurally, not numerically — one carrier per fact, one shipped
+digest instead of two, a hook branch and a repo-shape classifier deleted, and five must-agree pins
+collapsed to single-surface assertions.
+
+**The pins were collapsed, not dropped.** Every rule that was asserted on the slim variant is still
+asserted on the surviving one, and `TestDigestReachesEveryRepoShape` now exercises **both** repo
+shapes — a framework fixture and a product fixture — where the old suite ran the framework path and
+inferred the product one. It also asserts the two are *identical and non-empty*, so the collapse
+cannot be satisfied by both shapes agreeing on nothing. `is_framework_repo` and its three
+manifest-location fixtures exited with the branch that consumed them.
+
+## 2026-08-19: the standing block collapses to the surfaces that carry it
+
+<!-- prawduct: type=refactor | scope=governance-surface-dedup | release=v3.4.0 -->
+
+Four prose surfaces restated the turn-closing standing block in full: `reflection.md`, which owns
+it, both injected digests, which reach a session whether or not it opens a guide, and
+`building.md`, which is read on demand. The fourth copy was redundant **for its own reader** — an
+agent that opens `building.md` has already been handed the shape by the digest injected at
+session start, so the restatement was a second authoritative statement of a fact that has a home
+(`architecture.md` § Direction).
+
+**One clause there was load-bearing and stays.** `SAFE TO CLEAR` is not a free-standing
+judgement; it is owed against `building.md`'s own chunk-close steps 1-7, and no other surface
+enumerates those steps. So the file keeps the pointer and the binding, and loses the fenced
+shape, the `---` rule, the trigger and the three failure modes — 4806 → 4720 estimated tokens.
+
+**The trim is bounded from below by a paired positive assertion.** A negative pin ("no longer
+restates the shape") passes just as well when the pointer is deleted too, which would leave a
+reader who opened only this guide holding a verdict with no shape to put it in.
+`test_building_md_binds_the_clear_verdict_to_its_own_steps` asserts the pointer, the binding, and
+the absence of the labels together; both directions were mutation-checked red before shipping.
+
+**The surviving pin was re-justified, not merely narrowed.** Its docstring had defended the rule
+as protecting a token trim "funded" by relocating the rationale *into* the digests — accounting
+the 2026-08-05 owner rule disavowed, since moving prose between files reduces no total. What the
+pin actually guards is **coverage**: the shape has to reach an agent through a surface it really
+reads, and dropping it from a digest means an agent that never opens a guide emits no block at
+all.
+
+**The ceiling was ratcheted down with the cut** (4810 → 4730), which the Critic raised
+independently and is the difference between a win and a loan. The drift pin only asks the next
+editor to update the *reading*; the ceiling is the hard gate, so 90 tokens of unratcheted slack
+would have let the next 89 tokens of prose ship green and hand this trim straight back. Every
+other budgeted file in the module sits within ~1-34 tokens of its ceiling.
+
+## 2026-08-19: a token budget that can see a new file
+
+<!-- prawduct: type=feature | scope=governance-surface-dedup | release=v3.4.0 -->
+
+Every token budget in this framework is asserted per-file, and a per-file ceiling cannot see a
+**new** file. That is not a hypothetical: `session-digest-slim.md` was added to save tokens in
+the framework repo, put roughly 928 of them into every framework session, and every one of the
+five per-file prose ceilings stayed green — because none of them was watching the *set*. The
+budget regime was also inverted, which is what made the gap survive: the files with hard ceilings
+and a measured-drift pin are the **on-demand** ones a session may never open, while the surfaces
+paid unconditionally before the first useful token had only a loose character limit and a ratio.
+
+**The set is defined by load event, not by weight.** Ranking governance files against each other
+needs an importance score nobody can derive — and a weighted score would not have caught the
+defect above either, since the new file's weight was never assigned at all. Grouping by *when the
+cost is paid* needs no weight: frequency **is** the weight, and it is readable out of
+`hooks/digest.py` rather than assigned by opinion. `INJECTED_SESSION_SHAPES` carries the two
+shapes of the unavoidable tier — a framework session (`CLAUDE.md` + the slim digest) and a
+product session (the `STATIC_ANCHOR` governance anchor + the full digest).
+
+**The two shapes are separate rather than one flat set, and that is a departure from the plan's
+own Deliverables** — recorded in the plan's `governed_by`, per the architecture norm that
+prescribed method is advice while goals and verification bind. `digest.py` *selects* between the
+variants, so a session never loads both; summing them would assert a ceiling on a total no
+session has ever paid, which is a fiction dressed as a budget.
+
+**The half that catches the original defect is the membership check, not the numbers.** The
+totals only watch files already known. `test_every_injectable_digest_is_budgeted` reads the
+injectable set out of `digest.py`'s own module-level path tuples via `ast` — so it holds for a
+variant named outside any convention, and it fails loudly rather than narrowing silently if the
+module stops declaring them that way. Red-verified both ways before shipping.
+
+**Ceilings are HARD**, matching the five existing per-file prose ceilings rather than the
+advisory state-file size threshold — that norm governs `.prawduct/` state, and an advisory would
+not have caught this, since nothing was blocked when the set grew. Owner ruling, recorded as a
+decision against the norm rather than assumed past it.
+
+The per-dispatch tier — the subagent briefing and the reviewer payload, larger by two orders of
+magnitude — is deliberately excluded and left to its own item. Folding it in would let a win
+there hide growth here, which is the failure this control exists to prevent.
+
+## 2026-08-18: the turn-closing block puts the answer in the label, not beside it
+
+<!-- prawduct: type=feature | scope=standing-block-expressive-labels | release=v3.4.0 -->
+
+Owner report, and it names a gap the block's own rationale already implied without acting on it.
+`reflection.md` argues that the backticked labels are the only coloured tokens near the bottom of
+a turn, "so the eye finds them without reading" — but `NEXT` and `CLEAR` named a **topic**. The
+token the eye landed on said which question was being answered; the answer was in the sentence
+after it. So the reader still had to read, which is the cost the colour was spent to avoid.
+
+**Two changes, one principle.** The second line is now one of `NEXT` / `BLOCKED` / `COMPLETE`;
+the third is `SAFE TO CLEAR` / `DO NOT CLEAR` with the reason as the copy.
+
+**The axis is what makes the second line exhaustive: what happens if the reader walks away.**
+`NEXT` — work continues without them, on an external event (a dispatched review, a background
+agent); name it. `BLOCKED` — work stops here until they supply something only they can: a
+decision, an answer, a name, or simply the go-ahead. `COMPLETE` — stopped and finished. A first
+draft scoped `BLOCKED` as "cannot proceed without user interaction" and the owner corrected it to
+include the routine ask ("user picks product name"), which is what forced the axis: under the
+looser reading every turn qualifies, because a turn-based CLI always ends waiting, and the
+loudest label becomes the default one. Under the walk-away reading the three are mutually
+exclusive and `NEXT` acquires a specific meaning it did not have before — *nothing needs you.*
+
+**`BLOCKED` is now the common case and that is the honest reading**, not a regression: the user
+usually is the gate. The signal moved into `NEXT`, which now means the reader can leave.
+
+**[DECISION — `STATE` gives up its verdict vocabulary.]** Beyond the reported scope, and taken
+deliberately. `STATE` read "done / blocked / waiting" — the same three words the new line 2 now
+owns, so the block would have stuttered ("STATE: done… COMPLETE: nothing left"). It now carries
+only evidence: what changed, committed or not, suite green or not. That also prices a risk the
+change introduces — `COMPLETE` is an agent self-assessment, and making it a loud coloured token
+raises its authority, so a confidently wrong one misleads harder than the quiet "NEXT: nothing"
+it replaces. Splitting evidence (line 1) from claim (line 2) is what keeps `COMPLETE` earned.
+
+**The in-flight rule survives the retaxonomy, which was the main hazard**, but the first draft
+only thought it did — both halves were fixed on the Critic's findings and both are worth
+recording, because they are the same mistake in two costumes: *a rule that was unambiguous under
+the old shape, carried forward verbatim into a shape that gave it a second reading.*
+
+- **"Takes the second line" stopped being an instruction.** It was exact when the second line had
+  one label; with three it names a location and no longer a verdict — while the entry advertises
+  `BLOCKED` as the common case, so the cheap default under ambiguity pointed at the wrong label.
+  Now bolted to the label itself: in-flight work is `NEXT` when it is only waiting on the event,
+  `BLOCKED` when you also owe them something, **never `COMPLETE`**.
+- **The precedence rule contradicted its own worked example — BLOCKING.** It read "when two are
+  true the earlier label wins", and the declared order is `NEXT`, `BLOCKED`, `COMPLETE` — so the
+  general rule resolved to `NEXT` while the example beside it said `BLOCKED`. An agent applying
+  the stated rule emits *nothing needs you* on a turn where the user is the gate: the exact
+  failure the in-flight rule exists to prevent, reintroduced by the fix for it. Restated
+  relationally — **`BLOCKED` wins any overlap** — which drops the ordinal that made an ordering
+  incidental to the taxonomy load-bearing for its semantics, and is also right for the
+  `BLOCKED`-vs-`COMPLETE` case the ordinal got right by accident.
+
+`test_v5_methodology` pins the string "in flight" on all four surfaces, so a silent drop goes red.
+It does not pin the precedence rule, which is prose about a judgement call — the reason that one
+had to be caught by review rather than by the suite.
+
+**Blast radius: four surfaces, and they must not disagree** — `building.md`, `reflection.md` and
+both session digests, two of which are always injected. Two budgets had to absorb it, both funded
+inside their own file per the standing order (dedupe, then raise, never relocate):
+
+- `building.md` sits at 4806 tokens against a 4810 ceiling. Its four-failure-mode sentence took
+  the tighter form `session-digest.md` already used. Net zero — still 4806, so
+  `LAST_MEASURED_TOKENS` is unchanged.
+- `session-digest.md` was at **9983 of 10000 chars emitted — 17 of headroom** (the file is a
+  char longer than what the hook emits; the assertion measures the emitted text), and this is a *hard*
+  limit, not a self-imposed one: over it Claude Code spills the digest to a file instead of
+  injecting it, so the always-injected surface stops being always-injected. The first draft
+  landed at 10083 and the suite caught it. Funded by three cuts — the "label answers whose it
+  is" gloss (`reflection.md` states it in full), one of three in-flight examples, and a
+  handoff-notes gloss calling the file "the session channel that carries your intent across a
+  `/clear`" that the same bullet already explains at length two sentences later. Now 9962, so
+  the change hands back **more headroom than it took**.
+- A **third** budget absorbed it unremarked until the Critic named it:
+  `test_slim_budget_at_most_half_of_full` compares the two digests, so trimming the full one
+  while growing the slim one moves both sides at once — its headroom fell by roughly a third.
+  Still green. No endpoint is written here on purpose: this bullet exists to warn the next edit
+  that the budget tightened, and a hand-copied figure goes stale against a number both sides move
+  (it already did once inside this branch — read it live off the test, not off this line).
+
+The test contract moved with it: the old assertions pinned the literals "Safe to `/clear`." and
+"Not safe to `/clear` yet", which *were* the sentence-you-had-to-parse. Pinning them now would
+re-require the shape this change removed, so they are replaced by label assertions.
+
+## 2026-08-18: the change-log gate stops calling session metadata "code"
+
+<!-- prawduct: type=bugfix | scope=change-log-gate-predicate | release=v3.4.0 -->
+
+Reported from a consuming repo, verified here, and already on the backlog as **#245** — whose
+title is literally the remedy. On a branch whose diff is only `.prawduct/*.json` plus `.md`, the
+two gates at the same PR boundary answered oppositely:
+
+```
+check-pr-doc-only       -> exit 0  "none judgeable, gates may be skipped"
+check-change-log-entry  -> exit 1  "branch changes code (.prawduct/corpus-state.json)"
+```
+
+`check_change_log_entry` classified with an inline `not f.endswith(".md")` and never called
+`coverage_algebra.is_judgeable_path` — the predicate whose own docstring calls it *THE predicate
+(CRT-5D8Q fix)*, introduced to end a three-way disagreement between `cmd_stop`,
+`_pr_diff_is_doc_only` and `_record_covers_head`. **CRT-5D8Q consolidated three classifiers and
+this was a fourth that was never folded in** — the same shape the rest of this release is about,
+and the second consumer to hit it (an earlier report was archived 2026-06-13).
+
+**Worse than a spurious block, which is the part worth keeping.** The gate's remedy text is
+executable advice, and here it was *wrong* advice. The `.prawduct/corpus-state.json` on the
+blocked branch was another session's corpus refresh riding along on a cherry-pick, so obeying the
+gate would have produced a change-log entry describing someone else's work as the author's own —
+a gate demanding a false provenance record. A gate that blocks costs a minute; a gate that
+instructs you to falsify a record costs the record.
+
+**[DECISION 2026-08-18 — the REL-6C3W loosening is taken deliberately, not inherited.]** Routing
+this gate through `judgeable_files` means a branch touching only `.prawduct/` metadata now needs
+**no change-log entry at all**. That is a real narrowing of REL-6C3W's guarantee and it was
+flagged by the reporter as a decision rather than a detail, so it is ruled on here rather than
+absorbed by the refactor: **session metadata is not shippable work.** The change log describes
+what a release delivers to consumers, and `.prawduct/` state never reaches one — it is gitignored
+in products, regenerated by the runtime, and reconstructed at release from the entries that
+*do* describe shipped work. An entry for a corpus refresh or a pointer fix would be noise in the
+one document a release reads. The guarantee REL-6C3W actually needs — *no code ships without an
+entry* — is unchanged, because `is_judgeable_path` is the same predicate the coverage gates use
+to decide what counts as code.
+
+**The same line TIGHTENS in the other direction, and that half is the more surprising one.**
+`is_judgeable_path` rates governance-protected prose judgeable — `skills/`, `methodology/`,
+`templates/`, root `CLAUDE.md` — because skill prose is behavioral logic, not documentation. So a
+branch changing only `plugin/skills/pr/SKILL.md` goes from exit 0 to **exit 1**: it now needs a
+change-log entry it previously did not. That is `#245`'s other half, which the item calls "a
+REL-6C3W-class hole", and it is deliberate: a change to how the Critic or the PR flow *behaves*
+is shipped work by any reading, and it reached releases unrecorded for as long as the `.md` test
+stood. Both directions are pinned, and a maintainer blocked on a prose-only branch should read
+this paragraph rather than the one above it.
+
+**A FIFTH classifier turned up when the class was actually swept, and a sixth site of the prose.**
+Removing the fourth code classifier triggered a `grep` for the shape rather than for the file, and
+it found `critic_mode.py`'s `if not any(not f.endswith(".md") for f in delta)` — wrong in the same
+direction, suppressing the `verify-resolutions` suggestion for a committed delta of only
+governance-protected prose. Two more prose sites in `skills/pr/SKILL.md` asserted the same wrong
+rule about what must land before a cumulative run. All are routed or reworded to cite the
+predicate. The by-shape sweep is `grep -rn 'endswith(".md")' plugin/lib plugin/bin`, which
+returns only `coverage_algebra`'s own definition, three comments describing this history, and two
+predicates asking genuinely different questions (`record_lint.is_record`, which lints governance
+records and classifies no language, and `plan_index`'s filename glob).
+
+**And the by-shape sweep was itself bounded by shape, which the next round caught.** Two more
+members carried the wrong rule in *prose that contains no `endswith`* — `_rule_postfix_fix_fires`'
+own docstring, directly above the line this branch changed, and the comment above
+`_pr_diff_is_doc_only`'s call site in `prawduct-hook`. A grep for the idiom cannot see a sentence,
+so the class needed a second sweep by *claim* rather than by token. That is the third time in this
+release that a class was bounded by the thing easiest to search for.
+
+The new pins are the defect and its shape: one reproduces the consumer's exact diff, and the
+other asserts the two gates **agree**, rather than pinning each one's verdict separately —
+because the defect was the disagreement, and independently-pinned verdicts are what let them
+drift apart in the first place. Both fail against the old inline classifier.
+
+## 2026-08-18: the cumulative review's two warnings close by construction, and both were class-shaped
+
+<!-- prawduct: type=fix | scope=instance-vs-class | release=v3.4.0 -->
+
+`rev-20260818T175424Z-bd5c4bf5` returned 0 blocking, 2 warning, 10 note over
+`bbc31edeabf2...437e7b9a`. **Every finding carried the `Scope:` slot the same bundle added**, and
+both warnings graded themselves `class` — the first live evidence the rule fires.
+
+**A normalizer written against the old grammar keeps typechecking against the new one.**
+`_normalize_chunk_id` trimmed leading zeros with `lstrip("0")` on the whole id, but chunk ids grew
+dot-separated components: `"0.2"` lost the zero of its *first* component and returned `".2"`,
+truthy enough that the `or "0"` fallback could not fire, and `_chunk_sort_key` then evaluated
+`int("")`. That ValueError is not in `unticked_committed_chunk_notice`'s `(OSError,
+SubprocessError)` except-set and two of its three callers are unguarded, so a plan numbering
+`Chunk 0.1` tracebacked exactly where `api-contract.md`'s error model promises a diagnostic.
+Fixed by making the one normalizer total — the zero trim is per *component*, because that is what
+the grammar makes it — and by routing the two inline copies through it, which is what makes its
+docstring's "the only chunk-id normalizer in the tree" true rather than aspirational. Both sides
+of the `unticked & committed` intersection had carried the same inline trim, so they agreed on a
+wrong answer, and agreement reads as corroboration.
+
+**A cross-module coupling on a prose substring has nothing that fails when the prose is
+reworded.** `cmd_stop` recognized an unparseable-heading report by `"do not parse as one" in
+type_error` and its sibling by `startswith("unknown type:")` — two literals produced in a module
+that does not know they are load-bearing, both inside long narrative messages rewritten whenever
+the parser's advice improves. Rewording either silently disabled the only session-end surfacing of
+a plan heading nothing can parse, leaving the author of the broken plan with no line number.
+`buildplan_refs` now owns the discriminator (`UNPARSED_HEADING_MARKER`, `UNKNOWN_TYPE_PREFIX`) and
+exports one predicate, `is_reportable_type_error`, that answers both members — because they are
+one question, and a caller asking it twice is a caller that can come to answer it once. The pin
+feeds the predicate output *produced by the real producers*: a test that hand-writes the sentence
+it expects re-creates the coupling one layer up, going green against a producer that has drifted
+because the fixture drifted with the assertion.
+
+Also fixed, riding the same commit: the reflection provenance stamp computed `archived` inside the
+version read's `try`, so a manifest failure degraded a date that touches no disk and cannot fail —
+`archived=unknown` for the one field the corpus query this stamp exists for would group by.
+
+**A 3.4.0-dev version bump was built here and then reverted, which is the more useful record.** It
+was made on request, and the verify pass found that `fix/release-cut-checklist@73b30688` already
+carries it — same three version files, same two banner defects, a *different* implementation.
+Theirs admits `-dev`/`-dev.N` only and ranks `-dev.N`; this one accepted any semver prerelease and
+deliberately did not rank. Theirs is the owner's recorded decision (2026-08-18) and is the one the
+`#668` campaign needs, so this branch reverted its copy rather than shipping a divergent duplicate
+into a semantic merge conflict in `banner.py` and `test_plugin_manifest.py`. The consumer-facing
+`## v3.4.0-dev` section in `plugin/CHANGELOG.md` stays — it is additive content, not a competing
+mechanism. **The finding under the finding:** two branches independently fixed the same two banner
+defects within hours, which is the branch-level shape of this bundle's own subject — the second
+author could not see the first, because a class member outside your diff is invisible whether it
+sits in another file or another branch.
+
+Two `.prawduct/` notes closed for free (they move no coverage): 14 blank-line runs left by the
+learnings consolidation, and four retired rules whose `learnings-detail.md` sections still read as
+live. The four were found the way the finding said to find them — diff the `## ` headings at the
+merge-base against HEAD and intersect with the detail file, a query rather than a list — and each
+now carries a `**Superseded by** <survivor>` line. Headings are unchanged, so the
+`[[an untested governance bound rots silently across a migration]]` wikilink still resolves.
+
+Four notes accepted with reasons recorded as facts: a deliberate plan-wide parser refusal, a
+registry row that should wait for the #667 audit so it states audited coverage rather than a
+week-old snapshot, a `building.md` sentence that is true while its label no longer resolves, and a
+Goal 4 legibility risk that would spend `review-protocol.md`'s last 5 tokens.
+
+**One process finding for the operator, from the coordinator rather than a goal:** the design
+reviewer self-reported violating its no-execution contract — it ran `python3` to import
+`buildplan_refs` and call `_unparsed_chunk_headings` while checking a regex's blast radius.
+Read-only and pure, and it states no finding rests on the result, but `critic-reviewer`'s
+allow-list grants `Read`/`Grep`/`Write` and a fixed set of `git` subcommands, and a bare `Bash`
+call was not anticipated by it. Whether that should be structurally impossible rather than
+prose-forbidden is a decision, not a defect to patch here.
+
+## 2026-08-18: a finding says whether it is an instance or a class, and the remedy is graded
+
+<!-- prawduct: type=chore | scope=instance-vs-class | release=v3.4.0 -->
+
+Three times in one session on `fleet-feedback-661`, a finding named a site, the builder fixed
+that site, and the class survived — caught by a reviewer each time. `update-gitignore` fixed
+and `coverage-scaffold` missed; those two fixed and `migrate-plugin` + `init-product` missed,
+both mutating on `--dry-run`. The reviewers had the knowledge; nothing asked them to write it
+down, so what reached the builder was a list of sites.
+
+**The tell is mechanical, which is the half that makes this more than a longer list.** State
+why it broke in one sentence. If that sentence does not name the site you found, the finding is
+a **class** and the sentence bounds it — say what to search, and expect members outside the
+diff. The motivating sentence was *"the `"--flag" in argv` idiom reads an unknown token as
+absent"*: it names an idiom, not a command, so grepping the idiom bounds the class. **And the
+remedy is graded.** An instance closes by fixing it; an unbounded class closes only by a
+construction — one owner every member passes through, or a check derived from the source of
+truth — never by a longer list of names. Six existing learnings rules independently record that
+the naive search under-reports, which is why an enumeration is not a reliable resolution even
+when attempted in good faith.
+
+`review-protocol.md` carries both halves — the rule in the severity legend, where a reviewer
+looks while rating, plus a `**Scope:** instance | class — <why it broke>` slot in the finding
+template, because a template is filled every time and a paragraph is re-read never. That serves
+`final` and `cumulative`: the single-pass fork and all three coordinator subagents read this
+file. Cost 123 tokens against the 128 the uplevel pass below recovered — no ceiling raised,
+which is what that pass was for.
+
+**The plan's deliverable list was itself instance-shaped, and the rule caught it.** It named
+`review-protocol.md` and `review-cycle.md`. The class is *every surface a reviewer reads while
+writing or grading a site-naming finding*, and `review-cycle.md` is not one — the file records
+that fact about itself, where it notes fix-by-fudging's workaround leg "was rated only here, in
+a file this mode's reviewer is forbidden to open." So the grading half went to
+`critic_consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE`, printed at `verify-resolutions` dispatch,
+the last moment before the reviewer writes the one output that weakens a gate. It already
+carried the rule in instance form — *"a finding whose second site is in a file this delta does
+not touch"*, a list of two where the property was meant — and now names the class, the act
+(re-run the finding's own reason as a search) and the withholding (a longer list of names is not
+a resolution, so the finding stays out of `resolutions`). That directive was the framework's
+designated overflow route precisely because it was uncapped; it is capped now, at 280 against
+400, by the edit that spent it.
+
+**`chunk` mode is uncovered, and explicitly.** `goals-1-3.md` — the only payload `chunk` and
+`verify-resolutions` read — sits at 2247 against a `< 2250` ceiling, and the compressed rule
+costs ~65 tokens. That is an owner ruling on that ceiling, or its own uplevel chunk, not a trim
+to slip into the chunk that adds the rule. All three observed instances came from modes that
+are covered (`cumulative` and `verify-resolutions`), and a `chunk`-mode finding still meets the
+rule one round later, at the verify pass that grades its fix.
+
+**And the rule found a third surface when applied to this diff.** The justification for the slot
+— a template is filled every time, a paragraph is re-read never — names no file, so by the rule's
+own tell it is a class. Its other two members are `review-cycle.md`'s `## Per-Chunk Output
+Format`, the same four-field shape with no `**Scope:**`, and `goals-1-3.md`'s prose report
+contract. Both live in the two budget-blocked files above, so one funding decision covers the
+whole remainder instead of leaving a second item to rediscover.
+
+Applied retrospectively to all three findings, the tell fires on each and names the same class:
+the reason sentence names the `argv` idiom rather than any command, the class is unbounded
+because new subcommands keep arriving, and the resolution is the pre-dispatch guard every
+subcommand passes through — which is what eventually shipped, two rounds later than necessary.
+The third finding's reviewer had already done this unprompted ("I found them by re-running the
+class scan rather than the two names"); the change converts that initiative into instruction.
+
+Prose, not a schema field, and the escalation trigger is stated rather than left to judgment: if
+a review after this ships produces a site-naming finding that does not answer
+instance-or-class, prose has failed and the answer becomes machine-checkable — cheapest form is
+a lint on findings whose `files` array has ≥2 entries. Two guardrails model the reader rather
+than the artifact: one asserts the rule sits *in the legend* and keeps all four load-bearing
+components, the other that the directive names the class, the act and the withholding. The
+first draft of the legend guard matched Goal 5's `**Scope pressure-test:**` bullet — a
+file-wide scan for a bold "Scope" — and passed while asserting nothing about placement. Bounding
+a class by the container instead of the property, inside the change that forbids it.
+
+## 2026-08-18: the Critic's protocol pays for its next rule by upleveling, not by raising a ceiling
+
+<!-- prawduct: type=chore | scope=instance-vs-class | release=v3.4.0 -->
+
+Chunk 01 needs room in `review-protocol.md`, whose budget comment has said for five edits
+running that the next addition trims or relocates. A measured scan found 634 of 3799 tokens
+sitting in six repeated shapes; **128** of them proved recoverable, the ceiling is untouched at
+3800, and the file now sits at 3671 with real headroom for the first time in months.
+
+The discriminator is the substance, not the saving. **A class uplevels when the general form
+is actionable without the enumeration, and stays enumerated when the enumeration IS the
+trigger.** Four merged: Goal 4's five drift bullets plus changelog scope became *a description
+whose subject moved*, with artifact, comment, docstring, README and renamed term named as
+containers rather than as five checks; Goal 5's three missing-rationale bullets became *a
+decision without a recorded why*; `infrastructure_dependencies` was being checked in both Goal
+2 and Goal 4 and now has one home; and `CLAUDE.md size` stopped restating the changeset
+scoping that now governs every Goal 4 check at once.
+
+**128 and not the 153 the first draft claimed, and the gap is the finding.** A scan measures
+what a shape *costs*; only rewriting it measures what it gives back, and the difference is the
+checks that merely look repeated. Two of the first draft's cuts were deletions wearing a
+merge's clothes, both caught by this chunk's own acceptance criterion — walk each removed
+bullet and name the surviving sentence that carries it. Signals' work-type mapping (Feature →
+spec compliance, Bugfix → root cause + regression, …) was redirected to "the selector cited
+above", which is the chunk `Type:` selector — a *different* axis this same file calls separate,
+whose real home is `methodology/building.md`, a builder-side file no reviewer is told to open.
+And Goal 4's flat `stale artifact → WARNING` was folded under the prose ceiling, so a stale
+`architecture.md` that no gate reads would have quietly graded NOTE. Both restored; the drift
+bullet now carries two severity arms because artifacts and prose genuinely differ. Closing the
+remaining 22 tokens would mean shaving load-bearing prose — the trade this file has refused
+five times running.
+
+One was measured and deliberately kept. Goal 2's declaration→obligation bullets (`Foreign
+API:`, `Exposed API:`, `Visual change: yes`) are literal string matches, each owing a
+different thing — "a declaration creates an obligation" names neither the string to find nor
+the thing owed, so merging them stops three checks firing while reading as a tidy-up. That is
+the vacuous guard shipped into the reviewer, and `framework-checks.md` Check 7 requires the
+reason for a non-merge be stated rather than left implicit. It is stated in the budget
+comment, which is maintainer-facing — putting it in the payload every reviewer loads would
+have spent the tokens the pass just recovered.
+
+Two upleveled rules now bind wider than their predecessors, deliberately: the concept-ripple
+check said *for framework changes* and the id-anchoring check said *product* artifact, and a
+renamed term or a dangling chunk number strands a reader identically on either side of that
+line. The id-anchoring case also loses its own explicit `WARNING` and inherits the drift
+severity rule — a dangling pointer is load-bearing by construction, since someone follows it.
+
+The Goal 4 `**Norms**` bullet went with them, which two previous editors tried and reverted:
+`test_project_preferences_blocking` needs one line carrying both `project-preferences` and
+`blocking`, and that bullet was the only line that had it. Both editors deleted the duplicate
+and left the contract unhomed. The rule now lives once, in the Normative-authority preamble,
+whose BLOCKING clause names the `project-preferences.md` row or Direction statement a finding
+cites — better for the reviewer, who reads that line while resolving jurisdiction. The trap
+comment in `tests/test_v5_methodology.py` is retired and replaced with the general form: **a
+test pinning prose pins WHERE a rule lives; move the rule before deleting its only carrier.**
+
+## 2026-08-17: seventeen learnings rules become three, and the corpus stops burying its own general rule
+
+<!-- prawduct: type=chore | scope=instance-vs-class | release=v3.4.0 -->
+
+`fleet-feedback-661` produced three instances of one defect: a fix lands at the site a finding
+named and the class survives. The corpus already had the rule — eight times, in eight
+vocabularies, one of them (`A fix lands at the instance a review named`) well-worded and
+general. None fired. The learnings file had the disease it was describing: seventeen
+instances, no construction.
+
+Seventeen rules across three families become three, and the split is the substance rather
+than the trimming. **A** — the fix has relatives (7 folded in; the survivor keeps its heading
+verbatim because it is a live `[[wikilink]]` target, and gains the one thing none of the seven
+said outright: the other members sit OUTSIDE your diff, which is the mechanical reason they
+stay invisible). **B** — the search under-reports (6 folded in), deliberately NOT merged into
+A: A says the class exists, B says your grep for it lies, in four distinct ways. **C** — bound
+the class by the property, not the container (3 folded in).
+
+An earlier read of this corpus called the whole set "~12 restatements of one rule" and would
+have deleted B and C. That was a keyword match reported as an analysis — an instance of C,
+committed while surveying for C, which is why the count in this entry is 17 and not 12.
+
+Every retired rule is preserved verbatim in `learnings-detail.md` under its family. Verified
+rather than asserted: 264 rules to 250, `learnings-entry-shape` 0, descent-obligation ok, and
+dangling wikilinks 15 before / 15 after / **0 newly broken** — the one retired rule that was a
+link target still resolves because its text moved rather than being deleted.
+
+The Critic's own review of this change then produced a **fourth** instance of the same defect:
+the dotted-id widening reached `_CHUNK_COMMIT_RE` but not the `key=int` sort consuming it, so
+`int('1.2')` was newly reachable and would traceback two callers that promise a
+`cannot-verify:` line. Fixed with the widening's own sort key, and the comment that warranted
+`int` — "every key here is a digit string" — deleted rather than reworded, because this bundle
+is what made it false.
+
+**Two more, both in this file, both found rather than recalled.** The pin written for the
+dotted-id fix above was **vacuous**: one case called the sort helper directly (green either
+way) and the other asserted `int("1.2")` raises — a property of the stdlib, not of this repo —
+so the pair could not fail on this defect. (One of the two did carry a real assertion — that
+`1.2` sorts before `1.10` — which is restored; calling both vacuous overclaimed.) A vacuous
+guard for the vacuous-guard class,
+inside the branch that exists to fix it. Replaced with a pin that drives
+`unticked_committed_chunk_notice` end-to-end, and falsified: reverting the fix turns it red.
+
+And an airgapped consumer reported that `--chunk "Chunk 01"` — the string the plan's own
+heading prints — never matched, because the matcher captures a bare id. The failure is
+CLOSED: record-lint rates an unrunnable deliverable check BLOCKING, so a correct plan with
+every deliverable present bought a full extra review round, twice in one session on two
+unrelated plans. The leading-zero tolerance made it worse by looking forgiving. The walk now
+strips a leading `Chunk` label, so the flag accepts what the heading prints.
+
+
+**And once more, one commit later.** The label strip landed in the section walk only, while
+the same id is used again to join against completed chunks through `_normalize_chunk_id` —
+which still only trimmed zeros. The membership test could never be true for a label, so a
+completed chunk's `new \`path\`` forward-ref exemption never expired and the deliverable check
+reported zero refs while reporting that it ran. The file's own docstring had said it: this is
+**the only chunk-id normalizer in the tree — widen this one rather than adding a second**, and
+a second is exactly what the previous commit added. Folded in; the section walk now calls it.
+
+## 2026-08-17: four defects an external fleet report found, and the one shape they share
+
+<!-- prawduct: type=bugfix | scope=fleet-feedback-661 | release=v3.4.0 -->
+
+Issue #661 analysed ~840 reflection and learning entries across ten governed repos and returned
+four still-live defects. Each was re-verified here before any code moved — three by reading the
+mechanism, the chunk parser by running its regex against the inputs that fail. **Three of the four
+are the same defect wearing different clothes: a check that could not run reads as a check that
+passed.** That is the vacuous-guard class this methodology already teaches against, which is why
+they were fixed as one scope rather than filed as four items.
+
+**The chunk parser was worse than reported, and the report's own framing understated it.**
+`_CHUNK_HEADING_RE` rejected dotted ids (`Chunk 1.2` — `(\w+)` excludes `.`) and a leading
+checkbox. The report's complaint was that such a chunk yields zero deliverables, and zero reads as
+"nothing to check". True but secondary. `_chunk_section_lines` ends a section at the next
+*matching* heading, so an unparseable heading never closes the section before it: baselining a plan
+carrying all five heading forms, chunk `A` returned **10 body lines instead of 3**, claiming
+deliverables belonging to the two unparseable chunks that followed it. The check then *runs*,
+verifies another chunk's files, and **passes**. A silent wrong answer outranks a silent empty one,
+because empty at least looks like nothing. Both matchers were widened together (the module's own
+comment block records why one-sided widening of that pair is a new defect), and the loud signal
+scans the whole plan rather than firing at lookup time — the corrupted answer belongs to a
+*different, parseable* chunk, so a lookup-time signal never reaches it.
+
+**A flag nothing could receive.** `cmd_update_gitignore` took no `argv` parameter at all, so
+`--dry-run` was not discarded by arg parsing — there was no arg parsing, and the reconcile ran. A
+user reached a live `.gitignore` mutation by typing `--help`. The fix is at the dispatch site, on
+the precedent `_check_binary_skew` already set there ("before dispatch, so it covers every
+command"), because a per-command fix misses whichever command nobody thought of. `update-gitignore`
+also gained the real `--dry-run` its siblings taught users to expect; it still repairs by default,
+because `/prawduct:doctor` calls it as a repair step. **`api-contract.md` had claimed the
+repo-lifecycle commands were "all dry-run-by-default where they mutate"** — so the artifact
+documented a contract the code never honoured, and a reader who believed it got the opposite. That
+is the more interesting half of this defect and it is now stated as the exception it is.
+
+**An install that looks like it worked.** Enabling the plugin starts the hooks, and the hooks fill
+`.prawduct/` with runtime state — so a repo that never ran `/prawduct:onboard` shows a version
+banner, a populated directory and firing advisories. One fleet repo has been in that state for
+weeks. Three advisories fired there and **none of them contained the word "onboard"**: prawduct
+detected three downstream consequences and never named the cause, which is worse than silence
+because visible activity reads as confirmation. The new probe fires only on the unanimous absence
+of every marker that `/prawduct:onboard` or `/prawduct:migrate` writes, so a repo that was
+onboarded and merely drifted stays silent and keeps getting told to repair rather than install. It
+sits alongside the consequences rather than suppressing them, ranked `urgent` so it renders above
+them — suppression would trade a misleading briefing now for a surprising one later.
+
+Deliberately *not* counted as onboarding markers: `learnings.md`, `backlog.md` and
+`project-preferences.md`. The runtime nudges each into existence without any onboard, so counting
+them would have silenced the probe on exactly the trajectory the field repo took.
+
+**Reflections now carry the version that produced them.** Nothing stamped it, so grouping the
+corpus by release was archaeology — the reporter could attribute 35.6% of 839 entries and the rest
+is an honest `unknown`. `.session-reflected` has no code write site, but its archive into
+`reflections.md` does, so one statement at the session boundary covers the whole corpus. The header
+reuses the tag idiom `lib/change_log.py` already parses, because a prose line would carry the same
+words unparseably and repeat the gap at lower cost. Every resolution failure degrades to
+`version=unknown` — never an omitted header, which is indistinguishable from an unstamped block,
+and never a raise, which would escape the archive's handler and make the stamp a new way to lose a
+reflection.
+
+**What the new guard caught on its first run, which is the part worth keeping.**
+`test_verify_chunk_refs_cli_reports_rather_than_tracebacks` invoked
+`verify-chunk-refs --chunk 01`. The id is positional; `--chunk` is `verify-records`' spelling, and
+dispatch was recording the literal string `--chunk` as the chunk id. The assertion passed anyway,
+because an undecodable plan fails at the read before any id is used — so the test exercised its
+contract through an invocation that never existed and would have stayed green if the real form
+broke. A guard built for silently-ignored arguments found a test silently passing one. The
+invocation is corrected; the assertions are untouched.
+
+Considered and not done: making `/prawduct:doctor` preview before it reconciles. The report ranked
+the doctor-reads-as-read-only framing first, and `--dry-run` now makes it a one-line change — but
+it alters a skill's behaviour rather than fixing a defect, so it is the operator's call. Filed as
+`#666` rather than left in prose.
+
+**The flag fix took three rounds, and the reason is the most transferable thing here.** Round one
+fixed `update-gitignore`. The cumulative Critic found `coverage-scaffold` and `coverage-status`
+still reading unknown tokens as absent — and `coverage-scaffold` MUTATES, so `--apply --dry-run`
+wrote 5 stub artifacts while the caller believed they had asked for a preview. That is the same
+defect, in the command this entry's own first draft held up as the well-behaved sibling. Round two
+fixed those two. The verify round then found `migrate-plugin` and `init-product` — the plugin
+cutover and the repo scaffolder, the two most destructive commands on the surface. Measured against
+the pre-change binary rather than argued: `migrate-plugin --apply --dry-run` performed the cutover,
+and `init-product --apply --dry-run` scaffolded an entire repo.
+
+Twice fixed by naming the commands someone had thought of; twice wrong. `learnings.md` has said to
+prefer sweeping **by construction** over sweeping by enumeration since long before this branch, and
+reading that rule did not prevent either enumeration. So the coverage is now asserted structurally:
+`tests/test_hook_argument_shape.py::test_every_argv_taking_command_refuses_what_it_cannot_read`
+derives the argv-taking set from `_dispatch`'s own source and fails for any member carrying neither
+a guard nor a recorded reason. It immediately surfaced seven more commands nobody had looked at.
+
+**Two defects the pin found in itself.** Its exemption list first shipped seventeen confident
+one-line reasons written from names and comments; running bare-vs-unknown-token on each returned ten
+verified, nine inconclusive (a bare invocation already errors, so the probe cannot separate a refusal
+from that), and one ignoring the token by documented design. The nine are recorded as **NOT AUDITED**
+in the test and in `api-contract.md`, with `#667` carrying the audit — an honest gap beats a confident
+allowlist inside a test whose purpose is stopping unchecked assertions. And `migrate-plugin` was
+listed in that dict as a courtesy to the reader, which exempted it from the scan: deleting its guard
+left the test green. A vacuous guard inside the guard written to stop vacuous guards, caught only by
+falsifying it.
+
+The `api-contract.md` sentence added mid-branch — "checked before dispatch, for every subcommand",
+with three carve-outs named as "the only ones" — was false for two mutating commands when it shipped.
+Corrected, including which nine remain unverified. A written contract that overstates coverage is the
+same defect class as a check that cannot run: both read as assurance.
+## 2026-08-18: the reopen version is guessed LOW, and that is a correctness rule
+
+<!-- prawduct: type=fix | scope=release-cut-checklist | release=v3.4.0 -->
+
+The spanning cumulative (`rev-20260818T192844Z-d7391015`) blocked on the reopen step telling the
+operator to guess the next **minor**, on two independent grounds, and the second is the one that
+would have bitten.
+
+**A high guess breaks the banner for the exact audience the step exists to serve.** A prerelease
+sorts just below its own release, so `3.4.0-dev` = `(3,4,0,0,0)` sits ABOVE `3.3.5` = `(3,3,5,1)`.
+A develop-pinned consumer that meets a patch cut therefore moves *backwards* — and
+`highlights_in_range` and `new_gates_in_range` are both empty on a downgrade, so they get a
+version move with no release notes and no gate announcement. From a low guess every possible next
+cut is a forward move, which makes the conservative number and the safe number the same number.
+`develop` now carries **3.3.5-dev**, and the rule reads "next patch" at all three sites.
+
+**It was also a norm departure written into a procedure.** `operational-spec.md` § Direction
+ratifies conservative versioning — *a minor bump is a recorded decision, not a reflex* — and a
+runbook defaulting to a minor writes the reflex in. The `-dev` number is squarely inside that
+norm's own rationale, being the handle a develop-pinned consumer reads all cycle. A minor `-dev`
+now needs the recorded decision a minor release needs.
+
+**The pruned promotion path never reached Phase 3 at all.** `promote-a-pruned-release.md` replaces
+Phase 2 and says everything *before* Phase 2 is unchanged — Phase 3 is after, so it was neither
+replaced nor covered, and nothing sent the operator back. Phase 1 has already bumped `develop` to
+the bare release number by then, and the pruned completion test is the path partition rather than
+the five-file diff, so nothing detects the omission either: on the shape used for v3.1.1 and
+v3.1.2, the defect this branch removes came back silently. That runbook now points at Phase 3 and
+says why it is easy to lose.
+
+**A NOTE that this branch itself falsified.** `release_readiness._resolve_version` told the
+operator the `plugin/VERSION` fallback was "the PREVIOUS release". After Phase 3 it is a `-dev`
+marker that is not any release — no tag or plan will ever carry that name — so an operator
+resolving `no-release-plan: no release-plan-v3.3.5-dev*.md` by creating that file damages the
+artifact set. The message now says so, and its test asserts the **property** (the NOTE says the
+fallback is not the thing being graded) rather than the old spelling, which is what let a pinned
+sentence stay green while becoming false.
+
+Two more claims corrected where they were made rather than where they were noticed: Phase 3
+credited "step 7" with overwriting three files that steps 7-9 overwrite, and
+`test_plugin_manifest.py`'s comment still carried the `check_version_files`-prevents-it framing
+the runbook had already retracted.
+
+## 2026-08-18: the reopen step gets the three blockers its first review found
+
+<!-- prawduct: type=fix | scope=release-cut-checklist | release=v3.4.0 -->
+
+The branch's first cumulative review (`rev-20260818T185932Z-a1b20a37`) returned **3 blocking, 4
+warning, 4 note**. All three blockers were the same shape — a step added at one site while the
+claims and checks that depend on it stayed where they were.
+
+**Phase 3 falsified the runbook's own completion test.** Step 22 advances `develop` one commit
+past the content-identity Phase 2 establishes, and the `Done when` bullet asking
+`git diff --stat origin/main origin/develop` to print *nothing* sits below it — so on a correct
+release it could never pass again. A check that always fails is worse than no check: the operator
+learns to expect the failure and stops reading it. The bullet now expects exactly the reopen
+commit's files, and says to run the strict form before step 22. `operational-spec.md` carried the
+same claim in its own words and was swept with it — the second site is why this was blocking
+rather than a stale-artifact warning, because `learnings.md` already warns that sweeping for the
+identifier is not sweeping for the claim.
+
+**Step 22, followed literally, shipped a red suite.** It said "commit with a change-log entry",
+which reads as `.prawduct/change-log.md`; `test_changelog_has_current_version_entry` requires a
+`## v<plugin.json version>` section in the **public** digest. This branch satisfied that by hand,
+so the gap was invisible here and would have fired on whoever ran the step next. The mirror gap
+was at the other end: Phase 1 step 10 said to *add* a `## vX.Y.Z` section, which leaves the `-dev`
+section in place forever and gives a consumer two highlights for one release. It now says to
+**rename** the open prerelease section.
+
+**The new prerelease ordering had no test.** `version_tuple`'s trailing-sentinel scheme and the
+widened `_SEMVER_HEADER` shipped with zero direct assertions — covered only incidentally by a test
+whose coverage *evaporates at every cut*, when the version is bare again, so the released plugin
+carried this path untested by construction. Five pins now cover it: the ordering in both
+directions, `-dev.N` ranked numerically (`-dev.10` above `-dev.2`), the refusal of any suffix
+`test_version_is_semver` would reject, the heading capture keeping its suffix, and the end-to-end
+highlight selection. Four of the five fail against the pre-change implementation.
+
+Two claims corrected rather than reworded around. The runbook credited `check_version_files`'
+tag comparison with keeping a `-dev` suffix out of a cut; it runs `git show <tag>:...`, so it is a
+post-publish **detector** — step 7 is the only preventive control, and is now named as such. And
+the public CHANGELOG said cached verdicts "never cross a plugin change"; the cache keys on the
+version *string*, which is static across a cycle, so it separates prerelease from release and not
+one develop push from the next. Stated plainly, with `-dev.N` named as the unbuilt remainder.
+
+The reopen step also reached the two other documents enumerating the release checklist —
+`documentation/release-process.md` (as step 10) and `operational-spec.md` — which is the same
+one-site-of-three defect the blockers were, caught in the same review.
+
+## 2026-08-18: develop identifies itself as a prerelease
+
+<!-- prawduct: type=feature | scope=release-cut-checklist | release=v3.4.0 -->
+
+Between releases, develop carried the released version string. Harmless until the verdict
+cache keyed on that string: successive develop pushes all claiming `3.3.4` can replay
+`covered` verdicts across a judgeability change, and a consumer pinned to the `develop` ref
+cannot tell from the banner which plugin it is running. The three version files now carry a
+`-dev` suffix; the runbook gains Phase 3 (reopen develop at the next `-dev` after every cut);
+`test_version_is_semver` admits exactly `-dev`/`-dev.N` and nothing else, by owner decision
+2026-08-18. Releases stay bare because step 7 overwrites the version files at the cut.
+
+**Three claims in the paragraph above were corrected by this branch's own later entries, and
+they are named here rather than edited out** — the change log is append-only, and a reader who
+meets this entry first should not have to reach the correction by luck. The version files read
+`3.3.5-dev`, not `3.4.0-dev`: guessing the next *minor* was blocked as both a conservative-
+versioning norm departure and a downgrade hazard. `check_version_files` does not *refuse* a
+`-dev` residue — it runs `git show <tag>:…` and is a post-publish detector, so step 7 is the only
+preventive control. And the `-dev` suffix does not separate one develop push from the next: the
+verdict cache keys on the version string, which is static across a cycle, so what it buys is the
+release boundary. `-dev.N` is what would buy the rest, and it is permitted but not yet produced.
+
+## 2026-08-18: purpose.md stops claiming the responsibility ledger exists
+
+<!-- prawduct: type=bugfix | scope=release-cut-checklist | release=v3.4.0 -->
+
+`documentation/purpose.md` described the responsibility ledger in the present tense; it is
+Cycle 3 of the cession program and unbuilt. Pre-release audit finding (2026-08-18). The line
+now says "planned" and names the cycle — the doc-vs-reality shape this repo polices elsewhere.
+
+## 2026-08-15: a plan-less scope is an absence, not a check that failed
+
+<!-- prawduct: type=bugfix | scope=scope-widened-demotion | release=v3.4.0 -->
+
+Record-lint rates `chunk-ref-missing unchecked — …` BLOCKING, by string and not by judgment, because
+a deliverable check that could not run is indistinguishable from one that passed. One shape reached
+that prefix without deserving it: a dispatch whose scope no build plan declares. That is the ordinary
+condition of a **framework-only fix**, which `building.md` says needs no build plan at all — so the
+finding had no remedy. Not a `--chunk` to supply, not an edit to the diff that clears it. The only
+exits were inventing a retroactive plan or departing from the rule, and **three consecutive reviews
+on this branch took the second**, each recording the departure and moving on. A rule whose correct
+response is "ignore it, with reasons" is training people to ignore the prefix that blocks.
+
+The fix is a discriminator rather than a demotion, because the two shapes that reach here are not
+alike. A **typo'd or stale** scope names nothing anywhere, and grading must not go quiet on it. A
+**real, deliberately plan-less** scope is declared in the change-log — a record that already exists
+by review time, since `check-change-log-entry` refuses a code branch at the PR boundary unless it
+ADDS an entry, and the `scope=` tag on that entry is what the release flow reads to enumerate
+unshipped work. When the change-log declares the scope, the entry now arrives as
+`chunk-ref-missing no-subject — …` and rates NOTE; otherwise it is `unchecked` and still BLOCKING.
+
+**What that is worth, stated precisely.** The PR probe requires the *entry*, not the *tag*, so a
+builder writing `scope=` is still declaring something rather than having it forced out of them. The
+gain over the two alternatives — a `--scope-has-no-plan` flag on dispatch, or an allowlist key in
+`project-state.yaml` — is therefore not unforgeability. It is that the declaration is durable, is
+read by the release flow for an unrelated purpose, and shows up in the diff a reviewer reads; a
+transient flag on one dispatch is none of those. The typo case, which is what actually has to be
+separated here, is declared nowhere by construction.
+
+Considered and not done: making `check-change-log-entry` require the `scope=` tag, which would close
+the gap properly. It changes a gate's behavior for every consuming repo, including those whose
+existing entries carry no tag, so it is not a ripple of this fix.
+
+Fails closed at every edge: an absent change-log, an unreadable one, or a parse failure all keep the
+blocking read, since a witness that cannot be consulted proves nothing.
+
+## 2026-08-15: the widened-scope demotion names a mode that can see the delta
+
+<!-- prawduct: type=bugfix | scope=scope-widened-demotion | release=v3.4.0 -->
+
+`critic-begin --mode verify-resolutions` refuses when the delta since the prior review outgrows the
+prior surface, and told the reviewer to "run a full review" — which the skill spelled `final`,
+unconditionally. `final`'s interval is HEAD-tree → working-tree, the *uncommitted* diff. So an
+interval refused for being **too wide** was replaced by one that is strictly **narrower**, and a
+widening made of commits demoted to the one mode that cannot see a commit.
+
+Observed on a product repo: 95 files widened the scope (a base-branch merge plus the chunk's own fix
+commit, already landed). The demoted `final` reviewed the two untracked files the working tree
+happened to hold — a devcontainer script and a build plan belonging to another scope — and that was
+recorded as the chunk's review. Nothing caught it: both dispatches succeeded, the manifest was
+internally consistent, and the reviewer reported exactly what it was handed. Only a clean working
+tree would have tripped `final`'s own "empty diff — already committed? a committed bundle is
+cumulative's scope" refusal, which routes correctly; two strays were enough to swallow it.
+
+**Where the delta lives now picks the mode, in code.** `begin_review` has already computed whether
+committed content moved since the prior review, so the refusal carries a `fallback_mode` and names
+it in the message: `cumulative` when the widening includes committed work, `final` when the drift is
+all uncommitted — which is exactly that interval, and the case the old advice was accidentally right
+about.
+
+`cumulative` is deliberately **not** described as a superset of what widened, because it is not one:
+a base-branch merge moves the merge-base forward, so merge-base…HEAD *excludes* the merged-in files
+that inflated the delta. That is the right answer rather than a shortfall — those files were reviewed
+on the base branch, and what the branch owes is its own work, which is exactly that span. The first
+draft of this fix sold it as a superset; the review caught the claim, and a wrong claim about
+coverage is the same class of defect as the one being fixed.
+
+Two guards keep the recommendation from repeating the defect one level up, since recommending a mode
+that would itself refuse at dispatch is the same failure: when no merge-base resolves, or when HEAD
+*is* the merge-base, `cumulative`'s interval is empty or unavailable, so the message falls to `final`
+and says plainly that it sees only the uncommitted part rather than claiming coverage it lacks.
+
+The prose was read correctly — it was wrong — so the fix moves the decision out of prose. `SKILL.md`
+and `review-cycle.md` now say to re-dispatch in the mode the refusal names and never to assume
+`final`; the reasoning they carry is the one already written into the exit-3 qualifier one section
+away, which had the interval-narrowness insight and was never generalized to exit 2.
+
+**Stated as a property, not as one table row.** The first draft fixed only the exit-2 row, and the
+review found the generalization independently from two directions: the exit-**1** demotions ("no
+usable prior review") still said `chunk`/`final` unconditionally, and two of their triggers —
+undiffable prior tree, anchor not an ancestor of HEAD — arise *precisely* because committed history
+moved. Worse, the reviewing agent hit a third instance while reviewing this very commit: dispatching
+`final` against a clean committed tree returns the empty-diff refusal, whose SKILL row said "report
+the stderr reason and stop" while the refusal text itself correctly named `cumulative`. So the rule
+is now stated once, as **the demotion property**, at the head of the exit table in `SKILL.md`, and
+every row leans on it — including exit 3's qualifier, which had been carrying its own copy.
+
+Deliberately not extended: the exit-1 refusals do not yet *compute* a fallback mode the way exit 2
+does. Two of the four have no prior fact to compare trees against, so `committed_differs` is not
+derivable there and a different signal would be needed. The property now covers those rows in prose
+and the empty-diff refusal remains the backstop; the code extension is filed rather than built here,
+because it is a design question about what a first review of committed work should anchor to, not a
+ripple of this fix.
+
+## 2026-08-14: the retired test count now announces itself
+
+<!-- prawduct: type=feature | scope=test-tracking-advisory | release=v3.4.0 -->
+
+Removing `build_state.test_tracking` shipped with two entry points and one gap: **both need someone
+to decide to run them.** `/prawduct:doctor` repairs an already-onboarded repo and the cutover
+removes it from one crossing over, but nothing told any owner there was anything to run — and the
+correct route differs per repo. Measured the day the removal shipped: nine repos still carried the
+block, four of which needed `migrate` rather than `doctor`. Expecting each owner to work that out
+unprompted is not a plan.
+
+A post-sync advisory probe now fires at session start when the block is present. It **recommends and
+never writes**: unlike `.gitattributes`, `project-state.yaml` *is* inside the plugin's permitted
+write set, so the write-set norm would allow an automatic strip — what forbids it is the
+operation-level approval rule, because a framework silently deleting from a product's hand-authored
+state file is the trust breach that rule exists for.
+
+**The message leads with the instruction, not the diagnosis, and that is the whole design.** This
+block's harm was never its bytes; it is that an agent meeting a stale count in a product's source of
+truth is *obliged* to correct it, and each correction buys a review round. "Retired — do not
+maintain it" reaches the agent before it edits anything, so the advisory does most of its work on
+the first session whether or not the repair is ever run. A nudge that merely reported the condition
+would leave the treadmill turning until someone acted.
+
+Scoped to this block alone. `views_enabled` and `scope_rollups` are the other retired state keys and
+are deliberately excluded: nobody maintains them, so they carry no behavioural cost, and doctor's
+health check already covers their cleanup — an ambient nudge about inert residue is the control
+`nonfunctional-requirements.md` says to remove by default.
+
+Detection delegates to `lifecycle_repair.state_removals`, making this its third caller after the
+doctor repair and the cutover; the key name and span have one home. The probe self-resolves — the
+trigger and the resolution are the same observable state — and its evidence deliberately carries no
+count or size, because these files are edited by their own sessions and evidence that moved with the
+contents would re-issue the advisory under a new id, silently un-dismissing one the owner had
+already decided about.
+
+Verified end to end against a copy of a real product's state: the advisory fires unprompted, its
+recommended command previews and applies, the advisory returns zero on the next probe, and
+`source_root` survives.
+
+A preferences test caught the module's first name. `plugin/lib/test_tracking_probes.py` starts with
+`test_`, which reads as a test file to pytest's collector and would be silently skipped under
+`testpaths=["tests"]`; it is `retired_state_probes.py`.
+
+## 2026-08-14: the test count ten products maintain and nothing reads
+
+<!-- prawduct: type=fix | scope=test-tracking-treadmill | release=v3.4.0 -->
+
+`build_state.test_tracking` is a hand-maintained copy of a fact the evidence store already holds
+per tree. Nothing in the runtime reads it, no template scaffolds it, and prawduct's own state file
+has never carried it. It is nonetheless live in ten governed products, because the field is *in*
+the state file — and the state file is a product's source of truth, so Living Documentation obliges
+every agent that meets a stale number there to correct it. Each correction is a commit, each commit
+extends HEAD, and that is how a record defect buys a review round; the mechanism is the one
+`lib/record_lint.py` already documents, and one of the four examples it names is a test-count claim
+corrected three times.
+
+The cost is visible rather than theoretical. In the worst repo the field's provenance comment had
+grown to a single YAML line of ~52,000 characters — about a third of the file — nesting its own
+correction history, including a note recording that three successive edits had used the wrong basis.
+Running the repair over a copy of that file removed roughly 80 KB (measured 2026-08-14).
+
+**Those figures are a dated snapshot and are deliberately not stated as exact, which this entry owes
+an explanation for, because the exactness is what the entry is about.** The first draft recorded a
+precise before/after pair. It was true when taken and had stopped reproducing within ninety minutes
+— that repo's own session edited the file mid-measurement, trimming ~52 KB from inside the very
+block under discussion. A second party re-measuring found different numbers and correctly refused to
+write the pair it had been handed. So the *fact* here is what the repair does, not what one file
+weighed on one afternoon; re-derive the current figure rather than trusting this sentence:
+
+```
+python3 - ../SOME-PRODUCT/.prawduct/project-state.yaml <<'PY'
+import sys, shutil, tempfile; from pathlib import Path
+sys.path.insert(0, 'plugin'); from lib import lifecycle_repair as lr
+tmp = Path(tempfile.mkdtemp()); (tmp/'.prawduct'/'artifacts').mkdir(parents=True)
+shutil.copy(sys.argv[1], tmp/'.prawduct'/'project-state.yaml')
+sp = tmp/'.prawduct'/'project-state.yaml'; before = sp.stat().st_size
+lr.apply_repair(tmp, lr.plan_repair(tmp)); print(before, '->', sp.stat().st_size)
+PY
+```
+
+(It copies first and never touches the product's own file. Run from this repo's
+root, since it imports the plugin's `lib` from a relative path.)
+
+A durable record carrying a live measurement is the same defect as the field this change removes,
+one level up — which is why the correction is a re-derivation command and not a fresher number.
+
+**The block goes whole, which is a decision the survey forced.** Measured across every governed
+product: `test_tracking` sits under `build_state` in 10 of 10 that carry it, and the field the
+backlog item was named for is the *sole* member in exactly one. The other seven carry
+`assertion_count`, `test_files`, and a `history` of per-chunk `tests_added` entries — the same
+bookkeeping, so removing only `test_count` would fully clean one product and leave the treadmill
+running in seven, guaranteeing a second pass. Nothing in `lib/` or `bin/` reads `build_state` or any
+member; `source_root`, which is read in ten places, is a *sibling* under `build_state` and is never
+touched, so the parent is never left empty. This supersedes the earlier acceptance criterion on
+**#633** — "does not touch a `test_tracking` block carrying other keys" — which was written from the
+ruling's framing before the block was measured.
+
+**Two entry points, one definition.** `lifecycle-repair` converges repos that onboarded before the
+removal existed; the plugin cutover removes the same keys on the way through. The division is by
+*when*, not by *what* — `migrate_plugin` calls `lifecycle_repair` and a test asserts it holds no
+live string naming any retired key, so the two can never disagree about what one is. The removal is
+nested where the module's existing two are column-0, so it needed an enclosing-parent predicate and
+a depth-aware span; everything downstream — ordering, preview, the atomic write, the line-ending
+contract — is shared.
+
+**A test that pinned a misclassification was corrected, not weakened.** The cutover suite asserted
+that `views_enabled` survives migration and called it a "pre-existing product key". It is not one:
+it is retired *framework* residue, which is the entire reason `lifecycle_repair` exists. That
+assertion obliged the one act that deletes every other framework file to carry framework residue
+forward — which is how these keys reached the plugin era in ten products. The contract now reads on
+the axis that matters: product keys survive byte-for-byte, retired framework keys go, the marker is
+appended.
+
+Prawduct has removed this field once before, through `strip_test_tracking()` in the file-sync
+engine, retired in M4/v2.0.3 — and it came back. So the deletion ships with a tripwire rather than
+alone; that half is the same scope's second chunk.
+
+**The tripwire: record-lint now sees the state file.** `is_record()` classified only `.md`, so the
+suite-total check swept the plugin's markdown clean while the claim that actually survived sat in
+YAML. It now also accepts YAML **directly under a `.prawduct/` directory** — scoped to governance
+state, never to YAML generally, because a product's CI config and lockfiles are its data and grading
+them would put this control in the wrong business. **The pattern is unchanged**: it already matched
+the worst real line many times over, so the fix was the file-type gate alone. The three
+markdown-specific checks are unaffected and now pinned that way — each already selected its own
+inputs by filename or by build-plan name rather than trusting the record set to be markdown.
+
+`tests/test_record_lint.py` asserted `.prawduct/project-state.yaml` was *not* a record. That
+assertion is inverted here, deliberately and on the owner's decision: the pinned behaviour is what
+was re-decided, not an assertion relaxed to let code pass.
+
+**The check found two false positives in this repo's own prose within a minute of existing, and
+both were the prose's fault.** The build plan quoted a matching fragment as evidence, and a
+quotation of a defect is indistinguishable from the defect to anything that scans text; its
+acceptance criteria wrote backticked paths that `chunk-ref-missing` correctly read as declared
+deliverables. Both were reworded — a record should carry the command that re-derives a claim, not a
+copy of it. Neither check was weakened.
+
+**And the methodology now names the instance.** `building.md` already said a count nothing reads is
+not worth writing; it did not say that a suite total is the one that keeps coming back, which is why
+the instance outlived the rule. One clause **on that same paragraph** — not on the Verify step,
+where it was first drafted as a separate bullet at +180 tokens that broke the file's budget and
+tripped the count-slot guard by quoting the shape it was forbidding. The rewrite satisfying both
+put it where the concept already lives, and landed **net zero** against the budget, paid for by
+four trims of pure restatement.
+
+**The cutover's line-ending and decode contracts were fixed in the same scope**, both surfaced by
+the cumulative review and both older than this change. `record_distribution` read and rewrote the
+state file with universal newlines, so appending one key to a CRLF product file rewrote every line
+in it — and it runs immediately after the removal that had just preserved them. And
+`core.read_str_yaml_key`/`read_bool_yaml_key` document themselves as failing soft on an unreadable
+file while catching only `OSError`; `UnicodeDecodeError` is a `ValueError`, so an undecodable state
+file aborted the whole cutover before any later step reached its own guard — including guards a
+recorded disposition in this scope's build plan rested on. All three now fail soft, and the sum of
+those soft failures is reported — for **both** failure modes — rather than left to look like
+"nothing needed".
+
+That last qualifier was earned the hard way, and it is the entry worth remembering. The guard
+written to report the silent half-cutover *first covered only the decode error*, so a
+permission-locked state file still produced exactly the silence it existed to prevent: the guard
+had reproduced, one level up, the same too-narrow-catch defect it was reporting. The verify pass
+caught it. Both modes are now distinguished in the message, because they send an operator to
+different fixes — re-encode the file, or fix its permissions — and the dry run says the same thing
+the apply will do, rather than promising an edit the apply declines.
+
+## 2026-08-13: the change log recommends its own merge driver
+
+<!-- prawduct: type=feature | scope=tactical-efficiency | release=v3.4.0 -->
+
+On both forced base syncs measured on a consumer repo, **100% of the merge conflicts were
+prawduct's own record files**, led by this one. Every branch writes its entry at the TOP of the
+change log, so two branches always edit the same first lines and merging an advanced base conflicts
+there every single time — a manual resolution and a reconcile commit for a file whose two sides
+never actually disagree.
+
+A post-sync advisory now recommends `.prawduct/change-log.md merge=union` when the committed log
+resolves no such gitattribute, and self-resolves once it does. It **recommends and never writes**:
+`.gitattributes` is not in the plugin's write set, and unexpected framework writes to a repo's
+committed configuration are the trust breach that set exists to prevent. The advisory surface is
+the one that runs every session; `/prawduct:doctor` lists the same check as the secondary surface,
+where it is a recommendation and does not grade a repo degraded — a repo is free to decline advice.
+
+**The recommendation is verified, not assumed.** Two branches prepending tagged entries conflict
+without the attribute and merge cleanly with it, each entry's `<!-- prawduct: … -->` line still
+under its own header, because the union driver concatenates whole hunks and never crosses them. The
+trade it makes is real and stated where the probe lives: union never conflicts, so a genuine
+two-sided edit to the *same* line survives as both versions rather than as a conflict — caught
+downstream by the release gate's tag validator, which errors on one key set two ways.
+
+**Three answers, not two, at the git boundary.** `git check-attr` returning nothing and git being
+unaskable are the same empty answer unless the code keeps them apart, so `gitstate` gained a
+tri-state pair (`git_merge_attribute`, `git_path_is_tracked`) that returns `None` for "could not
+ask". The probe raises no advisory on `None` — nagging a repo that may already be fixed is the
+wrong error — and prints a `NOTE` naming what went unchecked when the log is committed, which is
+when the harm is live. Where git cannot be asked at all it stays fully quiet: nothing that cannot
+merge can conflict.
+
+Also here, riding the commit rather than a later round: the ~dozen docstrings that still described
+active-plan resolution as "the `active_build_plan` pointer" now say "this repo's active build plan"
+and point at the function that owns the rule, so the precedence has one home instead of a ninth
+copy that goes stale on the next change.
+
+## 2026-08-13: the plan declares its branch
+
+<!-- prawduct: type=feature | scope=tactical-efficiency | release=v3.4.0 -->
+
+Which build plan is active is **branch state**, and it was stored in `active_build_plan:` — one
+scalar, at product level, in a file both of two concurrent branches edit. Two branches therefore
+guarantee a same-line conflict every time, and after the merge exactly one plan wins the line while
+the other becomes invisible to every surface that resolves through it: the briefing, mode
+inference, chunk-ref verification, the Stop gate.
+
+**The pointer is inverted.** A build plan may declare `branch: <name>` in its frontmatter, and
+`core.resolve_build_plan_path` now resolves in precedence order: the live plan claiming the
+checked-out branch, then the scalar, then the conventional default. Nothing migrates — a repo whose
+plans declare no `branch:` resolves exactly as before, and the scalar keeps working as the fallback
+it now is. Archiving a plan ends its claim, because the scan prunes `archive/` at directory level,
+so for a branch-declaring plan the archive move is the whole retirement with no pointer left over.
+
+**Two live plans claiming one branch is a refusal, not a coin-flip.** Either could be the one its
+author meant, and governing a session by the wrong plan looks exactly like governing correctly, so
+resolution raises rather than picking the one that sorts first. Authority inherits that by
+propagating it — a refused gate is a blocked gate, and the hook prints the refusal and its remedy
+instead of a traceback. Advice inherits it by reporting: the briefing names both plans at the top
+of the session, and is still produced.
+
+**The chunk's own acceptance criterion named two consumers that were observably broken**, and one
+of them needed more than the resolver. `critic-begin` derives its ledger scope by matching the
+branch NAME against declared scopes — `feat/tactical-efficiency-pass` matches the scope
+`tactical-efficiency` under no rule, so every dispatch from this branch recorded scope `(none)`,
+which in turn left the disposition work-scope filter shipped earlier in this pass inert. Scope
+inference now consults the plan's `branch:` declaration first. It is the only route there that is
+not a guess, so neither narrowing applies to it: not the name-candidate rules, and not the
+liveness check that rejects a fully-ticked plan — that check exists to stop a *guess* attributing
+work to a plan that shipped, and it opens a window at exactly end-of-plan, when the `cumulative`
+review and the last gate run happen.
+
+**Session start got faster, not slower.** The branch resolution adds a walk of `artifacts/` — the
+one the scope map already pays for — but it also asks git for the current branch, and the briefing
+asks five times. Measured on this repo the briefing went 197 ms → 494 ms, which is not a cost this
+pass gets to ship. `gitstate.current_branch` now reads git's `HEAD` file directly and shells out
+only when it cannot answer, which is a fast path for every one of its callers rather than for the
+new one: 215 ms, +18 ms over baseline for the walk the feature actually needs. The reader is
+worktree-aware because that is where it runs most — a linked worktree's `HEAD` is its own, and
+reading the shared common dir would have reported the primary checkout's branch to every gate,
+silently.
+
+**The review found the refusal failing OPEN at the one gate that matters, and both blockers were
+that.** `main()` rendered every refusal as exit 1 — but `stop` is a harness hook, and the recorded
+error model gives its row exactly two outcomes: 0 clean, 2 block. Exit 1 is neither, so on a repo
+with two plans claiming the branch the session would have ended **clean**, with the reflection,
+coverage and PR gates never having run: the precise inverse of the posture the feature documents,
+reachable only through the state the feature invents. `cmd_stop` now probes resolution once, before
+any gate and before the background-work deferral (which returns 0, and which no amount of background
+work could ever clear), and renders a refusal as a BLOCKED report at 2. Guarding the individual call
+sites was tried first and only moved which line raised — three of them resolve independently, which
+is the finding's own point: every gate resolves a plan.
+
+The same review caught the new "plan claims a branch this repo does not have" advisory firing across
+the whole gitflow merged-but-unreleased window — recommending the one action `/prawduct:pr` forbids
+there, and falsifying two doc paragraphs added in this same commit. It now fires only for a plan with
+an **unfinished** chunk, which is the case with yield: the author believes their plan governs this
+work and it silently resolves for nobody. A finished plan claiming a deleted branch is the documented
+end state, and says nothing.
+
+**A dead mirror was deleted rather than duplicated into.** `bin/prawduct-hook` carried an inline
+copy of the resolver for an import-light hot path. Its last caller went away when `staleness_scan`
+moved into `lib/briefing.py` and was rewritten onto the canonical resolver, after which the only
+thing invoking it was its own parity test — and the import-light claim was void, since that path
+reaches the resolver through `lib.briefing` and pays for `core` anyway. Extending it would have
+meant duplicating a directory walk and a git subprocess into code nothing calls, on its fourth
+rework (Principle 25). The scalar reader beside it stays: it has four live callers, and its parity
+cases are unchanged.
+
+Two prose corrections carried from the previous chunk ride here, both deliberately held back so
+that chunk could commit a verify-vouched tree verbatim: `gates.py`'s `uncovered` remedy still told
+a builder whose verify fact anchored the working tree to "commit (or stash) the WIP and re-run",
+and the corrected half of `critic-consolidate`'s twin had no test pinning it.
+
+Not in scope, and stated so the next reader does not go looking: removing the scalar, migrating
+consumer repos, and the release-side scope enumeration (already pointer-free).
+
+## 2026-08-13: the batch-fix golden path, stated at the point of action
+
+<!-- prawduct: type=feature | scope=tactical-efficiency | release=v3.4.0 -->
+
+Five consecutive 0/0/0 verify passes on one branch, 1,270 seconds, each one bought by the builder
+electing to fix the previous pass's demoted observations. The discipline that prevents this already
+existed in `building.md` and in `critic-consolidate`'s output — but neither is open at the moment
+the decision gets made. The builder is reading a gate's stderr, or a verify report, or the PR
+update step, and all three said less than they needed to.
+
+**The PR/Stop gates' blocking remedy now prescribes the whole golden path**, not just the command:
+fix ALL of them in the working tree, do not commit between fixes, run ONE `verify-resolutions`
+(it reads the dirty tree), and commit that verified tree verbatim. The failure mode it names is
+fix-commit-verify per finding — each commit extends HEAD, so each one buys a fresh round whose
+demoted observations tempt the next fix. Superseded-blocker routing is untouched: the spanning
+review still leads when every blocker is one, since that is a routing question and this is a
+batching one.
+
+**Verify-mode observations arrive pre-priced.** `goals-1-3.md` now delivers them with the
+disposition attached — ACCEPT is the default, fixing one re-opens the gate and costs a round,
+batch any survivor into an already-planned commit. Placement is the point: the builder decides
+while reading the report, so the price has to be in the report. It spends the last of the ceiling
+raise this pass declared for exactly this addition, leaving 7 tokens.
+
+**`/prawduct:pr` Update defines "substantive"** — at least one judgeable path in the delta since
+the reviewed commit — and gives a command for each non-substantive shape rather than leaving it to
+the eye: `cost-of-commit` for a records-only delta, `check-cumulative-critic` for a base sync that
+exits 0 by transfer. **It closes half the observed 520-second re-review, not all of it**, and says
+so: the `.prawduct` records are non-judgeable, but a CI workflow is config, so a comment-only edit
+to it stays judgeable. The content-equivalence exception that would close the rest was built and
+reverted as unsound (COV-3M8Q) — the rule states its limit instead of overreaching to match the
+evidence that motivated it.
+
+The chunk's review caught a fail-open in its own new rule, and it is the reason the `cost-of-commit`
+bullet is as long as it is. `cost-of-commit` with no arguments — or with a directory — prices the
+**working tree**, and at that point in the Update flow the working tree is clean because the delta
+is already pushed. It returns an empty `judgeable` list having examined none of the delta, and an
+agent testing only for that emptiness skips the independent PR review entirely. The paths are now
+passed explicitly, "not substantive" requires a non-empty priced set as well as an empty judgeable
+one, and an unreadable or empty result is substantive: unknown is never free.
+
+One consequence of the golden path reached further than the three surfaces. `critic-consolidate`'s
+dirty-tree note told the builder the gate would read `uncovered` "until you commit (or stash) the
+fix **and re-run verify-resolutions**" — the extra round the new remedy exists to remove, and
+wrong besides: a verify pass over a dirty tree vouches for that tree, so committing it verbatim
+carries the very tree the pass vouched for and the gate composes with nothing further. The note now
+says so, and names the actual exception — a selective or further-edited commit.
+
+Two things were analyzed and deliberately not built, both from the parent analysis: a sincerity
+flag (`--im-really-done`), which cannot catch an error that is not insincerity, and refusing verify
+dispatch when the delta is "only fixes", which is unsound because the fixes live in judgeable files
+and refusing would strand the gate uncovered.
+
+## 2026-08-13: prose findings priced honestly
+
+<!-- prawduct: type=feature | scope=tactical-efficiency | release=v3.4.0 -->
+
+Comment and doc wording is 42% of finding volume, and the mechanism that produced it was a gap
+between two rules. Goal 4 rated any comment/code contradiction WARNING; the NOTE ceiling for
+record prose covered change-logs and plans but not code comments. Nothing constrained the
+*remedy*, so "update the narration" was a legal recommendation — which is how one wall-time figure
+became nine findings across five rounds on three branches, the tenth edit missing and buying the
+round after that.
+
+**Prose is NOTE unless load-bearing** — a test or a gate reads it, or the reviewer names the
+concrete wrong action a maintainer takes because of it. That is the existing WARNING bar, now
+applied to comment, docstring and doc wording, counts and phrasing rather than only to record
+prose. **Stale prose gets one of three remedies**: delete the claim, make it relational, or pin it
+with a test. The list is closed — rewording the narration is what ships the sentence the next
+round finds stale. And **review history never enters a shipped comment**: ids dangle, so a comment
+recounting history is a deletion rather than a correction, since a corrected id goes stale too.
+`building.md` carries the builder-side half — history's one home is commits and the change-log.
+
+The ceiling has a floor, which the chunk's own review caught missing: **it never lowers a severity
+another rule assigns explicitly.** Without that clause a rule written to suppress findings also
+suppresses promoted ones — Goal 4 rates an actively misleading README instruction BLOCKING, and a
+reviewer who dutifully named that wrong action would have landed on WARNING, which gates nothing,
+shipping the wrong command.
+
+The policy is stated on all three severity surfaces rather than pointed at from two, because their
+audiences are disjoint: `goals-1-3.md` is chunk mode's payload, `review-protocol.md` is the
+final/cumulative payload, and the PR reviewer reads neither. `test_prose_severity_ceiling.py` pins
+all three — the rule's own second remedy, applied to itself, on files under standing pressure to be
+trimmed.
+
+**No ceiling was raised.** The `review-protocol.md` and `goals-1-3.md` additions spend the raises
+this pass declared in advance; `review-protocol.md` paid 41 tokens of that back by deleting a
+model-override rule stated in both the Assess and Dispatch steps. `building.md` had 3 tokens of
+headroom and funded the whole addition in place, landing a token *below* where it started: its
+Blocking-findings paragraph restated the disposition menu that "Resolve findings" already owns,
+the Critic step said "runs as a separate agent" twice, and the seven goal names were spelled out
+beside the pointer to the file that defines them.
+
+Not added: any new control. This is a ceiling and a remedy constraint on findings that already
+exist, so it is net-subtractive and the observable-yield obligation does not attach.
+
+## 2026-08-13: the cumulative's eight warnings, resolved
+
+<!-- prawduct: type=fix | scope=tactical-efficiency | release=v3.4.0 -->
+
+The branch cumulative (`rev-20260813T174223Z-0cc2fd49`) returned 0 blocking and 8 warnings. Three
+were real defects in what had already shipped, and all three came from the same place — a claim
+that was true when written and stopped being true later in the same bundle.
+
+**Condition 3 asked about the wrong tree at the PR gate.** `suite_vouches_for_current_tree`
+compared saved evidence against the *working* tree, but `check_cumulative_critic` vouches for
+`HEAD^{tree}`. With uncommitted judgeable edits the gate could print `satisfied (… suite current)`
+for a HEAD tree no suite run had met. It is now `suite_vouches_for_tree(project_dir, target_tree)`
+and each gate passes the tree it actually vouches for; the Stop gate's default stays the working
+tree, which is its own target.
+
+**The verdict memo's key omitted the code that computed the verdict.** It covered both trees and
+the store, but the verdict also depends on `coverage_algebra.is_judgeable_path`, and the cache
+persists in `.git/prawduct/` across plugin upgrades — so widening judgeability in a release would
+replay `covered` entries the new rules would not grant. `CACHE_SCHEMA` was the intended guard and
+is a hand bump nothing enforces; a maintainer changing judgeability has no reason to open a cache
+module. The plugin version is now in the key, derived rather than remembered.
+
+**A read path grew a store write.** `_merge_base_verdict` → `record_transfer_grant` appends a fact,
+and `session_review_verdict` has two callers: the Stop gate (authority, session end) and the
+session-start briefing (advice), which wraps it in a broad `except`. From the briefing the append
+was silent, its fail-soft attribution swallowed, filed under a gate that had not run — and it moved
+the store fingerprint at session start, evicting the memo the previous chunk had just built.
+Recording is now opt-in (`record_grants=`), taken only by the authority path. Advice observes and
+writes nothing, pinned by a test.
+
+Also: the `prior_dispositions` instruction was reachable only from Goal 2's section, so two of the
+three coordinator reviewers were never told about it — Chunk 03's own mechanism, unreachable for
+two thirds of its audience. It moved to `agents/critic-reviewer.md`, which every reviewer reads.
+`review-cycle.md` contradicted itself eleven lines apart on whether a rebase demands a fresh
+review. Both design artifacts still said only the PR gate transfers, which `243c7761` falsified in
+the same bundle. The memo now attributes its degraded states — an inert cache and a failed flush
+were both silent, and the symptom is every gate call back on the cold path with nothing to point
+at. Chunk 06's acceptance criterion was amended: it named "the scalar left pointing at the
+purpose-and-cession plan", which this branch's own pointer flip would have made pass vacuously.
+
+## 2026-08-13: accepted findings stop being re-litigated, and one defect reads as one
+
+<!-- prawduct: type=feat | scope=tactical-efficiency | release=v3.4.0 -->
+
+**Dispositions have been facts for a while; nothing put one where a REVIEWER could see it.** A
+cumulative dispatched after an `--accept` handed its reviewers a diff and no memory, so they found
+the same true thing again — measured on one consumer branch, round 9 re-raised six of round 7's
+findings verbatim, several already accepted.
+
+`critic-begin` now writes a `prior_dispositions` block into the dispatch manifest: findings already
+accepted or filed, with their reasons. Only the live answer appears (re-disposition appends, so a
+finding can carry a superseded predecessor); truncation is reported, never silent; a failed join
+says `unavailable` rather than reading as "no priors". Both reviewer protocol files carry the
+instruction, mirroring the existing `record_lint` "already answered, don't recount" pattern.
+
+**Scoping it by cited file alone did not work, and the measurement is the reason it changed.** That
+first cut carried 92 entries on a live dispatch — **22,703 of 25,001 manifest bytes (91%), ~5,700
+tokens, 2.7× the protocol file the block exists to shorten** — because a repo's hottest files are
+cited by nearly every finding it has ever recorded, so the filter was weakest exactly where reviews
+concentrate. A control that costs more attention than it saves is not a control. The block is now
+scoped by build-plan **scope** as well as by cited file (answers about *this* body of work, which is
+what "already answered" always meant), and the entry limit dropped 40 → 15. Re-measured on the next
+dispatch: 8,412 of 12,263 bytes (69%).
+
+**Caveat, because the two fixes are not equally proven:** `scope_chosen_by` was `not-resolved` on
+that dispatch, so the re-measured drop comes from the limit alone — the scope axis is built and
+tested but does not engage until a dispatch resolves a scope, which is what Chunk 06's branch-scoped
+plan resolution supplies. A review recorded with no scope matches nothing rather than everything:
+an unscoped fact cannot claim to be about this work, and an advisory block whose failure mode is
+drowning the review should fail toward carrying less.
+
+**The grouping that was supposed to catch a triplicate reported `[]`.** Three reviewers filed one
+defect on one file (R-1/R-5/R-11) and `likely_duplicate_groups` grouped none of them. Cause: Jaccard
+divides by the union, so a terse title wholly contained in a verbose one scores low while sharing
+every word it has — exactly what happens when three reviewers describe one defect at three levels
+of detail. Added a second qualifying path: identical file attributions plus overlap coefficient
+(the length-insensitive form of the same question) ≥ 0.6. A floor of 3 significant words on the
+shorter title stops the degenerate case a one-word title would create — caught by a test before it
+shipped, not after.
+
+Consolidation now also **renders** each group as one defect line with every fid named. The count
+already said "~N distinct"; the list is what gets worked, and three separately-worded findings read
+as three jobs whatever the count claimed. Presentation only — `merge_findings` still keys exactly
+and every finding survives in the fact and the derived view, so a wrong group costs one confusing
+line and can never hide a finding. That asymmetry is what lets the bar sit low.
+
+Both budgeted protocol files hit their ceilings. Raised once with the whole pass named
+(`goals-1-3.md` 2000→2250, `review-protocol.md` 3620→3800) rather than three creeping raises across
+Chunks 03–05; deduping was attempted first and found nothing — the last edit had already squeezed
+both to 1–2 tokens of headroom, which their own budget comments record.
+
+## 2026-08-13: syncing a base no longer clears the PR gate and blocks at session end
+
+<!-- prawduct: type=fix | scope=tactical-efficiency | release=v3.4.0 -->
+
+**Two gates asked the same composition question and only one could answer it by transfer.**
+`/prawduct:pr` Step 1 prescribes syncing the base before the review gates; that span passes the PR
+gate by base-advance transfer, and the *same tree* was then blocked at session end — sending the
+builder to run exactly the cumulative round the transfer exists to remove. The Stop gate's
+merge-base fallback (`gates.session_review_verdict` → `_merge_base_verdict`) now attempts the same
+transfer under the same three conditions.
+
+**Which span, and why only that one.** The Stop gate's own span is the session base tree → the
+working tree, and its start node is the tree HEAD sat at when the session opened — no base sync
+moves it, and after a sync the diff across it *is* the advance rather than the branch's own work,
+so the transfer's first condition could not hold. The merge-base span is the PR gate's span with
+the working tree in place of HEAD's tree, which is the shape the diagnosis was written for. The
+substitution costs nothing in soundness — uncommitted judgeable work lands in the required diff, so
+no reviewed span matches it and the transfer denies with no special case — and condition 3
+(`suite_vouches_for_current_tree`) lands more squarely here than at the PR gate, because it asks
+about the working tree, which is this gate's target. Attempted on `uncovered` only: a `blocked`
+span is owed a blocker and no transfer discharges it. Every unverifiable condition still denies.
+
+**The near miss now reaches the builder.** This gate has no stderr of its own — the Stop hook
+renders its verdict — so the "byte-identical, only the suite is stale, run it and re-run" sentence
+rides on the verdict's `reason`, and is carried onto whichever verdict is returned. Without that
+the fallback's verdict is discarded whenever the primary one already blocks, dropping the cheapest
+remedy on exactly the sessions that need it.
+
+**A granted transfer now emits its yield.** The standing norm is that a control names the yield it
+expects AND emits that yield observably; the transfer's justification is a measured claim about
+review rounds saved, and a yield claim nothing can falsify is not a yield claim. Both gates now
+append a `guard-refusal` fact under guard `base-advance-transfer` — the same sink and the same
+norm as `critic-begin`'s free-interval refusal — surfaced by
+`prawduct-hook evidence list --kind guard-refusal`. No new fact kind, no schema change.
+
+**Why the record is keyed and not timestamped.** `verdict_cache` keys the composed verdict on a
+content hash of the whole evidence store, and the gates are polled several times a session, so a
+record per *poll* would evict every memoized verdict on every poll and hand back the ~17 s cold
+path the memo was built to remove. `evidence.append_guard_refusal` gained an optional `dedupe_key`:
+the id becomes a digest of `(guard, key)` with no timestamp and no uuid, a second observation
+returns `duplicate` and writes nothing, and the store stays byte-identical across repeated gate
+calls (pinned by test at both gates). The probe reads the caller's already-parsed facts rather than
+re-opening a 7 MB store — the same one-read/one-moment pairing `VerdictCache.for_read` makes
+structural. The residual, stated: the *first* grant does append, so the poll after it recomputes
+cold — once per transferred span, against a review round saved.
+
+The key is the span (`base_tree`, `head_tree`, `prior_base`, `prior_head`) and deliberately not the
+gate, which rides in the body instead. When the two gates coincide on one span they describe one
+base sync that one cumulative would have paid off, and counting it twice would inflate the yield of
+the control the record exists to audit — `count_branch_rounds` states the same preference for the
+same reason. Recording is fail-soft like its sibling and never silent: a store failure is
+attributed on stderr and the correct verdict stands.
+
+## 2026-08-13: the PR gate answers in constant time
+
+<!-- prawduct: type=perf | scope=tactical-efficiency | release=v3.4.0 -->
+
+**Asking whether a review was needed cost more than some reviews.** Nine `check-cumulative-critic`
+invocations in one consumer session ran 29–120 s each; two hit the 2-minute Bash ceiling (one
+`Exit code 143`) and the agent resorted to `timeout 200`. Profiled on this repo before building
+anything: `read_facts` is 0.06 s and merge-base resolution 0.07 s, while
+`coverage_algebra.coverage_verdict` is **17.4 s cold and 0.01 s with the per-invocation key cache
+warm** — the whole cost is the free-edge search keying every tree the store mentions, one
+`git ls-tree` each (701 trees here, and the store only grows).
+
+`verdict_cache.VerdictCache` memoizes the composed verdict, keyed on a content hash covering every
+input: both endpoint trees and a SHA-256 of the entire evidence store. Measured end to end on this
+repo: **20.0 s → 0.35 s.** The three call sites that need a composed verdict — the span itself,
+the fix-churn diagnosis and the base-advance transfer — now share one cache; both diagnoses take a
+`verdict_fn` in place of the `diff_fn`/`key_fn` pair they only ever used for that call.
+
+**Why this is a memo and not a second home for a fact** (`data-model.md`: *derived views are
+disposable and never authoritative*): the key covers every input the verdict is a function of, so
+a hit replays a computation whose inputs are provably unchanged. Miss, unreadable cache, corrupt
+entry, foreign schema or unreadable store all recompute. **And a cached verdict can never be a
+false PASS:** git objects are immutable and content-addressed, so they are not in the key and do
+not need to be — `coverage_verdict` grants `covered` only through review edges (from facts, which
+ARE keyed) and free edges (tree-key equality), and a missing object makes `key_fn` return `None`,
+which denies a free edge and can never manufacture one. Git-side degradation therefore moves the
+verdict only toward denial. The residual, stated rather than implied: an `uncovered` computed while
+an object was transiently unreadable is replayed until the store's next append.
+
+The flush is unconditional (a `try/finally` wrapper), because the gate has four exit paths, three
+of them failures — and polling happens most when the gate is *not* passing, so a memo that only
+persisted on success would leave exactly its motivating case uncached. Cache lives beside the
+evidence store in the per-clone `.git/prawduct/` area, bounded at 64 entries.
+
+One test changed rather than being added to: the pin that `diagnose_fix_churn`'s injected functions
+carry no defaults now names `verdict_fn`, which carries both properties a forgotten argument would
+cost. Same contract, same direction, applied to the parameter that now holds it.
+
+## 2026-08-13: a clean base sync no longer voids review coverage
+
+<!-- prawduct: type=feat | scope=tactical-efficiency | release=v3.4.0 -->
+
+**A base advance moved the PR span's start node, so a branch whose own diff had not moved a byte
+read `uncovered` and bought a full re-review.** Measured in the busiest consumer repo (which merges
+its base ~20×/day): two of three cumulative rounds on one branch existed only for this reason, and
+the round after a sync re-raised six of the previous round's findings verbatim — ~30 of 60 review
+minutes on a 6-fix branch were base tax. In both observed forced syncs, every merge conflict was in
+prawduct's own non-judgeable record files.
+
+`check-cumulative-critic` now attempts a computed **transfer** before reporting `uncovered`
+(`coverage.diagnose_base_advance_transfer`): a span already covered transfers to the required one
+when the two spans' judgeable changed-file sets are identical, every one of those files is
+byte-identical on both ends, and a saved suite run has met the resulting tree. Computed, never
+stored — the free-edge philosophy. Any condition unverifiable denies the transfer and today's
+remedy stands, because authority fails closed.
+
+**The third condition is `gates.suite_vouches_for_current_tree`, deliberately stricter than
+`tests_are_current`.** That function is a disjunction whose first clause asks only *when* a run
+happened — the right question for "should this session re-run the suite", and the wrong one here: a
+suite at 09:00, a base merged at 11:00 and a gate at 11:05 satisfies session-freshness while no run
+has ever seen the merged tree, which is precisely the exposure condition 3 exists to price. Only
+the tree-validity clause counts for a transfer, and evidence carrying no `evidence_tree` (the
+`--from-counts` on-ramp) denies rather than falling back to timing.
+
+`evidence.tree_diff` gained an optional pathspec, and a path this function REPORTS must be one it
+can be asked back about — the transfer feeds the returned list straight back in as a pathspec. Two
+git conventions break that round trip, and both are answered at the boundary. **`-z`, because
+`--name-only` honours `core.quotepath`:** a non-ASCII filename came back C-quoted
+(`"caf\303\251.py"`, quotes included), matched nothing as a pathspec, and the empty answer read as
+agreement — a genuine fail-OPEN that granted a transfer over an *edited* branch file, caught by the
+verify pass and now pinned by a fixture that fails loudly without `-z`. (`core.quotepath=false` is
+insufficient: names holding `"` or `\` stay quoted regardless.) **`:(literal)` on each pathspec,**
+because pathspecs are wildmatch patterns. Measured rather than assumed: git compares literally as
+well, so a path does select its own spelling — but `x[a].py` also selects `xa.py`, letting an
+unrelated file answer a question asked about this one. That direction is a silent spurious denial
+rather than a wrong pass; `:(literal)` removes the class instead of resting on git's match order.
+
+**The soundness boundary is byte equality ACROSS contexts, not content equivalence WITHIN one** —
+the 2026-07-29 ruling (COV-3M8Q) is untouched, and any edit at all to a branch file, comments
+included, denies the transfer. Candidates are selected by content rather than commit ancestry, which
+is what makes the rebase case work at all: rebasing rewrites the very commits a branch's facts
+anchor to while leaving the trees they vouch for identical. The one new exposure — a reviewed diff
+meeting advanced context in disjoint files — is what the test-evidence condition prices, and a
+transfer denied ONLY by stale evidence says so, naming a suite run rather than a review round.
+
+Riders: `/prawduct:pr` Step 1 now syncs the base BEFORE the review gates (#565's ordering fix), and
+the Update flow states that a base-sync merge introducing no judgeable authored content is not
+substantive and does not re-run the PR reviewer.
+
+## 2026-08-13: a model floor, and a frontier coherence pass over every cycle
+
+<!-- prawduct: type=docs | scope=purpose-and-cession | release=v3.4.0 -->
+
+Owner decision 2026-08-13: **Sonnet is the minimum model for any prawduct work**, main session or
+subagent — Haiku-class models are never used — and any cycle whose substantive stages ran below
+Fable closes with a **Fable final-coherence pass** over the whole result before it lands. Scaling
+cost down is legitimate for mechanical stages, but sub-frontier models miss exactly the
+cross-cutting incoherence prawduct exists to catch.
+
+Both are **session-level operator choices**, which is why the Enforcement row reads *Session
+config / user-observed* rather than Test: the runtime cannot observe which model it is, and a
+mechanical selector would reopen the "no intelligent model switching" pin. Reviewers still inherit
+the session model. Recorded in `project-preferences.md`; the per-cycle mapping for Cycles 2–4 is in
+`program-purpose-and-cession.md`.
+
+## 2026-08-13: the four-cycle program gets a durable home
+
+<!-- prawduct: type=docs | scope=purpose-and-cession | release=v3.4.0 -->
+
+**The parent requirement document for Cycles 2–4 lived only in a gitignored file that `/clear`
+regenerates.** `.prawduct/.handoff-notes.md` carried the owner-ratified program — the #181
+deletion-pass framing and its constraints, the responsibility-ledger design, the sibling-first
+telemetry plan, the prose-test taxonomy, the disposition seed rows, and an open learnings-rule
+candidate — and `build-plan-purpose-and-cession.md` cited it four times as its parent source.
+That plan is committed; the file it pointed at is not, and was consumed at the next `/clear`.
+
+`.prawduct/artifacts/program-purpose-and-cession.md` is now that home, following the
+`framework-efficiency-review-2026-07-02.md` precedent (a committed parent requirement document
+for a multi-wave program). The build plan's four references are repointed. Purpose and
+principles are referenced, never restated — `documentation/purpose.md` and
+`plugin/docs/principles.md` keep their one-home ownership, as does `project-preferences.md` for
+the model-floor norm; this file carries only the per-cycle model mapping.
+
+## 2026-08-13: principles 25 and 26 — the moving-target posture, codified
+
+<!-- prawduct: type=docs | scope=purpose-and-cession | release=v3.4.0 -->
+
+New `## Evolution` section in `plugin/docs/principles.md` (owner decision 2026-08-12, per
+Principle 19): **#25 Third Rework Is a Deletion Signal** (proposed by the 2026-07-02 efficiency
+review, unadopted until now; four recorded supporting cases) and **#26 Graceful Cession**
+(mechanisms carry the assumptions that justify them; a broken assumption forces a re-price).
+Cascade: roster test 24→26, CLAUDE.md roster + purpose pointer (paid by cutting the
+Sessions/Work-Cycles copy building.md owns and the duplicate principles pointer; 148 lines),
+session-digest roster line (paid in-file; net −2 chars).
+
+## 2026-08-13: the framework records its own purpose
+
+<!-- prawduct: type=docs | scope=purpose-and-cession | release=v3.4.0 -->
+
+**Prawduct required every product to record its vision and never recorded its own** — verified
+against full git history: nothing purpose-shaped ever existed, and six artifact frontmatters
+pointed the product-brief slot at "README.md + CLAUDE.md", neither of which states a purpose.
+`documentation/purpose.md` is now the one home (architecture.md "every fact has one home");
+those six comments now reference it.
+
+**The content is an owner decision, not agent inference** — ratified 2026-08-12 in session,
+recorded here so the authority lives outside the documents it authorizes: the value proposition
+(build on today's runtimes to close the gap to what consumers need; cede what the rising
+baseline absorbs and move higher — the gap never closes because requirements arrive late, which
+is human nature, not tooling immaturity), the three-hedge taxonomy with distinct depreciation
+schedules, the durable core (mandate + record + audit), continuous fractional drift over step
+functions, deletion with the same care as addition, and directional-by-construction telemetry.
+This entry's cycle precedes the #181 (GOV-6D4Q) deletion-only pass deliberately: the pass's
+"why" belongs on disk before the pass runs. Principles 25 and 26 land in this same scope's
+second chunk.
+
+## 2026-08-12: an agent worktree on a real branch is not disposable
+
+<!-- prawduct: type=fix | scope=durable-agent-worktrees | release=v3.4.0 -->
+
+**The Critic gate was unsatisfiable for any branch worked in an agent worktree, with no
+workaround.** `is_ephemeral_worktree` classified from the directory name alone — anything under
+`.claude/worktrees/agent-*` was disposable — and returned before ever reading the branch. A
+worktree holding `fix/gate-integrity` was therefore refused every `.prawduct/` write, `critic-begin`
+included, with a message whose stated reason ("discarded when it merges") was false for exactly
+that tree. The only route left was evicting the worktree to check the branch out in the clone.
+Reported from a product repo running four concurrent agents (brookstalley/discodon#2213); a full
+review ran, produced four substantive warnings, and recorded nothing.
+
+**The discriminator is what carries the write out, not where the tree sits.** #594's defect is a
+*separation*: an `isolation: "worktree"` agent's code commit returns while its `.prawduct/` write
+dies at the merge, so the write strands and the agent is told it succeeded. That separation is a
+property of the harness's own `worktree-agent-<hex>` scratch branch. On a real named branch there
+is nothing to separate — the branch is what lands, so the whole tree is carried; and if the branch
+is discarded the code goes with it, leaving nothing silently ungoverned.
+
+**That inseparability is assumed, not measured.** Verifying it against the harness's actual
+disposal policy means dispatching a probe agent, which this session was asked not to do. The
+falsifier is precise, and it is recorded in `is_ephemeral_worktree`'s docstring and the hook's
+guard header so it outlives this entry: if the harness ever merges a code commit *off* a named
+branch while discarding that branch, the separation exists after all and #594's silent strand
+returns for that case.
+
+So the branch is now a second conjunct for `agent-` paths. `wf_` stays path-only, because a
+workflow stage gets no named branch and there the path IS the identity. A detached or unreadable
+HEAD stays disposable — the restrictive side, so a failing git probe can never become a way to
+unlock the guard.
+
+**This makes concurrent agent worktrees work without any new arbitration.** `.prawduct/` already
+resolves per-worktree (STH-4K7N), so once the classification is right, N agents each get their own
+state, their own critic marker, and their own test evidence. The upstream report also described
+`.test-evidence.json` as a shared single slot that concurrent lanes overwrite; it is not shared,
+and the overwriting was a symptom of this same guard funnelling every lane into the clone. A test
+pins that (`TestConcurrentLanesDoNotCollide`), which is what closes it rather than an argument.
+
+Evidence facts now record `actor.branch`, omitted rather than null when HEAD is detached. Without
+it the historical reader and the live predicate would disagree about the same path — and
+`evidence status` would print "the review cost was spent, the coverage was not gained" over
+precisely the durable reviews this change enables. Facts written before the field keep exactly the
+reading they had.
+
 ## 2026-08-11: CLAUDE.md is back under the length it teaches
 
 <!-- prawduct: type=docs | scope=claude-md-trim | release=v3.3.4 -->
@@ -8241,6 +10349,7 @@ Two things the review process caught that are worth keeping. `review-protocol.md
 redundant — `test_project_preferences_blocking` proved it load-bearing, and the tokens came from
 compressing Goal 7's close instead. And repointing the stale `active_build_plan` immediately failed a
 chunk-heading guard, which turned out to be a drifted *test* rather than a plan defect (TST-6K3D).
+
 ## 2026-07-20: `--archive-scope` becomes discoverable, and stops being credited with the rate ceiling (BKL-6X5D part a)
 
 <!-- prawduct: type=fix | scope=backlog-service-v1 | release=v3.2.0 | status=shipped -->
@@ -8824,6 +10933,7 @@ system-of-record** via a deterministic `prawduct-hook backlog` adapter (PRD §16
   an open-but-redirected item (the CRASH-2 window). Fake gains `seed_pull_requests`.
 
 **Classification:** structural
+
 ## 2026-07-17: Test evidence meets real environments — false-red guard, fallback deprecation, multi-environment test_commands (fix)
 
 <!-- prawduct: type=fix | release=v3.1.0 | status=shipped -->
@@ -9226,6 +11336,7 @@ PR/commit text legitimately cite chunks). Installed at: Principle 13 (Coherent A
 Principle 10's construction-equipment metaphor); `methodology/building.md` builder rule;
 `methodology/session-digest.md` (product-facing carrier); Critic Goal 4 (`ephemeral-ref
 firewall` → WARNING). A deterministic grep tripwire was deliberately deferred (case-law-first; filed as `[GOV-3P8K]`).
+
 ## 2026-07-14: Stale remote-base diagnostics for the cumulative-critic gate (stale-remote-base-diagnostics)
 
 <!-- prawduct: type=fix | release=v3.1.1 | status=shipped -->

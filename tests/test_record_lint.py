@@ -124,11 +124,39 @@ class TestRecordClassification:
     def test_non_markdown_is_not_a_record(self):
         assert not record_lint.is_record("plugin/lib/gates.py")
         assert not record_lint.is_record("plugin/lib/Foo.swift")
-        assert not record_lint.is_record(".prawduct/project-state.yaml")
+
+    def test_governance_state_yaml_is_a_record(self):
+        """The boundary this file used to pin the other way.
+
+        ``.prawduct/project-state.yaml`` was excluded while "a record is
+        markdown" was the whole rule, and the suite-total claim it excluded is
+        exactly the one that survived: ten products carry a hand-maintained test
+        count in that file, one of them on a 52 KB line the markdown-only sweep
+        could not see. The state file is hand-authored governance too, so it is
+        linted as one. Changed deliberately, on the owner's decision — the
+        pinned behaviour is what was re-decided, not an assertion relaxed to let
+        code pass.
+        """
+        assert record_lint.is_record(".prawduct/project-state.yaml")
+        assert record_lint.is_record(".prawduct/some-config.yml")
+
+    def test_yaml_outside_the_governance_dir_is_not_a_record(self):
+        """The widening is scoped to governance state, not to YAML.
+
+        A product's CI config, its dependency lockfiles and its own app config
+        are not governance records, and linting them would put this control in
+        the business of reviewing product data.
+        """
+        assert not record_lint.is_record(".github/workflows/ci.yaml")
+        assert not record_lint.is_record("config/settings.yaml")
+        assert not record_lint.is_record("plugin/templates/project-state.yaml")
 
     def test_archived_history_is_excluded(self):
         assert not record_lint.is_record(".prawduct/archive/artifacts/old-plan.md")
         assert not record_lint.is_record("archive/notes.md")
+        # The exclusion reaches the newly-included suffix too — archived state is
+        # not being asserted any more, whatever its file type.
+        assert not record_lint.is_record(".prawduct/archive/project-state.yaml")
 
     def test_records_in_preserves_order_and_is_none_safe(self):
         assert record_lint.records_in(None) == []
@@ -327,6 +355,88 @@ class TestSuiteTotalClaim:
             assert not self._fires(tmp_path, text), f"unexpected finding for {text!r}"
 
 
+class TestTheStateFileIsLintedToo:
+    """The tripwire that keeps `build_state.test_tracking` from coming back.
+
+    It has come back once already: prawduct removed the block through the
+    file-sync engine's `strip_test_tracking()`, that engine was retired, and the
+    block is live in ten products today. Deleting a field does not delete the
+    habit that writes it — so the deletion ships with a check that sees the file
+    the habit writes into.
+
+    Nothing about the PATTERN changes here; it already matched the real offending
+    line many times over. What changed is which files the check is allowed to
+    look at.
+    """
+
+    def _findings(self, tmp_path, rel: str, added: str, name: str) -> list[dict]:
+        repo = _make_repo(tmp_path, name=name)
+        doc = repo / rel
+        doc.parent.mkdir(parents=True, exist_ok=True)
+        doc.write_text("seed: 1\n")
+        base = _commit(repo, "seed")
+        doc.write_text(f"seed: 1\n{added}\n")
+        head = _commit(repo, "add")
+        return _lint(repo, [rel], base, head)
+
+    def test_a_reintroduced_test_count_is_caught(self, tmp_path):
+        """The shape that actually recurs: the block, with its provenance."""
+        block = (
+            "build_state:\n"
+            "  test_tracking:\n"
+            "    test_count: 27414  # post-Stage-4 GREEN: recorder line "
+            "27064 passed / 0 failed / 33 skipped"
+        )
+        found = _checks(
+            self._findings(tmp_path, ".prawduct/project-state.yaml", block, "reintro"),
+            "suite-total-claim",
+        )
+        assert found, "the state file's suite-total claim went unseen"
+
+    def test_one_finding_per_line_not_one_per_match(self, tmp_path):
+        """The real line matched the pattern 33 times.
+
+        A finding per match would bury a reviewer in one line's worth of noise
+        and make the check's own yield unreadable.
+        """
+        crowded = "  note: 27064 passed, then 27062 passed, then 27059 passed"
+        found = _checks(
+            self._findings(tmp_path, ".prawduct/project-state.yaml", crowded, "crowded"),
+            "suite-total-claim",
+        )
+        assert len(found) == 1, f"expected one finding, got {len(found)}"
+
+    def test_a_products_own_yaml_is_not_linted(self, tmp_path):
+        """Scoped to governance state, not to YAML.
+
+        A product's CI config legitimately says "1200 tests"; this control has no
+        business grading it.
+        """
+        found = _checks(
+            self._findings(
+                tmp_path, ".github/workflows/ci.yaml", "  # 1200 tests pass", "ci"
+            ),
+            "suite-total-claim",
+        )
+        assert not found, "linted a product file this control does not own"
+
+    def test_the_markdown_only_checks_stay_markdown_only(self, tmp_path):
+        """The other three checks must not start firing on a YAML path.
+
+        Each already self-filters — `learnings-entry-shape` guards on the
+        filename, `governed-by-gap` runs only over paths matching a build-plan
+        name — so this pins the guards rather than adding new ones. Without it,
+        widening the record set is a silent widening of three unrelated checks.
+        """
+        result = self._findings(
+            tmp_path, ".prawduct/project-state.yaml", "  harmless: true", "guards"
+        )
+        for check in ("learnings-entry-shape", "governed-by-gap"):
+            assert not _checks(result, check), (
+                f"{check} fired on a YAML path — it is a markdown check"
+            )
+
+
 # ---------------------------------------------------------------------------
 # chunk-ref-missing — the deliverable check, moved from a reviewer instruction
 # ---------------------------------------------------------------------------
@@ -475,6 +585,74 @@ class TestChunkRefs:
         )
         assert any("chunk-ref-missing unchecked" in r for r in result["unchecked"])
         assert any("'ghost'" in r for r in result["unchecked"])
+
+    def test_a_change_log_declared_scope_with_no_plan_is_no_subject_not_unchecked(
+        self, tmp_path
+    ):
+        """A framework-only fix has no build plan — `building.md` says small work
+        needs none — so `unchecked` made it a false blocker whose only exits were
+        a retroactive plan or a silent departure from the rule. Three consecutive
+        reviews took the second, which is what a rule with no remedy buys.
+
+        The change-log is what tells this apart from a typo: a code branch cannot
+        reach a PR without an entry tagged with its scope, so a real scope is
+        declared there and a typo is declared nowhere.
+        """
+        repo, _head = self._repo_with_two_scoped_plans(tmp_path, "declared")
+        (repo / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## 2026-08-15: a framework-only fix\n\n"
+            "<!-- prawduct: type=bugfix | scope=planless -->\n\nBody.\n"
+        )
+        head = _commit(repo, "change-log declares the scope")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="planless"
+        )
+        entry = next(
+            r for r in result["unchecked"] if r.startswith("chunk-ref-missing")
+        )
+        assert entry.startswith("chunk-ref-missing no-subject"), entry
+        assert "'planless'" in entry
+        # Still an honest non-answer: nothing was graded, so the count stays
+        # null. The downgrade is of SEVERITY, not of the absence itself.
+        assert result["counts"]["chunk-ref-missing"] is None
+        assert result["plan_graded"] is None
+
+    def test_an_undeclared_scope_still_blocks_even_with_a_change_log(self, tmp_path):
+        """The other half — otherwise the downgrade is unconditional and a
+        typo'd or stale scope quietly stops grading a plan that exists. The
+        witness has to be the scope, not the mere presence of a change-log.
+        """
+        repo, _head = self._repo_with_two_scoped_plans(tmp_path, "undeclared")
+        (repo / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## 2026-08-15: something else entirely\n\n"
+            "<!-- prawduct: type=bugfix | scope=unrelated -->\n\nBody.\n"
+        )
+        head = _commit(repo, "change-log declares a different scope")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="ghost"
+        )
+        entry = next(
+            r for r in result["unchecked"] if r.startswith("chunk-ref-missing")
+        )
+        assert entry.startswith("chunk-ref-missing unchecked"), entry
+
+    def test_an_unreadable_change_log_keeps_the_block(self, tmp_path):
+        """Fail closed. An absent or malformed witness proves nothing, and the
+        severity it would otherwise grant is the one that stops a deliverable
+        check from going quiet.
+        """
+        repo, head = self._repo_with_two_scoped_plans(tmp_path, "nolog")
+        assert not (repo / ".prawduct" / "change-log.md").exists(), (
+            "the fixture must reach the unreadable-witness branch, not pass "
+            "because some change-log happened to be absent of the scope"
+        )
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="ghost"
+        )
+        entry = next(
+            r for r in result["unchecked"] if r.startswith("chunk-ref-missing")
+        )
+        assert entry.startswith("chunk-ref-missing unchecked"), entry
 
     def test_the_pointer_assumption_is_reported_when_plans_are_ambiguous(
         self, tmp_path

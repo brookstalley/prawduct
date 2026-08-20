@@ -295,6 +295,238 @@ class TestBaseFallbacks:
         assert verdict["status"] == "uncovered"
 
 
+def _write_test_evidence(repo: Path, *, tree: "str | None" = ...) -> None:
+    """A saved suite run in the shape ``gates.suite_vouches_for_tree``
+    accepts — recorded ``evidence_tree`` == the current working tree. Timing is
+    deliberately not what the transfer's third condition reads, so pass an
+    explicit ``tree`` to model a run that predates the base advance."""
+    prawduct = repo / ".prawduct"
+    prawduct.mkdir(parents=True, exist_ok=True)
+    (prawduct / ".test-evidence.json").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-08-13T12:00:00Z",
+                "passed": 12,
+                "failed": 0,
+                "skipped": 0,
+                "duration_seconds": 3,
+                "command": "pytest",
+                "verifier": "test-reference-verify (floor: symbol-grep)",
+                "tests_executed": ["tests/test_x.py"],
+                "changes_referenced": ["feature.py"],
+                "coverage_level": "referenced",
+                "evidence_tree": (
+                    _captured_tree(repo) if tree is ... else tree
+                ),
+            }
+        )
+    )
+
+
+def _advanced_base_session(tmp_path: Path) -> tuple[Path, str, str]:
+    """The shape #654 is about: a branch reviewed at its tip, the session opens
+    THERE, and the base is then synced into it during the session.
+
+    The session base marker is the pre-sync branch tip, so the gate's own span
+    (marker → working tree) is the advance itself and cannot compose; the
+    merge-base span is the branch diff, which the review already covered before
+    the base moved. That is exactly the span `/prawduct:pr` passes by transfer.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / ".gitignore").write_text(".prawduct/.session-*\n")
+    _commit(repo, "code.py", "x = 1\n", "c1")
+    (repo / ".prawduct").mkdir()
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _commit(repo, "feature.py", "y = 2\n", "f1")
+    prior_base, prior_head = _tree(repo, "main"), _tree(repo)
+    _fact(repo, prior_base, prior_head, ["feature.py"])
+    _write_marker(repo)  # the session opens at the reviewed branch tip
+    _git(repo, "checkout", "-q", "main")
+    _commit(repo, "upstream.py", "u = 1\n", "u1")
+    _git(repo, "checkout", "-q", "feature")
+    _git(repo, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+    return repo, prior_base, prior_head
+
+
+class TestBaseAdvanceTransferAtTheSessionGate:
+    """This gate asks the PR gate's composition question, so a span the PR gate
+    passes by transfer has to pass here too.
+
+    Before #654 it did not: `/prawduct:pr` Step 1 prescribes syncing the base,
+    the synced span passed the PR gate by transfer, and the same tree was then
+    blocked at session end — sending the builder to run exactly the cumulative
+    round the transfer exists to remove. The conditions are unchanged; only this
+    gate's merge-base fallback gained the attempt.
+    """
+
+    def test_a_base_advanced_session_passing_the_pr_gate_passes_here_too(
+        self, tmp_path, capsys
+    ):
+        repo, prior_base, prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        # Both gates, one fixture — the claim is about their agreement, and
+        # asserting only this gate would let them drift apart again.
+        assert gates.check_cumulative_critic(repo) == 0, capsys.readouterr().err
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "covered", verdict
+        assert verdict["base_source"] == "merge-base-fallback"
+        assert verdict["transferred"]["prior_base"] == prior_base
+        assert verdict["transferred"]["prior_head"] == prior_head
+        assert verdict["transferred"]["files"] == ["feature.py"]
+
+    def test_the_grant_emits_the_same_yield_signal(self, tmp_path):
+        # `record_grants=True` is the AUTHORITY path — what the Stop hook passes
+        # at session end. See the sibling below for why it is not the default.
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        assert gates.session_review_verdict(repo, record_grants=True)["status"] == "covered"
+        records = [
+            f
+            for f in evidence.read_facts(repo)["facts"]
+            if f.get("kind") == "guard-refusal"
+        ]
+        assert len(records) == 1
+        assert records[0]["body"]["guard"] == "base-advance-transfer"
+        assert records[0]["body"]["gate"] == "session-review-verdict"
+
+    def test_the_advice_path_records_nothing(self, tmp_path):
+        """The same verdict is read twice: by the Stop gate (authority, session
+        END) and by the session-START briefing (advice), which wraps the call in
+        a broad `except`. Recording from the advice path would be a store write
+        on a session-start read whose fail-soft attribution is swallowed, filed
+        under a gate that did not run — and it would change the store
+        fingerprint at session start, evicting the verdict memo. Authority
+        records its own yield; advice observes and writes nothing."""
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        before = evidence.store_path(repo).read_bytes()
+        assert gates.session_review_verdict(repo)["status"] == "covered"
+        assert evidence.store_path(repo).read_bytes() == before
+
+    def test_a_repeated_gate_call_leaves_the_store_byte_identical(self, tmp_path):
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        assert gates.session_review_verdict(repo, record_grants=True)["status"] == "covered"
+        store = evidence.store_path(repo)
+        after_first = store.read_bytes()
+        # The repeats must ALSO take the recording path, or this proves nothing:
+        # the advice path writes nothing by construction, so a loop without
+        # `record_grants=True` would pass whether or not the dedupe key works.
+        for _ in range(3):
+            assert gates.session_review_verdict(repo, record_grants=True)["status"] == "covered"
+        assert store.read_bytes() == after_first
+
+    def test_an_unreviewed_judgeable_change_on_an_advanced_base_still_blocks(
+        self, tmp_path
+    ):
+        # The regression the transfer must not weaken: the branch diff is no
+        # longer the reviewed one, so nothing transfers.
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _commit(repo, "extra.py", "w = 4\n", "new work, unreviewed")
+        _write_test_evidence(repo)
+        assert gates.session_review_verdict(repo)["status"] == "uncovered"
+
+    def test_uncommitted_judgeable_work_denies_the_transfer(self, tmp_path):
+        # This gate's target is the WORKING tree, not HEAD's — the one shape
+        # difference from the PR gate. An uncommitted edit is in the required
+        # diff, so no reviewed span matches it and the transfer fails closed
+        # with no special case needed.
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        (repo / "feature.py").write_text("y = 2  # uncommitted\n")
+        _write_test_evidence(repo)
+        assert gates.session_review_verdict(repo)["status"] == "uncovered"
+
+    def test_a_blocked_prior_span_transfers_nothing(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        (repo / ".gitignore").write_text(".prawduct/.session-*\n")
+        _commit(repo, "code.py", "x = 1\n", "c1")
+        (repo / ".prawduct").mkdir()
+        _git(repo, "checkout", "-q", "-b", "feature")
+        _commit(repo, "feature.py", "y = 2\n", "f1")
+        _fact(
+            repo,
+            _tree(repo, "main"),
+            _tree(repo),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "unsound"}],
+        )
+        _write_marker(repo)
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "upstream.py", "u = 1\n", "u1")
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+        _write_test_evidence(repo)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] != "covered", verdict
+        assert "transferred" not in verdict
+
+    def test_a_stale_suite_denies_and_names_the_cheap_remedy_in_the_reason(
+        self, tmp_path
+    ):
+        # The near miss worth naming: a suite run is minutes, and the block this
+        # gate renders otherwise sends the builder to a full cumulative. This
+        # gate has no stderr of its own, so the sentence rides on `reason` —
+        # which is what the Stop hook prints.
+        repo, _prior_base, prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo, tree=prior_head)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered"
+        assert "ONLY condition denying the transfer" in verdict["reason"]
+        assert "test-evidence record" in verdict["reason"]
+
+    def test_no_saved_suite_at_all_still_names_the_remedy(self, tmp_path):
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered"
+        assert "no .test-evidence.json on disk" in verdict["reason"]
+
+    def test_a_degraded_transfer_check_says_it_never_ran(self, tmp_path):
+        # "Advice fails soft" is not "advice fails silent": a check that could
+        # not run must not read as a finding that the gap is genuine work.
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        store = evidence.store_path(repo)
+        lines = [json.loads(line) for line in store.read_text().splitlines()]
+        for line in lines:
+            if line.get("kind") == "review":
+                line["body"]["head_tree"] = "0" * 40  # well-formed, absent
+        store.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered"
+        assert "could not run" in verdict["reason"]
+
+    def test_an_unreviewed_branch_gets_the_unchanged_message(self, tmp_path):
+        # The still-blocks regression: no prior review means no transfer, and
+        # nothing about the transfer appears in what the builder reads.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        (repo / ".gitignore").write_text(".prawduct/.session-*\n")
+        _commit(repo, "code.py", "x = 1\n", "c1")
+        (repo / ".prawduct").mkdir()
+        _git(repo, "checkout", "-q", "-b", "feature")
+        _commit(repo, "feature.py", "y = 2\n", "f1")
+        _write_marker(repo)
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "upstream.py", "u = 1\n", "u1")
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+        _write_test_evidence(repo)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered"
+        assert "transfer" not in verdict["reason"]
+
+    def test_the_verdict_never_carries_the_internal_note_key(self, tmp_path):
+        # `transfer_note` is a channel between the fallback and its caller, not
+        # part of the verdict shape two consumers render.
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        assert "transfer_note" not in gates.session_review_verdict(repo)
+
+
 class TestFailClosed:
     def test_schema_ahead_fact_blocks_with_remedy(self, tmp_path):
         repo = _session_repo(tmp_path)
@@ -576,7 +808,7 @@ class TestSupersededAdviceReachesTheStopHook:
         monkeypatch.setattr(
             gates,
             "session_review_verdict",
-            lambda project_dir: {
+            lambda project_dir, **_kw: {
                 "status": "blocked",
                 "unresolved": [
                     {

@@ -2,7 +2,7 @@
 name = "prawduct"
 # Vestigial packaging metadata (the repo is not PyPI-published). The canonical
 # plugin version is VERSION / .claude-plugin/plugin.json; keep this in step on release.
-version = "3.3.4"
+version = "3.4.0"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
@@ -30,8 +30,26 @@ packages = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Worker count is pinned rather than `auto` (owner request 2026-08-19): `auto`
+# takes every core, and a full-suite run then owns the developer's machine for
+# its whole duration — measured at a load average of 24 on a 10-core box with
+# a suite run in flight.
+#
+# **This value is for a developer's machine, and CI inherits it anyway.** An
+# earlier comment here argued CI was unaffected "because GitHub's runners have
+# 4 cores, so `auto` was already giving it fewer" — which is the disproof, not
+# the argument: 5 workers on 4 cores is OVERSUBSCRIPTION, on a suite that spawns
+# subprocesses under a 30s per-test timeout.
+#
+# Accepted deliberately rather than overridden in the workflow, because
+# `tests.yml` carries no pytest flags by norm (enforced by
+# `tests/preferences/test_ci_workflow_conventions.py`) and no CI timing has been
+# measured that would justify amending that norm. Oversubscription by one worker
+# on an I/O-heavy suite is a plausible non-issue; it is named here so it is a
+# known state rather than an oversight. If runs begin timing out under
+# contention, the fix is an environment-driven count WITH that evidence.
 addopts = [
-    "-n", "auto",
+    "-n", "5",
     "--dist", "loadfile",
     "--timeout", "30",
     "--timeout-method", "thread",

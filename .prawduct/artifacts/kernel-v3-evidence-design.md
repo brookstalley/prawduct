@@ -70,9 +70,14 @@ semantics]
 
 ```json
 {"schema": 1, "kind": "review", "id": "<review-id>", "ts": "<iso8601>",
- "actor": {"session": "...", "worktree": "...", "plugin": "2.4.0"},
+ "actor": {"session": "...", "worktree": "...", "plugin": "2.4.0",
+           "branch": "fix/thing"},
  "body": {...}}
 ```
+
+- **`actor.branch` is optional** (#648), omitted rather than null when HEAD is
+  detached or unreadable. No schema version moved: absence is a valid state
+  that reads as "unknown", which lands on the restrictive classification.
 
 - **Append-only** (R5 posture): nothing edits or deletes a line; corrections
   are new facts. Single-slot files become derived caches only (D7).
@@ -110,7 +115,15 @@ A review fact records the **tree it actually saw**. Reviews usually run on a
 dirty working tree (acceptance → Critic → commit), so the reviewed state is
 captured as a tree object: temp index (`GIT_INDEX_FILE=<tmp> git add -A` +
 `git write-tree`) — writes objects only, **never mutates the session's real
-index or working tree** (R1). When the subsequent commit is made verbatim,
+index or working tree** (R1). **Amended 2026-08-19 (critic-reliability):** the
+temp index is seeded by a metadata-preserving COPY of the repo's `.git/index`,
+not by `read-tree HEAD`. Two reasons, both load-bearing: the
+copy's stat data lets `add -A` skip files it would otherwise re-hash (on a
+network or bind-mounted tree the full re-hash exceeds the capture budget, so
+no review can record at all), and the copied file's MTIME is what keeps git's
+racily-clean rule alive — without it a same-tick, same-size edit is skipped
+and the captured tree carries the file's previous content. `read-tree HEAD`
+remains the fallback when no index can be copied. When the subsequent commit is made verbatim,
 `HEAD^{tree}` equals the reviewed tree — so a fact recorded pre-commit vouches
 for the commit, from any worktree, in any later session. This is what
 dissolves mtime freshness, `_record_covers_head`, and the label/chain
@@ -119,9 +132,21 @@ machinery at once.
 - `base_commit` + `base_tree`: where the reviewed diff started (resolved by
   `resolve-base`, as today).
 - `head_tree` (+ `head_commit` when the reviewed state was a commit).
-- Rebase/amend changes the tree → coverage gap → re-review. Correct by
-  design (post-sync fresh review is already the learned rule); squash-merge
-  preserves the tree, so squashed PRs stay covered.
+- Rebase/amend changes the tree → coverage gap composition cannot close.
+  Correct by design; squash-merge preserves the tree, so squashed PRs stay
+  covered. **Amended 2026-08-13 (tactical-efficiency Chunk 01):** "→ re-review"
+  is no longer the only outcome. BOTH review gates close one case of that gap by a
+  separate COMPUTED route — a base advance (merge or rebase) leaving the
+  branch's own diff byte-identical transfers its coverage, subject to a suite
+  run that has met the tree that gate vouches for
+  (`coverage.diagnose_base_advance_transfer`). Composition itself is unchanged;
+  the transfer sits beside it, not inside it. The PR gate applies it to
+  merge-base tree → HEAD tree; the Stop gate applies it on its merge-base
+  FALLBACK span only (merge-base tree → working tree) — never to its own session
+  span, whose start node no base sync moves. A grant is recorded as its own
+  observable yield (`gates.record_transfer_grant`), by the authority paths only:
+  the session-start briefing reads the same verdict as advice and writes
+  nothing.
 
 [ASSUMPTION: tree-SHA keying via temp-index write-tree is viable in every
 supported topology (worktrees, containers, headless) — chunk 1 spikes it

@@ -2,7 +2,7 @@
 artifact: architecture
 version: 1
 depends_on:
-  - artifact: product-brief   # vision lives in README.md + CLAUDE.md
+  - artifact: product-brief   # purpose lives in documentation/purpose.md
   - artifact: data-model
 last_validated: null
 ---
@@ -58,7 +58,7 @@ what we want to be true.
 
 - **An independent reviewer never mutates the session it reviews — enforced at the mutation site, not by tool-restriction alone.**
   Why: a dispatched subagent does not inherit the coordinator's tool limits, so the invariant must be enforced where mutation happens; this is the load-bearing governance guarantee — without it the reviewed party could quietly rewrite what it is being judged on.
-  Status: steady-state. Mechanism: `prawduct-hook clear` refuses while a review is active (`critic-begin` … `critic-consolidate`/`critic-end`).
+  Status: steady-state. Mechanism: a *bare* `prawduct-hook clear` — the form a reviewer subagent can issue — refuses while a review is active (`critic-begin` … `critic-consolidate`/`critic-end`). A session **boundary** (`--session-start`, the hook's own invocation) is not refused; it retains the marker instead — a live one always, and an expired one whose reviewer roster is complete, because that is a finished review whose findings the Stop hook can still consolidate. Asking whether a review is active is itself pure: the predicate releases nothing, so the two surfaces that meet a marker without forcing share one decision and neither destroys a review as a side effect of answering.
 - **Authority fails closed; advice fails soft.**
   Why: anything that produces or consumes a governance *verdict* blocks on incomplete, malformed, or ambiguous state (so governance means something), while anything that merely *informs* degrades to a note (so governance stays bearable) — the split is also an abuse-resistance property: you cannot make a gate pass by feeding it garbage, garbage makes it block.
   Status: steady-state.
@@ -178,9 +178,14 @@ CRT-8L3Q.
 
 - **Facts are keyed by git *tree SHA*, not by branch or commit.** A verbatim commit preserves its
   tree, so a review recorded before commit still vouches for the eventual commit from any checkout.
-  Gates answer coverage by *composition over trees*: a squash-merge (same tree) stays covered, a
-  rebase or amend (new tree) correctly opens a coverage gap. This is what makes governance survive
-  normal git workflows instead of fighting them.
+  Gates answer coverage by *composition over trees*: a squash-merge (same tree) stays covered, and a
+  rebase or amend (new tree) opens a coverage gap that composition alone cannot close. This is what
+  makes governance survive normal git workflows instead of fighting them. Both review gates close one
+  case of that gap by a separate *computed* route rather than by composition — a base advance (merge
+  or rebase) that leaves the branch's own diff byte-identical transfers its coverage, subject to a
+  suite run that has met the tree that gate vouches for
+  (`coverage.diagnose_base_advance_transfer`). Only the authority paths record a grant; the
+  session-start briefing reads the same verdict as advice and writes nothing.
 - **The evidence store is shared across all worktrees of a clone**, because it lives inside the
   shared `.git` common dir. Every worktree appends to and reads the same log, so review coverage
   composes across worktrees — while unrelated clones are isolated by construction.
@@ -250,12 +255,32 @@ Statements sort into **three** categories, not two — the middle one is the eas
 
 1. **Destructive boundary acts** — they delete or overwrite session-scoped evidence.
 2. **Boundary-dependent readers** — they destroy nothing, but *interpret* session state as belonging
-   to a session that has **finished**. Two qualify: the critic-active marker sweep (it deletes a
-   marker on the theory that its writer's process is gone) and the previous-session gate check (it
+   to a session that has **finished**. Two qualify: the critic-active marker sweep (it may delete a
+   marker once its writer's process is judged gone — the first of the two questions it asks) and the previous-session gate check (it
    reads `.session-reflected`/`.gates-waived`/the change baseline and reports them as a completed
    session's record). Both are boundary-only. However read-only such a statement looks, it is not
    orientation — and sorting purely on "does it destroy evidence" puts it in the wrong column, which
    is exactly what the first cut of this split did.
+
+   **The marker sweep is scoped a second time, inside this column, and the reason generalises.** The
+   table's question is *was the transcript restored?*; the sweep's is *is the dispatching process
+   gone?* The two come apart at `clear`, which discards the transcript **without** ending the
+   process — so a review subagent dispatched before it may still be running. (They also come apart
+   at `resume`, in the safe direction: the resumed session's dispatcher is typically gone, so a
+   sweep would be licensed where the table forbids one.) The sweep therefore fires at a boundary
+   only on a marker that has already failed the 30-minute TTL — necessary, and on its own not
+   sufficient: the TTL answers *is the dispatching process gone*, and the reviewer roster answers
+   *is there anything left to finish*, so a complete roster is retained at any age rather than
+   swept (the age test alone would discard exactly the finished review the Stop hook self-heals
+   from). A sweep that does fire says so, naming the review it ended, because the act destroys the
+   only handle any later gate has on it. Read the general form off this case
+   rather than the instance: **a boundary-dependent reader that turns on process death, not on
+   transcript loss, is not fully scoped by this table** — the table is a proxy for it, and the one
+   place the proxy is *unsafe* is `clear`. A reader in that class states its own predicate, as the
+   sweep now does by keying on the marker's age and its roster; `startup|clear` share one hook entry and are
+   indistinguishable to the command, so a source-based fix would have needed a finer matcher to do
+   worse. Why retaining a marker is the cheaper error, and what it actually costs, is priced once
+   in `plugin/lib/critic_marker.py`'s module docstring and not restated here.
 3. **Orientation** — everything else: safe on every source, because it neither destroys session
    evidence nor assumes a boundary just happened.
 
@@ -270,15 +295,19 @@ the matcher further or read `source` from the event payload.
 Two properties are easy to get backwards. First, a continuation must never re-capture an anchor **even
 when one is missing**: stamping a resume-time clock onto a session that began earlier narrows the
 Critic gate's jurisdiction, which is the defect the split exists to remove. An absent anchor already
-fails closed, and failing closed is the safe direction. A third consequence follows from the same rule and is easy to miss: `.gates-waived` is deleted only at a boundary, so a declared waiver **outlives a continuation**. That is correct — a waiver is session-scoped and the session is continuing — but it means a waiver survives an unbounded number of resumes, which is a longer life than the pre-split behaviour gave it. Second, the marker sweep is **boundary-only**,
+fails closed, and failing closed is the safe direction. A third consequence follows from the same rule and is easy to miss: `.gates-waived` is deleted only at a boundary, so a declared waiver **outlives a continuation**. That is correct — a waiver is session-scoped and the session is continuing — but it means a waiver survives an unbounded number of resumes, which is a longer life than the pre-split behaviour gave it. Second, the marker sweep is **boundary-only *and* TTL-gated**,
 which is the opposite of the intuitive call: sweeping looks like a repair, and a crashed Critic's
 marker does wedge an operator. But the premise that licenses deleting someone else's marker — an
-in-flight review dies with the process that dispatched it — holds only for a session that *ended*.
-`compact` fires mid-session in-process, and `fork`'s parent is frequently still running, so a marker
-seen there is likely **live**; sweeping it would disarm both this norm's enforcement and the Stop
-hook's abandoned-review backstop, which keys on the marker's presence. Sweeping a live marker is a
-silent governance failure; leaving a dead one costs the 30-minute TTL, with `--force` and `rm` as loud
-overrides. A crashed Critic is rescued by the next real boundary.
+in-flight review dies with the process that dispatched it — holds only for a session whose *process*
+ended. `compact` fires mid-session in-process, `fork`'s parent is frequently still running, and
+`clear` resets context in-process too, so a marker seen at any of the three may be **live**.
+Sweeping a live marker is a *silent* governance failure; retaining a dead one is *loud* and
+recoverable by a named command — that asymmetry, and the honest price of each side, is stated once
+in `plugin/lib/critic_marker.py`'s module docstring. `--force` is unconditional wherever a sweep is
+licensed at all — boundary or guarded — and never on a continuation, precisely because it is the
+operator's documented escape from a marker the TTL has not released, not a way to promote a
+continuation into a boundary. A crashed Critic is
+rescued by the TTL, at whichever check reaches it first.
 
 `fork` is the source most easily overlooked (it postdates the other four and was missing from this
 plan's first draft). It restores the transcript *and* allocates a new session id, so the parent

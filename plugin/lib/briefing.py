@@ -20,14 +20,14 @@ incomplete plugin install degrades to a skipped briefing (stderr NOTE) and never
 blocks session start — the lib-free hook top level is preserved (the ch.2–6
 precedent, no separate degradation shim).
 
-Depends on its lib siblings ``gitstate`` / ``gates`` / ``buildplan_refs`` and
-``core`` (``resolve_build_plan_path`` — the canonical twin of the hook's
-parity-pinned inline ``_resolve_build_plan_path`` mirror), plus the stdlib.
-``briefing`` is the top of the decomposition DAG — nothing imports it. Sanctioned
-rewrites of the moved bodies (behavior-preserving): ``get_prawduct_dir`` →
-``gitstate.get_prawduct_dir``, ``_resolve_build_plan_path`` →
-``core.resolve_build_plan_path``, the ``_gitstate()`` / ``_gates()`` /
-``_buildplan_refs()`` accessor calls → direct sibling references.
+Depends on its lib siblings ``gitstate`` / ``gates`` / ``buildplan_refs`` /
+``plan_index`` and ``core`` (``resolve_build_plan_path`` — the only resolver;
+the hook's inline mirror of it was retired with branch-scoped resolution),
+plus the stdlib. ``briefing`` is the top of the decomposition DAG — nothing
+imports it. Sanctioned rewrites of the moved bodies (behavior-preserving):
+``get_prawduct_dir`` → ``gitstate.get_prawduct_dir``, the hook's inline
+build-plan resolver → ``core.resolve_build_plan_path``, the ``_gitstate()`` /
+``_gates()`` / ``_buildplan_refs()`` accessor calls → direct sibling references.
 """
 
 
@@ -40,11 +40,12 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, gates, gitstate
+from . import buildplan_refs, gates, gitstate, plan_index
 from .backlog import legacy as backlog
 from .coverage import _resolve_base_branch
 from .core import (
     BUILD_PLAN_POINTER_KEY,
+    AmbiguousPlanBranchError,
     atomic_write_text,
     read_str_yaml_key,
     resolve_build_plan_path,
@@ -233,9 +234,64 @@ def staleness_scan(project_dir: Path) -> list[str]:
             pass
 
     # 4. Stale build plan detection — check Status section first, fall back to WIP
-    build_plan_path = resolve_build_plan_path(prawduct_dir)
-    build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
-    if build_plan_path.is_file():
+    #
+    # Resolution can now REFUSE (two live plans claiming this branch). The scan
+    # is advice, so it reports the refusal as a finding and skips the sections
+    # that need a plan, rather than taking the gates' fail-closed exit.
+    build_plan_path: Path | None
+    try:
+        build_plan_path = resolve_build_plan_path(prawduct_dir)
+    except AmbiguousPlanBranchError as exc:
+        findings.append(f"build plan: {exc}")
+        build_plan_path = None
+
+    # 4b. A plan with work left, claiming a branch this repo does not have —
+    # advice, fails soft.
+    #
+    # **Only for a plan with an unfinished chunk**, and that narrowing is the
+    # whole control. A merged branch goes away, so a FINISHED plan claiming a
+    # branch that is gone is the ordinary, documented end state — it reads
+    # live-but-inactive until the release archives it, and on gitflow `/prawduct:pr`
+    # step 7 says to RETAIN it for that entire window. Firing there would nag
+    # every session for weeks with the one remedy the PR skill forbids, and a
+    # control that fires repeatedly with no yield stops being read at all
+    # (`nonfunctional-requirements.md` § Direction).
+    #
+    # What is left is the case with real yield: a plan the author believes is
+    # governing this work, naming a branch that does not exist, resolving for
+    # nobody and saying nothing. That is a typo or a branch never created, and
+    # the remedy is the frontmatter — never "archive the plan".
+    try:
+        claims = plan_index.branch_claiming_plans(prawduct_dir / "artifacts")
+        claims = [c for c in claims if buildplan_refs._has_unfinished_chunk(c[0])]
+        # The checked-out branch demonstrably exists, so claims naming it need
+        # no lookup — which is the ordinary case (you are on the branch your
+        # plan claims) and keeps a ~70 ms subprocess off the common path.
+        checked_out = gitstate.current_branch(project_dir)
+        unproven = [c for c in claims if c[1] != checked_out]
+        # `None` means git could not be asked — NOT that no branch exists. An
+        # emptiness test on an unknown is the fail-open shape: accusing every
+        # plan in a repo where git is unavailable.
+        existing = gitstate.local_branches(project_dir) if unproven else None
+        if existing is not None:
+            for claim_path, claimed_branch in unproven:
+                if claimed_branch not in existing:
+                    label = plan_index.display_path(claim_path, prawduct_dir / "artifacts")
+                    findings.append(
+                        f"build plan: {label} has chunks left and declares "
+                        f"`branch: {claimed_branch}`, which is not a branch in this "
+                        "repo — nothing resolves this plan by branch, so governance "
+                        "is reading whatever `active_build_plan` names instead. Fix "
+                        "the frontmatter, or create the branch it names."
+                    )
+    except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
+        pass
+
+    if build_plan_path is None:
+        build_plan_label = ""
+    else:
+        build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
+    if build_plan_path is not None and build_plan_path.is_file():
         try:
             status = buildplan_refs._parse_build_plan_status(project_dir)
             if status.get("current_chunk"):
@@ -282,7 +338,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
             pass
 
     # 5. Completed but uncleaned build plan in state
-    if not build_plan_path.is_file():
+    if build_plan_path is not None and not build_plan_path.is_file():
         try:
             if "\n  strategy:" in state_content:
                 strategy_match = re.search(r"\n  strategy:\s*(.+)", state_content)
@@ -473,7 +529,13 @@ def _get_active_work(project_dir: Path) -> dict[str, str]:
     "all chunks complete", while this function said "in progress" from the same
     bytes. Both now ask ``buildplan_refs.build_plan_is_complete``.
     """
-    work = buildplan_refs._parse_build_plan_status(project_dir)
+    try:
+        work = buildplan_refs._parse_build_plan_status(project_dir)
+    except AmbiguousPlanBranchError:
+        # The briefing is advice and must still be produced: the refusal itself
+        # is reported by the guard in `assemble_session_briefing`, which runs
+        # AFTER this and would never be reached if this re-raised.
+        return _parse_wip(gitstate.get_prawduct_dir(project_dir))
     if work.get("description") and not buildplan_refs.build_plan_is_complete(work):
         return work
     return _parse_wip(gitstate.get_prawduct_dir(project_dir))
@@ -607,13 +669,21 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
     # the Critic gate, plan-aware mode inference, and chunk-ref verification
     # all go silently blind (this happened live for a full work cycle). Say so
     # at the top of the briefing, every session, until the pointer is fixed.
+    #
+    # It fires only when the pointer is the route resolution actually TOOK. A
+    # plan claiming this branch outranks the scalar, so on such a branch a stale
+    # pointer misleads nobody and warning about it would train the reader to
+    # scroll past a ⚠ that is usually wrong.
     try:
+        # Resolved unconditionally, so the refusal below is reported even in a
+        # repo that sets no pointer at all.
+        pointed = resolve_build_plan_path(prawduct_dir)
         pointer = read_str_yaml_key(
             prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY
         )
         if pointer:
-            pointed = resolve_build_plan_path(prawduct_dir)
-            if not pointed.is_file():
+            pointer_target = prawduct_dir / pointer.removeprefix(".prawduct/")
+            if pointed == pointer_target and not pointed.is_file():
                 rel = pointed.relative_to(prawduct_dir).as_posix()
                 lines.append(
                     f"⚠ active_build_plan points at a MISSING file: '{pointer}' "
@@ -622,6 +692,10 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
                     "Fix the pointer in project-state.yaml — it is .prawduct/-relative "
                     "(e.g. artifacts/build-plan-<scope>.md) — or unset it."
                 )
+    except AmbiguousPlanBranchError as exc:
+        # Every gate this session will refuse for this reason; say it once, at
+        # the top, rather than letting the operator meet it as a failed command.
+        lines.append(f"⚠ build-plan resolution REFUSES: {exc}")
     except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         pass
 
@@ -1116,7 +1190,7 @@ def _summarize_critic_findings(prawduct_dir: Path) -> str | None:
         # definitionally the builder who lost the reviewer's report and cannot
         # compare what they are holding against a review id they never saw. The
         # `clear` guard does not close it: a dispatched review's marker expires
-        # by TTL and is swept at the next session boundary, so the record
+        # by TTL and is swept at a session boundary thereafter, so the record
         # outlives every in-session signal that a newer review happened.
         superseded_by = data.get("superseded_by")
         if superseded_by:

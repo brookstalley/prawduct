@@ -79,15 +79,17 @@ When chunk type is `designer-handoff` and the Critic is invoked anyway, output a
 Every consolidated review appends a **fact** to the shared evidence store (`<git-common-dir>/prawduct/evidence.jsonl` — shared by all worktrees of a clone, inspectable via `prawduct-hook evidence status|list`). A fact records the trees it actually saw: `base_tree → head_tree`, plus `files_reviewed` and the findings. Gates answer by **composition**: coverage of A → B exists when review facts (and free edges over intervals touching only non-judgeable files) form a path from tree(A) to tree(B), and the verdict passes when no blocking finding on the path lacks a resolution fact. Consequences worth knowing:
 
 - A review of the dirty working tree **vouches for the subsequent commit** when the commit is made verbatim — the commit carries the reviewed tree. Any worktree or later session can then compose over it; nothing expires by time or session.
-- A rebase or amend changes the tree → coverage gap → fresh review. A squash-merge preserves the tree, so squashed PRs stay covered.
-- A **selective commit** (committing only part of the reviewed state) produces a tree that was never reviewed — a coverage gap. `/prawduct:critic verify-resolutions` reviews that delta and closes it.
+- A rebase or amend changes the tree → a gap composition cannot close (the transfer below closes one case). A squash-merge preserves the tree, so squashed PRs stay covered.
+- A **selective commit** (only part of the reviewed state) produces a tree nobody reviewed — a gap. `/prawduct:critic verify-resolutions` reviews that delta and closes it.
 - Blocking findings don't die with re-runs: they stay on the path until a `verify-resolutions` pass appends resolution facts for them.
 
 ### Cumulative mode and the PR gate
 
 `cumulative` is the only mode whose head is committed state, not the working tree: `critic-begin` resolves the base branch via `prawduct-hook resolve-base` (it honors a configured `base_branch:`, falling back to `origin/main`/`main` — the **single source of truth** the PR gate uses too, so reviewer and gate never diff different ranges) and derives the interval merge-base tree → HEAD's tree — deliberately spanning every commit on the branch, so cross-chunk integration cracks surface even when every per-chunk review was clean.
 
-`/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. The gate composes coverage of merge-base tree → HEAD tree over the store and requires zero unresolved BLOCKING findings on the path. Its stderr names the remedy: `uncovered` → run `/prawduct:critic cumulative` (or `verify-resolutions` for a selective-commit delta); `blocking` → fix, then `/prawduct:critic verify-resolutions` records the resolution facts and the same evidence passes — no full re-review. A blocker the message marks `Superseded:` is the one exception: a verify pass anchors to the most recent review only, so an unresolved blocker left on an earlier round is never named again and clears only through a spanning `cumulative`. WARNING and NOTE are advisory at the PR gate — they do not block, matching the PR reviewer's severity contract.
+`/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. Its stderr names the remedy: `uncovered` → run `/prawduct:critic cumulative`; `blocking` → fix, then `/prawduct:critic verify-resolutions` — no full re-review. A blocker marked `Superseded:` is the exception — a verify pass anchors only to the most recent review, so it clears only through a spanning `cumulative`. WARNING and NOTE are advisory at the PR gate — they do not block, matching the PR reviewer's severity contract.
+
+`uncovered` caused only by the **base advancing** transfers instead of buying a round, at BOTH gates: `coverage.diagnose_base_advance_transfer` grants it when the branch's own diff is byte-identical across both spans and a suite run has met the tree that gate vouches for. A denial on that condition alone says so: the remedy is a run, not a review.
 
 **Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `/prawduct:learnings` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review does, emit a one-line progress note at least every 4 minutes rather than going quiet.
 
@@ -97,19 +99,21 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 **Anchoring.** `critic-begin --mode verify-resolutions` locates the prior review fact via the findings cache's `fact_id` pointer and derives the interval: prior fact's `head_tree` → the captured working tree. Scope = the prior `files_reviewed` plus the delta — all computed in code and recorded in the manifest. Tree keying makes a dirty-tree verify sound: no commit needs to precede the pass, and the resulting fact extends coverage to whatever tree it saw.
 
-The head end moves to **committed HEAD** instead when committed content differs from the reviewed tree — that is the PR gate's target, and anchoring there keeps a stray uncommitted file from leaving the gate `uncovered` after a successful pass (the WIP is noted and excluded). "Differs" is a **tree** comparison, not a commit-set one: the vouching commit above — the one that materializes the reviewed tree verbatim — changes no content, so it is not a change of intent and does not move the anchor. Deciding this from the commit set instead is what made `critic-begin` refuse with "nothing changed since" over a working tree holding unreviewed work. Tree inequality alone is not sufficient either, because it has a mirror reading: when the prior review vouched for a **dirty** tree (its fact records `head_commit: null`) the anchor sits *ahead* of committed HEAD, so the trees differ with nothing committed since. Reading that as a committed delta inverts the edge and anchors the resolution facts to a tree in which the fixes do not exist. So the head end moves only when the trees differ **and** a commit actually landed — HEAD no longer standing where the prior review dispatched.
+The head end moves to **committed HEAD** instead when committed content differs from the reviewed tree — that is the PR gate's target, and anchoring there keeps a stray uncommitted file from leaving the gate `uncovered` after a successful pass (the WIP is noted and excluded). "Differs" is a **tree** comparison, and two readings of it are wrong in opposite directions: the vouching commit above materializes the reviewed tree verbatim, so it changes no content and is not a change of intent; and a prior review of a **dirty** tree (its fact records `head_commit: null`) leaves the anchor *ahead* of committed HEAD, which read as a committed delta inverts the edge and anchors the resolution facts to a tree the fixes are absent from. So the head end moves only when the trees differ **and** a commit actually landed — HEAD no longer standing where the prior review dispatched. (Both exclusions are code; `critic_consolidate.begin_review` carries the derivation.)
 
-The anchor must also be an **ancestor of HEAD**. The findings cache is single-slot and survives a branch switch, and worktrees of one clone share an object store, so a sibling branch's anchor still resolves — resolution alone once latched a pass onto a cross-branch delta full of phantom findings. Not-an-ancestor and any git failure both demote.
+The anchor must also be an **ancestor of HEAD**. The findings cache is single-slot and survives a branch switch, and worktrees of one clone share an object store, so a sibling branch's anchor still resolves — resolving is not evidence it belongs to this lineage, and a cross-branch anchor yields phantom findings. Not-an-ancestor and any git failure both demote.
 
 **Demotion** (all detected by `critic-begin`, fail-closed — it refuses to anchor rather than silently shrinking the review):
 
+**Every row is governed by the demotion property** (`SKILL.md` step 4) — a demotion must name a mode whose interval can SEE the work. Rows flagged **Committed** are by construction the case `chunk`/`final` cannot cover.
+
 | Trigger (exit code) | Why it demotes |
 |---|---|
-| No readable findings cache, no `fact_id` in it, or the fact is gone from the store (1) | Nothing to anchor against — fall back to `chunk`/`final`, record `mode_chosen_by: "fallback-no-prior-findings"`. |
-| The prior tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. |
-| The prior fact's anchor commit is not an ancestor of HEAD (1) | It belongs to another lineage — a branch switch, or rewritten history; the delta from it would span the divergence. Same fallback. |
-| Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it reviewed (1) | Nothing to verify and no delta to review. The message names the anchor and both tree hashes, because the old wording ("nothing changed since") was true of the anchor and false of the repo. |
-| Delta files > 2 × prior `files_reviewed` + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead; fall back to `final`, record `mode_chosen_by: "fallback-scope-widened"`. |
+| No readable findings cache, no `fact_id` in it, or the fact is gone from the store (1) | Nothing to anchor against — fall back per the property above, record `mode_chosen_by: "fallback-no-prior-findings"`. |
+| The prior tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. **Committed.** |
+| The prior fact's anchor commit is not an ancestor of HEAD (1) | Another lineage — a branch switch, or rewritten history; the delta would span the divergence. Same fallback. **Committed.** |
+| Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it reviewed (1) | Nothing to verify and no delta to review. The message names the anchor and both tree hashes — "nothing changed" alone is true of the anchor and says nothing about the repo. |
+| Delta files > 2 × prior `files_reviewed` + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead. Re-dispatch in the mode the refusal names, recording `mode_chosen_by: "fallback-scope-widened"`. |
 
 **When NOT to use verify-resolutions.** Not as a chunk's first review (it's a re-review mode). Not after long drift unrelated to the original findings — the scope-widening threshold exists for exactly that.
 
@@ -388,24 +392,24 @@ BLOCKING (see "A re-review does not manufacture work"). A record defect on a fix
 the non-gating work that buys the next round, so the general rule is not suspended for this table.
 
 **`unchecked` is not a pass, and the PREFIX decides the severity.** Each entry names a check that
-could not run, or an assumption made in place of one — and the two are told apart by the string, not
-by judgment:
+could not run, or an assumption made in place of one — told apart by the string, not by judgment.
+**A severity with no remedy is a false blocker**, and code, not the builder, decides a line's shape:
 
-- **`chunk-ref-missing unchecked — …` → BLOCKING.** The old `verify-chunk-refs` `cannot-verify:`
-  exit, keeping its severity: a deliverable check that could not run is indistinguishable from one
-  that passed, and habituation to that silence is what BLD-5J8N cost. **The whole-pass crash carries
-  this prefix deliberately** (`record_lint.py`, the comment above the crash return) — a crash takes
-  the deliverable check down with everything else, so it must arrive at the deliverable check's
-  severity rather than as a generic NOTE, which would be BLD-5J8N by a new route.
+- **`chunk-ref-missing unchecked — …` → BLOCKING.** A deliverable check that could not run is
+  indistinguishable from one that passed, and habituation to that silence is what BLD-5J8N cost.
+  **The whole-pass crash carries this prefix deliberately** (`record_lint.py`, the comment above the
+  crash return) — a crash takes the deliverable check down with it, so it must arrive at the
+  deliverable check's severity, not as a generic NOTE.
+- **`chunk-ref-missing no-subject — …` → NOTE.** The scope names no plan *and* the change-log
+  declares that scope: real, and deliberately plan-less — the ordinary shape of a framework-only fix,
+  which `building.md` says needs no plan. Nothing was skipped; there is no deliverable set to grade,
+  and no edit could clear it. A typo'd scope is declared nowhere and still arrives `unchecked`.
 - **`chunk-ref-missing graded chunk … of <plan>: …` → NOTE.** An *assumption*, not a failure: the
-  check ran (`chunk_graded` is non-null), but one half of "whose deliverables" was inferred rather
-  than dispatched. Two inferences carry this prefix and the line names which fired — the **chunk**
-  was inferred from build-plan Status (which names the first UNCHECKED chunk, so it may be the next
-  chunk rather than the reviewed one), or the **plan** came from the `active_build_plan` pointer
-  because the dispatch carried no scope (the pointer names the plan in progress in the repo, which
-  need not be the one this branch is building). Either means **no answer about this diff**, not clean
-  — and blocking it would be a false blocker with no remedy, since a branch that builds no chunk has
-  no `--chunk` to supply.
+  check ran (`chunk_graded` non-null), but one half of "whose deliverables" was inferred — the
+  **chunk** inferred from build-plan Status (which names the first UNCHECKED chunk, so possibly the next one),
+  or the **plan** from the `active_build_plan` pointer because the dispatch carried no scope. The
+  line names which fired. Either means **no answer about this diff**, not clean; a branch that builds
+  no chunk has no `--chunk` to supply.
 - **Every other `unchecked` entry → NOTE**, still stated in your summary.
 
 `goals-1-3.md` carries this same rule for the modes that read only that file; the two must agree.

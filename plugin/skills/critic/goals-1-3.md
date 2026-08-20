@@ -7,7 +7,9 @@ You are a **separate agent** and have not seen the builder's reasoning — that 
 product. **Never run tests, builds, or executables**: review test quality and coverage by reading
 code. Both modes are **always single-pass** — no subagents, no coordinator. In `verify-resolutions`,
 only **BLOCKING** is a finding — report anything lesser, record-lint entries included, as an
-observation, never in `findings`.
+observation, never in `findings`. **Deliver every observation pre-priced:** ACCEPT is the default
+disposition; fixing one re-opens the gate and costs a round; batch any survivor into an
+already-planned commit.
 
 ## Before you review
 
@@ -33,19 +35,27 @@ norms exist; with none, **NOTE** naming the capture path. Tell: amending a norm 
 code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
 `/prawduct:doctor`; never a downgrade.
 
+**The manifest's `prior_dispositions` lists findings already accepted or filed in these files, with
+reasons. Do not re-raise one absent material change in its cited files** — one line under a
+`priors:` note instead. `truncated`
+= older answers dropped; `unavailable` = the join failed, so you know nothing.
+
 **Record checks are already answered — read the manifest's `record_lint`.** Never
-recount what it counted: that is how a record defect buys a review round. Each entry carries its own
-explanation — raise it, don't restate it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
+recount it: that is how a record defect buys a review round. Each entry carries its explanation —
+raise it, don't restate it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
 **WARNING** under Goal 2. `suite-total-claim` and `learnings-entry-shape` → **NOTE**.
 **`unchecked` is not a pass, and only one shape blocks.**
 `chunk-ref-missing unchecked — …` is
-**BLOCKING**: the check could not run, which is indistinguishable from passing. `chunk-ref-missing
+**BLOCKING**: the check could not run — indistinguishable from passing. `chunk-ref-missing
+no-subject — …` is **NOTE**: the scope is real (the change-log declares it) but plan-less — nothing
+to grade. A typo'd scope still arrives `unchecked`.
+`chunk-ref-missing
 graded chunk … of <plan>: …` is an **assumption, not a failure** — it DID run (`chunk_graded`
-non-null), but half of "whose deliverables" was guessed: the chunk inferred from build-plan Status,
-or the plan from the `active_build_plan` pointer — either may be the wrong one. The line names which →
-**NOTE**; blocking it is a false blocker no `--chunk` can clear.
-Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_graded` name the subject —
-chunk, and plan file. `null` there, or in any `counts` entry, means **no answer** — not a zero.
+non-null), but half of "whose deliverables" was guessed: the chunk
+inferred from build-plan Status, or the plan from the `active_build_plan` pointer — the line names
+which → **NOTE**. Blocking either is a false blocker no `--chunk` can clear.
+Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_graded` name the subject.
+`null` there, or in any `counts` entry, means **no answer** — not a zero.
 
 ## 1. Nothing Is Broken
 
@@ -89,7 +99,8 @@ chunk, and plan file. `null` there, or in any `counts` entry, means **no answer*
 
 - **BLOCKING** — must fix before proceeding.
 - **WARNING** — true *and* worth the builder's time. Name the consequence: *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
-- **NOTE** — genuinely ambiguous; or record-only prose (change-log, learnings, plan text) that neither ships as a false claim nor misleads anyone into a wrong action. Rating record prose WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
+- **NOTE** — genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly. That covers record-only text (change-log, learnings, plan text) and comment, docstring and doc wording, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
+- **Prose remedies** — stale prose gets one of three: delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
 **Never name the backlog as a finding's destination** — disposition is the builder's call.
 Proportionality: quick assessment for typos and formatting, full analysis for behavioral or

@@ -793,11 +793,12 @@ class TestNextLineRelayContract:
             assert "terminates the review loop" in text, name
 
     def test_the_prefix_does_not_collide_with_the_standing_block(self):
-        # `NEXT` is already framework-wide: the turn-closing standing block
-        # (session digest, building.md, reflection.md) defines it as "the ONE
-        # next action" — one line. This line is a paragraph that must be
-        # relayed verbatim, so an agent holding both contracts would have a
-        # standing instruction to compress the very text it was told to copy.
+        # `NEXT` reads as framework vocabulary: the turn-closing standing
+        # block (session digest, reflection.md) opens a disposition line with a
+        # short backticked label, so a bare `NEXT` near the end of a turn is
+        # exactly the shape an agent expects to be a disposition. This line is a paragraph that must be relayed verbatim,
+        # so an agent holding both contracts would have a standing instruction
+        # to compress the very text it was told to copy.
         for name in self.PROTOCOLS:
             text = self._text(name)
             assert "NEXT-ACTION:" in text, name
@@ -1422,6 +1423,72 @@ class TestResolutionIsAClaimDirective:
             "the directive no longer aims at the decision the reader is making "
             "right now, which is the whole difference between a rule that "
             "fires and one that is agreed with"
+        )
+
+    def test_a_class_finding_is_not_resolved_by_the_sites_it_named(self):
+        """The clause that makes this directive the grading half of
+        instance-vs-class, and the three parts that make it act.
+
+        It replaced an instance-shaped version of itself — "a finding whose
+        second site is in a file this delta does not touch" — which named a
+        list of two where the property was meant, in a directive whose subject
+        is dispositions made from memory. A reviewer holding a finding with
+        five surviving members reads "second site", finds no second site, and
+        writes `fixed`.
+
+        Why the rule lands HERE rather than in a protocol file: this reviewer
+        reads `goals-1-3.md` and these two directives, and nothing else.
+        `review-cycle.md` — where fix-by-fudging's siblings are defined — is a
+        file this mode's reviewer is forbidden to open, which that file itself
+        records about its own workaround clause.
+        """
+        d = cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE
+        assert "CLASS" in d, (
+            "the directive no longer names the class case, so the only "
+            "resolution defect it warns about is a misread diff"
+        )
+        # The act: re-run the reason as a search. Without it the reviewer is
+        # told a class exists and given no way to find its members.
+        assert "search" in d, (
+            "the directive names the class case but not the act that settles "
+            "it — a reviewer cannot check membership by reading the delta"
+        )
+        # The withholding, which is the only part with teeth: an enumeration
+        # offered as the whole fix is not a resolution.
+        assert "not a resolution" in d, (
+            "the directive no longer says an enumeration fails to resolve, so "
+            "a list of names still reads as a fix and clears the blocker"
+        )
+
+    def test_the_directive_has_a_size_ceiling(self):
+        """Pinned for the same reason its sibling is, and pinned now because
+        this is the edit that spent it.
+
+        Its sibling's ceiling docstring records that this directive is "the
+        overflow route by default" — capped homes on either side, none here —
+        and the instance-vs-class grading clause took that route on 2026-08-18
+        (`goals-1-3.md` sat 2 tokens under its ceiling, `review-cycle.md` 1, and
+        neither is read by this mode's reviewer anyway). Leaving the route
+        unguarded after using it is how the next editor uses it silently.
+
+        235 -> 280 on 2026-08-18: the class clause, replacing a two-item list
+        with the property plus the act and the withholding. Measured with the
+        estimator every budgeted file in this repo uses. Two numbers, two jobs:
+        the pin fails on any drift and carries the new figure; the ceiling says
+        how much drift is allowed before a clause has to move out.
+        """
+        tokens = int(len(cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE.split()) * 1.3)
+
+        assert tokens == 280, (
+            f"RESOLUTION_IS_A_CLAIM_DIRECTIVE is ~{tokens} tokens; this pin "
+            f"says 280. Update it to {tokens} and say in the docstring what paid "
+            f"for the change — the ceiling below is not a budget to spend."
+        )
+        assert tokens < 400, (
+            f"the directive is ~{tokens} tokens. It is delivered on every "
+            f"verify dispatch, immediately before the reviewer writes the one "
+            f"output that weakens a gate, and it competes with the review for "
+            f"attention. Trim, or move a clause to the file that owns it."
         )
 
     def test_delivery_is_upstream_of_the_claim(self):
@@ -3103,6 +3170,13 @@ class TestVerifyResolutionsDispatch:
         # The judgeable-WIP "uncovered until you commit" WARNING fires so the
         # working-tree-vs-committed-HEAD mismatch is surfaced, not silent.
         assert "vouches for the WORKING tree" in result.stderr
+        # And it must prescribe the verbatim commit rather than another pass.
+        # The half above survived an edit that replaced "commit (or stash) the
+        # fix and re-run verify-resolutions" — a superfluous round, and wrong on
+        # the merits, since the commit carries the very tree this pass vouched
+        # for. An unpinned rule is what the next trim deletes first.
+        assert "Commit this tree VERBATIM and no further pass is needed" in result.stderr
+        assert "Only a selective or further-edited commit leaves a gap" in result.stderr
 
     def _seed_dirty_tree_review_with_blocker(
         self, repo: Path
@@ -3405,6 +3479,121 @@ class TestVerifyResolutionsDispatch:
         assert result.returncode == 2
         assert "scope-widened" in result.stderr
 
+    def test_an_uncommitted_widening_names_final(self, tmp_path):
+        """`_seed_and_fix` leaves everything uncommitted, so HEAD-tree →
+        working-tree is exactly the widened delta. `final` covers it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        for i in range(2 * 1 + 6):
+            (repo / f"src/new_{i}.py").write_text(f"n = {i}\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `final`" in result.stderr, result.stderr
+        # The reason, not just the mode. This fixture sits on `main`, where
+        # merge-base == HEAD, so a wrongly-True `committed_differs` would reach
+        # `final` through the empty-span guard instead and the mode assertion
+        # alone would still pass — leaving the branch this test names untested.
+        assert "every change since the prior review is uncommitted" in result.stderr
+
+    def test_a_committed_widening_names_cumulative_not_final(self, tmp_path):
+        """The defect this pins: a widening made of COMMITTED work demoted to
+        `final`, whose HEAD-tree → working-tree interval cannot see a commit.
+        The replacement was narrower than the interval refused for being too
+        wide, so the re-dispatch reviewed whatever the working tree held —
+        untracked strays, in the observed case — and reported it as the chunk's
+        review. `cumulative` spans merge-base…HEAD and actually covers it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        # A feature branch, so a merge-base exists to span. The fix and the
+        # widening both LAND — this is the post-commit shape of the incident.
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix")
+        for i in range(2 * 1 + 6):
+            _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `cumulative`" in result.stderr, result.stderr
+        assert "Re-dispatch as `final`" not in result.stderr
+
+    def test_a_committed_widening_with_no_span_falls_back_to_final(self, tmp_path):
+        """Recommending a mode that would itself refuse at dispatch is the same
+        class of defect. On the base branch `cumulative`'s merge-base IS HEAD,
+        so its interval is empty; `final` is then the remaining full review and
+        the message says it sees only the uncommitted part rather than claiming
+        coverage it does not have.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix")
+        for i in range(2 * 1 + 6):
+            _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `final`" in result.stderr, result.stderr
+        # The reason, not just the mode: `final` is reached by three different
+        # routes and only this one means "the span is empty".
+        assert "HEAD's tree matches the merge-base's" in result.stderr
+        assert "sees only the uncommitted part" in result.stderr
+
+    def test_the_structured_fallback_mode_carries_both_answers(self, tmp_path):
+        """`fallback_mode` is the structured half of the recommendation, and a
+        key that is always the same string is indistinguishable from a constant
+        — so both routes are asserted here, on the return value rather than on
+        the English. That keeps the prose free to be reworded without the
+        contract riding on it.
+        """
+        uncommitted = tmp_path / "u"
+        _init_repo(uncommitted)
+        self._seed_and_fix(uncommitted)
+        for i in range(2 * 1 + 6):
+            (uncommitted / f"src/new_{i}.py").write_text(f"n = {i}\n")
+        result = cc.begin_review(uncommitted, "verify-resolutions")
+        assert result["kind"] == "scope-widened"
+        assert result["fallback_mode"] == "final"
+
+        committed = tmp_path / "c"
+        _init_repo(committed)
+        self._seed_and_fix(committed)
+        _git(committed, "checkout", "-q", "-b", "feature/demo")
+        _commit_file(committed, "src/app.py", "x = 2  # fixed\n", "fix")
+        for i in range(2 * 1 + 6):
+            _commit_file(committed, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = cc.begin_review(committed, "verify-resolutions")
+        assert result["kind"] == "scope-widened"
+        assert result["fallback_mode"] == "cumulative"
+        # The prose and the structured field must not drift apart — the reader
+        # acts on the message, the caller could act on the key.
+        assert "`cumulative`" in result["reason"]
+
+    def test_a_committed_widening_with_an_unresolvable_base_falls_back_to_final(
+        self, tmp_path
+    ):
+        """Third route to `final`, and the one that rots quietly: a configured
+        `base_branch:` that does not resolve fails closed upstream, so
+        `cumulative` could not dispatch either. Same posture — recommend the
+        mode that can run, and do not claim it covers the committed part.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_and_fix(repo)
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "base_branch: no-such-branch\n"
+        )
+        _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix")
+        for i in range(2 * 1 + 6):
+            _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `final`" in result.stderr, result.stderr
+        assert "no merge-base resolves" in result.stderr
+        assert "sees only the uncommitted part" in result.stderr
+
 
 class TestResolutionDirectiveDelivery:
     """End-to-end: the directive reaches the reviewer at dispatch, on that one
@@ -3505,8 +3694,9 @@ class TestResolutionDirectiveDelivery:
         assert cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE not in result.stdout
 
     def test_a_demoted_dispatch_delivers_no_narrowing(self, tmp_path):
-        """Exit 2 demotes to `final`, which rates every severity. Shipping the
-        narrowing to a `final` reviewer would silence warnings on a delta wide
+        """Exit 2 demotes to a full review (`final` on this fixture, whose
+        widening is uncommitted), which rates every severity. Shipping the
+        narrowing to that reviewer would silence warnings on a delta wide
         enough that the scope threshold just refused a partial review of it.
         """
         repo = tmp_path / "r"
@@ -3687,6 +3877,108 @@ class TestRecordLintInManifest:
         # produced no answer is None, which a zero cannot be told apart from.
         assert set(lint["counts"]) == set(record_lint.CHECKS)
 
+
+    def test_manifest_carries_a_prior_dispositions_block(self, tmp_path):
+        """The wiring, not the pure function. Every other test of this feature
+        exercises `dispositions.prior_dispositions` directly; this is the only
+        path a REVIEWER ever sees, and the protocol text teaches them to read
+        these exact keys."""
+        _repo, manifest, _res = self._dispatch(tmp_path)
+        priors = manifest["prior_dispositions"]
+        assert set(priors) >= {"entries", "matched", "shown", "truncated"}
+        # A repo with no dispositions yields an EMPTY block, not a missing key —
+        # the protocol tells reviewers `unavailable` means the join failed, so
+        # absence has to be distinguishable from failure.
+        assert priors["entries"] == []
+        assert priors["matched"] == 0
+        assert "unavailable" not in priors
+
+    def test_a_dispositioned_finding_in_scope_reaches_the_manifest(self, tmp_path):
+        """End to end: a recorded ACCEPT on a finding citing a file this
+        dispatch changes comes back on the manifest, through the real
+        `begin_review` path."""
+        from lib import dispositions as _d
+
+        repo, manifest, _res = self._dispatch(tmp_path)
+        changed = manifest["files_changed"][0]
+        scope = "tactical-scope"
+        evidence.append_fact(
+            repo, "review", "rev-prior-1",
+            {
+                "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": "final",
+                "scope": scope,
+                "findings": [{
+                    "fid": "R-9", "severity": "warning", "goal": "Nothing Is Broken",
+                    "title": "an answered question", "files": [changed],
+                }],
+            },
+        )
+        _d.record(repo, "rev-prior-1", "R-9", _d.ACCEPT, reason="by design")
+        _abandon(repo)
+        result = _run_begin(repo, "--mode", "chunk", "--scope", scope)
+        assert result.returncode == 0, result.stderr
+        priors = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())[
+            "prior_dispositions"
+        ]
+        assert [e["fid"] for e in priors["entries"]] == ["R-9"]
+        assert priors["entries"][0]["reason"] == "by design"
+
+    def test_a_disposition_from_another_scope_does_not_reach_the_manifest(self, tmp_path):
+        """The filter that keeps the block from becoming 91% of the manifest.
+        Measured on a live dispatch before it existed: 92 entries, ~5,700
+        tokens, 2.7x the protocol file the block exists to shorten — because a
+        repo's hottest files are cited by nearly every finding it has ever
+        recorded."""
+        from lib import dispositions as _d
+
+        repo, manifest, _res = self._dispatch(tmp_path)
+        changed = manifest["files_changed"][0]
+        evidence.append_fact(
+            repo, "review", "rev-other-1",
+            {
+                "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": "final",
+                "scope": "some-unrelated-scope",
+                "findings": [{
+                    "fid": "R-9", "severity": "warning", "goal": "Nothing Is Broken",
+                    "title": "answered for other work", "files": [changed],
+                }],
+            },
+        )
+        _d.record(repo, "rev-other-1", "R-9", _d.ACCEPT, reason="different work")
+        _abandon(repo)
+        result = _run_begin(repo, "--mode", "chunk", "--scope", "tactical-scope")
+        assert result.returncode == 0, result.stderr
+        priors = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())[
+            "prior_dispositions"
+        ]
+        assert priors["entries"] == []
+
+    def test_a_review_recorded_without_a_scope_matches_nothing(self, tmp_path):
+        """The docstring makes this normative — "reviews recorded without a
+        scope match nothing rather than everything" — because an unscoped fact
+        cannot claim to be about this work, and an advisory block whose failure
+        mode is drowning the review should fail toward carrying less."""
+        from lib import dispositions as _d
+
+        repo, manifest, _res = self._dispatch(tmp_path)
+        changed = manifest["files_changed"][0]
+        evidence.append_fact(
+            repo, "review", "rev-unscoped-1",
+            {
+                "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": "final",
+                "scope": None,
+                "findings": [{
+                    "fid": "R-9", "severity": "warning", "goal": "Nothing Is Broken",
+                    "title": "answered, but for unknown work", "files": [changed],
+                }],
+            },
+        )
+        _d.record(repo, "rev-unscoped-1", "R-9", _d.ACCEPT, reason="no scope recorded")
+        store = evidence.read_facts(repo)
+        assert _d.prior_dispositions(store, [changed], scope="tactical-scope")["entries"] == []
+        # ...and the same fact IS carried when the caller asks unscoped, so this
+        # is the scope axis filtering, not the file axis silently dropping it.
+        assert _d.prior_dispositions(store, [changed], scope=None)["matched"] == 1
 
     def test_a_missing_declared_deliverable_lands_in_the_manifest(self, tmp_path):
         plan = (
@@ -4018,6 +4310,109 @@ class TestLikelyDuplicateGroups:
         groups = cc.likely_duplicate_groups(findings)
         assert groups == [["R-1", "R-2", "R-3"]]
         assert cc.distinct_finding_count(findings, groups) == 1
+
+    def test_the_observed_triplicate_now_groups(self):
+        """The case the Jaccard bar missed. Three reviewers met ONE defect on
+        one file and described it at three levels of detail; `[]` came back,
+        and the builder dispositioned it three times.
+
+        Jaccard divides by the union, so a terse title inside a verbose one
+        scores low while sharing every word it has. Same files + overlap
+        coefficient is the length-insensitive form of the same question.
+        """
+        files = ["plugin/lib/gates.py"]
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "Gate remedy omits the batch instruction", files),
+            self._f(
+                "R-5",
+                "The Design Is Sound",
+                "The gate remedy omits the batch instruction that consolidate "
+                "prints, so an agent reading stderr fixes one finding at a time",
+                files,
+            ),
+            self._f(
+                "R-11",
+                "Everything Is Coherent",
+                "Gate remedy text omits the batch instruction stated in "
+                "building.md and in consolidate output",
+                files,
+            ),
+        ]
+        groups = cc.likely_duplicate_groups(findings)
+        assert groups == [["R-1", "R-5", "R-11"]]
+        assert cc.distinct_finding_count(findings, groups) == 1
+
+    def test_containment_needs_identical_files_not_merely_overlapping(self):
+        """The containment path is gated on the file sets MATCHING — the same
+        two titles that group above must not group when the attributions
+        differ. Two findings about one subsystem in different files are two
+        findings, and a contained title is not evidence otherwise.
+
+        These titles sit at Jaccard ~0.38, below the similarity bar, so only
+        the containment path could group them: this isolates that path rather
+        than re-testing the one that already existed.
+        """
+        findings = [
+            self._f(
+                "R-1", "Nothing Is Broken", "Gate remedy omits the batch instruction", ["a.py"]
+            ),
+            self._f(
+                "R-2",
+                "The Design Is Sound",
+                "The gate remedy omits the batch instruction that consolidate "
+                "prints, so an agent reading stderr fixes one finding at a time",
+                ["a.py", "b.py"],
+            ),
+        ]
+        assert cc.likely_duplicate_groups(findings) == []
+
+    def test_a_short_title_is_not_trivially_contained(self):
+        """The degenerate case the containment rule invites: a one-word title
+        is contained in ANY title sharing that word, at a coefficient of 1.0.
+        Without a floor on the shorter title, every terse finding would join
+        whichever neighbour happened to use the same noun — caught by this test
+        before it shipped."""
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "Ordering", ["x.py"]),
+            self._f(
+                "R-2",
+                "The Design Is Sound",
+                "Ordering between the precheck and the cache read is unpinned",
+                ["x.py"],
+            ),
+        ]
+        assert cc.likely_duplicate_groups(findings) == []
+
+    def test_a_group_renders_as_one_defect_with_every_fid_named(self):
+        """The count told the builder there were 2; the LIST is what gets
+        worked, and three separately-worded lines read as three jobs. Every fid
+        stays visible — this is presentation, never a merge, which is why a
+        wrong group can cost clarity but never hide a finding."""
+        files = ["plugin/lib/gates.py"]
+        findings = [
+            self._f("R-1", "Nothing Is Broken", "Gate remedy omits the batch instruction", files),
+            self._f(
+                "R-5",
+                "The Design Is Sound",
+                "The gate remedy omits the batch instruction that consolidate prints",
+                files,
+            ),
+        ]
+        # The SHORTEST title carries the LOWEST severity — the shape that made
+        # a group containing a BLOCKING print as [NOTE], above an instruction to
+        # dispose of the group once. Lead is chosen for wording; severity is the
+        # group's maximum, and wording has nothing to do with severity.
+        findings[0]["severity"] = "note"
+        findings[1]["severity"] = "blocking"
+        rendered = cc._render_duplicate_groups(findings, cc.likely_duplicate_groups(findings))
+        assert "R-1+R-5" in rendered
+        # The shortest title leads: it is the claim the reviewers agree on.
+        assert "Gate remedy omits the batch instruction" in rendered
+        assert "[BLOCKING]" in rendered and "[NOTE]" not in rendered
+        assert "Nothing Is Broken" in rendered and "The Design Is Sound" in rendered
+
+    def test_no_groups_renders_nothing(self):
+        assert cc._render_duplicate_groups([], []) == ""
 
     def test_nothing_is_dropped_or_reordered(self):
         """The advisory contract: detection must not mutate the finding list."""
