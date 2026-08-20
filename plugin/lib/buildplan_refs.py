@@ -237,6 +237,62 @@ def unticked_chunk_items(content: str) -> list[str]:
     return [text for checked, text in _iter_status_section_items(content) if not checked]
 
 
+def has_build_plan_shape(content: str) -> bool:
+    """Whether ``content`` is a build plan on POSITIVE evidence rather than by default.
+
+    ``plan_index.is_build_plan`` answers the same question from frontmatter and
+    fails safe toward *yes*: a document declaring no ``artifact:`` counts,
+    because at least one real plan declares none. That direction is sound where
+    a declared ``scope:`` is already evidence, and useless without it — over
+    this repo's live ``artifacts/`` it admits 22 documents of which 20 are
+    release plans, spikes, audits and ``project-preferences.md``.
+
+    So this asks for evidence instead, in the three forms a build plan in the
+    wild actually carries. Any one is enough, and each is load-bearing on its
+    own — one plan in this repo's own corpus is reachable by that signal and no
+    other, which is why the union is not redundancy:
+
+    * it DECLARES the type — ``v1.5-critic-proportionality-plan.md``;
+    * it carries a ``## Status`` roster item — ``waiver-pragma-plan.md``, whose
+      chunks are list items no heading matcher parses;
+    * it carries a chunk HEADING — ``build-plan-coverage-perf.md``, which has
+      chunks and no Status section at all.
+
+    Measured 2026-08-20 over the 91 known-real build plans in this repo (90
+    archived plus the live scoped one): the three signals score 90, 90 and 91,
+    their union 91, and against the 22 scope-less live candidates the union
+    names exactly the 2 that are genuinely plans.
+    ``tests/test_unscoped_plan_fact.py`` re-measures both halves against the
+    real corpus rather than restating these numbers, so they cannot quietly rot.
+
+    This lives here and not in ``plan_index`` because two of the three signals
+    are build-plan STRUCTURE, which is this module's subject; ``plan_index``
+    reads frontmatter, imports nothing heavy, and runs at every session boundary.
+    """
+    if plan_index.declared_artifact_type(content) == plan_index.BUILD_PLAN_TYPE:
+        return True
+    if any(True for _item in _iter_status_section_items(content)):
+        return True
+    return any(_CHUNK_HEADING_RE.match(line) for line in content.splitlines())
+
+
+def plans_missing_scope(artifacts_dir: Path) -> list[Path]:
+    """Live build plans invisible to the scope walk because they declare no ``scope:``.
+
+    The published fact consumers call: ``plan_index.unscoped_candidates`` owns
+    the walk and the frontmatter half, this supplies the
+    :func:`has_build_plan_shape` evidence that walk refuses to guess at.
+
+    Every reader of ``iter_scoped_plan_candidates`` reports over a set these
+    plans are missing from — the backfill sweep's buckets, the lifecycle
+    repair's edit list, the scope→plan map behind review dispatch. Asking this
+    beside such a report turns an implied-complete figure into a stated one.
+    """
+    return plan_index.unscoped_candidates(
+        artifacts_dir, looks_like_plan=has_build_plan_shape
+    )
+
+
 def incompleteness_reason(content: str) -> "str | None":
     """Why this plan's own ``## Status`` says it is not finished, or ``None``.
 
@@ -767,7 +823,8 @@ def resolve_reviewed_plan(
                 "none",
                 f"the dispatch names scope {scope!r} but no build plan under "
                 "artifacts/ declares it — grading this repo's active plan "
-                "would grade a different subject",
+                "would grade a different subject"
+                + _unscoped_plan_suffix(prawduct_dir),
             )
         return ReviewedPlan(match, _repo_rel(prawduct_dir, match), scope, SOURCE_SCOPE_NAMED, None)
 
@@ -798,6 +855,51 @@ def resolve_reviewed_plan(
         )
         if ambiguous
         else None,
+    )
+
+
+#: How many unscoped plans the gap sentence names before summarising the rest.
+#: The gap is prose a reviewer reads inside its dispatch payload, so an
+#: unbounded list of a repo's every scope-less plan would crowd out the finding
+#: it is a footnote to. The remainder is COUNTED rather than dropped — a
+#: truncation that does not say it truncated is the same silence one level down.
+_UNSCOPED_NAMED_LIMIT = 5
+
+
+def _unscoped_plan_suffix(prawduct_dir: Path) -> str:
+    """The scope-less plans this repo holds, phrased to follow a "no plan declares
+    it" gap — or ``""`` when there are none.
+
+    A scope that resolves to no plan has two very different explanations, and
+    the gap sentence alone gives the reader only one of them: either no such
+    plan exists, or one exists and declares no ``scope:``, so the lookup this
+    resolution is built on could never have found it. That second case is
+    `#642`'s first cause, and it reached the reviewer as ``chunk-ref-missing
+    unchecked`` with no hint of which — a check that could not run, reported in
+    a sentence that reads like a check that ran.
+
+    Computed only on this branch, which is by construction the failure branch:
+    a resolution that found its plan pays nothing, so the extra walk never
+    lands on the path the session gates are timed against.
+
+    Fails soft to ``""``. This is a footnote on a gap that is itself already
+    being reported, so an unreadable artifacts directory must not turn a
+    reported non-answer into an exception in the dispatch path.
+    """
+    try:
+        candidates = plans_missing_scope(prawduct_dir / "artifacts")
+    except OSError:
+        return ""
+    if not candidates:
+        return ""
+    shown = [_repo_rel(prawduct_dir, path) for path in candidates[:_UNSCOPED_NAMED_LIMIT]]
+    remainder = len(candidates) - len(shown)
+    listed = ", ".join(shown) + (f", and {remainder} more" if remainder else "")
+    return (
+        f". Note that {len(candidates)} build plan(s) here declare no `scope:` at "
+        f"all and are invisible to this lookup ({listed}) — if the reviewed work "
+        "belongs to one of them, adding a `scope:` to its frontmatter is what "
+        "makes it findable"
     )
 
 

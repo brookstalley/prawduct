@@ -166,7 +166,7 @@ def _incompleteness_refusal(plan_path: Path) -> "str | None":
 def survey(prawduct_dir: Path) -> dict:
     """What the backfill would do, without doing any of it.
 
-    Returns ``{has_release_tags, shipped, blocked, unshipped}``. ``shipped`` is
+    Returns ``{has_release_tags, shipped, blocked, unshipped, unevaluated}``. ``shipped`` is
     ``[{path, scope, release}]`` — the plans a run would actually archive.
     ``blocked`` is ``[{path, scope, release, reason}]``: plans the change log
     says shipped but which :func:`plan_archive.refusal_reason` would refuse, plus
@@ -191,6 +191,20 @@ def survey(prawduct_dir: Path) -> dict:
     every live plan lands in ``unshipped``. That is not "nothing to do" — it is
     "nobody but you can decide", and the caller must say so rather than
     reporting a clean sweep.
+
+    ``unevaluated`` is ``[{path}]``: build plans this sweep could not even
+    consider, because they declare no frontmatter ``scope:`` and the whole
+    mechanical test is a lookup on that key. **The other three buckets partition
+    the plans the walk yielded, not the plans on disk**, so before this key they
+    summed to a total that read as the artifacts directory and was not — in one
+    surveyed consumer repo, by 60 plans out of 134. A count of what could not be
+    evaluated is what makes the other three honest; ``buildplan_refs``
+    publishes the set, and the reason it needs a build-plan-shape predicate to
+    do it is in :func:`buildplan_refs.has_build_plan_shape`.
+
+    Nothing here gates on it. It is diagnostic — the sweep's behaviour over the
+    plans it CAN see is unchanged, which is what keeps the archival norm's
+    guarantee about this walk intact.
     """
     artifacts_dir = prawduct_dir / "artifacts"
     try:
@@ -236,6 +250,14 @@ def survey(prawduct_dir: Path) -> dict:
         "shipped": shipped,
         "blocked": blocked,
         "unshipped": unshipped,
+        # Asked OUTSIDE the loop above, because the loop is the thing that skips
+        # them: a check inside the fallible flow cannot catch that flow's own
+        # skip, and one added at this call site over the same walk would be
+        # empty by construction.
+        "unevaluated": [
+            {"path": path}
+            for path in buildplan_refs.plans_missing_scope(artifacts_dir)
+        ],
     }
 
 

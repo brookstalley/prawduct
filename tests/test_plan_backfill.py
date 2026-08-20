@@ -80,6 +80,80 @@ class TestSurvey:
         assert len(result["unshipped"]) == 2
 
 
+class TestPlansTheSweepCannotEvaluate:
+    """The three buckets partition what the WALK yielded, not what is on disk.
+
+    The walk yields only scope-declaring plans, and the whole mechanical test is
+    a lookup on that scope — so a plan declaring none was never a candidate for
+    any of the three. Before `unevaluated` they summed to a total that read as
+    the artifacts directory and was not: in one surveyed consumer repo, by 60
+    plans out of 134.
+    """
+
+    #: A real build plan by every signal except the one the sweep keys on.
+    UNSCOPED = "---\nartifact: build-plan\n---\n\n## Status\n\n- [ ] Chunk 01: the work\n"
+
+    def _repo_with_an_unscoped_plan(self, tmp_path: Path, **kwargs) -> Path:
+        prawduct = _make_repo(tmp_path, **kwargs)
+        (prawduct / "artifacts" / "build-plan-mystery.md").write_text(
+            self.UNSCOPED, encoding="utf-8"
+        )
+        return prawduct
+
+    def test_the_unscoped_plan_is_named(self, tmp_path: Path) -> None:
+        prawduct = self._repo_with_an_unscoped_plan(tmp_path)
+        result = plan_backfill.survey(prawduct)
+        assert [p["path"].name for p in result["unevaluated"]] == [
+            "build-plan-mystery.md"
+        ]
+
+    def test_it_is_in_none_of_the_other_three_buckets(self, tmp_path: Path) -> None:
+        """The point of the key: it is not a fourth partition of the same set,
+        it is the part that was never in the set at all."""
+        prawduct = self._repo_with_an_unscoped_plan(tmp_path)
+        result = plan_backfill.survey(prawduct)
+        placed = {
+            item["path"].name
+            for bucket in ("shipped", "blocked", "unshipped")
+            for item in result[bucket]
+        }
+        assert "build-plan-mystery.md" not in placed
+
+    def test_a_fully_scoped_repo_reports_none(self, tmp_path: Path) -> None:
+        """Without this the assertion above passes on a list that is never
+        empty, and the operator's figure would be noise rather than a fact."""
+        assert plan_backfill.survey(_make_repo(tmp_path))["unevaluated"] == []
+
+    def test_the_sweep_over_scoped_plans_is_unchanged(self, tmp_path: Path) -> None:
+        """Publishing the fact must not change what the walk yields — the
+        archival norm names this walk as one of its mechanisms."""
+        prawduct = self._repo_with_an_unscoped_plan(tmp_path)
+        result = plan_backfill.survey(prawduct)
+        assert [item["scope"] for item in result["shipped"]] == ["alpha"]
+        assert [item["scope"] for item in result["unshipped"]] == ["beta"]
+
+    def test_it_is_reported_where_no_release_tags_exist_too(self, tmp_path: Path) -> None:
+        """Both arms of the `has_release_tags` fork report a set that reads as
+        the whole directory, so both need the caveat."""
+        prawduct = self._repo_with_an_unscoped_plan(
+            tmp_path, change_log="# Change Log\n\n## 2026-01-01: a thing\n"
+        )
+        result = plan_backfill.survey(prawduct)
+        assert result["has_release_tags"] is False
+        assert [p["path"].name for p in result["unevaluated"]] == [
+            "build-plan-mystery.md"
+        ]
+
+    def test_an_apply_carries_it_through(self, tmp_path: Path) -> None:
+        """`backfill` spreads the survey into its own result; a key that stops
+        at the preview is a caveat the operator loses at the moment of action."""
+        prawduct = self._repo_with_an_unscoped_plan(tmp_path)
+        result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
+        assert [p["path"].name for p in result["unevaluated"]] == [
+            "build-plan-mystery.md"
+        ]
+
+
 class TestNestedPlansAreDistinguishable:
     """A real consumer layout every fixture in this file would otherwise miss.
 

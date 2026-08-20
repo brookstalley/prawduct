@@ -315,6 +315,63 @@ class TestPlanBackfillCommand:
         human = _run(project, "plan-backfill")
         assert "NOT moving 1 plan(s)" in human.stdout
 
+    def _repo_with_an_unscoped_plan(self, tmp_path: Path, **kwargs) -> Path:
+        """A real build plan by every signal except the one the sweep keys on."""
+        project = _repo(tmp_path, plan=PLAN_COMPLETE, **kwargs)
+        (project / ".prawduct" / "artifacts" / "build-plan-mystery.md").write_text(
+            "---\nartifact: build-plan\n---\n\n## Status\n\n- [ ] Chunk 01: work\n",
+            encoding="utf-8",
+        )
+        return project
+
+    def test_the_preview_states_what_it_could_not_evaluate(self, tmp_path: Path) -> None:
+        """The operator reads the counts as a description of artifacts/. A plan
+        with no `scope:` was never a candidate for any of them, so a preview
+        that does not say so overstates its own coverage."""
+        proc = _run(self._repo_with_an_unscoped_plan(tmp_path), "plan-backfill")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "could not evaluate 1 plan(s)" in proc.stdout
+        assert "build-plan-mystery.md" in proc.stdout
+        assert "declares no `scope:`" in proc.stdout
+
+    def test_it_is_stated_on_the_no_release_tags_arm_too(self, tmp_path: Path) -> None:
+        """Both arms of the fork print a set that reads as the whole directory,
+        and the human path is the one `--json`-only tests never exercise."""
+        project = self._repo_with_an_unscoped_plan(
+            tmp_path, change_log="# Change Log\n\n## 2026-01-01: a thing\n"
+        )
+        proc = _run(project, "plan-backfill")
+
+        assert "no mechanical way" in proc.stdout
+        assert "could not evaluate 1 plan(s)" in proc.stdout
+
+    def test_a_fully_scoped_repo_says_nothing_about_it(self, tmp_path: Path) -> None:
+        """Without this the assertions above pass on a line that always prints,
+        and a caveat that never goes quiet is one the operator stops reading."""
+        proc = _run(_repo(tmp_path, plan=PLAN_COMPLETE), "plan-backfill")
+        assert "could not evaluate" not in proc.stdout
+
+    def test_json_carries_the_unevaluated_list(self, tmp_path: Path) -> None:
+        proc = _run(self._repo_with_an_unscoped_plan(tmp_path), "plan-backfill", "--json")
+        payload = json.loads(proc.stdout)
+
+        assert [item["path"] for item in payload["unevaluated"]] == [
+            str(
+                tmp_path
+                / ".prawduct"
+                / "artifacts"
+                / "build-plan-mystery.md"
+            )
+        ]
+        # And it is in none of the buckets that partition what the walk yielded.
+        placed = [
+            item["path"]
+            for key in ("shipped", "blocked", "kept_live")
+            for item in payload[key]
+        ]
+        assert not any(path.endswith("build-plan-mystery.md") for path in placed)
+
     def test_a_preview_with_blocked_plans_still_exits_zero(self, tmp_path: Path) -> None:
         """Nothing was skipped because nothing was attempted — and a dry run
         that exits 1 on every repo holding one already-archived namesake is

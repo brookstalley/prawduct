@@ -5680,6 +5680,9 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                 "kept_live": [
                     {"path": str(i["path"]), "scope": i["scope"]} for i in result["unshipped"]
                 ],
+                "unevaluated": [
+                    {"path": str(i["path"])} for i in result["unevaluated"]
+                ],
                 "archived": result["archived"],
                 "refused": result["refused"],
             },
@@ -5722,6 +5725,20 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                 print("  Re-run with --apply to move them. One confirmation covers "
                       "all of them; each file is moved, not deleted, and keeps "
                       "everything it says.")
+        # Printed under BOTH arms of the fork above, because both report a set
+        # that reads as the whole directory: the counts above partition the
+        # plans this sweep could see, and a plan with no scope was never in
+        # them. Said here rather than left to `--json` — a figure the operator
+        # reads as complete is the thing being corrected.
+        if result["unevaluated"]:
+            print(f"  could not evaluate {len(result['unevaluated'])} plan(s), so they "
+                  "are in none of the counts above — each is a build plan that "
+                  "declares no `scope:` in its frontmatter, and the release a "
+                  "plan shipped in is looked up by that scope. Give each one a "
+                  "scope: line matching its change-log entries to bring it into "
+                  "this sweep:")
+            for item in result["unevaluated"]:
+                print(f"    {_plan_label(item['path'], prawduct_dir)}")
         for refusal in result["refused"]:
             print(f"  could not archive {refusal['scope']}: {refusal['reason']}",
                   file=sys.stderr)

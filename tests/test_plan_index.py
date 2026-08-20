@@ -191,6 +191,84 @@ class TestBuildScopeToPlanMap:
         assert mapping["nested"] == nested / "build-plan.md"
 
 
+class TestDeclaredArtifactType:
+    """The forward read of `artifact:`, folded onto the one value-level reader.
+
+    This key used to be walked by a hand-rolled loop beside `_frontmatter_scalar`
+    — two readers over one block, the shape that module's own docstrings argue
+    against, and the way a later fix to quoting or comments lands on `scope:`
+    and not on `artifact:`.
+    """
+
+    def _fm(self, body: str) -> str:
+        return f"---\n{body}\n---\n\n# Title\n"
+
+    def test_reports_the_declared_type(self):
+        assert plan_index.declared_artifact_type(self._fm("artifact: design")) == "design"
+
+    def test_an_absent_key_is_no_declaration(self):
+        assert plan_index.declared_artifact_type(self._fm("scope: s")) is None
+
+    def test_no_frontmatter_is_no_declaration(self):
+        assert plan_index.declared_artifact_type("# Just a title\n") is None
+
+    def test_the_yaml_null_literal_is_no_declaration(self):
+        """Folding onto `_frontmatter_scalar` moved this case, and it moved it
+        toward the direction the module documents. `artifact: null` used to read
+        as the literal string "null" — a type that is not `build-plan`, so the
+        document was EXCLUDED from the plan population. Absence keeps a document
+        in, and a null declaration is an absence of one."""
+        for spelling in ("artifact: null", "artifact: ~", "artifact:"):
+            assert plan_index.declared_artifact_type(self._fm(spelling)) is None
+            assert not plan_index._declares_non_build_plan_artifact(self._fm(spelling))
+
+
+class TestUnscopedCandidates:
+    """The walk half of the published fact — the predicate is the caller's.
+
+    The set this yields is exactly the set `iter_scoped_plan_candidates` omits,
+    so the two must be read together; the shape predicate that makes it useful
+    lives with `buildplan_refs`, and `tests/test_unscoped_plan_fact.py` is where
+    the whole construction and its real-corpus controls sit.
+    """
+
+    def test_the_shape_predicate_has_no_default(self):
+        """A default would be the map's own predicate, which admits 20 non-plans
+        for every 2 plans in this repo's live tree — a forgetful caller would
+        get that list in silence rather than a TypeError."""
+        with pytest.raises(TypeError):
+            plan_index.unscoped_candidates(Path("."))
+
+    def test_a_predicate_that_refuses_everything_yields_nothing(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "plan.md").write_text("---\nartifact: build-plan\n---\n", encoding="utf-8")
+        assert plan_index.unscoped_candidates(
+            artifacts, looks_like_plan=lambda _content: False
+        ) == []
+
+    def test_the_predicate_is_asked_only_about_scopeless_plan_documents(self, tmp_path: Path):
+        """The cheap filters run first, so the caller's predicate never has to
+        re-derive what this module already answered."""
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "scoped.md").write_text(
+            "---\nartifact: build-plan\nscope: alpha\n---\n", encoding="utf-8"
+        )
+        (artifacts / "other.md").write_text("---\nartifact: design\n---\n", encoding="utf-8")
+        (artifacts / "candidate.md").write_text("# A plan\n", encoding="utf-8")
+
+        asked: list[str] = []
+
+        def record(content: str) -> bool:
+            asked.append(content)
+            return True
+
+        found = plan_index.unscoped_candidates(artifacts, looks_like_plan=record)
+        assert [p.name for p in found] == ["candidate.md"]
+        assert asked == ["# A plan\n"]
+
+
 class TestDeclaresNonBuildPlanArtifact:
     """Direct cases for the plan/not-a-plan predicate.
 

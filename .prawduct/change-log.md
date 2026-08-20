@@ -3,6 +3,55 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-20: a build plan with no `scope:` stops being invisible to everything that scans artifacts/
+
+<!-- prawduct: type=fix | scope=coverage-honesty -->
+
+`plan_index.iter_scoped_plan_candidates` yields on `if scope:` and nothing else. That is right for
+a *map* — a map keyed on scope has no key for a plan declaring none — and it means every consumer
+of that walk reports a set that reads as the whole artifacts directory while silently omitting
+those plans. `plan-backfill`'s three buckets are the loudest case: they partition what the walk
+yielded, not what is on disk, and in a surveyed consumer repo they described 60 plans out of 134.
+The same walk is behind the scope→plan map, so a dispatch naming a scope whose plan declares none
+reached the reviewer as `chunk-ref-missing unchecked` — a check that could not run, in a sentence
+that reads like one that did (#642 cause 1).
+
+**The remedy is the one this module already uses for an unreadable file**: the swallow stays where
+the map needs it, and the fact is published separately on a cold path, outside the walk — a check
+inside the fallible flow cannot catch that flow's own skip. Nothing the walk yields changes, which
+is what keeps the archival norm's guarantee about it intact.
+
+**What made this more than a filter is deciding what an unscoped document has to be.** The walk's
+existing predicate excludes only a document declaring some *other* `artifact:` type and treats one
+declaring none as a plan — a fail-safe direction chosen where a declared `scope:` is already
+evidence of plan-ness. The unscoped population carries no such evidence, and the predicate had
+never been asked about it. Measured against this repo's live `artifacts/`: **22 documents pass it
+and 20 are not build plans** — release plans, spikes, audits, `project-preferences.md`. A control
+naming 20 non-plans on its first run is one nobody reads twice.
+
+So `buildplan_refs.has_build_plan_shape` requires positive evidence, in the three forms a plan in
+the wild actually carries: it declares the type, it has a `## Status` roster item, or it has a
+chunk heading. Any one suffices, and each is load-bearing — one plan in this repo's own corpus is
+reachable by that signal and no other. Across the 91 known-real plans here the three score 90, 90
+and 91 and their union 91; against the 22 unscoped live candidates the union names exactly the 2
+that are genuinely plans. Those are measurements, not estimates, and
+`tests/test_unscoped_plan_fact.py` re-runs both halves against the real corpus rather than
+restating the numbers.
+
+An explicit `scope: null` — the parser's documented opt-out — is **not** reported. It is a
+declared choice, and a control that fires on one can never be settled.
+
+**Three surfaces state their coverage now.** `plan_backfill.survey` gains `unevaluated`;
+`plan-backfill` names the count and the paths under both arms of the release-tag fork, in the
+same breath as the buckets rather than leaving it to `--json`; and the "no build plan declares
+that scope" gap that reaches a reviewer at dispatch names the plans invisible to the lookup,
+bounded to five with the remainder counted. All three are diagnostic — no exit code moves and no
+gate reads any of it.
+
+Riding this commit: the per-mode payload meter added by the previous entry now derives each mode's
+directive set from the dispatch it actually ran, and its ceilings are keyed by mode, so a fifth
+mode or a fourth directive is metered rather than skipped.
+
 ## 2026-08-20: the finding-scope rule reaches the two modes whose payload had no room for it
 
 <!-- prawduct: type=fix | scope=coverage-honesty -->

@@ -28,12 +28,8 @@ So three separate things are derived rather than asserted:
 3. DELIVERY, by running `critic-begin` per mode and reading stdout — because
    the rule reaching the reviewer is the whole deliverable, and asserting that
    a constant exists, or that its name appears in the hook's source, is
-   satisfied by a comment.
-
-Point 3 is the one this file originally got wrong, in exactly the shape the
-rule it pins describes: the first version grepped `"FINDING_SCOPE_DIRECTIVE" in
-begin_src`, and that string occurs in an explanatory comment as well as the
-`print`, so deleting the emission left the pin green.
+   satisfied by a comment: every such name also appears in the prose explaining
+   the emission, so a source scan stays green after the `print` is deleted.
 """
 
 from __future__ import annotations
@@ -348,31 +344,95 @@ def test_the_directive_has_a_size_ceiling() -> None:
     )
 
 
-#: What each mode's reviewer must actually load to answer its goals: its
-#: payload file plus every directive its dispatch hands it. Derived, not
-#: listed, so a route change pays this meter instead of resetting it.
-def _per_mode_payload_tokens() -> dict[str, int]:
-    payload = {
-        "goals-1-3.md": _estimate(GOALS_1_3.read_text(encoding="utf-8")),
-        "review-protocol.md": _estimate(PROTOCOL_TEXT),
-    }
-    totals = {}
-    for mode in ALL_MODES:
-        total = payload[DOCUMENTED[mode]]
-        if mode in cc.GOALS_1_3_MODES:
-            total += _estimate(cc.FINDING_SCOPE_DIRECTIVE)
-        if mode == "verify-resolutions":
-            total += _estimate(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
-            total += _estimate(cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
-        totals[mode] = total
-    return totals
+#: Every dispatch directive this module defines, by name. Collected from the
+#: module rather than listed, so a directive added for some future mode is
+#: metered the day it exists instead of the day someone remembers this file.
+DIRECTIVES = {
+    name: getattr(cc, name) for name in dir(cc) if name.endswith("_DIRECTIVE")
+}
+
+#: The ceiling each mode's reviewer payload must stay under. Keyed by mode so
+#: :func:`test_the_per_mode_load_has_a_ceiling` covers whatever `ALL_MODES`
+#: holds; a fifth mode reddens :func:`test_every_mode_has_a_ceiling` until
+#: someone decides what it may cost, rather than going quietly unmetered.
+CEILINGS = {
+    "chunk": 2500,
+    "verify-resolutions": 3500,
+    "final": 3900,
+    "cumulative": 3900,
+}
 
 
-@pytest.mark.parametrize(
-    "mode,ceiling",
-    [("chunk", 2500), ("verify-resolutions", 3500), ("final", 3900), ("cumulative", 3900)],
-)
-def test_the_per_mode_load_has_a_ceiling(mode: str, ceiling: int) -> None:
+def _payload_tokens(mode: str) -> int:
+    """The payload FILE half of a mode's load, with no directives counted."""
+    return _estimate(
+        {
+            "goals-1-3.md": GOALS_1_3.read_text(encoding="utf-8"),
+            "review-protocol.md": PROTOCOL_TEXT,
+        }[DOCUMENTED[mode]]
+    )
+
+
+def _per_mode_payload_tokens(mode: str, dispatch_stdout: str) -> int:
+    """What a `mode` reviewer loads before reading a changed line: its payload
+    file, plus every directive the dispatch ACTUALLY emitted.
+
+    Which directives a mode gets is read out of `dispatch_stdout` rather than
+    re-decided here. A meter that re-states the routing rule agrees with itself
+    by construction: it keeps metering the old route after a directive moves,
+    and it is blind to a directive it was never told about. Running the
+    dispatch and weighing what came back is the only version that cannot.
+    """
+    total = _payload_tokens(mode)
+    for text in DIRECTIVES.values():
+        if text in dispatch_stdout:
+            total += _estimate(text)
+    return total
+
+
+def test_every_mode_has_a_ceiling() -> None:
+    """The meter's own coverage, because an unmetered mode is the failure this
+    meter exists to prevent, arriving as an absent test rather than a red one."""
+    assert set(CEILINGS) == set(ALL_MODES), (
+        f"modes without a payload ceiling: {sorted(set(ALL_MODES) - set(CEILINGS))}; "
+        f"ceilings for modes that no longer exist: {sorted(set(CEILINGS) - set(ALL_MODES))}"
+    )
+
+
+def test_the_directives_collected_here_are_the_ones_that_ship() -> None:
+    """The collection above is a `dir()` scan, so it is only as good as the
+    naming convention. A dispatch printing a directive this scan cannot see
+    would make every ceiling below under-count in silence."""
+    assert DIRECTIVES, "no directive constants found — the naming convention moved"
+    assert "FINDING_SCOPE_DIRECTIVE" in DIRECTIVES
+    for name, text in DIRECTIVES.items():
+        assert isinstance(text, str) and text.strip(), f"{name} is not deliverable text"
+
+
+@pytest.mark.parametrize("mode", sorted(cc.GOALS_1_3_MODES))
+def test_a_mode_that_receives_a_directive_is_charged_for_it(tmp_path, mode: str) -> None:
+    """The meter's directive term, pinned on its own.
+
+    Every ceiling has headroom, so a meter that silently stopped counting
+    directives would leave all of them green — and a directive costs the reader
+    exactly as much as the same words inside a payload file, which is the whole
+    reason this meter is capability-scoped rather than file-scoped.
+    """
+    result = _dispatch(tmp_path / "r", mode)
+    assert result.returncode == 0, f"stderr={result.stderr!r}"
+    assert cc.FINDING_SCOPE_DIRECTIVE in result.stdout, (
+        f"`{mode}` is in GOALS_1_3_MODES but its dispatch emitted no scope rule"
+    )
+    charged = _per_mode_payload_tokens(mode, result.stdout)
+    assert charged >= _payload_tokens(mode) + _estimate(cc.FINDING_SCOPE_DIRECTIVE), (
+        f"a `{mode}` reviewer is handed the scope directive and the meter did "
+        "not charge for it — re-routing a rule out of a payload file would then "
+        "read as a saving"
+    )
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_the_per_mode_load_has_a_ceiling(tmp_path, mode: str) -> None:
     """`nonfunctional-requirements.md` § Direction governs unit-cost as *the
     reviewer's payload — what a given mode must load to answer its goals*.
     That is capability-scoped, not file-scoped, and until this pin existed only
@@ -384,7 +444,11 @@ def test_the_per_mode_load_has_a_ceiling(mode: str, ceiling: int) -> None:
     made "add a directive" the default answer to a full file, with no meter
     able to see the third use. This is that meter.
     """
-    total = _per_mode_payload_tokens()[mode]
+    ceiling = CEILINGS[mode]
+    result = _dispatch(tmp_path / "r", mode)
+    assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+    total = _per_mode_payload_tokens(mode, result.stdout)
     assert total < ceiling, (
         f"a `{mode}` reviewer now loads ~{total} tokens before reading a single "
         f"changed line, against a ceiling of {ceiling}. Moving a rule from a "

@@ -259,6 +259,51 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
   **Known hazard for this chunk specifically** (`[[L490]]`): the fix adds a return key to
   `survey`'s result. Grep every reader of the existing keys before committing — a fix that
   relocates or re-partitions data silently unwires whoever read the old shape.
+
+  `[REQUIREMENT SURFACED MID-BUILD 2026-08-20: what makes an UNSCOPED document a build plan]`
+  The description above says "the live plans that declare no `scope:`" and assumes the walk's
+  existing plan predicate answers it. It does not. `plan_index._declares_non_build_plan_artifact`
+  excludes only a document declaring some *other* `artifact:` type, and treats a document
+  declaring none as a plan — a fail-safe direction chosen for the map, where a declared `scope:`
+  is already strong evidence of plan-ness. The unscoped population has no such evidence, and the
+  predicate was never exposed to it. Measured against this repo's live `artifacts/` on
+  2026-08-20: **22 documents pass it, and 20 are not build plans** — release plans, spikes,
+  audits, investigations, `project-preferences.md`, `boundary-patterns.md`. A control that names
+  20 non-plans on its first run is the shape `nonfunctional-requirements.md` § Direction removes
+  by default, so the requirement is real and it decides what the operator's coverage figure
+  *means*.
+
+  `[DECISION: an unscoped document is a build plan only on POSITIVE evidence — it declares
+  `artifact: build-plan`, or carries a `## Status` roster item, or carries a chunk heading |
+  user can veto]` Chosen by measurement, not by taste. Across the 91 known-real build plans in
+  this repo (90 archived + the live scoped one) the three signals score 90/91, 90/91 and
+  **91/91**, and their union is 91/91 — no known-real plan is missed. Against the 22 unscoped
+  live candidates the union names exactly 2, and both are genuinely build plans
+  (`v1.5-critic-proportionality-plan.md`, which declares the type and carries 8 chunks, and
+  `waiver-pragma-plan.md`, which carries a 3-item Status roster and no parseable chunk heading —
+  `#642`'s cause 2 shape). Reproduce with the probe in the chunk's test.
+
+  `[DECISION: an EXPLICIT `scope:` opt-out is not reported | user can override]`
+  `parse_build_plan_frontmatter_scope` already distinguishes `(True, None)` — `scope:` set to the
+  YAML null literal, the documented "do not scope-filter me" — from `(False, None)`, the key
+  simply absent. Only the second is a blind spot; the first is a declared choice, and reporting a
+  declared choice back as a coverage gap is a control that can never go quiet. Zero instances of
+  the opt-out exist in the 138-document corpus, so this costs nothing today and keeps the
+  parser's existing semantic rather than inventing a second one.
+
+  `[DECISION: the published fact lives in `buildplan_refs`, with the walk staying in
+  `plan_index` | user can veto]` The deliverable below names `plan_index.py`, written before the
+  code was re-read — and the plan's own `governed_by` disposition on *"goals and verification
+  bind; prescribed method is advice"* says a builder finding a better route takes it and records
+  why. Here it is forced: `buildplan_refs` imports `plan_index`, so `plan_index` cannot import
+  back, and the positive-evidence predicate needs `status_section_bounds` and `_CHUNK_HEADING_RE`,
+  which `buildplan_refs` owns. `plan_index`'s own module docstring makes its lightness a
+  requirement — it runs at every session start and every session end. So `plan_index` keeps the
+  walk as `unscoped_candidates(artifacts_dir, *, looks_like_plan)` (the sibling to
+  `unreadable_candidates` the deliverable asks for) and `buildplan_refs.plans_missing_scope`
+  supplies the shape predicate and is what consumers call. The predicate is a REQUIRED
+  keyword-only argument, because a default would hand a forgetful caller the 20-item noise list
+  in silence.
 - **Depends on:** none
 - **Artifacts consumed:** `.prawduct/artifacts/architecture.md` § Direction ("unchecked, never
   silently passed"), `.prawduct/artifacts/data-model.md` § Direction (archival)

@@ -162,7 +162,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the set is proposed and the operator archives each with `archive-plan`. Checkbox state is neither
   a precondition nor corrected on the way in. `--json` adds `blocked[{path,scope,release,reason}]`:
   plans the change log records as shipped that the archival predicate refuses, split out so the
-  preview cannot promise what the write declines. **Exit 1 on `--apply` when anything is `blocked`
+  preview cannot promise what the write declines. It also carries
+  `unevaluated[{path}]` — build plans that declare no frontmatter `scope:` and so were never
+  candidates for any bucket, since the whole shipped test is a lookup on that key. Reported, and
+  named on stdout under both arms of the release-tag fork, because the other three counts read as
+  a description of `artifacts/` and without this one they are not. Diagnostic only: no exit code
+  and no gate reads it. **Exit 1 on `--apply` when anything is `blocked`
   or `refused`** — an apply that could not move work the change log says shipped is not a clean run;
   a preview stays 0, having attempted nothing.
 - **Derived-view convergence** — `lifecycle-repair [--apply] [--json]` (mutating with `--apply`):
