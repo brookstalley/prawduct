@@ -1001,10 +1001,10 @@ def restore_review(prawduct_dir: Path, review_id: str) -> dict:
         present = sorted(p.name for p in pdir.iterdir() if p.is_file())
     except OSError:
         present = []
-    # `sweep=False` for the same reason `begin_review` reads it that way:
-    # refusing is not the moment to also decide a crashed review is over, and the
-    # Stop hook's abandoned-review branch is gated on the marker it would delete.
-    active, _age = critic_marker.review_active(prawduct_dir, sweep=False)
+    # Asking only. `review_active` cannot remove a marker, so refusing here can
+    # never also decide that a crashed review is over — which matters because the
+    # Stop hook's abandoned-review branch is gated on that marker.
+    active, _age = critic_marker.review_active(prawduct_dir)
     if present or active:
         return {
             "status": "error",
@@ -1368,13 +1368,13 @@ def begin_review(
     # own documented TTL for precisely this question. Reusing the number while
     # changing the signal would CREATE the second notion of "live" rather than
     # avoid it.
-    # `sweep=False`: refusing a dispatch is not the moment to also decide a
-    # crashed review is over. The Stop hook's abandoned-review branch is gated on
-    # `marker_present` and is what prints the manual-recovery remedy, so sweeping
-    # here would delete the signal that produces those instructions — the first
-    # refused dispatch past the TTL would strip the correct advice out of the
-    # subsystem. `clear` keeps the sweeping default; see `critic_marker`.
-    active, age_s = critic_marker.review_active(prawduct_dir, sweep=False)
+    # Refusing a dispatch is not the moment to decide a crashed review is over:
+    # the Stop hook's abandoned-review branch is gated on `marker_present` and is
+    # what prints the manual-recovery remedy, so a read that deleted on the way
+    # past would strip that advice out of the subsystem at the first refused
+    # dispatch past the TTL. `review_active` only asks; removal has one home
+    # (`critic_marker.boundary_sweep`) and the explicit end/discard acts.
+    active, age_s = critic_marker.review_active(prawduct_dir)
     roster_state, _missing = pending_state(prawduct_dir)
     if active or roster_state == "complete":
         return {
@@ -1747,6 +1747,14 @@ def begin_review(
         "branch": gitstate.current_branch(project_dir),
         "record_lint": lint,
         "prior_dispositions": priors,
+        # Which seed `capture_tree` used for THIS dispatch. The stderr line a
+        # degraded capture prints lives only in scrollback, and the question it
+        # answers — did the fast seed engage, or is a slow capture still slow —
+        # is asked after the fact, by someone verifying the fix on the machine
+        # that reported the symptom. So it rides the durable record the dispatch
+        # already writes. Advisory: nothing gates on it, and an older manifest
+        # without the key is still valid.
+        "seed": capture.get("seed"),
     }
     ok, reason = validate_manifest(manifest)
     if not ok:
@@ -2044,15 +2052,24 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
     dangerous surface.
 
     **The ``incomplete`` reading is why this is shared rather than duplicated.**
-    A marker now survives ``/clear`` (``lib/critic_marker`` states why: no
-    session event proves a reviewer died, so only the TTL releases one). That
-    makes this state reachable two ways — reviewers still writing, or a
+    A marker survives ``/clear`` while its review could still land
+    (``lib/critic_marker`` states why: no session event proves a reviewer died).
+    That makes this state reachable two ways — reviewers still writing, or a
     dispatcher that is gone — and only one of them is safe to act on. A message
     naming just the second reads as already-satisfied to someone who has *just*
     run ``/clear``, and the command it points at (``critic-end``) clears the
     marker, which lets the next dispatch archive partials that reviewers are
     still writing. So the reading carries both possibilities and the tell that
     separates them, and it carries them everywhere at once.
+
+    **Being shared means being true at every surface, including the one that
+    just acted.** ``critic_marker.boundary_sweep`` DOES release an expired
+    marker whose roster is incomplete, and the notice reporting that release
+    prints this same reading — so a flat "a ``/clear`` retains the marker"
+    lands as "waiting is safe" directly above a paragraph explaining that the
+    marker is gone. Every clause here names its condition for that reason. A
+    new caller is a new place these sentences have to hold, and the check is to
+    read the composed output as that surface's reader.
 
     Returns ``(state, reading)`` — deliberately NOT the ``missing`` role list.
     The reading already names the outstanding roles in prose, and a third
@@ -2074,8 +2091,9 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
         reading = (
             f"  On disk: still waiting on {', '.join(missing)}. Either those reviewers\n"
             "  are still running — consolidation fires as they finish, so wait — or the\n"
-            "  session that dispatched them ended (a `/clear` retains the marker; it does\n"
-            "  not release it). If nothing lands, they are gone.\n"
+            "  session that dispatched them ended (a `/clear` keeps the marker while they\n"
+            "  could still land, and releases it once the liveness window has passed).\n"
+            "  If nothing lands, they are gone.\n"
         )
     else:
         reading = (
@@ -2143,10 +2161,19 @@ def active_dispatch_refusal(
     if active:
         escape = (
             "  If that review is genuinely dead, abandon it explicitly and re-dispatch:\n"
-            "    prawduct-hook critic-end\n"
-            f"  The marker also expires on its own after "
-            f"{critic_marker.CRITIC_ACTIVE_TTL_SECONDS // 60} minutes."
+            "    prawduct-hook critic-end"
         )
+        # "Wait it out" is only an escape where waiting reaches something. On a
+        # COMPLETE roster this refusal does not turn on the marker at all — a
+        # finished review is refused at any age — so naming the TTL there offers
+        # a remedy that never arrives, and the situation above has already given
+        # the one that does.
+        if state != "complete":
+            escape += (
+                f"\n  The marker also stops blocking after "
+                f"{critic_marker.CRITIC_ACTIVE_TTL_SECONDS // 60} minutes — though a `clear`"
+                "\n  releases it only once nothing recoverable is attached to it."
+            )
     else:
         escape = (
             "  No live marker — these partials are STRANDED, most likely by a\n"

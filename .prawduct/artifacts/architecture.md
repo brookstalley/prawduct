@@ -58,7 +58,7 @@ what we want to be true.
 
 - **An independent reviewer never mutates the session it reviews — enforced at the mutation site, not by tool-restriction alone.**
   Why: a dispatched subagent does not inherit the coordinator's tool limits, so the invariant must be enforced where mutation happens; this is the load-bearing governance guarantee — without it the reviewed party could quietly rewrite what it is being judged on.
-  Status: steady-state. Mechanism: a *bare* `prawduct-hook clear` — the form a reviewer subagent can issue — refuses while a review is active (`critic-begin` … `critic-consolidate`/`critic-end`). A session **boundary** (`--session-start`, the hook's own invocation) is not refused; it retains a live marker instead, which is why the invariant still holds at the surface it is about.
+  Status: steady-state. Mechanism: a *bare* `prawduct-hook clear` — the form a reviewer subagent can issue — refuses while a review is active (`critic-begin` … `critic-consolidate`/`critic-end`). A session **boundary** (`--session-start`, the hook's own invocation) is not refused; it retains the marker instead — a live one always, and an expired one whose reviewer roster is complete, because that is a finished review whose findings the Stop hook can still consolidate. Asking whether a review is active is itself pure: the predicate releases nothing, so the two surfaces that meet a marker without forcing share one decision and neither destroys a review as a side effect of answering.
 - **Authority fails closed; advice fails soft.**
   Why: anything that produces or consumes a governance *verdict* blocks on incomplete, malformed, or ambiguous state (so governance means something), while anything that merely *informs* degrades to a note (so governance stays bearable) — the split is also an abuse-resistance property: you cannot make a gate pass by feeding it garbage, garbage makes it block.
   Status: steady-state.
@@ -255,8 +255,8 @@ Statements sort into **three** categories, not two — the middle one is the eas
 
 1. **Destructive boundary acts** — they delete or overwrite session-scoped evidence.
 2. **Boundary-dependent readers** — they destroy nothing, but *interpret* session state as belonging
-   to a session that has **finished**. Two qualify: the critic-active marker sweep (it deletes a
-   marker on the theory that its writer's process is gone) and the previous-session gate check (it
+   to a session that has **finished**. Two qualify: the critic-active marker sweep (it may delete a
+   marker once its writer's process is judged gone — the first of the two questions it asks) and the previous-session gate check (it
    reads `.session-reflected`/`.gates-waived`/the change baseline and reports them as a completed
    session's record). Both are boundary-only. However read-only such a statement looks, it is not
    orientation — and sorting purely on "does it destroy evidence" puts it in the wrong column, which
@@ -268,11 +268,16 @@ Statements sort into **three** categories, not two — the middle one is the eas
    process — so a review subagent dispatched before it may still be running. (They also come apart
    at `resume`, in the safe direction: the resumed session's dispatcher is typically gone, so a
    sweep would be licensed where the table forbids one.) The sweep therefore fires at a boundary
-   only on a marker that has already failed the 30-minute TTL. Read the general form off this case
+   only on a marker that has already failed the 30-minute TTL — necessary, and on its own not
+   sufficient: the TTL answers *is the dispatching process gone*, and the reviewer roster answers
+   *is there anything left to finish*, so a complete roster is retained at any age rather than
+   swept (the age test alone would discard exactly the finished review the Stop hook self-heals
+   from). A sweep that does fire says so, naming the review it ended, because the act destroys the
+   only handle any later gate has on it. Read the general form off this case
    rather than the instance: **a boundary-dependent reader that turns on process death, not on
    transcript loss, is not fully scoped by this table** — the table is a proxy for it, and the one
    place the proxy is *unsafe* is `clear`. A reader in that class states its own predicate, as the
-   sweep now does by keying on the marker's age; `startup|clear` share one hook entry and are
+   sweep now does by keying on the marker's age and its roster; `startup|clear` share one hook entry and are
    indistinguishable to the command, so a source-based fix would have needed a finer matcher to do
    worse. Why retaining a marker is the cheaper error, and what it actually costs, is priced once
    in `plugin/lib/critic_marker.py`'s module docstring and not restated here.

@@ -6,6 +6,45 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When you swap a mechanism's input for a COPY of a file, ask what the original's METADATA was load-bearing for — a byte-identical copy is not an identical input, and the loss is silent
+
+**Where.** `plugin/lib/evidence.py`, `_seed_temp_index` — critic-reliability Chunk 01 (#675),
+2026-08-19.
+
+**The mechanism.** `capture_tree` builds a temp index and runs `git add -A` over it to snapshot
+the working tree as a git tree object. It used to seed that index with `read-tree HEAD`, whose
+entries carry ZEROED stat data — so every tracked file is a cache miss and the whole tree is
+re-hashed on every capture. On a bind-mounted tree that exceeds the capture budget outright,
+`critic-begin` fails, and the PR gate becomes structurally unsatisfiable. Seeding from a copy of
+the repo's own `.git/index` carries real stat data and lets `add -A` skip what did not change.
+
+**The trap.** Git's stat cache skips a file whose size and mtime still match its entry. The escape
+hatch is the racily-clean rule: *an entry whose mtime is not older than the INDEX FILE's own may
+have been edited within the same timestamp tick, so re-read it.* That rule is evaluated against the
+mtime of the index file git is handed. `shutil.copyfile` stamps the copy with the CURRENT time, so
+every entry looks comfortably older than its index, the rule never fires, and a same-tick
+same-size edit is skipped. The captured tree then carries the file's previous content.
+
+**Why it is worse than what it replaced.** The defect being fixed was a timeout — loud, and it
+fails closed (no review records). The defect introduced was a wrong tree — silent, and it fails
+OPEN: the review records, and vouches for a state that never existed.
+
+**How it was caught.** A 1-in-25 flake in `tests/test_evidence_store.py`. The failing assertion
+printed two STABLE tree SHAs across every failure, which is not what randomness looks like — that
+observation is what converted "flaky test, re-run it" into "deterministic defect with a
+probabilistic trigger."
+
+**Pinning it cost three attempts, and the third only worked because of an existing rule.** The
+first two versions of `test_same_second_same_size_edit_is_still_captured` passed against the BROKEN
+implementation: the first forced the index file's mtime instead of the recorded ENTRY mtime (which
+is fixed at `git add` time, not editable afterwards); the second hit git's `core.trustctime`, since
+`os.utime` cannot move ctime, so git re-read the file for the wrong reason. Running each candidate
+against the unfixed code — learnings rule "Prove a new regression test DISCRIMINATES" — is the only
+thing that exposed both. Second confirming instance of that rule on this branch.
+
+**Derivation.** `.prawduct/research/tree-capture-2026-08-19/measure.py` section C runs the race
+directly (`copyfile` loses edits; `copy2` does not) alongside the cost and seed-agreement sections.
+
 ## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite, not its synonym — and it reads as deliberate, so review cannot see it
 
 Six change-log entries on `feat/backlog-cache` carried `release=unreleased | status=shipped`. The
@@ -4140,3 +4179,52 @@ caller cannot produce.
 sentence discharges it. The cheap check is not "is my explanation plausible" but "which branch did
 it take" — print it, or mutate the code and watch the test go red. A mutation that leaves the test
 green is the same signal arriving a second time.
+
+## One home stops DIVERGENCE, not staleness — when you add a caller to shared copy, re-read the shared sentence AS THAT SURFACE'S READER, because a clause true of every existing caller can be flatly false at the new one and composition hands it over unexamined. Tell: you satisfied "route it through the one home" and never read the composed output
+
+**The case.** `critic_consolidate.pending_roster_reading()` is the single home for what a pending
+Critic roster MEANS, deliberately shared so a refusal and a session-boundary notice cannot tell
+different stories about what is on disk. Its `incomplete` reading carried the reassurance "a
+`/clear` retains the marker; it does not release it" — true of both surfaces that existed when it
+was written, both of which retain. A third surface was then added that *sweeps*: the boundary
+notice reporting an expired marker with an incomplete roster. Composing through the one home was
+the right call and the plan required it, and it delivered a notice that told the reader *waiting is
+safe* three lines above *the marker is gone and no gate will raise this again*.
+
+**Why it recurs.** The one-home rule is enforced by checking that callers don't restate the fact,
+and that check passes perfectly here — the defect is in the fact, not the plumbing. Nothing about
+routing a new caller through shared copy prompts you to re-examine the copy, because the discipline
+you are exercising is *not writing anything new*. The staleness arrives precisely when the shared
+sentence describes behaviour that the new caller is the exception to, which is the normal reason a
+new caller is being added at all.
+
+**The cheap check.** Run the composed output and read it as its reader — not diff it, not verify
+the call site. The contradiction was invisible in the code (two correct functions, one correct
+call) and unmissable in eight lines of terminal text. Where the shared text asserts a behaviour,
+prefer a clause that names its condition over a flat statement: a conditional survives a new caller,
+an absolute has to be found and rewritten by someone who has no reason to look.
+
+## When you add a rule to the site that motivated it, ENUMERATE the siblings that perform the same ACT before calling it done — a criterion can be false at a surface your chunk never opened, and listing a reader is not asking whether the change reaches it. Tell: your fix names one call site and your acceptance criterion names a class ("cannot X without Y")
+
+**The case.** A chunk taught `critic_marker.boundary_sweep` to keep a Critic marker whose reviewers
+had all reported, so a session boundary could no longer discard a review the Stop hook was about to
+consolidate. Its acceptance criterion was a class statement: *a review that outruns the TTL cannot
+lose its marker without a signal*. But `review_active` unlinked an expired marker as a side effect
+of ANSWERING, and a bare `prawduct-hook clear` — the exact invocation the guard was written for,
+after a reviewer subagent ran it and clobbered the session under review — asked that question and
+destroyed the review the boundary had just been taught to protect. Two independent reviewers found
+it from opposite goals.
+
+**Why the enumeration was there and still did not fire.** The same chunk added a mechanical
+inventory of every reader of the marker, precisely because reasoning about this subsystem had gone
+wrong twice before. The inventory NAMED the bare-clear site — and mapped it to a test covering only
+the live-marker case. Enumerating the readers answers "who touches this"; it does not answer "does
+my new rule reach them". The second question has to be asked per row, out loud, at the moment the
+rule is written.
+
+**The cheap check.** Take the acceptance criterion's verb — *release*, *delete*, *notify* — and grep
+for every site that performs it, not for the symbol you just changed. Then ask of each: with my
+change in place, what does this one do? A predicate that mutates while answering is the sneakiest
+member of such a class, because its callers read as questions and act as acts — which is also the
+fix worth reaching for first: make the rule a construction both surfaces call, not a branch each
+implements.
