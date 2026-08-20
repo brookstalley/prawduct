@@ -62,6 +62,14 @@ a successful consolidation, `--force`. Two reviewers found this independently fr
 which is the argument for the enumeration below rather than against it: the inventory NAMED the
 site and pointed it at a test covering only the live case.
 
+**One sanctioned `rm` survives, deliberately.** The Stop hook's escape hatch still prints
+`rm .prawduct/.critic-active` / `rm -rf .prawduct/.critic-partials`, and it is reached from the
+consolidation-FAILED branch — the complete-roster state this entry exists to protect. Swapping that
+recipe for `critic-discard` needs the command verified against the wedged states first, so it is
+deferred to **#604** rather than changed blind here; recording the residue in the narrative, not
+only in a commit body, is what keeps it from reading as an oversight. `tests/test_session_boundary_events.py`
+still names `rm` among the marker's recoveries for the same reason and rides the next `tests/` commit.
+
 **The readers are enumerated rather than argued safe.** Twice, a change here was reasoned safe from
 the `clear` guard alone and twice the reader that broke was outside the session. A test now scans
 the plugin for every site that calls the marker API or names either file, and fails on any site the

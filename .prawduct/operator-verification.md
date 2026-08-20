@@ -964,12 +964,19 @@ is reached over a bind mount or network filesystem.
 
 1. Run `/prawduct:critic` (any mode). `critic-begin` must complete and write
    `.prawduct/.critic-partials/manifest.json` with a `head_tree`.
-2. If it still times out, re-run with `PRAWDUCT_GIT_TIMEOUT=<seconds>` raised. The timeout
+2. **Confirm the fix actually engaged before doing anything else.** Read `seed` in that
+   manifest (the capture also says so on stderr): `index-copy` means the fast seed ran, and
+   only that reading verifies this fix. `read-tree` means the capture silently fell back and
+   is slow for the original reason — do NOT mark this entry verified on a `read-tree` capture,
+   however fast it completed. (`empty` is an unborn HEAD, where nothing is re-hashed and the
+   question does not arise.)
+3. If it still times out, re-run with `PRAWDUCT_GIT_TIMEOUT=<seconds>` raised. The timeout
    message itself names this remedy — confirm it does, verbatim, rather than reporting a bare
-   git failure.
-3. Confirm no `prawduct-idx-*.lock` files accumulate in the temp directory across repeated
+   git failure. **Raising the budget is a workaround, not a pass:** a capture that only
+   succeeds this way, or that reports `seed: read-tree`, leaves #675 open — record which.
+4. Confirm no `prawduct-idx-*.lock` files accumulate in the temp directory across repeated
    captures, including ones that time out.
-4. **Separately**: if a stale `.git/index.lock` still appears, that is NOT this fix and needs
+5. **Separately**: if a stale `.git/index.lock` still appears, that is NOT this fix and needs
    its own report — `capture_tree` runs every git call under `GIT_INDEX_FILE`, so it cannot
    produce one. Capture what command was running when it appeared.
 
