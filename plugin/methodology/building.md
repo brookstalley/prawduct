@@ -145,9 +145,7 @@ Research scales to impact: **medium** (pervasive pattern, non-core dep) → quic
 
 ## Delegating Work to Subagents
 
-**When the user asks you to work in a subagent, do it** (Principle 23) — also when chunks are independent and parallelizable, a well-scoped chunk wants a clean context, or the main context is large.
-
-**Read `/prawduct:methodology delegation` before fanning out** — the questions worth asking before splitting work, what a brief must say, and the anti-patterns each with its tell. This section is the mechanics.
+**When the user asks you to work in a subagent, do it** (Principle 23). Otherwise the default is **delegate when the same work finishes in less wall clock and the delegates will not fight each other**. **Read `/prawduct:methodology delegation` before fanning out** — what overrides that default and what defeats it, what a brief must say, and the anti-patterns each with its tell. This section is the mechanics.
 
 **How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`"**, and **a verification ceiling** — the narrowest run covering its own change, never the full suite. A cost bound, not a rigor discount, and what it prevents fails *silently*: a runner whose workers die under N racing suites typically neither re-queues their tests nor fails the run, so the box reports a green that skipped a part nobody can name. Add **"then `.prawduct/.subagent-briefing.md`"** only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it; inline what that agent needs.
 

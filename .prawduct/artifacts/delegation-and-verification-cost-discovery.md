@@ -1,7 +1,8 @@
 # Discovery — Delegation and Verification Cost
 
-**Status:** requirements draft · **Date:** 2026-08-21, revised the same day against owner rulings 6-8
-(§7), which collapsed the design from four mechanism-bearing pillars to guidance. **Author:** builder,
+**Status:** requirements draft · **Date:** 2026-08-21, revised the same day against owner rulings 6-11
+(§7) — 6-8 collapsed the design from four mechanism-bearing pillars to guidance, and 11 gave it back the
+one rule guidance cannot supply: a default on whether to delegate at all. **Author:** builder,
 from a sweep of six governed product repos and 56.5k assistant turns of transcript
 **Governs:** a new prawduct capability. No build plan yet; open decisions at the end.
 
@@ -300,7 +301,25 @@ partition-and-disclose prompt at the point a plan is drawn and presented.
 - **R2** The cost of briefing a delegate is proportionate to the work delegated.
 
 **What prawduct supplies**
-- **R3** Considerations, framed as questions rather than rules.
+- **R18** A stated default on *whether* to delegate, not only how: **prefer delegation when the
+  same work finishes in less wall clock and the delegates will not fight each other**, with the
+  cases that override it (the user asks; a chunk wants a clean context) and the cases that defeat
+  it (dependency or shared files, briefing cost above the work's, a project policy that says
+  otherwise). The guide routes to `project-preferences.md` for per-project policy.
+  **Qualifier, and it is the builder's addition rather than the owner's words:** the wall-clock
+  comparison is only valid *after* each delegate's verification bound is applied. Three delegates
+  each running the coordinator's suite is more wall clock than one agent running it once (§2.4,
+  §2.5), so the naive "this parallelizes, so it is faster" estimate is the same reasoning that
+  produced the silent green.
+  **And it has to work at PLAN time** — the partition decision is drawn with chunk boundaries
+  (R6), before any brief exists. It does, because the bound is a property of the *chunk* rather
+  than of the brief, and a chunk's deliverables are already declared: the plan-time form of the
+  question is "what would prove this chunk on its own?" A chunk that cannot be answered is not
+  scoped tightly enough to delegate, which is a more useful answer than the estimate. Chunk 02
+  carries this, since it owns the plan-time prompt.
+- **R3** Considerations, framed as questions rather than rules. **R18 is a deliberate exception:**
+  a default posture is a rule, and it is the one thing the questions cannot supply — an agent with
+  no default answers "should I delegate?" by not delegating, which is the observed 0.34%.
 - **R4** Anti-patterns, each carrying a recognizable tell.
 - **R5** The brief contract stated qualitatively — what must be said, not a template that says it.
 
@@ -380,6 +399,14 @@ Owner rulings, 2026-08-21, with the alternatives so they are not relitigated.
    stays guidance.
 10. **RULED: `plugin/methodology/delegation.md` is the home**, as a sixth `/prawduct:methodology`
    topic (§4.8).
+11. **RULED: the guide states a default on WHEN to delegate** (owner, 2026-08-21, at the plan's
+   post-Chunk-01 checkpoint — the guide as first written "leaps right into the weeds"). Owner's
+   framing: *"by default, prefer delegation to subagents when the same work can be done in shorter
+   wall clock but without significant cost from conflicts, read project preferences for per-project
+   guidance."* Explicitly **not to be belaboured** — models are capable, and the yield is the
+   default existing, not its length. This is R18, and it amends R3's questions-not-rules framing at
+   exactly one point rather than generally. The alternative — leaving the "when" to `building.md`'s
+   existing line — is what the 0.34% measurement already falsified.
 
 ## 8. Assumptions
 

@@ -535,7 +535,12 @@ def _row(
         "fid": fid,
         "severity": _severity_of(finding),
         "goal": finding.get("goal"),
-        "title": finding.get("title"),
+        # Same fallback as the `prior_dispositions` builder above, and for the
+        # same reason: a derived findings record stores the finding's one-line
+        # statement under `summary`, not `title`. Without it this renderer emits
+        # `title: null` for exactly the records a human reads to check a
+        # disposition was recorded against the right finding.
+        "title": finding.get("title") or finding.get("summary") or "",
         "state": state,
         "reason": disposition.get("reason"),
         "backlog_id": disposition.get("backlog_id"),

@@ -1,14 +1,26 @@
-# Delegating Work: What a Delegate Verifies, and What It Costs
+# Delegating Work: When To, What a Delegate Verifies, and What It Costs
 
-**Prawduct states the goal and supplies the considerations. You choose the mechanism.** You can see this machine, this project's test regime and this moment's load; a framework distributed to every governed repo cannot. Nothing here names a command, a marker, a tier or a runner — where a decision needs one, naming it is yours.
+**Prawduct states the goal, one default, and the considerations. You choose the mechanism.** You can see this machine, this project's test regime and this moment's load; a framework distributed to every governed repo cannot. Nothing here names a command, a marker, a tier or a runner — where a decision needs one, naming it is yours.
 
 The dispatch mechanics — worktree isolation, the shared git index, what an isolated agent can and cannot see — are `/prawduct:methodology building` § Delegating Work to Subagents. This guide is the judgment that comes first.
 
-## The goal
+## When to delegate
+
+**Default: delegate when the same work finishes in less wall clock and the delegates will not fight each other.** A plan whose chunks are independent is the ordinary yes. Delegate regardless of the wall clock when **the user asks** (Principle 23), when a well-scoped chunk wants a clean context, or when the main context has grown large enough that the work would be done badly in it.
+
+**Parallel is not automatically faster, and the wall clock to compare is the bounded one.** Three delegates each running the run *you* would do at integration is more machine load and more wall clock than doing it once yourself. This decision is usually made while a build plan is being drawn, before any brief exists — but the bound is a property of the *chunk*, not of the brief, and a chunk's deliverables are already declared. So ask what would prove each chunk on its own. **A chunk you cannot answer that for is not scoped tightly enough to hand to anyone**, which is worth more than the estimate you were trying to make. Plan-time partition is a default, not a commitment: re-check it at dispatch against what the machine is actually doing.
+
+Stay serial when any of these holds:
+
+- **The chunks aren't independent** — one needs another's output, or two touch the same files. Conflict cost is paid at merge, by you, after both delegates have finished being confident.
+- **Briefing costs more than the work.** A brief that runs to tens of thousands of tokens is not worth assembling for a small chunk, and while that is what one costs, it is the honest reason a lot of parallelizable work is done inline.
+- **The project says otherwise.** `project-preferences.md` is where a project records its own delegation policy — including `off`, and including delegation already pre-approved. Read it before fanning out; where it and this guide differ, it wins.
+
+Serial is a decision like any other. Record it either way — "serial, because these three chunks all edit the same module" is an answer; silence is not.
+
+## What a delegate is for
 
 **A delegate verifies what proves its own change, and nothing beyond it.** The coordinator owns integration verification and all governance: the combined run, end-to-end checks, the Critic, reflection, state updates, merges.
-
-**And briefing a delegate must cost less than the work delegated.** Where it doesn't, staying serial is the correct call rather than a failure of nerve. A briefing that runs to tens of thousands of tokens is not worth assembling for a small chunk, and while that is what one costs, it is the honest reason a lot of parallelizable work is done inline.
 
 ## Considerations
 
@@ -18,9 +30,8 @@ Questions, not rules. The answers differ by project, by machine, and by the mome
 - **Who checks the seams between delegates, and when?** Integration is nobody's job unless you make it yours.
 - **What is this machine already doing?** Verification, not editing, is the wall clock. N delegates each running the coordinator's run is N times the load on one box, and the clamps that protect a box from *one* run are per-process — they do not compose across runs.
 - **What in this project's regime is expensive** — in time, in money, in credentials, or in dependence on something nobody here controls — **and does this delegate need any of it?**
-- **Is briefing this delegate cheaper than doing the work inline?**
 
-On that fourth question: a failure in a test that depends on an uncontrolled third party is not a signal about the delegate's change at all. One governed repo paid to learn it — a 403 from a video host failed a gate for a diff touching only that repo's visualization code, and the identical tree passed seven minutes later. Prawduct names the consideration; you decide what it means for your suite.
+On that last question: a failure in a test that depends on an uncontrolled third party is not a signal about the delegate's change at all. One governed repo paid to learn it — a 403 from a video host failed a gate for a diff touching only that repo's visualization code, and the identical tree passed seven minutes later. Prawduct names the consideration; you decide what it means for your suite.
 
 ## Anti-patterns
 

@@ -198,7 +198,19 @@ LAST_MEASURED_TOKENS = {
     # whether a removable class existed — and one did. The ceiling is ratcheted
     # with the cut (4800 -> 4775), so the 25 tokens the audit recovered are
     # given back rather than left as slack for the next edit to spend green.
-    "methodology/building.md": 4761,
+    #
+    # +3 on 2026-08-21 (Critic R-1, same chunk's second pass, 4761 -> 4764). The
+    # permissive "also when chunks are independent and parallelizable" survived
+    # the chunk built to replace it — and that is the line that was in force for
+    # the whole 0.34% measurement, in the file a builder MUST read, while the
+    # default lived only in an on-demand guide the pointer sold as "the
+    # questions worth asking". A coordinator reading this file and stopping got
+    # a permission where R18 says it needs a default. Now it states the default.
+    # Paid for almost entirely in place: the override cases (clean context, large
+    # main context) are content `delegation.md` owns canonically under this
+    # plan's Module Boundaries, so restating them here was the duplication, and
+    # the two paragraphs merged into one, dropping a second pointer lead-in.
+    "methodology/building.md": 4764,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -441,7 +453,32 @@ LAST_MEASURED_TOKENS = {
     # "is a real constraint today", a time-anchor in durable prose against a
     # figure an open backlog item exists to move. Restated as the condition
     # ("while that is what one costs"), which is what stays true either way.
-    "methodology/delegation.md": 1053,
+    #
+    # 1053 -> 1415 on 2026-08-21, and NOT paid for in place: the guide answered
+    # how to delegate well and never whether to delegate at all (owner review at
+    # the plan's post-Chunk-01 checkpoint — it "leaps right into the weeds").
+    # R18 and its ruling are in the discovery artifact. The addition is a
+    # `## When to delegate` section leading the guide: the default, the cases
+    # that override it, the cases that defeat it, the route to the project's own
+    # policy, and the qualifier that a fanned-out plan is only faster once each
+    # delegate's verification is bounded.
+    #
+    # No trim was owed and none was invented. This is an on-demand guide — a
+    # READING, no ceiling — and the decision block above this dict says why:
+    # growth here is the CHEAP growth, paid only by a session that opens the
+    # file, and pricing the cheap destination inverts the incentive that put
+    # this content outside `building.md` in the first place. What was paid in
+    # place is the ~14 tokens of duplication the addition created: the
+    # Considerations list asked "is briefing this delegate cheaper than doing
+    # the work inline?", which the new section now answers as a decision rather
+    # than re-asks as a question.
+    #
+    # +4 in the same pass, from a self-scrub the review did not have to catch:
+    # the preamble promised "states the goal and supplies the considerations"
+    # one screen above a section that states a RULE, so the guide contradicted
+    # itself about its own nature — and the title still named only what a
+    # delegate verifies, after the "when" became what leads the file.
+    "methodology/delegation.md": 1419,
 }
 
 
@@ -1694,6 +1731,57 @@ class TestDelegationGuide:
         assert not tell_less, (
             f"anti-pattern(s) with no tell: {tell_less}. A rule without one is "
             "read afterwards rather than fired at the moment of the error"
+        )
+
+    def test_the_guide_answers_whether_to_delegate_before_how(self):
+        """R18. The guide as first written went straight to how — owner review,
+        2026-08-21: it "leaps right into the weeds".
+
+        The missing piece is a stated DEFAULT, and it is the one thing R3's
+        questions-not-rules framing cannot supply: an agent with no default
+        answers "should I delegate?" by not delegating, which is the measured
+        0.34%. `building.md`'s permissive line was in place for that entire
+        measurement, so a second permissive line is not the fix.
+
+        Order is asserted, not just presence. A "when" section below the brief
+        contract is met after the decision it governs has been made.
+        """
+        assert "## When to delegate" in self.content, "R18's section is gone"
+        assert self.content.index("## When to delegate") < self.content.index(
+            "## What a delegate is for"
+        ), "the when-to-delegate default no longer leads the guide"
+        lower = self.content.lower()
+        assert "wall clock" in lower and "fight each other" in lower, (
+            "the default posture no longer names its two terms (wall clock, and "
+            "delegates not conflicting) — without both it reads as 'delegate more'"
+        )
+        assert "stay serial" in lower, (
+            "the guide states a default with no cases that defeat it, which is "
+            "how a default becomes a mandate"
+        )
+        assert "project-preferences.md" in self.content, (
+            "the guide no longer routes to the project's own policy, so `off` "
+            "and pre-approved have no way to reach the agent making the call"
+        )
+
+    def test_the_wall_clock_comparison_survives_plan_time(self):
+        """The partition decision is drawn with chunk boundaries, before any
+        brief exists — so a qualifier phrased in terms of briefs is unusable at
+        the exact moment it applies. The first draft said "compare the plan as
+        you will actually brief it", which is that defect.
+
+        What makes it work is that the bound is a property of the CHUNK, and a
+        chunk's deliverables are declared. Pinned on the plan-time form of the
+        question, because that is the half a rewrite would drop.
+        """
+        section = self.content.split("## When to delegate", 1)[1].split("\n## ", 1)[0]
+        assert "prove each chunk on its own" in section, (
+            "the wall-clock qualifier no longer states its plan-time form, so it "
+            "cannot be applied where the partition is actually decided"
+        )
+        assert "not scoped tightly enough" in section, (
+            "the guide dropped what an unanswerable chunk MEANS — which is the "
+            "qualifier's second yield and the more useful one"
         )
 
     def test_the_guide_states_the_goal_and_who_owns_integration(self):

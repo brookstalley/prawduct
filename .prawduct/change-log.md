@@ -7,10 +7,20 @@
 
 <!-- prawduct: type=feature | scope=delegation -->
 
-`plugin/methodology/delegation.md` — a sixth `/prawduct:methodology` topic. The goal (a delegate
-verifies what proves its own change and nothing beyond it; the coordinator owns integration and all
-governance), the considerations as questions, seven anti-patterns each with the tell that makes it
-fire, and what a brief must say. It states **no mechanism**: no lease, no slot accounting, no
+`plugin/methodology/delegation.md` — a sixth `/prawduct:methodology` topic. It leads with **when to
+delegate**: the default is to delegate when the same work finishes in less wall clock and the
+delegates will not fight each other, with the cases that override it, the cases that defeat it, and
+the route to the project's own policy. Then what a delegate is for (it verifies what proves its own
+change and nothing beyond it; the coordinator owns integration and all governance), the
+considerations as questions, seven anti-patterns each with the tell that makes it fire, and what a
+brief must say.
+
+**The default is the part that had to exist**, and it arrived by owner review rather than by
+design: the guide as first built answered *how* to delegate and never *whether*, and
+`building.md`'s permissive "when chunks are independent and parallelizable" — in force for the
+entire measurement that found delegation running at 0.34% of 31,220 tool calls — is now that
+default instead. An agent with no default answers "should I delegate?" by not delegating, which is
+the one thing a list of questions cannot fix. It states **no mechanism**: no lease, no slot accounting, no
 framework-defined test tiers, and it names no consumer's command, runner or marker — the
 coordinator can see the machine, the project and the moment's load, and a framework distributed to
 every governed repo cannot. Rulings and the transcript sweep behind them:

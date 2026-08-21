@@ -46,7 +46,10 @@ all rulings recorded there in §7. The verification-ceiling correction itself al
 landed ahead of this plan (`008bd5f0`, `f348922c`) — it was ruled a stop-the-bleeding fix
 and is R17, not a chunk.
 
-Chunk 01 done 2026-08-21: the guide, routing at four sites, the `building.md` pointer.
+Chunk 01 done 2026-08-21, in two passes: the guide, routing at four sites, the `building.md`
+pointer — then reopened at its own checkpoint and amended with **R18**, the default on *whether* to
+delegate, which the first pass had no answer for at all. `building.md`'s permissive line is now that
+default rather than another permission.
 Two rulings landed with it and bind the rest of the plan. **The digest ruling was
 narrowed, not reversed** — `delegation` is named in both always-injected rosters
 (CLAUDE.md and `session-digest.md`), because a roster omitting a live topic is false on
@@ -109,8 +112,10 @@ it is the single easiest thing to violate while writing helpful-sounding prose.
   the file a builder is already required to read. A guide nothing reaches is not a
   deliverable, which is why routing and the pointer land here rather than later.
 - **Depends on:** none
-- **Artifacts consumed:** `delegation-and-verification-cost-discovery.md` §4.1-4.4, §4.8
-- **Deliverables:** new `plugin/methodology/delegation.md` — the goal, the considerations as
+- **Artifacts consumed:** `delegation-and-verification-cost-discovery.md` §4.1-4.4, §4.8;
+  **R18** (added 2026-08-21 at this chunk's own checkpoint — see below)
+- **Deliverables:** new `plugin/methodology/delegation.md` — **when to delegate and when to stay
+  serial (R18)**, what a delegate is for, the considerations as
   questions, the seven anti-patterns each with its tell, the qualitative brief contract;
   routing in `plugin/skills/methodology/SKILL.md` at **four sites** (frontmatter
   `description`, `argument-hint`, the topic list, the phase list); a pointer in
@@ -129,6 +134,15 @@ it is the single easiest thing to violate while writing helpful-sounding prose.
   definitions another file owns) and give back what you find. Do not fund the pointer by
   moving existing prose into the new guide — that is the *"never fund a budget by moving
   prose between files"* rule, and it would make the raise retroactively unearned.
+- **Amended 2026-08-21, mid-chunk, by the checkpoint below doing its job.** The guide as first
+  built answered *how* to delegate and never *whether* — it went straight to the verification
+  contract. R18 (a stated default, the cases that defeat it, and the route to
+  `project-preferences.md`) is the fix, and it amends R3's questions-not-rules framing at one
+  point: a default is a rule, and it is the one thing questions cannot supply, because an agent
+  with no default answers "should I delegate?" by not delegating. **This is the second time the
+  permissive-line approach has been tried** — `building.md`'s "when chunks are independent and
+  parallelizable" was in force for the whole 0.34% measurement — so R18 is a default, not another
+  permission. Its plan-time form is Chunk 02's to carry.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
@@ -222,6 +236,10 @@ is the honest test of whether it is any good.
 
 - **After Chunk 01:** confirm the guide reads as considerations rather than rules. If it has
   become a procedure, that is the design failing quietly and it is cheapest to catch here.
+  **Fired, 2026-08-21, and caught the opposite defect** — not procedure but *incompleteness*: the
+  guide answered how and never whether. Worth recording, because the checkpoint was written to look
+  for one failure and its value was catching a different one. A checkpoint that names a specific
+  failure still has to be read as "is this good", or it only ever finds what it was told to expect.
 - **After Chunk 03:** the only code on the branch, and it sits on the path every governed
   repo's Stop hook runs. Confirm an ordinary record is untouched.
 - **Chunk 03 is independent** of 01, 02 and 04 and closes a hole that is live today. If this
