@@ -303,6 +303,84 @@ class TestUnreadableFilesAreNotSilentlySkipped:
         assert [e for e in plan["edits"] if e["kind"] == "freeze-notes"] == []
 
 
+class TestUnscopedPlansAreReportedWithoutBeingGraded:
+    """A plan with no `scope:` is a coverage statement, not a failure.
+
+    The first version of this delivered the fact on the `unreadable` channel,
+    where three consumers already meant something else by it: the CLI prints
+    "could not read", both exit-code expressions treat the list as fatal, and
+    `/prawduct:doctor` turns it into **degraded**. Since `--apply` does not add
+    `scope:` keys, that pinned any repo holding one at degraded forever — a
+    control that can never go quiet, which is the property this fact's own
+    opt-out rule exists to disqualify.
+    """
+
+    #: A real build plan by every signal except the one the scan keys on.
+    UNSCOPED = "---\nartifact: build-plan\n---\n\n## Status\n\n- [ ] Chunk 01: a\n"
+
+    def _repo_with_an_unscoped_plan(self, tmp_path: Path) -> Path:
+        repo = _make_repo(tmp_path, state="project: demo\n")
+        (repo / ".prawduct" / "artifacts" / "build-plan-mystery.md").write_text(
+            self.UNSCOPED, encoding="utf-8"
+        )
+        return repo
+
+    def test_it_lands_on_its_own_key(self, tmp_path: Path) -> None:
+        repo = self._repo_with_an_unscoped_plan(tmp_path)
+        plan = lifecycle_repair.plan_repair(repo)
+        assert [Path(p).name for p in plan["unscoped"]] == ["build-plan-mystery.md"]
+
+    def test_it_is_not_on_the_unreadable_channel(self, tmp_path: Path) -> None:
+        """The regression this class exists for. `unreadable` is fatal and
+        doctor-graded; a file that decodes fine must never reach it."""
+        repo = self._repo_with_an_unscoped_plan(tmp_path)
+        assert lifecycle_repair.plan_repair(repo)["unreadable"] == []
+
+    def test_a_repo_without_one_reports_an_empty_key(self, tmp_path: Path) -> None:
+        """Without this the assertion above passes on a list that is never
+        empty, and the key would state nothing."""
+        repo = _make_repo(tmp_path, state="project: demo\n")
+        assert lifecycle_repair.plan_repair(repo)["unscoped"] == []
+
+
+class TestStaleStatusReportsSeeUnscopedPlans:
+    """Whether a plan carries a stale derived-Status instruction has nothing to
+    do with whether it declares a `scope:` — that key ties an entry to a
+    change-log scope. Walking only the keyed plans left a plan that needs a
+    human's eye invisible to the check whose whole job is to name it."""
+
+    def test_an_unscoped_plan_with_a_derived_status_note_is_named(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _make_repo(tmp_path, state="project: demo\n")
+        # The marker is the RETIRED FLAG's name inside the Status section —
+        # position plus the flag, never prose-sniffing. Copied from the shape
+        # the sibling tests in this file use, so the fixture cannot pass by
+        # matching something the production predicate does not look for.
+        plan = (
+            "---\nartifact: build-plan\n---\n\n## Status\n\n"
+            "<!-- Derived view (`views_enabled: true`). Do not hand-edit — add a "
+            "tagged change-log entry instead. -->\n\n"
+            "- [ ] Chunk 01: unfinished\n"
+        )
+        assert lifecycle_repair.plan_comment_findings(plan), (
+            "the fixture must carry a note the repair actually detects, or this "
+            "test passes on a plan that was never a candidate"
+        )
+        path = repo / ".prawduct" / "artifacts" / "build-plan-mystery.md"
+        path.write_text(plan, encoding="utf-8")
+
+        # `ARTIFACTS_REL` already carries the `.prawduct/` segment — the same
+        # form the CLI uses. Joining it under `.prawduct/` again yields a
+        # directory that does not exist, and the walk answers [] for a missing
+        # directory, so the wrong path reads exactly like "nothing found".
+        reports = lifecycle_repair.stale_status_reports(
+            repo / lifecycle_repair.ARTIFACTS_REL
+        )
+        assert [Path(r["path"]).name for r in reports] == ["build-plan-mystery.md"]
+        assert reports[0]["chunks"] == ["Chunk 01: unfinished"]
+
+
 class TestRetiredFlagGuard:
     """GD2 — the flag coming back, typically by copying an older state file."""
 

@@ -627,15 +627,19 @@ def plan_repair(project_dir: str | Path) -> dict:
     unreadable.extend(plan_index.unreadable_candidates(artifacts_dir))
     # Same question, second answer the walk cannot give: a plan declaring no
     # `scope:` is not yielded either, so the loop below never sees it and
-    # "nothing to change" would report it as converged. Reported alongside the
-    # undecodable ones because the operator's question is the same — what did
-    # this sweep not look at — even though the two causes differ.
-    unscoped = [
-        {"path": str(path), "reason": "declares no frontmatter `scope:`, so the "
-         "plan scan does not yield it and this repair did not read it"}
-        for path in buildplan_refs.plans_missing_scope(artifacts_dir)
-    ]
-    unreadable.extend(unscoped)
+    # "nothing to change" would report it as converged.
+    #
+    # **Its own key, and that is the whole point of this comment.** The first
+    # version put these on `unreadable`, which three consumers already read as
+    # something else: the CLI prints "could not read <path> — it was left alone
+    # and not checked" (false about a file that decodes fine), both exit-code
+    # expressions treat the list as fatal, and `/prawduct:doctor` turns a
+    # non-empty list into **degraded**. A repo with an unscoped plan would then
+    # be permanently degraded by a repair that cannot fix it, because
+    # `--apply` does not add `scope:` keys — a control that can never go quiet,
+    # which is exactly the property this fact's own opt-out rule disqualifies.
+    # Diagnostic, therefore: reported, never graded, never fatal.
+    unscoped = [str(path) for path in buildplan_refs.plans_missing_scope(artifacts_dir)]
     for plan_path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir):
         try:
             content = _read_preserving_newlines(plan_path)
@@ -660,7 +664,7 @@ def plan_repair(project_dir: str | Path) -> dict:
                     "removals": removals,
                 }
             )
-    return {"status": "ok", "edits": edits, "unreadable": unreadable}
+    return {"status": "ok", "edits": edits, "unreadable": unreadable, "unscoped": unscoped}
 
 
 def apply_repair(project_dir: str | Path, plan: dict) -> dict:

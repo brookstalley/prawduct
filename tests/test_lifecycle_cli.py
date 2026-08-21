@@ -214,6 +214,57 @@ class TestUnreadableFilesChangeTheVerdict:
         assert payload["unreadable"][0]["path"].endswith("build-plan-bad.md")
 
 
+class TestUnscopedPlansDoNotChangeTheVerdict:
+    """The assertion that would have caught the regression.
+
+    `unreadable` means "could not run" and is exit 1, and `/prawduct:doctor`
+    grades a non-empty list **degraded**. Delivering the unscoped-plan fact on
+    that channel made a repo holding one permanently degraded by a repair that
+    cannot fix it — `--apply` does not add `scope:` keys. The fact is
+    diagnostic; it gets its own key, its own sentence, and no verdict.
+    """
+
+    UNSCOPED = "---\nartifact: build-plan\n---\n\n## Status\n\n- [ ] Chunk 01: a\n"
+
+    def _repo(self, tmp_path: Path) -> Path:
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
+        (project / ".prawduct" / "artifacts" / "build-plan-mystery.md").write_text(
+            self.UNSCOPED, encoding="utf-8"
+        )
+        return project
+
+    def test_a_dry_run_still_exits_zero(self, tmp_path: Path) -> None:
+        proc = _run(self._repo(tmp_path), "lifecycle-repair")
+        assert proc.returncode == 0, proc.stderr
+
+    def test_an_apply_still_exits_zero(self, tmp_path: Path) -> None:
+        """The other exit-code expression — the first fix missed one of the two."""
+        proc = _run(self._repo(tmp_path), "lifecycle-repair", "--apply")
+        assert proc.returncode == 0, proc.stderr
+
+    def test_it_is_named_without_claiming_the_file_was_unreadable(
+        self, tmp_path: Path
+    ) -> None:
+        proc = _run(self._repo(tmp_path), "lifecycle-repair")
+        assert "build-plan-mystery.md" in proc.stdout
+        assert "declare no `scope:`" in proc.stdout
+        assert "could not read" not in proc.stdout + proc.stderr
+
+    def test_json_keeps_the_two_channels_apart(self, tmp_path: Path) -> None:
+        payload = json.loads(_run(self._repo(tmp_path), "lifecycle-repair", "--json").stdout)
+        assert [Path(p).name for p in payload["unscoped"]] == ["build-plan-mystery.md"]
+        assert payload["unreadable"] == []
+
+    def test_a_repo_without_one_says_nothing(self, tmp_path: Path) -> None:
+        """Without this the assertions above pass on a line that always prints."""
+        # One repo, two invocations — `_repo` mkdirs and cannot be called twice
+        # against the same tmp_path.
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
+        assert "declare no `scope:`" not in _run(project, "lifecycle-repair").stdout
+        payload = json.loads(_run(project, "lifecycle-repair", "--json").stdout)
+        assert payload["unscoped"] == []
+
+
 class TestPlanBackfillCommand:
     def test_dry_run_moves_nothing(self, tmp_path: Path) -> None:
         project = _repo(tmp_path, plan=PLAN_COMPLETE)

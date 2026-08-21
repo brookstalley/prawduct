@@ -5508,6 +5508,7 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                         for edit in plan["edits"]
                     ],
                     "unreadable": plan["unreadable"],
+                    "unscoped": plan["unscoped"],
                     "retired_flag": guard,
                     "plans_to_review": [
                         {"path": str(r["path"]), "chunks": r["chunks"]} for r in stale
@@ -5568,6 +5569,18 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                 print(f"    {_plan_label(report['path'], Path(project_dir) / '.prawduct')}")
                 for chunk in report["chunks"]:
                     print(f"      - {chunk}")
+        # Diagnostic, and deliberately NOT on the `unreadable` channel: these
+        # files decode fine, the repair has nothing to do to them, and folding
+        # them in would make the CLI say "could not read", exit 1, and drive
+        # `/prawduct:doctor` to a degraded verdict that `--apply` can never
+        # clear. Stated so the sweep's silence is not read as coverage.
+        if plan["unscoped"]:
+            print(f"  {len(plan['unscoped'])} plan(s) declare no `scope:`, so the "
+                  "plan scan does not yield them and this repair did not read "
+                  "them. Nothing here needs repairing — it is stated so "
+                  "'nothing to change' is not read as 'everything was checked':")
+            for path in plan["unscoped"]:
+                print(f"    {_plan_label(Path(path), Path(project_dir) / '.prawduct')}")
         for item in plan["unreadable"]:
             print(f"  could not read {item['path']} ({item['reason']}) — it was "
                   f"left alone and not checked", file=sys.stderr)

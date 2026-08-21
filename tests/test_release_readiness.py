@@ -677,6 +677,48 @@ class TestPlanCoverageIsReportedNotFatal:
         assert "no build-plan file" in err
         assert "alpha" in err
 
+    def test_an_unscoped_plan_caveats_the_sentence_without_moving_the_verdict(
+        self, tmp_path, capsys
+    ):
+        """The warning was flatly FALSE for an unscoped plan, not merely thin.
+
+        The map is keyed on frontmatter `scope:`, so a perfectly good plan that
+        omits the key is absent from it — and the gate then told an operator
+        that work is shipping undocumented about a plan sitting in the same
+        directory. This is the v3.3.4 recurrence exactly.
+
+        The verdict does not move, and that is deliberate: which scope an
+        unscoped plan belongs to is precisely what nothing here can know, so
+        suppressing the warning would trade a false positive for a false
+        negative.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+        )
+        _write(
+            project / ".prawduct" / "artifacts" / "build-plan-mystery.md",
+            "---\nartifact: build-plan\n---\n\n## Status\n\n- [ ] Chunk 01: a\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+        err = capsys.readouterr().err
+        assert "no build-plan file" in err, "the warning itself must survive"
+        assert "declare no `scope:`" in err, "and it must say the lookup was partial"
+
+    def test_without_one_the_sentence_carries_no_caveat(self, tmp_path, capsys):
+        """Without this the assertion above passes on a clause that always
+        prints, and a caveat that never goes quiet is one nobody reads."""
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+        err = capsys.readouterr().err
+        assert "no build-plan file" in err
+        assert "declare no `scope:`" not in err
+
     def test_an_archived_plan_counts_as_coverage(self, tmp_path, capsys):
         project = _make_project(
             tmp_path,
