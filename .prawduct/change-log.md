@@ -3,6 +3,26 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-21: one place knows what a finding's title is called
+
+<!-- prawduct: type=fix | scope=delegation -->
+
+The same sentence travels a review pipeline under three keys — `name` in a reviewer's partial,
+`title` once consolidation writes the review fact, `summary` again in the derived
+`.critic-findings.json` a human reads. Every reader downstream of a rename re-derived that chain
+itself, and five comments pointing at each other were the only thing carrying the contract. That is
+a countdown, not a redundancy: the reader that forgets writes `title: null` into the record a
+disposition is checked against, which had already happened once.
+
+`evidence.finding_title()` is now the one place the aliases are known, and the three readers in
+`dispositions.py` and `critic_consolidate.py` call it. **Deliberately additive.** Keeping the key
+stable at the projection would have been the deeper repair, but `.critic-findings.json`'s `summary`
+is a published shape with consumers outside the module, so the accessor closes the alias class
+without moving anything a consumer reads.
+
+Found by the Chunk 04 cumulative review (R-8) rather than by the delegation work itself; it ships
+here because that is the review that caught it.
+
 ## 2026-08-21: a project can say how it delegates, in its own words
 
 <!-- prawduct: type=feature | scope=delegation -->
@@ -140,7 +160,7 @@ two paragraphs down. The ceiling did not move, and the file is back to one token
 
 <!-- prawduct: type=feature | scope=delegation -->
 
-`plugin/methodology/delegation.md` — a sixth `/prawduct:methodology` topic. It leads with **when to
+`plugin/methodology/delegation.md`, which `/prawduct:methodology delegation` opens. It leads with **when to
 delegate**: the default is to delegate when the same work finishes in less wall clock and the
 delegates will not fight each other, with the cases that override it, the cases that defeat it, and
 the route to the project's own policy. Then what a delegate is for (it verifies what proves its own
