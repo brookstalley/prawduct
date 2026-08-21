@@ -4308,3 +4308,23 @@ The three cuts that shipped were re-checked against this and survive it — a de
 handoff notes, and the retained tells and acting rules stayed. But the class as previously stated is
 unsound, and it will be reached for again: it is the cheapest funding move in the repo, and this
 feature exists to produce *more* delegates. Enumerate who opens the file before crediting the cut.
+
+## Adding the right rule is not the same act as deleting the wrong one
+
+2026-08-21, delegation Chunk 01, second pass. The whole feature exists because delegation runs at
+0.34% of 31,220 tool calls, and the proximate cause is a permissive line in
+`methodology/building.md`: *"also when chunks are independent and parallelizable…"* — a permission
+where the design calls for a default.
+
+I wrote the default into the new on-demand guide, added a pointer to that guide **into the same
+paragraph as the permissive line**, and left the permissive line alone. `building.md` is mandatory
+reading before code; the guide is opt-in, and my pointer described it as "the questions worth
+asking" — the exact framing the new default was ruled an exception to. A coordinator reading the
+mandatory file and stopping got the *unchanged* 0.34%-era instruction. The Critic caught it (R-1).
+
+The mechanics of the miss are worth keeping. This was not a surface I failed to open — I edited
+that paragraph in the same commit. The diff showed me touching it, my attention was on the sentence
+I was adding, and the sentence directly above it read as background. **Editing a paragraph is not
+reviewing it.** When a change exists because some existing statement was wrong, the change is not
+done until you have named that statement and removed or replaced it; writing the correct rule
+somewhere else leaves two rules standing, and readers obey the one they reach first.
