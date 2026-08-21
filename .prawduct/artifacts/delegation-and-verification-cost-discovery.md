@@ -323,8 +323,17 @@ partition-and-disclose prompt at the point a plan is drawn and presented.
 - **R14** A working practice can be promoted to a ratified preference in one step.
 - **R15** No new artifact file class: guidance is a methodology guide, policy is preference prose.
 
-**Open**
-- **R16** *(pending ruling — §7.9)* A verification record can say it was degraded.
+**Honest verification** *(ruled in scope — §7.9)*
+- **R16** A verification record can say it was degraded, rather than recording a green a contended
+  run did not earn.
+  **Design note, unresolved and it shapes the chunk:** junit carries a *reported* test count and no
+  notion of *collected*, so "compare collected to reported" is not available from the report alone.
+  Three shapes: compare against the last recorded count for the same suite and flag a drop
+  (cheap, noisy on legitimate test-count changes); parse the runner's summary text (per-runner, and
+  prawduct does not want per-runner knowledge — §6); or let the record simply *carry* a degraded
+  flag the coordinator sets when it observes one. The third is the smallest and the most consistent
+  with §7.6 — the framework's record gains the vocabulary, the coordinator supplies the
+  observation — and it is the builder's recommendation.
 
 **Landed**
 - **R17** ✅ `building.md`'s "run the full suite before and after" replaced with a verification
@@ -364,11 +373,13 @@ Owner rulings, 2026-08-21, with the alternatives so they are not relitigated.
    regimes differ and prawduct cannot know them in advance.
 8. **RULED: `building.md`'s ceiling may rise to 4800** to carry the verification-ceiling rule's
    *why*. Scoped to this feature; the standing prefer-trimming-over-bumping posture is unchanged.
-9. **OPEN — is the evidence record inside the line?** R16 is a mechanism, but over prawduct's *own*
-   artifact rather than a consumer's test system: `.test-evidence.json` can today record a green for
-   a run that silently dropped half its tests (§2.4), and no guidance to a coordinator can fix a
-   record the framework owns. The alternative is an anti-pattern only — "a green from a contended box
-   may be a lie" — which informs but cannot detect.
+9. **RULED: the record the framework owns is inside the line.** R16 stands. The boundary is
+   ownership, not mechanism-vs-guidance: `.test-evidence.json` is prawduct's artifact, it can today
+   record a green for a run that silently dropped half its tests (§2.4), and no guidance to a
+   coordinator can fix a record the framework owns. Everything touching a *consumer's* test system
+   stays guidance.
+10. **RULED: `plugin/methodology/delegation.md` is the home**, as a sixth `/prawduct:methodology`
+   topic (§4.8).
 
 ## 8. Assumptions
 
