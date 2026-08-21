@@ -33,6 +33,7 @@ prawduct/
 │   │   ├── planning.md                # How to design artifacts and decompose into chunks
 │   │   ├── building.md                # The build cycle, including the Critic review cycle
 │   │   ├── reflection.md              # The learning loop
+│   │   ├── delegation.md              # What a delegate verifies, and what a brief must say
 │   │   └── session-digest.md          # SessionStart additionalContext digest
 │   ├── docs/                          # principles.md (the 26), norms.md, waivers.md,
 │   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md, examples/

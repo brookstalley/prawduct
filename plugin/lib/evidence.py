@@ -609,6 +609,31 @@ def findings_index(read_result: dict) -> dict[tuple[str, str], dict]:
     return index
 
 
+def finding_title(finding: dict, default: str = "") -> str:
+    """A finding's one-line statement, whichever layer's name it is carrying.
+
+    The same sentence travels under three keys: ``name`` in a reviewer's
+    partial, ``title`` once consolidation writes the review fact, and
+    ``summary`` again in the derived `.critic-findings.json` a human reads.
+    Every reader downstream of a rename used to re-derive the chain itself, and
+    the compensations were the only thing carrying the contract — five of them,
+    each a comment pointing at the last. That is not a redundancy, it is a
+    countdown: the reader that forgets writes ``title: null`` into the record
+    someone checks a disposition against, which it has already done once.
+
+    This is the one place the aliases are known. Deliberately additive rather
+    than a schema fix — keeping the key stable at the projection would have been
+    the deeper repair, but `.critic-findings.json`'s ``summary`` is a published
+    shape with consumers outside this module, so the accessor closes the class
+    without moving anything a consumer reads.
+    """
+    for key in ("title", "summary", "name"):
+        value = finding.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return default
+
+
 def has_fact(project_dir: Path, kind: str, fact_id: str) -> bool:
     """True if a fact with this (kind, id) is already in the store — the
     idempotency probe consolidation uses before appending (CRT-4B7X)."""

@@ -3,6 +3,196 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-21: one place knows what a finding's title is called
+
+<!-- prawduct: type=fix | scope=delegation -->
+
+The same sentence travels a review pipeline under three keys — `name` in a reviewer's partial,
+`title` once consolidation writes the review fact, `summary` again in the derived
+`.critic-findings.json` a human reads. Every reader downstream of a rename re-derived that chain
+itself, and five comments pointing at each other were the only thing carrying the contract. That is
+a countdown, not a redundancy: the reader that forgets writes `title: null` into the record a
+disposition is checked against, which had already happened once.
+
+`evidence.finding_title()` is now the one place the aliases are known, and the three readers in
+`dispositions.py` and `critic_consolidate.py` call it. **Deliberately additive.** Keeping the key
+stable at the projection would have been the deeper repair, but `.critic-findings.json`'s `summary`
+is a published shape with consumers outside the module, so the accessor closes the alias class
+without moving anything a consumer reads.
+
+Found by the Chunk 04 cumulative review (R-8) rather than by the delegation work itself; it ships
+here because that is the review that caught it.
+
+## 2026-08-21: a project can say how it delegates, in its own words
+
+<!-- prawduct: type=feature | scope=delegation -->
+
+The delegation guide states one default and a set of considerations, and stops there on purpose:
+prawduct cannot know a consumer's test regime, so it does not invent one. That leaves a gap the
+sweep measured exactly — the right rule was stated by the owner three times, in three sessions, and
+never became durable anywhere. `project-preferences.md` now has the three rows it should have
+landed in, and `/prawduct:doctor` has the route from a practice a repo already runs to a row the
+next session reads.
+
+**The rows are prose, not a schema.** `Delegation` says how much this project wants fanned out and
+what for — `off` is a complete answer, honoured without ceremony. `Delegate verification` says what
+a delegate here may run to prove its own change and what it must leave to the coordinator's
+integration run, in the project's own words. `Delegation approval` is where a durable yes lands, and
+it is what stops the partition ask returning with every plan.
+
+**The proposal is derived from the repo or it is not made.** Health Check #18 reads what the repo
+already encodes about running part of its suite rather than all of it, quotes the repo's own names,
+and says which file each came from — so the owner checks a claim instead of trusting a summary.
+Where it finds nothing it proposes nothing: a proposal that fires everywhere carries no information,
+and `docs/norms.md` already names the cost from this repo's own orphan-term hook — a probe that
+misfires trains its reader to ignore the one real catch. Run against three real repos while
+building it, the same check produced a staged runner's own stage names in one, CI jobs that run
+subsets in another, and silence in the third.
+
+**It grades nothing, and that is the design rather than an omission.** A project is free to run on
+the framework default, so an absent policy is not a defect; a check that reported `degraded` until
+you delegated would have mandated delegation through the grading system, which is out of scope by
+ruling. Check #17 is the standing precedent for a recommendation that never touches the
+classification.
+
+**The rows are written for repos that already exist, not only for the next onboard.**
+`project-preferences.md` is scaffolded once and never regenerated, so a template addition reaches a
+repo that onboards after it and no other — the same reach gap that put Health Check #14 in this
+file. The promotion flow adds the rows when they are absent, which is what an already-onboarded repo
+has.
+
+**Doctor now has two flows that write, and the sentences saying it had one are corrected rather than
+left true-sounding.** The count was never the invariant. What survives verbatim, and is now stated
+as the skill-level rule both flows obey: doctor writes only what the owner confirmed, only into
+`.prawduct/` governance state, never product code. One confirmation covers the whole set — per-row
+prompting is refused here for the same reason Lifecycle Convergence refuses it, because
+confirmation fatigue is itself a safety regression.
+
+**No Enforcement row ships with the template.** That table is the product's norm index and it ships
+empty by design: a populated row is a homed norm, so shipping one would claim a registry every new
+product has ratified nothing into. A filled delegation row takes `Critic` (prose policy is
+judgment-required, so nothing mechanical can grade it) with `janitor` as its audit home, and gets
+its row when the owner ratifies it.
+
+## 2026-08-21: the record can say a run was degraded
+
+<!-- prawduct: type=feature | scope=delegation -->
+
+`.prawduct/.test-evidence.json` could record a green for a run that silently dropped part of its
+suite. A test worker that dies under contention is typically not re-queued and does not fail the
+run: the process exits 0 and reports a plausible total, so nothing in the counts separates it from
+a clean pass and every gate downstream believes it. The evidence record now has the vocabulary to
+say otherwise — an optional **`degraded`** field carrying the reason, set by
+`test-evidence record --degraded "<what did not report>"`.
+
+**The record carries the observation; it does not derive it.** A JUnit report has a *reported*
+count and no notion of what was *collected*, so the comparison that would catch this is not
+available from the report. Comparing against the last recorded count is noisy on every legitimate
+test-count change, and parsing a runner's summary text needs per-runner knowledge the framework
+deliberately refuses to hold. The coordinator can see the box; it supplies what it saw. This is the
+boundary the design draws throughout: everything touching a consumer's test system stays guidance,
+and the record prawduct owns is inside the line — no guidance to a coordinator can fix a record the
+framework owns.
+
+**Presence is the flag**, so a degraded record cannot exist without saying why, and a blank reason
+is refused by the schema rather than ignored — a reader that skipped it would read the run as
+clean, which is the outcome the field exists to prevent. An ordinary record omits the key entirely
+(never `false`), which is what keeps every record written before the field existed behaving exactly
+as it did.
+
+Both evidence readers refuse a degraded record, in one shared body: a run that dropped part of its
+suite is not evidence for "may this session stop re-running the suite" and not evidence for "did a
+run ever meet this tree" either, so session-freshness and the base-advance transfer have to agree,
+and refusing in the prologue they share is what makes them. `--no-rerun` **carries the flag
+forward** — a restamp reuses the prior counts and so inherits what they failed to cover; without
+that, one command that runs nothing would launder a degraded record clean. Only a real run clears
+it, which is also the escape that keeps the field from being a trap.
+
+**A degraded record is schema-valid and gate-refused**, which is the sharpest place those two
+verdicts part company: `validate-evidence` accepts it — it is a schema check, and rejecting a
+well-formed record would answer a question nobody asked — but names the flag in its output so no
+caller reads the record as healthy. The `record` summary line does the same, because counts print
+identically whether or not the run covered the suite, and that typographic identity is the surface
+the flag exists to correct.
+
+`plugin/methodology/delegation.md`'s **unattributable green** anti-pattern now carries the route.
+It was the one anti-pattern in that list whose remedy was not a judgment call, and a coordinator
+who caught themselves accepting an unattributable green had nowhere to go.
+
+## 2026-08-21: the delegation question arrives where the coordinator already stops
+
+<!-- prawduct: type=feature | scope=delegation -->
+
+Guidance-only is what already failed — `building.md` has said "when chunks are independent and
+parallelizable" the whole time, and delegation ran at 0.34% of 31,220 tool calls. So the question
+moves to where the coordinator is **already stopping**, which is the load-bearing bet of this whole
+design and is falsifiable: re-run the transcript sweep in a few build cycles and it answers
+directly.
+
+`plugin/methodology/planning.md` gains **`### Partition: Serial or Delegated`**, inside Build
+Planning, because chunk boundaries are the last moment before any brief exists at which the whole
+partition is visible at once. Its plan-time form of the question is *what would prove this chunk on
+its own?* — the verification bound is a property of the chunk rather than of a brief, and a chunk
+nobody can answer for is not scoped tightly enough to hand to anyone, which is a finding about the
+chunk and worth more than the estimate it replaces.
+
+The decision is **recorded either way**, in a new plan-level `partition:` frontmatter field that
+`plugin/templates/build-plan.md` now carries filled in. "Serial, because X" is an answer; what the
+field catches is not serial work but *unexamined* work.
+
+**Disclosure and consent are deliberately asymmetric**, because informing is cheap and asking costs
+a round-trip. A plan that will delegate discloses how many delegates, isolated worktrees or the
+shared one, what each touches and what they will not do — carrying what varies between plans,
+since a disclosure that could be copy-pasted from the last one stops being read. Approval is asked
+only on one of **four enumerated reasons**, against three standing negatives, and absent a listed
+reason the plan discloses and proceeds. The closure is the point: an agent resolving a vague
+condition asks defensively every time, which is the cost the asymmetry exists to avoid. On a yes,
+the offer to promote it to a `project-preferences.md` row lands at the one moment the answer is
+fresh.
+
+`building.md` takes the second placement the requirement names — a **chunk close** — since it is
+the only file a coordinator reads there. Its delegation section re-raises the partition question
+and names the field; the *why* stays in the guide it already points at. Paid for in place: "then
+the combined suite and Critic" was a third statement of what "What stays in the main agent" owns
+two paragraphs down. The ceiling did not move, and the file is back to one token of headroom.
+
+## 2026-08-21: delegation becomes a guide an agent can reach
+
+<!-- prawduct: type=feature | scope=delegation -->
+
+`plugin/methodology/delegation.md`, which `/prawduct:methodology delegation` opens. It leads with **when to
+delegate**: the default is to delegate when the same work finishes in less wall clock and the
+delegates will not fight each other, with the cases that override it, the cases that defeat it, and
+the route to the project's own policy. Then what a delegate is for (it verifies what proves its own
+change and nothing beyond it; the coordinator owns integration and all governance), the
+considerations as questions, seven anti-patterns each with the tell that makes it fire, and what a
+brief must say.
+
+**The default is the part that had to exist**, and it arrived by owner review rather than by
+design: the guide as first built answered *how* to delegate and never *whether*, and
+`building.md`'s permissive "when chunks are independent and parallelizable" — in force for the
+entire measurement that found delegation running at 0.34% of 31,220 tool calls — is now that
+default instead. An agent with no default answers "should I delegate?" by not delegating, which is
+the one thing a list of questions cannot fix. It states **no mechanism**: no lease, no slot accounting, no
+framework-defined test tiers, and it names no consumer's command, runner or marker — the
+coordinator can see the machine, the project and the moment's load, and a framework distributed to
+every governed repo cannot. Rulings and the transcript sweep behind them:
+`.prawduct/artifacts/delegation-and-verification-cost-discovery.md` §6-7.
+
+Routing lands at all four sites of `skills/methodology/SKILL.md` at once — the frontmatter
+description, the argument-hint, the topic list and the overview's phase list — because a
+three-of-four edit is the predictable miss and each omission fails differently and quietly. A test
+now asserts the four per topic rather than searching the file for the word.
+
+**The budget note is the part worth reading.** `building.md`'s ceiling had been raised 4718 → 4800
+earlier on this branch, to buy the verification-ceiling rule its *why*, without first auditing for a
+removable class — which the standing learning requires ("cut the class, not the words; what looks
+unaffordable is usually history"). The audit was run here and found one: rules the always-injected
+session digest states in full, restated in `building.md` beyond the part only that file owns. Three
+instances, checked per item rather than assumed, gave back 53 tokens; the pointer to the new guide
+spent 40. The ceiling is **ratcheted 4800 → 4775** with the cut, because slack left behind is a loan
+the next edit collects silently and green.
+
 ## 2026-08-20: v3.4.0 is cut, and develop reopens on 3.4.1-dev
 
 <!-- prawduct: type=chore | scope=release-v3.4.0 -->

@@ -28,8 +28,10 @@ HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 DIGEST_HOOK = ROOT / "hooks" / "digest.py"
 DIGEST_SRC = ROOT / "methodology" / "session-digest.md"
 
-# The four methodology guides, read via `/prawduct:methodology <topic>`.
-PHASES = ("building", "discovery", "planning", "reflection")
+# The methodology guides, read via `/prawduct:methodology <topic>`. `delegation`
+# joined on 2026-08-21; `principles` and `norms` are deliberately absent — they
+# route to `docs/`, not to a guide, and the overview list below names phases.
+PHASES = ("building", "discovery", "planning", "reflection", "delegation")
 
 # Claude Code spills additionalContext over this many characters to a file
 # instead of injecting it inline. The digest must stay comfortably under it.
@@ -333,7 +335,7 @@ class TestDigestWiring:
 class TestReaderSkills:
     """prose-diet Chunk 03 folded the four thin delegator skills
     (skills/{building,discovery,planning,reflection}) into the methodology
-    index — one reader skill, four canonical guides, zero duplicate routing
+    index — one reader skill, the canonical guides, zero duplicate routing
     surfaces. These tests pin the folded shape."""
 
     def test_methodology_index_has_description_frontmatter(self):
@@ -359,6 +361,49 @@ class TestReaderSkills:
         ref = f"${{CLAUDE_SKILL_DIR}}/../../methodology/{phase}.md"
         assert ref in text, f"methodology index must read the canonical {ref}"
         assert (ROOT / "methodology" / f"{phase}.md").is_file()
+
+    def test_every_guide_is_named_at_all_four_routing_sites(self):
+        """A topic is reachable only if all four surfaces name it.
+
+        The index routes from four independent places — the frontmatter
+        `description` and `argument-hint` (which is what a user sees before
+        typing, and what the model matches on), the topic list the skill body
+        dispatches from, and the overview's phase list (the only surface an
+        agent that ran `/prawduct:methodology` bare will read). Adding a topic
+        to three of the four is the predictable miss, and each omission fails
+        differently: a missing `description` entry loses model invocation, a
+        missing `argument-hint` entry loses discoverability, a missing topic-list
+        line loses dispatch, and a missing overview line loses the agent who
+        never passed an argument. Nothing else notices any of them, which is why
+        this is asserted per site rather than by a single substring search over
+        the file.
+        """
+        text = (ROOT / "skills" / "methodology" / "SKILL.md").read_text(encoding="utf-8")
+        front, body = text.split("---", 2)[1], text.split("---", 2)[2]
+        sites = {
+            "frontmatter description": [
+                ln for ln in front.splitlines() if ln.startswith("description:")],
+            "argument-hint": [
+                ln for ln in front.splitlines() if ln.startswith("argument-hint:")],
+            "topic list": [
+                ln for ln in body.splitlines()
+                if ln.startswith("- `") and "→" in ln],
+            "overview phase list": [
+                ln for ln in body.splitlines()
+                if ln.startswith("- `/prawduct:methodology ")],
+        }
+        for site, lines in sites.items():
+            assert lines, f"the {site} routing site is gone from methodology/SKILL.md"
+        missing = [
+            f"{phase} @ {site}"
+            for phase in PHASES
+            for site, lines in sites.items()
+            if not any(phase in ln for ln in lines)
+        ]
+        assert not missing, (
+            "methodology/SKILL.md does not name every guide at every routing "
+            f"site: {missing}"
+        )
 
     def test_index_routes_to_principles(self):
         text = (ROOT / "skills" / "methodology" / "SKILL.md").read_text(encoding="utf-8")

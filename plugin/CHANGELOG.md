@@ -10,12 +10,32 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.4.1-dev
+## v3.4.1-dev.2
 
 **Prerelease under test — this build is the develop branch ahead of the next release.** The version
 says so wherever it appears, so a repo pinned to the develop ref can tell what it is running, and a
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
+
+**Delegation has a guide, a default, and a place to record what your project decided.**
+`/prawduct:methodology delegation` opens it: when to delegate and when to stay serial, what
+a delegate verifies (what proves its own change, and nothing beyond it) while you keep integration
+and all governance, and the anti-patterns each with the tell that fires at the moment of the error.
+The partition question now arrives where you already stop — when chunk boundaries are drawn, and at
+a chunk close — and the answer is recorded in the plan either way, because "serial, because X" is an
+answer and silence is not.
+
+**Your project can state its own delegation policy**, in its own words, in
+`project-preferences.md`: how much to fan out, what a delegate may run to prove its own change, and
+whether delegating is pre-approved. `off` is a complete answer and is honoured without ceremony.
+`/prawduct:doctor` proposes a starting point from what your repo already encodes — quoting your
+names, citing the file each came from, and proposing nothing where it finds nothing. It never grades
+you on this.
+
+**A verification record can say it was degraded.** A contended run can exit 0 having silently
+dropped part of your suite, and nothing in the counts separates that from a clean pass.
+`test-evidence record --degraded "<what did not report>"` says so, and the gates read it as stale
+rather than as a pass.
 
 ## v3.4.0
 

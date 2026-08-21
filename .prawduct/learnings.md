@@ -26,6 +26,8 @@ never by dropping them.
 ## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
+## When scoping a NEW framework feature, list unmerged branches before writing requirements — this repo parks proposals on branches, not in the working tree, so a grep of `plugin/` + `.prawduct/` + the backlog reads as "no prior art" while a finished investigation sits one `git branch` away. `docs/remote-test-execution-proposal` had already settled the config home, the reusable-surface size and the measured concurrency shape. Tell: your prior-art search touched only paths that exist on HEAD
+
 ## When you rewrite a MEASUREMENT into a BENEFIT, re-attach the number to the sentence you actually wrote — the rewrite is where a claim silently widens past its evidence, because the benefit sentence is shorter and short sentences generalize. v3.4.0 shipped *"the review gates are 57× faster"*; 57× was the gate CHECK, and reviews cost what they always did. Tell: you cannot point at the number behind the noun you just chose — [learnings-detail.md]
 <!-- anchor: benefit-framing-widens-the-claim -->
 
@@ -293,7 +295,7 @@ never by dropping them.
 
 ## A persisted schema's requirements are its consumers' future queries — lock-in is reversal cost, not LOC, so "small format" never exempts it from decision research
 
-## Test-evidence freshness is `test-status` (session timestamp) ONLY — `git_sha` was retired as misleading (TST-4K2P)
+## Test-evidence freshness is the `test-status` exit code ONLY — never a commit/SHA field (`git_sha` retired as misleading, TST-4K2P); what that code composes has grown (session timestamp, the relax-only tree-validity clause, and the record's own `degraded` flag), so read the gate, not a remembered rule
 
 ## A cross-cutting concern can be UNCOVERED even when discovery names it once — audit the coverage matrix for "named-but-dropped", not just "absent"
 
@@ -546,3 +548,11 @@ never by dropping them.
 ## One home stops DIVERGENCE, not staleness — when you add a caller to shared copy, re-read the shared sentence AS THAT SURFACE'S READER, because a clause true of every existing caller can be flatly false at the new one and composition hands it over unexamined. Tell: you satisfied "route it through the one home" and never read the composed output — [learnings-detail.md]
 
 ## When you add a rule to the site that motivated it, ENUMERATE the siblings that perform the same ACT before calling it done — a criterion can be false at a surface your chunk never opened, and listing a reader is not asking whether the change reaches it. Tell: your fix names one call site and your acceptance criterion names a class ("cannot X without Y") — [learnings-detail.md]
+
+## Re-invoking the thing you just edited verifies NOTHING in the same session — a skill body, hook payload or digest the harness loads once is served from ITS cache, so the render you are grading is the pre-edit one and a missing change looks like a working one. Verify against disk, or in a fresh session. Tell: your acceptance criterion is "run X and see the new thing" and X ran earlier this session — [learnings-detail.md]
+
+## Funding a budget by deleting what ANOTHER surface already says is only valid for readers who RECEIVE that surface — the always-injected digest covers a session's main agent and not a subagent, so a `building.md` dedup against it is a dedup for you and a deletion for the delegate, and the delegate is the reader that instruction exists for. Enumerate who opens the file before crediting the cut. Tell: your justification is "the digest states this" and the file's reader is not the one the digest reaches — [learnings-detail.md]
+
+## Adding the right rule is not the same act as DELETING the wrong one — a superseded sentence keeps governing every reader who stops at the file it lives in, and it survives most easily in the paragraph you just edited, because the diff shows you touching it and your attention is on what you added. When a rule exists because an existing one was wrong, name the wrong one and go remove it. Tell: your change adds a surface, and the sentence that caused the defect is still standing one line above your addition — [learnings-detail.md]
+
+## A mutation sweep where EVERY mutant dies on the first pass is a claim about the HARNESS, not the subject — prove it can report a survivor: assert the test RAN (return code, never a substring of output) and include one mutant you expect to live. A bad pytest flag killed every subprocess on a usage error, read as a catch — 18 of 18 from a runner that never started — [learnings-detail.md]

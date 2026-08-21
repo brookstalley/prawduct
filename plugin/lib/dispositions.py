@@ -247,7 +247,7 @@ def prior_dispositions(
             {
                 "review_id": key[0],
                 "fid": key[1],
-                "title": finding.get("title") or finding.get("summary") or "",
+                "title": evidence.finding_title(finding),
                 "severity": finding.get("severity"),
                 "action": body.get("action"),
                 "reason": body.get("reason"),
@@ -535,7 +535,7 @@ def _row(
         "fid": fid,
         "severity": _severity_of(finding),
         "goal": finding.get("goal"),
-        "title": finding.get("title"),
+        "title": evidence.finding_title(finding),
         "state": state,
         "reason": disposition.get("reason"),
         "backlog_id": disposition.get("backlog_id"),

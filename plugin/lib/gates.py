@@ -82,6 +82,33 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # capture failed or the on-ramp is ``--from-counts``, so old and count-only
     # records keep exactly their pre-clause timestamp-only behavior.
     "evidence_tree": (str,),
+    # ``degraded``: WHY this run did not cover what its counts imply — a worker
+    # that died under contention, a shard that never reported, a suite cut short.
+    # A run like that exits 0 and reports a plausible total, so nothing in the
+    # counts can distinguish it from a clean pass; the record therefore CARRIES
+    # the observation rather than deriving it (a report has no notion of what was
+    # *collected*, and parsing a runner's summary would need per-runner
+    # knowledge the framework refuses to hold). The coordinator, which can see
+    # the box, supplies it.
+    #
+    # **Presence is the flag**, so a degraded record cannot exist without saying
+    # why — and the emptiness check in ``_validate_evidence_schema`` makes that
+    # true of ``""`` too. Omitted entirely (never null, never false) on an
+    # ordinary run, which is what keeps every pre-existing record's behavior
+    # exactly what it was. Both evidence readers refuse a record carrying it
+    # (:func:`_load_test_evidence`), so a degraded run reads as stale rather
+    # than as a pass.
+    #
+    # **It moves a verdict current → stale, which is the direction the standing
+    # rule about new evidence fields forbids** — and the exemption is worth
+    # stating, because the next field will not have one. That rule exists for
+    # the removed content-hash and ``git_sha`` mechanisms, which DERIVED
+    # staleness from the tree and so produced false positives nobody asked for.
+    # This field derives nothing: it is present only because a coordinator
+    # wrote it, so it cannot fire on its own and there is no false-stale class
+    # for it to reintroduce. The only way to a wrong stale here is to assert a
+    # degradation that did not happen.
+    "degraded": (str,),
 }
 
 
@@ -89,12 +116,17 @@ def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     """The saved test-evidence record, or ``(None, reason)`` saying why not.
 
     The prologue both evidence readers need: on disk, parseable, an object, a
-    valid schema, and no failures. It lives here rather than in each because the
-    two gates that read it — session-freshness and the base-advance transfer —
-    must agree about what a saved run SAYS before they can disagree about what
-    it vouches FOR; a new schema field or a different reading of ``failed``
-    landing in one reader and not the other is how they come to answer
-    differently about the same file.
+    valid schema, no failures, and not self-reported ``degraded``. It lives here
+    rather than in each because the two gates that read it — session-freshness
+    and the base-advance transfer — must agree about what a saved run SAYS
+    before they can disagree about what it vouches FOR; a new schema field or a
+    different reading of ``failed`` landing in one reader and not the other is
+    how they come to answer differently about the same file.
+
+    ``degraded`` belongs here for exactly that reason. A run that dropped part
+    of its suite is not evidence for either question — neither "may this session
+    stop re-running" nor "did a run meet this tree" — so both readers have to
+    refuse it, and refusing in one body is what makes them agree.
 
     The schema check catches writer typos (``ran_at`` for ``timestamp``,
     ``num_passed`` for ``passed``): without it a missing field falls through
@@ -116,6 +148,13 @@ def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     failed = record.get("failed")
     if isinstance(failed, int) and failed > 0:
         return None, f"{failed} test(s) failing in saved evidence"
+    degraded = record.get("degraded")
+    if isinstance(degraded, str) and degraded.strip():
+        return None, (
+            f"the saved run reports itself degraded ({degraded.strip()}) — its "
+            "counts do not cover what they appear to. Run the suite again, "
+            "uncontended, and record that run"
+        )
     return record, ""
 
 
@@ -123,7 +162,7 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     """Decide whether saved test evidence is fresh enough to trust.
 
     Two ways evidence is current, either sufficient (a disjunction), with
-    ``failed == 0`` required for both:
+    ``failed == 0`` and no self-reported ``degraded`` required for both:
 
     1. **Session-fresh** — written during this session (timestamp >= session
        start). The "trust the cycle" model: write code → run tests → Critic
@@ -369,6 +408,20 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
         return False, (
             f"evidence schema violation: coverage_level must be one of "
             f"{{{allowed}}}, got {level!r}"
+        )
+
+    # ``degraded`` carries its own reason — the field IS the flag, so a blank
+    # one is the same defect an absent reason would be: a record that says the
+    # run did not cover what it claims and cannot say how. Refused rather than
+    # ignored, because a reader that skipped a blank flag would read the run as
+    # clean, which is the exact outcome the field exists to prevent. Type is
+    # already known good (str) — the wrong-type loop above returns first.
+    degraded = evidence.get("degraded")
+    if isinstance(degraded, str) and not degraded.strip():
+        return False, (
+            "evidence schema violation: degraded must carry a non-empty reason "
+            "saying what the run did not cover (omit the field entirely for an "
+            "ordinary run — its presence is the flag)"
         )
 
     return True, ""
@@ -1225,6 +1278,13 @@ def validate_evidence(project_dir: Path) -> int:
     without the freshness comparison ``test-status`` performs. Returns
     exit 0 only when the file exists, parses, and matches the required
     schema; exit 1 otherwise.
+
+    **Schema-valid is not gate-passing, and a degraded record is where the two
+    part company most sharply**: it is a well-formed record of a run that did
+    not cover what its counts imply, so it is valid here and refused by both
+    evidence readers. The success line names the flag rather than printing a
+    bare ``valid``, so a caller that only reads this output cannot mistake a
+    well-formed degraded record for a healthy one.
     """
     evidence_path = gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json"
     if not evidence_path.is_file():
@@ -1242,7 +1302,11 @@ def validate_evidence(project_dir: Path) -> int:
     if not ok:
         print(f"invalid: {err}", file=sys.stderr)
         return 1
-    print("valid")
+    degraded = evidence.get("degraded")
+    if isinstance(degraded, str) and degraded.strip():
+        print(f"valid, and DEGRADED: {degraded.strip()}")
+    else:
+        print("valid")
     return 0
 
 
@@ -1701,6 +1765,15 @@ def verify_coverage(project_dir: Path) -> int:
     ``coverage_level`` — ``referenced`` (floor) vs ``executed`` (real
     coverage tool) — so the Critic can quote it directly in BLOCKING
     findings without re-deriving the wording.
+
+    **A ``degraded`` record is not refused here, deliberately**, though both
+    evidence readers refuse it. At ``referenced`` level this check asks whether
+    a changed file is NAMED by a test, which the symbol-grep overlay derives
+    from the tree — so which tests actually executed cannot change the answer,
+    and refusing would report a failure this check did not find. The reasoning
+    does not survive a ``coverage_level: executed`` verifier, whose evidence is
+    execution: no in-plugin writer emits that level today, and the day one does
+    is the day this needs to ask.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     state_path = prawduct_dir / "project-state.yaml"

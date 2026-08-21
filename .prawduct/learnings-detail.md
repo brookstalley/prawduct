@@ -1707,7 +1707,7 @@ When signaling session completion ("Ready for next session", "Session is complet
 
 ## Test-evidence freshness is `test-status` (session timestamp) ONLY — `git_sha` was retired as misleading (TST-4K2P)
 
-The freshness gate (`prawduct-hook test-status`) decides current-vs-stale by `timestamp >= .session-start`, never by a commit field. The record no longer carries a `git_sha`: TST-4K2P removed it because it was **dead-read** by every runtime consumer yet review agents *eyeballed* it and flagged a false "stale / ran against a tree without the fix" whenever a record-before-commit run made the stamp lag HEAD. Consequences: (1) record timing no longer matters for freshness — the old "record AFTER commit, on a clean tree" stopgap is **obsolete**; record whenever in the cycle. (2) When reviewing, judge freshness ONLY by the `test-status` exit code — never infer staleness from a commit/SHA field (there is none). (3) Content-*hash* freshness stays dead (removed pre-v1.4 for chronic false positives), but an **additive tree-VALIDITY clause** now supplements the timestamp (`_test_evidence_tree_valid`, 2026-07-14): current iff session-fresh **OR** the judgeable-scoped working tree matches the recorded run's `evidence_tree`. That `evidence_tree` is a gate-CONSUMED tree object the freshness gate *diffs* — NOT a commit/position field to eyeball like the retired `git_sha`, so it doesn't reopen the lag-behind-HEAD staleness. It classifies paths (git tree-diff + `is_judgeable_path`), never file contents, and only ever relaxes stale→current, so it cannot reintroduce the false-STALE that killed the fingerprint. See [[re-attempting a mechanism rejected for a false-positive class make it additive and relax-only]]. Relates to Honest Confidence (#5 — don't let a misleading field read as a real gap), Validate Before Propagating (#15), and [[when verifying a framework-repo change by running the hook use the repo-local bin/prawduct-hook]].
+The freshness gate (`prawduct-hook test-status`) decides current-vs-stale by `timestamp >= .session-start`, never by a commit field. The record no longer carries a `git_sha`: TST-4K2P removed it because it was **dead-read** by every runtime consumer yet review agents *eyeballed* it and flagged a false "stale / ran against a tree without the fix" whenever a record-before-commit run made the stamp lag HEAD. Consequences: (1) record timing no longer matters for freshness — the old "record AFTER commit, on a clean tree" stopgap is **obsolete**; record whenever in the cycle. (2) When reviewing, judge freshness ONLY by the `test-status` exit code — never infer staleness from a commit/SHA field (there is none). (3) Content-*hash* freshness stays dead (removed pre-v1.4 for chronic false positives), but an **additive tree-VALIDITY clause** now supplements the timestamp (`_test_evidence_tree_valid`, 2026-07-14): current iff session-fresh **OR** the judgeable-scoped working tree matches the recorded run's `evidence_tree`. That `evidence_tree` is a gate-CONSUMED tree object the freshness gate *diffs* — NOT a commit/position field to eyeball like the retired `git_sha`, so it doesn't reopen the lag-behind-HEAD staleness. It classifies paths (git tree-diff + `is_judgeable_path`), never file contents, and only ever relaxes stale→current, so it cannot reintroduce the false-STALE that killed the fingerprint. **Relax-only is a property of that clause, not of the gate** — the record's `degraded` field (2026-08-21) deliberately moves a verdict current→stale, and is exempt on a different basis: it derives nothing, so it can only fire because a coordinator wrote it and has no false-positive class to reintroduce. Before proposing the next evidence field, ask which of the two arguments it can make; a field that DERIVES staleness has neither. See [[re-attempting a mechanism rejected for a false-positive class make it additive and relax-only]]. Relates to Honest Confidence (#5 — don't let a misleading field read as a real gap), Validate Before Propagating (#15), and [[when verifying a framework-repo change by running the hook use the repo-local bin/prawduct-hook]].
 
 ## A cross-cutting concern can be UNCOVERED even when discovery names it once — audit the coverage matrix for "named-but-dropped", not just "absent"
 
@@ -4273,3 +4273,89 @@ change in place, what does this one do? A predicate that mutates while answering
 member of such a class, because its callers read as questions and act as acts — which is also the
 fix worth reaching for first: make the rule a construction both surfaces call, not a branch each
 implements.
+
+## Re-invoking the thing you just edited verifies nothing in the same session
+
+2026-08-21, delegation Chunk 01. The chunk's acceptance criterion was "`/prawduct:methodology
+delegation` opens the guide" — invocation, not assertion, exactly as the plan's Verification
+Strategy demanded. I ran it. The harness served the skill body **cached from an earlier invocation
+in the same session** (its own header said "the skill instructions were previously loaded"), so the
+render was missing the two routing bullets I had written minutes before.
+
+I caught it only because the omission was visible: two bullets I had just authored were absent. Had
+the chunk touched only the frontmatter `description`, the stale render would have looked entirely
+correct and I would have reported the criterion met on evidence that **could not have shown a
+failure** — the class of green the learnings already call out under the unexpected-pass and
+negative-reproduction rules, arriving through a new door.
+
+Generalizes past skills: any surface the harness loads once per session — skill bodies, hook
+payloads, the SessionStart digest — is unverifiable by re-invocation within that session. Verify
+against disk (read the file, resolve the path it prints), or in a fresh session.
+
+## Funding a budget by deleting what another surface says is only valid for readers who receive it
+
+Same chunk. The standing way to pay for growth in `methodology/building.md` is to cut what the
+always-injected `session-digest.md` already states in full — the −86 entry of 2026-08-19 is the
+precedent, and the audit here used the same class for −53.
+
+The trap surfaced on the fourth candidate cut. `building.md`'s "review first, tick after" ordering
+is stated verbatim in the digest, so by the class rule it was removable. It is not: a **subagent
+does not receive the SessionStart digest**, and `building.md` is the file every delegate is
+instructed to read. For that reader the digest covers nothing, and every "dedup" against it is a
+plain deletion.
+
+The three cuts that shipped were re-checked against this and survive it — a delegate does not write
+handoff notes, and the retained tells and acting rules stayed. But the class as previously stated is
+unsound, and it will be reached for again: it is the cheapest funding move in the repo, and this
+feature exists to produce *more* delegates. Enumerate who opens the file before crediting the cut.
+
+## Adding the right rule is not the same act as deleting the wrong one
+
+2026-08-21, delegation Chunk 01, second pass. The whole feature exists because delegation runs at
+0.34% of 31,220 tool calls, and the proximate cause is a permissive line in
+`methodology/building.md`: *"also when chunks are independent and parallelizable…"* — a permission
+where the design calls for a default.
+
+I wrote the default into the new on-demand guide, added a pointer to that guide **into the same
+paragraph as the permissive line**, and left the permissive line alone. `building.md` is mandatory
+reading before code; the guide is opt-in, and my pointer described it as "the questions worth
+asking" — the exact framing the new default was ruled an exception to. A coordinator reading the
+mandatory file and stopping got the *unchanged* 0.34%-era instruction. The Critic caught it (R-1).
+
+The mechanics of the miss are worth keeping. This was not a surface I failed to open — I edited
+that paragraph in the same commit. The diff showed me touching it, my attention was on the sentence
+I was adding, and the sentence directly above it read as background. **Editing a paragraph is not
+reviewing it.** When a change exists because some existing statement was wrong, the change is not
+done until you have named that statement and removed or replaced it; writing the correct rule
+somewhere else leaves two rules standing, and readers obey the one they reach first.
+
+## A mutation sweep where EVERY mutant dies on the first pass is a claim about the HARNESS
+
+**What happened (2026-08-21, delegation Chunk 04).** I wrote an ad-hoc mutation harness to check
+whether twelve new prose-guarding tests were load-bearing: for each of eighteen defects, patch the
+file, run the named test, expect red, restore. It reported eighteen reds. Every one was a lie.
+
+The runner invoked `pytest ... -p no:xdist`, and this repo's `addopts` carries `-n --dist loadfile`.
+Disabling the xdist plugin makes those arguments unrecognised, so every subprocess exited on a
+usage error before collecting a single test. My red-check was `" failed" in stdout or "error" in
+stdout.lower()` — and `ERROR: usage:` contains "error". The harness graded eighteen tests on
+whether they could fail, using a runner that never started, and every answer was the same answer.
+
+**Why it survived a read.** Nothing about the code looked wrong; the bug was in the *interaction*
+between a flag I added for tidiness and a config file I did not open. The only signal was the
+result itself — eighteen for eighteen, first try, on tests I had written minutes earlier. A
+perfect score on a first pass is not a strong result, it is an implausible one.
+
+**What the fix found.** Switching the check to `returncode != 0` plus an explicit guard for
+"no tests ran" / "unrecognized arguments" turned 17 of 18 red and left one genuinely green — a
+placement assertion that sliced its section at a `---` rule several headings below the section it
+meant to bound, so a row relocated into a heading of its own was still "inside Workflow". That
+assertion had been passing on exactly the prose it existed to reject, and only the eighteenth
+mutant could see it.
+
+**The general shape.** This is the same defect class as a test that cannot fail on its subject,
+moved one level up: the instrument that measures load-bearingness was itself not load-bearing. So
+the instrument needs the same treatment as the tests it grades — a case it must report as a
+survivor, and a positive assertion that the measurement ran at all. `[learnings-detail.md]`
+neighbours (L52, L448, L462, L506) all cover "a mutant that should die but lives"; this is the
+inverse tell, and it is the one that looks like success.

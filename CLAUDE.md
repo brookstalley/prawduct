@@ -38,8 +38,8 @@ clarification is cheap; building the wrong thing is not.
 
 ## Methodology
 
-The narrative guides live in `plugin/methodology/`: `discovery.md` (before exploring a problem),
-`planning.md` (before designing artifacts or a build plan), `building.md`, `reflection.md`.
+The narrative guides live in `plugin/methodology/`: `discovery.md`, `planning.md`, `building.md`,
+`reflection.md`, `delegation.md` — the reader carries each one's when-to-read.
 **Read the one for the work you are entering — the file itself, not from memory.**
 
 ## The Critic — Independent Review
