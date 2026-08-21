@@ -210,6 +210,43 @@ class TestEachShapeSignalCarriesItsOwnPlan:
         ], f"{name} alone must identify a build plan"
 
 
+class TestTheShapeSignalsCoverTheSilentlyDefeatedForms:
+    """The shapes a plan takes when it is MOST in need of being named here.
+
+    A plan whose headings a parser cannot read is the case `#642` cause 2
+    describes, and it is precisely the plan the honesty count must not miss —
+    "the deliverable check was silently disabled for the life of the plan".
+    Using the strict id-parsing matcher for this question would let those escape
+    the count as well as the check.
+    """
+
+    @pytest.mark.parametrize(
+        ("shape", "heading"),
+        [
+            ("deeper heading", "#### Chunk 01: a"),
+            ("dotted sub-chunk", "### Chunk 1.2 — a"),
+            ("bolded label", "## **Chunk A** — a"),
+        ],
+    )
+    def test_an_announced_chunk_counts_however_it_is_written(
+        self, tmp_path: Path, shape: str, heading: str
+    ) -> None:
+        artifacts = _tree(tmp_path, {"plan.md": f"# A plan\n\n{heading}\n"})
+        assert [p.name for p in buildplan_refs.plans_missing_scope(artifacts)] == [
+            "plan.md"
+        ], f"a plan whose chunks are written as {shape} escaped the count"
+
+    def test_prose_about_a_chunk_is_not_a_plan(self, tmp_path: Path) -> None:
+        """The other side of the widening. The loose matcher is loose, not blind:
+        a word or an apostrophe after the id makes a heading prose, and a design
+        note discussing chunk 3 must not be counted as a build plan."""
+        for prose in ("## Chunk 01's review", "### Chunk 2 build-session decisions"):
+            artifacts = _tree(tmp_path / prose[-6:], {"note.md": f"# A note\n\n{prose}\n"})
+            assert buildplan_refs.plans_missing_scope(artifacts) == [], (
+                f"{prose!r} is prose, not a chunk announcement"
+            )
+
+
 class TestTheGapSentenceNamesTheInvisiblePlans:
     """`#642` cause 1 at the surface it was asked for.
 

@@ -18,8 +18,15 @@ that reads like one that did (#642 cause 1).
 
 **The remedy is the one this module already uses for an unreadable file**: the swallow stays where
 the map needs it, and the fact is published separately on a cold path, outside the walk — a check
-inside the fallible flow cannot catch that flow's own skip. Nothing the walk yields changes, which
-is what keeps the archival norm's guarantee about it intact.
+inside the fallible flow cannot catch that flow's own skip. The walk's yield is unchanged in
+every case the corpus contains, which is what keeps the archival norm's guarantee about it intact —
+with one honest exception, found in review rather than claimed away. Folding the `artifact:` read
+onto the module's one scalar reader (it had a hand-rolled twin, the shape that lets `scope:` and
+`artifact:` come to mean different things) made `artifact: null` read as *no declaration* rather
+than as the literal type "null". The document is now kept as a plan instead of excluded, which is
+the fail-safe direction the module documents. Zero documents in this repo carry that form, so the
+yield is identical here; the change is real all the same and `tests/test_plan_index.py` pins it at
+the walk, not only at the predicate.
 
 **What made this more than a filter is deciding what an unscoped document has to be.** The walk's
 existing predicate excludes only a document declaring some *other* `artifact:` type and treats one

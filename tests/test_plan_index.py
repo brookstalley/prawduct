@@ -239,6 +239,31 @@ class TestUnscopedCandidates:
         with pytest.raises(TypeError):
             plan_index.unscoped_candidates(Path("."))
 
+    def test_a_null_artifact_type_reaches_the_walk_as_a_plan(self, tmp_path: Path):
+        """The behaviour change the `_frontmatter_scalar` fold introduced, pinned
+        at the WALK rather than only at the predicate.
+
+        The replaced hand-rolled loop read `artifact: null` as the literal string
+        "null" — a type that is not `build-plan`, so the document was EXCLUDED.
+        The shared scalar reader treats the YAML null literal as no declaration,
+        which is the fail-safe direction this module documents (absence keeps a
+        document in the plan population). Pinned here because the predicate-level
+        test cannot show that the WALK's yield moved with it, and the change-log
+        claimed the walk was unchanged.
+        """
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "nulltype.md").write_text(
+            "---\nartifact: null\n---\n\n## Status\n\n- [ ] Chunk 01: a\n",
+            encoding="utf-8",
+        )
+        assert [
+            p.name
+            for p in plan_index.unscoped_candidates(
+                artifacts, looks_like_plan=lambda _c: True
+            )
+        ] == ["nulltype.md"]
+
     def test_a_predicate_that_refuses_everything_yields_nothing(self, tmp_path: Path):
         artifacts = tmp_path / "artifacts"
         artifacts.mkdir()

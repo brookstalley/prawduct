@@ -255,8 +255,15 @@ def has_build_plan_shape(content: str) -> bool:
     * it DECLARES the type — ``v1.5-critic-proportionality-plan.md``;
     * it carries a ``## Status`` roster item — ``waiver-pragma-plan.md``, whose
       chunks are list items no heading matcher parses;
-    * it carries a chunk HEADING — ``build-plan-coverage-perf.md``, which has
-      chunks and no Status section at all.
+    * it ANNOUNCES a chunk — ``build-plan-coverage-perf.md``, which has chunks
+      and no Status section at all. Matched with :data:`_CHUNK_ANNOUNCE_RE`, not
+      the stricter :data:`_CHUNK_HEADING_RE`: the strict one exists to parse an
+      *id* out of a heading, and a heading it cannot parse is exactly the plan
+      most in need of being named here — ``#### Chunk 01:`` is the classic
+      silent defeat. This asks only "does this document announce chunks", which
+      is the loose matcher's stated job. The two agree on all 138 documents in
+      this repo, so the widening costs nothing today and covers the shape that
+      would otherwise escape.
 
     Measured 2026-08-20 over the 91 known-real build plans in this repo (90
     archived plus the live scoped one): the three signals score 90, 90 and 91,
@@ -273,7 +280,7 @@ def has_build_plan_shape(content: str) -> bool:
         return True
     if any(True for _item in _iter_status_section_items(content)):
         return True
-    return any(_CHUNK_HEADING_RE.match(line) for line in content.splitlines())
+    return any(_CHUNK_ANNOUNCE_RE.match(line) for line in content.splitlines())
 
 
 def plans_missing_scope(artifacts_dir: Path) -> list[Path]:
@@ -283,10 +290,13 @@ def plans_missing_scope(artifacts_dir: Path) -> list[Path]:
     the walk and the frontmatter half, this supplies the
     :func:`has_build_plan_shape` evidence that walk refuses to guess at.
 
-    Every reader of ``iter_scoped_plan_candidates`` reports over a set these
-    plans are missing from — the backfill sweep's buckets, the lifecycle
-    repair's edit list, the scope→plan map behind review dispatch. Asking this
-    beside such a report turns an implied-complete figure into a stated one.
+    **Every reader of ``iter_scoped_plan_candidates`` reports over a set these
+    plans are missing from**, so any of them that states coverage asks this
+    beside it — that is the rule, rather than a list of today's callers that
+    goes stale as the next one is added. Asking turns an implied-complete
+    figure into a stated one, and at the release gate it turns a false sentence
+    into a caveated one: an unscoped plan there produced "work is shipping with
+    no plan describing it" about a plan sitting in the same directory.
     """
     return plan_index.unscoped_candidates(
         artifacts_dir, looks_like_plan=has_build_plan_shape

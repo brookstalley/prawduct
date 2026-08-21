@@ -33,6 +33,7 @@ import re
 import sys
 from pathlib import Path
 
+from . import buildplan_refs
 from . import change_log as change_log_mod
 from . import plan_index
 
@@ -333,13 +334,31 @@ def _plan_coverage_warnings(project_dir: Path, pending: list[str]) -> list[str]:
 
     Archived plans count as coverage: a scope whose plan reached its end of life
     is documented, just not current. Only "no plan anywhere" is the signal.
+
+    **A plan that declares no ``scope:`` is not "no plan", and saying so would be
+    false rather than merely incomplete.** The map is keyed on the frontmatter
+    ``scope:``, so a perfectly good plan that omits the key is absent from it —
+    and the sentence above would then tell an operator that work is shipping
+    undocumented when the document is sitting in the same directory. This is the
+    v3.3.4 recurrence exactly: five *"no build-plan file"* advisories against a
+    plan the walk could not key. So the warning carries the count when there is
+    one; the gate's verdict is untouched, because which scope an unscoped plan
+    belongs to is precisely what nothing here can know.
     """
     artifacts = project_dir / _ARTIFACTS_REL_DIR
     known = plan_index.build_scope_to_plan_map(artifacts, include_archived=True)
+    unscoped = buildplan_refs.plans_missing_scope(artifacts)
+    caveat = ""
+    if unscoped:
+        caveat = (
+            f" ({len(unscoped)} live plan(s) declare no `scope:` at all and are "
+            "invisible to this lookup, so one of them may be this scope's plan — "
+            "check before treating this as undocumented work)"
+        )
     warnings = [
         f"release-pending scope={scope!r} has no build-plan file under "
         f"{_ARTIFACTS_REL_DIR}/ (live or archived) — work is shipping with no "
-        f"plan describing it."
+        f"plan describing it.{caveat}"
         for scope in pending
         if scope not in known
     ]

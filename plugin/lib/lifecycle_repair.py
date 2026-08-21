@@ -505,7 +505,18 @@ def stale_status_reports(artifacts_dir: Path) -> list[dict]:
     firing.
     """
     reports: list[dict] = []
-    for plan_path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir):
+    # Scope-declaring plans plus the ones the scope walk cannot key. Whether a
+    # plan carries a stale derived-Status instruction has nothing to do with
+    # whether it declares a `scope:` — that key ties an entry to a change-log
+    # scope, and this check is about the document. Walking only the keyed ones
+    # left a plan that needs a human's eye invisible to the check that exists
+    # to name it. Sorted so the report order does not depend on which of the two
+    # sources found a plan.
+    candidates = sorted(
+        {path for path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir)}
+        | set(buildplan_refs.plans_missing_scope(artifacts_dir))
+    )
+    for plan_path in candidates:
         try:
             content = plan_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -614,6 +625,17 @@ def plan_repair(project_dir: str | Path) -> dict:
     # wrong for a repair: such a plan never reaches the loop below, so without
     # this the command reported a clean sweep over a file nothing had read.
     unreadable.extend(plan_index.unreadable_candidates(artifacts_dir))
+    # Same question, second answer the walk cannot give: a plan declaring no
+    # `scope:` is not yielded either, so the loop below never sees it and
+    # "nothing to change" would report it as converged. Reported alongside the
+    # undecodable ones because the operator's question is the same — what did
+    # this sweep not look at — even though the two causes differ.
+    unscoped = [
+        {"path": str(path), "reason": "declares no frontmatter `scope:`, so the "
+         "plan scan does not yield it and this repair did not read it"}
+        for path in buildplan_refs.plans_missing_scope(artifacts_dir)
+    ]
+    unreadable.extend(unscoped)
     for plan_path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir):
         try:
             content = _read_preserving_newlines(plan_path)
