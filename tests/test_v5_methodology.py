@@ -173,7 +173,7 @@ LAST_MEASURED_TOKENS = {
     # per-mode table and the fail-safe. CEILING RATCHETED 4730 -> 4718 with the
     # cut, per the standing rule: slack left behind is a loan the next edit
     # collects silently and green.
-    "methodology/building.md": 4708,
+    "methodology/building.md": 4717,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1552,6 +1552,17 @@ class TestBuildingMethodology:
         # other budgeted file in this module sits within ~1-34 tokens of its
         # ceiling; this restores building.md to that posture and keeps the
         # trim-or-relocate rule meaning what it says.
+        # HELD at 4718 (2026-08-21, delegate verification ceiling): the delegation
+        # guidance replaced "run the full suite before and after" — the instruction
+        # that had every parallel delegate racing a whole suite on one box — with a
+        # narrowest-run ceiling, and PAID FOR IT in place: ownership of the combined
+        # run consolidated into the one "What stays in the main agent" line instead
+        # of being said three times, plus an editorial pass over the section. Net
+        # zero against the ceiling. What did NOT fit is the rule's *why* (a dead
+        # test worker can still exit green, so N racing suites falsify the evidence
+        # record) — ~20 tokens with no headroom to buy them. It lives in
+        # .prawduct/artifacts/delegation-and-verification-cost-discovery.md § 2.4
+        # and is owed a home when the rung vocabulary lands.
         assert tokens < 4718, f"building.md is ~{tokens} tokens, should be <4718"
 
 

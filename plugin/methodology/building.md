@@ -62,7 +62,7 @@ retroactivity). Departing from a norm that already governs your change is a reco
 
 **Establish a clean baseline.** Before the first work cycle of a session:
 
-- *Tests*: Run the full suite. Every test must pass; fix any failures.
+- *Tests*: Run the full suite. Every test must pass; fix any failures. **A delegate skips this**, inheriting the main agent's baseline.
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.
 
@@ -145,13 +145,13 @@ Research scales to impact: **medium** (pervasive pattern, non-core dep) → quic
 
 ## Delegating Work to Subagents
 
-**When the user asks you to work in a subagent, do it** (Principle 23) — also when chunks are independent and parallelizable, a well-scoped chunk benefits from a clean context, or the main context is large.
+**When the user asks you to work in a subagent, do it** (Principle 23) — also when chunks are independent and parallelizable, a well-scoped chunk wants a clean context, or the main context is large.
 
-**How:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`"**, and to run the full suite before and after. Add **"then `.prawduct/.subagent-briefing.md` for conventions and learnings"** only for a *shared*-worktree agent: it is gitignored, so it never exists in an isolated one — inline what that agent needs.
+**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`"**, and **a verification ceiling** — the narrowest run covering its own change, never the full suite. Add **"then `.prawduct/.subagent-briefing.md`"** only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it; inline what that agent needs.
 
-**Parallel chunks:** launch independent chunks as separate subagents, await results, run the combined suite, then Critic. Merge conflicts are the main agent's job. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts, including the plan you just amended, are invisible; commit first or pass the content in the prompt, say the prompt outranks any file, then tell it not to write `.prawduct/` (`prawduct-hook` refuses only on the harness's scratch branch, not one the agent creates). **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope the `git commit` after it — use `git commit -- <paths>`. Prefer `isolation: "worktree"` for truly independent chunks. The canary may fire O(agents × edits) — expected; note it in the reflection.
+**Parallel chunks:** launch independent chunks as separate subagents, await results, then the combined suite and Critic. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts, the plan you just amended included, are invisible; commit first or inline it in the prompt, say the prompt outranks any file, then tell it not to write `.prawduct/` (`prawduct-hook` refuses only on the harness's scratch branch, not one the agent creates). **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope a later `git commit`; use `git commit -- <paths>`. Prefer isolation for truly independent chunks. The canary may fire O(agents × edits) — expected; note it in the reflection.
 
-**What stays in the main agent:** Critic, reflection, state updates. The subagent implements; the main agent governs.
+**What stays in the main agent:** the combined suite and all end-to-end verification, merge conflicts, Critic, reflection, state updates. The subagent implements; the main agent governs.
 
 ## Working With Specs
 
