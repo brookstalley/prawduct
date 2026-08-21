@@ -39,7 +39,7 @@ preserving.
 
 - [x] Chunk 01: The guide exists and is reachable from where a builder already is
 - [x] Chunk 02: The question arrives where the coordinator already stops
-- [ ] Chunk 03: The record can say it was degraded
+- [x] Chunk 03: The record can say it was degraded
 - [ ] Chunk 04: Policy and promotion
 
 Context: Plan written 2026-08-21 against `delegation-and-verification-cost-discovery.md`,
@@ -74,6 +74,26 @@ coordinator already fanning out, while the reader it exists for is the one whose
 The guarding test now pins the preamble rather than the section, and was proved red on that exact
 regression. `building.md`'s ceiling did not move.
 
+Chunk 03 done 2026-08-21, and it is the only code on the branch. `.test-evidence.json` gains an
+optional **`degraded`** field carrying the reason a run did not cover what its counts imply, set by
+`test-evidence record --degraded "<reason>"`; presence is the flag, so a blank reason is refused by
+both the CLI and the schema. Both evidence readers refuse a degraded record from the one body they
+share — session-freshness and the base-advance transfer have to agree about what a run SAYS — and
+`--no-rerun` carries the flag forward, without which a restamp would launder a degraded record
+clean while running nothing. `verify_coverage` deliberately does NOT refuse one: at `referenced`
+level its answer is tree-derived, so which tests executed cannot change it; the docstring names the
+`executed`-level condition that would retire the reasoning. `delegation.md`'s *unattributable
+green* — the one anti-pattern whose remedy was not a judgment call — now names the flag.
+**Acceptance was met on a real degraded run**: a genuine partial run of this repo's own suite that
+exited 0 having executed a fraction of what it collects, ingested, flagged, and refused by
+`test-status`. The checkpoint this chunk owed fired: an ordinary record is untouched, proved both
+by a test that goes red when the writer emits `false` instead of omitting the key, and on this
+repo's own record.
+Critic: 0 blocking, 0 warning, 1 note — that `learnings.md` still asserted relax-only as a property
+of the *gate*, which `degraded` narrows to the tree-validity clause. Fixed in both learnings files
+rather than accepted.
+Next: Chunk 04.
+
 ## Scaffolding
 
 ### Project Initialization
@@ -107,7 +127,8 @@ plugin/
 ├── skills/methodology/SKILL.md      # routing, FOUR sites (01)
 ├── skills/doctor/SKILL.md           # detect / propose / ratify (04)
 ├── templates/project-preferences.md # delegation policy rows (04)
-└── lib/gates.py                     # the degraded record (03)
+├── lib/gates.py                     # the degraded record's schema + both readers (03)
+└── bin/prawduct-hook                # `record --degraded` — the writer (03)
 ```
 
 ### Module Boundaries

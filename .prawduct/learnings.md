@@ -295,7 +295,7 @@ never by dropping them.
 
 ## A persisted schema's requirements are its consumers' future queries — lock-in is reversal cost, not LOC, so "small format" never exempts it from decision research
 
-## Test-evidence freshness is `test-status` (session timestamp) ONLY — `git_sha` was retired as misleading (TST-4K2P)
+## Test-evidence freshness is the `test-status` exit code ONLY — never a commit/SHA field (`git_sha` retired as misleading, TST-4K2P); what that code composes has grown (session timestamp, the relax-only tree-validity clause, and the record's own `degraded` flag), so read the gate, not a remembered rule
 
 ## A cross-cutting concern can be UNCOVERED even when discovery names it once — audit the coverage matrix for "named-but-dropped", not just "absent"
 

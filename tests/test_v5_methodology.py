@@ -521,7 +521,13 @@ LAST_MEASURED_TOKENS = {
     # `partition:` field. Without it the guide asks for a record and leaves the
     # reader to invent where it goes, which is the gap between encouraged and
     # recorded that the chunk exists to close.
-    "methodology/delegation.md": 1426,
+    # +44 on 2026-08-21 (Chunk 03): the unattributable-green anti-pattern had a
+    # tell and no remedy, so a coordinator who caught themselves doing it had
+    # nowhere to go — the record could not say a run was degraded. Now it can,
+    # and the bullet names the flag that says so. Paid at the on-demand
+    # destination for the same reason the entries above are: growth here is
+    # read only by a session that opens the file.
+    "methodology/delegation.md": 1470,
 }
 
 
@@ -1863,6 +1869,36 @@ class TestDelegationGuide:
         assert not found, (
             f"delegation.md names a consumer's test toolchain: {found}. The "
             "guidance is qualitative; the project maps it to its own regime"
+        )
+
+    def test_the_unattributable_green_names_the_record_that_answers_it(self):
+        """R16. Every other anti-pattern here is a tell and nothing more,
+        because the remedy is a judgment the coordinator makes. This one is the
+        exception: the record `.test-evidence.json` is prawduct's own artifact,
+        it could not say a run was degraded, and no guidance to a coordinator
+        fixes a record the framework owns (ruling 9). So the bullet carries the
+        route, and this pins it TO THAT BULLET — the sentence is useless
+        anywhere else in the file, because the reader it exists for has just
+        caught themselves accepting a green they cannot attribute.
+
+        The flag string is asserted against the hook that implements it, not
+        just against the prose. A guide naming a flag nobody accepts is worse
+        than one naming none.
+        """
+        bullet = next(
+            (b for b in self._anti_pattern_bullets() if "unattributable" in b.lower()),
+            None,
+        )
+        assert bullet is not None, "the unattributable-green anti-pattern is gone"
+        assert "--degraded" in bullet, (
+            "the anti-pattern states the tell and leaves the reader nowhere to "
+            "go — the record can say a run was degraded, and this is the only "
+            "place a coordinator catching themselves would learn it"
+        )
+        hook = read_file("bin/prawduct-hook")
+        assert '"--degraded"' in hook, (
+            "the guide names a flag the hook does not accept — the flag was "
+            "renamed or removed without the guidance following it"
         )
 
     def test_the_guide_points_back_at_the_dispatch_mechanics(self):

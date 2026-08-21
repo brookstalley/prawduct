@@ -828,6 +828,44 @@ class TestValidateEvidenceSchema:
         assert "passed" in result.stderr
         assert "bool" in result.stderr
 
+    def test_a_degraded_record_is_schema_valid_and_the_output_says_so(self, tmp_path):
+        """Schema-valid is not gate-passing, and `degraded` is where the two
+        part company hardest: a well-formed record of a run that did not cover
+        what its counts imply. It must validate — this command is a schema
+        check, and a CI hook that rejected it would be answering a question it
+        was not asked — while its output must not let a caller read the record
+        as healthy.
+        """
+        evidence = dict(self._COMPLETE, degraded="a shard never reported")
+        repo = self._write_evidence(tmp_path, evidence)
+        result = _run_in(repo, "validate-evidence")
+        assert result.returncode == 0, result.stderr
+        assert "DEGRADED" in result.stdout
+        assert "a shard never reported" in result.stdout
+
+    def test_degraded_with_a_blank_reason_is_rejected(self, tmp_path):
+        """Presence is the flag, so the reason cannot be optional in practice:
+        a blank one is a record asserting its run was degraded and unable to say
+        how. Rejected rather than ignored — a reader that skipped a blank flag
+        would read the run as clean, the exact outcome the field prevents.
+        """
+        evidence = dict(self._COMPLETE, degraded="   ")
+        repo = self._write_evidence(tmp_path, evidence)
+        result = _run_in(repo, "validate-evidence")
+        assert result.returncode == 1, result.stdout
+        assert "degraded" in result.stderr and "non-empty reason" in result.stderr
+
+    def test_degraded_as_a_bool_is_rejected(self, tmp_path):
+        """The shape a writer reaches for by habit — `"degraded": true` — is
+        exactly the shape that cannot carry a reason, so it is writer drift
+        rather than a flag. Refused with the type named.
+        """
+        evidence = dict(self._COMPLETE, degraded=True)
+        repo = self._write_evidence(tmp_path, evidence)
+        result = _run_in(repo, "validate-evidence")
+        assert result.returncode == 1, result.stdout
+        assert "degraded" in result.stderr and "bool" in result.stderr
+
 
 class TestWriteIsolationInvariant:
     """Design §2: the runtime reads/writes ONLY .prawduct/ — never elsewhere."""
@@ -2034,6 +2072,178 @@ class TestNoRerunRestamp:
         assert _run_in(repo, "test-evidence", "record", "--no-rerun").returncode == 0
         ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert ev["passed"] == 4
+
+
+class TestDegradedEvidence:
+    """A record can say the run did NOT cover what its counts imply.
+
+    The hole: a suite whose workers die under contention typically neither
+    re-queues their tests nor fails the run. The process exits 0 and reports a
+    plausible total, so `.test-evidence.json` records a green for a run that
+    silently dropped part of the suite, and every gate downstream believes it.
+
+    The framework cannot derive this — a JUnit report carries a *reported*
+    count and has no notion of what was *collected*, and reading a runner's
+    summary text would need per-runner knowledge prawduct deliberately does not
+    hold. So the record carries the observation (`--degraded "<reason>"`) and
+    the coordinator, which can see the box, supplies it; the gates then read a
+    degraded record as stale rather than as a pass.
+    """
+
+    REASON = "two workers died under three concurrent suites; ~40% never reported"
+
+    def _repo(self, tmp_path, body: str = "def test_ok():\n    assert True\n") -> Path:
+        repo = tmp_path / "dg"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_sample.py").write_text(body)
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-120)
+        return repo
+
+    def _record(self, repo: Path) -> dict:
+        return json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+
+    def test_an_ordinary_record_is_untouched_and_stays_current(self, tmp_path):
+        """The regression that matters. This field sits on the path every
+        governed repo's Stop hook runs, and the overwhelming majority of records
+        will never carry it — so the ordinary shape must be byte-for-byte what
+        it was.
+
+        `not in` rather than a falsy check, deliberately: a record writing
+        `"degraded": false` would pass a truthiness assertion while changing the
+        shape every pre-existing reader sees.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0
+        assert "degraded" not in self._record(repo)
+        assert _run_in(repo, "test-status").returncode == 0
+
+    def test_a_degraded_record_does_not_satisfy_the_freshness_gate(self, tmp_path):
+        """The whole point. This record is session-fresh, has zero failures and
+        a real `evidence_tree` — every existing reason to call it current holds.
+        Only the flag makes it stale, so the assertion cannot be satisfied by
+        any of the other clauses.
+        """
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--degraded", self.REASON)
+        assert res.returncode == 0, res.stderr
+        record = self._record(repo)
+        assert record["degraded"] == self.REASON
+        assert record["failed"] == 0 and record["passed"] == 1
+        status = _run_in(repo, "test-status")
+        assert status.returncode == 1, status.stdout
+        # The reason reaches the builder — a bare "stale" would send them
+        # looking for a timestamp problem that isn't there.
+        assert "degraded" in status.stdout and self.REASON in status.stdout
+
+    def test_the_summary_line_announces_the_degradation(self, tmp_path):
+        """The counts print identically whether or not the run covered the
+        suite, which is the surface the flag exists to correct. A record whose
+        output is typographically indistinguishable from a clean one is how a
+        stale figure passed as a measurement once already (the `--no-rerun`
+        provenance marker exists for the same reason).
+        """
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--degraded", self.REASON)
+        assert "DEGRADED" in res.stdout and self.REASON in res.stdout
+        # And the remedy, because a builder who reads this needs to know the
+        # gates will now refuse the record.
+        assert "stale" in res.stdout
+
+    @pytest.mark.parametrize(
+        "argv, case",
+        [
+            (["--degraded"], "no reason at all"),
+            (["--degraded", ""], "an empty reason"),
+            (["--degraded", "   "], "a whitespace-only reason"),
+            (["--degraded", "--from-junit", "r.xml"],
+             "the next flag swallowed as the reason"),
+        ],
+    )
+    def test_degraded_without_a_reason_is_refused(self, tmp_path, argv, case):
+        """The reason IS the flag: presence means degraded, so a blank one
+        would be a record that says the run did not cover what it claims and
+        cannot say how — no more honest than the green it replaces.
+
+        The last case is why the check is not merely `if not reason`, and it
+        has to name a flag parsed AFTER this one to test anything: `--no-rerun`
+        is stripped from the argv before the reason is read, so it lands in the
+        empty-reason branch and proves nothing about the flag-shaped guard.
+        `--from-junit` is still there — without the guard it becomes the stated
+        cause of the degradation while its own report path falls through to the
+        runner as a stray argument.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0
+        before = self._record(repo)
+        res = _run_in(repo, "test-evidence", "record", *argv)
+        assert res.returncode == 2, f"{case} was accepted: {res.stdout}"
+        assert "--degraded requires a reason" in res.stderr
+        # Refused means nothing was written — a partial record here would be
+        # worse than either outcome it sits between.
+        assert self._record(repo) == before
+
+    def test_a_repeated_flag_is_refused_rather_than_reaching_the_runner(self, tmp_path):
+        """Only the first `--degraded` is parsed, so a second would survive into
+        the extra-args slot and be handed to the test runner — where it dies as
+        an unrecognized option, and the operator reads a runner usage error for
+        a prawduct flag they typed twice. Refused here, in prawduct's own words.
+        """
+        repo = self._repo(tmp_path)
+        res = _run_in(
+            repo, "test-evidence", "record",
+            "--degraded", "a worker died", "--degraded", "and a shard timed out",
+        )
+        assert res.returncode == 2, res.stdout
+        assert "--degraded may be given once" in res.stderr
+
+    def test_a_restamp_cannot_launder_a_degraded_record(self, tmp_path):
+        """`--no-rerun` reuses the prior run's COUNTS, so it inherits whatever
+        those counts failed to cover. If the flag dropped here, one command
+        that runs nothing would turn a degraded record into a clean-looking
+        one — a laundry, and the cheapest possible way around the gate.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(
+            repo, "test-evidence", "record", "--degraded", self.REASON
+        ).returncode == 0
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 0, res.stderr
+        assert self._record(repo)["degraded"] == self.REASON
+        assert _run_in(repo, "test-status").returncode == 1
+
+    def test_a_real_run_clears_the_flag(self, tmp_path):
+        """The escape has to exist, or the field is a trap: a repo that once
+        recorded a degraded run would be permanently stale, and the only way
+        out would be hand-editing the record the gates trust.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(
+            repo, "test-evidence", "record", "--degraded", self.REASON
+        ).returncode == 0
+        assert _run_in(repo, "test-evidence", "record").returncode == 0
+        assert "degraded" not in self._record(repo)
+        assert _run_in(repo, "test-status").returncode == 0
+
+    def test_the_flag_annotates_a_source_rather_than_being_one(self, tmp_path):
+        """Contention is observed on whatever on-ramp the run used, so the flag
+        composes with each rather than joining the mutually-exclusive count
+        sources. `--from-counts` is the sharpest case: it consumes every
+        remaining token after its own flag, so a `--degraded` parsed after it
+        would be swallowed into the counts and rejected as a malformed pair.
+        """
+        repo = self._repo(tmp_path)
+        res = _run_in(
+            repo, "test-evidence", "record", "--degraded", self.REASON,
+            "--from-counts", "passed=5", "failed=0",
+        )
+        assert res.returncode == 0, res.stderr
+        record = self._record(repo)
+        assert record["passed"] == 5 and record["degraded"] == self.REASON
+
 
 
 class TestTreeValidatedFreshness:

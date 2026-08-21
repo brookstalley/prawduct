@@ -3,6 +3,51 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-21: the record can say a run was degraded
+
+<!-- prawduct: type=feature | scope=delegation -->
+
+`.prawduct/.test-evidence.json` could record a green for a run that silently dropped part of its
+suite. A test worker that dies under contention is typically not re-queued and does not fail the
+run: the process exits 0 and reports a plausible total, so nothing in the counts separates it from
+a clean pass and every gate downstream believes it. The evidence record now has the vocabulary to
+say otherwise — an optional **`degraded`** field carrying the reason, set by
+`test-evidence record --degraded "<what did not report>"`.
+
+**The record carries the observation; it does not derive it.** A JUnit report has a *reported*
+count and no notion of what was *collected*, so the comparison that would catch this is not
+available from the report. Comparing against the last recorded count is noisy on every legitimate
+test-count change, and parsing a runner's summary text needs per-runner knowledge the framework
+deliberately refuses to hold. The coordinator can see the box; it supplies what it saw. This is the
+boundary the design draws throughout: everything touching a consumer's test system stays guidance,
+and the record prawduct owns is inside the line — no guidance to a coordinator can fix a record the
+framework owns.
+
+**Presence is the flag**, so a degraded record cannot exist without saying why, and a blank reason
+is refused by the schema rather than ignored — a reader that skipped it would read the run as
+clean, which is the outcome the field exists to prevent. An ordinary record omits the key entirely
+(never `false`), which is what keeps every record written before the field existed behaving exactly
+as it did.
+
+Both evidence readers refuse a degraded record, in one shared body: a run that dropped part of its
+suite is not evidence for "may this session stop re-running the suite" and not evidence for "did a
+run ever meet this tree" either, so session-freshness and the base-advance transfer have to agree,
+and refusing in the prologue they share is what makes them. `--no-rerun` **carries the flag
+forward** — a restamp reuses the prior counts and so inherits what they failed to cover; without
+that, one command that runs nothing would launder a degraded record clean. Only a real run clears
+it, which is also the escape that keeps the field from being a trap.
+
+**A degraded record is schema-valid and gate-refused**, which is the sharpest place those two
+verdicts part company: `validate-evidence` accepts it — it is a schema check, and rejecting a
+well-formed record would answer a question nobody asked — but names the flag in its output so no
+caller reads the record as healthy. The `record` summary line does the same, because counts print
+identically whether or not the run covered the suite, and that typographic identity is the surface
+the flag exists to correct.
+
+`plugin/methodology/delegation.md`'s **unattributable green** anti-pattern now carries the route.
+It was the one anti-pattern in that list whose remedy was not a judgment call, and a coordinator
+who caught themselves accepting an unattributable green had nowhere to go.
+
 ## 2026-08-21: the delegation question arrives where the coordinator already stops
 
 <!-- prawduct: type=feature | scope=delegation -->
