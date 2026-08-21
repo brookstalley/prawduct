@@ -173,7 +173,7 @@ LAST_MEASURED_TOKENS = {
     # per-mode table and the fail-safe. CEILING RATCHETED 4730 -> 4718 with the
     # cut, per the standing rule: slack left behind is a loan the next edit
     # collects silently and green.
-    "methodology/building.md": 4717,
+    "methodology/building.md": 4774,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1552,18 +1552,22 @@ class TestBuildingMethodology:
         # other budgeted file in this module sits within ~1-34 tokens of its
         # ceiling; this restores building.md to that posture and keeps the
         # trim-or-relocate rule meaning what it says.
-        # HELD at 4718 (2026-08-21, delegate verification ceiling): the delegation
-        # guidance replaced "run the full suite before and after" — the instruction
-        # that had every parallel delegate racing a whole suite on one box — with a
-        # narrowest-run ceiling, and PAID FOR IT in place: ownership of the combined
-        # run consolidated into the one "What stays in the main agent" line instead
-        # of being said three times, plus an editorial pass over the section. Net
-        # zero against the ceiling. What did NOT fit is the rule's *why* (a dead
-        # test worker can still exit green, so N racing suites falsify the evidence
-        # record) — ~20 tokens with no headroom to buy them. It lives in
-        # .prawduct/artifacts/delegation-and-verification-cost-discovery.md § 2.4
-        # and is owed a home when the rung vocabulary lands.
-        assert tokens < 4718, f"building.md is ~{tokens} tokens, should be <4718"
+        # RAISED 4718 -> 4800 (2026-08-21, owner ruling, scoped to the delegation
+        # feature; the standing prefer-trimming-over-bumping posture is unchanged).
+        # The rule landed net-zero FIRST and the raise bought only its reason. The
+        # delegation guidance replaced "run the full suite before and after" — the
+        # instruction that had every parallel delegate racing a whole suite on one
+        # box — with a narrowest-run ceiling, paid for in place: ownership of the
+        # combined run had been stated three times and is now stated once, plus an
+        # editorial pass over the section. What would not fit at 4718 was the rule's
+        # *why* — a runner whose workers die under N racing suites typically neither
+        # re-queues their tests nor fails the run, so the box reports a green that
+        # skipped a part nobody can name. That sentence is what stops "never the full
+        # suite" from reading as a rigor discount and being softened later, which is
+        # exactly how the wrong instruction survived: nothing said what it was for.
+        # Requirements and the sweep behind them:
+        # .prawduct/artifacts/delegation-and-verification-cost-discovery.md.
+        assert tokens < 4800, f"building.md is ~{tokens} tokens, should be <4800"
 
 
 # =============================================================================
