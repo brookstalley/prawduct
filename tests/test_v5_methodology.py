@@ -525,10 +525,10 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # token is what a pointer costs over a claim.
     #
     # -3 on both shapes, 2026-08-20: the standing block became the digest's
-    # closing SECTION instead of a bullet at 43% depth, which is what the rule
-    # itself asks for -- "last, after every other word", "the bottom is all
-    # they read" -- and what it was not getting. It had six more rules, four
-    # sections and ~5,500 characters after it, every one of them more recent to
+    # closing SECTION instead of a bullet partway up "The hardest rules", which
+    # is what the rule itself asks for -- "last, after every other word", "the
+    # bottom is all they read" -- and what it was not getting. It had further
+    # rules and four whole sections after it, every one of them more recent to
     # the reader than the instruction saying what to write last. That stopped
     # being cosmetic when `governance-surface-dedup` made this digest the rule's
     # ONLY always-loaded carrier: with one carrier, placement inside it does all
@@ -564,8 +564,10 @@ LAST_MEASURED_INJECTED_TOKENS = {
 INJECTED_FOOTPRINT_CEILINGS = {
     # Ratcheted with the readings they guard (3460 -> 3325, 2260 -> 2248): a
     # ceiling left at its old value after a cut silently re-funds the growth
-    # the cut paid for. Headroom is ~10 by design, matching every other budget
-    # in this module -- the next addition trims or relocates, it does not bump.
+    # the cut paid for. Headroom was ~10 when these were set and is now 1
+    # (framework) / 2 (product) -- not erosion to correct, but additions
+    # correctly declining to bump, which is the ratchet working. The rule is
+    # unchanged and now binds harder: the next addition trims or relocates.
     #
     # Both shapes carry the digest, so a digest addition is charged twice and
     # both ceilings bind it; only a CLAUDE.md edit is charged to `framework`

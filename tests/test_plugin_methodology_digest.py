@@ -411,10 +411,15 @@ class TestTheStandingBlockIsTheDigestsLastWord:
     """A closing instruction has to be the closing text.
 
     The rule says it itself — *last, after every other word* and *the bottom is
-    all they read* — and it was carried as one bullet at 43% depth, with six
-    more rules, four whole sections and ~5,500 characters after it. Every one of
+    all they read* — and it was carried as one bullet partway up "The hardest
+    rules", with further rules and four whole sections after it. Every one of
     those is more recent to the reader than the instruction telling them what to
     write last. The digest was committing the failure mode its own rule names.
+
+    Deliberately no counts here. The digest's shape changes under them, and the
+    first version of this docstring carried an uncounted estimate that was wrong
+    on every figure. The measured ones live once, in the change-log entry that
+    is a dated record rather than prose that has to stay true.
 
     That placement stopped being merely untidy when the second carrier went
     away: the `governance-surface-dedup` work made this digest the only

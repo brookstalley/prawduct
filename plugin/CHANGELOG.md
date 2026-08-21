@@ -17,6 +17,13 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+**Your sessions close with the standing block again.** The rule that tells Claude to end a turn
+with where things stand — what changed, whose move it is, and whether it is safe to `/clear` — had
+drifted into the middle of the always-injected governance digest, with several more rules and four
+whole sections after it. A rule that says "last, after every other word" was not last, and it
+stopped firing. It is now the digest's closing section, and three tests keep anything from being
+appended below it.
+
 ## v3.4.0
 
 **Less waiting on the gates, fewer rounds in review.** Gate checks stop timing out, syncing your base no longer buys a re-review, and a finding tells you whether the defect is only where it pointed.

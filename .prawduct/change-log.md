@@ -19,12 +19,21 @@ governance, not one rule — was never crossed either: 9,811 characters, and the
 in the rule's whole history was 9,996 at the commit that added it. That cliff is asserted twice
 in `test_plugin_methodology_digest.py`, so it was defended, not merely lucky.
 
-**The cause is placement, and it is the failure mode the rule itself names.** The instruction sat
-at line 56 of 130 — 43% through, one bullet among twelve in "The hardest rules", with six more
-rules, four whole sections and ~5,500 characters after it. Attribution trailers, merge strategy
-and backlog routing were all more recent to the reader than the instruction telling them what to
-write *last*. The rule's own words are "last, after every other word" and "the bottom is all they
-read", and it was not at the bottom.
+**The best-supported cause is placement, and it is the failure mode the rule itself names.** The
+instruction sat at line 56 of 135 — 41.5% through, one bullet among fourteen in "The hardest
+rules", with three more rules, four whole sections and ~4,300 characters after it. Attribution
+trailers, merge strategy and backlog routing were all more recent to the reader than the
+instruction telling them what to write *last*. The rule's own words are "last, after every other
+word" and "the bottom is all they read", and it was not at the bottom.
+
+**Said precisely, because it is the surviving hypothesis rather than a demonstrated one.** Two
+candidates were excluded with evidence; a third was not. The digest is injected once, at
+SessionStart, so inside a long session the whole block sits thousands of tokens back and
+distance-in-conversation may matter more than position within a 10,000-character payload. That
+would not argue against this change — it is free either way — but it would mean the fix is
+partial, and the escalation is structural rather than textual: the Stop hook already inspects the
+session and could check the closing message itself. Recorded so a recurrence is read as new
+evidence rather than as this fix having failed mysteriously.
 
 That stopped being cosmetic when `governance-surface-dedup` (v3.4.0) made this digest the rule's
 **only** always-loaded carrier — a repo's own `CLAUDE.md` is trimmed where it overlaps rather
