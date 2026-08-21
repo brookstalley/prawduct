@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-21: the delegation question arrives where the coordinator already stops
+
+<!-- prawduct: type=feature | scope=delegation -->
+
+Guidance-only is what already failed — `building.md` has said "when chunks are independent and
+parallelizable" the whole time, and delegation ran at 0.34% of 31,220 tool calls. So the question
+moves to where the coordinator is **already stopping**, which is the load-bearing bet of this whole
+design and is falsifiable: re-run the transcript sweep in a few build cycles and it answers
+directly.
+
+`plugin/methodology/planning.md` gains **`### Partition: Serial or Delegated`**, inside Build
+Planning, because chunk boundaries are the last moment before any brief exists at which the whole
+partition is visible at once. Its plan-time form of the question is *what would prove this chunk on
+its own?* — the verification bound is a property of the chunk rather than of a brief, and a chunk
+nobody can answer for is not scoped tightly enough to hand to anyone, which is a finding about the
+chunk and worth more than the estimate it replaces.
+
+The decision is **recorded either way**, in a new plan-level `partition:` frontmatter field that
+`plugin/templates/build-plan.md` now carries filled in. "Serial, because X" is an answer; what the
+field catches is not serial work but *unexamined* work.
+
+**Disclosure and consent are deliberately asymmetric**, because informing is cheap and asking costs
+a round-trip. A plan that will delegate discloses how many delegates, isolated worktrees or the
+shared one, what each touches and what they will not do — carrying what varies between plans,
+since a disclosure that could be copy-pasted from the last one stops being read. Approval is asked
+only on one of **four enumerated reasons**, against three standing negatives, and absent a listed
+reason the plan discloses and proceeds. The closure is the point: an agent resolving a vague
+condition asks defensively every time, which is the cost the asymmetry exists to avoid. On a yes,
+the offer to promote it to a `project-preferences.md` row lands at the one moment the answer is
+fresh.
+
+`building.md` takes the second placement the requirement names — a **chunk close** — since it is
+the only file a coordinator reads there. Its delegation section re-raises the partition question
+and names the field; the *why* stays in the guide it already points at. Paid for in place: "then
+the combined suite and Critic" was a third statement of what "What stays in the main agent" owns
+two paragraphs down. The ceiling did not move, and the file is back to one token of headroom.
+
 ## 2026-08-21: delegation becomes a guide an agent can reach
 
 <!-- prawduct: type=feature | scope=delegation -->

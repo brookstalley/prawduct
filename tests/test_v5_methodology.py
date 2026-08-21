@@ -210,7 +210,25 @@ LAST_MEASURED_TOKENS = {
     # main context) are content `delegation.md` owns canonically under this
     # plan's Module Boundaries, so restating them here was the duplication, and
     # the two paragraphs merged into one, dropping a second pointer lead-in.
-    "methodology/building.md": 4764,
+    # +10 on 2026-08-21 (Chunk 02), 4764 -> 4774, ceiling untouched at 4775.
+    # R6 names TWO placements and only one had landed: the delegation question
+    # also arrives at a CHUNK CLOSE, and this file is the only surface a
+    # coordinator reads there. Paid for in place, in the same bullet: "then the
+    # combined suite and Critic" was a third statement of what "What stays in
+    # the main agent" owns two paragraphs down, in this same section. The clause
+    # carries the trigger ONLY — the why (a plan-time partition is a default,
+    # re-checked against what the machine is actually doing) is `delegation.md`'s,
+    # and the coordinator is told to open that before fanning out. ONE token of
+    # headroom now, so the next addition trims.
+    # 4774 -> 4773 on 2026-08-21 (Critic R-1, same chunk): the clause was in
+    # the `**Parallel chunks:**` bullet, which addresses a coordinator already
+    # fanning out — while the reader it exists for is the one whose plan says
+    # serial. Moved to the section preamble, which is unconditional and already
+    # states the default. It also got SHORTER there: "when load is finally
+    # knowable" was the why, and `delegation.md` owns that ("a default, not a
+    # commitment: re-check it at dispatch against what the machine is actually
+    # doing") one sentence before the pointer telling you to open it.
+    "methodology/building.md": 4773,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -420,7 +438,27 @@ LAST_MEASURED_TOKENS = {
     # That growth is the design working, which is exactly why it is recorded
     # rather than capped.
     "methodology/discovery.md": 4752,
-    "methodology/planning.md": 4301,
+    # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
+    # Delegated`, the plan-time half of the placement bet. The partition prompt
+    # where chunk boundaries are drawn (R6), the `partition:` field the decision
+    # is recorded in either way (R7), the disclosure a delegating plan owes when
+    # it is presented (R8-R9), the four reasons to ask and the three standing
+    # negatives as a CLOSED list (R10), and the offer that makes a yes durable
+    # (R11).
+    #
+    # A READING, no ceiling, per the decision block above this dict — and the
+    # growth here is the feature rather than an overrun. Guidance placed where
+    # the coordinator already STOPS is the whole design; guidance in a file
+    # someone might open is what produced 0.34% delegation across 31,220 tool
+    # calls. No trim was owed and none was invented — and to be exact about
+    # what that does NOT claim: two lines here (the plan-time question, and
+    # serial-is-right-but-unexamined-is-not) ARE near-verbatim with
+    # `delegation.md`, deliberately, because the guide is on-demand and this
+    # section fires whether or not anyone opens it. Both copies are test-pinned
+    # on both sides, so they cannot drift into disagreeing. What genuinely
+    # stayed out is the rest: the wall-clock reasoning, the anti-patterns and
+    # the brief contract, which this section points at instead of restating.
+    "methodology/planning.md": 4791,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -478,7 +516,12 @@ LAST_MEASURED_TOKENS = {
     # one screen above a section that states a RULE, so the guide contradicted
     # itself about its own nature — and the title still named only what a
     # delegate verifies, after the "when" became what leads the file.
-    "methodology/delegation.md": 1419,
+    # +7 on 2026-08-21 (Chunk 02): "Record it either way" had no destination
+    # until this chunk gave the decision one, so the guide now names the plan's
+    # `partition:` field. Without it the guide asks for a record and leaves the
+    # reader to invent where it goes, which is the gap between encouraged and
+    # recorded that the chunk exists to close.
+    "methodology/delegation.md": 1426,
 }
 
 
@@ -1840,6 +1883,238 @@ class TestDelegationGuide:
         section = section.split("\n## ", 1)[0]
         assert "/prawduct:methodology delegation" in section, (
             "building.md's delegation section does not route to the guide"
+        )
+
+
+
+class TestPlanTimePartition:
+    """The plan-time half of the placement bet — `planning.md` and the template.
+
+    `building.md` has said "when chunks are independent and parallelizable" the
+    whole time and delegation ran at 0.34% (31,220 tool calls, 106 dispatches).
+    The design's answer is placement, not machinery: the question arrives where
+    the coordinator is ALREADY stopping — when chunk boundaries are drawn, and
+    at a chunk close. This class holds the first of those two, plus the field
+    the decision lands in.
+
+    Requirements R6-R11,
+    `.prawduct/artifacts/delegation-and-verification-cost-discovery.md` §4.5-4.6.
+    """
+
+    content = read_file("methodology/planning.md")
+
+    HEADING = "### Partition: Serial or Delegated"
+
+    def _section(self) -> str:
+        assert self.HEADING in self.content, "the partition section is gone"
+        return self.content.split(self.HEADING, 1)[1].split("\n### ", 1)[0]
+
+    def test_the_question_fires_where_chunk_boundaries_are_drawn(self):
+        """R6, plan-time half. Placement is the substance: a partition section
+        parked outside Build Planning is read after the boundaries are drawn,
+        which is after the decision it governs has been made.
+        """
+        build_planning = self.content.split("\n## Build Planning", 1)
+        assert len(build_planning) == 2, "Build Planning section is gone"
+        assert self.HEADING in build_planning[1].split("\n## ", 1)[0], (
+            "the partition section left Build Planning — it now arrives after "
+            "the chunk boundaries it is supposed to be drawn with"
+        )
+
+    def test_the_plan_time_form_of_the_question_is_the_chunk_not_the_brief(self):
+        """R18's qualifier, which only works because the verification bound is a
+        property of the CHUNK. At plan time no brief exists, so a question
+        phrased in terms of briefs is unusable at the exact moment it fires.
+        The second yield is the more useful one and is pinned with it: a chunk
+        nobody can answer for is a finding about the chunk.
+        """
+        section = self._section()
+        assert "prove this chunk on its own" in section, (
+            "the partition prompt no longer asks the plan-time question, so it "
+            "cannot be answered where the partition is actually decided"
+        )
+        assert "not scoped tightly enough" in section, (
+            "dropped what an unanswerable chunk MEANS — a finding about the "
+            "chunk, which is worth more than the estimate it replaces"
+        )
+        assert "/prawduct:methodology delegation" in section, (
+            "the section no longer routes to the guide that owns the default, "
+            "so planning.md would have to restate it and the two would drift"
+        )
+
+    def test_the_decision_is_recorded_either_way(self):
+        """R7. "Serial, because X" is an answer; silence is not — and silence is
+        what a plan produces when nothing asks for the line. The field is named
+        so the record has somewhere to go rather than being encouraged.
+        """
+        section = self._section()
+        assert "`partition:`" in section, (
+            "the section no longer names the field the decision is recorded in"
+        )
+        assert "serial" in section.lower() and "unexamined" in section.lower(), (
+            "the section no longer says WHICH case the field catches — serial "
+            "is very often right, and a rule read as anti-serial gets ignored"
+        )
+
+    def test_the_disclosure_names_the_four_things_that_vary(self):
+        """R8-R9. Disclosure is the cheap half of the asymmetry, so it is
+        unconditional — and it carries what varies between plans, because a
+        disclosure that could be copy-pasted from the last one is boilerplate.
+        """
+        section = self._section().lower()
+        for owed in (
+            "how many delegates",              # the count
+            "isolated worktrees or the shared one",  # where they write
+            "what each touches",               # the ownership boundary
+            "what they will *not* do",         # what stays with the coordinator
+        ):
+            assert owed in section, (
+                f"the disclosure no longer says {owed!r} — a delegation the "
+                "user cannot picture is the surprise this rule exists to prevent"
+            )
+        assert "boilerplate" in section, (
+            "the disclosure lost the rule that keeps it informative; a "
+            "boilerplate disclosure satisfies the letter and is never read"
+        )
+
+    def test_the_ask_condition_is_a_closed_list(self):
+        """R10, and the half that decides whether this costs or saves.
+
+        An OPEN condition is worse than no condition: an agent resolving
+        vagueness asks defensively every time, which is the round-trip the
+        asymmetry exists to avoid. So the four reasons are enumerated, the
+        prose says the list is closed, the three standing negatives are stated,
+        and the section carries no hedge that would reopen it.
+        """
+        section = self._section()
+        numbered = [
+            ln for ln in section.splitlines()
+            if re.match(r"^\d+\. ", ln.strip())
+        ]
+        assert len(numbered) == 4, (
+            f"the ask-condition list has {len(numbered)} enumerated reasons; "
+            "the discovery sweep named four, and a fifth added without a "
+            "ruling reopens what the closure is for"
+        )
+        assert "closed" in section.lower(), (
+            "the list no longer SAYS it is closed, so a reader treats it as "
+            "examples and the defensive asking returns"
+        )
+        for negative in ("already approved", "pre-approved", "without further interruption"):
+            assert negative in section, (
+                f"standing negative {negative!r} is gone — each one names a "
+                "case where asking is pure cost"
+            )
+        hedges = [
+            h for h in ("such as", "for example", "e.g.", "among others",
+                        "including but", "and so on", "etc.")
+            if h in section.lower()
+        ]
+        assert not hedges, (
+            f"the ask-condition section hedges: {hedges}. An enumerated list "
+            "with an open tail is an open condition wearing a list's clothes"
+        )
+        assert "disclose and proceed" in section.lower(), (
+            "the section no longer says what happens ABSENT a listed reason, "
+            "which is the case that governs almost every plan"
+        )
+
+    def test_a_yes_can_be_made_durable(self):
+        """R11. Without this the same question returns with every plan — the
+        unnecessary-asking failure wearing a seatbelt — and the one moment the
+        answer is fresh is the moment it is given.
+        """
+        section = self._section()
+        assert "project-preferences.md" in section, (
+            "an approval can no longer be promoted to a preference row, so the "
+            "ask repeats every plan"
+        )
+
+    def test_the_section_names_no_consumer_test_vocabulary(self):
+        """§6 of the discovery artifact, applied to the surface this chunk adds.
+
+        Same bar as `TestDelegationGuide`, and it has to be repeated per surface
+        rather than stated once: the failure mode of a guidance feature is
+        mechanism creeping back in as helpful-sounding prose, and it creeps into
+        whichever file is being written at the time.
+        """
+        lower = self._section().lower()
+        forbidden = [
+            "pytest", "vitest", "jest", "npm test", "maxworkers", "-n auto",
+            "xdist", "testmon", "--maxprocesses", "makefile", "justfile",
+        ]
+        found = [f for f in forbidden if f in lower]
+        assert not found, (
+            f"the partition section names a consumer's test toolchain: {found}. "
+            "The guidance is qualitative; the project maps it to its own regime"
+        )
+
+    def test_the_template_carries_the_field_and_it_round_trips(self):
+        """R7's other half: a field nothing writes is a field nothing records.
+
+        Read back through `_frontmatter_scalar` — the private helper is the
+        point, not a shortcut. Its docstring says why it is the ONE value-level
+        reader: two readers over the same block let a later fix to quoting or
+        comment handling land on one key and not the other. A test that parsed
+        the line itself would be exactly that second reader.
+
+        `scope:` and `branch:` are asserted alongside it because the regression
+        that matters is the neighbours: a new key is the cheapest way to break
+        a block that was parsing fine.
+        """
+        from lib.plan_index import (  # noqa: PLC0415 - lib import is path-dependent
+            _frontmatter_scalar,
+            frontmatter_lines,
+            parse_build_plan_frontmatter_branch,
+            parse_build_plan_frontmatter_scope,
+        )
+
+        template = read_file("templates/build-plan.md")
+        fm = frontmatter_lines(template)
+        assert fm is not None, "the template's frontmatter no longer parses"
+
+        present, value = _frontmatter_scalar(fm, "partition")
+        assert present, "the template has no `partition:` field to fill in"
+        assert value, (
+            "`partition:` is present but empty — a blank field records nothing, "
+            "and the whole point is that serial is an ANSWER"
+        )
+        assert "serial" in value.lower(), (
+            "the filled example no longer demonstrates the serial case, which "
+            "is the one a reader is most likely to be writing"
+        )
+        assert parse_build_plan_frontmatter_scope(template) == (True, "pantry-v1")
+        assert parse_build_plan_frontmatter_branch(template) is None, (
+            "the template's `branch:` is deliberately commented out — a "
+            "placeholder branch is one no repo has"
+        )
+
+    def test_building_md_fires_the_question_at_a_chunk_close(self):
+        """R6's SECOND placement, and the one `planning.md` cannot serve.
+
+        A plan-time partition is a default, not a commitment: what the machine
+        is actually doing is knowable only at dispatch. `building.md` is the
+        only file a coordinator reads at a chunk close, so the trigger lives in
+        its delegation section — the why stays in the guide it points at.
+        """
+        building = read_file("methodology/building.md")
+        section = building.split("## Delegating Work to Subagents", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        # PLACEMENT, not presence. The first draft put this inside the
+        # `**Parallel chunks:**` bullet, which opens "launch independent chunks
+        # as separate subagents" — so it reached only a coordinator ALREADY
+        # fanning out. The reader R6's second placement exists for is the
+        # opposite one: a plan that recorded `partition: serial` and whose load
+        # at a chunk close now justifies delegating. That reader has no parallel
+        # chunks and never reaches the bullet. A whole-section search cannot
+        # tell the two apart, so the preamble is asserted explicitly.
+        preamble = section.split("\n**How:**", 1)[0]
+        assert "chunk close" in preamble, (
+            "the chunk-close re-check left the section preamble — wherever it "
+            "went, it now reaches only readers who are already delegating"
+        )
+        assert "`partition:`" in preamble, (
+            "the chunk-close re-check no longer names the field it re-checks"
         )
 
 

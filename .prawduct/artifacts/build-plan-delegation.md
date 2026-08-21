@@ -5,6 +5,7 @@ scope: delegation
 branch: fix/delegate-verification-ceiling
 depends_on:
   - artifact: delegation-and-verification-cost-discovery
+partition: serial — 01, 02 and 04 all edit the same methodology and skill files; 03 is independent but too small to brief
 last_validated: 2026-08-21
 ---
 
@@ -37,7 +38,7 @@ preserving.
 ## Status
 
 - [x] Chunk 01: The guide exists and is reachable from where a builder already is
-- [ ] Chunk 02: The question arrives where the coordinator already stops
+- [x] Chunk 02: The question arrives where the coordinator already stops
 - [ ] Chunk 03: The record can say it was degraded
 - [ ] Chunk 04: Policy and promotion
 
@@ -59,7 +60,19 @@ more tokens in CLAUDE.md we will" — so the injected ceilings were deliberately
 ratcheted with the cut that funded it, and that headroom is reserved for the promotion.
 **The budget audit the plan ordered was run and it paid** (−53 against a +40 pointer,
 `building.md` ceiling ratcheted 4800 → 4775), so Chunks 02-04 inherit no budget debt.
-Next: Chunk 02.
+Next: Chunk 03.
+
+Chunk 02 done 2026-08-21. `planning.md` gains `### Partition: Serial or Delegated` inside Build
+Planning — the plan-time question (*what would prove this chunk on its own?*), the record-either-way
+rule, the unconditional disclosure, the four ask-reasons as a **closed list** against three standing
+negatives, and the durable-approval offer. The decision lands in a new plan-level `partition:`
+frontmatter field, which this plan now carries itself. **R6's second placement was not in this
+chunk's description and is now built:** the question also fires at a chunk close, from
+`building.md`'s delegation-section *preamble* — the Critic's one finding (R-1, warning, fixed not
+accepted) was that a first draft put it in the `**Parallel chunks:**` bullet, which reaches only a
+coordinator already fanning out, while the reader it exists for is the one whose plan says serial.
+The guarding test now pins the preamble rather than the section, and was proved red on that exact
+regression. `building.md`'s ceiling did not move.
 
 ## Scaffolding
 
@@ -160,10 +173,20 @@ it is the single easiest thing to violate while writing helpful-sounding prose.
   drawing, and the disclose-and-consent rule at plan presentation; the four reasons to ask
   and the three standing negatives, as a **closed list**; `plugin/templates/build-plan.md`
   gains the partition decision as a plan-level field so "serial, because X" has somewhere to
-  be recorded rather than being merely encouraged
+  be recorded rather than being merely encouraged. **Plus `plugin/methodology/building.md`,
+  which this chunk's description did not name:** R6 states TWO placements and the chunk
+  covered only the plan-time one. A chunk close is the other, and `building.md` is the only
+  file a coordinator reads there — so its delegation section re-raises the partition
+  question, carrying the trigger while the guide keeps the why. Paid for in place; the
+  ceiling did not move.
 - **Tests:** the ask-condition is enumerable (a test that the list is closed, not open-ended
   — an open condition is what makes an agent ask defensively every time); the template's new
   field round-trips through whatever reads plan frontmatter
+- **Considered and deliberately NOT built:** a Critic check that a plan records a partition
+  decision. `partition:` is a record, not a gate — ruling 6 is that prawduct states the goal
+  and not the mechanism, and `skills/critic/review-protocol.md` has 5 tokens of headroom, so
+  arming it is a budget decision for the owner rather than a line to slip into this chunk.
+  Recorded here so the absence reads as a decision rather than as a miss.
 - **Acceptance criteria:** drawing a plan surfaces the partition question; a delegating plan
   presented to the user discloses count, isolation, what is touched, and what delegates will
   not do; suite green

@@ -16,7 +16,7 @@ Stay serial when any of these holds:
 - **Briefing costs more than the work.** A brief that runs to tens of thousands of tokens is not worth assembling for a small chunk, and while that is what one costs, it is the honest reason a lot of parallelizable work is done inline.
 - **The project says otherwise.** `project-preferences.md` is where a project records its own delegation policy — including `off`, and including delegation already pre-approved. Read it before fanning out; where it and this guide differ, it wins.
 
-Serial is a decision like any other. Record it either way — "serial, because these three chunks all edit the same module" is an answer; silence is not.
+Serial is a decision like any other. Record it either way, in the plan's `partition:` field — "serial, because these three chunks all edit the same module" is an answer; silence is not.
 
 ## What a delegate is for
 
