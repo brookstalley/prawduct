@@ -3,6 +3,33 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-21: delegation becomes a guide an agent can reach
+
+<!-- prawduct: type=feature | scope=delegation -->
+
+`plugin/methodology/delegation.md` — a sixth `/prawduct:methodology` topic. The goal (a delegate
+verifies what proves its own change and nothing beyond it; the coordinator owns integration and all
+governance), the considerations as questions, seven anti-patterns each with the tell that makes it
+fire, and what a brief must say. It states **no mechanism**: no lease, no slot accounting, no
+framework-defined test tiers, and it names no consumer's command, runner or marker — the
+coordinator can see the machine, the project and the moment's load, and a framework distributed to
+every governed repo cannot. Rulings and the transcript sweep behind them:
+`.prawduct/artifacts/delegation-and-verification-cost-discovery.md` §6-7.
+
+Routing lands at all four sites of `skills/methodology/SKILL.md` at once — the frontmatter
+description, the argument-hint, the topic list and the overview's phase list — because a
+three-of-four edit is the predictable miss and each omission fails differently and quietly. A test
+now asserts the four per topic rather than searching the file for the word.
+
+**The budget note is the part worth reading.** `building.md`'s ceiling had been raised 4718 → 4800
+earlier on this branch, to buy the verification-ceiling rule its *why*, without first auditing for a
+removable class — which the standing learning requires ("cut the class, not the words; what looks
+unaffordable is usually history"). The audit was run here and found one: rules the always-injected
+session digest states in full, restated in `building.md` beyond the part only that file owns. Three
+instances, checked per item rather than assumed, gave back 53 tokens; the pointer to the new guide
+spent 40. The ceiling is **ratcheted 4800 → 4775** with the cut, because slack left behind is a loan
+the next edit collects silently and green.
+
 ## 2026-08-20: v3.4.0 is cut, and develop reopens on 3.4.1-dev
 
 <!-- prawduct: type=chore | scope=release-v3.4.0 -->

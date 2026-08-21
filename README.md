@@ -98,7 +98,7 @@ Prawduct enforces governance at four levels:
 - **Session reflection** — A session hook blocks completion if no reflection was captured (skipped for doc-only changes)
 - **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
 
-Everything else is governed by a set of principles, always in context via the session digest, and four methodology guides read on demand.
+Everything else is governed by a set of principles, always in context via the session digest, and methodology guides read on demand.
 
 ### Independent Critic review
 

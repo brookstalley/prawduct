@@ -36,7 +36,7 @@ preserving.
 
 ## Status
 
-- [ ] Chunk 01: The guide exists and is reachable from where a builder already is
+- [x] Chunk 01: The guide exists and is reachable from where a builder already is
 - [ ] Chunk 02: The question arrives where the coordinator already stops
 - [ ] Chunk 03: The record can say it was degraded
 - [ ] Chunk 04: Policy and promotion
@@ -44,7 +44,19 @@ preserving.
 Context: Plan written 2026-08-21 against `delegation-and-verification-cost-discovery.md`,
 all rulings recorded there in §7. The verification-ceiling correction itself already
 landed ahead of this plan (`008bd5f0`, `f348922c`) — it was ruled a stop-the-bleeding fix
-and is R17, not a chunk. Nothing else built yet. Next: Chunk 01.
+and is R17, not a chunk.
+
+Chunk 01 done 2026-08-21: the guide, routing at four sites, the `building.md` pointer.
+Two rulings landed with it and bind the rest of the plan. **The digest ruling was
+narrowed, not reversed** — `delegation` is named in both always-injected rosters
+(CLAUDE.md and `session-digest.md`), because a roster omitting a live topic is false on
+the one surface an agent reads before opening anything; a delegation *rule* there stays
+ruled out. The owner's words: "start this way and dogfood, and if we need to promote to
+more tokens in CLAUDE.md we will" — so the injected ceilings were deliberately NOT
+ratcheted with the cut that funded it, and that headroom is reserved for the promotion.
+**The budget audit the plan ordered was run and it paid** (−53 against a +40 pointer,
+`building.md` ceiling ratcheted 4800 → 4775), so Chunks 02-04 inherit no budget debt.
+Next: Chunk 02.
 
 ## Scaffolding
 

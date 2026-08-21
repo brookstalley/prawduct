@@ -55,8 +55,8 @@ The Confidence Check runs at a chunk's *start*; requirements also arrive *during
 The requirement tripwire has a sibling: "we should always X" is **norm birth** — stop and capture
 before code proceeds (a `project-preferences.md` row or a `## Direction` entry: statement + why +
 retroactivity). Departing from a norm that already governs your change is a recorded `[DECISION: …]`
-— never a silent divergence or a norm edited to bless your own code. Norms bind; descriptions track
-(`/prawduct:methodology norms`; `methodology/planning.md` "Governing Artifacts").
+— never a norm edited to bless your own code (`/prawduct:methodology norms`;
+`methodology/planning.md` "Governing Artifacts").
 
 ## The Build Cycle
 
@@ -119,7 +119,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Then close the turn with the standing block — last, after every other word.** Say `SAFE TO CLEAR` only when steps 1-7 above are done **and nothing is outstanding, in flight included** — that binding is what this file owes the block. Its shape, trigger and failure modes are `methodology/reflection.md` "Work cycle boundary", and the session digest injects them into every session, so they reach you whether or not you opened this guide.
 
-**Two session files, two owners.** You own `.prawduct/.handoff-notes.md`; the `/clear` hook owns `.prawduct/.session-handoff.md`, regenerating it from your notes (first), build plan Status, reflection, Critic findings and changed files — never hand-edit the generated one. `prawduct-hook handoff preview` shows what the next session would get.
+The `/clear` hook regenerates `.prawduct/.session-handoff.md` — never hand-edit it — from your notes (first), build plan Status, reflection, Critic findings and changed files. `prawduct-hook handoff preview` shows what the next session would get.
 
 ## Investigated Changes
 
@@ -146,6 +146,8 @@ Research scales to impact: **medium** (pervasive pattern, non-core dep) → quic
 ## Delegating Work to Subagents
 
 **When the user asks you to work in a subagent, do it** (Principle 23) — also when chunks are independent and parallelizable, a well-scoped chunk wants a clean context, or the main context is large.
+
+**Read `/prawduct:methodology delegation` before fanning out** — the questions worth asking before splitting work, what a brief must say, and the anti-patterns each with its tell. This section is the mechanics.
 
 **How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`"**, and **a verification ceiling** — the narrowest run covering its own change, never the full suite. A cost bound, not a rigor discount, and what it prevents fails *silently*: a runner whose workers die under N racing suites typically neither re-queues their tests nor fails the run, so the box reports a green that skipped a part nobody can name. Add **"then `.prawduct/.subagent-briefing.md`"** only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it; inline what that agent needs.
 
@@ -207,12 +209,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 ## Exception Handling
 
-Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) hide bugs. When a broad catch is genuinely necessary (system boundaries, event loops, top-level supervisors), mark it with an intentional-waiver pragma:
-
-- Python: `except Exception as e:  # prawduct:allow prawduct/broad-except -- reason`
-- JS/TS: `catch (e) { // prawduct:allow prawduct/broad-except -- reason`
-
-`prawduct:allow <scope>/<rule-id> -- reason` is the general waiver mechanism (`docs/waivers.md`). The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt." Broad catches that swallow errors without logging are always findings — no waiver can justify silencing errors.
+Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) hide bugs. When one is genuinely necessary — system boundaries, event loops, top-level supervisors — mark it with `prawduct:allow prawduct/broad-except -- reason` in a comment on the `except`/`catch` line itself. The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt." Broad catches that swallow errors without logging are always findings — no waiver can justify silencing errors.
 
 ## Common Traps
 

@@ -1,8 +1,8 @@
 ---
-description: Prawduct governance overview and methodology guides — the map of how this repo is governed, and the reader for each guide. Invoke for first contact or to see what governance applies here; pass a topic (building|discovery|planning|reflection|principles|norms) to open that guide directly — building BEFORE writing any code against a build plan, discovery before scoping requirements, planning before designing artifacts or a build plan, reflection at work boundaries and before /clear, norms for the norm-lifecycle spec (what binds vs what tracks).
+description: Prawduct governance overview and methodology guides — the map of how this repo is governed, and the reader for each guide. Invoke for first contact or to see what governance applies here; pass a topic (building|discovery|planning|reflection|delegation|principles|norms) to open that guide directly — building BEFORE writing any code against a build plan, discovery before scoping requirements, planning before designing artifacts or a build plan, reflection at work boundaries and before /clear, delegation before splitting work across subagents, norms for the norm-lifecycle spec (what binds vs what tracks).
 user-invocable: true
 disable-model-invocation: false
-argument-hint: "(omit for the overview) | building | discovery | planning | reflection | principles | norms"
+argument-hint: "(omit for the overview) | building | discovery | planning | reflection | delegation | principles | norms"
 ---
 
 This repo is governed by **Prawduct** — it turns product ideas into well-built software through structured discovery, quality-governed building, and continuous learning. The full methodology ships with the plugin and is read on demand; this skill is the map and the reader.
@@ -12,6 +12,7 @@ This repo is governed by **Prawduct** — it turns product ideas into well-built
 - `discovery` → `${CLAUDE_SKILL_DIR}/../../methodology/discovery.md` — ask the fewest questions that most change the outcome. If the repo has existing docs/code but a template-default `project-state.yaml` (the **DISCOVERY NOT CAPTURED** nudge), run the guide's reconciliation mode — backfill from the material, don't re-interview.
 - `planning` → `${CLAUDE_SKILL_DIR}/../../methodology/planning.md` — artifact templates ship at `${CLAUDE_SKILL_DIR}/../../templates/`; generate in dependency order and validate intermediate outputs before building on them.
 - `reflection` → `${CLAUDE_SKILL_DIR}/../../methodology/reflection.md` — reflect at work boundaries, not only session end; close the loop from observation to changed behavior.
+- `delegation` → `${CLAUDE_SKILL_DIR}/../../methodology/delegation.md` — before splitting work across subagents. A delegate verifies what proves its own change and nothing beyond it; the coordinator owns integration and all governance. Considerations, the anti-patterns each with its tell, and what a brief must say.
 - `principles` → `${CLAUDE_SKILL_DIR}/../../docs/principles.md`
 - `norms` → `${CLAUDE_SKILL_DIR}/../../docs/norms.md` — norms bind; descriptions track. The authority rule, the normative-vs-descriptive test, the lifecycle (birth, rulings, amendments, exceptions, transitions), and the enforcement map. Read when work touches a `## Direction` section, a preferences norm row, or a structural-characteristic flip — every other surface that cites `docs/norms.md` reads it through this topic.
 
@@ -25,6 +26,7 @@ Every unit of work follows **understand → plan → build → verify → Critic
 - `/prawduct:methodology planning` — before designing artifacts or a build plan
 - `/prawduct:methodology building` — **before writing any code** against a plan (the #1 thing not to skip)
 - `/prawduct:methodology reflection` — at work boundaries and before `/clear`
+- `/prawduct:methodology delegation` — before splitting work across subagents
 
 The principles guide every decision — read the full set, where the count and the groups are defined rather than restated, with `/prawduct:methodology principles`. How the agent communicates and acts while applying them — advisor first (expert take before compliance), verify don't guess, stress-test before agreeing, frame decisions — is the stance block in the always-injected session digest (`methodology/session-digest.md`). Governance is enforced structurally: the plugin's Stop hook runs the Critic + reflection gates at session end, so a code change against an active build plan with no review or reflection blocks the session.
 

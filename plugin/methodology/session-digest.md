@@ -126,8 +126,8 @@ modeled as CI — a gate can legitimately block, and a block names itself.
 
 ## Read on demand
 
-- `/prawduct:methodology` — overview and the guide reader: pass a topic to open it —
-  `/prawduct:methodology building | discovery | planning | reflection | principles | norms`
+- `/prawduct:methodology [<topic>]` — the overview, or one guide:
+  `building | discovery | planning | reflection | delegation | principles | norms`
 - `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
   `/prawduct:janitor` · `/prawduct:doctor`
 

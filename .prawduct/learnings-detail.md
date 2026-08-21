@@ -4273,3 +4273,38 @@ change in place, what does this one do? A predicate that mutates while answering
 member of such a class, because its callers read as questions and act as acts — which is also the
 fix worth reaching for first: make the rule a construction both surfaces call, not a branch each
 implements.
+
+## Re-invoking the thing you just edited verifies nothing in the same session
+
+2026-08-21, delegation Chunk 01. The chunk's acceptance criterion was "`/prawduct:methodology
+delegation` opens the guide" — invocation, not assertion, exactly as the plan's Verification
+Strategy demanded. I ran it. The harness served the skill body **cached from an earlier invocation
+in the same session** (its own header said "the skill instructions were previously loaded"), so the
+render was missing the two routing bullets I had written minutes before.
+
+I caught it only because the omission was visible: two bullets I had just authored were absent. Had
+the chunk touched only the frontmatter `description`, the stale render would have looked entirely
+correct and I would have reported the criterion met on evidence that **could not have shown a
+failure** — the class of green the learnings already call out under the unexpected-pass and
+negative-reproduction rules, arriving through a new door.
+
+Generalizes past skills: any surface the harness loads once per session — skill bodies, hook
+payloads, the SessionStart digest — is unverifiable by re-invocation within that session. Verify
+against disk (read the file, resolve the path it prints), or in a fresh session.
+
+## Funding a budget by deleting what another surface says is only valid for readers who receive it
+
+Same chunk. The standing way to pay for growth in `methodology/building.md` is to cut what the
+always-injected `session-digest.md` already states in full — the −86 entry of 2026-08-19 is the
+precedent, and the audit here used the same class for −53.
+
+The trap surfaced on the fourth candidate cut. `building.md`'s "review first, tick after" ordering
+is stated verbatim in the digest, so by the class rule it was removable. It is not: a **subagent
+does not receive the SessionStart digest**, and `building.md` is the file every delegate is
+instructed to read. For that reader the digest covers nothing, and every "dedup" against it is a
+plain deletion.
+
+The three cuts that shipped were re-checked against this and survive it — a delegate does not write
+handoff notes, and the retained tells and acting rules stayed. But the class as previously stated is
+unsound, and it will be reached for again: it is the cheapest funding move in the repo, and this
+feature exists to produce *more* delegates. Enumerate who opens the file before crediting the cut.

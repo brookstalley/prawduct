@@ -173,7 +173,32 @@ LAST_MEASURED_TOKENS = {
     # per-mode table and the fail-safe. CEILING RATCHETED 4730 -> 4718 with the
     # cut, per the standing rule: slack left behind is a loan the next edit
     # collects silently and green.
-    "methodology/building.md": 4774,
+    # -53 then +40 on 2026-08-21 (net -13, 4774 -> 4761): the delegation guide's
+    # pointer, funded by a CLASS rather than by words — rules the
+    # always-injected `session-digest.md` states in full, restated here beyond
+    # the part only this file owns. Checked per item, not assumed: (1) Exception
+    # Handling's two language-syntax bullets and its "the general waiver
+    # mechanism (`docs/waivers.md`)" sentence — the digest gives the pragma
+    # string verbatim AND names `docs/waivers.md`, so what stayed is the part it
+    # does not carry (when a broad catch is legitimate, that the comment goes on
+    # the catch line, and the canary/Critic behaviour); (2) "Two session files,
+    # two owners" — the digest owns both the ownership split and the
+    # don't-write-there rule, so what stayed is the regeneration inputs and
+    # `handoff preview`, which nothing else states; (3) the norm-departure
+    # sentence's "never a silent divergence" and "Norms bind; descriptions
+    # track" — the digest's own norms bullet, word for word. The TELL ("a norm
+    # edited to bless your own code") is in that class too — the digest states
+    # it — and was kept anyway, deliberately: it is the clause that makes the
+    # tripwire fire, and this file is where a builder is standing when a norm
+    # surfaces mid-build. A cut is a judgment about the reader's position, not
+    # a rule that every duplicate goes.
+    #
+    # This is the audit the 4718 -> 4800 raise below skipped. That raise was
+    # taken to buy the verification-ceiling rule's *why* without first asking
+    # whether a removable class existed — and one did. The ceiling is ratcheted
+    # with the cut (4800 -> 4775), so the 25 tokens the audit recovered are
+    # given back rather than left as slack for the next edit to spend green.
+    "methodology/building.md": 4761,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -397,6 +422,26 @@ LAST_MEASURED_TOKENS = {
     # were instructions an agent executes at every turn a review is live, so the
     # cost buys a recipe that runs instead of one that reads well.
     "methodology/reflection.md": 4702,
+    # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
+    # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
+    # requires the entry; the decision block above this
+    # dict is why it is not a ceiling. This guide is the cheap destination that
+    # policy exists to protect: its whole cost is paid by a session that opens
+    # it, and the reason it exists at all is that `building.md` could not hold
+    # the content at any price.
+    #
+    # The first draft was 1041 and tripped `test_no_suite_total_claims` by
+    # quoting the shape it was warning about — the measured pass counts of three
+    # contended runs. Restated relationally (three different totals, none more
+    # than about half of what the suite collects, all exiting 0), which costs 15
+    # tokens and keeps the evidence: the numbers were never the point, the
+    # divergence was.
+    #
+    # -3 in the same chunk's fix pass: the briefing-cost paragraph said the cost
+    # "is a real constraint today", a time-anchor in durable prose against a
+    # figure an open backlog item exists to move. Restated as the condition
+    # ("while that is what one costs"), which is what stays true either way.
+    "methodology/delegation.md": 1053,
 }
 
 
@@ -523,8 +568,34 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # sentence is already a pointer to `SKILL.md`, which owns the fact, so
     # restating it precisely would have been a more accurate second home. One
     # token is what a pointer costs over a claim.
-    "framework": 3321,
-    "product": 2243,
+    #
+    # framework 3321 -> 3310, product 2243 -> 2236 (2026-08-21). `delegation`
+    # joins both always-injected ROSTERS — the name only, never a rule: a
+    # roster that omits a live topic is a false statement of fact on the one
+    # surface an agent reads before it opens anything, and it is also the only
+    # surface reaching an agent that opens no guide at all. The ruled-out thing
+    # was a delegation *line* (guidance, priced every session forever); listing
+    # the topic is not that, and the owner ruled for the listing.
+    #
+    # PAID FOR past the addition, by a class in each member. CLAUDE.md's guide
+    # roster carried a per-topic when-to-read gloss ("before exploring a
+    # problem", "before designing artifacts or a build plan") that
+    # `skills/methodology/SKILL.md` owns and states more fully for all seven
+    # topics — CLAUDE.md was restating three of them, and adding the sixth
+    # guide would have meant writing a fourth. The digest's reader line said
+    # "overview and the guide reader: pass a topic to open it" and then
+    # demonstrated the form on the next line; the demonstration is the whole
+    # instruction, so the sentence explaining it went.
+    #
+    # The ceilings are deliberately NOT ratcheted with this cut, which departs
+    # from the standing slack-is-a-loan rule and says so rather than doing it
+    # silently: the owner's ruling was explicitly "start this way and dogfood,
+    # and promote to more tokens in CLAUDE.md if we need to". The headroom is
+    # reserved for that promotion, and the load-bearing assumption it would
+    # answer is recorded in `build-plan-delegation.md`'s Requirements
+    # Confidence.
+    "framework": 3310,
+    "product": 2236,
 }
 
 #: Ceilings. HARD, like the five per-file prose ceilings in this module and
@@ -542,8 +613,15 @@ LAST_MEASURED_INJECTED_TOKENS = {
 INJECTED_FOOTPRINT_CEILINGS = {
     # Ratcheted with the readings they guard (3460 -> 3325, 2260 -> 2248): a
     # ceiling left at its old value after a cut silently re-funds the growth
-    # the cut paid for. Headroom is ~10 by design, matching every other budget
-    # in this module -- the next addition trims or relocates, it does not bump.
+    # the cut paid for -- the next addition trims or relocates, it does not
+    # bump. Ratcheting with every cut is what that rule MEANS here, and it has
+    # driven headroom to a token or two rather than to any target figure: the
+    # 2026-08-19 entry below left 1 on `framework` and 2 on `product`. So a cut
+    # that does NOT ratchet is a departure and has to say why, whatever the
+    # resulting headroom happens to be. (This paragraph used to name "~10 by
+    # design" as the target; two ratchets had already falsified it, and a
+    # 2026-08-21 review reasoned from the stale figure to the wrong conclusion
+    # about whether a departure had occurred.)
     #
     # Both shapes carry the digest, so a digest addition is charged twice and
     # both ceilings bind it; only a CLAUDE.md edit is charged to `framework`
@@ -1567,12 +1645,114 @@ class TestBuildingMethodology:
         # exactly how the wrong instruction survived: nothing said what it was for.
         # Requirements and the sweep behind them:
         # .prawduct/artifacts/delegation-and-verification-cost-discovery.md.
-        assert tokens < 4800, f"building.md is ~{tokens} tokens, should be <4800"
+        # RATCHETED 4800 -> 4775 (2026-08-21) by the delegation chunk that
+        # spent the raise. The pointer to `methodology/delegation.md` was funded
+        # by a class the raise had never been audited for — the accounting is in
+        # LAST_MEASURED_TOKENS above — and the cut came in 13 tokens over the
+        # addition. Slack left behind is a loan the next edit collects silently
+        # and green, so the ceiling moves with the cut.
+        assert tokens < 4775, f"building.md is ~{tokens} tokens, should be <4775"
 
 
 # =============================================================================
 # discovery.md, planning.md, reflection.md
 # =============================================================================
+
+
+class TestDelegationGuide:
+    """`methodology/delegation.md` — the sixth `/prawduct:methodology` topic.
+
+    The design is guidance, not mechanism (owner rulings, 2026-08-21;
+    `.prawduct/artifacts/delegation-and-verification-cost-discovery.md` §6-7):
+    prawduct states the goal and the considerations, and the coordinator — which
+    can see the machine, the project and the moment's load — chooses how. The
+    failure mode of a guidance feature is mechanism creeping back in as
+    helpful-sounding prose, so the bar below is a NEGATIVE one as much as a
+    positive one.
+    """
+
+    content = read_file("methodology/delegation.md")
+
+    def _anti_pattern_bullets(self) -> list[str]:
+        section = self.content.split("## Anti-patterns", 1)[1].split("\n## ", 1)[0]
+        return [ln for ln in section.splitlines() if ln.startswith("- **")]
+
+    def test_every_anti_pattern_carries_a_tell(self):
+        """A tell is what makes an anti-pattern fire at the moment of the error.
+
+        Without one it reads as true afterwards and changes nothing — the
+        `learnings.md` preamble's "delivery is not descent". This is the check
+        that keeps the section from decaying into a list of names, which is the
+        cheapest way for it to look complete while doing nothing.
+        """
+        bullets = self._anti_pattern_bullets()
+        assert len(bullets) >= 7, (
+            f"the anti-pattern list has {len(bullets)} entries; the discovery "
+            "sweep found seven, each observed in a real transcript"
+        )
+        tell_less = [b.split("**")[1] for b in bullets if "*Tell:*" not in b]
+        assert not tell_less, (
+            f"anti-pattern(s) with no tell: {tell_less}. A rule without one is "
+            "read afterwards rather than fired at the moment of the error"
+        )
+
+    def test_the_guide_states_the_goal_and_who_owns_integration(self):
+        lower = self.content.lower()
+        assert "nothing beyond it" in lower, "the goal sentence (R1) is gone"
+        for owned in ("critic", "reflection", "merges"):
+            assert owned in lower, (
+                f"the coordinator's retained governance no longer names {owned!r} "
+                "— a delegate that governs is one of the anti-patterns"
+            )
+
+    def test_the_brief_contract_is_qualitative_not_a_template(self):
+        """R5: what must be SAID, not a template that says it.
+
+        The tell of the wrong shape is a fill-in-the-blank form, so this pins
+        both halves — the ceiling is named, and the guide disclaims the template.
+        """
+        assert "verification ceiling" in self.content
+        assert "not a template" in self.content.lower(), (
+            "the brief section no longer refuses to be a template, which is the "
+            "one sentence stopping the next editor from writing one"
+        )
+
+    def test_the_guide_names_no_consumer_test_vocabulary(self):
+        """§6 of the discovery artifact, and the easiest bar to violate while
+        writing helpful prose: prawduct must not name a consumer's test command,
+        runner, marker or tier. Consumers' regimes are not knowable in advance,
+        and naming one is how a framework-defined taxonomy grows back.
+        """
+        lower = self.content.lower()
+        forbidden = [
+            "pytest", "vitest", "jest", "npm test", "maxworkers", "-n auto",
+            "xdist", "testmon", "--maxprocesses", "makefile", "justfile",
+        ]
+        found = [f for f in forbidden if f in lower]
+        assert not found, (
+            f"delegation.md names a consumer's test toolchain: {found}. The "
+            "guidance is qualitative; the project maps it to its own regime"
+        )
+
+    def test_the_guide_points_back_at_the_dispatch_mechanics(self):
+        # The split is deliberate: judgment here, mechanics in building.md.
+        # Restating either side is how the two drift apart.
+        assert "/prawduct:methodology building" in self.content
+
+    def test_building_md_reaches_the_guide(self):
+        """A guide nothing reaches is not a deliverable.
+
+        `building.md` § Delegating Work to Subagents is where a builder already
+        is when the question arises, so the pointer has to be IN that section —
+        a mention elsewhere in the file is met before there is a decision to
+        make, or not at all.
+        """
+        building = read_file("methodology/building.md")
+        section = building.split("## Delegating Work to Subagents", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        assert "/prawduct:methodology delegation" in section, (
+            "building.md's delegation section does not route to the guide"
+        )
 
 
 class TestOtherMethodology:
