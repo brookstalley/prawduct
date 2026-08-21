@@ -18,7 +18,7 @@ cached review verdict from the released plugin is not replayed against this one.
 notes accumulate here, and this section is renamed to the release number at the cut.
 
 **Delegation has a guide, a default, and a place to record what your project decided.**
-`/prawduct:methodology delegation` is a sixth topic: when to delegate and when to stay serial, what
+`/prawduct:methodology delegation` opens it: when to delegate and when to stay serial, what
 a delegate verifies (what proves its own change, and nothing beyond it) while you keep integration
 and all governance, and the anti-patterns each with the tell that fires at the moment of the error.
 The partition question now arrives where you already stop — when chunk boundaries are drawn, and at
