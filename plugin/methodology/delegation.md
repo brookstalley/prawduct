@@ -1,6 +1,6 @@
 # Delegating Work: When To, What a Delegate Verifies, and What It Costs
 
-**Prawduct states the goal, one default, and the considerations. You choose the mechanism.** You can see this machine, this project's test regime and this moment's load; a framework distributed to every governed repo cannot. Nothing here names a command, a marker, a tier or a runner — where a decision needs one, naming it is yours.
+**Prawduct states the goal, one default, and the considerations. You choose the mechanism.** You can see this machine, this project's test regime and this moment's load; a framework distributed to every governed repo cannot. Nothing here names *your* runner, *your* markers, or a tier of prawduct's invention — where a decision needs one, naming it is yours. (Prawduct's own commands are in bounds: the record it owns is inside the line.)
 
 The dispatch mechanics — worktree isolation, the shared git index, what an isolated agent can and cannot see — are `/prawduct:methodology building` § Delegating Work to Subagents. This guide is the judgment that comes first.
 
@@ -51,7 +51,7 @@ A list of what has to be said, in your own words — not a template, and not som
 
 - **The work** — the chunk spec and the artifacts it references, or the task stated in full.
 - **The ownership boundary** — what this delegate owns, and what it must not touch.
-- **A verification ceiling** — the narrowest run that covers its own change, never the run you will do at integration. A cost bound, not a rigor discount.
+- **A verification ceiling** — the narrowest run that covers its own change, never the run you will do at integration. A cost bound, not a rigor discount. **Read `project-preferences.md`'s `Delegate verification` row first, where the project has one** — a ceiling you invent beside a ceiling the owner already ratified is the retyping this whole feature exists to end.
 - **What to return**, and in what form.
 - **Who integrates** — you. Say so, so the delegate doesn't try.
 

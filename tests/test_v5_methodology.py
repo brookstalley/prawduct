@@ -228,7 +228,10 @@ LAST_MEASURED_TOKENS = {
     # knowable" was the why, and `delegation.md` owns that ("a default, not a
     # commitment: re-check it at dispatch against what the machine is actually
     # doing") one sentence before the pointer telling you to open it.
-    "methodology/building.md": 4773,
+    # -10 on 2026-08-21 (Chunk 04's cumulative, R-13), 4773 -> 4763, ceiling
+    # ratcheted 4775 -> 4765 with the cut. The rationale is at the ceiling
+    # assertion, which is where this file's cuts are narrated.
+    "methodology/building.md": 4763,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -458,7 +461,20 @@ LAST_MEASURED_TOKENS = {
     # on both sides, so they cannot drift into disagreeing. What genuinely
     # stayed out is the rest: the wall-clock reasoning, the anti-patterns and
     # the brief contract, which this section points at instead of restating.
-    "methodology/planning.md": 4791,
+    # +60 on 2026-08-21 (Chunk 04's cumulative, R-7): two of the four
+    # ask-for-approval reasons turned on delegation history that nothing in
+    # `.prawduct/` records. The closed list exists because an agent resolving
+    # vagueness asks defensively every time, so a trigger with no observable
+    # behind it reintroduces the exact cost the closure buys — or invites an
+    # agent to assert a precedent it never checked. What was added is the
+    # observable, not a fifth reason: the `partition:` lines on live and
+    # archived plans, and whether `project-preferences.md` carries a Delegation
+    # row. NOT paid for in place, and this file has a reading rather than a
+    # ceiling, which is exactly the on-demand class #688 decided to account for
+    # without blocking — the cost is opt-in, paid by a session that opens the
+    # guide. Recorded here rather than absorbed, because an unrecorded change is
+    # the only thing a reading refuses.
+    "methodology/planning.md": 4851,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -527,7 +543,21 @@ LAST_MEASURED_TOKENS = {
     # and the bullet names the flag that says so. Paid at the on-demand
     # destination for the same reason the entries above are: growth here is
     # read only by a session that opens the file.
-    "methodology/delegation.md": 1470,
+    # +61 on 2026-08-21 (Chunk 04's cumulative, R-9 + R-13). Two fixes, both
+    # about this file telling the truth about itself. R-9: the header promised
+    # "nothing here names a command, a marker, a tier or a runner" while the
+    # unattributable-green bullet four sections down names
+    # `test-evidence record --degraded` — correctly, and pinned there by test.
+    # The rule the tests actually encode is narrower than the sentence was:
+    # no CONSUMER's runner, markers or a tier of prawduct's invention, while
+    # prawduct's own commands are in bounds by ruling 9. The claim is relational
+    # now, so it states the rule that holds. R-13: the brief contract is the
+    # point where a verification ceiling is actually written, and it did not
+    # reach for the `Delegate verification` row a project may already have
+    # ratified — so a coordinator could invent a ceiling beside the owner's,
+    # which is the retyping the whole feature exists to end. Reading, not
+    # ceiling: growth here is paid by the session that opens the file.
+    "methodology/delegation.md": 1531,
 }
 
 
@@ -1737,7 +1767,17 @@ class TestBuildingMethodology:
         # LAST_MEASURED_TOKENS above — and the cut came in 13 tokens over the
         # addition. Slack left behind is a loan the next edit collects silently
         # and green, so the ceiling moves with the cut.
-        assert tokens < 4775, f"building.md is ~{tokens} tokens, should be <4775"
+        # RATCHETED AGAIN 4775 -> 4765 (2026-08-21, Chunk 04's cumulative, R-13).
+        # The `How:` line had to reach for the `Delegate verification` row a
+        # project may already have ratified — without it a coordinator writes a
+        # brief inventing a ceiling beside the owner's, which is the retyping the
+        # whole feature exists to end. Paid in place and then some: the *why*
+        # above stays, but its MECHANISM (workers dying under N racing suites,
+        # not re-queued, not failing the run) is `delegation.md`'s canonical
+        # unattributable-green bullet, restated here in full. What this file
+        # needs is that it fails SILENTLY; what it does not need is the retelling.
+        # Net -10, and the ceiling moves with it rather than banking the slack.
+        assert tokens < 4765, f"building.md is ~{tokens} tokens, should be <4765"
 
 
 # =============================================================================

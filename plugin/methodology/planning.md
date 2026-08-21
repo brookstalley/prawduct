@@ -107,6 +107,10 @@ Chunk boundaries are where the delegation decision is drawn: the last moment bef
 3. Delegates will write in the shared worktree, so the user's own tree changes under them.
 4. Something irreversible or outward-facing sits inside a delegated chunk.
 
+Reasons 1 and 2 turn on history, so **read it rather than asserting it** — the `partition:` lines
+on this repo's plans, live and archived, and whether `project-preferences.md` carries a Delegation
+row. A precedent you did not look up is the defensive ask wearing a justification.
+
 Three standing negatives override all four — **do not ask** when the user has already approved this plan's delegation, when `project-preferences.md` records delegation as pre-approved, or when the user asked for the plan and its execution without further interruption. Absent a listed reason, disclose and proceed.
 
 **On a yes, offer to make it durable** — a `project-preferences.md` row — or the same question returns with every plan, which is the unnecessary asking wearing a seatbelt.

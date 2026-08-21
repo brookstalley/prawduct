@@ -7,10 +7,18 @@ depends_on:
   - artifact: delegation-and-verification-cost-discovery
 governed_by:
   # Added at Chunk 04, when the first norm-governed control on this branch was
-  # built. Chunks 01-03 are prose and one additive record field, and neither
-  # norm below reaches them.
+  # built, and completed at its cumulative review (R-1): the first pass wrote
+  # only the norms actively being reasoned about, which is a sweep of the
+  # builder's attention rather than of the artifact. One line per norm now.
+  # Chunks 01-03 are prose and one additive record field.
   - artifact: nonfunctional-requirements
     dispositions:
+      - "review wall-clock is P0; cost = unit-cost x run-count, both levers -> conforms. This
+        branch adds no reviewer payload and no gate that can demand a round: Check #18 grades
+        nothing, so it cannot produce a finding, and `partition:` is a record rather than a gate
+        (ruling 6). The one run-count question it raises is answered the other way -- the plan
+        made Chunk 04 `cumulative-final`, so the last chunk review and the branch cumulative are
+        one dispatch rather than two."
       - "proportionality ratchets both ways — every new control emits its yield
         observably → bounded exception, same one Health Check #13 already holds and on the
         same clock (#563). doctor still has no fact-emitting path, and building one for a
@@ -22,14 +30,42 @@ governed_by:
         alone; found-nothing proposes nothing), and those are the whole population that
         would otherwise nag. When doctor gains a fact-emitting path, #18 is a case beside
         #13, not a separate question."
+      - "state-file growth is an advisory warning, never a hard block -> inapplicable because this
+        plan adds no size check and no state file. Adjacent and worth naming, because the session
+        briefing raised it on this very repo: `project-state.yaml` at 41KB and `learnings.md` at
+        89KB are both over threshold and both were deliberately left alone here. Compaction is its
+        own work, and folding it into a feature branch is what the advisory posture exists to
+        avoid."
   - artifact: architecture
     dispositions:
-      - "one home per fact; an index entry is a name, not a copy → conforms. The Enforcement
-        row the promotion flow writes is a handle pointing at the `## Workflow` row, and the
-        flow says so in those words."
+      - "an independent reviewer never mutates the session it reviews -> inapplicable because
+        nothing here touches the reviewer or its mutation sites. Recorded because the builder-side
+        mirror image bit Chunk 03: mutation-testing a live worktree while a review reads it is the
+        same hazard from the other end. Every Chunk 04 mutation run was done before dispatch."
+      - "authority fails closed; advice fails soft -> conforms, and this branch turns on it twice.
+        `degraded` is authority (a record a gate reads), so it refuses; Check #18 is advice, so it
+        grades nothing and its worst case is silence. R-6 in this review was the second case: a
+        check whose branches did not cover the state the template ships would have failed advice
+        SILENTLY, which is the one thing fail-soft does not permit."
+      - "local-first governance coordination; no network, no daemon, no third-party runtime ->
+        conforms. Check #18 reads the consumer's own files with Read/Glob, adds no dependency, and
+        leaves doctor's `allowed-tools` set unchanged."
       - "the plugin writes nothing into a repo but its own state → conforms. Both doctor
         write paths write `.prawduct/` governance state only, and Chunk 04 states that as
         the skill-level rule rather than leaving it inside one flow."
+      - "prawduct is written in Python and must never be specific to Python -> conforms, and it is
+        the constraint that shaped the feature. Check #18 names no runner, no marker and no build
+        tool: it says test config, named script, build-tool target, CI job, and the proposal is
+        assembled from what the repo says rather than from a taxonomy prawduct brought. A guarding
+        test pins that absence on both new surfaces."
+      - "prawduct guides and reviews; it never implements -> conforms. Doctor proposes and the
+        owner ratifies; nothing is applied for them, and a decline writes nothing."
+      - "goals and verification bind; prescribed method is advice -> conforms, and it is ruling 6
+        restated. The guide states the goal and one default; the coordinator chooses the mechanism,
+        and the policy rows are the project's own words rather than a schema."
+      - "one home per fact; an index entry is a name, not a copy → conforms. The Enforcement
+        row the promotion flow writes is a handle pointing at the `## Workflow` row, and the
+        flow says so in those words."
 partition: serial — 01, 02 and 04 all edit the same methodology and skill files; 03 is independent but too small to brief
 last_validated: 2026-08-21
 ---

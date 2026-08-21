@@ -4328,3 +4328,34 @@ I was adding, and the sentence directly above it read as background. **Editing a
 reviewing it.** When a change exists because some existing statement was wrong, the change is not
 done until you have named that statement and removed or replaced it; writing the correct rule
 somewhere else leaves two rules standing, and readers obey the one they reach first.
+
+## A mutation sweep where EVERY mutant dies on the first pass is a claim about the HARNESS
+
+**What happened (2026-08-21, delegation Chunk 04).** I wrote an ad-hoc mutation harness to check
+whether twelve new prose-guarding tests were load-bearing: for each of eighteen defects, patch the
+file, run the named test, expect red, restore. It reported eighteen reds. Every one was a lie.
+
+The runner invoked `pytest ... -p no:xdist`, and this repo's `addopts` carries `-n --dist loadfile`.
+Disabling the xdist plugin makes those arguments unrecognised, so every subprocess exited on a
+usage error before collecting a single test. My red-check was `" failed" in stdout or "error" in
+stdout.lower()` — and `ERROR: usage:` contains "error". The harness graded eighteen tests on
+whether they could fail, using a runner that never started, and every answer was the same answer.
+
+**Why it survived a read.** Nothing about the code looked wrong; the bug was in the *interaction*
+between a flag I added for tidiness and a config file I did not open. The only signal was the
+result itself — eighteen for eighteen, first try, on tests I had written minutes earlier. A
+perfect score on a first pass is not a strong result, it is an implausible one.
+
+**What the fix found.** Switching the check to `returncode != 0` plus an explicit guard for
+"no tests ran" / "unrecognized arguments" turned 17 of 18 red and left one genuinely green — a
+placement assertion that sliced its section at a `---` rule several headings below the section it
+meant to bound, so a row relocated into a heading of its own was still "inside Workflow". That
+assertion had been passing on exactly the prose it existed to reject, and only the eighteenth
+mutant could see it.
+
+**The general shape.** This is the same defect class as a test that cannot fail on its subject,
+moved one level up: the instrument that measures load-bearingness was itself not load-bearing. So
+the instrument needs the same treatment as the tests it grades — a case it must report as a
+survivor, and a positive assertion that the measurement ran at all. `[learnings-detail.md]`
+neighbours (L52, L448, L462, L506) all cover "a mutant that should die but lives"; this is the
+inverse tell, and it is the one that looks like success.

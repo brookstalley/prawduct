@@ -2388,7 +2388,7 @@ def likely_duplicate_groups(findings: list[dict]) -> list[list[str]]:
             f["fid"],
             f.get("goal"),
             frozenset(f.get("files") or []),
-            _title_words(f.get("title") or f.get("summary")),
+            _title_words(evidence.finding_title(f)),
         )
         for f in findings
         if isinstance(f, dict)
@@ -2471,9 +2471,9 @@ def _render_duplicate_groups(findings: list[dict], groups: list[list[str]]) -> s
             continue
         lead = min(
             entries,
-            key=lambda f: len(str(f.get("title") or f.get("summary") or "")),
+            key=lambda f: len(evidence.finding_title(f)),
         )
-        title = str(lead.get("title") or lead.get("summary") or "<no title>")
+        title = evidence.finding_title(lead, "<no title>")
         # The severity is the group's MAXIMUM, never the lead's. The lead is
         # chosen for its wording (shortest = the claim the reviewers agree on),
         # and wording has nothing to do with severity — so a BLOCKING found by
