@@ -1,7 +1,8 @@
 # Discovery — Delegation and Verification Cost
 
-**Status:** requirements draft, not yet ratified · **Date:** 2026-08-21 · **Author:** builder, from a
-sweep of six governed product repos and 56.5k assistant turns of transcript
+**Status:** requirements draft · **Date:** 2026-08-21, revised the same day against owner rulings 6-8
+(§7), which collapsed the design from four mechanism-bearing pillars to guidance. **Author:** builder,
+from a sweep of six governed product repos and 56.5k assistant turns of transcript
 **Governs:** a new prawduct capability. No build plan yet; open decisions at the end.
 
 ---
@@ -115,15 +116,16 @@ model is responding to them correctly.
 
 | repo | regime |
 |---|---|
-| discodon | 6 named rungs, 13 enforced markers, cost tiers (`live_local`/`live_creds`/`live_cost`), population markers, a change-scope detector, a cross-run lease, remote dispatch |
+| discodon | 6 named stages (its own vocabulary, not prawduct's), 13 enforced markers, cost tiers (`live_local`/`live_creds`/`live_cost`), population markers, a change-scope detector, a cross-run lease, remote dispatch |
 | hallucinote | 2 opt-in markers (`audio`, `ableton`), one ~2 min suite, no tiers |
 | samsung | a `browser` marker forced serial with `-n0`, three separate project roots |
 | 3tears | `integration` (docker) / `live` (env-gated) markers, a workspace sweep excluding a sidecar |
 
 Prawduct's entire vocabulary for this is `test_command:` — **one canonical maximal invocation**,
-plus `test_commands:` for multi-environment repos. There is no way for a repo to tell the
-framework "here is a cheaper run that proves less," so there is nothing for a delegation
-instruction to *name* except the whole suite. Which is exactly what `building.md` names.
+plus `test_commands:` for multi-environment repos. There is nothing for a delegation instruction
+to *name* except the whole suite — which is exactly what `building.md` named. The answer is not to make prawduct learn these
+regimes (§6); it is to stop the framework from naming a command at all, and let the coordinator,
+who can read the regime in front of it, choose.
 
 ### 2.8 Prior art in this repo, reached second
 
@@ -135,11 +137,11 @@ proposal independently reached three conclusions this one depends on:
 1. **`project-state.yaml`'s `test_command` is the right config home**, and prawduct is the right
    distribution vehicle — "not because prawduct needs a test-runner feature, but because the
    distribution problem is already solved there and nowhere else" (7 of 9 repos sampled carry
-   `.prawduct/`). Pillar A lands in the same place, reached independently.
+   `.prawduct/`). The delegation policy lands in the same neighbourhood, reached independently.
 2. **The reusable part is small.** Of discodon's remote lane, ~40 lines are generalizable dispatch
    and ~100 are repo-specific tree preparation that "cannot be shared with any other repo" and
-   "was never shareable." That is the correct calibration for this feature too: prawduct should own
-   the vocabulary and the arbitration, and own none of the repo's execution.
+   "was never shareable." That is the correct calibration for this feature too, and the owner's
+   ruling (§7.6) goes further: prawduct owns the goal and the guidance, and none of the mechanism.
 3. **Throughput comes from concurrency across runs, not width within one** — with numbers.
 
 It also names two gaps this design inherits: **TST-Q7ZK** (prawduct's own `test-evidence record`
@@ -148,257 +150,234 @@ box has, where the remote host is — *has no home anywhere*, being neither a re
 preference. §7 decision 5.
 
 A third finding worth carrying: hallucinote, trenchant and worldground carry `.prawduct/` but have
-**no test entrypoint at all**. For those repos "declare your ladder" is the easier prior problem
-"declare a test command," which reinforces R3 — a no-ladder repo must remain first-class.
+**no test entrypoint at all**. For those repos the prior problem is the easier one — "declare a test
+command" — which is why the guidance must work for a project with no tiers at all.
 
 ## 3. Diagnosis
 
-**Prawduct governs what work is done and to what standard. It has no model of who does the work
-or what the machine can afford.** The main agent is assumed to be the only worker; the machine is
-assumed to be free and infinite; verification is assumed to have one setting, maximum.
+**Prawduct governs what work is done and to what standard. It has no model of who does the work.**
+The main agent is assumed to be the only worker; verification is assumed to have one setting,
+maximum.
 
-From that single absence:
+From that single absence: nothing asks whether work should be split, so it isn't (symptom 1); there
+is no cheaper verification to *name*, so delegates are told to run the most expensive one
+(symptom 2); and the failure mode of that is a green record, so nobody finds out.
 
-- nothing asks whether work should be split, so it isn't (symptom 1);
-- there is no cheaper verification to name, so delegates are told to run the most expensive one
-  (symptom 2);
-- per-suite clamps are the only defence and they don't compose, so the box oversubscribes;
-- and the failure mode of oversubscription is a green record, so nobody finds out.
+**The absence is a decision absence, not a mechanism absence.** This is the correction that
+reshaped everything below. A first draft of this document proposed a framework-defined rung
+vocabulary, declared contention classes, a slot semaphore, and a mechanical ownership-disjointness
+check. All four are ruled out (§6) — and `docs/norms.md` § Deliberate Non-Design already forbade
+them: *"Norms are prose read by capable models… Structure would trade away the judgment this
+depends on,"* and *"No mechanical divergence gates. Every scenario defeats a checker built for the
+previous one; all of them yield to the same questions asked by a capable reviewer with the right
+context."* The coordinating agent holds what a framework cannot: this machine, this project, this
+test regime, this moment's load. Prawduct's job stops at the goal, the considerations, the
+anti-patterns, and the record.
 
-**Ordering claim, and it is load-bearing:** fan-out *without* a cost model is strictly worse than
-staying serial. Three delegates each running a whole suite is more machine load, more wall clock,
-and more silent-drop risk than one agent running one suite. **The verification-cost model is a
-prerequisite for the delegation model, not a companion to it.** Anything that increases fan-out
-before the cost model lands makes the reported problem worse.
+**Ordering claim, and it survives the reshaping.** Fan-out *without* a cost bound is strictly worse
+than staying serial: three delegates each running a whole suite is more machine load, more wall
+clock and more silent-drop risk than one agent running one suite. Guidance that encourages fan-out
+lands together with guidance that bounds each delegate's verification — never before it.
 
 ## 4. The shape of the answer
 
-Four pillars. Each is independently useful; the order is a dependency order.
+Prawduct states the **goal**, supplies the **considerations** and the **anti-patterns**, gives the
+project a **place to record what it decided**, and **discloses delegation before it happens**. The
+coordinator chooses mechanism.
 
-### Pillar A — Verification rungs: a claim vocabulary the repo maps to its own commands
+### 4.1 The goal
 
-Prawduct defines a small **closed vocabulary of claims**, ordered by blast radius. A repo maps the
-ones it has to its own commands. That is what makes it language- and platform-agnostic: the *claim*
-is universal, the *discharge* is local.
+A delegate verifies what proves its own change, and nothing beyond it. The coordinator owns
+integration verification and all governance — the combined run, Critic, reflection, state, merges.
+And the cost of briefing a delegate must be proportionate to the work delegated; today it is not
+(§2.6), which is a rational reason to stay serial.
 
-| rung | the claim | discharged by, e.g. |
-|---|---|---|
-| `focused` | "the thing I changed works" | `pytest tests/test_x.py`, `swift test --filter`, `go test ./pkg/x`, `vitest run src/x.test.ts` |
-| `adjacent` | "I did not break my neighbours" | the package / module / app the change lives in |
-| `whole` | "I did not break the product" | everything hermetic and offline |
-| `live` | "it works against the real world" | external services, devices, browsers, paid APIs, hardware |
+### 4.2 Considerations — questions, not rules
 
-Design rules that fall out of the evidence, each with a reason:
+*What must this delegate prove, and what is the smallest thing that proves it? Who checks the seams
+between delegates, and when? What is this machine already doing? What in this project's test regime
+is expensive — in time, money, credentials, or dependence on something nobody here controls — and
+does this delegate need any of it? Is briefing this delegate cheaper than doing the work inline?*
 
-- **Rungs are named, never numbered.** A number becomes local jargon ("Stage 3") that means
-  something different in every repo and invites cross-repo comparison of incomparable things.
-  Explicitly out of scope: importing discodon's stage numbering into the framework.
-- **The ladder is a partial map, and one rung is a valid ladder.** A repo declaring only `whole`
-  (hallucinote) is a first-class, zero-ceremony configuration. Delegation must still work there —
-  it simply means delegates verify nothing and the integrator owns the whole claim.
-- **A rung declaration carries cost, not just a command**: measured wall-clock, and its
-  **contention class** — does it fork workers, and does it need exclusive access to a shared
-  resource (a port, a database, a device, a display, the committed tree)? Contention class is what
-  makes arbitration mechanical instead of advisory.
-- **A rung is only trustworthy if it is exercised.** A declared command that nothing runs is a
-  stale artifact by construction (Living Documentation). Declared-but-never-executed must be
-  *visible*, not silently trusted.
+On that last kind of expense: a failure in a test that depends on an uncontrolled third party is not
+a signal about the delegate's change at all. discodon paid to learn this — a 403 from a video host
+failed a gate for a diff touching only that repo's visualization code, and the identical tree passed
+seven minutes later. Prawduct names the consideration; the project decides what it means for its own
+suite.
 
-**Home:** `project-state.yaml`, extending the existing `test_command:` block. These are facts about
-this repo's commands and costs, and that is where those already live. No new file class
-(`docs/norms.md` § Deliberate Non-Design).
+### 4.3 Anti-patterns, each with a tell
 
-### Pillar B — Machine-level arbitration, because per-suite clamps do not compose
+The tell is what makes a rule fire at the moment of the error rather than read as true afterwards
+(`learnings.md` preamble — *"delivery is not descent"*). Each of these is observed in §2.
 
-- A **slot semaphore**, not a mutex. `documentation/remote-test-execution-proposal.md` (§2,
-  measured 2026-08-03 on a 16c/32t host) settles the shape: `-n8` 130.7s · `-n16` 110.8s ·
-  `-n24` 124.3s wall. **Past ~8 workers extra CPU buys nothing, and throughput comes from
-  concurrency *across* runs rather than width *within* one.** That is the empirical case for the
-  whole design — narrow each run, then widen the agent count — and it means the primitive is N
-  slots, not one lock. discodon's `testlock.py` (binary, clone-wide) and the remote lane's
-  `flock`-based 3-slot semaphore are the two existing implementations; the semaphore is the
-  right generalisation and the lock is its N=1 case.
-- A waiting run **announces who it is waiting for and re-announces**, so a queue is never
-  mistakable for a hang. Documented opt-out. Known wart to inherit deliberately or fix: the
-  remote lane's all-busy fallback queues on slot 1 specifically, so a run can wait behind a long
-  holder while other slots free first — unfairness, not a bug, and *never exercised under real
-  concurrency* (that proposal's open Q2).
-- **Prawduct's own entry point must participate.** `prawduct-hook test-evidence record` shells a
-  bare suite invocation, takes no lock, and is — per discodon's `TESTING.md`, tracked there as
-  **TST-Q7ZK** — a *frequent* full-suite entry point that today bypasses every arbitration a repo
-  has built. The framework is currently a contended-resource consumer that does not participate
-  in its own consumers' arbitration.
-- **Fan-out width and delegate rung trade off against each other**, and the trade must be
-  expressible. Wide fan-out at `focused` is cheap. Fan-out of 3 at `whole` is the reported bug.
-- **The framework's own harness already caps agent concurrency** (`min(16, CPUs-2)` in the
-  Workflow tool). That caps *agents*; it does not cap what each agent forks. Prawduct must reason
-  about the second number, which is the one that kills the box.
+- **The delegate that verifies the whole product** — tell: the brief names a command the
+  *coordinator* would run at integration.
+- **N baselines** — tell: the brief says "make sure tests pass before you start."
+- **The unattributable green** — tell: you accepted a pass count without knowing what was collected,
+  from a box running several agents.
+- **Boundaryless fan-out** — tell: you cannot say which files each delegate owns without reopening
+  their briefs.
+- **The delegate that governs** — tell: a delegate ran the Critic, updated project state, or ticked
+  a Status box.
+- **The brief that costs more than the work** — tell: the context you assembled exceeds what the
+  chunk changes.
+- **Serial by default** — tell: a plan with independent chunks and no partition decision recorded
+  either way.
 
-### Pillar C — Degradation must be visible, or the evidence record is a lie
+### 4.4 The brief contract, stated qualitatively
 
-Independently valuable, arguably shippable first, and the item with the worst
-consequence-if-skipped:
+What any delegate must be told: the work; the ownership boundary (what it owns, what it must not
+touch); a **verification ceiling** — the narrowest run covering its own change, never the
+coordinator's run; what to return; and who integrates. No template, no generator, no schema — the
+list of what must be said, in the coordinator's own words.
 
-- A verification record must be able to say **it was degraded**. At minimum: carry
-  **collected vs. reported** counts, and treat a shortfall as a failed record rather than a pass.
-- A run whose worker died must not be able to write a green fact into the evidence store.
-- This closes a hole that already exists today, before any new delegation feature ships, and it
-  gets worse in exact proportion to how much concurrency the framework encourages.
+### 4.5 Placement — the part that decides whether any of this works
 
-### Pillar D — Delegation as a plan-time decision with a generated brief
+**Guidance-only is what already failed.** `building.md` has said "when chunks are independent and
+parallelizable" the whole time, and delegation ran at 0.34%. What reliably produced subagents was
+`/prawduct:pr` *doing it* — 52 of 106 dispatches. The lesson is not that mechanism is required; it
+is that **guidance must arrive where the coordinator is already stopping.** So the delegation
+question is raised when chunk boundaries are drawn in planning, and at a chunk close — not as a
+passage in a file someone might open. Placement, not machinery.
 
-**The decision moves to planning time.** Chunk boundaries are drawn in `planning.md`, when the
-partition is being reasoned about — not at build time, when the main agent is already deep in
-context and delegation looks like extra work. Requirements:
+### 4.6 Disclosure and consent
 
-- The build plan records, per chunk or per plan, whether the work is delegable, and **when it is
-  not, why**. A silent omission becomes a visible decision — the pattern prawduct already uses for
-  descoping a requirement. This is the direct fix for symptom 1: *nothing currently asks the
-  question.*
-- Delegable chunks declare their **file-ownership set**. Disjointness across concurrently
-  dispatched chunks is then **mechanically checkable**, and an overlapping parallel dispatch can be
-  refused rather than merged by hand afterwards.
-- **The dispatch brief is generated, not hand-written.** Observed hand-written prompts ranged
-  583 → 7,949 characters with no common structure; the rules that matter survived only as
-  quoted owner directives. A generated brief carries a fixed contract: the work, the ownership
-  boundary (own / must-not-touch), the **verification rung and its exact command plus an explicit
-  ceiling — do not run above this rung**, the return contract, who integrates and what they will
-  run, and a context floor that is *not* the 96 KB briefing.
-- **What stays with the integrator is unchanged and should be restated where the brief is
-  generated:** the combined run at the highest rung, Critic, reflection, state updates, merge
-  conflicts.
-- **Delegation cost must be proportionate to delegated work** (blocked on / shared with #652,
-  role-scoping the briefing). Today it is not, and that is a rational reason to stay serial.
+Delegation should never be a surprise. Two obligations, deliberately asymmetric because informing is
+cheap and asking costs a round-trip:
 
-### Cross-cutting — declaring the regime must be cheap, and practice must be promotable
+**Inform, always.** A plan that will delegate says so when it is presented: how many delegates, in
+isolated worktrees or the shared one, what they will touch, and what they will *not* do. The
+disclosure carries what **varies between plans** — one that could be copy-pasted from the last plan
+is boilerplate, and boilerplate stops being read.
 
-The owner asked for both, and the evidence says both are needed.
+**Ask only on a named reason.** The condition is a closed list, because an agent resolving vagueness
+asks defensively every time, which is the cost this is trying to avoid. Reasons to ask:
 
-- **Detect, propose, ratify.** `/prawduct:doctor` should read what the repo already says about
-  itself — pytest markers and `addopts`, `package.json` scripts, Makefile / justfile targets, CI
-  workflow jobs — propose a rung mapping and its contention classes, and let the owner ratify.
-  Every repo in the sweep already encodes its regime somewhere machine-readable; none of it
+- **This project has never delegated before**, so the user has no precedent for what it looks like.
+  This is the "sudden" in sudden use of subagents, and it is the strongest single trigger.
+- The fan-out is materially wider than anything this project has done.
+- Delegates will write in the **shared** worktree, so the user's own tree changes under them.
+- Something irreversible or outward-facing sits inside a delegated chunk.
+
+And the standing negatives: don't ask if the user already approved this plan's delegation, if
+preferences record delegation as pre-approved, or if the user asked for the plan and its execution
+without further interruption.
+
+**Approval can be made durable.** On a yes, offer the preferences row — otherwise the same question
+returns every plan, which is the unnecessary-asking failure wearing a seatbelt. That is the
+promotion path (§4.7) arriving at the one moment the answer is fresh.
+
+This is the same concern as `reflection.md`'s rule that a turn with dispatched agents is `RUNNING`
+and never `COMPLETE` — don't leave the user unaware that agents are in play. Disclosure is that rule
+moved one step earlier, to before they start.
+
+### 4.7 Recording and promotion
+
+- **Policy lives in `project-preferences.md`, in the project's own words** — how much to delegate,
+  what a delegate may run, whether delegation is pre-approved, or `off`. Prose, indexed by the
+  Enforcement table like every other norm. Not a schema.
+- **Detect, propose, ratify.** `/prawduct:doctor` reads what the repo already says about itself —
+  markers, scripts, Makefile targets, CI jobs — and proposes candidate practice for the owner to
+  ratify. Every repo in the sweep already encodes its regime somewhere machine-readable; none of it
   reaches prawduct.
-- **Promotion is a first-class verb.** A practice that works — "delegates run only their own
-  module", a measured `--maxprocesses` value, a marker that names the expensive tier — must have a
-  one-step path into `project-preferences.md` as a ratified norm. The observed failure is exact:
-  the right rule was stated by the owner three times, in three sessions, and never became durable
-  anywhere. Prawduct already has the ratification surface (`doctor` § Norm Ratification Flow) and
-  the enforcement table (`project-preferences.md` § Enforcement); this needs a route into them,
-  not a new mechanism.
-- **Policy lives in preferences; facts live in state.** The ladder (commands, costs, contention)
-  is a fact about the repo → `project-state.yaml`. How much to delegate, what rung a delegate may
-  run, the fan-out ceiling, whether the lease is on → `project-preferences.md`, which is where
-  the owner already tunes behaviour and where "adjust subagent usage" belongs.
+- **Promotion is a first-class verb.** The observed failure is exact: the right rule was stated by
+  the owner three times, in three sessions, and never became durable anywhere (§2.3).
+
+### 4.8 Home
+
+`plugin/methodology/delegation.md`, routed as `/prawduct:methodology delegation` alongside the five
+existing topics — same file class, read on demand, zero session-start cost. `building.md` cannot
+hold it: it sits at 4717 against a ceiling of 4800, and this content is 400-600 tokens. The budget
+comment's own remedy is *"place canonical detail in the file that owns the concept."* `building.md`
+keeps a condensed pointer and the verification-ceiling rule; `planning.md` gets the
+partition-and-disclose prompt at the point a plan is drawn and presented.
 
 ## 5. Requirements
 
-Numbered for reference; not yet prioritised into a build plan.
+**The goal**
+- **R1** A delegate verifies what proves its own change and nothing beyond it; the coordinator owns
+  integration verification and all governance.
+- **R2** The cost of briefing a delegate is proportionate to the work delegated.
 
-**Verification rungs**
-- **R1** A repo can declare a ladder of named rungs, each mapping a claim to one command.
-- **R2** A rung declaration carries measured cost and a contention class (forks workers? needs an
-  exclusive resource? which one?).
-- **R3** The ladder is a partial map. A one-rung ladder, and no ladder at all, are both valid and
-  must not degrade delegation into today's behaviour.
-- **R4** Rung names are fixed by the framework and are never numbers.
-- **R5** A declared rung that is never executed is visible as unexercised, not silently trusted.
+**What prawduct supplies**
+- **R3** Considerations, framed as questions rather than rules.
+- **R4** Anti-patterns, each carrying a recognizable tell.
+- **R5** The brief contract stated qualitatively — what must be said, not a template that says it.
 
-**Arbitration**
-- **R6** The framework ships a lease that serialises contended verification across concurrent
-  agents, with an announced wait and a documented opt-out.
-- **R7** Fan-out width and per-delegate rung are jointly bounded by declared policy, not by
-  judgment under load.
-- **R8** Bounds are stated in terms of the *machine*, and account for what a run forks — not only
-  how many agents are running.
+**Placement**
+- **R6** The delegation question arrives where the coordinator already stops: when chunk boundaries
+  are drawn, and at a chunk close.
+- **R7** A plan's partition decision is recorded either way, including "serial, because X."
 
-**Honest verification**
-- **R9** A verification record carries collected-vs-reported counts.
-- **R10** A run that lost a worker cannot record a passing fact.
-- **R11** Degradation is reported to the operator at the point it happens, not discovered later.
+**Disclosure and consent**
+- **R8** A plan that will delegate says so when presented: how many, isolated or shared tree, what
+  they touch, what they will not do.
+- **R9** The disclosure carries what varies between plans, not boilerplate.
+- **R10** Approval is asked only on an enumerated reason; absent one, disclose and proceed.
+- **R11** Approval can be made durable in preferences rather than re-asked each plan.
 
-**Delegation**
-- **R12** The build cycle asks the delegation question at a fixed point (planning), and the answer
-  — including "no, and why" — is recorded in the plan.
-- **R13** A delegable chunk declares its file-ownership set.
-- **R14** Overlapping ownership across a concurrent dispatch is refused, not reconciled afterwards.
-- **R15** Dispatch briefs are generated from a fixed contract, including an explicit verification
-  ceiling.
-- **R16** The context cost of briefing a delegate is proportionate to the work delegated.
-- **R17** Governance duties (Critic, reflection, state, merges, the top-rung run) stay with the
-  integrator, and the generated brief says so to the delegate.
+**Recording and promotion**
+- **R12** Delegation policy is tunable in `project-preferences.md` in the project's own words,
+  including `off` and pre-approved.
+- **R13** `/prawduct:doctor` proposes candidate practice from what the repo already encodes.
+- **R14** A working practice can be promoted to a ratified preference in one step.
+- **R15** No new artifact file class: guidance is a methodology guide, policy is preference prose.
 
-**Configuration and promotion**
-- **R18** `/prawduct:doctor` detects a candidate ladder from what the repo already encodes and
-  proposes it for ratification.
-- **R19** Delegation policy is tunable in `project-preferences.md`, including "off".
-- **R20** A working practice can be promoted to a ratified preference in one step.
-- **R21** No new artifact file class: ladder → `project-state.yaml`, policy →
-  `project-preferences.md`.
+**Open**
+- **R16** *(pending ruling — §7.9)* A verification record can say it was degraded.
 
-**Immediate, independent of all of the above**
-- **R22** `building.md`'s "run the full suite before and after" is removed. It is the proximate
-  cause of the reported overload and it is wrong at any fan-out ≥ 2. The replacement, pending the
-  ladder, is: the delegate runs the narrowest verification that covers its own change; the
-  integrator owns the combined run.
+**Landed**
+- **R17** ✅ `building.md`'s "run the full suite before and after" replaced with a verification
+  ceiling (`008bd5f0`), net-zero against the then-current budget.
 
 ## 6. Explicitly out of scope
 
-- **A scheduler, a CI system, or a test runner.** Prawduct names claims and arbitrates cost; the
-  repo's own tooling runs the tests.
-- **Remote / offloaded execution.** Discodon's `DD_TEST_REMOTE` is a good repo-specific
-  optimisation. Prawduct should make it *expressible* as a rung's command, and own none of it.
-- **Test selection intelligence** (testmon, coverage-based selection, change-scope detectors).
-  A repo may put one behind a rung; the framework does not implement one.
+Ruled out by the owner, 2026-08-21. Recorded so they are not reconsidered from scratch.
+
+- **Any arbitration mechanism** — no lease, no semaphore, no slot accounting, no cross-run lock. The
+  coordinator has environment context a framework does not.
+- **A framework-defined tier vocabulary.** No `focused`/`adjacent`/`whole`/`live`, no declared
+  commands, no contention classes, no attributes. Consumers' test systems are not knowable in
+  advance; the guidance is qualitative and the project maps it.
+- **Per-machine configuration.** A consequence of the mechanism, and it dies with it.
+- **Mechanical checking of ownership disjointness.**
+- **Remote or offloaded execution.** `documentation/remote-test-execution-proposal.md` covers it and
+  reached the same conclusion in its own domain: *"the valuable, reusable part is small… copy-pasting
+  40 lines across repos is not the problem people assume it is."*
+- **Test selection intelligence** (testmon, coverage-based selection, change-scope detection).
 - **Stage numbering, in any form.**
-- **Mandating delegation.** The owner's framing is "helps consumers efficiently use subagents *if
-  they want to*". `off` must remain a supported, ceremony-free setting (R19).
+- **Mandating delegation.** `off` stays a supported, ceremony-free setting (R12).
 
 ## 7. Decisions
 
-Owner rulings taken 2026-08-21, recorded with the alternatives so they are not relitigated.
+Owner rulings, 2026-08-21, with the alternatives so they are not relitigated.
 
-1. **Sequencing — RULED: full design, one build plan.** All four pillars planned together rather
-   than sequenced as hotfix → A → D → B (the builder's recommendation) or as a correctness-first
-   C+B release. Consequence the plan must respect: the dependency order still holds *inside* the
-   plan even though the release boundary does not. Chunks must land A before D and before B, and
-   the plan must not raise fan-out anywhere before the cost model exists (§3, ordering claim).
-   Risk accepted: a large surface in a framework whose backlog already carries a deletion-only
-   simplification pass (GOV-6D4Q).
-2. **Arbitration scope — RULED: clone-wide, keyed so machine-wide is a later widening rather than
-   a rewrite.** Key on git-common-dir, the evidence store's existing precedent. Machine-wide was
-   rejected for now (couples unrelated products; a stuck holder in one repo blocks every other);
-   advisory-prose-only was rejected outright — a hand-typed rule was measured to survive about
-   three sessions (§2.3). **Note the tension this leaves open**: the operator runs six repos on one
-   box concurrently, so clone-wide arbitration does not actually bound this machine. It bounds one
-   clone's worktrees, which is the observed fan-out case, and defers the rest.
-3. **R22 — RULED: new branch, land now.** Not folded into the feature's first chunk (the wrong
-   instruction would keep shipping until the plan lands) and not queued behind Chunk 03 of
-   `fix/coverage-honesty`.
-4. **Cost-bearing rungs — OPEN.** Whether `live` gains an attribute for cost-bearing / credentialed
-   / nondeterministic, or splits into rungs. discodon separates all three and its stated reason is
-   good: "a third party declining is not a signal about your diff," which is a *selection* rule, not
-   a cost rule. Builder recommendation stands: one rung with attributes.
-5. **Per-machine configuration — OPEN, and inherited.** Slot count, core budget, remote host: not a
-   repo fact (so not `project-state.yaml`), not a code-style preference (so not
-   `project-preferences.md`), and prawduct has a standing no-new-file-class constraint. The remote
-   proposal hit this same wall as its Q4 and left it unanswered. Pillar B cannot ship without an
-   answer, and "an ad-hoc environment variable in no rc file and no `.env`" is the status quo it
-   must beat.
+1. **Sequencing — RULED: one build plan.** The dependency order still binds *inside* it: nothing may
+   encourage fan-out before the guidance bounding a delegate's verification exists (§3).
+2. **Arbitration scope — SUPERSEDED by 6.** (Was: clone-wide, keyed to widen later.)
+3. **R17 — RULED: own branch, landed now.** ✅ `008bd5f0`.
+4. **The `live` rung's shape — SUPERSEDED by 7.** (Was: one rung with attributes.)
+5. **Per-machine configuration home — MOOT under 6.**
+6. **RULED: prawduct states the goal, not the mechanism.** Guidance is considerations and
+   anti-patterns; the coordinator, holding environment and product context, chooses how.
+7. **RULED: testing guidance is qualitative.** No framework-defined tiers or taxonomy — consumers'
+   regimes differ and prawduct cannot know them in advance.
+8. **RULED: `building.md`'s ceiling may rise to 4800** to carry the verification-ceiling rule's
+   *why*. Scoped to this feature; the standing prefer-trimming-over-bumping posture is unchanged.
+9. **OPEN — is the evidence record inside the line?** R16 is a mechanism, but over prawduct's *own*
+   artifact rather than a consumer's test system: `.test-evidence.json` can today record a green for
+   a run that silently dropped half its tests (§2.4), and no guidance to a coordinator can fix a
+   record the framework owns. The alternative is an anti-pattern only — "a green from a contended box
+   may be a lie" — which informs but cannot detect.
 
 ## 8. Assumptions
 
-- `[ASSUMPTION: the transcript sweep is representative of consumer behaviour generally, not just
-  of this account | MED impact | user can correct]` — six repos, one operator. The mechanisms
-  identified are structural rather than habitual, which limits the exposure, but the *rates*
-  (0.34%) are one operator's.
-- `[ASSUMPTION: harness capabilities are as documented in-session — worktree isolation, background
-  agents, a Workflow concurrency cap of min(16, CPUs-2) | HIGH impact | verify before designing
-  against any of them]` — this is a fast-moving surface and the design must not encode a
-  capability that has moved.
+- `[ASSUMPTION: the transcript sweep is representative of consumer behaviour generally, not just of
+  this account | MED impact | user can correct]` — six repos, one operator. The mechanisms are
+  structural rather than habitual, which limits exposure; the *rates* (0.34%) are one operator's.
+- `[ASSUMPTION: guidance placed where the coordinator already stops changes behaviour where guidance
+  in a file has not | HIGH impact | falsifiable by the next few build cycles]` — the load-bearing bet
+  of the whole design (§4.5), with §2.1 as evidence that the weaker form fails. Worth measuring
+  rather than assuming: re-running the same transcript sweep after this ships answers it directly.
 - `[ASSUMPTION: consumers want opt-in delegation, not automatic fan-out | HIGH impact | user can
-  correct]` — taken from the owner's framing, "if they want to". If automatic fan-out were
-  wanted, R12 becomes a gate and Pillar B becomes mandatory rather than optional.
-- `[ASSUMPTION: the ladder belongs in project-state.yaml beside `test_command:` rather than in a
-  new artifact | MED impact | user can override]` — chosen to respect the no-new-file-class
-  constraint in `docs/norms.md`.
+  correct]` — from the owner's framing, "if they want to."
