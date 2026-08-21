@@ -26,6 +26,12 @@ never by dropping them.
 ## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
+## When you add a value to an EXISTING collection, enumerate what READS it and what each reader does with non-emptiness — shape-compatibility is not semantic compatibility. `unreadable` was also an exit code and a doctor **degraded** verdict, so a diagnostic fact pinned repos at degraded with no route out. Tell: you picked that list because the element type fits — [learnings-detail.md]
+
+## When you fix a function's blind spot, enumerate its consumers TRANSITIVELY — a caller reaching it through a wrapper inherits the blindness and is invisible to a grep for the function's name. `release_readiness` reached the scope walk via `build_scope_to_plan_map` and so stated something FALSE. Tell: the function has any wrapper at all — grep that name too — [learnings-detail.md]
+
+## When you publish a new fact, put the test at the CONSUMER surface — a producer test passes happily while the consumer is broken, because the producer is fine. An exit-code assertion is what catches a fact routed onto a fatal channel; three producer tests did not. Tell: every test you just wrote calls the function you just wrote — [learnings-detail.md]
+
 ## When you rewrite a MEASUREMENT into a BENEFIT, re-attach the number to the sentence you actually wrote — the rewrite is where a claim silently widens past its evidence, because the benefit sentence is shorter and short sentences generalize. v3.4.0 shipped *"the review gates are 57× faster"*; 57× was the gate CHECK, and reviews cost what they always did. Tell: you cannot point at the number behind the noun you just chose — [learnings-detail.md]
 <!-- anchor: benefit-framing-widens-the-claim -->
 

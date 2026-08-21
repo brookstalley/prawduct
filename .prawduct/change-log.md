@@ -48,12 +48,24 @@ restating the numbers.
 An explicit `scope: null` — the parser's documented opt-out — is **not** reported. It is a
 declared choice, and a control that fires on one can never be settled.
 
-**Three surfaces state their coverage now.** `plan_backfill.survey` gains `unevaluated`;
-`plan-backfill` names the count and the paths under both arms of the release-tag fork, in the
-same breath as the buckets rather than leaving it to `--json`; and the "no build plan declares
-that scope" gap that reaches a reviewer at dispatch names the plans invisible to the lookup,
-bounded to five with the remainder counted. All three are diagnostic — no exit code moves and no
-gate reads any of it.
+**Five surfaces state their coverage now** — every reader of that walk which reports a set.
+`plan_backfill.survey` gains `unevaluated`; `plan-backfill` names the count and the paths under
+both arms of the release-tag fork, in the same breath as the buckets rather than leaving it to
+`--json`; the "no build plan declares that scope" gap that reaches a reviewer at dispatch names
+the plans invisible to the lookup, bounded to five with the remainder counted; `lifecycle-repair`
+gains its own `unscoped` key and sentence, and its stale-Status walk now covers unscoped plans
+too, because whether a plan carries a stale derived-Status note has nothing to do with whether it
+declares a scope; and the release gate **caveats** its "no build-plan file" warning rather than
+suppressing it, since which scope an unscoped plan belongs to is exactly what nothing there can
+know. That last one was not incomplete but FALSE — it said "work is shipping with no plan
+describing it" about a plan in the same directory, which is the v3.3.4 recurrence this plan cites
+as its motivation.
+
+All five are diagnostic — no exit code moves and no gate reads any of it. That is a requirement
+rather than a preference, and the first attempt broke it: routing the fact onto
+`lifecycle-repair`'s `unreadable` list made it fatal and made `/prawduct:doctor` report degraded
+forever, since `--apply` cannot add a `scope:` key. A diagnostic that pins a verdict is the
+"control that can never go quiet" this chunk's own opt-out rule disqualifies.
 
 Riding this commit: the per-mode payload meter added by the previous entry now derives each mode's
 directive set from the dispatch it actually ran, and its ceilings are keyed by mode, so a fifth

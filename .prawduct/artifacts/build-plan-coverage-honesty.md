@@ -85,21 +85,34 @@ and cost the routes. That closes the only Medium item; nothing else is waiting o
 ## Status
 
 - [x] Chunk 01: The Scope rule reaches every mode that raises findings, and its vocabulary covers the mandated notes
-- [ ] Chunk 02: The unscoped-plan blind spot gets a published fact, and its consumers state their coverage
+- [x] Chunk 02: The unscoped-plan blind spot gets a published fact, and its consumers state their coverage
 - [ ] Chunk 03: The base-advance transfer's silent outcome gets a voice and a falsifiable record
 - [ ] Chunk 04: A release-pending scope missing from the consumer digest is warned, advisory-only
 
-Context: **Chunk 01 is complete** (2026-08-20). Built as `code`, not the `doc-only` the plan
-first estimated — step 0 found the rule is the ~110-token clause at `review-protocol.md` § Severity
-Levels, not the format line, so it ships as `FINDING_SCOPE_DIRECTIVE` handed at dispatch to
-`GOALS_1_3_MODES`. Cumulative `rev-20260820T224159Z-c381f3cc` raised 2 blocking / 6 warning /
-9 note; all 15 actionable findings plus two self-found items landed in one commit (`7be36bf0`) and
-`rev-20260820T230441Z-00a47ee2` graded every one `fixed`. `check-cumulative-critic` reports
-0 unresolved blocking. Suite 4903 / 0 / 11.
+Context: **Chunks 01 and 02 are complete** (2026-08-20/21). Chunk 02 shipped as
+`plan_index.unscoped_candidates` (the walk) + `buildplan_refs.plans_missing_scope` (the answer
+consumers call), with the shape predicate in `buildplan_refs` because `plan_index` cannot import
+it back and must stay light. **Read the three `[DECISION]` blocks in the chunk before touching
+this area** — the predicate was settled by measurement over this repo's own 91 known-real plans,
+not by taste.
 
-Next: Chunk 02. Two accepted observations from Chunk 01's verify round are owed a ride on its
-commit — they are recorded in `.prawduct/.handoff-notes.md` under "Riding Chunk 02's commit", and
-riding a commit made anyway costs no round while a commit of their own would.
+**Five surfaces now state their coverage**, which is more than the deliverables named and is the
+Critic's doing: `plan_backfill.survey`, the `plan-backfill` report, the dispatch gap sentence,
+`lifecycle-repair` (its own `unscoped` key plus a stale-Status walk that covers unscoped plans),
+and the release gate, which **caveats** rather than suppresses. That last one was stating
+something FALSE, not merely incomplete, and no chunk owned it.
+
+Three review rounds, and rounds two and three were bought by builder omissions rather than review
+churn: a class finding closed by adding call sites, one of which routed a diagnostic fact onto
+`lifecycle-repair`'s fatal `unreadable` channel (permanent `/prawduct:doctor` degraded, unclearable
+by `--apply`), shipped without consumer tests. Both fixed and mutation-pinned;
+`check-cumulative-critic` is satisfied. Suite 4961 / 0 / 11.
+
+Next: **Chunk 03** (the base-advance transfer's silent denial). Nothing blocks it. Two things are
+worth carrying in: the cross-cutting-concerns row added here (*a scan that reports a set states
+what it could not evaluate*) records that **nothing pins that a SIXTH reported total acquires the
+obligation** — the construction R-7 asked for remains unbuilt, and finding R-1 of the last round
+was its first cost. And `.prawduct/.handoff-notes.md` carries the rest.
 
 One item genuinely needs the owner and blocks nothing: the category ruling recorded on
 architecture.md's "every fact has one home" norm carries no owner attribution, where its two

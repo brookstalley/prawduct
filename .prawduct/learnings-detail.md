@@ -6,6 +6,91 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When you add a value to an EXISTING collection, enumerate what READS it and what each reader does with non-emptiness
+
+Chunk 02 of coverage-honesty published a new diagnostic fact — build plans that declare no
+frontmatter `scope:` — and one of the five consumer sites delivered it by appending to
+`lifecycle_repair.plan_repair`'s existing `unreadable` list. The element type matched exactly:
+both are `{path, reason}`. That was the whole reason for the choice, and it was the wrong reason.
+
+`unreadable` is not a list. It is three things to three readers:
+
+- `prawduct-hook` prints `could not read <path> (<reason>) — it was left alone and not checked`,
+  which is flatly false about a file that decodes fine;
+- **both** exit-code expressions treat a non-empty list as fatal, so `lifecycle-repair` exited 1
+  in any repo holding a live unscoped plan;
+- `skills/doctor/SKILL.md` Health Check #15 turns a non-empty list into **degraded**, describing
+  the entries as plans "that could not be decoded as text".
+
+Because `--apply` does not add `scope:` keys, the repair could never clear its own finding. Every
+affected repo would sit at `/prawduct:doctor` degraded permanently — 2 plans in this repo, 60 of
+134 in the surveyed consumer. That is the "control that can never go quiet" property this same
+chunk's opt-out decision had explicitly disqualified, reached through a different door, inside the
+chunk that ships the rule.
+
+**Two sibling sites in the same commit did it correctly**, which is what makes this a lapse rather
+than a hard call: `plan_backfill.survey` gave the fact its own `unevaluated` key and its own
+printer, and `release_readiness` appended a caveat to a sentence while leaving the verdict alone.
+The correct pattern was in front of me twice.
+
+The fix is the obvious one once the question is asked: own key (`unscoped`), own sentence, out of
+both exit-code expressions, and a line in doctor step 15 saying it is **healthy** and why grading
+it would pin a repo forever.
+
+---
+
+## When you fix a function's blind spot, enumerate its consumers TRANSITIVELY
+
+The same chunk published the fact because `plan_index.iter_scoped_plan_candidates` yields only
+scope-declaring plans, so every consumer reports a set those plans are missing from. I enumerated
+the consumers with `grep -rn iter_scoped_plan_candidates` and cross-checked against the build
+plan's own Description, which listed `plan_backfill`, `lifecycle_repair` (twice) and two sites
+inside `plan_index`.
+
+Both sources agreed, and both were incomplete. `release_readiness._plan_coverage_warnings` calls
+`build_scope_to_plan_map`, which calls the walk — one level of indirection, and therefore invisible
+to a grep for the walk's own name. Trusting the plan's list on top of the grep did not help,
+because the plan's list had been written from the same grep.
+
+That site was the worst of the five. The others skip silently; this one emits
+`release-pending scope=X has no build-plan file … work is shipping with no plan describing it`
+about a plan sitting in the same directory. A false sentence, in the exact surface the plan cites
+as its motivation — the v3.3.4 recurrence that produced five such advisories.
+
+**The remedy at that site is also worth keeping.** The instinct is to suppress the warning when
+unscoped plans exist. That trades a false positive for a false negative: which scope an unscoped
+plan belongs to is precisely what nothing there can know. Caveating keeps the verdict and fixes
+the sentence.
+
+The cheap check that would have found it: grep the *wrapper's* name too, and the wrapper's
+wrapper, until the frontier is empty. The tell is that the function being fixed has any wrapper at
+all — here `build_scope_to_plan_map`, a three-line function whose only job is to be called by
+other people.
+
+---
+
+## When you publish a new fact, put the test at the CONSUMER surface
+
+The delta that wired the two remaining consumers shipped with no tests for any of its three
+behaviour changes — the union walk in `stale_status_reports`, the `unreadable` extension, and the
+release-gate caveat. The producer had good tests, including real-corpus controls and seven
+mutations. None of them could fail, because the producer was correct: the defect was entirely in
+where its output was routed.
+
+An exit-code assertion on `lifecycle-repair` is what would have caught the channel error, and it
+is a two-line test. The pattern had been established one commit earlier, pinning `plan-backfill`'s
+new sentence at the CLI, and simply was not carried across.
+
+**Writing the tests turned up a further defect on its own.** The first fixture joined
+`lifecycle_repair.ARTIFACTS_REL` — which already carries the `.prawduct/` segment — underneath
+`.prawduct/` again. The walk answers `[]` for a directory that does not exist, so the wrong path
+read exactly like "nothing found". Asserting a specific filename rather than emptiness is what
+exposed it; an emptiness assertion would have passed forever. That is the never-let-a-precondition-
+failure-present-as-a-pass rule arriving from a direction its usual statement does not name — not a
+fixture built by the mechanism under test, but a fixture pointed at nothing.
+
+---
+
 ## When you rewrite a MEASUREMENT into a BENEFIT, re-attach the number to the sentence you actually wrote
 <!-- anchor: benefit-framing-widens-the-claim -->
 
