@@ -101,7 +101,7 @@ preserving.
 - [x] Chunk 01: The guide exists and is reachable from where a builder already is
 - [x] Chunk 02: The question arrives where the coordinator already stops
 - [x] Chunk 03: The record can say it was degraded
-- [ ] Chunk 04: Policy and promotion
+- [x] Chunk 04: Policy and promotion
 
 Context: Plan written 2026-08-21 against `delegation-and-verification-cost-discovery.md`,
 all rulings recorded there in §7. The verification-ceiling correction itself already
@@ -154,6 +154,36 @@ Critic: 0 blocking, 0 warning, 1 note — that `learnings.md` still asserted rel
 of the *gate*, which `degraded` narrows to the tree-validity clause. Fixed in both learnings files
 rather than accepted.
 Next: Chunk 04.
+
+Chunk 04 done 2026-08-21, and the plan is complete. `templates/project-preferences.md` gains three
+rows — `Delegation` (prose policy; `off` is a complete answer, honoured without ceremony),
+`Delegate verification` (the ceiling in the project's own words), `Delegation approval`
+(`ask-on-reason` → `pre-approved`, where R11's durable yes lands). `skills/doctor/SKILL.md` gains
+Health Check #18 — detect-and-propose from what the repo already encodes, quoting the repo's own
+names and citing the file each came from, proposing **nothing** where it finds nothing — plus a
+Delegation Policy Flow that promotes a proposal to rows with one confirmation.
+
+**Step 0 did its job and changed a deliverable.** §6 was clean against the whole branch diff, but
+reading the file the deliverable named was not: "plus their Enforcement-table entries" was written
+before anyone opened that table, which ships EMPTY because a populated row *is* a homed norm. The
+amendment above records it; the writer moved from the template to the promotion flow, and nothing
+was dropped.
+
+**Two things the acceptance run found that reading could not.** discodon's Enforcement table
+predates the norm columns, so the row the flow wanted to write had nowhere to put `Audit home` and
+`Why` — step 4 now points at the Norm Ratification Flow's legend-refresh instead of inventing a
+second pattern. And `project-preferences.md` is **place-once**, so the template rows alone would
+have reached repos onboarding after them and no others — Health Check #14's own bug, rebuilt in the
+same file. The flow writes rows that are *absent*, not only blank.
+
+**Three review rounds, and the third was earned.** The cumulative
+(`rev-20260821T204031Z-f1fa8b57`) found 0 blocking and 5 warnings; every one was real and all five
+were fixed (`de81e717`), with four notes alongside. The resolution round verified all five and then
+found a BLOCKING finding: the R-6 fix — which changed both what #18 reads and how it branches — had
+shipped with no guarding test, while R-8's class fix in the same commit got a source-scan on the
+reasoning that no behavioural test can see a defect that does not exist yet. The standard was
+applied to one fix and not the other. Two guards and six mutations closed it (`6c94831f`), and the
+final round (`rev-20260821T211445Z-65c46b8e`) came back 0/0/0.
 
 ## Scaffolding
 
