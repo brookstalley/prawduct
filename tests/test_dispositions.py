@@ -1214,6 +1214,13 @@ class TestFindingTitleAccessor:
         """The property that closes the class — asserted over the source, because
         the defect is a SIXTH reader being added, and no behavioural test can see
         one that does not exist yet.
+
+        **What turns this red, and what does not.** It matches a single-line
+        `x.get("a") or y.get("b")` pair — the idiom that actually existed, five
+        times. A chain a formatter wrapped across lines, or a three-key one split
+        at a paren, slips it. That is a real limit and it is stated rather than
+        implied: the scan raises the cost of re-deriving the chain, it does not
+        make it impossible, and a reader who believes otherwise will not look.
         """
         import re as _re
         offenders = []

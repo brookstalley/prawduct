@@ -2213,6 +2213,13 @@ class TestDelegationPolicyAndPromotion:
 
     ROWS = ("Delegation", "Delegate verification", "Delegation approval")
 
+    #: The rows Health Check #18 may branch on. NOT `ROWS`: `Delegation
+    #: approval` ships a default, so it is never unset, and including it makes
+    #: every freshly scaffolded repo a mixed state — one filled row beside two
+    #: blank ones — which reads as "recorded" and silently turns the check off
+    #: for exactly the repos the template reaches.
+    TRIGGER_ROWS = ("Delegation", "Delegate verification")
+
     def _workflow(self) -> str:
         """The Workflow section, bounded by whichever comes first — the next
         `## ` heading or the `---` rule.
@@ -2454,6 +2461,60 @@ class TestDelegationPolicyAndPromotion:
             f"the norm index ships {len(data_rows)} populated row(s): {data_rows}. "
             "It must ship empty — a row here is a ratified norm, and the "
             "delegation rows get theirs from /prawduct:doctor, not from onboard"
+        )
+
+    def test_the_trigger_set_excludes_the_row_that_ships_filled(self):
+        """The state the template actually ships is the one the check must not
+        misread, and nothing else in this class can see a regression here.
+
+        `Delegation approval` ships `ask-on-reason` **filled** while the other
+        two ship `(unset — …)`. A check that reads all three together meets a
+        mixed state on every newly scaffolded repo, and the reading that says
+        "rows are filled, report recorded" turns the check off for precisely
+        the population the template reaches. Every other assertion in this
+        class — `off` ends it, found-nothing proposes nothing, it grades
+        nothing — stays green through that regression, which is why this one
+        exists.
+        """
+        check = self._check()
+        for row in self.TRIGGER_ROWS:
+            assert f"`{row}`" in check, (
+                f"the check no longer reads the `{row}` row, so a policy the "
+                "owner can state has no detector"
+            )
+        assert "not in the trigger set" in check, (
+            "`Delegation approval` is back in the trigger set (or the exclusion "
+            "stopped being stated) — it ships a default, so it is never unset, "
+            "and reading it alongside the other two recreates the mixed state "
+            "that reads as `recorded` and silently disables the check"
+        )
+        # The template is the other half of the claim: this test is only true
+        # while `Delegation approval` really does ship filled. Read the real
+        # file rather than trusting the sentence above it.
+        workflow = self._workflow()
+        assert "- **Delegation approval**: ask-on-reason (default:" in workflow, (
+            "`Delegation approval` no longer ships filled — the exclusion above "
+            "was justified by that fact, so if it now ships unset the reasoning "
+            "has to be redone rather than the assertion relaxed"
+        )
+        for row in self.TRIGGER_ROWS:
+            assert f"- **{row}**: (unset" in workflow, (
+                f"`{row}` no longer ships unset, so it can no longer be the "
+                "thing the check detects as missing"
+            )
+
+    def test_the_check_branches_per_row_not_on_the_set(self):
+        """Branching collectively is what made the mixed state unreadable — a
+        set is either "filled" or "unset" and a repo's rows are neither.
+        """
+        check = self._check()
+        assert "branch per row rather than on the set" in check, (
+            "the check went back to branching on the row set as a whole, so a "
+            "repo with one row filled and one blank has no defined behaviour"
+        )
+        assert "a blank one beside it is still a candidate" in check, (
+            "the check no longer says what happens to a blank row sitting next "
+            "to a filled one, which is the mixed state itself"
         )
 
     def test_neither_surface_invents_a_test_vocabulary(self):
