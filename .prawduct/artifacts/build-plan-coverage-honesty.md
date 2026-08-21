@@ -266,7 +266,7 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
   excludes only a document declaring some *other* `artifact:` type, and treats a document
   declaring none as a plan — a fail-safe direction chosen for the map, where a declared `scope:`
   is already strong evidence of plan-ness. The unscoped population has no such evidence, and the
-  predicate was never exposed to it. Measured against this repo's live `artifacts/` on
+  predicate was never exposed to it. Measured against this repo's live `.prawduct/artifacts/` on
   2026-08-20: **22 documents pass it, and 20 are not build plans** — release plans, spikes,
   audits, investigations, `project-preferences.md`, `boundary-patterns.md`. A control that names
   20 non-plans on its first run is the shape `nonfunctional-requirements.md` § Direction removes
@@ -314,7 +314,8 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
   surfaced where `critic-begin` already reports `chunk-ref-missing unchecked`, which is `#642`'s
   remaining cause 1
 - **Tests:** unit — an artifacts tree mixing scoped, unscoped and non-plan markdown returns exactly
-  the unscoped plans, prunes `archive/`, and leaves the hot walk's yield unchanged; integration —
+  the unscoped plans, prunes the archive subtree, and leaves the hot walk's yield unchanged;
+  integration —
   `plan-backfill` on that tree reports a nonzero could-not-evaluate count and zero on a fully-scoped
   tree. Fixtures are walked, never resolved (`[[L502]]`), and the positive control is the mixed tree
   going red before the fix.
