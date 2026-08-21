@@ -5,6 +5,31 @@ scope: delegation
 branch: fix/delegate-verification-ceiling
 depends_on:
   - artifact: delegation-and-verification-cost-discovery
+governed_by:
+  # Added at Chunk 04, when the first norm-governed control on this branch was
+  # built. Chunks 01-03 are prose and one additive record field, and neither
+  # norm below reaches them.
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "proportionality ratchets both ways — every new control emits its yield
+        observably → bounded exception, same one Health Check #13 already holds and on the
+        same clock (#563). doctor still has no fact-emitting path, and building one for a
+        second check is the accumulation this norm exists to stop. What is different here,
+        and is the reason the exception is narrow rather than inherited: #18 grades nothing
+        and refuses nothing, so the failure mode the norm targets — repeated firings with no
+        blocking yield — is answered structurally instead of by emission. Three branches do
+        not fire at all (`Delegation: off` ends the check; rows already filled are left
+        alone; found-nothing proposes nothing), and those are the whole population that
+        would otherwise nag. When doctor gains a fact-emitting path, #18 is a case beside
+        #13, not a separate question."
+  - artifact: architecture
+    dispositions:
+      - "one home per fact; an index entry is a name, not a copy → conforms. The Enforcement
+        row the promotion flow writes is a handle pointing at the `## Workflow` row, and the
+        flow says so in those words."
+      - "the plugin writes nothing into a repo but its own state → conforms. Both doctor
+        write paths write `.prawduct/` governance state only, and Chunk 04 states that as
+        the skill-level rule rather than leaving it inside one flow."
 partition: serial — 01, 02 and 04 all edit the same methodology and skill files; 03 is independent but too small to brief
 last_validated: 2026-08-21
 ---
@@ -255,6 +280,26 @@ it is the single easiest thing to violate while writing helpful-sounding prose.
 - **Tests:** the proposal is derived from repo evidence rather than emitted unconditionally
   (a proposal that always fires is noise, and this repo's own orphan-term hook is the
   cautionary tale `norms.md` cites); `off` and pre-approved are both honoured
+- **Amended 2026-08-21, at this chunk's step 0: the shipped Enforcement rows are NOT
+  built, and the absence is the requirement rather than a descope.** The deliverable said
+  "plus their Enforcement-table entries", written before this chunk read the table it names.
+  That table is the product's **norm index**, it ships EMPTY on purpose, and
+  `tests/test_norm_probes.py::test_silent_against_the_shipped_preferences_template` reads the
+  real template to enforce it: a populated row is a *homed norm*, so shipping one would claim
+  a norm registry every new product has ratified nothing into, fire
+  `norm-health-sweep-overdue` on their first session, and match the exact-match residue
+  Health Check #14 exists to delete. What the deliverable actually wants is that a ratified
+  delegation policy **gets** an Enforcement row — so the row is written by the promotion
+  flow, from the owner's confirmed decision, and the template states which mechanism it takes
+  (Critic — a policy in prose is judgment-required by construction). Nothing is dropped; the
+  writer moves from the template to the flow.
+- **Also amended: the promotion is a SECOND doctor write path, and two sentences that said
+  there was one are corrected rather than left true-sounding.** `SKILL.md` asserts "this is
+  the one doctor flow that writes" (Norm Ratification) and the Enable-Gate flow cites it. The
+  invariant those sentences were carrying is not the count — it is *doctor writes only what
+  the owner confirmed, only into `.prawduct/` governance state, never product code*. That
+  survives verbatim and is now stated as the skill-level rule both flows obey, which is what
+  a norm-vs-carrier reading of the two sentences asks for.
 - **Acceptance criteria:** `/prawduct:doctor` on a sibling repo proposes something
   recognisable as that repo's actual practice; approving it writes a preference row; suite
   green

@@ -3,6 +3,57 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-21: a project can say how it delegates, in its own words
+
+<!-- prawduct: type=feature | scope=delegation -->
+
+The delegation guide states one default and a set of considerations, and stops there on purpose:
+prawduct cannot know a consumer's test regime, so it does not invent one. That leaves a gap the
+sweep measured exactly — the right rule was stated by the owner three times, in three sessions, and
+never became durable anywhere. `project-preferences.md` now has the three rows it should have
+landed in, and `/prawduct:doctor` has the route from a practice a repo already runs to a row the
+next session reads.
+
+**The rows are prose, not a schema.** `Delegation` says how much this project wants fanned out and
+what for — `off` is a complete answer, honoured without ceremony. `Delegate verification` says what
+a delegate here may run to prove its own change and what it must leave to the coordinator's
+integration run, in the project's own words. `Delegation approval` is where a durable yes lands, and
+it is what stops the partition ask returning with every plan.
+
+**The proposal is derived from the repo or it is not made.** Health Check #18 reads what the repo
+already encodes about running part of its suite rather than all of it, quotes the repo's own names,
+and says which file each came from — so the owner checks a claim instead of trusting a summary.
+Where it finds nothing it proposes nothing: a proposal that fires everywhere carries no information,
+and `docs/norms.md` already names the cost from this repo's own orphan-term hook — a probe that
+misfires trains its reader to ignore the one real catch. Run against three real repos while
+building it, the same check produced a staged runner's own stage names in one, CI jobs that run
+subsets in another, and silence in the third.
+
+**It grades nothing, and that is the design rather than an omission.** A project is free to run on
+the framework default, so an absent policy is not a defect; a check that reported `degraded` until
+you delegated would have mandated delegation through the grading system, which is out of scope by
+ruling. Check #17 is the standing precedent for a recommendation that never touches the
+classification.
+
+**The rows are written for repos that already exist, not only for the next onboard.**
+`project-preferences.md` is scaffolded once and never regenerated, so a template addition reaches a
+repo that onboards after it and no other — the same reach gap that put Health Check #14 in this
+file. The promotion flow adds the rows when they are absent, which is what an already-onboarded repo
+has.
+
+**Doctor now has two flows that write, and the sentences saying it had one are corrected rather than
+left true-sounding.** The count was never the invariant. What survives verbatim, and is now stated
+as the skill-level rule both flows obey: doctor writes only what the owner confirmed, only into
+`.prawduct/` governance state, never product code. One confirmation covers the whole set — per-row
+prompting is refused here for the same reason Lifecycle Convergence refuses it, because
+confirmation fatigue is itself a safety regression.
+
+**No Enforcement row ships with the template.** That table is the product's norm index and it ships
+empty by design: a populated row is a homed norm, so shipping one would claim a registry every new
+product has ratified nothing into. A filled delegation row takes `Critic` (prose policy is
+judgment-required, so nothing mechanical can grade it) with `janitor` as its audit home, and gets
+its row when the owner ratifies it.
+
 ## 2026-08-21: the record can say a run was degraded
 
 <!-- prawduct: type=feature | scope=delegation -->

@@ -2154,6 +2154,300 @@ class TestPlanTimePartition:
         )
 
 
+
+class TestDelegationPolicyAndPromotion:
+    """R12-R14 — where a project records what it decided, and how it gets there.
+
+    §2.3 of the discovery artifact is the failure this chunk answers: the right
+    rule was stated by the owner three times, in three sessions, and never became
+    durable anywhere. So policy needs a home in the project's own words
+    (`project-preferences.md`), and there has to be a one-step route from a
+    practice the repo already runs to a row the next session reads
+    (`/prawduct:doctor`).
+
+    `.prawduct/artifacts/delegation-and-verification-cost-discovery.md` §4.7.
+    """
+
+    prefs = read_file("templates/project-preferences.md")
+    doctor = read_file("skills/doctor/SKILL.md")
+
+    ROWS = ("Delegation", "Delegate verification", "Delegation approval")
+
+    def _workflow(self) -> str:
+        """The Workflow section, bounded by whichever comes first — the next
+        `## ` heading or the `---` rule.
+
+        Bounding on `---` alone was wrong and mutation caught it: the rule sits
+        several headings down, so a row relocated into a section of its own was
+        still inside the slice and the placement assertion passed on prose it
+        was meant to reject.
+        """
+        assert "\n## Workflow\n" in self.prefs, "the Workflow section is gone"
+        rest = self.prefs.split("\n## Workflow\n", 1)[1]
+        ends = [i for i in (rest.find("\n## "), rest.find("\n---")) if i != -1]
+        return rest[:min(ends)] if ends else rest
+
+    def _check(self) -> str:
+        """The delegation-policy health check, anchored on its TITLE.
+
+        Not on its number: checks renumber when one is removed, and an anchor
+        that renumbers turns a passing guard into a silent one. The file itself
+        cross-references by number, which is right for prose a reader is
+        scanning; a test picking the same handle inherits the decay for nothing.
+        """
+        marker = "**Delegation policy unrecorded"
+        assert marker in self.doctor, (
+            "the delegation-policy health check is gone — nothing in doctor "
+            "looks at delegation policy, so R13's detection has no surface"
+        )
+        return self.doctor.split(marker, 1)[1].split("\nClassify and report:", 1)[0]
+
+    def _flow(self) -> str:
+        heading = "## Delegation Policy Flow"
+        assert heading in self.doctor, "the promotion flow is gone"
+        return self.doctor.split(heading, 1)[1].split("\n## ", 1)[0]
+
+    def test_the_three_policy_rows_are_in_the_workflow_section(self):
+        """R12. Placement is the substance again: these are read by a session
+        about to draw a plan, and the sections above Workflow are about how code
+        is written. A row parked outside Workflow is read by nobody deciding a
+        partition.
+        """
+        workflow = self._workflow()
+        for row in self.ROWS:
+            assert f"- **{row}**:" in workflow, (
+                f"the `{row}` row left the Workflow section of "
+                "project-preferences.md — R12's policy has nowhere to be written"
+            )
+
+    def test_off_is_a_complete_answer_and_says_so(self):
+        """`off` stays supported and ceremony-free — §6 rules out mandating
+        delegation, and a setting that is honoured but still nagged about is
+        mandate with extra steps. Asserted on BOTH surfaces: the row has to
+        offer it, and the check has to stop on it.
+        """
+        assert "`off`" in self._workflow(), (
+            "the Delegation row no longer offers `off`, which §6 requires stay "
+            "a supported setting"
+        )
+        check = self._check()
+        assert "off` ends the check" in check or "off` ends this check" in check, (
+            "Health Check #18 no longer stops on `off` — a repo that declined "
+            "delegation now gets nudged about it, which is mandating it slowly"
+        )
+
+    def test_a_durable_yes_has_a_row_and_the_flow_lands_it_there(self):
+        """R11/R14's other half. An approval that cannot be recorded is
+        re-asked with every plan, which is `planning.md`'s ask wearing a
+        seatbelt — so `pre-approved` needs a home AND a writer.
+        """
+        assert "pre-approved" in self._workflow(), (
+            "no row records a durable approval, so the partition ask returns "
+            "with every plan"
+        )
+        flow = self._flow()
+        assert "pre-approved" in flow, (
+            "the promotion flow no longer lands a durable yes anywhere"
+        )
+        assert "planning.md" in flow, (
+            "the flow no longer says WHAT a durable yes stops — without the "
+            "consequence, `pre-approved` reads as a label rather than a lever"
+        )
+
+    def test_the_proposal_is_derived_from_evidence_not_emitted_unconditionally(self):
+        """The load-bearing property of R13, and the one that decides whether
+        this check is worth its line.
+
+        A proposal that fires in every repo carries no information; `norms.md`
+        names the cost from this repo's own orphan-term hook. So the check must
+        say the found-nothing case propose nothing, and must require the
+        proposal to quote what the repo actually says about itself.
+        """
+        check = self._check()
+        lower = check.lower()
+        assert "found nothing" in lower and "propose nothing" in lower, (
+            "Health Check #18 no longer says what to do when the repo encodes "
+            "nothing — and the silent default is to invent a policy, which is "
+            "the unconditional proposal this check is shaped to avoid"
+        )
+        assert "the repo's own names" in check, (
+            "the proposal is no longer required to quote the repo's own "
+            "vocabulary, so it can be assembled from prawduct's instead"
+        )
+        assert "naming the file each came from" in check, (
+            "the proposal no longer has to cite where each item came from — an "
+            "owner who cannot check the claim can only rubber-stamp it"
+        )
+
+    def test_the_check_grades_nothing(self):
+        """A missing delegation policy is not a defect. Check #17 is the
+        precedent and says why in its own words: grading optional advice makes
+        it behave like the install contract. Here the stakes are higher —
+        `Mandating delegation` is out of scope by ruling, and a check that
+        reports `degraded` until you delegate has mandated it.
+        """
+        check = self._check()
+        assert "a recommendation, not a conformance check" in check, (
+            "Check #18 lost the label that keeps it out of the classification"
+        )
+        assert "never degrade the repo on this" in check.lower(), (
+            "Check #18 can now degrade a repo for having no delegation policy, "
+            "which mandates delegation through the grading system"
+        )
+        classify = self.doctor.split("\nClassify and report:", 1)[1].split("\n## ", 1)[0]
+        assert "delegation" not in classify.lower(), (
+            "the classification block now mentions delegation — whatever it "
+            "says there, a grade is being assigned to an optional policy"
+        )
+
+    def test_the_flow_writes_rows_that_are_absent_not_only_blank(self):
+        """The reach gap, and it is the whole difference between shipping this
+        feature and shipping it to new repos only.
+
+        `project-preferences.md` is scaffolded once at onboard and never
+        regenerated, so the template rows added in this chunk reach a repo that
+        onboards AFTER them and no other. Every already-onboarded repo has no
+        such rows at all. This is Health Check #14's bug exactly — "the fix
+        reached new onboards and nothing else" — and this flow is the only path
+        by which an existing repo gets the rows.
+        """
+        flow = self._flow()
+        lower = flow.lower()
+        assert "absent" in lower, (
+            "the flow no longer distinguishes a blank row from a missing one, "
+            "so on every already-onboarded repo it has nothing to fill and "
+            "silently does nothing"
+        )
+        assert "never regenerated" in lower or "scaffolded once" in lower, (
+            "the flow no longer says WHY the rows are missing; without the "
+            "reason the instruction reads as an edge case and gets trimmed"
+        )
+
+    def test_the_flow_is_one_step_and_one_confirmation(self):
+        """R14 — one step, not an interview. The Norm Ratification Flow is the
+        heavy path and it is the wrong shape here: three rows do not need
+        surface-by-exception, and per-row prompting is the confirmation fatigue
+        `security-model.md` § Direction calls a safety regression in itself.
+        """
+        flow = self._flow()
+        assert "One confirmation covers the set" in flow, (
+            "the flow no longer commits to a single confirmation, so it can "
+            "grow back into the interview R14 exists to replace"
+        )
+        assert "per-row prompting is forbidden" in flow.lower(), (
+            "per-row prompting is no longer refused — 'discouraged' has never "
+            "held anywhere else in this file either"
+        )
+
+    def test_a_row_the_evidence_does_not_support_is_not_drafted(self):
+        """The asymmetry that makes a proposal safe to accept: a blank row is
+        honest, a guessed row is a decision the next session reads as the
+        owner's.
+        """
+        flow = self._flow()
+        assert "only the rows the evidence supports" in flow.lower(), (
+            "the flow can now draft all three rows regardless of what it found, "
+            "which puts prawduct's guess in the owner's voice"
+        )
+
+    def test_doctors_write_rule_survives_the_second_writing_flow(self):
+        """This chunk gives doctor a SECOND flow that writes, and two sentences
+        said there was one. The count was never the invariant — what the owner
+        confirmed, into `.prawduct/` state, never product code, is. Pinned
+        because a skill that quietly grows write paths is exactly what makes
+        running prawduct an unsafe trust decision.
+        """
+        assert "one doctor flow that writes" not in self.doctor, (
+            "the skill still claims a single write path while shipping two — "
+            "a reader who believes it will not look for the second"
+        )
+        assert "Doctor's write rule" in self.doctor, (
+            "the skill-level write rule is gone; without it the constraint "
+            "lives only inside whichever flow happens to restate it"
+        )
+        rule = self.doctor.split("Doctor's write rule", 1)[1].split("\n\n", 1)[0]
+        for owed in ("only what the owner confirmed", "never product code"):
+            assert owed in rule, (
+                f"the write rule dropped {owed!r} — the clause is the rule; "
+                "what is left is a description of where doctor happens to write"
+            )
+
+    def test_the_enforcement_row_is_assigned_a_mechanism_and_stays_a_handle(self):
+        """Two project norms meet here. Every preference is assigned a mechanism
+        at birth or it becomes aspirational — and prose policy is
+        judgment-required by construction, so it is `Critic` with `janitor` as
+        its audit home (`advisory` needs a named mechanical hook, and there is
+        none). And an index entry is a name, not a copy: the row points at the
+        policy rather than restating it, or the two drift.
+        """
+        assert "takes `Critic`" in self.prefs, (
+            "a filled delegation row no longer has an assigned mechanism, so it "
+            "is a preference nothing grades"
+        )
+        assert "audit home `janitor`" in self.prefs, (
+            "the audit home is unassigned — the rule for adding a preference "
+            "requires both, and `advisory` would need a hook nobody built"
+        )
+        flow = self._flow()
+        assert "a handle, not a second copy" in flow, (
+            "the Enforcement row the flow writes may now restate the policy, "
+            "which is the duplication `one home per fact` exists to refuse"
+        )
+
+    def test_the_shipped_enforcement_table_still_has_no_rows(self):
+        """The reason no Enforcement row ships with the template, asserted here
+        rather than only in `test_norm_probes.py`: a populated row is a HOMED
+        NORM, so shipping one claims a norm registry every new product has
+        ratified nothing into. This chunk's rows are written at ratification
+        instead. Read the real template, per the rule this repo learned the hard
+        way when hand-written fixtures agreed with each other and disagreed with
+        the shipped file.
+        """
+        index = self.prefs.split("| Preference / norm | Mechanism |", 1)
+        assert len(index) == 2, "the norm index table is gone"
+        body = index[1].split("\n\n", 1)[0]
+        data_rows = [
+            ln for ln in body.splitlines()
+            if ln.strip().startswith("|") and not re.match(r"^\|[\s:|-]+\|$", ln.strip())
+        ]
+        assert data_rows == [], (
+            f"the norm index ships {len(data_rows)} populated row(s): {data_rows}. "
+            "It must ship empty — a row here is a ratified norm, and the "
+            "delegation rows get theirs from /prawduct:doctor, not from onboard"
+        )
+
+    def test_neither_surface_invents_a_test_vocabulary(self):
+        """§6, applied to this chunk's two surfaces — and scoped differently for
+        each, which is the point.
+
+        The **template row** is guidance to a project about what to write, so it
+        is held to the same bar as the guide: no runner, no tier, no command.
+        The **doctor check** is the opposite job — it READS a consumer's repo,
+        so naming the kinds of file it opens is its function, not a violation.
+        What it may not do is arrive with a taxonomy of its own, so the ruled-out
+        tier names are what is asserted there.
+        """
+        workflow = self._workflow().lower()
+        runners = [
+            r for r in ("pytest", "vitest", "jest", "npm test", "xdist",
+                        "-n auto", "maxworkers", "testmon", "go test", "cargo test")
+            if r in workflow
+        ]
+        assert not runners, (
+            f"the delegation rows name a consumer's toolchain: {runners}. The "
+            "project writes its own regime; prawduct does not supply one"
+        )
+        tiers = [
+            t for t in ("`focused`", "`adjacent`", "`whole`", "`live`",
+                        "contention class", "tier")
+            if t in self._check().lower()
+        ]
+        assert not tiers, (
+            f"Health Check #18 arrives with a framework tier vocabulary: "
+            f"{tiers}. §6 rules those out by name — the proposal is assembled "
+            "from what the repo says, not from a taxonomy prawduct brought"
+        )
+
 class TestOtherMethodology:
     def test_discovery_continuous(self):
         content = read_file("methodology/discovery.md")
