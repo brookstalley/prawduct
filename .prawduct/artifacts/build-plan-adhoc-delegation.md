@@ -18,10 +18,21 @@ governed_by:
         fails soft by construction, and the four chunks collapse to three dispatches because 04 is
         `cumulative-final`."
       - "proportionality ratchets both ways — a new control names its expected yield AND emits it
-        observably -> ruling needed, at Chunk 04. The advisory IS a new control and the honest
-        question is whether the advisory store's per-clone dismissal/resolution record counts as
-        observable emission or whether this inherits the bounded exception Health Check #13 and #18
-        already hold. Answered in the chunk with the store read, not asserted here."
+        observably -> RULED AT CHUNK 04: **conforms**, no bounded exception taken. Expected yield,
+        named: an ad-hoc delegate worktree left unintegrated is named at session start instead of
+        being silently orphaned. Emission: every firing writes an entry into
+        `.prawduct/.advisories.json` carrying `triggered_at`, and its terminal state records which
+        way the decision went — `resolved`/`resolved_by: sync` when the branch was integrated or
+        the worktree removed, `dismissed` with `dismissed_reason` when it was abandoned
+        deliberately — queryable with `prawduct-hook advisory list --state=<state>`. That is the
+        norm's 'how often did it fire, and what did it catch', and it is exactly what doctor Health
+        Check #13 could not offer: #13's exception is that doctor has NO fact-emitting path at all,
+        which is not this probe's situation. The honest caveat, from reading the store rather than
+        assuming it: retention is a rolling window, not a lifetime ledger — `apply_retention` GCs
+        resolved entries after `RESOLVED_TTL_DAYS` (30) and caps them at 50, and the store is
+        per-clone and gitignored. Dismissals are kept (cap 200), and the dismissal is the arm a
+        retirement argument actually needs, because 'it fired and the user abandoned the worktree
+        anyway, with a reason' is the record that would justify removing the control."
       - "state-file growth is an advisory warning, never a hard block -> conforms, and doubly so:
         Chunk 04's control is *itself* an advisory. The briefing's standing nags on this repo
         (`project-state.yaml` 41KB, `learnings.md` 89KB) are again deliberately left alone —
@@ -31,8 +42,15 @@ governed_by:
         norm Chunk 02 is entirely about. The chunk reports what its trim recovered rather than
         assuming, per D6."
       - "SessionStart must be fast; no probe on the hot path may block or noticeably delay it ->
-        conforms, measured at Chunk 04. The probe's work is one `git worktree list` plus one stat
-        per worktree — bounded by worktree count, not by repo size."
+        conforms, MEASURED at Chunk 04 rather than argued. The probe's work is one `git worktree
+        list` plus one stat per worktree — bounded by worktree count, not by repo size — and the
+        ancestry checks are paid only by a worktree that actually holds a brief. On this clone
+        (8 worktrees, no brief anywhere: the steady state) it costs **23 ms**, of which a bare
+        `git worktree list --porcelain` is 23 ms — i.e. the probe adds nothing measurable over the
+        one git call it cannot avoid, and it is ~2% of the 1.16 s the full probe roster already
+        spends. A pure-filesystem short-circuit on `.git/worktrees` would take the single-checkout
+        case to zero processes and was deliberately NOT taken: it duplicates git layout knowledge
+        to save 2% of a once-per-session step (Principle 11)."
       - "versioning is conservative -> inapplicable because this plan cuts no release; the version
         bump is the release's own decision."
   - artifact: architecture

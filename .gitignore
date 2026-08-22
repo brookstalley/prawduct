@@ -62,3 +62,11 @@ incoming-bugs/
 # under `source_root: "."` and reports any that architecture.md does not name —
 # a recurring false advisory on a directory that is deliberately not architecture.
 scratchpad/
+
+# Prawduct session files
+# An ad-hoc delegate's dispatch record, written into the delegate's own worktree.
+# Untracked because a delegate running `git add -A` would otherwise commit it onto
+# the delegate branch and it would arrive in the merge; ignored (not merely
+# untracked) is what makes that impossible. Its presence in a worktree is also the
+# only signal the unintegrated-delegate advisory has, so it must never come from HEAD.
+.prawduct/.delegate-brief.md

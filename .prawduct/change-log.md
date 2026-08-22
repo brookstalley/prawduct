@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-22: an abandoned delegate worktree is not silent
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+A delegated tangent hands back a branch plus an integration debt, and the agent that incurred the
+debt is — by the very reason it delegated, a full context — not the one who will pay it. A debt
+held only in a coordinator's context evaporates at the next `/clear`, leaving an unmerged branch
+and a worktree nobody remembers creating. A session-start advisory now names that state:
+`[delegation] delegate branch X is unintegrated`, with what it owes and how to settle it.
+
+**The dispatch record is the trigger, so nothing new had to be invented.** The brief already had
+to exist, and it is written into the delegate's own worktree at `.prawduct/.delegate-brief.md`
+(gitignored, so it can only be there because a dispatch actually happened). Its presence plus an
+unmerged tip is the whole signal — no registry, no schema, no lease, no slot accounting. It also
+makes the probe **inert by absence**: a repo that has never delegated sees nothing, and so does one
+whose worktrees are ordinary feature checkouts.
+
+**Both of R12's resolutions are the same observable state that triggered it.** Merge the branch and
+its tip becomes reachable from HEAD — or from the integration base, which is what keeps a
+long-shipped delegate quiet after the coordinator has moved on. Remove the worktree and the brief
+goes with it. Either way the next sync flips the advisory to `resolved`. The third path, abandoning
+it deliberately, is a dismissal carrying its reason, kept per-clone and indefinitely — which is
+also the answer to the proportionality norm's emission arm: the store records that this control
+fired and which way the decision went, so it can be retired on evidence rather than defended on
+principle.
+
+**Two things it deliberately does not do.** It never reads the brief — presence is the entire
+signal, and the worktree it points at belongs to another session. And it does not consolidate:
+one advisory per worktree, keyed on the branch, because two abandoned delegates are two decisions
+and dismissing the first must not silence the second.
+
 ## 2026-08-22: the backlog instinct gets a third option
 
 <!-- prawduct: type=feature | scope=adhoc-delegation -->
