@@ -158,9 +158,10 @@ in-flight mark: on *delegate it*, `status <id> --to in-progress` (the bridge abo
 `accepted-by:` here.
 
 **Always pass `--stage`** when you can infer it (a clearly-scoped bug or cleanup → `ready`; a vague
-one-liner → `idea`), and omit it only when genuinely unclear. It is also the field the bar above is
-read from and stamped as. An item filed stageless is one `ready-work` and `pick` will never present
-as buildable, and it leaves that offer with nothing to read.
+one-liner → `idea`), and omit it only when genuinely unclear. It is also what the offer above reads
+— `ready` is that bar, and this is the only place it is recorded. An item filed stageless is one
+`ready-work` and `pick` will never present as buildable, and it leaves that offer with nothing to
+read.
 
 **A ```` ```prawduct ```` block inside `--body` is merged, not dropped** (since 2026-08-19).
 Composition parses any block already in the body, folds its fields under the ones the command itself
