@@ -324,28 +324,49 @@ Two consequences, one mandatory and one a decision:
   — the test's own comment requires a departure to say why. Ruling the trigger worth N tokens is
   the same kind of policy call as D1.
 
-### 8.2 R10 validated against its author (2026-08-21)
+### 8.2 What the clear verdict actually turns on (2026-08-21)
 
-Recorded because it is the only field evidence this requirement has. While drafting it, this
-session dispatched a background `prawduct-hook test-evidence record` (~3.5 min) and closed the turn
-`RUNNING` + `SAFE TO CLEAR`, on the stated reason that "the record is bookkeeping, not the
-verification". The owner challenged it. The verdict was wrong, and R10 is what says so: the record
-on disk buys the clear, and a record still being *written* is not on disk. The reason given was
-also self-refuting — bookkeeping not worth protecting from a clear is not worth 3.5 minutes of
-compute either.
+Recorded because this was got wrong twice in one session, in opposite directions, and the second
+error is the more instructive.
 
-Two facts checked rather than assumed, neither of which rescues the verdict: the writer is atomic
-(`prawduct-hook` writes a `.tmp` then `os.replace`s), so a kill cannot corrupt the store; and test
-evidence is session-scoped (`gates.py:192`, `:210`), so a clear would have made the record
-worthless to the next session regardless. The loss was bounded. The label was still derived from
-what sounded reassuring rather than from the rule.
+While drafting R10 this session dispatched a background `prawduct-hook test-evidence record` and
+closed the turn `RUNNING` + `SAFE TO CLEAR`, on the stated reason that "the record is bookkeeping,
+not the verification". The owner asked how those two labels could be compatible. The answer was
+taken to be a correction, R10 was cited against itself, and the verdict was retracted — before
+reading the canonical rule.
 
-**The gap this exposes is wider than the mistake.** The digest says work in flight is `RUNNING`,
-"and *a live review* is also `DO NOT CLEAR`" — scoped to reviews, silent on every other kind of
-background work that writes `.prawduct/` state. A `prawduct-hook` command writing governance state
-is exactly as clear-unsafe as a review. The general form subsumes reviews, evidence records and
-dispatched delegates in one sentence: **in-flight work is `DO NOT CLEAR` until whatever it writes
-has landed.** That is the R10 amendment, and it is now motivated independently of this feature.
+`methodology/reflection.md` states it directly: **"`RUNNING` alongside `SAFE TO CLEAR` is
+emittable, and for work a clear leaves alone it is correct."** A live Critic review is the named
+exception, and its reason is **recovery cost** — forked reviewers' survival across a clear is
+unverified, and a roster left incomplete is recoverable only by re-dispatching the whole round at
+full wall clock.
+
+Under that test the original label holds. The evidence writer is atomic (`.tmp` then
+`os.replace`), so a kill cannot corrupt the store; test evidence is session-scoped (`gates.py:192`,
+`:210`), so a cleared session's record was moot regardless; and recovery cost was three and a half
+minutes of regenerable bookkeeping. What was wrong was the *reason* — "bookkeeping, not the
+verification" is self-refuting, since bookkeeping not worth protecting from a clear is not worth
+the compute either. A bad reason under a defensible label is what invited the question.
+
+**The generalisation drawn from the retraction was also wrong.** "All in-flight work is
+`DO NOT CLEAR` until its product is on disk" over-blocks: it would forbid clearing beside any
+regenerable background job, which is exactly the case `reflection.md` says is emittable.
+
+**What is true, and what R10 should say.** The verdict turns on **recovery cost — whether a clear
+leaves the work alone.** A delegate fails that test where an evidence record passes it: the
+delegate dies with the session, its branch is unfinished, its report unread, and nothing regenerates
+it but re-running the work. So an unreaped delegate is `DO NOT CLEAR` for the same reason a live
+review is, and a *reaped* delegate whose debt is recorded is `SAFE TO CLEAR` because what remains is
+on disk. R10 stands, on the recovery-cost reason rather than on a blanket on-disk rule.
+
+**The residual gap is real but small.** The digest carries the review exception without the test
+that generates it, so a reader of the digest alone has the special case and not the principle. That
+is a candidate for the amendment, competing for the same 9-12 tokens of headroom as everything else
+— not a correctness fix that outranks the owner's pending budget decision.
+
+**Method note, which is the actual lesson.** A question is not a verdict. The correction was
+generated rather than retrieved: the canonical rule was one file away and went unread until after
+the retraction had been committed. Retrieval before generation applies to correcting yourself.
 
 ### 8.3 Open questions
 
