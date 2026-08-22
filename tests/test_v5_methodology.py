@@ -608,7 +608,17 @@ LAST_MEASURED_TOKENS = {
     # the reader here as one anti-pattern tell, and two considerations that
     # restated rules stated a paragraph earlier were dropped rather than shipped
     # as a list that looks longer than it is.
-    "methodology/delegation.md": 2467,
+    # +231 on 2026-08-22 (Chunk 04's cumulative, R-5 and R-13): the doctrine
+    # named the brief and its path but never its writer or its moment, and the
+    # mechanics file it defers to documents only harness-created isolation —
+    # a tree the dispatcher cannot name before dispatch. So under the one
+    # documented shape the brief had no author and the advisory that keys on it
+    # was inert by construction. The section now says the coordinator creates
+    # the worktree, writes the brief, then dispatches; and that reaping ends
+    # with the worktree, because a brief left in a reused checkout raises a
+    # delegate advisory about work nobody delegated. A READING, so the cost is
+    # paid only by a session already about to delegate a tangent.
+    "methodology/delegation.md": 2698,
 }
 
 

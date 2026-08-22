@@ -155,7 +155,7 @@ into a number. Nothing cheaper does.
 - [x] Chunk 01: The doctrine has one home
 - [x] Chunk 02: The clear verdict accounts for a delegate
 - [x] Chunk 03: The backlog instinct gets the third option
-- [ ] Chunk 04: An abandoned worktree is not silent
+- [x] Chunk 04: An abandoned worktree is not silent
 
 Context: Plan written 2026-08-21 against `adhoc-delegation-discovery.md`, all six rulings recorded
 there in §7. D6 (trim first, declare the shortfall) was ruled when this plan was drawn, and §8.1
@@ -235,6 +235,47 @@ policy sentence about the class is not evidence either way. Next: Chunk 04, whos
 flags two things to decide rather than assume (the worktree boundary, the proportionality ruling) —
 and backlog #594 ("ephemeral agent worktrees are governed as if durable") is adjacent to it and was
 not read this chunk.
+
+Chunk 04 done 2026-08-22. R12 landed as one probe keyed on the **brief**, not on the worktree —
+which is what makes it inert by absence and what keeps it quiet in a clone like this one, which
+carries eight worktrees and gets nothing from any of them. Verified for real, not only on fixtures:
+scratch worktree + brief → the advisory appeared in the assembled briefing naming the branch →
+dismissed with a reason, reason on disk → undismissed → worktree removed → the next sync flipped it
+to `resolved` and the briefing reported "Resolved since last session: 1".
+
+**Both deferred decisions were made by reading, and both are recorded at the `governed_by`
+disposition rather than here.** The worktree boundary is a stat, pinned by a test that traps
+`Path.open` / `read_text` / `read_bytes` and the `open()` builtin (all four mutations go red). The
+proportionality ruling is **conforms, no bounded exception** — Health Check #13's exception exists
+because doctor has no fact-emitting path at all, and the advisory store is one; the retention
+caveat is named there. The hot-path number is there too: 23 ms, which is what a bare `git worktree
+list --porcelain` costs on this machine, so the probe adds nothing over the one call it cannot
+avoid.
+
+**Placement departure, and one guard the plan did not name.** The plan said `bin/prawduct-hook` for
+registration; the composition root is `lib/probe_families.py`, and registering in the hook alone
+leaves `advisory show` running against an empty registry. Separately, `GITIGNORE_ENTRIES` has a
+deliberate inline mirror in the hook (`_SESSION_GITIGNORED_PATHS`) that is greppable by its
+*contents*, not by the name of what it mirrors — `TestSessionGitignoreMirror` is what found the
+half-edit, which is the waived-and-pinned duplication pattern working as designed.
+
+Review: **0 blocking**, 7 warnings, 10 notes, over the whole `merge-base…HEAD` interval. Every
+warning was fixed. Three are worth carrying forward. **R-5 is the one that mattered**: the doctrine
+named the brief and its path but never its *writer* or its *moment*, and the mechanics file it
+defers to documents only harness-created isolation — a tree the dispatcher cannot name before
+dispatch. So under the one documented shape the brief had no author and this chunk's probe was
+inert by construction. `delegation.md` now says the coordinator creates the worktree, writes the
+brief, then dispatches — placed there rather than in `building.md` as the finding suggested,
+because R13 makes `delegation.md` the home and `building.md` sits at a hard ceiling. **R-11**: the
+probe's two git-failure paths were silent rather than soft — a failed `git worktree list` read
+exactly like a healthy repo — so both now name what the reader loses, with the not-a-repo case
+still quiet. **R-9** was a class defect this chunk landed on: `alternative_actions` was rendered by
+*nothing*, in the briefing or in `advisory show`; `show` now renders it, which makes the field live
+for all five probes that set it rather than deleting their data. R-6/R-7/R-8/R-12 were coherence
+gaps elsewhere in the interval (the `## Promoted` gloss, the offer's bound at close-time filing,
+the cross-cutting registry's runtime leg, and a missing change-log entry for the `closed-by`
+narrowing), all closed in the same commit.
+
 
 ## Scaffolding
 

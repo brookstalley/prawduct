@@ -44,6 +44,7 @@ at import time — the same pattern as the sibling probe modules.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from . import evidence
@@ -64,11 +65,26 @@ def _worktree_records(root: Path) -> list[dict]:
 
     Keys are the porcelain's own line labels — ``worktree`` (path), ``HEAD``
     (sha), ``branch`` (full ref) — plus valueless markers (``bare``,
-    ``detached``, ``locked``, ``prunable``) mapped to ``""``. Any git failure
-    yields an empty list, so the probe stays silent rather than raising.
+    ``detached``, ``locked``, ``prunable``) mapped to ``""``.
+
+    A failure yields an empty list — advice fails soft — but it does not fail
+    *silent*: "not a git repository" is the ordinary case for a probe that can
+    be pointed anywhere and stays quiet, while any other failure (a timeout, a
+    broken repo) has just cost the reader the only signal an orphaned delegate
+    has, and says so. The repo-ness check is paid only on the failure path.
     """
-    rc, out, _err = evidence.run_git(root, "worktree", "list", "--porcelain")
-    if rc != 0 or not out:
+    rc, out, err = evidence.run_git(root, "worktree", "list", "--porcelain")
+    if rc != 0:
+        in_repo, _out, _err = evidence.run_git(root, "rev-parse", "--git-dir")
+        if in_repo == 0:
+            print(
+                "NOTE: delegate-worktree probe skipped: `git worktree list` failed "
+                f"({err.strip() or f'rc={rc}'}) — an unintegrated delegate worktree "
+                "would go unreported this session",
+                file=sys.stderr,
+            )
+        return []
+    if not out:
         return []
     records: list[dict] = []
     current: dict = {}
@@ -102,13 +118,25 @@ def _is_integrated(root: Path, sha: str, refs: list[str]) -> bool:
 
 
 def _integration_refs(root: Path) -> list[str]:
-    """HEAD plus the configured integration base, when one resolves."""
+    """HEAD plus the configured integration base, when one resolves.
+
+    An unresolvable base is not fatal — HEAD alone still answers the ordinary
+    case — but it degrades the probe toward over-firing on a delegate that
+    landed in the base while the coordinator moved elsewhere, so the reason
+    reaches the reader rather than being dropped.
+    """
     from . import coverage  # noqa: PLC0415 — lazy: only a brief-holding worktree pays for it
 
     refs = ["HEAD"]
-    base_ref, _reason = coverage._resolve_base_branch(root)
+    base_ref, reason = coverage._resolve_base_branch(root)
     if base_ref:
         refs.append(base_ref)
+    else:
+        print(
+            f"NOTE: delegate-worktree probe: integration base unresolved ({reason}) — "
+            "a delegate already merged into the base may be reported unintegrated",
+            file=sys.stderr,
+        )
     return refs
 
 
@@ -186,10 +214,7 @@ def probe_unintegrated_delegate_worktree(state: ProjectState, codebase: Codebase
                 recommended_action=(
                     f"git log --oneline HEAD..{label}" if label else f"git log --oneline HEAD..{sha[:12]}"
                 ),
-                alternative_actions=(
-                    f"git worktree remove {shown}",
-                    "/prawduct:advisory dismiss <id> --reason=\"<why it was abandoned>\"",
-                ),
+                alternative_actions=(f"git worktree remove {shown}",),
                 priority="warn",
             )
         )

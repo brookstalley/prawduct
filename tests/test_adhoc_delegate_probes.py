@@ -22,6 +22,7 @@ Registry isolation mirrors ``test_stale_base_probes.py`` (autouse
 
 from __future__ import annotations
 
+import builtins
 import subprocess
 from pathlib import Path
 
@@ -246,21 +247,27 @@ class TestWorktreeBoundary:
         path = _delegate(repo)
         brief = (path / adp.BRIEF_REL).resolve()
 
+        # Every route to the bytes, not just the two the probe happens not to
+        # use: a guard that pins only today's spelling stays green through the
+        # edit it exists to catch.
         opened: list[str] = []
-        real_open = Path.open
 
-        def _tracking_open(self, *args, **kwargs):
-            opened.append(str(self.resolve()))
-            return real_open(self, *args, **kwargs)
+        for owner, name in ((Path, "open"), (Path, "read_text"), (Path, "read_bytes")):
+            real = getattr(owner, name)
 
-        real_read_text = Path.read_text
+            def _tracking(self, *args, _real=real, **kwargs):
+                opened.append(str(Path(self).resolve()))
+                return _real(self, *args, **kwargs)
 
-        def _tracking_read_text(self, *args, **kwargs):
-            opened.append(str(self.resolve()))
-            return real_read_text(self, *args, **kwargs)
+            monkeypatch.setattr(owner, name, _tracking)
 
-        monkeypatch.setattr(Path, "open", _tracking_open)
-        monkeypatch.setattr(Path, "read_text", _tracking_read_text)
+        real_builtin_open = builtins.open
+
+        def _tracking_builtin_open(file, *args, **kwargs):
+            opened.append(str(Path(file).resolve()))
+            return real_builtin_open(file, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", _tracking_builtin_open)
         assert _probe(repo), "control: the probe did fire, so it did look"
         assert str(brief) not in opened
 
@@ -345,3 +352,46 @@ class TestDisplayPath:
         cand = _probe(Path("."))[0]
         assert ".claude/worktrees/agent-delegate-a" in cand.trigger_summary
         assert str(repo) not in cand.trigger_summary
+
+
+# ---------------------------------------------------------------------------
+# Fails soft, never silent
+# ---------------------------------------------------------------------------
+
+
+class TestDegradesLoudly:
+    def test_a_failed_worktree_list_says_what_was_lost(self, tmp_path, monkeypatch, capsys):
+        repo = _repo(tmp_path)
+        _delegate(repo)
+        real = adp.evidence.run_git
+
+        def _fail_worktree_list(root, *args, **kwargs):
+            if args[:1] == ("worktree",):
+                return 1, "", "fatal: timed out"
+            return real(root, *args, **kwargs)
+
+        monkeypatch.setattr(adp.evidence, "run_git", _fail_worktree_list)
+        assert _probe(repo) == []
+        err = capsys.readouterr().err
+        assert "delegate-worktree probe skipped" in err
+        assert "would go unreported" in err
+
+    def test_a_non_git_directory_stays_quiet(self, tmp_path, capsys):
+        """The ordinary case for a probe that can be pointed anywhere."""
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        assert _probe(plain) == []
+        assert capsys.readouterr().err == ""
+
+    def test_an_unresolvable_base_names_the_over_fire_risk(self, tmp_path, monkeypatch, capsys):
+        repo = _repo(tmp_path)
+        _delegate(repo)
+        from lib import coverage
+
+        monkeypatch.setattr(
+            coverage, "_resolve_base_branch", lambda root: (None, "configured base_branch 'nope' not found")
+        )
+        assert _probe(repo), "still fires — HEAD alone answers the ordinary case"
+        err = capsys.readouterr().err
+        assert "integration base unresolved" in err
+        assert "may be reported unintegrated" in err

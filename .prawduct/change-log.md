@@ -181,6 +181,24 @@ the pointer's own table of contents: it enumerated the headings of a file the sa
 you to open. What replaced it is the discriminator a reader actually needs — the guide is the
 judgment, that section is the mechanics.
 
+## 2026-08-21: a `closed-by` handle names the work, not its slot in a plan
+
+<!-- prawduct: type=fix | scope=backlog-metadata -->
+
+`closed-by: Chunk 04` names no plan and means nothing to a reader a year out; `closed-by:
+eval-system-rebuild` still says what shipped the item. Principle 13 already stated the governing
+test — *will this reference still resolve, and mean the right thing, once the thing it names has
+moved?* — and licensed a form that fails it one sentence apart. The bare chunk id is now
+non-conforming across all four surfaces that carried it: the norm's home in `docs/principles.md`,
+the backlog skill's metadata-bar spec and its `update` rule, and the ship-in-the-closing-PR
+instruction. `building.md`'s mutable-id exemption list loses `closed-by:` entirely — once the
+handle has to name the work, there is nothing left to exempt.
+
+**Consumers who already wrote `closed-by: Chunk NN` handles have non-conforming ones.** Nothing
+rewrites them and no gate rejects them; they are stale references that will not resolve, and the
+repair is to re-point each at the work (a feature scope, a branch name, a release) the next time
+its item is touched.
+
 ## 2026-08-21: one place knows what a finding's title is called
 
 <!-- prawduct: type=fix | scope=delegation -->
