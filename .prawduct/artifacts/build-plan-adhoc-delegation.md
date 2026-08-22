@@ -136,7 +136,7 @@ into a number. Nothing cheaper does.
 
 - [x] Chunk 01: The doctrine has one home
 - [x] Chunk 02: The clear verdict accounts for a delegate
-- [ ] Chunk 03: The backlog instinct gets the third option
+- [x] Chunk 03: The backlog instinct gets the third option
 - [ ] Chunk 04: An abandoned worktree is not silent
 
 Context: Plan written 2026-08-21 against `adhoc-delegation-discovery.md`, all six rulings recorded
@@ -186,10 +186,37 @@ Chunk 04 adds none either — but any later digest edit has ~13 characters, not 
 
 Review: 0 blocking, 1 warning, 2 notes. The warning was the char-limit gap above, found
 independently during the scrub and improved by the Critic's placement argument; both notes were
-already moot or fixed by the same figure corrections. Next: Chunk 03. Two of them were about THIS plan's `governed_by`
-block — `data-model` had 8 ratified norms and 4 dispositions, and the `architecture` disposition's
-stated reason was falsified by the same amendment that moved the gitignore line. Both are now
-correct, so Chunk 04 inherits a curated block rather than a stale one. Next: Chunk 02.
+already moot or fixed by the same figure corrections. (An earlier Chunk 01 round had also corrected
+this plan's own `governed_by` block — `data-model` listed 8 ratified norms against 4 dispositions,
+and the `architecture` disposition's stated reason was falsified by the amendment that moved the
+gitignore line — so Chunk 04 inherits a curated block rather than a stale one.)
+
+Chunk 03 done 2026-08-22. R14 landed as one step in `/prawduct:backlog add`, bounded by the same
+ready-to-build bar the digest's mid-chunk trigger fires on and pointing at `delegation.md` rather
+than restating it. **The plan's test placement was wrong and was changed with the reason recorded:**
+it called for "a new case in the backlog skill's existing test module", but the only prose-guard
+module for that skill declares a narrow scope (mutation-safety claims) in its own docstring, and the
+bar this chunk pins is a fact BETWEEN carriers that no backlog-scoped module reads. The class sits
+beside the doctrine's own in `test_v5_methodology.py` — which is what let the blocking finding's fix
+extend to a third carrier instead of needing a second module. The skill carries no size guard; the
+plan's "if it carries one" resolves to no.
+
+**Two gaps the plan did not contain, both about a surface having more paths than it looks like.**
+First, `add` filed every item stageless — `stage:` was canonical, `import` inferred it, triage
+backfilled it, and the one path that CREATES items never set it or accepted `--stage=`, so the new
+bar had no input. Closed in place (the adapter's `file` op had taken `--stage` all along). Second,
+and blocking: `adapter-mode.md` carries its own end-to-end `### add` that REPLACES `SKILL.md`'s
+steps, so the offer was silent on the Issues backend — this repo's, and exactly where the acceptance
+criterion pointed. Fixed without a second copy: step 2 is declared backend-independent and the
+adapter routes to it, translating only `--stage` and the in-flight mark.
+
+Review: 1 blocking, 1 warning, 2 notes; blocking + warning fixed in one commit, both notes accepted
+as facts. **Chunk 04 should read the finding before it starts**, because it inherits the shape: a
+governed surface can have a second procedure that replaces rather than extends the first, and a
+policy sentence about the class is not evidence either way. Next: Chunk 04, whose plan text already
+flags two things to decide rather than assume (the worktree boundary, the proportionality ruling) —
+and backlog #594 ("ephemeral agent worktrees are governed as if durable") is adjacent to it and was
+not read this chunk.
 
 ## Scaffolding
 
