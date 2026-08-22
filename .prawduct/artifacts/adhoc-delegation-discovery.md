@@ -282,6 +282,11 @@ changes it. `off` remains a complete answer, honoured without ceremony.
 - **D4 — Doctrine plus one small mechanism.** A `delegation.md` section, the block amendment, the
   backlog prompt, one advisory over carriers that already exist.
 - **D5 — The requirements bar is absolute**, with the four paths of R4.
+- **D6 — Trim first, declare the shortfall.** The digest pays for both edits out of a trim pass
+  whose actual recovery is *reported*, not assumed; whatever the trim cannot reach is funded by a
+  declared ceiling raise naming the amount and the reason. The trigger ships. The known risk, named
+  when the ruling was made: a declared raise per feature turns the ratchet into a rubber stamp, so
+  the trim must be attempted and its result stated — never asserted impossible.
 
 ## 8. Findings and open questions
 
@@ -327,6 +332,12 @@ Two consequences, one mandatory and one a decision:
   **raise the ceiling deliberately**. The ratchet forbids *undeclared* growth, not declared growth
   — the test's own comment requires a departure to say why. Ruling the trigger worth N tokens is
   the same kind of policy call as D1.
+
+**Resolved (D6).** Trim first, declare the shortfall. The tersest behaviour-changing trigger
+measures **+22**, so the two edits need ~36 tokens against 12 and 9 of headroom. The trim pass runs
+on the two boundary bullets and *reports what it recovered*; the remainder is a declared raise
+naming its amount and reason. The consolidation option stays what this section already called it —
+worth doing on its own merits, with its own review — and is not this feature's funding source.
 
 ### 8.2 What the clear verdict actually turns on (2026-08-21)
 
