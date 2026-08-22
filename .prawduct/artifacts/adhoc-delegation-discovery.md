@@ -69,10 +69,14 @@ unmerged branch and a worktree nobody remembers creating.
 ### 2.3 The feature's real product is a safe `/clear`, not a spawn
 
 `methodology/reflection.md`'s work-cycle-boundary rule — mirrored in the always-injected digest —
-already says an unread background agent is `RUNNING`, never `COMPLETE`. Read literally, that rule
-*forbids* the thing the ask wants: dispatch a tangent so the main context can be cleared.
+says an unread background agent is `RUNNING`, never `COMPLETE`. That does **not** forbid the ask:
+`RUNNING` and the clear verdict are different axes, and the same guide says `RUNNING` alongside
+`SAFE TO CLEAR` is emittable for work a clear leaves alone (§8.2). What the rule does forbid is
+calling a dispatched tangent *finished*.
 
-The resolution is not to weaken it. It is to make the record the thing that buys the clear:
+The verdict turns on **recovery cost**, and a delegate fails that test where a regenerable
+background job passes it: the delegate dies with the session, its branch unfinished and its report
+unread, and nothing regenerates it but re-running the work. So the record is what buys the clear:
 
 > An in-flight ad-hoc delegate is `RUNNING` and `DO NOT CLEAR`. A **reaped** delegate whose debt is
 > on disk is `SAFE TO CLEAR`, and the debt's presence on disk is what makes it so.
