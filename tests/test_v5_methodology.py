@@ -231,7 +231,13 @@ LAST_MEASURED_TOKENS = {
     # -10 on 2026-08-21 (Chunk 04's cumulative, R-13), 4773 -> 4763, ceiling
     # ratcheted 4775 -> 4765 with the cut. The rationale is at the ceiling
     # assertion, which is where this file's cuts are narrated.
-    "methodology/building.md": 4763,
+    # -3 on 2026-08-21, 4763 -> 4760, ceiling ratcheted 4765 -> 4762. A CUT that
+    # made the rule simpler: `closed-by:` left the mutable-id exemption list.
+    # It was there because the handle used to be allowed to be a chunk id, and a
+    # bare chunk id names no plan -- it fails the very test Principle 13 states
+    # one sentence later. With the handle required to name the work, the entry
+    # needs no exemption and the sentence needs no clause.
+    "methodology/building.md": 4760,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1768,6 +1774,8 @@ class TestBuildingMethodology:
         # addition. Slack left behind is a loan the next edit collects silently
         # and green, so the ceiling moves with the cut.
         # RATCHETED AGAIN 4775 -> 4765 (2026-08-21, Chunk 04's cumulative, R-13).
+        # RATCHETED AGAIN 4765 -> 4762 (2026-08-21): `closed-by:` left the
+        # mutable-id exemption list, which the reading's entry narrates.
         # The `How:` line had to reach for the `Delegate verification` row a
         # project may already have ratified — without it a coordinator writes a
         # brief inventing a ceiling beside the owner's, which is the retyping the
@@ -1777,7 +1785,7 @@ class TestBuildingMethodology:
         # unattributable-green bullet, restated here in full. What this file
         # needs is that it fails SILENTLY; what it does not need is the retelling.
         # Net -10, and the ceiling moves with it rather than banking the slack.
-        assert tokens < 4765, f"building.md is ~{tokens} tokens, should be <4765"
+        assert tokens < 4762, f"building.md is ~{tokens} tokens, should be <4762"
 
 
 # =============================================================================
