@@ -148,6 +148,21 @@ read-your-writes, so an item filed seconds ago is invisible to it, which is exac
 check is asked. If the cache exits 6, say the dedup check could not run; do **not** report "no
 duplicates found".
 
+**Then run `SKILL.md`'s `add` step 2 before filing — the three-way offer.** It is the one step of
+that procedure this section does not replace, because the question is about the work rather than
+about where the item lands: when the item describes work in this repo that is **ready to build**,
+say the three options out loud — *delegate it, do it now, or backlog it* — with the delegate's cost
+attached. Read it there; it is not restated here. What this backend has to translate is the
+in-flight mark: on *delegate it*, `status <id> --to in-progress` (the bridge above) plus
+`update <id> --working-branch owner/repo@branch` once that branch is pushed — there is no
+`accepted-by:` here.
+
+**Always pass `--stage`** when you can infer it (a clearly-scoped bug or cleanup → `ready`; a vague
+one-liner → `idea`), and omit it only when genuinely unclear. It is also what the offer above reads
+— `ready` is that bar, and this is the only place it is recorded. An item filed stageless is one
+`ready-work` and `pick` will never present as buildable, and it leaves that offer with nothing to
+read.
+
 **A ```` ```prawduct ```` block inside `--body` is merged, not dropped** (since 2026-08-19).
 Composition parses any block already in the body, folds its fields under the ones the command itself
 sets, and emits exactly one — so an edge like `related:` written at filing time now lands. On a key

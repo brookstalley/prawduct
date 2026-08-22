@@ -6,6 +6,57 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## A mutant that SURVIVES on code you just wrote is a claim about the CODE, not a gap in the test
+
+Building the unintegrated-delegate advisory, I added an obvious-looking guard so the probe would
+not nag about the session's own worktree:
+
+    if worktree.resolve() == here:
+        continue
+
+Mutation testing deleted it and the whole suite stayed green. That was not a coverage gap. The
+probe's next check asks whether the worktree's tip is reachable from HEAD — and the tree you are
+standing in is *always* reachable from its own HEAD, so the integration check already returned
+"skip" for that case. The guard was unreachable code wearing the costume of a safety check.
+
+The diagnostic that settles it: try to construct a fixture where the guarded and unguarded versions
+give different answers. If you cannot, the branch is dead, and adding a test to "cover" it only
+pins the mechanism you were about to delete. The fix was to delete the guard and reframe the test
+to pin the **guarantee** — a session running inside a delegate worktree does not nag about itself —
+which is true, is what a reader cares about, and survives the mechanism changing.
+
+Root cause: I reasoned from the *case* ("don't self-nag") before checking whether the code I had
+already written answered it. Retrieval-before-generation, failing at the scale of a single `if`.
+
+## A general policy sentence in a document is NOT evidence that a specific procedure inside it inherits the thing you are adding
+
+`plugin/skills/backlog/adapter-mode.md` line 21 says "any confirm-before-write step is yours to run
+in conversation before the call." That sentence is true, and it is a claim about the *class* of
+confirm steps — it does not answer whether the adapter's own `### add` inherits `SKILL.md`'s steps
+or replaces them. I read it, took it as evidence of inheritance, and stopped.
+
+The evidence that actually settled it was structural and sat two paragraphs below: the adapter's
+`add` **re-states the dedup step for itself**. A procedure that re-states a step it would inherit
+is replacing, not supplementing. `find` and `dedup` both carried an explicit backend marker; `add`
+carried none, so nothing flagged the split. The consequence was that Chunk 03's new three-way
+delegation offer shipped silent on the Issues backend — the only backend this repo runs, and
+exactly where the acceptance criterion pointed.
+
+The fix was not a second copy: `SKILL.md`'s step 2 is declared backend-independent and the adapter
+routes to it, translating only `--stage` and the in-flight mark.
+
+## When one rule is carried by two surfaces on purpose, pin it in the module that reads BOTH
+
+The ready-to-build bar for the delegation offer lives in two carriers by design — the always-injected
+session digest and `/prawduct:backlog add` — because a digest reader never opens the skill. A guard
+scoped to either file alone cannot see the two drifting apart, so the class went beside the
+doctrine's own in `tests/test_v5_methodology.py`, the module that reads every carrier.
+
+The corollary cost a mutation round. `ready to build` appeared **twice** in the region the assertion
+read, so stripping the bar out of the offer left the test green on a neighbouring sentence. The fix
+was in the prose as much as in the test: the paragraph stated the bar twice, so the bar moved to the
+paragraph that owns it and the assertion narrowed to the handover paragraph.
+
 ## When you rewrite a MEASUREMENT into a BENEFIT, re-attach the number to the sentence you actually wrote
 <!-- anchor: benefit-framing-widens-the-claim -->
 
@@ -4359,3 +4410,27 @@ the instrument needs the same treatment as the tests it grades — a case it mus
 survivor, and a positive assertion that the measurement ran at all. `[learnings-detail.md]`
 neighbours (L52, L448, L462, L506) all cover "a mutant that should die but lives"; this is the
 inverse tell, and it is the one that looks like success.
+
+## When editing `session-digest.md`, count CHARACTERS as well as tokens
+
+The digest carries two independent budgets, enforced in two test modules that never reference each
+other. `tests/test_v5_methodology.py` holds `LAST_MEASURED_INJECTED_TOKENS` and
+`INJECTED_FOOTPRINT_CEILINGS` — a *policy* ratchet, with a documented procedure for declaring a
+raise when a trim falls short. `tests/test_plugin_methodology_digest.py` holds
+`ADDITIONAL_CONTEXT_INLINE_LIMIT = 10_000`, which is not policy at all: above it Claude Code stops
+inlining the SessionStart context and spills it to a file, so no declaration, ruling or comment can
+buy a character past it.
+
+**How it bit.** The ad-hoc-delegation work did a careful token accounting — a class-based trim
+measured in word deltas, a per-edit cost table, a declared raise with its counter-case recorded at
+the assertion. Every assertion in the token module was green. The digest was 12 characters over the
+inline limit, because 216 free characters at the branch point had never been part of anyone's
+arithmetic. The token budget had been ratcheted to near-zero headroom over many commits, which made
+it feel like *the* constraint; the character budget was the one actually about to bind.
+
+**The general shape.** A surface with two budgets in two enforcement sites has a blind spot at
+whichever site you are reasoning from, and the more elaborate the accounting at one site, the more
+confident the blind spot feels. The fix was a reference at the accounting site rather than a third
+mechanism: the token table now opens by naming the character wall and saying which one wins when
+they disagree. Watch for the same shape wherever a thorough "budget" comment exists — its
+thoroughness is evidence about one budget only.

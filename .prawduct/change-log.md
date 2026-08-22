@@ -3,6 +3,210 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-22: an abandoned delegate worktree is not silent
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+A delegated tangent hands back a branch plus an integration debt, and the agent that incurred the
+debt is — by the very reason it delegated, a full context — not the one who will pay it. A debt
+held only in a coordinator's context evaporates at the next `/clear`, leaving an unmerged branch
+and a worktree nobody remembers creating. A session-start advisory now names that state:
+`[delegation] delegate branch X is unintegrated`, with what it owes and how to settle it.
+
+**The dispatch record is the trigger, so nothing new had to be invented.** The brief already had
+to exist, and it is written into the delegate's own worktree at `.prawduct/.delegate-brief.md`
+(gitignored, so it can only be there because a dispatch actually happened). Its presence plus an
+unmerged tip is the whole signal — no registry, no schema, no lease, no slot accounting. It also
+makes the probe **inert by absence**: a repo that has never delegated sees nothing, and so does one
+whose worktrees are ordinary feature checkouts.
+
+**Both of R12's resolutions are the same observable state that triggered it.** Merge the branch and
+its tip becomes reachable from HEAD — or from the integration base, which is what keeps a
+long-shipped delegate quiet after the coordinator has moved on. Remove the worktree and the brief
+goes with it. Either way the next sync flips the advisory to `resolved`. The third path, abandoning
+it deliberately, is a dismissal carrying its reason, kept per-clone and indefinitely — which is
+also the answer to the proportionality norm's emission arm: the store records that this control
+fired and which way the decision went, so it can be retired on evidence rather than defended on
+principle.
+
+**Two things it deliberately does not do.** It never reads the brief — presence is the entire
+signal, and the worktree it points at belongs to another session. And it does not consolidate:
+one advisory per worktree, keyed on the branch, because two abandoned delegates are two decisions
+and dismissing the first must not silence the second.
+
+**One change reaches every governed product, not just this feature:
+`prawduct-hook advisory show` now prints an advisory's `alternative_actions`.** The field had been
+set by five probes and rendered by nothing — the briefing prints one action per advisory by design,
+and the drill-down did not print them at all. `show` is where an alternative belongs, so the field
+is now live everywhere rather than being deleted from the probes that set it. One cosmetic
+consequence: the norm-health advisory's Health Check #14 route was moved into its `trigger_summary`
+back when the field was inert, so `show` prints that route twice until one copy goes.
+
+## 2026-08-22: the backlog instinct gets a third option
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+The delegation question has two moments. The first is a tangent arriving mid-chunk, which the
+always-injected digest now names. The second is quieter and much more common: an agent has decided
+some work is not this cycle's and reaches for the backlog. `/prawduct:backlog add` is the one
+stopping point that already fires at exactly that instant, so it is where the question goes —
+**delegate it, do it now, or backlog it**, said out loud, with the delegate's cost attached (a
+branch plus an integration debt, and how many ad-hoc branches are already awaiting integration).
+Filing becomes the third answer instead of the default. The judgment stays in
+`methodology/delegation.md`; the skill carries the trigger and a pointer.
+
+**The bound is the feature.** The prompt fires only when the item describes work **in this repo
+that is ready to build** — the same bar the digest's mid-chunk trigger uses, deliberately, so the
+two prompts state one rule rather than two. Everything earlier files silently and unchanged: a
+one-line idea, a research question, anything at an earlier `stage:`, and anything with no `stage:`
+at all. So does work you cannot open a worktree on, and any non-interactive machine call — the
+Critic files findings, it does not dispatch. This is not caution about scope creep; it is the
+feature's own discovery naming defensive asking as its live risk. A prompt that fires on every
+`add` is a prompt people route around, and a routed-around prompt is worse than no prompt, because
+it also teaches the reader to skim the ones that matter. `Delegation: off` in
+`project-preferences.md` silences it entirely, named inline rather than left behind the pointer:
+this step instructs, and a skill that never reads the guide would otherwise propose delegation in a
+repo that had declined it.
+
+**A gap found by reading the surface as its own reader.** The prompt needs to know whether an item
+is ready to build, and `add` could not tell it: `stage:` was a canonical field that `import`
+inferred and triage backfilled, while the one path that *creates* items never set it and did not
+even accept `--stage=`. Every item `add` filed was therefore born not-ready — including one the
+agent had just judged ready enough to offer delegating, which `pick` would then refuse to present
+as buildable. The adapter's `file` op had taken `--stage` all along; only this prose omitted it.
+`add` now accepts the flag and stamps the field the way `import` already infers it, leaving it
+unset when genuinely unclear.
+
+**One prompt, two `add` procedures — the half the first draft missed.** `SKILL.md`'s `### add` is
+the markdown-backend path; once `backlog_service_repo` is set, `adapter-mode.md` carries its own
+end-to-end `### add` that *replaces* it rather than adding to it — it re-states the dedup step for
+itself, which is the tell. So the offer as first written was silent on the backend this repo
+actually runs, which is precisely where the acceptance criterion pointed. There is still exactly one
+statement of it: `SKILL.md` now declares step 2 backend-independent (the question is about the work,
+not about where the item lands) and the adapter path routes to it, translating only the two halves
+that are spelled differently there — `--stage`, and an in-flight mark that is
+`status --to in-progress` plus `--working-branch` rather than `accepted-by:`.
+
+Guarded by eight cases pinned beside the doctrine's own, not in a backlog module — the shared bar is
+a fact *between* carriers, and a guard reading one of them cannot see them drift apart. They assert
+placement rather than wording: the offer sits after the dedup and before the append, because before
+the dedup it proposes delegating work already tracked, and after the append the item exists and the
+reflex has already won. Each was mutated red against the real files before being believed — one
+passed its first mutation and was tightened: `ready to build` appeared twice in the region it read,
+so stripping the bar out of the offer left the assertion satisfied by a neighbouring sentence.
+
+## 2026-08-21: the clear verdict accounts for a delegate
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+An ad-hoc delegate dies with the session that dispatched it. Its branch is unfinished, its report
+unread, and nothing regenerates it but re-running the work — so the standing block's clear verdict
+had to account for it, and the always-injected digest said the opposite: an unread background agent
+was `RUNNING`, never `COMPLETE`, and nothing at all about whether you could clear beside it.
+
+**The rule is stated on the test, not as a blanket.** `RUNNING` alongside `SAFE TO CLEAR` is
+legitimate, and for work a clear leaves alone it is correct — the earlier draft of this rule
+over-blocked by making every in-flight thing `DO NOT CLEAR`, which would forbid clearing beside any
+regenerable background job. What both cases actually answer is **recovery cost: does a clear leave
+the work alone?** A background job it does; a delegate it does not. So an unreaped delegate is
+`DO NOT CLEAR`, a reaped one is `SAFE TO CLEAR` the moment its integration debt is recorded, and
+the record — not the reaping — is what buys the clear. `reflection.md` now names the general test
+rather than only the live-review special case it used to carry, which is the gap that let this repo
+get the verdict wrong twice in one session, in opposite directions.
+
+**Reaping is a boundary step, and that placement is the rule.** It joins the work-cycle close as
+its first item, ahead of persisting decisions, because the debt is one of the things that then gets
+persisted. It is deliberately not an interrupt: a mechanism that exists to protect focus must not
+become the thing that breaks it.
+
+**The digest budget, measured rather than assumed.** The plan required the trim to run first and
+report what it recovered. It recovered **17 words / 22 tokens**, against 42 words / 55 tokens of
+additions, for a measured net of **+33** on both injected shapes — so the shortfall is a
+**declared raise**, +22 on the framework ceiling and +25 on the product one, the first this table
+has taken.
+
+What the trim cut was a class, not a rewrap (a word-count estimator returns nothing for rewrapping):
+prohibitions restating what the same bullet already requires positively. "Burying, padding or
+collapsing it fail alike" forbade three things the bullet had already required — "last, after every
+other word" *is* the anti-burying rule and "three separate paragraphs" *is* the anti-collapsing one
+— so only padding and the reason survived, folded into the opener. That is an in-place dedup, the
+only kind that is honest on this surface: funding a digest cut against an on-demand guide is a
+deletion for the reader who never opens one, and that reader is why the digest exists.
+
+Of the additions, +12 was mandatory at any budget (the digest's own rule contradicted the feature)
+and was found as a rewording — the delegate joins the findings-only clause, which already said
+"not `SAFE TO CLEAR` until it is on disk", rather than opening a second one. The +43 is the
+decision: a mid-chunk tangent trigger, the one moment nothing else in this plan reaches, since the
+backlog prompt only fires when the instinct was already to file something. Its ready-to-build
+qualifier is the guard against becoming the prompt people route around, and it is the same bar the
+backlog prompt will fire on, so the two state one rule. The counter-case is recorded at the
+ceiling: 43 tokens are paid by every session of every governed repo forever, and reverting is a
+three-line cut that lands back under the old ceilings.
+
+**The token ceiling was never the binding budget, and finding that out is the durable part.** The
+digest is emitted as SessionStart `additionalContext`, which Claude Code spills to a file above
+**10,000 characters** — a hard harness threshold, not a policy ratchet, and raisable by nobody. It
+had 216 characters free at this branch point; this change wanted 228, and the first draft went 12
+over while every assertion in the token-budget module was green. The two budgets lived in separate
+test modules with no reference between them, so a careful accounting against one could not see the
+wall it was walking into. The additions were shaved to fit and the token-budget table now says so
+at the top, because the next editor will do this arithmetic against the same blind spot. Real
+headroom after this chunk is 12 characters and, by the ratchet, zero tokens.
+
+**One test was fixed rather than satisfied.** A pure rewrap — no word added, removed or reordered —
+split `never ask / whether to prepare` across two lines and turned its pin red. The pin was matching
+raw substrings, which makes the fill width part of the contract; two sibling pins in the same class
+already normalize whitespace for exactly this reason. Normalized, with the reason at the assertion.
+
+## 2026-08-21: the delegation question, for work no plan anticipated
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+The delegation guide answered one trigger: a partition drawn while a build plan is being written.
+The other one is an interrupt — a tangent the user raises mid-chunk, or work you were about to
+propose backlogging — and it arrives when no plan exists to partition. `/prawduct:methodology
+delegation` now carries both.
+
+**The reframe that makes it more than a spawn mechanism.** Under the rule that the coordinator owns
+integration, a delegated tangent is never *done*: what comes back is a branch plus an integration
+debt, and the reason you delegated — this context is full, or nearly — guarantees the agent that
+incurred the debt is not the one who will pay it. So coordination has to be a role recorded on
+disk rather than an agent held in memory. A debt living only in the dispatching agent's context
+evaporates at the next `/clear`, leaving an unmerged branch and a worktree nobody remembers
+creating.
+
+What the section states: the decision is three-way and made once, out loud — do it now, delegate
+it, or backlog it, sorted by *would you integrate this today if it came back green?* Delegation is
+offered first, and that default is a policy setting, so `project-preferences.md`'s `Delegation` row
+still governs and `off` means the proposal is never made. Requirements come first absolutely, by
+exactly four paths and no fifth, and a delegate's own drafted requirements come back marked
+**proposed** — a branch's existence is not ratification. The brief is written into the delegate's
+worktree, which makes the artifact that had to exist anyway the dispatch record, with no registry,
+schema or lease added. And nothing is dispatched that this session cannot reap.
+
+**`building.md`'s delegation section got smaller while gaining the trigger.** What funded it was
+the pointer's own table of contents: it enumerated the headings of a file the same sentence tells
+you to open. What replaced it is the discriminator a reader actually needs — the guide is the
+judgment, that section is the mechanics.
+
+## 2026-08-21: a `closed-by` handle names the work, not its slot in a plan
+
+<!-- prawduct: type=fix | scope=backlog-metadata -->
+
+`closed-by: Chunk 04` names no plan and means nothing to a reader a year out; `closed-by:
+eval-system-rebuild` still says what shipped the item. Principle 13 already stated the governing
+test — *will this reference still resolve, and mean the right thing, once the thing it names has
+moved?* — and licensed a form that fails it one sentence apart. The bare chunk id is now
+non-conforming across all four surfaces that carried it: the norm's home in `docs/principles.md`,
+the backlog skill's metadata-bar spec and its `update` rule, and the ship-in-the-closing-PR
+instruction. `building.md`'s mutable-id exemption list loses `closed-by:` entirely — once the
+handle has to name the work, there is nothing left to exempt.
+
+**Consumers who already wrote `closed-by: Chunk NN` handles have non-conforming ones.** Nothing
+rewrites them and no gate rejects them; they are stale references that will not resolve, and the
+repair is to re-point each at the work (a feature scope, a branch name, a release) the next time
+its item is touched.
+
 ## 2026-08-21: one place knows what a finding's title is called
 
 <!-- prawduct: type=fix | scope=delegation -->

@@ -80,6 +80,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials/",
     ".prawduct/.critic-partials-archive/",
+    ".prawduct/.delegate-brief.md",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
