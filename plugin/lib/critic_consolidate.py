@@ -2341,8 +2341,13 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
     condition and whether reviewer output exists are two independent facts, and
     a sentence that answers both from one of them will be wrong whenever they
     disagree — an orphaned partial set with no manifest is exactly that disk.
-    ``test_no_composed_message_contradicts_itself`` composes every surface under
-    every condition and is what caught it.
+    ``test_every_verdict_matches_the_disk`` is what caught it — and it is the
+    one that could: its sibling ``test_no_composed_message_contradicts_itself``
+    passes on this defect, because once the readings stopped making keep/discard
+    claims "says both at once" became unreachable at the notices. It asserts the
+    stronger property, that each verdict-bearing surface carries the exact clause
+    :func:`anything_worth_keeping` returns for its disk and not the opposite
+    disk's.
     """
     state, missing = pending_state(prawduct_dir)
     if state == "complete":

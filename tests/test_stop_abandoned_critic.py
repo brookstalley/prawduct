@@ -457,66 +457,6 @@ class TestChunk05ConsolidateOrBlock:
         assert "critic-restore" in result.stderr
         assert "No reviewer output is on disk" not in result.stderr
 
-    def test_the_long_validation_reason_is_not_smuggled_into_the_blocker(self, tmp_path):
-        """R-12's SECOND interpolation site, pinned where it actually composes.
-
-        Every other Stop-hook fixture plants `V2_MANIFEST`, whose invalid `mode`
-        short-circuits validation into a one-line reason — so `short_detail()`
-        is a no-op there and reverting it to the raw `detail` stays green. The
-        only reason that matters is the `missing 'rendezvous'` branch: the shape
-        a pre-3.3.4 archive actually has, and a ~700-character paragraph
-        prescribing its OWN recovery ("/reload-plugins … then `critic-end` …
-        then dispatch again"). Printed above this surface's "Re-run the review:
-        /prawduct:critic", that is one disk with two recovery stories — which is
-        the whole defect #676 is about, arriving through a borrowed string.
-        """
-        prawduct = _active_plan_repo(tmp_path)
-        _set_marker(prawduct)
-        _write_manifest(prawduct)
-        mpath = prawduct / ".critic-partials" / "manifest.json"
-        manifest = json.loads(mpath.read_text())
-        manifest.pop("rendezvous")
-        mpath.write_text(json.dumps(manifest))
-
-        # Fixture guard: this must be the LONG reason, or the test proves nothing.
-        sys.path.insert(0, str(ROOT))
-        from lib.critic_consolidate import validate_manifest  # noqa: PLC0415
-        ok, reason = validate_manifest(manifest)
-        assert not ok and "rendezvous" in reason
-        assert len(reason) > 200, "fixture guard: expected the remedy-bearing paragraph"
-
-        result = _run_stop(tmp_path, status=_CODE_DIFF)
-        assert result.returncode == 2
-        assert "OLDER PRAWDUCT" in result.stderr
-        assert "rendezvous" in result.stderr, "the cause still has to be named"
-        # The borrowed reason must not bring its own competing remedy along.
-        assert "/reload-plugins" not in result.stderr
-        assert "restart the session" not in result.stderr
-
-    def test_the_stop_blocker_carries_the_shared_keep_verdict(self, tmp_path):
-        """The fifth `anything_worth_keeping` call site.
-
-        `TestNoSurfacePairsPreservationWithDiscard` composes the other four
-        in-process; `cmd_stop`'s is reachable only through the CLI, so it is
-        pinned here rather than left to a docstring's claim of "every surface"."""
-        prawduct = _active_plan_repo(tmp_path)
-        _set_marker(prawduct)
-        d = prawduct / ".critic-partials"
-        d.mkdir()
-        (d / "manifest.json").write_text(json.dumps(V2_MANIFEST))
-        (d / "correctness.rev-old.json").write_text('{"role": "correctness"}')
-
-        sys.path.insert(0, str(ROOT))
-        from lib.critic_consolidate import anything_worth_keeping  # noqa: PLC0415
-        _keep, clause = anything_worth_keeping(prawduct)
-
-        result = _run_stop(tmp_path, status=_CODE_DIFF)
-        assert result.returncode == 2
-        assert clause in result.stderr, (
-            "the blocker must carry the SHARED verdict verbatim, not a local "
-            f"paraphrase of it. Expected:\n{clause}\nGot:\n{result.stderr}"
-        )
-
     def test_self_heal_still_no_sweep_on_incomplete(self, tmp_path):
         """The incomplete-block path must not sweep the marker it reads (the
         signal the next Stop re-checks)."""
@@ -805,3 +745,75 @@ class TestNoShippedSurfaceSanctionsTheBareDelete:
                 f"the pattern fires on {innocent!r} — a pin that cries wolf gets "
                 "waived, which is how the class reopens"
             )
+
+
+class TestTheBlockerComposesSharedProse:
+    """What `cmd_stop`'s abandoned-review blocker SAYS, as distinct from when
+    it fires. `TestChunk05ConsolidateOrBlock` is about consolidate-or-block and
+    these two are about prose the blocker borrows from shared homes — the long
+    validation reason it must not smuggle, and the keep/discard verdict it must
+    not paraphrase (#676)."""
+
+    def test_the_long_validation_reason_is_not_smuggled_into_the_blocker(self, tmp_path):
+        """R-12's SECOND interpolation site, pinned where it actually composes.
+
+        Every other Stop-hook fixture plants `V2_MANIFEST`, whose invalid `mode`
+        short-circuits validation into a one-line reason — so `short_detail()`
+        is a no-op there and reverting it to the raw `detail` stays green. The
+        only reason that matters is the `missing 'rendezvous'` branch: the shape
+        a pre-3.3.4 archive actually has, and a ~700-character paragraph
+        prescribing its OWN recovery ("/reload-plugins … then `critic-end` …
+        then dispatch again"). Printed above this surface's "Re-run the review:
+        /prawduct:critic", that is one disk with two recovery stories — which is
+        the whole defect #676 is about, arriving through a borrowed string.
+        """
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        _write_manifest(prawduct)
+        mpath = prawduct / ".critic-partials" / "manifest.json"
+        manifest = json.loads(mpath.read_text())
+        manifest.pop("rendezvous")
+        mpath.write_text(json.dumps(manifest))
+
+        # Fixture guard: this must be the LONG reason, or the test proves nothing.
+        sys.path.insert(0, str(ROOT))
+        from lib.critic_consolidate import validate_manifest  # noqa: PLC0415
+        ok, reason = validate_manifest(manifest)
+        assert not ok and "rendezvous" in reason
+        assert len(reason) > 200, "fixture guard: expected the remedy-bearing paragraph"
+
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert "OLDER PRAWDUCT" in result.stderr
+        assert "rendezvous" in result.stderr, "the cause still has to be named"
+        # The borrowed reason must not bring its own competing remedy along.
+        assert "/reload-plugins" not in result.stderr
+        assert "restart the session" not in result.stderr
+        # A third strand of the same borrowed paragraph. `critic-end` is not in
+        # this surface's own message, so its presence could only come from the
+        # reason — which makes it a clean signal rather than a false positive.
+        assert "critic-end" not in result.stderr
+
+    def test_the_stop_blocker_carries_the_shared_keep_verdict(self, tmp_path):
+        """The fifth `anything_worth_keeping` call site.
+
+        `TestNoSurfacePairsPreservationWithDiscard` composes the other four
+        in-process; `cmd_stop`'s is reachable only through the CLI, so it is
+        pinned here rather than left to a docstring's claim of "every surface"."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        d = prawduct / ".critic-partials"
+        d.mkdir()
+        (d / "manifest.json").write_text(json.dumps(V2_MANIFEST))
+        (d / "correctness.rev-old.json").write_text('{"role": "correctness"}')
+
+        sys.path.insert(0, str(ROOT))
+        from lib.critic_consolidate import anything_worth_keeping  # noqa: PLC0415
+        _keep, clause = anything_worth_keeping(prawduct)
+
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert clause in result.stderr, (
+            "the blocker must carry the SHARED verdict verbatim, not a local "
+            f"paraphrase of it. Expected:\n{clause}\nGot:\n{result.stderr}"
+        )

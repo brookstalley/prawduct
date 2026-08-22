@@ -2159,8 +2159,10 @@ class TestNoSurfacePairsPreservationWithDiscard:
     assertions: compose the operator-facing messages under every manifest
     condition and assert none says both things at once.
 
-    **Four of the five `anything_worth_keeping` call sites**, named rather than
-    rounded up to "every surface" — the fifth is `cmd_stop`'s, reachable only
+    **Three of the four production `anything_worth_keeping` call sites**
+    (`prawduct-hook` 961, 1050, 1124), named rather than rounded up to "every
+    surface"; `reading+verdict` below is this test's own direct call, not a
+    fourth. The remaining production site is `cmd_stop`'s, reachable only
     through the CLI, and it is pinned in
     `test_stop_abandoned_critic.py::test_the_stop_blocker_carries_the_shared_keep_verdict`.
     An earlier docstring here did say "every surface" while composing a set
