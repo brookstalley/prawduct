@@ -324,7 +324,30 @@ Two consequences, one mandatory and one a decision:
   — the test's own comment requires a departure to say why. Ruling the trigger worth N tokens is
   the same kind of policy call as D1.
 
-### 8.2 Open questions
+### 8.2 R10 validated against its author (2026-08-21)
+
+Recorded because it is the only field evidence this requirement has. While drafting it, this
+session dispatched a background `prawduct-hook test-evidence record` (~3.5 min) and closed the turn
+`RUNNING` + `SAFE TO CLEAR`, on the stated reason that "the record is bookkeeping, not the
+verification". The owner challenged it. The verdict was wrong, and R10 is what says so: the record
+on disk buys the clear, and a record still being *written* is not on disk. The reason given was
+also self-refuting — bookkeeping not worth protecting from a clear is not worth 3.5 minutes of
+compute either.
+
+Two facts checked rather than assumed, neither of which rescues the verdict: the writer is atomic
+(`prawduct-hook` writes a `.tmp` then `os.replace`s), so a kill cannot corrupt the store; and test
+evidence is session-scoped (`gates.py:192`, `:210`), so a clear would have made the record
+worthless to the next session regardless. The loss was bounded. The label was still derived from
+what sounded reassuring rather than from the rule.
+
+**The gap this exposes is wider than the mistake.** The digest says work in flight is `RUNNING`,
+"and *a live review* is also `DO NOT CLEAR`" — scoped to reviews, silent on every other kind of
+background work that writes `.prawduct/` state. A `prawduct-hook` command writing governance state
+is exactly as clear-unsafe as a review. The general form subsumes reviews, evidence records and
+dispatched delegates in one sentence: **in-flight work is `DO NOT CLEAR` until whatever it writes
+has landed.** That is the R10 amendment, and it is now motivated independently of this feature.
+
+### 8.3 Open questions
 
 - **Defensive asking.** The parent design warned that an agent resolving vagueness "asks
   defensively every time." A prompt at `backlog add` risks becoming exactly that. The ready-to-
