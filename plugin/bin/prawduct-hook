@@ -978,10 +978,13 @@ def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
     session knows which review it was, and the id is what makes `critic-restore`
     addressable — the same reason `_forced_live_sweep_notice` carries it.
     """
-    # Matches the shared reading's own words: `pending_state` returns "none" for
-    # an ABSENT manifest and "unreadable" for an invalid one, and both land in
-    # the same reading — so the id's excuse must cover both too.
-    review_id = "(id unavailable — no readable dispatch manifest)"
+    # The excuse has to cover every state that reaches it, and since #676 those
+    # are three, not one: absent, corrupt, and stale-schema (the shared reading
+    # now says which — `critic_consolidate.manifest_condition`). A stale-schema
+    # manifest usually DOES carry an id, so the read below normally succeeds and
+    # this string is never printed for it; the wording stays generic because the
+    # one case that reaches it is "the id could not be read", whatever the cause.
+    review_id = "(id unavailable — no usable dispatch manifest)"
     state, reading = "unknown", ""
     try:
         consolidate = _critic_consolidate()
@@ -2427,10 +2430,46 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 ))
             else:  # "none" (marker, no manifest) or "unreadable"
                 abandoned_critic = True
-                if state == "unreadable":
+                # DERIVED, not re-stated (#676). This branch used to hand-write
+                # its own "unreadable or schema-invalid" while the refusal
+                # surface printed a flatly false "no readable dispatch manifest"
+                # for the same disk — two surfaces disagreeing about one fact,
+                # which `pending_roster_reading` explicitly forbids and which
+                # recurred because nobody had computed the distinction anywhere.
+                # `manifest_condition` computes it once; this reads it.
+                try:
+                    _cc = _critic_consolidate()
+                    condition, detail, _m = _cc.manifest_condition(prawduct_dir)
+                    stale, corrupt = _cc.MANIFEST_STALE_SCHEMA, _cc.MANIFEST_CORRUPT
+                except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                    condition, detail = "unknown", ""
+                    stale = corrupt = None
+                # The preservation clause names the act that actually archives.
+                # `critic-end` does NOT: it clears the marker and nothing else
+                # (its own docstring says so), so pointing at it here would be
+                # the same defect this change repairs, one surface over. What
+                # archives is the next dispatch (`_archive_leftovers`, which
+                # prints the `critic-restore` handle) — and the remedy below is
+                # `/prawduct:critic`, which is that dispatch.
+                _kept = (
+                    "  cannot be consolidated. The partials beside it are NOT lost: the\n"
+                    "  re-run below archives them first and prints a `critic-restore` handle.\n"
+                )
+                if condition == stale:
                     cause = (
-                        "  a coordinator manifest exists but is unreadable or schema-invalid,\n"
-                        "  so the pending review cannot be consolidated.\n"
+                        "  a coordinator manifest is present and parses, but was written by an\n"
+                        f"  OLDER PRAWDUCT and does not match this version's schema ({detail}), so it\n"
+                        + _kept
+                    )
+                elif condition == corrupt:
+                    cause = (
+                        f"  a coordinator manifest is present but is not valid JSON ({detail}), so it\n"
+                        + _kept
+                    )
+                elif condition == "unknown":
+                    cause = (
+                        "  the coordinator manifest could not be classified (the governance lib\n"
+                        "  failed to load), so the pending review's state is genuinely unknown.\n"
                     )
                 else:
                     cause = (

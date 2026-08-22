@@ -3,6 +3,58 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-22: a wedged manifest says which kind of wedged it is
+
+<!-- prawduct: type=fix | scope=manifest-state-diagnosis -->
+
+An operator who met a dispatch manifest written by an older prawduct was told, by the surface that
+refuses `critic-begin`: *"no readable dispatch manifest — a review set the marker but never recorded
+what it was reviewing. Nothing here is worth keeping."* Every clause of that is false for the case
+that produces it. The manifest is readable JSON. It **did** record what it was reviewing — in the
+schema of the version that wrote it, `commit_reviewed` and all. And the partials beside it are real
+reviewer output that `_archive_leftovers` deliberately archives rather than deletes, naming
+`critic-restore` as it goes. The message told an operator to throw away exactly what the mechanism
+one function over was carefully preserving.
+
+**The interesting part is why it recurred.** `pending_roster_reading` exists precisely to stop this:
+its docstring says two surfaces "must not differ in what they say the on-disk state IS. They did:
+only one of them was taught the fact, and the untaught one sits at the more dangerous surface." That
+had already been fixed once. It came back because the thing being shared was the **reading**, and a
+reading cannot be shared for a distinction nobody had computed — so the Stop hook's backstop
+computed "unreadable or schema-invalid" for itself, `restore_refusal` computed "no readable dispatch
+manifest", and the dispatch refusal computed the false paragraph. Three surfaces, three answers, one
+disk. The fix is therefore a **classifier**, not a fourth message: `manifest_condition` returns
+`absent` / `corrupt` / `stale-schema` / `valid` plus the validation reason and the parsed record,
+and all three surfaces read it.
+
+**`pending_state`'s `"unreadable"` collapse deliberately stays.** For *deciding* — can this be
+consolidated? — corrupt and stale-schema are one answer, and four callers branch on it. Widening
+that vocabulary to fix a message would have made every one of them handle a case that changes none
+of their decisions. The distinction is real only when *telling someone*, so it lives with the
+telling. Pinned both ways: a test asserts the collapse holds, and a test asserts the three readings
+are mutually distinguishable.
+
+**One reading kept its harsh verdict.** For a genuinely absent manifest, "nothing here is worth
+keeping" is *true*, and a fix that softened every message would have discarded a correct verdict
+along with the false ones. It still says it.
+
+**#676's other two acceptance criteria were already discharged and are recorded as such rather than
+re-fixed.** A branch in an agent worktree has had a route to a recorded review since #648 —
+`is_ephemeral_worktree` classifies by branch identity, so a named-branch agent worktree is a peer
+checkout you review in place (pinned in `test_ephemeral_worktree.py`). Two agents already hold
+reviews concurrently across worktrees: `.critic-active` lives in each worktree's own `.prawduct/`,
+and the shared evidence store takes concurrent appends through a single `O_APPEND` write. What is
+**not** covered, and is deliberately left alone, is several agents sharing one checkout with no
+worktrees — per-actor governance state is a large change to serve a configuration a worktree already
+solves.
+
+**The report's headline claim was tested rather than believed, and did not hold.** A stale-schema
+manifest with no marker does not wedge dispatch: `begin_review`'s in-flight guard fires on a live
+marker or a complete roster, and this is neither, so it archives the leftovers under a recoverable
+`unmanifested-<ts>` name and proceeds. Reproduced end to end before any code was written; a test now
+pins it, because if that ever goes red the defect is a real wedge and a message fix is the wrong
+repair. What the reporter experienced as a wedge was the marker, which expires on its own TTL.
+
 ## 2026-08-22: an abandoned delegate worktree is not silent
 
 <!-- prawduct: type=feature | scope=adhoc-delegation -->

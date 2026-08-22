@@ -390,9 +390,15 @@ class TestChunk05ConsolidateOrBlock:
         assert "/prawduct:critic" in result.stderr
         assert not (prawduct / ".critic-findings.json").is_file()
 
-    def test_unreadable_manifest_blocks_with_accurate_cause(self, tmp_path):
+    def test_corrupt_manifest_blocks_with_accurate_cause(self, tmp_path):
         """Marker + corrupt manifest → block, but the message must not claim
-        'no manifest is present' (the manifest exists; it is unreadable)."""
+        'no manifest is present' (the manifest exists; it is unreadable).
+
+        The cause used to read "unreadable or schema-invalid" — one sentence
+        for two disks, because this surface computed the distinction itself and
+        the refusal surface computed a different (and false) one. Both now read
+        `critic_consolidate.manifest_condition`, so this asserts the specific
+        cause rather than the disjunction (#676)."""
         prawduct = _active_plan_repo(tmp_path)
         _set_marker(prawduct)
         d = prawduct / ".critic-partials"
@@ -401,8 +407,35 @@ class TestChunk05ConsolidateOrBlock:
         result = _run_stop(tmp_path, status=_CODE_DIFF)
         assert result.returncode == 2
         assert "not completed" in result.stderr.lower()
-        assert "unreadable or schema-invalid" in result.stderr
+        assert "not valid JSON" in result.stderr
+        assert "OLDER PRAWDUCT" not in result.stderr
         assert "no coordinator manifest is present" not in result.stderr
+
+    def test_stale_schema_manifest_names_the_version_skew(self, tmp_path):
+        """The case the source report actually hit (#676): a manifest written by
+        a pre-3.3.4 prawduct. It parses; it is not corrupt; and the operator
+        must be told which of the two they have, because the remedies differ in
+        how much they should trust the partials sitting beside it."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        d = prawduct / ".critic-partials"
+        d.mkdir()
+        (d / "manifest.json").write_text(json.dumps({
+            "mode": "final-chunk-review", "mode_chosen_by": "rule-3",
+            "roster": ["correctness", "design", "sustainability"],
+            "commit_reviewed": "abc", "files_reviewed": ["x.py"],
+            "scope": "demo", "model": "opus",
+        }))
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert "OLDER PRAWDUCT" in result.stderr
+        assert "not valid JSON" not in result.stderr
+        assert "no coordinator manifest is present" not in result.stderr
+        # The partials are preserved, and the message says so — this branch used
+        # to leave an operator to guess, and the refusal surface actively told
+        # them the opposite.
+        assert "are NOT lost" in result.stderr
+        assert "critic-restore" in result.stderr
 
     def test_self_heal_still_no_sweep_on_incomplete(self, tmp_path):
         """The incomplete-block path must not sweep the marker it reads (the

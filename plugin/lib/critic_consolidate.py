@@ -993,11 +993,19 @@ def restore_refusal(prawduct_dir: Path, present: list[str], active: bool) -> str
             "    prawduct-hook critic-consolidate"
         )
     else:
-        waiting = (
-            f" still waiting on {', '.join(missing)}"
-            if state == "incomplete"
-            else " no readable dispatch manifest"
-        )
+        if state == "incomplete":
+            waiting = f" still waiting on {', '.join(missing)}"
+        else:
+            # Same one-fact-many-carriers defect the long reading carried
+            # (#676), in miniature: "no readable dispatch manifest" was printed
+            # for an ABSENT manifest and for a stale-schema one that parses
+            # fine. This surface wants a phrase, not a paragraph, so it derives
+            # a short one from the same classifier rather than re-deciding.
+            condition, _detail, _m = manifest_condition(prawduct_dir)
+            waiting = {
+                MANIFEST_STALE_SCHEMA: " a dispatch manifest from an older prawduct",
+                MANIFEST_CORRUPT: " a dispatch manifest that is not valid JSON",
+            }.get(condition, " no dispatch manifest")
         remedy = (
             f"  On disk:{waiting}. To set that review aside — archived, never deleted\n"
             "  outright — and free the directory:\n"
@@ -2060,6 +2068,71 @@ def validate_manifest(data) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
+#: The four ways the manifest file can present itself, as
+#: :func:`manifest_condition` reports them. ``pending_state`` collapses the
+#: middle two into its own ``"unreadable"`` — see that function for why the
+#: collapse is right THERE and wrong in a message.
+MANIFEST_ABSENT = "absent"
+MANIFEST_CORRUPT = "corrupt"
+MANIFEST_STALE_SCHEMA = "stale-schema"
+MANIFEST_VALID = "valid"
+
+
+def manifest_condition(prawduct_dir: Path) -> tuple[str, str, dict | None]:
+    """What the manifest FILE is — the one home for that question.
+
+    Returns ``(condition, detail, manifest)`` where ``condition`` is one of
+    :data:`MANIFEST_ABSENT`, :data:`MANIFEST_CORRUPT`,
+    :data:`MANIFEST_STALE_SCHEMA`, :data:`MANIFEST_VALID`; ``detail`` is the
+    parse or validation reason (empty for absent/valid); and ``manifest`` is the
+    parsed object when there was one to parse (``None`` for absent/corrupt), so
+    a caller that wants the stale record's own fields does not re-read the file.
+
+    **Why this is separate from :func:`pending_state`.** For DECIDING, corrupt
+    and stale-schema are the same answer — neither can be consolidated, so
+    ``pending_state`` is right to return ``"unreadable"`` for both and callers
+    are right to branch on it. For TELLING SOMEONE, they are not remotely the
+    same, and three surfaces had each re-derived the distinction on their own:
+    the Stop hook's abandoned-review backstop said "unreadable or
+    schema-invalid" (accurate), while :func:`pending_roster_reading` — the
+    surface that ``critic-begin``'s refusal prints — said "no readable dispatch
+    manifest … never recorded what it was reviewing … nothing here is worth
+    keeping", which for a stale-schema manifest is three false clauses in a row.
+    It is readable JSON; it *did* record ``commit_reviewed`` and
+    ``files_reviewed``, in the schema of the version that wrote it; and its
+    partials are worth enough that ``_archive_leftovers`` deliberately archives
+    rather than deletes them, naming ``critic-restore`` as it goes. A message
+    telling an operator to discard what the mechanism beside it is carefully
+    preserving is the contradiction this function exists to end.
+
+    That divergence is exactly what :func:`pending_roster_reading`'s docstring
+    already forbids ("must not differ in what they say the on-disk state IS"),
+    and it had recurred anyway — because the shared thing was the *reading*, and
+    a reading cannot be shared for a distinction nobody had computed. So the
+    classification lives in one function underneath all of them, and every
+    surface derives from it instead of from its own read of the file.
+
+    **Not a liveness check and not a wedge.** Verified rather than assumed
+    (2026-08-22, #676): a stale-schema manifest with no marker does NOT block
+    dispatch — ``begin_review`` sees ``"unreadable"``, which is neither
+    ``active`` nor ``"complete"``, archives the leftovers under a recoverable
+    ``unmanifested-<ts>`` name and proceeds. What the source report experienced
+    as a wedge was the MARKER, which expires on its own TTL and which
+    ``critic-end`` clears.
+    """
+    mpath = manifest_path(prawduct_dir)
+    if not mpath.is_file():
+        return MANIFEST_ABSENT, "", None
+    try:
+        manifest = json.loads(mpath.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return MANIFEST_CORRUPT, str(exc), None
+    ok, reason = validate_manifest(manifest)
+    if not ok:
+        return MANIFEST_STALE_SCHEMA, reason, manifest
+    return MANIFEST_VALID, "", manifest
+
+
 def pending_state(prawduct_dir: Path) -> tuple[str, list[str]]:
     """Classify the on-disk consolidation state, purely by file presence.
 
@@ -2072,16 +2145,20 @@ def pending_state(prawduct_dir: Path) -> tuple[str, list[str]]:
     "complete" means every partial FILE exists — it does NOT validate partial
     contents (that is :func:`consolidate`'s job). This is the cheap liveness
     read; the full fail-closed check happens at consolidation.
+
+    **The ``"unreadable"`` collapse is deliberate and stays.** Corrupt JSON and a
+    stale-schema record are one answer to the question this function is asked —
+    *can this be consolidated?* — and every caller branches on that. The
+    distinction they do NOT share is what to SAY about it, which lives in
+    :func:`manifest_condition` (whose docstring holds the reasoning) and is
+    consumed by the message surfaces. Widening this return vocabulary instead
+    would have made four callers handle a case that changes none of their
+    decisions.
     """
-    mpath = manifest_path(prawduct_dir)
-    if not mpath.is_file():
+    condition, _detail, manifest = manifest_condition(prawduct_dir)
+    if condition == MANIFEST_ABSENT:
         return "none", []
-    try:
-        manifest = json.loads(mpath.read_text())
-    except (OSError, json.JSONDecodeError):
-        return "unreadable", []
-    ok, _reason = validate_manifest(manifest)
-    if not ok:
+    if condition in (MANIFEST_CORRUPT, MANIFEST_STALE_SCHEMA):
         return "unreadable", []
     missing = [
         role
@@ -2134,6 +2211,18 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
     The reading is indented two spaces to match every caller's block, states
     only what is on disk, and deliberately names no command: the remedy is
     surface-specific and stays with the caller.
+
+    **One ``state``, more than one reading (#676).** The returned ``state`` is
+    still :func:`pending_state`'s four-value vocabulary, because that is what
+    callers branch on — but ``"unreadable"`` covers two genuinely different
+    disks and used to print one sentence that was false for one of them. A
+    stale-schema manifest is readable, DID record what it was reviewing, and
+    sits beside partials the archive step preserves on purpose; being told
+    "nothing here is worth keeping" invites an operator to discard exactly what
+    the mechanism is protecting. The three cases now read differently and are
+    classified in one place (:func:`manifest_condition`). The invariant is
+    unchanged and is the reason this is not three functions: whatever the
+    surface, the sentence describing disk comes from here.
     """
     state, missing = pending_state(prawduct_dir)
     if state == "complete":
@@ -2150,10 +2239,40 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
             "  If nothing lands, they are gone.\n"
         )
     else:
-        reading = (
-            "  On disk: no readable dispatch manifest — a review set the marker but\n"
-            "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
-        )
+        # `state` is "none" (no manifest at all) or "unreadable" (corrupt or
+        # stale-schema). Those are one decision and three different facts, so
+        # the REMEDY stays shared while the sentence describing disk does not.
+        # `manifest_condition` owns the distinction; see its docstring for the
+        # three false clauses the single collapsed reading used to print.
+        condition, detail, manifest = manifest_condition(prawduct_dir)
+        if condition == MANIFEST_STALE_SCHEMA:
+            # It parsed. Name what it still tells you, because that is what
+            # decides whether the partials beside it are worth restoring —
+            # and the archive step preserves them on exactly that bet.
+            reviewed = manifest.get("commit_reviewed") if isinstance(manifest, dict) else None
+            recorded = (
+                f" It says it was reviewing {reviewed}."
+                if isinstance(reviewed, str) and reviewed
+                else ""
+            )
+            reading = (
+                "  On disk: a dispatch manifest written by an OLDER PRAWDUCT — it parses,\n"
+                f"  but not against this version's schema ({detail}).{recorded}\n"
+                "  It cannot be consolidated, but it is not junk: any partials beside it\n"
+                "  are real reviewer output, and the NEXT dispatch archives rather than\n"
+                "  deletes them, printing a `critic-restore` handle as it goes.\n"
+            )
+        elif condition == MANIFEST_CORRUPT:
+            reading = (
+                f"  On disk: a dispatch manifest that is not valid JSON ({detail}) — the\n"
+                "  write that produced it was interrupted. It cannot be consolidated; any\n"
+                "  partials beside it are archived by the next dispatch, never deleted.\n"
+            )
+        else:
+            reading = (
+                "  On disk: no dispatch manifest at all — a review set the marker but\n"
+                "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
+            )
     return state, reading
 
 
