@@ -11,6 +11,18 @@ and asserts every match is under `tests/`. Excludes `.git/`, `.claude/`
 (agent scratch — worktree-isolated workflow checkouts live under
 `.claude/worktrees/wf_*/` and carry a full duplicate `tests/` tree),
 `__pycache__/`, and other non-source directories.
+
+**And any NESTED CHECKOUT, by the property rather than by name.** A linked
+git worktree added inside the primary checkout (`git worktree add ./devchk`,
+a dev-check tree, a release-cut tree) carries a complete duplicate `tests/`
+tree whose files are not this checkout's and are correctly skipped by
+`testpaths`. The `.claude/` exclusion above was the first instance of this
+class (TST-9K4W) and was fixed by naming that one path — which held only
+until a worktree appeared somewhere else, at which point every session in
+the clone got a red suite for another session's directory. The predicate is
+"does this directory carry its own `.git`", so it now covers all of them,
+including ones nobody has thought of. `.claude/` stays excluded on its own
+merits: it is agent scratch whether or not it holds a checkout.
 """
 
 from __future__ import annotations
@@ -24,6 +36,17 @@ EXCLUDED_DIRS = frozenset(
 )
 
 
+def _is_nested_checkout(directory: Path) -> bool:
+    """Does ``directory`` carry its own ``.git``, making it a separate checkout?
+
+    A linked worktree writes a ``.git`` FILE (``gitdir: …``); a clone or
+    submodule writes a directory. Both mean the same thing here — the tests
+    below it belong to that checkout, not this one — so neither is inspected
+    further. Never called on the repo root, which is where the walk starts.
+    """
+    return (directory / ".git").exists()
+
+
 def _all_test_files(root: Path = REPO_ROOT) -> list[Path]:
     matches: list[Path] = []
 
@@ -32,6 +55,8 @@ def _all_test_files(root: Path = REPO_ROOT) -> list[Path]:
             if entry.name in EXCLUDED_DIRS:
                 continue
             if entry.is_dir():
+                if _is_nested_checkout(entry):
+                    continue
                 walk(entry)
             elif entry.is_file() and entry.name.startswith("test_") and entry.suffix == ".py":
                 matches.append(entry)
@@ -71,3 +96,49 @@ class TestTestLocation:
         assert all(".claude" not in p.parts for p in found), (
             f"walk descended into .claude/: {[p for p in found if '.claude' in p.parts]}"
         )
+
+    def test_walk_excludes_a_linked_worktree_anywhere_in_the_tree(self, tmp_path: Path):
+        """A worktree added inside the primary checkout under an arbitrary name.
+
+        Observed live: `git worktree add ./devchk` at the repo root turned this
+        assertion red for every session in the clone, over a directory belonging
+        to another session that must not be deleted to make a test pass. A
+        linked worktree's `.git` is a FILE, which is why the check is `.exists()`
+        and not `.is_dir()`."""
+        (tmp_path / "tests").mkdir()
+        real = tmp_path / "tests" / "test_real.py"
+        real.write_text("def test_x(): pass\n")
+        nested = tmp_path / "devchk"
+        (nested / "tests" / "preferences").mkdir(parents=True)
+        (nested / ".git").write_text("gitdir: /elsewhere/.git/worktrees/devchk\n")
+        (nested / "tests" / "preferences" / "test_dummy.py").write_text("def test_y(): pass\n")
+
+        found = _all_test_files(tmp_path)
+        assert real in found
+        assert nested not in [p.parent.parent.parent for p in found], found
+
+    def test_walk_excludes_a_nested_clone_or_submodule(self, tmp_path: Path):
+        """The same predicate covers a `.git` DIRECTORY — a nested clone or a
+        submodule checkout — so the fix is not worktree-specific."""
+        (tmp_path / "tests").mkdir()
+        real = tmp_path / "tests" / "test_real.py"
+        real.write_text("def test_x(): pass\n")
+        nested = tmp_path / "vendor" / "thing"
+        (nested / "tests").mkdir(parents=True)
+        (nested / ".git").mkdir()
+        (nested / "tests" / "test_dummy.py").write_text("def test_y(): pass\n")
+
+        assert _all_test_files(tmp_path) == [real]
+
+    def test_a_plain_directory_is_still_walked(self, tmp_path: Path):
+        """The pruning must key on `.git`, not on depth or on having a `tests/`
+        child — a genuinely misplaced test in an ordinary subdirectory is the
+        whole point of this module and must still be caught."""
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_real.py").write_text("def test_x(): pass\n")
+        stray = tmp_path / "plugin" / "lib"
+        stray.mkdir(parents=True)
+        misplaced = stray / "test_oops.py"
+        misplaced.write_text("def test_z(): pass\n")
+
+        assert misplaced in _all_test_files(tmp_path)

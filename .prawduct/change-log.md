@@ -3,6 +3,30 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-22: a nested checkout is not a misplaced test
+
+<!-- prawduct: type=fix | scope=test-location-nested-checkout -->
+
+`git worktree add ./devchk` inside the primary checkout turned the test-location preference red for
+every session in the clone. The walk found `devchk/tests/**/test_*.py`, correctly observed they were
+outside `tests/`, and reported them as silently-skipped tests. They are not this checkout's tests at
+all, and `testpaths` skipping them is right — but the only way to get a green suite was to delete
+another session's worktree, which is exactly what a session must not do.
+
+**The exclusion list already had this bug once and was fixed by naming the path.** `.claude/` is on
+it because a worktree-isolated workflow leaves a full duplicate `tests/` tree under
+`.claude/worktrees/wf_*/` (TST-9K4W). That fix held until a worktree appeared under a different name,
+which is the standing failure mode of a by-name exclusion: it closes the instance and leaves the
+class open. The predicate is *does this directory carry its own `.git`* — a FILE for a linked
+worktree, a directory for a clone or submodule, both meaning the tests below it belong to another
+checkout. It now prunes all of them, including the ones nobody has thought of.
+
+**The risk in this kind of fix is making the check blind, so that is what the new tests aim at.**
+Three cases: a linked worktree at an arbitrary path, a nested clone or submodule, and — the one that
+matters — a genuinely misplaced `test_oops.py` in an ordinary subdirectory, which must still be
+caught. Pruning that keyed on depth or on "has a `tests/` child" would have passed the first two and
+quietly disarmed the module.
+
 ## 2026-08-22: a wedged manifest says which kind of wedged it is
 
 <!-- prawduct: type=fix | scope=manifest-state-diagnosis -->
