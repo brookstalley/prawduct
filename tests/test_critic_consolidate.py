@@ -2156,8 +2156,16 @@ def _load_hook():
 
 class TestNoSurfacePairsPreservationWithDiscard:
     """The construction R-6 asked for, as a property rather than string
-    assertions: compose every operator-facing message under every manifest
+    assertions: compose the operator-facing messages under every manifest
     condition and assert none says both things at once.
+
+    **Four of the five `anything_worth_keeping` call sites**, named rather than
+    rounded up to "every surface" — the fifth is `cmd_stop`'s, reachable only
+    through the CLI, and it is pinned in
+    `test_stop_abandoned_critic.py::test_the_stop_blocker_carries_the_shared_keep_verdict`.
+    An earlier docstring here did say "every surface" while composing a set
+    disjoint from the one the finding named, which is how a pin comes to read as
+    coverage it does not have.
 
     **It must compose the surfaces R-6 was actually about.** The first cut of
     this class composed three LIB surfaces and none of the two hook boundary
