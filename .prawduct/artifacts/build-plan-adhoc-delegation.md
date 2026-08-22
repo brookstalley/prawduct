@@ -112,9 +112,13 @@ post-cutoff.
 
 **Open assumptions / unknowns:**
 
-- [ASSUMPTION: the digest trim recovers materially less than the ~36 tokens the two edits need, so
-  a declared raise will be required | MED impact | user can veto the raise at Chunk 02's review]
-  — D6 makes reporting the actual recovery the chunk's job precisely because this is an assumption.
+- [RESOLVED at Chunk 02: the digest trim recovers materially less than the two edits need, so a
+  declared raise is required] — held. The trim recovered **22 tokens** against **55** of additions;
+  the raise is +22 framework / +25 product and its counter-case is recorded at the ceiling. The
+  user can still veto it: reverting the optional half (the mid-chunk trigger) is a three-line cut
+  that lands back under the old ceilings. What the assumption did NOT anticipate is that the token
+  ceiling is not the digest's binding budget at all — the hard 10,000-character `additionalContext`
+  limit is, and it had 216 free against 228 wanted. See the Context block.
 - [ASSUMPTION: an ad-hoc delegate's brief belongs at `.prawduct/.delegate-brief.md` in the
   delegate's own worktree, untracked | LOW impact | user can override the location] — resolved
   during Chunk 01 rather than left open, because the alternative had a live failure mode: an agent
@@ -131,7 +135,7 @@ into a number. Nothing cheaper does.
 ## Status
 
 - [x] Chunk 01: The doctrine has one home
-- [ ] Chunk 02: The clear verdict accounts for a delegate
+- [x] Chunk 02: The clear verdict accounts for a delegate
 - [ ] Chunk 03: The backlog instinct gets the third option
 - [ ] Chunk 04: An abandoned worktree is not silent
 
@@ -155,7 +159,34 @@ it who is not already about to delegate a tangent. The brief-path assumption was
 than carried** — `.prawduct/.delegate-brief.md`, untracked, with the `GITIGNORE_ENTRIES` line moved
 into Chunk 04 beside the probe that depends on it; the reasoning is at the assumption above.
 Review: 0 blocking, 1 warning, 2 notes, all three fixed in the chunk's own commit because every one
-of them landed in a file already being committed. Two of them were about THIS plan's `governed_by`
+of them landed in a file already being committed.
+
+Chunk 02 done 2026-08-21. `reflection.md` carries reaping as the close's first step and the clear
+verdict now names the **general test** — recovery cost, does a clear leave the work alone? — rather
+than only the live-review special case it had, which is the gap §8.2 recorded after this repo got
+that verdict wrong twice in one session in opposite directions. The digest carries the amended
+standing-block clause and the mid-chunk trigger.
+
+**D6's number, which was the point of running the trim first: it recovered 17 words / 22 tokens**,
+against 42 words / 55 tokens of additions — so the plan's ASSUMPTION held and the shortfall is a
+declared raise, +22 framework and +25 product, the first this table has taken. The trim cut a class
+rather than words: prohibitions restating what the same bullet already requires positively
+("burying" is the anti-burying rule "last, after every other word"; "collapsing" is "three separate
+paragraphs"). An in-place dedup, the only honest kind here — funding a digest cut against an
+on-demand guide is a deletion for the reader who never opens one.
+
+**What the plan did not know, and the next digest edit must: the token ceiling was never the
+binding budget.** The digest ships as SessionStart `additionalContext`, which Claude Code spills to
+a file above a hard 10,000 characters — pinned in `test_plugin_methodology_digest.py`, unraisable
+by any declaration. It had 216 free at branch point; this chunk wanted 228 and the first draft went
+12 over with every assertion in the token module green. The additions were shaved to fit (9987 of
+10,000) and both the reading and the raise comments now name the wall, because the raise comment is
+what tells the next builder a ceiling can be declared past. **Chunk 03 adds no injected prose and
+Chunk 04 adds none either — but any later digest edit has ~13 characters, not a token budget.**
+
+Review: 0 blocking, 1 warning, 2 notes. The warning was the char-limit gap above, found
+independently during the scrub and improved by the Critic's placement argument; both notes were
+already moot or fixed by the same figure corrections. Next: Chunk 03. Two of them were about THIS plan's `governed_by`
 block — `data-model` had 8 ratified norms and 4 dispositions, and the `architecture` disposition's
 stated reason was falsified by the same amendment that moved the gitignore line. Both are now
 correct, so Chunk 04 inherits a curated block rather than a stale one. Next: Chunk 02.

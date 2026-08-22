@@ -507,7 +507,25 @@ LAST_MEASURED_TOKENS = {
     # handful" one clause after citing `MIN_PRICED_SAMPLE`, which is 5. Both
     # were instructions an agent executes at every turn a review is live, so the
     # cost buys a recipe that runs instead of one that reads well.
-    "methodology/reflection.md": 4702,
+    # 4702 -> 4885 on 2026-08-21 (+50 for the boundary step, +133 for the clear
+    # paragraph): the work-cycle boundary gained REAPING as its first step, and
+    # the clear verdict gained the test that generates it. The step states the
+    # rule and POINTS for the argument: `delegation.md` already carried "never
+    # as a mid-flow interrupt" with its reasoning, and the first draft here
+    # restated that reasoning verbatim — two homes for one argument, in the
+    # same commit that created the second. The placement itself stays, because
+    # a step in a close sequence that does not say when it runs is not a step.
+    # Reaping is placed at the boundary and nowhere else because a mechanism
+    # that exists to protect focus must not become the thing that breaks it —
+    # an interrupt-driven reap is the anti-pattern, so the placement IS the
+    # rule and it costs a clause to say. The clear paragraph names the general
+    # test (recovery cost — does a clear leave the work alone?) rather than
+    # adding a second special case beside the live-review one: this repo got
+    # that verdict wrong twice in one session, in opposite directions, and both
+    # errors were reasoning from the special case because the principle was
+    # never written down. A READING, no ceiling, per the decision block above
+    # this dict — the cost is paid by a session that opens the guide.
+    "methodology/reflection.md": 4885,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -743,8 +761,70 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # reserved for that promotion, and the load-bearing assumption it would
     # answer is recorded in `build-plan-delegation.md`'s Requirements
     # Confidence.
-    "framework": 3310,
-    "product": 2236,
+    # framework 3310 -> 3343, product 2236 -> 2269 (2026-08-21). Both shapes
+    # move by the same +33, because every token of this change is in the digest.
+    # Three edits. Stated as WORD deltas with the token figure derived, because
+    # `estimate_tokens` truncates and per-string token deltas therefore do not
+    # sum to the file's: the words do, and 1519 -> 1544 is the whole change.
+    #
+    #   trim across the two boundary bullets        -17 words   -22
+    #   the standing block accounts for a delegate   +9 words   +12
+    #   the mid-chunk tangent trigger               +33 words   +43
+    #
+    # THIS TABLE IS NOT THE ONLY BUDGET ON THE DIGEST, and that is the lesson
+    # of this entry rather than any figure in it. `session-digest.md` is emitted
+    # as SessionStart `additionalContext`, which Claude Code spills to a file
+    # above 10,000 CHARACTERS — a hard harness threshold, pinned by
+    # `tests/test_plugin_methodology_digest.py`'s two inline-limit assertions
+    # and raisable by nobody. It had 216 characters free at this branch point;
+    # this change wanted 228, and the first draft went 12 over while every
+    # assertion in THIS module was green. The two budgets lived in two modules
+    # with no reference between them, so a careful token accounting here could
+    # not see the wall it was walking into. Check both. When the character
+    # limit binds, the ceilings below are irrelevant — a ratchet is policy and
+    # can be declared past, and 10,000 cannot.
+    # THE TRIM IS REPORTED, NOT ASSUMED, and it came in under what the two
+    # edits needed — which was the plan's stated assumption and is now a
+    # number. What it recovered was one CLASS, not a rewrap (a word-count
+    # estimator returns nothing for rewrapping): prohibitions restating what
+    # the same bullet already requires positively. "Burying, padding or
+    # collapsing it fail alike" forbade three things the bullet had already
+    # required — "last, after every other word" is the anti-burying rule and
+    # "three **separate paragraphs**" is the anti-collapsing one — so only
+    # padding and the reason ("the bottom is all they read") survived, folded
+    # into the opener. Same class in the handoff bullet's consequence clauses,
+    # and `COMPLETE`'s gloss, which said "a blank slate" and "no next action to
+    # propose" for one idea. This is an IN-PLACE dedup, the only kind that is
+    # honest here: funding a digest cut against an on-demand guide is a
+    # deletion for the reader who never opens one, and that reader is the whole
+    # reason this surface exists (`learnings.md`, and the plan's `architecture`
+    # disposition).
+    #
+    # The +12 was MANDATORY at any budget: the bullet said an unread background
+    # agent is `RUNNING`, never `COMPLETE`, and said nothing about the clear
+    # verdict, so an injected rule would otherwise have contradicted the feature
+    # it now carries. Sought as a rewording and found one — the findings-only
+    # sentence already said "not `SAFE TO CLEAR` until it is on disk", so the
+    # delegate joins that clause instead of opening a second one.
+    #
+    # The +43 is a DECISION and the ceilings below are raised for it. It buys
+    # the one moment nothing else in this plan reaches: a tangent arriving
+    # mid-chunk, which an agent otherwise resolves silently by doing it inline
+    # or dropping it. The backlog-skill prompt covers the second moment only,
+    # and only when the instinct was already to file something. The
+    # ready-to-build qualifier is load-bearing rather than decorative: an
+    # unbounded prompt on a surface with no opt-out is the defensive-asking
+    # failure this feature's own discovery names as its live risk, and the
+    # qualifier is the same bar the backlog prompt fires on, so the two
+    # triggers state one rule instead of two. Five of the 33 words are the
+    # `Delegation: off` escape, which is not decoration either: this bullet
+    # INSTRUCTS, and without the escape it would have an agent proposing
+    # delegation in a repo whose preferences disabled it — the digest overriding
+    # a project preference on the one surface that cannot be opted out of. It is
+    # also the form the two neighbouring policy bullets already use, naming the
+    # governing row inline rather than behind the pointer.
+    "framework": 3343,
+    "product": 2269,
 }
 
 #: Ceilings. HARD, like the five per-file prose ceilings in this module and
@@ -781,8 +861,45 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # both readings landed BELOW where the branch started; leaving the ceilings
     # would have banked that difference as headroom for the next addition,
     # which is the re-funding this comment's first paragraph forbids.
-    "framework": 3322,
-    "product": 2245,
+    # 3322 -> 3344, 2245 -> 2270 on 2026-08-21. A DELIBERATE RAISE, +22 and
+    # +25, and the first one this table has taken. The ratchet forbids
+    # UNDECLARED growth, not declared growth, and this is the declaration: what
+    # it bought is the mid-chunk tangent trigger, priced at +43 in the reading
+    # above, against 22 tokens of trim and the headroom that was already
+    # reserved for it.
+    #
+    # BEFORE YOU DECLARE THE NEXT ONE: this table is raisable and the digest's
+    # other budget is not. It ships as SessionStart `additionalContext`, which
+    # Claude Code spills to a file above 10,000 characters
+    # (`tests/test_plugin_methodology_digest.py`), and no ruling buys a
+    # character past that. This chunk left the digest at 9987 of 10,000 — so a
+    # raise declared here is worth nothing unless the characters are there
+    # first, and they very nearly were not. Check that limit BEFORE doing this
+    # arithmetic, not after.
+    #
+    # The headroom was reserved on the record, which is why spending it is not
+    # this comment's departure. The 2026-08-21 entry above notes the ceilings
+    # were deliberately NOT ratcheted with the cut that funded delegation's
+    # first digest mention, on the owner's ruling to "start this way and
+    # dogfood, and promote to more tokens if we need to". This is that
+    # promotion. What exceeds the reservation is the raise, and it is set to
+    # exactly one over the reading — zero headroom, so the NEXT addition is
+    # back under the standing trim-or-relocate rule with nothing banked.
+    #
+    # The counter-case, recorded because a raise that only argues for itself is
+    # how the next one gets easier: 43 tokens are paid by every session of
+    # every governed repo forever, the trigger fires on a judgement the agent
+    # makes constantly, and its failure mode — asking defensively every time —
+    # is the risk this feature's discovery flags as unprovable in advance. The
+    # ready-to-build qualifier bounds it; whether that holds is a thing to
+    # watch. Reverting it is a two-line cut, and the mandatory half alone lands
+    # UNDER the ceilings this raise replaces — with room to ratchet down rather
+    # than up. (Measured, not asserted; the figure is deliberately not written
+    # here, because a revert target copied into prose goes stale the next time
+    # either shape moves and reads as fact while it is wrong. Drop the bullet
+    # and read what the assertion prints.)
+    "framework": 3344,
+    "product": 2270,
 }
 
 
@@ -1102,7 +1219,15 @@ class TestBuildingMethodology:
         every governed repo, the framework repo included.
         """
         assert "never *ask* whether to prepare a handoff" in self.content
-        digest = read_file("methodology/session-digest.md")
+        # Whitespace-normalized, like the two sibling pins in this class. Both
+        # carriers hard-wrap, so a raw substring makes the FILL WIDTH part of
+        # the contract: a pure rewrap — no word added, removed or reordered —
+        # split "never ask / whether to prepare" across two lines and turned
+        # this red while the rule was intact. That is a false negative, and a
+        # pin that cries wolf gets deleted, which costs more than it ever
+        # caught. The phrase is what is pinned; where the line happens to break
+        # is not.
+        digest = " ".join(read_file("methodology/session-digest.md").split())
         assert "never ask whether to prepare" in digest
         # The why travels with the always-injected surface, not the on-demand one.
         assert "cold cache" in digest
@@ -1295,8 +1420,12 @@ class TestBuildingMethodology:
         positive half alone would stay green through it.
 
         `reflection.md` only: the digest carries the VERDICT binding in its
-        shortest true form (five tokens of headroom, and it is charged to both
-        injected shapes), while the reasoning belongs to the canonical carrier.
+        shortest true form (and it is charged to both injected shapes, so a
+        digest clause costs twice what a `CLAUDE.md` one does), while the
+        reasoning belongs to the canonical carrier. Deliberately no headroom
+        figure here: this docstring carried one that was wrong when written and
+        wrong at every reading since, and a stale number in a docstring about
+        budgets is read as guidance. `LAST_MEASURED_INJECTED_TOKENS` owns it.
         """
         clear_item = _clear_line_guidance()
         assert "*should you*" in clear_item, (

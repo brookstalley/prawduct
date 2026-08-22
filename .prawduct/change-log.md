@@ -3,6 +3,69 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-21: the clear verdict accounts for a delegate
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+An ad-hoc delegate dies with the session that dispatched it. Its branch is unfinished, its report
+unread, and nothing regenerates it but re-running the work — so the standing block's clear verdict
+had to account for it, and the always-injected digest said the opposite: an unread background agent
+was `RUNNING`, never `COMPLETE`, and nothing at all about whether you could clear beside it.
+
+**The rule is stated on the test, not as a blanket.** `RUNNING` alongside `SAFE TO CLEAR` is
+legitimate, and for work a clear leaves alone it is correct — the earlier draft of this rule
+over-blocked by making every in-flight thing `DO NOT CLEAR`, which would forbid clearing beside any
+regenerable background job. What both cases actually answer is **recovery cost: does a clear leave
+the work alone?** A background job it does; a delegate it does not. So an unreaped delegate is
+`DO NOT CLEAR`, a reaped one is `SAFE TO CLEAR` the moment its integration debt is recorded, and
+the record — not the reaping — is what buys the clear. `reflection.md` now names the general test
+rather than only the live-review special case it used to carry, which is the gap that let this repo
+get the verdict wrong twice in one session, in opposite directions.
+
+**Reaping is a boundary step, and that placement is the rule.** It joins the work-cycle close as
+its first item, ahead of persisting decisions, because the debt is one of the things that then gets
+persisted. It is deliberately not an interrupt: a mechanism that exists to protect focus must not
+become the thing that breaks it.
+
+**The digest budget, measured rather than assumed.** The plan required the trim to run first and
+report what it recovered. It recovered **17 words / 22 tokens**, against 42 words / 55 tokens of
+additions, for a measured net of **+33** on both injected shapes — so the shortfall is a
+**declared raise**, +22 on the framework ceiling and +25 on the product one, the first this table
+has taken.
+
+What the trim cut was a class, not a rewrap (a word-count estimator returns nothing for rewrapping):
+prohibitions restating what the same bullet already requires positively. "Burying, padding or
+collapsing it fail alike" forbade three things the bullet had already required — "last, after every
+other word" *is* the anti-burying rule and "three separate paragraphs" *is* the anti-collapsing one
+— so only padding and the reason survived, folded into the opener. That is an in-place dedup, the
+only kind that is honest on this surface: funding a digest cut against an on-demand guide is a
+deletion for the reader who never opens one, and that reader is why the digest exists.
+
+Of the additions, +12 was mandatory at any budget (the digest's own rule contradicted the feature)
+and was found as a rewording — the delegate joins the findings-only clause, which already said
+"not `SAFE TO CLEAR` until it is on disk", rather than opening a second one. The +43 is the
+decision: a mid-chunk tangent trigger, the one moment nothing else in this plan reaches, since the
+backlog prompt only fires when the instinct was already to file something. Its ready-to-build
+qualifier is the guard against becoming the prompt people route around, and it is the same bar the
+backlog prompt will fire on, so the two state one rule. The counter-case is recorded at the
+ceiling: 43 tokens are paid by every session of every governed repo forever, and reverting is a
+three-line cut that lands back under the old ceilings.
+
+**The token ceiling was never the binding budget, and finding that out is the durable part.** The
+digest is emitted as SessionStart `additionalContext`, which Claude Code spills to a file above
+**10,000 characters** — a hard harness threshold, not a policy ratchet, and raisable by nobody. It
+had 216 characters free at this branch point; this change wanted 228, and the first draft went 12
+over while every assertion in the token-budget module was green. The two budgets lived in separate
+test modules with no reference between them, so a careful accounting against one could not see the
+wall it was walking into. The additions were shaved to fit and the token-budget table now says so
+at the top, because the next editor will do this arithmetic against the same blind spot. Real
+headroom after this chunk is 12 characters and, by the ratchet, zero tokens.
+
+**One test was fixed rather than satisfied.** A pure rewrap — no word added, removed or reordered —
+split `never ask / whether to prepare` across two lines and turned its pin red. The pin was matching
+raw substrings, which makes the fill width part of the contract; two sibling pins in the same class
+already normalize whitespace for exactly this reason. Normalized, with the reason at the assertion.
+
 ## 2026-08-21: the delegation question, for work no plan anticipated
 
 <!-- prawduct: type=feature | scope=adhoc-delegation -->

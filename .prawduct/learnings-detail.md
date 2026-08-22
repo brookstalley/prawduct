@@ -4359,3 +4359,27 @@ the instrument needs the same treatment as the tests it grades — a case it mus
 survivor, and a positive assertion that the measurement ran at all. `[learnings-detail.md]`
 neighbours (L52, L448, L462, L506) all cover "a mutant that should die but lives"; this is the
 inverse tell, and it is the one that looks like success.
+
+## When editing `session-digest.md`, count CHARACTERS as well as tokens
+
+The digest carries two independent budgets, enforced in two test modules that never reference each
+other. `tests/test_v5_methodology.py` holds `LAST_MEASURED_INJECTED_TOKENS` and
+`INJECTED_FOOTPRINT_CEILINGS` — a *policy* ratchet, with a documented procedure for declaring a
+raise when a trim falls short. `tests/test_plugin_methodology_digest.py` holds
+`ADDITIONAL_CONTEXT_INLINE_LIMIT = 10_000`, which is not policy at all: above it Claude Code stops
+inlining the SessionStart context and spills it to a file, so no declaration, ruling or comment can
+buy a character past it.
+
+**How it bit.** The ad-hoc-delegation work did a careful token accounting — a class-based trim
+measured in word deltas, a per-edit cost table, a declared raise with its counter-case recorded at
+the assertion. Every assertion in the token module was green. The digest was 12 characters over the
+inline limit, because 216 free characters at the branch point had never been part of anyone's
+arithmetic. The token budget had been ratcheted to near-zero headroom over many commits, which made
+it feel like *the* constraint; the character budget was the one actually about to bind.
+
+**The general shape.** A surface with two budgets in two enforcement sites has a blind spot at
+whichever site you are reasoning from, and the more elaborate the accounting at one site, the more
+confident the blind spot feels. The fix was a reference at the accounting site rather than a third
+mechanism: the token table now opens by naming the character wall and saying which one wins when
+they disagree. Watch for the same shape wherever a thorough "budget" comment exists — its
+thoroughness is evidence about one budget only.
