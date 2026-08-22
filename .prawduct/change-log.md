@@ -71,9 +71,21 @@ That separation is load-bearing rather than tidy: the manifest's condition and w
 output exists are two independent facts, and any sentence answering both from one of them is wrong
 whenever they disagree — an orphaned partial set with no manifest is exactly that disk, and so is a
 stale manifest sitting alone. The first cut of the *repair* reintroduced the contradiction one layer
-in, and was caught by the test written to catch it: `test_no_composed_message_contradicts_itself`
-composes every surface under every condition and asserts none says both things at once. Bounding the
-class by construction is what stops this recurring at the next surface, as it had three times.
+in, and the test written to catch it did.
+
+**The pin took two goes to become falsifiable, which is the part worth recording.** The first
+version asserted "no message says both things at once" and composed three *library* surfaces —
+neither of the two hook boundary notices the finding was actually about. Worse, once the readings
+stopped making keep/discard claims, "says both" became *unreachable* at those notices: reverting one
+to its hardcoded "Nothing recoverable was attached" passed the contradiction test cleanly. A pin
+that cannot fail is decoration, and one that names a class while covering a disjoint set is worse
+than none, because it reads as coverage.
+
+The property with teeth is not internal consistency but **agreement with the disk**: every
+verdict-bearing surface must carry the exact clause `anything_worth_keeping` returns for the disk it
+is describing, and must not carry the one it would return for the opposite disk. Both notices are
+loaded in-process and composed under absent/corrupt/stale-schema × {0, 2 partials}; both mutations
+that restore the old tails now go red.
 
 **#676's other two acceptance criteria were already discharged and are recorded as such rather than
 re-fixed.** A branch in an agent worktree has had a route to a recorded review since #648 —

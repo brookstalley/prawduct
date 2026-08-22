@@ -1084,7 +1084,7 @@ def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> 
     recovery addressable at all.
     """
     age = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
-    review_id = "(id unavailable — manifest unreadable)"
+    review_id = "(id unavailable — no usable dispatch manifest)"
     state = "unknown"
     try:
         consolidate = _critic_consolidate()
@@ -1114,10 +1114,30 @@ def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> 
             "  they were about to get no longer fires. Run it yourself:\n"
             "    prawduct-hook critic-consolidate"
         )
+    # The fourth `pending_roster_reading` call site, and the last surface still
+    # authoring its own preservation claim. It said "They are archived, not
+    # deleted" unconditionally — R-11's over-claim shape: true when reviewer
+    # output exists, and a promise of an empty archive when it does not. Not
+    # R-6's contradiction (it only ever says preserve), but the same defect, so
+    # it comes from the same place as the rest.
+    try:
+        _keep, verdict = _critic_consolidate().anything_worth_keeping(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        _keep, verdict = True, (
+            "  Could not tell whether reviewer output is attached — inspect before\n"
+            "  discarding anything.\n"
+        )
+    if not _keep:
+        return head + (
+            "  That review is no longer guarded: the next `critic-begin` will take the\n"
+            "  directory without refusing.\n"
+            + verdict
+        )
     return head + (
         "  That review is no longer guarded: the next `critic-begin` will archive its\n"
-        "  partials instead of refusing. They are archived, not deleted — recover that\n"
-        "  review once the next one has consolidated:\n"
+        "  partials instead of refusing.\n"
+        + verdict +
+        "  Recover that review once the next one has consolidated:\n"
         f"    prawduct-hook critic-restore {review_id}\n"
         "  (Not before: `critic-restore` refuses while partials or a marker are present,\n"
         "  which a dispatch makes true.) If its reviewers had all reported, consolidate\n"
@@ -2485,15 +2505,22 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     _kept = "  cannot be consolidated.\n" + _cc.anything_worth_keeping(prawduct_dir)[1]
                 except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
                     _kept = "  cannot be consolidated.\n"
+                # SHORT form at both sites the finding named. The raw reason for
+                # a `missing 'rendezvous'` manifest — the shape #676 describes —
+                # is a ~700-char paragraph prescribing its own recovery
+                # ("/reload-plugins → critic-end → dispatch again"), which
+                # printed above this surface's "Re-run the review" is one disk
+                # with two recovery stories.
+                _short = _cc.short_detail(detail) if _cc is not None else detail
                 if condition == stale:
                     cause = (
                         "  a coordinator manifest is present and parses, but was written by an\n"
-                        f"  OLDER PRAWDUCT and does not match this version's schema ({detail}), so it\n"
+                        f"  OLDER PRAWDUCT and does not match this version's schema ({_short}), so it\n"
                         + _kept
                     )
                 elif condition == corrupt:
                     cause = (
-                        f"  a coordinator manifest is present but is not valid JSON ({detail}), so it\n"
+                        f"  a coordinator manifest is present but is not valid JSON ({_short}), so it\n"
                         + _kept
                     )
                 elif condition == "unknown":

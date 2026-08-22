@@ -2107,19 +2107,84 @@ class TestAnythingWorthKeeping:
         keep, clause = self._verdict(tmp_path, None, partials=1)
         assert keep is True
 
+    def test_a_valid_manifest_is_worth_keeping_before_any_reviewer_reports(self, tmp_path):
+        """"Is there reviewer output" and "is there a review here" are different
+        questions, and only the second licenses a discard.
+
+        An earlier cut counted partials alone, so a live review with an
+        incomplete roster answered "nothing is worth keeping" — and
+        `_forced_live_sweep_notice` dropped its `critic-restore` instruction
+        entirely, which `test_forcing_a_sweep_names_a_recovery_that_can_actually
+        _be_run` caught. Reviewers may still be writing; the manifest records
+        what is under review; `critic-restore` restores the directory including
+        it."""
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        _write_manifest(tmp_path, "abc")
+        keep, clause = cc.anything_worth_keeping(pd)
+        assert keep is True
+        assert "dispatched review is here" in clause
+        assert "not reported yet" in clause
+
+    def test_orphaned_partials_with_no_manifest_are_named_as_orphaned(self, tmp_path):
+        keep, clause = self._verdict(tmp_path, None, partials=1)
+        assert keep is True
+        assert "orphaned" in clause
+
     def test_the_manifest_itself_is_not_counted_as_reviewer_output(self, tmp_path):
         keep, _clause = self._verdict(tmp_path, json.dumps(_V2_MANIFEST), partials=0)
         assert keep is False, "manifest.json is not a partial"
 
 
-class TestNoSurfacePairsPreservationWithDiscard:
-    """The construction R-6 asked for, as a property rather than four string
-    assertions: compose every operator-facing message under every manifest
-    condition and assert none of them says both things at once. This is what
-    stops the defect recurring at the NEXT surface, as it had three times."""
+def _load_hook():
+    """The hook script, in-process. Same idiom as
+    `test_critic_session_guard.py` — the boundary notices are plain functions
+    and composing them is the only way to assert what an operator actually
+    reads; a subprocess would give the CLI's output, not these."""
+    import importlib.machinery  # noqa: PLC0415 — the extensionless hook script
+    import importlib.util  # noqa: PLC0415
 
-    _DISCARD = ("nothing here is worth keeping", "nothing recoverable was attached")
-    _PRESERVE = ("critic-restore", "are real output", "archives them rather than")
+    loader = importlib.machinery.SourceFileLoader(
+        "prawduct_hook_for_notice_composition",
+        str(Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"),
+    )
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    hook = importlib.util.module_from_spec(spec)
+    loader.exec_module(hook)
+    return hook
+
+
+class TestNoSurfacePairsPreservationWithDiscard:
+    """The construction R-6 asked for, as a property rather than string
+    assertions: compose every operator-facing message under every manifest
+    condition and assert none says both things at once.
+
+    **It must compose the surfaces R-6 was actually about.** The first cut of
+    this class composed three LIB surfaces and none of the two hook boundary
+    notices R-6 named — while its own docstring claimed "every surface". A pin
+    that names a class and covers a disjoint set is worse than none: it reads
+    as coverage. The hook notices are loaded in-process below so the assertion
+    runs over the bytes an operator reads.
+    """
+
+    _DISCARD = (
+        "nothing here is worth keeping",
+        "nothing recoverable was attached",
+        "no reviewer output is on disk",
+    )
+    _PRESERVE = (
+        "critic-restore",
+        "are real output",
+        "archives them rather than",
+        "reviewer partial(s) are on disk",
+    )
+
+    #: The surfaces that report a keep/discard verdict about the CURRENT disk.
+    #: The two refusals are composed above for the contradiction check but are
+    #: not verdict-bearing — they describe what a dispatch WOULD do.
+    _VERDICT_BEARING = (
+        "reading+verdict", "boundary_retained", "boundary_swept", "forced_live_sweep",
+    )
 
     def _compose(self, tmp_path, text, partials):
         pd = tmp_path / ".prawduct"
@@ -2130,23 +2195,76 @@ class TestNoSurfacePairsPreservationWithDiscard:
             (pd / ".critic-partials" / f"role{i}.rev-x.json").write_text("{}")
         _state, reading = cc.pending_roster_reading(pd)
         _keep, verdict = cc.anything_worth_keeping(pd)
+        hook = _load_hook()
+        from lib import critic_marker as marker  # noqa: PLC0415 — the sweep outcome vocabulary
         return {
             "reading+verdict": reading + verdict,
             "dispatch_refusal": cc.active_dispatch_refusal(pd, 60.0, True),
             "restore_refusal": cc.restore_refusal(pd, ["correctness.x.json"], False),
+            # The two members of the class R-6 named.
+            "boundary_retained": hook._boundary_retained_marker_notice(
+                pd, marker.SWEEP_RETAINED_LIVE
+            ),
+            "boundary_swept": hook._boundary_swept_marker_notice(pd),
+            "forced_live_sweep": hook._forced_live_sweep_notice(pd, 60.0),
         }
 
     @pytest.mark.parametrize("partials", [0, 2])
     @pytest.mark.parametrize("text", [None, "{not json", "V2"])
     def test_no_composed_message_contradicts_itself(self, tmp_path, text, partials):
         payload = json.dumps(_V2_MANIFEST) if text == "V2" else text
-        root = tmp_path / f"{text}-{partials}"
+        root = tmp_path / f"contra-{text}-{partials}"
         for name, message in self._compose(root, payload, partials).items():
             low = message.lower()
             says_discard = any(d in low for d in self._DISCARD)
             says_preserve = any(p in low for p in self._PRESERVE)
             assert not (says_discard and says_preserve), (
                 f"{name} says BOTH under text={text!r} partials={partials}:\n{message}"
+            )
+
+    @pytest.mark.parametrize("partials", [0, 2])
+    @pytest.mark.parametrize("text", [None, "{not json", "V2"])
+    def test_every_verdict_matches_the_disk(self, tmp_path, text, partials):
+        """The property that actually has teeth, and the reason the sibling
+        above does not carry this alone.
+
+        Once the readings stopped making keep/discard claims, "says both" became
+        unreachable at the two hook notices — so a mutation putting the
+        hardcoded "Nothing recoverable was attached" back into
+        `_boundary_swept_marker_notice` passed the contradiction test cleanly.
+        A pin that cannot fail is decoration. The real requirement was never
+        internal consistency: it is that the verdict match the DISK. Reviewer
+        output present => no message may tell the operator to discard; none
+        present => no message may promise a `critic-restore` handle for an
+        archive that will be empty.
+        """
+        payload = json.dumps(_V2_MANIFEST) if text == "V2" else text
+        root = tmp_path / f"disk-{text}-{partials}"
+        pd = root / ".prawduct"
+        composed = self._compose(root, payload, partials)
+
+        # Exact clause, not a keyword sweep. A keyword list flagged
+        # `active_dispatch_refusal` for naming `critic-restore` inside a
+        # HYPOTHETICAL ("dispatching now would … until someone ran
+        # `critic-restore` on it by name"), which is not a claim about this
+        # disk at all — the crude version was finding its own noise.
+        _keep, right = cc.anything_worth_keeping(pd)
+        for i in range(partials):
+            (pd / ".critic-partials" / f"role{i}.rev-x.json").unlink()
+        if not partials:
+            (pd / ".critic-partials" / "spare.rev-x.json").write_text("{}")
+        _other, wrong = cc.anything_worth_keeping(pd)
+        assert right != wrong, "fixture guard: the two disks must differ"
+
+        for name in self._VERDICT_BEARING:
+            message = composed[name]
+            assert right in message, (
+                f"{name} does not carry the verdict for its disk "
+                f"(text={text!r} partials={partials}). Expected:\n{right}\nGot:\n{message}"
+            )
+            assert wrong not in message, (
+                f"{name} carries the verdict for the OPPOSITE disk "
+                f"(text={text!r} partials={partials}):\n{message}"
             )
 
 

@@ -2144,6 +2144,26 @@ def anything_worth_keeping(prawduct_dir: Path) -> tuple[bool, str]:
         p for p in partials_dir(prawduct_dir).glob("*.json")
         if p.name != MANIFEST_NAME
     ] if partials_dir(prawduct_dir).is_dir() else []
+    if condition == MANIFEST_VALID:
+        # A VALID manifest is a real dispatched review, and that is worth
+        # keeping whether or not a reviewer has reported yet: it records what
+        # is being reviewed, its reviewers may still be writing, and
+        # `critic-restore` restores the directory including the manifest. An
+        # earlier cut of this counted only partials and so answered "nothing is
+        # worth keeping" for a live review with an incomplete roster — which
+        # `test_forcing_a_sweep_names_a_recovery_that_can_actually_be_run`
+        # caught by losing its recovery instruction entirely. Reviewer output
+        # and "is there a review here" are different questions; only the second
+        # one licenses a discard.
+        if partials:
+            return True, (
+                f"  A dispatched review is here with {len(partials)} reviewer partial(s) on\n"
+                "  disk; the next dispatch archives rather than deletes them.\n"
+            )
+        return True, (
+            "  A dispatched review is here — its reviewers have not reported yet, so\n"
+            "  they may still be writing. The next dispatch archives it, never deletes.\n"
+        )
     if not partials:
         return False, (
             "  No reviewer output is on disk — nothing here is worth keeping.\n"
@@ -2154,9 +2174,11 @@ def anything_worth_keeping(prawduct_dir: Path) -> tuple[bool, str]:
             "  dispatch archives them rather than deleting them, printing a\n"
             "  `critic-restore` handle as it goes — do not delete them by hand.\n"
         )
+    # Absent manifest, partials present: orphaned reviewer output. Real, and
+    # the only thing here — nothing describes it, so nothing else can.
     return True, (
-        f"  {len(partials)} reviewer partial(s) are on disk; the next dispatch archives\n"
-        "  rather than deletes them, printing a `critic-restore` handle.\n"
+        f"  {len(partials)} orphaned reviewer partial(s) are on disk with nothing\n"
+        "  describing them; the next dispatch archives rather than deletes them.\n"
     )
 
 
