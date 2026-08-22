@@ -237,7 +237,21 @@ LAST_MEASURED_TOKENS = {
     # bare chunk id names no plan -- it fails the very test Principle 13 states
     # one sentence later. With the handle required to name the work, the entry
     # needs no exemption and the sentence needs no clause.
-    "methodology/building.md": 4760,
+    # -5 on 2026-08-21: the ad-hoc trigger reached the delegation section, and
+    # paid for itself with room over. What funded it was the pointer's own table
+    # of contents — "what overrides that default and what defeats it, what a
+    # brief must say, and the anti-patterns each with its tell" enumerated the
+    # headings of a file the same sentence tells the reader to open, which is
+    # the removable class exactly. What replaced it is the discriminator a
+    # reader actually needs to choose between the two files: the guide is the
+    # judgment, this section is the mechanics. No prose moved between files —
+    # delegation.md already owned every heading that clause listed.
+    # NOT a general rule about enumerations: `skills/methodology/SKILL.md` keeps
+    # (and grew) the same list, because its reader is choosing AMONG seven files
+    # and has not picked one yet. What made the clause removable here is that
+    # this reader has already decided to delegate, so the enumeration answers a
+    # question they are no longer asking.
+    "methodology/building.md": 4755,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -563,7 +577,20 @@ LAST_MEASURED_TOKENS = {
     # ratified — so a coordinator could invent a ceiling beside the owner's,
     # which is the retyping the whole feature exists to end. Reading, not
     # ceiling: growth here is paid by the session that opens the file.
-    "methodology/delegation.md": 1531,
+    # +936 on 2026-08-21: the ad-hoc trigger — a tangent raised mid-chunk, or
+    # work the agent was about to backlog — arrives when no partition was ever
+    # drawn, so none of the plan-time framing above reaches it. What the section
+    # adds is the three-way decision and its policy dial, the four-paths
+    # requirements bar, the brief written into the worktree as the dispatch
+    # record, the reapability bound, and six anti-patterns with tells. It is a
+    # READING for exactly the reason stated above, and this is the growth that
+    # rule was written for: nobody pays it who is not already about to delegate
+    # a tangent. Two costs were cut rather than written — the diagnosis of WHY
+    # scoping a tangent is expensive lives in the discovery artifact and reaches
+    # the reader here as one anti-pattern tell, and two considerations that
+    # restated rules stated a paragraph earlier were dropped rather than shipped
+    # as a list that looks longer than it is.
+    "methodology/delegation.md": 2467,
 }
 
 
@@ -1785,7 +1812,12 @@ class TestBuildingMethodology:
         # unattributable-green bullet, restated here in full. What this file
         # needs is that it fails SILENTLY; what it does not need is the retelling.
         # Net -10, and the ceiling moves with it rather than banking the slack.
-        assert tokens < 4762, f"building.md is ~{tokens} tokens, should be <4762"
+        # RATCHETED AGAIN 4762 -> 4757 (2026-08-21): the ad-hoc delegation
+        # pointer landed and the section got smaller anyway, because the
+        # pointer's table of contents went with it. The ceiling moves by the
+        # same -5 rather than banking it — unratcheted slack is a loan the next
+        # edit collects silently and green.
+        assert tokens < 4757, f"building.md is ~{tokens} tokens, should be <4757"
 
 
 # =============================================================================
@@ -1969,6 +2001,208 @@ class TestDelegationGuide:
             "building.md's delegation section does not route to the guide"
         )
 
+
+class TestAdHocDelegation:
+    """`delegation.md` § Work no plan anticipated — the OTHER trigger.
+
+    The parent feature governs a partition drawn at plan time. This one covers
+    work that arrives when no plan anticipated it: a tangent raised mid-chunk,
+    or work the agent was about to propose backlogging. Requirements R1-R9 and
+    R13, `.prawduct/artifacts/adhoc-delegation-discovery.md` §4-5.
+
+    **Why the bar here is placement and completeness rather than wording.** The
+    sibling class above already holds the negative bar this section inherits
+    unchanged (no consumer test vocabulary, no template, no mechanism creeping
+    back as prose) — it reads the whole file, so nothing needs restating. What
+    this class adds is what the ad-hoc trigger alone can get wrong: a rule that
+    silently drops one of the four permitted requirements paths, an anti-pattern
+    list that decays into names, or a section that states the decision without
+    the debt that makes it different from plan-time delegation.
+    """
+
+    content = read_file("methodology/delegation.md")
+    HEADING = "## Work no plan anticipated"
+
+    def _section(self) -> str:
+        assert self.HEADING in self.content, "the ad-hoc section is gone"
+        return self.content.split(self.HEADING, 1)[1]
+
+    def _anti_pattern_bullets(self) -> list[str]:
+        section = self._section().split("### Anti-patterns, ad-hoc", 1)[1]
+        # Bounded, though the list is last in the file today: an unbounded scan
+        # silently absorbs the bullets of whatever section is appended next, and
+        # the count assertion below would then pass on somebody else's list.
+        section = section.split("\n## ", 1)[0]
+        return [ln for ln in section.splitlines() if ln.startswith("- **")]
+
+    def test_the_section_comes_after_the_contract_it_extends(self):
+        """Placement is the substance, same as the sibling class's ordering
+        check. The ad-hoc section says "everything above binds unchanged" — a
+        reader who meets that claim BEFORE the brief contract and the
+        verification ceiling has been handed a reference to prose they have not
+        read, and the sentence that keeps this feature from restating the parent
+        is exactly that reference.
+        """
+        assert self.content.index("## What a brief must say") < self.content.index(
+            self.HEADING
+        ), (
+            "the ad-hoc section now precedes the brief contract it defers to, so "
+            "its 'everything above binds unchanged' points at nothing yet"
+        )
+
+    def test_the_decision_is_three_way_and_the_policy_dial_is_reachable(self):
+        """R1, R2. Two failure modes, one test.
+
+        A section that offers only *delegate or not* turns every tangent into a
+        binary and loses the answer that is usually right — backlog it. And a
+        default with no dial is a mandate: `off` is a complete answer the owner
+        can give, and it only reaches the agent if the guide names where it is
+        written.
+        """
+        section = self._section()
+        lower = section.lower()
+        for option in ("do it now", "delegate it", "backlog it"):
+            assert option in lower, (
+                f"the three-way decision no longer offers {option!r} — a tangent "
+                "with fewer than three answers is a decision the guide has "
+                "already made for the reader"
+            )
+        assert "project-preferences.md" in section and "`off`" in section, (
+            "the delegation-first default no longer routes to the project's own "
+            "policy row, so a repo that has said `off` cannot be heard"
+        )
+
+    def test_the_requirements_bar_states_all_four_paths(self):
+        """R4. The bar is absolute and the paths are a CLOSED list — the owner's
+        ruling was four and no fifth. A guide that drops one path pushes the
+        reader to invent it, and the path most easily dropped is the one that
+        costs the coordinator nothing to skip: the delegate stopping and
+        demanding requirements.
+        """
+        lower = self._section().lower()
+        paths = {
+            "stated in the brief": "state them in the brief",
+            "an artifact referenced": "reference an artifact",
+            "drafted by the delegate": "drafts them as its first deliverable",
+            "the delegate refuses": "stops and demands them",
+        }
+        missing = [name for name, phrase in paths.items() if phrase not in lower]
+        assert not missing, (
+            f"the requirements bar no longer offers: {missing}. Four paths and "
+            "no fifth was the ruling; a reader who cannot find their path "
+            "invents one, which is the un-ratified requirement anti-pattern"
+        )
+
+    def test_drafted_requirements_come_back_proposed(self):
+        """R5, and the sharp edge of path three. A delegate drafting
+        requirements is doing discovery, and discovery output that arrives
+        already implemented reads as ratified — the branch's existence standing
+        in for approval. The word `proposed` is what stops that, so it is
+        pinned rather than left to phrasing.
+        """
+        lower = self._section().lower()
+        assert "proposed" in lower, (
+            "drafted requirements no longer come back marked proposed, so a "
+            "delegate's discovery arrives pre-ratified by the branch it sits on"
+        )
+        assert "ratif" in lower, (
+            "the section names no ratification step, which leaves the debt "
+            "path three creates with nobody owed it"
+        )
+
+    def test_the_integration_debt_and_who_cannot_pay_it_are_stated(self):
+        """The reframe the whole feature rests on. A delegated tangent is not
+        finished work, and the trigger that produced it — a context that is full
+        — guarantees the agent that incurred the debt is not the one who pays.
+        Without that sentence the section reads as a spawn mechanism, which is
+        the design the discovery artifact rejected.
+        """
+        lower = self._section().lower()
+        assert "integration debt" in lower, (
+            "the section no longer names what comes back as a debt, so a "
+            "delegated tangent reads as done"
+        )
+        assert "on disk" in lower and "held in memory" in lower, (
+            "the section dropped WHY the debt has to be recorded — a debt "
+            "living only in the dispatching agent's context evaporates at the "
+            "next /clear, and that is the whole reason the record exists"
+        )
+
+    def test_the_brief_is_the_dispatch_record_at_a_named_path(self):
+        """R8. The brief was always required; writing it INTO the worktree is
+        what makes it the dispatch record, and what makes an abandoned worktree
+        detectable from the filesystem without inventing state.
+
+        The path is pinned because a probe depends on it. The negative half is
+        pinned too: the discovery artifact rules out a registry, schema or lease
+        (§6), and the prior design collapsed for proposing exactly those.
+        """
+        section = self._section()
+        assert ".prawduct/.delegate-brief.md" in section, (
+            "the brief has no named location, so nothing can find an abandoned "
+            "delegate worktree without a registry — which is the design that "
+            "was ruled out"
+        )
+        lower = section.lower()
+        for refused in ("registry", "schema", "lease"):
+            assert refused in lower, (
+                f"the section no longer refuses a {refused}, which is the "
+                "sentence stopping the next editor from adding one"
+            )
+
+    def test_dispatch_is_bounded_by_whether_this_session_can_reap_it(self):
+        """R9. The worst outcome available is not a bad delegate — it is an
+        unreapable one: compute spent, no result read, a worktree orphaned. The
+        comparison that prevents it (expected runtime against remaining useful
+        context) has to be in the guide, because nothing measures it for you.
+        """
+        lower = self._section().lower()
+        assert "reap" in lower, "the section states no reapability bound"
+        assert "backlog" in lower, (
+            "the reapability bound names no alternative, so 'cannot reap' has "
+            "no answer and the reader dispatches anyway"
+        )
+        assert "work-cycle boundary" in lower, (
+            "reaping lost its timing — a reap that fires mid-flow is the "
+            "focus-protecting mechanism breaking focus"
+        )
+
+    def test_every_ad_hoc_anti_pattern_carries_a_tell(self):
+        """The same bar the parent list holds, applied to the list this feature
+        adds. The sibling class's check splits on the FIRST `## Anti-patterns`
+        and stops at the next `##`, so it never reaches these bullets — a fact
+        worth stating, because a reader assuming coverage would leave the new
+        list ungraded.
+        """
+        bullets = self._anti_pattern_bullets()
+        assert len(bullets) >= 6, (
+            f"the ad-hoc anti-pattern list has {len(bullets)} entries; the "
+            "discovery sweep found six, each traced to a cost the design exists "
+            "to hold down"
+        )
+        tell_less = [b.split("**")[1] for b in bullets if "*Tell:*" not in b]
+        assert not tell_less, (
+            f"ad-hoc anti-pattern(s) with no tell: {tell_less}. A rule without "
+            "one is read afterwards rather than fired at the moment of the error"
+        )
+
+    def test_buildings_delegation_section_names_the_ad_hoc_trigger(self):
+        """R13. `building.md` carries a pointer, not the doctrine — but a
+        pointer that mentions only plan-time partition is met by a builder mid
+        chunk and answers a question they are not asking.
+
+        Asserted on the SECTION, not the file, for the sibling's reason: a
+        mention elsewhere is met before there is a decision to make, or not at
+        all.
+        """
+        building = read_file("methodology/building.md")
+        section = building.split("## Delegating Work to Subagents", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        lower = section.lower()
+        assert "tangent" in lower or "backlog" in lower, (
+            "building.md's delegation section frames the question as plan-time "
+            "only, so work arriving mid-cycle never reaches the guide"
+        )
 
 
 class TestPlanTimePartition:

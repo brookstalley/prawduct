@@ -51,7 +51,8 @@ governed_by:
         records why."
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state and the
         files it must reconcile -> conforms. R8's brief is written by the *agent* into the
-        delegate's own `.prawduct/`; the plugin ships no writer for it."
+        delegate's own `.prawduct/`, and Chunk 04's `GITIGNORE_ENTRIES` addition writes `.gitignore`,
+        which the norm names in its reconcile set."
       - "local-first: governance coordination is process-spawn + atomically-written files + the git
         object DB -> conforms. Chunk 04 reads `git worktree list` and the filesystem; no network,
         no daemon, no new dependency."
@@ -73,8 +74,19 @@ governed_by:
         because this plan creates no governance document class. The brief is not one: it is
         gitignored per-worktree scratch, and R12's advisory is what stops an abandoned one being
         silent."
-      - "facts are immutable and append-only; no model in a fact's write path -> inapplicable
-        because this plan writes no facts."
+      - "facts are immutable and append-only -> inapplicable because this plan writes no facts."
+      - "no model sits in a fact's write path -> inapplicable because this plan writes no facts.
+        Stated separately from its sibling above because they are two ratified norms, and merging
+        them is how one of the pair stops being checked."
+      - "derived views are disposable and never authoritative; no gate reads a view to reach a
+        verdict -> inapplicable because this plan adds no view and no gate. Chunk 04's advisory is
+        the near miss and it lands the right side of the line: an advisory informs, it reaches no
+        verdict."
+      - "a fact written by a newer schema than the reader is a loud block, never silently dropped
+        -> inapplicable because this plan reads no facts."
+      - "`backlog_service_repo` selects which backlog store is authoritative; readers reach the
+        backlog through the skill -> conforms at Chunk 03, which edits what `/prawduct:backlog add`
+        PROPOSES and never reaches around the skill to a store."
       - "every backlog write conforms to the issue standard's title rules -> conforms at Chunk 03
         by not touching the write path: the prompt R14 adds fires BEFORE `add` writes, and changes
         what is proposed, not what is written."
@@ -103,17 +115,22 @@ post-cutoff.
 - [ASSUMPTION: the digest trim recovers materially less than the ~36 tokens the two edits need, so
   a declared raise will be required | MED impact | user can veto the raise at Chunk 02's review]
   — D6 makes reporting the actual recovery the chunk's job precisely because this is an assumption.
-- [ASSUMPTION: an ad-hoc delegate's brief belongs at a dot-prefixed, gitignored path inside the
-  delegate worktree's `.prawduct/` | LOW impact | user can override the location] — the
-  data-model disposition above is the reasoning; the path is named at Chunk 01 and consumed by
-  Chunk 04's probe.
+- [ASSUMPTION: an ad-hoc delegate's brief belongs at `.prawduct/.delegate-brief.md` in the
+  delegate's own worktree, untracked | LOW impact | user can override the location] — resolved
+  during Chunk 01 rather than left open, because the alternative had a live failure mode: an agent
+  running `git add -A` in its worktree commits an untracked brief onto the delegate branch and it
+  arrives in the merge. Untracked therefore means *ignored*, which means one entry in
+  `lib/core.py`'s `GITIGNORE_ENTRIES` — and that entry propagates by firing the gitignore-drift
+  advisory once in every governed repo. That is the contract's designed propagation path, and it
+  is the honest price. The entry lands in Chunk 04 with the probe that depends on the path, not in
+  Chunk 01, which only names it.
 
 **What would raise confidence:** running the trim (Chunk 02), which converts the first assumption
 into a number. Nothing cheaper does.
 
 ## Status
 
-- [ ] Chunk 01: The doctrine has one home
+- [x] Chunk 01: The doctrine has one home
 - [ ] Chunk 02: The clear verdict accounts for a delegate
 - [ ] Chunk 03: The backlog instinct gets the third option
 - [ ] Chunk 04: An abandoned worktree is not silent
@@ -127,7 +144,21 @@ rather than only in the chunk: `build-plan-delegation.md`'s Chunk 01 records tha
 ceilings were **deliberately not ratcheted** with the cut that funded delegation's first digest
 mention, and that the headroom was reserved for exactly this promotion ("start this way and
 dogfood, and if we need to promote to more tokens in CLAUDE.md we will"). So the 12/9 is not
-generic slack the ratchet forbids spending. Next: Chunk 01.
+generic slack the ratchet forbids spending.
+
+Chunk 01 done 2026-08-21. The doctrine landed as `delegation.md` § Work no plan anticipated, and
+`building.md` **shrank by 5 tokens while gaining the trigger** — the pointer's own table of contents
+enumerated the headings of a file the same sentence tells you to open, and that clause funded the
+addition with room over (ceiling ratcheted 4762 → 4757 with the cut, not banked). `delegation.md`
+1531 → 2467, a READING with no ceiling, which is the growth that rule was written for: nobody pays
+it who is not already about to delegate a tangent. The brief-path assumption was **resolved rather
+than carried** — `.prawduct/.delegate-brief.md`, untracked, with the `GITIGNORE_ENTRIES` line moved
+into Chunk 04 beside the probe that depends on it; the reasoning is at the assumption above.
+Review: 0 blocking, 1 warning, 2 notes, all three fixed in the chunk's own commit because every one
+of them landed in a file already being committed. Two of them were about THIS plan's `governed_by`
+block — `data-model` had 8 ratified norms and 4 dispositions, and the `architecture` disposition's
+stated reason was falsified by the same amendment that moved the gitignore line. Both are now
+correct, so Chunk 04 inherits a curated block rather than a stale one. Next: Chunk 02.
 
 ## Scaffolding
 
@@ -272,8 +303,11 @@ prove size and linkage and cannot prove meaning. What substitutes for execution,
 - **Artifacts consumed:** `adhoc-delegation-discovery.md` §4.5, §4.6, §5 (R12)
 - **Deliverables:** new `plugin/lib/adhoc_delegate_probes.py` (probe + `register()`); its
   registration at the runtime composition root in `plugin/bin/prawduct-hook`;
-  new `tests/test_adhoc_delegate_probes.py`; the norm disposition recorded in this plan's
-  `governed_by` block, amended in place with what the store actually showed
+  new `tests/test_adhoc_delegate_probes.py`;
+  new `.prawduct/.delegate-brief.md` as the brief path, added to `GITIGNORE_ENTRIES` in
+  `plugin/lib/core.py` and to this repo's own `.gitignore`; the norm
+  disposition recorded in this plan's `governed_by` block, amended in place with what the store
+  actually showed
 - **Tests:** unit — fires on an unmerged worktree holding a brief, silent on a merged one, silent
   with no brief, silent with no worktrees at all; integration — the advisory reaches the session
   briefing and clears when resolved

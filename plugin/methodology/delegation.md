@@ -56,3 +56,30 @@ A list of what has to be said, in your own words — not a template, and not som
 - **Who integrates** — you. Say so, so the delegate doesn't try.
 
 If you cannot state the ownership boundary without re-reading the other delegates' briefs, the partition isn't ready and the fan-out will cost more than it saves.
+
+## Work no plan anticipated
+
+The partition above is drawn at plan time. The other trigger is an interrupt — a tangent the user raises mid-chunk, or work you are about to propose backlogging.
+
+**A delegated tangent is never *done*.** You own integration, so what comes back is a branch plus an integration debt: a combined run, live verification, the Critic, a merge. Isolation stops delegates fighting *during* the run and does nothing about the merge, so that branch also ages against the line you are actively moving. And the reason you delegated — this context is full, or nearly — guarantees the agent that incurred the debt is not the one who will pay it. So coordination has to be **a role recorded on disk, not an agent held in memory**: a debt that lives only in your context evaporates at the next `/clear`, leaving an unmerged branch and a worktree nobody remembers creating.
+
+**The decision is three-way, made once, out loud: do it now, delegate it, or backlog it.** Delegation is offered first — and that default is a *policy* setting rather than a technical one. `project-preferences.md`'s `Delegation` row overrides it in the project's own words, and `off` means the proposal is never made. The question that sorts the three: *would you integrate this today if it came back green?* If not, the honest artifact is a backlog item.
+
+**Disclose before dispatching** (Principle 9, Visible Costs): what the delegate will do, what it will *not* do, that its result carries an integration debt and who is expected to pay it, and **how many ad-hoc branches already await integration**. A fifth outstanding branch is a different proposal from a first one, and the user should hear which one this is — unmerged branches are inventory, and this trigger is the one best at accumulating it.
+
+**Requirements first — four paths, and no fifth.** An ad-hoc delegate never builds against unclear requirements: you state them in the brief, or you reference an artifact that already states them, or the delegate drafts them as its first deliverable, or it stops and demands them. Path three has an edge worth naming — a delegate drafting requirements is doing discovery, and requirements drafted in a worktree and never ratified are `/prawduct:methodology building`'s *silently invent a requirement* failure in a new costume, with the branch's existence standing in for approval. Drafted requirements come back marked **proposed**, and ratifying them is part of the debt.
+
+**What it hands back is a branch and a report** naming what it verified, what it assumed, and what it left for integration. Everything above binds unchanged, the verification ceiling and the no-governance rule included.
+
+**Write the brief into the delegate's worktree**, at `.prawduct/.delegate-brief.md`, rather than only into the prompt. The artifact that had to exist anyway becomes the dispatch record — what was delegated, what it owns, who integrates — and an abandoned worktree stops being invisible. No registry, no schema, no lease; nothing new to keep in sync.
+
+**Do not dispatch what this session cannot reap.** Expected runtime against the useful context you have left is a real comparison, and "no" means backlog. The unreapable delegate is the worst outcome on offer: compute spent, no result read, a worktree orphaned. Reap at a work-cycle boundary, never as a mid-flow interrupt — the mechanism that exists to protect focus must not become the thing that breaks it. What an unreaped delegate does to the clear verdict is `/prawduct:methodology reflection` "Work cycle boundary".
+
+### Anti-patterns, ad-hoc
+
+- **The delegate you cannot reap.** *Tell:* you estimated its runtime as longer than the context you had left, and dispatched anyway.
+- **The brief that scoped the tangent.** *Tell:* scoping cost more context than doing the work would have, or more than the one-line backlog entry it replaced.
+- **The un-ratified requirement.** *Tell:* a branch carries a requirements doc nobody approved and code that already implements it.
+- **The debt that lives in your head.** *Tell:* you can name which branch needs integrating and no file can.
+- **The tangent that was a decision.** *Tell:* the delegate was dispatched to decide something rather than to build something already decided.
+- **Delegation as a way to say yes.** *Tell:* you dispatched because declining felt unhelpful, not because the work was ready to hand over.

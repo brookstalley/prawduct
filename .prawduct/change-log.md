@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-21: the delegation question, for work no plan anticipated
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+The delegation guide answered one trigger: a partition drawn while a build plan is being written.
+The other one is an interrupt — a tangent the user raises mid-chunk, or work you were about to
+propose backlogging — and it arrives when no plan exists to partition. `/prawduct:methodology
+delegation` now carries both.
+
+**The reframe that makes it more than a spawn mechanism.** Under the rule that the coordinator owns
+integration, a delegated tangent is never *done*: what comes back is a branch plus an integration
+debt, and the reason you delegated — this context is full, or nearly — guarantees the agent that
+incurred the debt is not the one who will pay it. So coordination has to be a role recorded on
+disk rather than an agent held in memory. A debt living only in the dispatching agent's context
+evaporates at the next `/clear`, leaving an unmerged branch and a worktree nobody remembers
+creating.
+
+What the section states: the decision is three-way and made once, out loud — do it now, delegate
+it, or backlog it, sorted by *would you integrate this today if it came back green?* Delegation is
+offered first, and that default is a policy setting, so `project-preferences.md`'s `Delegation` row
+still governs and `off` means the proposal is never made. Requirements come first absolutely, by
+exactly four paths and no fifth, and a delegate's own drafted requirements come back marked
+**proposed** — a branch's existence is not ratification. The brief is written into the delegate's
+worktree, which makes the artifact that had to exist anyway the dispatch record, with no registry,
+schema or lease added. And nothing is dispatched that this session cannot reap.
+
+**`building.md`'s delegation section got smaller while gaining the trigger.** What funded it was
+the pointer's own table of contents: it enumerated the headings of a file the same sentence tells
+you to open. What replaced it is the discriminator a reader actually needs — the guide is the
+judgment, that section is the mechanics.
+
 ## 2026-08-21: one place knows what a finding's title is called
 
 <!-- prawduct: type=fix | scope=delegation -->
