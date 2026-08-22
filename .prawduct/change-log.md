@@ -34,6 +34,14 @@ signal, and the worktree it points at belongs to another session. And it does no
 one advisory per worktree, keyed on the branch, because two abandoned delegates are two decisions
 and dismissing the first must not silence the second.
 
+**One change reaches every governed product, not just this feature:
+`prawduct-hook advisory show` now prints an advisory's `alternative_actions`.** The field had been
+set by five probes and rendered by nothing — the briefing prints one action per advisory by design,
+and the drill-down did not print them at all. `show` is where an alternative belongs, so the field
+is now live everywhere rather than being deleted from the probes that set it. One cosmetic
+consequence: the norm-health advisory's Health Check #14 route was moved into its `trigger_summary`
+back when the field was inert, so `show` prints that route twice until one copy goes.
+
 ## 2026-08-22: the backlog instinct gets a third option
 
 <!-- prawduct: type=feature | scope=adhoc-delegation -->

@@ -277,6 +277,28 @@ the cross-cutting registry's runtime leg, and a missing change-log entry for the
 narrowing), all closed in the same commit.
 
 
+`verify-resolutions` came back clean (0/0/0, 11 resolution facts) and left four observations. One —
+the change-log's silence about `advisory show` now rendering `alternative_actions`, a behaviour
+change every governed product sees — was **free** to fix (`cost-of-commit`: non-judgeable) and was
+fixed. **The other three are accepted, priced not assumed**, and recorded here because a carried
+deferral needs a durable home and this is the non-judgeable one:
+
+- `plugin/lib/norm_probes.py` (~line 1044) and `tests/test_norm_probes.py` (~line 680) both still
+  assert that *no* surface renders `alternative_actions`. R-9 made that false. Nothing reads either
+  sentence, so the tree is correct — but a future probe author would conclude the field is dead,
+  which is the exact reasoning that produced R-9.
+- Same file: the norm-health advisory duplicates its Health Check #14 route under `show`, because
+  that route was folded into `trigger_summary` while the field was inert. Cosmetic.
+- `tests/test_v5_methodology.py`'s cross-carrier class pins the shared `ready to build` qualifier
+  but not the work-cycle-boundary exemption R-7 added, so a reword could drop the exemption
+  silently.
+
+All three are NOTE-level and all three land in judgeable files: `cost-of-commit` prices them
+`costs-a-round` (~5 min), and this is a PR boundary with no other commit for them to ride. Accepted
+per the standing rule that at a boundary a NOTE priced `costs-a-round` is accepted rather than
+folded — the first two are one edit region and belong to the next commit that touches
+`norm_probes.py`; the third to the next that touches the offer's bound.
+
 ## Scaffolding
 
 No scaffolding. Every carrier this plan writes into already exists — the methodology guides, the
