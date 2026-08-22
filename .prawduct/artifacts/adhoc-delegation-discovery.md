@@ -298,16 +298,31 @@ tangent trigger has to be funded by deleting something of comparable value from 
 this feature's line would have to outrank what it displaces. On-demand guides carry a reading and
 no ceiling, so the *doctrine* is free; only the always-on trigger is expensive.
 
+**Where the digest's weight actually sits** (same estimator, measured 2026-08-21): "The hardest
+rules" is 1121 of 1974 tokens, and two bullets inside it are 23% of the whole file — the standing
+block (287) and forward/handoff notes (176). Those are the two bullets this feature must touch.
+Roughly 50-80 tokens across them restate `reflection.md` (:97 the findings-only rule, :116 the
+forward/backward pairing and the machine's file) — but two rules in the handoff bullet, "never ask
+whether to prepare one" and "never blind-append", appear in the digest and nowhere else. Relocating
+those would be a behavioural loss for every session that never opens the guide, dressed as a dedup
+(the learning that governs this: funding a budget by deleting what another surface says is only
+valid for readers who *receive* that surface). The standing block's cost is a format spec needed at
+write time on every closing turn, which is the case a pointer serves worst.
+
 Two consequences, one mandatory and one a decision:
 
 - **Mandatory.** The digest's standing-block bullet already states that an unread background agent
   is `RUNNING`, never `COMPLETE`. R10 contradicts that as written, so the amendment must land in
   the digest regardless of budget — the alternative is an injected rule that forbids the feature.
   It should be sought as a **rewording at or near zero net cost**, not an addition.
-- **A decision.** The mid-chunk tangent trigger is optional and probably unaffordable. Serving the
-  ask at `/prawduct:backlog add` plus the work-cycle boundary covers the second moment in §1
-  fully, and the first only when the agent's instinct was already to file something. Buying the
-  first moment outright means naming the digest line it replaces.
+- **A decision.** The mid-chunk tangent trigger is optional. Serving the ask at
+  `/prawduct:backlog add` plus the work-cycle boundary covers the second moment in §1 fully, and
+  the first only when the agent's instinct was already to file something. Three ways to buy the
+  first moment: displace a digest line of comparable value; consolidate the two boundary bullets
+  (worth doing on its own merits, with its own review — not as this feature's funding source); or
+  **raise the ceiling deliberately**. The ratchet forbids *undeclared* growth, not declared growth
+  — the test's own comment requires a departure to say why. Ruling the trigger worth N tokens is
+  the same kind of policy call as D1.
 
 ### 8.2 Open questions
 
