@@ -2334,6 +2334,264 @@ class TestAdHocDelegation:
         )
 
 
+class TestAdHocDelegationBacklogPrompt:
+    """R14 — the ad-hoc trigger's second moment, in `skills/backlog/SKILL.md`.
+
+    The guide above is where the judgment lives; nobody reads it who was not
+    already about to delegate. This class covers the surface that catches the
+    other half: an agent whose instinct was to *file* something, at the one
+    stopping point that already fires for it.
+
+    **Why this class lives beside the guide's and not in a backlog module.**
+    The bar the prompt fires on is shared with the session digest's mid-chunk
+    trigger, deliberately — two prompts stating one rule. A guard that reads
+    only one of the two carriers cannot see them drift apart, and the only
+    module that already reads both is this one.
+    (`.prawduct/artifacts/adhoc-delegation-discovery.md` §5 R14, §8.3.)
+
+    **The skill has two `add` procedures, and the first draft only pinned one.**
+    `SKILL.md`'s `### add` is the markdown-backend path; once
+    `backlog_service_repo` is set, `adapter-mode.md` carries its own end-to-end
+    `### add` that *replaces* it — it re-states the dedup step for itself, which
+    is the tell. So a prompt living only in `SKILL.md` never fires on the
+    backend this repo actually runs. The fix keeps ONE statement of the offer
+    and has the adapter path route to it; the assertions below therefore read
+    three carriers, not two.
+
+    **The bar here is placement and boundedness, not wording.** A prompt in the
+    wrong step of `add` is decoration, and an *unbounded* one is worse than
+    absent: §8.3 names defensive asking as this feature's live risk, and a
+    prompt that fires on every `add` is a prompt people route around.
+    """
+
+    skill = read_file("skills/backlog/SKILL.md")
+    adapter = read_file("skills/backlog/adapter-mode.md")
+    digest = read_file("methodology/session-digest.md")
+
+    #: The qualifier both carriers fire on. Shared on purpose — see the class
+    #: docstring. Rewording it is legitimate; rewording it in ONE carrier is
+    #: what this pins, so re-pin here and change both together.
+    QUALIFIER = "ready to build"
+
+    def _add_step(self) -> str:
+        """The `add` subcommand's body, bounded at the next subcommand.
+
+        Unbounded, the scan absorbs `pick`'s stage-aware routing, which names
+        every term below for its own reasons — the assertions would then pass
+        with the `add` path carrying nothing at all.
+        """
+        assert "### add\n" in self.skill, "the `add` subcommand is gone"
+        body = self.skill.split("### add\n", 1)[1]
+        return body.split("\n### ", 1)[0]
+
+    def test_the_prompt_precedes_the_write_and_follows_the_dedup(self):
+        """Placement is the substance (the reader test, not a word test).
+
+        Two orderings make the prompt inert. Before the dedup, it offers to
+        delegate work an existing item already tracks. After the append, the
+        item exists and the decision has been made by default — which is the
+        exact reflex R14 exists to interrupt.
+        """
+        step = self._add_step()
+        dedup = step.lower().index("dedup first")
+        write = step.index("append the item under `## Open`")
+        offer = min(
+            (step.index(o) for o in ("delegate it", "Delegate it") if o in step),
+            default=-1,
+        )
+        assert offer != -1, (
+            "`add` no longer offers to delegate, so the backlog instinct has "
+            "two options again and the third is never said out loud"
+        )
+        assert dedup < offer < write, (
+            "the delegation offer moved out of its slot in `add` (dedup at "
+            f"{dedup}, offer at {offer}, append at {write}): before the dedup "
+            "it proposes delegating work already tracked; after the append the "
+            "item is filed and the reflex has already won"
+        )
+
+    def test_the_offer_is_three_way_and_names_the_delegate_cost(self):
+        """R1 and R3 (Visible Costs), at the moment the offer is made.
+
+        A two-way offer is not the doctrine's decision, and an offer with no
+        price attached is the "delegation as a way to say yes" anti-pattern
+        with the framework's own voice behind it. Outstanding branches are
+        part of the price: a fifth is a different proposal from a first.
+        """
+        step = self._add_step()
+        lower = step.lower()
+        for option in ("do it now", "delegate it", "backlog it"):
+            assert option in lower, (
+                f"`add`'s offer no longer includes {option!r} — the three-way "
+                "decision has collapsed back into a binary"
+            )
+        assert "integration debt" in lower, (
+            "`add` offers a delegate without naming what comes back with it; a "
+            "branch presented as finished work is the debt this feature exists "
+            "to keep visible"
+        )
+        assert "await integration" in lower or "awaiting integration" in lower, (
+            "`add`'s offer no longer discloses how many ad-hoc branches are "
+            "already outstanding, so every proposal reads like the first one"
+        )
+
+    def test_the_prompt_is_bounded_by_the_bar_the_digest_fires_on(self):
+        """§8.3's guard, and the one-rule-two-carriers property.
+
+        The qualifier is what keeps this from becoming the defensive-asking
+        failure. It is asserted on BOTH carriers because a bar reworded in one
+        of them is two bars for one decision, which is the drift no single-file
+        guard can see. Both must also state the quiet side explicitly — the
+        `stage:` lifecycle in the skill, since "everything earlier files
+        silently" is the half a reader acts on most often.
+        """
+        step = self._add_step()
+        assert self.QUALIFIER in step.lower(), (
+            f"`add`'s prompt no longer bounds itself to {self.QUALIFIER!r}, so "
+            "it fires on idea-stage capture too — an unbounded prompt on the "
+            "backlog's own front door is what trains people to route around it"
+        )
+        assert self.QUALIFIER in self.digest.lower(), (
+            f"the digest's mid-chunk trigger no longer says {self.QUALIFIER!r}. "
+            "It and `add`'s prompt state ONE bar on purpose; re-pin QUALIFIER "
+            "and reword both, or the two triggers have quietly diverged"
+        )
+        assert "stage:" in step, (
+            "`add`'s prompt no longer names the `stage:` lifecycle it reads to "
+            "decide whether to fire, so nothing tells a reader which items stay "
+            "silent"
+        )
+
+    def test_add_stamps_the_stage_its_own_prompt_reads(self):
+        """The gap that made the qualifier inoperable, found while re-reading
+        `add` as the agent who runs it.
+
+        `add` filed every item stageless — the field was canonical, `import`
+        inferred it, triage backfilled it, and the one path that creates items
+        never set it. So the bar above had no input, and worse, an item the
+        agent had just judged ready enough to offer *delegating* landed as one
+        `pick` would refuse to present as buildable. The adapter's `file` op
+        already took `--stage`; only this prose omitted it.
+        """
+        step = self._add_step()
+        write = step.index("append the item under `## Open`")
+        stamp = step.lower().find("stamp `stage:`")
+        assert stamp > write, (
+            "`add` no longer stamps `stage:` when it writes the item, so every "
+            "item it files is born not-ready and the ready-to-build prompt "
+            "above reads a field nothing sets"
+        )
+        assert "`--stage=`" in self.skill, (
+            "`add` no longer accepts `--stage=`, so a machine caller cannot "
+            "supply the one field that decides whether an item is buildable"
+        )
+
+    def test_the_prompt_carries_the_off_switch_inline(self):
+        """R2, and the reason it is not left behind the pointer.
+
+        This step INSTRUCTS. A reader of `add` who never opens the guide would
+        otherwise propose delegation in a repo whose preferences disabled it —
+        a skill overriding a project policy it did not read. The digest's
+        neighbouring policy bullets name their governing row inline for the
+        same reason.
+        """
+        step = self._add_step()
+        assert "project-preferences.md" in step and "Delegation: off" in step, (
+            "`add`'s prompt no longer carries the `Delegation: off` escape "
+            "inline; a repo that declined delegation gets offered it anyway by "
+            "the one path that never reads the guide"
+        )
+
+    def test_the_prompt_points_at_the_doctrine_instead_of_restating_it(self):
+        """One home, N pointers — the architecture this whole feature is built
+        on. A skill that grows its own copy of the judgment is the second home,
+        and the copy is the one that goes stale, because the guide is what a
+        reader of the *other* trigger is sent to.
+        """
+        step = self._add_step()
+        assert "/prawduct:methodology delegation" in step, (
+            "`add`'s prompt no longer routes to the guide that owns the "
+            "judgment, so the offer is made with no way to reason about it"
+        )
+        # The four requirements paths and the anti-pattern list are the guide's.
+        # Their tells are distinctive enough to catch a copy without catching a
+        # legitimate one-line reference.
+        for owned in ("no fifth", "four paths", "*Tell:*"):
+            assert owned not in step, (
+                f"`add` has started restating the guide's own material "
+                f"({owned!r}); the pointer exists so this surface stays a "
+                "trigger and the doctrine keeps one home"
+            )
+
+    def _adapter_add(self) -> str:
+        """`adapter-mode.md`'s own `### add`, bounded at the next op."""
+        assert "### add\n" in self.adapter, "adapter-mode's `add` op is gone"
+        return self.adapter.split("### add\n", 1)[1].split("\n### ", 1)[0]
+
+    def _adapter_offer(self) -> str:
+        """The one paragraph of that op which hands over to `SKILL.md` step 2.
+
+        Bounded to the paragraph rather than the section, and the reason is a
+        mutation that stayed green: `ready to build` also appears in the
+        neighbouring `--stage` paragraph, so a section-wide scan passed with the
+        bar stripped out of the offer itself. A substring assertion is only as
+        precise as the region it reads.
+        """
+        paras = [q for q in self._adapter_add().split("\n\n") if q.strip()]
+        hits = [q for q in paras if "step 2" in q.lower() and "SKILL.md" in q]
+        assert len(hits) == 1, (
+            "`adapter-mode.md`'s `add` no longer has exactly one paragraph "
+            f"handing over to `SKILL.md` step 2 (found {len(hits)}); either the "
+            "handover is gone or it has been split into copies that can drift"
+        )
+        return hits[0]
+
+    def test_the_offer_reaches_the_post_cutover_path_too(self):
+        """The gap the first draft shipped: one prompt, two `add` procedures.
+
+        `adapter-mode.md` replaces `SKILL.md`'s steps rather than adding to
+        them, so an offer written only in `SKILL.md` is silent on every repo
+        that has cut over to Issues — this one included. The routing is
+        asserted rather than a second copy: the adapter names the offer, its
+        bar, and where the statement lives, and `SKILL.md` says which of its
+        steps survives the handover.
+        """
+        lower = self._adapter_offer().lower()
+        assert self.QUALIFIER in lower, (
+            f"the adapter's `add` no longer names the {self.QUALIFIER!r} bar, so "
+            "a reader on that path cannot tell when the offer applies"
+        )
+        for option in ("do it now", "delegate it", "backlog it"):
+            assert option in lower, (
+                f"the adapter's `add` names the offer without {option!r}; a "
+                "reader who never opens `SKILL.md` gets a pointer with no idea "
+                "what it points at"
+            )
+        assert "step 2 is backend-independent" in self.skill.lower(), (
+            "`SKILL.md`'s `add` no longer says which of its steps survives the "
+            "handover to `adapter-mode.md`, so the next editor has no way to "
+            "know the offer is not markdown-only"
+        )
+
+    def test_the_adapter_translates_the_two_markdown_specific_halves(self):
+        """A pointer that hands over untranslatable instructions is worse than
+        none — the reader follows it, finds `accepted-by:`, and invents a
+        field. Both halves the offer depends on have a different spelling here:
+        the stage it reads, and the in-flight mark it writes.
+        """
+        adapter_add = self._adapter_add()
+        assert "--stage" in adapter_add and "stageless" in adapter_add.lower(), (
+            "the adapter's `add` no longer tells the agent to infer and pass "
+            "`--stage`, so items are filed stageless and the ready-to-build bar "
+            "has nothing to read"
+        )
+        assert "in-progress" in adapter_add and "--working-branch" in adapter_add, (
+            "the adapter's `add` no longer translates the in-flight mark; a "
+            "reader following the pointer would try to write `accepted-by:`, "
+            "which does not exist on this backend"
+        )
+
+
 class TestPlanTimePartition:
     """The plan-time half of the placement bet — `planning.md` and the template.
 

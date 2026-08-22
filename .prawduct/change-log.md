@@ -3,6 +3,59 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-22: the backlog instinct gets a third option
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+The delegation question has two moments. The first is a tangent arriving mid-chunk, which the
+always-injected digest now names. The second is quieter and much more common: an agent has decided
+some work is not this cycle's and reaches for the backlog. `/prawduct:backlog add` is the one
+stopping point that already fires at exactly that instant, so it is where the question goes —
+**delegate it, do it now, or backlog it**, said out loud, with the delegate's cost attached (a
+branch plus an integration debt, and how many ad-hoc branches are already awaiting integration).
+Filing becomes the third answer instead of the default. The judgment stays in
+`methodology/delegation.md`; the skill carries the trigger and a pointer.
+
+**The bound is the feature.** The prompt fires only when the item describes work **in this repo
+that is ready to build** — the same bar the digest's mid-chunk trigger uses, deliberately, so the
+two prompts state one rule rather than two. Everything earlier files silently and unchanged: a
+one-line idea, a research question, anything at an earlier `stage:`, and anything with no `stage:`
+at all. So does work you cannot open a worktree on, and any non-interactive machine call — the
+Critic files findings, it does not dispatch. This is not caution about scope creep; it is the
+feature's own discovery naming defensive asking as its live risk. A prompt that fires on every
+`add` is a prompt people route around, and a routed-around prompt is worse than no prompt, because
+it also teaches the reader to skim the ones that matter. `Delegation: off` in
+`project-preferences.md` silences it entirely, named inline rather than left behind the pointer:
+this step instructs, and a skill that never reads the guide would otherwise propose delegation in a
+repo that had declined it.
+
+**A gap found by reading the surface as its own reader.** The prompt needs to know whether an item
+is ready to build, and `add` could not tell it: `stage:` was a canonical field that `import`
+inferred and triage backfilled, while the one path that *creates* items never set it and did not
+even accept `--stage=`. Every item `add` filed was therefore born not-ready — including one the
+agent had just judged ready enough to offer delegating, which `pick` would then refuse to present
+as buildable. The adapter's `file` op had taken `--stage` all along; only this prose omitted it.
+`add` now accepts the flag and stamps the field the way `import` already infers it, leaving it
+unset when genuinely unclear.
+
+**One prompt, two `add` procedures — the half the first draft missed.** `SKILL.md`'s `### add` is
+the markdown-backend path; once `backlog_service_repo` is set, `adapter-mode.md` carries its own
+end-to-end `### add` that *replaces* it rather than adding to it — it re-states the dedup step for
+itself, which is the tell. So the offer as first written was silent on the backend this repo
+actually runs, which is precisely where the acceptance criterion pointed. There is still exactly one
+statement of it: `SKILL.md` now declares step 2 backend-independent (the question is about the work,
+not about where the item lands) and the adapter path routes to it, translating only the two halves
+that are spelled differently there — `--stage`, and an in-flight mark that is
+`status --to in-progress` plus `--working-branch` rather than `accepted-by:`.
+
+Guarded by eight cases pinned beside the doctrine's own, not in a backlog module — the shared bar is
+a fact *between* carriers, and a guard reading one of them cannot see them drift apart. They assert
+placement rather than wording: the offer sits after the dedup and before the append, because before
+the dedup it proposes delegating work already tracked, and after the append the item exists and the
+reflex has already won. Each was mutated red against the real files before being believed — one
+passed its first mutation and was tightened: `ready to build` appeared twice in the region it read,
+so stripping the bar out of the offer left the assertion satisfied by a neighbouring sentence.
+
 ## 2026-08-21: the clear verdict accounts for a delegate
 
 <!-- prawduct: type=feature | scope=adhoc-delegation -->
