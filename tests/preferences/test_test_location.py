@@ -113,9 +113,12 @@ class TestTestLocation:
         (nested / ".git").write_text("gitdir: /elsewhere/.git/worktrees/devchk\n")
         (nested / "tests" / "preferences" / "test_dummy.py").write_text("def test_y(): pass\n")
 
-        found = _all_test_files(tmp_path)
-        assert real in found
-        assert nested not in [p.parent.parent.parent for p in found], found
+        # Exact, not depth-coupled. The first cut asserted
+        # `nested not in [p.parent.parent.parent for p in found]`, which only
+        # detects a leak at the one depth this fixture plants — a leak from
+        # `devchk/tests/test_x.py` or `devchk/a/b/c/test_x.py` would have
+        # satisfied it. The sibling below already pins the predicate this way.
+        assert _all_test_files(tmp_path) == [real]
 
     def test_walk_excludes_a_nested_clone_or_submodule(self, tmp_path: Path):
         """The same predicate covers a `.git` DIRECTORY — a nested clone or a

@@ -952,8 +952,20 @@ def _boundary_retained_marker_notice(prawduct_dir: Path, outcome: str) -> str:
             "  Only if nothing lands: abandon the review explicitly, then re-dispatch:\n"
             "    prawduct-hook critic-end"
         )
-    return head + reading + (
-        "  Nothing here is worth keeping:\n"
+    # R-6: this tail used to hardcode "Nothing here is worth keeping", printed
+    # directly beneath a reading that (since the classifier landed) may say the
+    # partials ARE real reviewer output. The verdict now comes from the same
+    # module the reading does — a verdict authored beside a shared sentence is
+    # not shared by being adjacent to it.
+    try:
+        _keep, verdict = _critic_consolidate().anything_worth_keeping(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        _keep, verdict = True, (
+            "  Could not tell whether reviewer output is attached — inspect before\n"
+            "  discarding anything.\n"
+        )
+    return head + reading + verdict + (
+        "  Clear the marker when you have decided:\n"
         "    prawduct-hook critic-end"
     )
 
@@ -980,10 +992,12 @@ def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
     """
     # The excuse has to cover every state that reaches it, and since #676 those
     # are three, not one: absent, corrupt, and stale-schema (the shared reading
-    # now says which — `critic_consolidate.manifest_condition`). A stale-schema
-    # manifest usually DOES carry an id, so the read below normally succeeds and
-    # this string is never printed for it; the wording stays generic because the
-    # one case that reaches it is "the id could not be read", whatever the cause.
+    # now says which — `critic_consolidate.manifest_condition`). Deliberately
+    # says nothing about how OFTEN each shape carries an id: the first cut
+    # claimed a stale-schema manifest "usually DOES", which is false for the v2
+    # shape #676 reports — that one fails validation precisely BECAUSE `id` is
+    # missing, so this fallback is exactly what prints. The one case reaching
+    # here is "the id could not be read", whatever the cause.
     review_id = "(id unavailable — no usable dispatch manifest)"
     state, reading = "unknown", ""
     try:
@@ -1032,9 +1046,16 @@ def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
             "  Inspect before acting:\n"
             "    prawduct-hook evidence status"
         )
-    return head + reading + (
-        "  Nothing recoverable was attached to it, and no gate will mention this review\n"
-        "  again. Re-run the review when you are ready:\n"
+    try:
+        _keep, verdict = _critic_consolidate().anything_worth_keeping(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        _keep, verdict = True, (
+            "  Could not tell whether reviewer output is attached — inspect before\n"
+            "  discarding anything.\n"
+        )
+    return head + reading + verdict + (
+        "  No gate will mention this review again — the marker is gone. Re-run it when\n"
+        "  you are ready:\n"
         "    /prawduct:critic"
     )
 
@@ -2444,6 +2465,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
                     condition, detail = "unknown", ""
                     stale = corrupt = None
+                    _cc = None
                 # The preservation clause names the act that actually archives.
                 # `critic-end` does NOT: it clears the marker and nothing else
                 # (its own docstring says so), so pointing at it here would be
@@ -2451,10 +2473,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # archives is the next dispatch (`_archive_leftovers`, which
                 # prints the `critic-restore` handle) — and the remedy below is
                 # `/prawduct:critic`, which is that dispatch.
-                _kept = (
-                    "  cannot be consolidated. The partials beside it are NOT lost: the\n"
-                    "  re-run below archives them first and prints a `critic-restore` handle.\n"
-                )
+                #
+                # DERIVED, not asserted (R-11). The first cut stated flatly that
+                # "the partials beside it are NOT lost" — for any stale-schema or
+                # corrupt manifest, INCLUDING one sitting alone with no reviewer
+                # output at all, which `pending_state` reaches identically. Its
+                # own regression test planted just `manifest.json` and then
+                # pinned that sentence, so the fixture asserted a claim that was
+                # false in the very disk it built.
+                try:
+                    _kept = "  cannot be consolidated.\n" + _cc.anything_worth_keeping(prawduct_dir)[1]
+                except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                    _kept = "  cannot be consolidated.\n"
                 if condition == stale:
                     cause = (
                         "  a coordinator manifest is present and parses, but was written by an\n"
@@ -2467,9 +2497,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         + _kept
                     )
                 elif condition == "unknown":
+                    # Says what is known, which is nothing. The first cut named
+                    # one cause ("the governance lib failed to load") for a
+                    # broad `except` that also catches a raise from inside the
+                    # classifier — a justification naming a channel it cannot
+                    # have verified, which is the shape this whole change is
+                    # about. The word itself is the module's
+                    # (`MANIFEST_UNKNOWN`), not one invented here.
                     cause = (
-                        "  the coordinator manifest could not be classified (the governance lib\n"
-                        "  failed to load), so the pending review's state is genuinely unknown.\n"
+                        "  the coordinator manifest could not be classified at all, so the pending\n"
+                        "  review's state is genuinely unknown — inspect before discarding\n"
+                        "  anything:\n"
+                        "    prawduct-hook evidence status\n"
                     )
                 else:
                     cause = (

@@ -27,6 +27,8 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from conftest import V2_MANIFEST
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
@@ -420,22 +422,39 @@ class TestChunk05ConsolidateOrBlock:
         _set_marker(prawduct)
         d = prawduct / ".critic-partials"
         d.mkdir()
-        (d / "manifest.json").write_text(json.dumps({
-            "mode": "final-chunk-review", "mode_chosen_by": "rule-3",
-            "roster": ["correctness", "design", "sustainability"],
-            "commit_reviewed": "abc", "files_reviewed": ["x.py"],
-            "scope": "demo", "model": "opus",
-        }))
+        (d / "manifest.json").write_text(json.dumps(V2_MANIFEST))
         result = _run_stop(tmp_path, status=_CODE_DIFF)
         assert result.returncode == 2
         assert "OLDER PRAWDUCT" in result.stderr
         assert "not valid JSON" not in result.stderr
         assert "no coordinator manifest is present" not in result.stderr
-        # The partials are preserved, and the message says so — this branch used
-        # to leave an operator to guess, and the refusal surface actively told
-        # them the opposite.
-        assert "are NOT lost" in result.stderr
+        # This fixture plants the manifest ALONE, so the honest verdict is that
+        # there is nothing to preserve. The first cut asserted "are NOT lost"
+        # here, pinning a claim that was false in the very disk it built (R-11).
+        assert "No reviewer output is on disk" in result.stderr
+        # Scoped to the preservation clause, not to the whole message: the
+        # escape-hatch text below it names `critic-restore` on every branch and
+        # is right to, so a bare "critic-restore not in stderr" tests the wrong
+        # sentence.
+        assert "reviewer partial(s) ARE on disk" not in result.stderr
         assert "critic-restore" in result.stderr
+
+    def test_stale_schema_with_partials_says_they_are_preserved(self, tmp_path):
+        """The other half of the same disk — and the half that matters, because
+        an operator told nothing is attached will not run `critic-restore`
+        before the archive ring evicts real reviewer output."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        d = prawduct / ".critic-partials"
+        d.mkdir()
+        (d / "manifest.json").write_text(json.dumps(V2_MANIFEST))
+        (d / "correctness.rev-old.json").write_text('{"role": "correctness"}')
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert "OLDER PRAWDUCT" in result.stderr
+        assert "1 reviewer partial(s)" in result.stderr
+        assert "critic-restore" in result.stderr
+        assert "No reviewer output is on disk" not in result.stderr
 
     def test_self_heal_still_no_sweep_on_incomplete(self, tmp_path):
         """The incomplete-block path must not sweep the marker it reads (the

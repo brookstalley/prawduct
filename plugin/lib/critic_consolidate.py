@@ -2076,6 +2076,88 @@ MANIFEST_ABSENT = "absent"
 MANIFEST_CORRUPT = "corrupt"
 MANIFEST_STALE_SCHEMA = "stale-schema"
 MANIFEST_VALID = "valid"
+#: The fifth value, and it lives HERE rather than at a call site. A caller whose
+#: classify call raised needs a word for "could not tell", and the first cut let
+#: ``cmd_stop`` invent one locally — re-opening in miniature the exact split this
+#: module exists to close (a vocabulary is not shared by being mostly shared).
+#: :func:`manifest_condition` never returns it; only a caller that caught an
+#: exception does.
+MANIFEST_UNKNOWN = "unknown"
+
+#: A validation reason can be a paragraph. ``validate_manifest``'s
+#: ``missing 'rendezvous'`` branch — the shape a pre-3.3.4 archive actually has —
+#: runs ~700 characters and prescribes its OWN recovery sequence. Embedded
+#: mid-sentence in an operator message that then gives a different remedy, that
+#: is one disk with two recovery stories, which is the defect this module exists
+#: to end, arriving through a borrowed string instead of a re-derived fact.
+#: Message surfaces take :func:`short_detail`; logs and tests can have it whole.
+_DETAIL_MAX_CHARS = 120
+
+
+def short_detail(detail: str) -> str:
+    """A message-safe one-clause form of a validation reason.
+
+    Keeps the first sentence/clause and hard-caps the length, so a reason that
+    carries its own embedded remedy cannot smuggle it into a surface that is
+    about to name a different one. Returns ``""`` unchanged for no detail.
+    """
+    if not detail:
+        return ""
+    first = detail.split("\n", 1)[0].strip()
+    # Cut at the first sentence end that is not a version dot ("v3.2.6").
+    for end in (". ", "; "):
+        head, sep, _rest = first.partition(end)
+        if sep and len(head) >= 20:
+            first = head
+            break
+    if len(first) > _DETAIL_MAX_CHARS:
+        first = first[: _DETAIL_MAX_CHARS - 1].rstrip() + "…"
+    return first
+
+
+def anything_worth_keeping(prawduct_dir: Path) -> tuple[bool, str]:
+    """Is there reviewer output here worth preserving, and the clause saying so.
+
+    **The one home for the keep-or-discard VERDICT**, added because routing the
+    *reading* through one place turned out not to route this (#676 follow-up).
+    Five surfaces compose the shared reading; three were repointed at
+    :func:`manifest_condition` and two kept a locally-authored tail — so a
+    stale-schema manifest printed "any partials beside it are real reviewer
+    output" and then, four lines later, "Nothing here is worth keeping". One
+    message, both verdicts, discard last. The swept-marker variant is the worse
+    of the two: the marker is gone, so that notice is the ONLY report the
+    operator ever gets, and one told nothing was attached will not run
+    ``critic-restore`` before the archive ring evicts the partials.
+
+    A verdict authored beside a shared sentence is not shared by being adjacent
+    to it. So this returns the verdict itself, and callers append the clause
+    rather than composing their own.
+
+    Two inputs, and the second is why hedging was not enough: the manifest's
+    condition, and whether reviewer partials are actually on disk. A
+    stale-schema manifest sitting ALONE has nothing to preserve, and a message
+    promising a ``critic-restore`` handle there sends an operator looking for an
+    archive with nothing in it (R-11).
+    """
+    condition, _detail, _manifest = manifest_condition(prawduct_dir)
+    partials = [
+        p for p in partials_dir(prawduct_dir).glob("*.json")
+        if p.name != MANIFEST_NAME
+    ] if partials_dir(prawduct_dir).is_dir() else []
+    if not partials:
+        return False, (
+            "  No reviewer output is on disk — nothing here is worth keeping.\n"
+        )
+    if condition in (MANIFEST_STALE_SCHEMA, MANIFEST_CORRUPT):
+        return True, (
+            f"  {len(partials)} reviewer partial(s) ARE on disk and are real output. The next\n"
+            "  dispatch archives them rather than deleting them, printing a\n"
+            "  `critic-restore` handle as it goes — do not delete them by hand.\n"
+        )
+    return True, (
+        f"  {len(partials)} reviewer partial(s) are on disk; the next dispatch archives\n"
+        "  rather than deletes them, printing a `critic-restore` handle.\n"
+    )
 
 
 def manifest_condition(prawduct_dir: Path) -> tuple[str, str, dict | None]:
@@ -2125,7 +2207,13 @@ def manifest_condition(prawduct_dir: Path) -> tuple[str, str, dict | None]:
         return MANIFEST_ABSENT, "", None
     try:
         manifest = json.loads(mpath.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
+        # ValueError, not `json.JSONDecodeError` (#676 follow-up, R-7): a
+        # manifest that is not decodable UTF-8 raises `UnicodeDecodeError` out
+        # of `read_text()`, which the narrower clause let through — so a
+        # refusal that called this tracebacked instead of refusing, at the one
+        # moment the caller is trying to explain a broken file. JSONDecodeError
+        # is itself a ValueError, so the wider clause is a superset, not a swap.
         return MANIFEST_CORRUPT, str(exc), None
     ok, reason = validate_manifest(manifest)
     if not ok:
@@ -2216,13 +2304,23 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
     still :func:`pending_state`'s four-value vocabulary, because that is what
     callers branch on — but ``"unreadable"`` covers two genuinely different
     disks and used to print one sentence that was false for one of them. A
-    stale-schema manifest is readable, DID record what it was reviewing, and
-    sits beside partials the archive step preserves on purpose; being told
-    "nothing here is worth keeping" invites an operator to discard exactly what
-    the mechanism is protecting. The three cases now read differently and are
-    classified in one place (:func:`manifest_condition`). The invariant is
-    unchanged and is the reason this is not three functions: whatever the
-    surface, the sentence describing disk comes from here.
+    stale-schema manifest is readable and DID record what it was reviewing, so
+    being told "no readable dispatch manifest" is simply wrong. The three cases
+    now read differently and are classified in one place
+    (:func:`manifest_condition`).
+
+    **This describes the MANIFEST and nothing else.** It deliberately makes no
+    keep-or-discard claim — that is :func:`anything_worth_keeping`, and the
+    separation is load-bearing rather than tidy. The first repair had the
+    stale-schema reading assert that partials beside it were real reviewer
+    output; composed with a verdict computed from the actual disk, that produced
+    "…printing a `critic-restore` handle" directly above "No reviewer output is
+    on disk", which is the same self-contradiction one layer in. The manifest's
+    condition and whether reviewer output exists are two independent facts, and
+    a sentence that answers both from one of them will be wrong whenever they
+    disagree — an orphaned partial set with no manifest is exactly that disk.
+    ``test_no_composed_message_contradicts_itself`` composes every surface under
+    every condition and is what caught it.
     """
     state, missing = pending_state(prawduct_dir)
     if state == "complete":
@@ -2257,21 +2355,18 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
             )
             reading = (
                 "  On disk: a dispatch manifest written by an OLDER PRAWDUCT — it parses,\n"
-                f"  but not against this version's schema ({detail}).{recorded}\n"
-                "  It cannot be consolidated, but it is not junk: any partials beside it\n"
-                "  are real reviewer output, and the NEXT dispatch archives rather than\n"
-                "  deletes them, printing a `critic-restore` handle as it goes.\n"
+                f"  but not against this version's schema ({short_detail(detail)}).{recorded}\n"
+                "  It cannot be consolidated.\n"
             )
         elif condition == MANIFEST_CORRUPT:
             reading = (
-                f"  On disk: a dispatch manifest that is not valid JSON ({detail}) — the\n"
-                "  write that produced it was interrupted. It cannot be consolidated; any\n"
-                "  partials beside it are archived by the next dispatch, never deleted.\n"
+                f"  On disk: a dispatch manifest that is not valid JSON ({short_detail(detail)}) —\n"
+                "  the write that produced it was interrupted. It cannot be consolidated.\n"
             )
         else:
             reading = (
                 "  On disk: no dispatch manifest at all — a review set the marker but\n"
-                "  never recorded what it was reviewing. Nothing here is worth keeping.\n"
+                "  never recorded what it was reviewing.\n"
             )
     return state, reading
 
@@ -2306,7 +2401,7 @@ def active_dispatch_refusal(
     rather than leaving it to a guess.
     """
     age_note = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
-    prior_id = "(id unavailable — manifest unreadable)"
+    prior_id = "(id unavailable — no usable dispatch manifest)"
     try:
         prior_id = json.loads(manifest_path(prawduct_dir).read_text())["id"]
     except (OSError, json.JSONDecodeError, KeyError, TypeError):

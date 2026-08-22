@@ -58,9 +58,22 @@ of their decisions. The distinction is real only when *telling someone*, so it l
 telling. Pinned both ways: a test asserts the collapse holds, and a test asserts the three readings
 are mutually distinguishable.
 
-**One reading kept its harsh verdict.** For a genuinely absent manifest, "nothing here is worth
-keeping" is *true*, and a fix that softened every message would have discarded a correct verdict
-along with the false ones. It still says it.
+**The keep-or-discard verdict is a SECOND home, and finding that out took a second round.** The
+first repair routed the *reading* through one place and left two of five surfaces authoring their
+own tail — so a stale-schema manifest still printed "any partials beside it are real reviewer
+output" and then, four lines later, "Nothing here is worth keeping". The swept-marker variant was
+the worse of the two: the marker is gone, so that notice is the only report the operator ever gets,
+and one told nothing was attached will not run `critic-restore` before the archive ring evicts the
+partials. A verdict authored beside a shared sentence is not shared by being adjacent to it.
+
+So `anything_worth_keeping` owns it, and the readings now describe **the manifest and nothing else**.
+That separation is load-bearing rather than tidy: the manifest's condition and whether reviewer
+output exists are two independent facts, and any sentence answering both from one of them is wrong
+whenever they disagree — an orphaned partial set with no manifest is exactly that disk, and so is a
+stale manifest sitting alone. The first cut of the *repair* reintroduced the contradiction one layer
+in, and was caught by the test written to catch it: `test_no_composed_message_contradicts_itself`
+composes every surface under every condition and asserts none says both things at once. Bounding the
+class by construction is what stops this recurring at the next surface, as it had three times.
 
 **#676's other two acceptance criteria were already discharged and are recorded as such rather than
 re-fixed.** A branch in an agent worktree has had a route to a recorded review since #648 —

@@ -198,18 +198,7 @@ def _store_lines(repo: Path) -> list[str]:
 
 FAKE_REVIEW_ID = "rev-test-0001"
 
-#: The v2 (pre-3.3.4, model-written) manifest shape — parseable JSON that
-#: carries none of the v3 interval fields. ONE definition because two very
-#: different pins now read it: the CRT-W2NV validation regression (nothing
-#: hand-authored passes) and the #676 message pins (what an operator is TOLD
-#: about a manifest in this shape). A second copy is how those two drift into
-#: describing different files.
-_V2_MANIFEST = {
-    "mode": "final-chunk-review", "mode_chosen_by": "rule-3",
-    "roster": ["correctness", "design", "sustainability"],
-    "commit_reviewed": "abc", "files_reviewed": ["x.py"],
-    "scope": "demo", "model": "opus",
-}
+from conftest import V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home (R-8)
 
 
 def _review_id(repo: Path) -> str:
@@ -2010,8 +1999,7 @@ class TestPendingRosterReadingNamesTheRealCondition:
     def test_stale_schema_does_not_claim_the_manifest_is_unreadable(self, tmp_path):
         """The three false clauses, pinned out one at a time.
 
-        A v2 manifest IS readable, DID record what it was reviewing, and sits
-        beside partials `_archive_leftovers` preserves on purpose."""
+        A v2 manifest IS readable and DID record what it was reviewing."""
         state, reading = self._reading(tmp_path, json.dumps(_V2_MANIFEST))
         assert state == "unreadable"  # the DECISION is unchanged
         assert "no readable dispatch manifest" not in reading
@@ -2019,8 +2007,11 @@ class TestPendingRosterReadingNamesTheRealCondition:
         assert "Nothing here is worth keeping" not in reading
         # ...and says the true thing instead, including what it still knows.
         assert "OLDER PRAWDUCT" in reading
-        assert "abc" in reading, "the recorded commit is what decides if partials are worth keeping"
-        assert "NEXT dispatch archives rather than" in reading
+        assert "abc" in reading, "what it recorded is what the reading exists to surface"
+        # The keep/discard verdict is deliberately NOT here: it is computed from
+        # the partials on disk, which this reading cannot see. See
+        # TestNoSurfacePairsPreservationWithDiscard.
+        assert "worth keeping" not in reading
 
     def test_corrupt_says_corrupt_not_stale(self, tmp_path):
         state, reading = self._reading(tmp_path, "{not json")
@@ -2028,14 +2019,15 @@ class TestPendingRosterReadingNamesTheRealCondition:
         assert "not valid JSON" in reading
         assert "OLDER PRAWDUCT" not in reading, "an interrupted write is not a version skew"
 
-    def test_absent_keeps_the_discard_verdict(self, tmp_path):
-        """The one case where "nothing is worth keeping" is TRUE keeps saying
-        it — a fix that made every reading gentle would have thrown away a
-        correct verdict along with the false ones."""
+    def test_absent_says_absent(self, tmp_path):
+        """The harsh verdict moved to `anything_worth_keeping`, which computes
+        it from the disk rather than inferring it from the manifest — an absent
+        manifest beside ORPHANED partials is a real state, and a reading that
+        pre-judged it would contradict the verdict composed beneath it."""
         state, reading = self._reading(tmp_path)
         assert state == "none"
         assert "no dispatch manifest at all" in reading
-        assert "Nothing here is worth keeping" in reading
+        assert "worth keeping" not in reading
 
     def test_the_three_readings_are_mutually_distinguishable(self, tmp_path):
         """The point of the change is that an operator can tell which disk they
@@ -2073,6 +2065,151 @@ class TestActiveDispatchRefusalDescribesTheDisk:
         # The recovery was already named and stays named — #676's third
         # acceptance criterion is about the DIAGNOSIS, not the remedy.
         assert "prawduct-hook critic-end" in message
+
+
+class TestAnythingWorthKeeping:
+    """The keep-or-discard VERDICT has one home (#676 follow-up, R-6).
+
+    Routing the *reading* through one place did not route this: two of five
+    surfaces kept a locally-authored tail, so a stale-schema manifest printed
+    "any partials beside it are real reviewer output" and then, four lines
+    later, "Nothing here is worth keeping" — one message, both verdicts,
+    discard last.
+    """
+
+    def _verdict(self, tmp_path, text=None, partials=0):
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        if text is not None:
+            _plant(pd, text)
+        for i in range(partials):
+            (pd / ".critic-partials" / f"role{i}.rev-x.json").write_text("{}")
+        return cc.anything_worth_keeping(pd)
+
+    def test_a_lone_stale_manifest_has_nothing_to_keep(self, tmp_path):
+        """R-11: the disk that broke the first cut. A stale-schema manifest
+        sitting alone promises a `critic-restore` handle with nothing behind
+        it — the operator goes looking for an empty archive."""
+        keep, clause = self._verdict(tmp_path, json.dumps(_V2_MANIFEST), partials=0)
+        assert keep is False
+        assert "nothing here is worth keeping" in clause.lower()
+        assert "critic-restore" not in clause
+
+    def test_a_stale_manifest_with_partials_is_worth_keeping(self, tmp_path):
+        keep, clause = self._verdict(tmp_path, json.dumps(_V2_MANIFEST), partials=2)
+        assert keep is True
+        assert "2 reviewer partial(s)" in clause
+        assert "critic-restore" in clause
+
+    def test_absent_manifest_with_partials_is_still_worth_keeping(self, tmp_path):
+        """The verdict keys on reviewer output, not on the manifest: orphaned
+        partials are real output whether or not anything describes them."""
+        keep, clause = self._verdict(tmp_path, None, partials=1)
+        assert keep is True
+
+    def test_the_manifest_itself_is_not_counted_as_reviewer_output(self, tmp_path):
+        keep, _clause = self._verdict(tmp_path, json.dumps(_V2_MANIFEST), partials=0)
+        assert keep is False, "manifest.json is not a partial"
+
+
+class TestNoSurfacePairsPreservationWithDiscard:
+    """The construction R-6 asked for, as a property rather than four string
+    assertions: compose every operator-facing message under every manifest
+    condition and assert none of them says both things at once. This is what
+    stops the defect recurring at the NEXT surface, as it had three times."""
+
+    _DISCARD = ("nothing here is worth keeping", "nothing recoverable was attached")
+    _PRESERVE = ("critic-restore", "are real output", "archives them rather than")
+
+    def _compose(self, tmp_path, text, partials):
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        if text is not None:
+            _plant(pd, text)
+        for i in range(partials):
+            (pd / ".critic-partials" / f"role{i}.rev-x.json").write_text("{}")
+        _state, reading = cc.pending_roster_reading(pd)
+        _keep, verdict = cc.anything_worth_keeping(pd)
+        return {
+            "reading+verdict": reading + verdict,
+            "dispatch_refusal": cc.active_dispatch_refusal(pd, 60.0, True),
+            "restore_refusal": cc.restore_refusal(pd, ["correctness.x.json"], False),
+        }
+
+    @pytest.mark.parametrize("partials", [0, 2])
+    @pytest.mark.parametrize("text", [None, "{not json", "V2"])
+    def test_no_composed_message_contradicts_itself(self, tmp_path, text, partials):
+        payload = json.dumps(_V2_MANIFEST) if text == "V2" else text
+        root = tmp_path / f"{text}-{partials}"
+        for name, message in self._compose(root, payload, partials).items():
+            low = message.lower()
+            says_discard = any(d in low for d in self._DISCARD)
+            says_preserve = any(p in low for p in self._PRESERVE)
+            assert not (says_discard and says_preserve), (
+                f"{name} says BOTH under text={text!r} partials={partials}:\n{message}"
+            )
+
+
+class TestShortDetail:
+    """R-12: a validation reason can be a seven-sentence paragraph carrying its
+    own recovery sequence. Embedded in a message that then gives a different
+    remedy, that is one disk with two recovery stories."""
+
+    def test_the_rendezvous_reason_is_not_smuggled_whole_into_a_message(self, tmp_path):
+        """The manifest shape #676 actually describes — a v3-ish record missing
+        only `rendezvous`. No earlier fixture reached it: `_V2_MANIFEST`'s
+        invalid `mode` short-circuits validation first, so the composed output
+        for the MOTIVATING disk had never been read."""
+        manifest = _manifest_dict()
+        manifest.pop("rendezvous")
+        ok, reason = cc.validate_manifest(manifest)
+        assert not ok and "rendezvous" in reason
+        assert len(reason) > 200, "fixture guard: this is the long remedy-bearing reason"
+
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        _plant(pd, json.dumps(manifest))
+        _state, reading = cc.pending_roster_reading(pd)
+        assert "OLDER PRAWDUCT" in reading
+        # The borrowed reason must not bring its own competing remedy along.
+        assert "critic-end" not in reading
+        assert "/reload-plugins" not in reading
+        assert len(reading) < len(reason)
+
+    def test_short_detail_keeps_a_short_reason_intact(self):
+        assert cc.short_detail("missing/empty 'id'") == "missing/empty 'id'"
+
+    def test_short_detail_is_empty_for_no_detail(self):
+        assert cc.short_detail("") == ""
+
+
+class TestManifestConditionIsTotal:
+    """R-7: the vocabulary is only a vocabulary if every disk maps into it."""
+
+    def test_undecodable_manifest_is_corrupt_not_a_traceback(self, tmp_path):
+        """`read_text()` raises UnicodeDecodeError — a ValueError, not a
+        JSONDecodeError — so the narrower clause let it out of a refusal at the
+        one moment the caller was trying to explain a broken file."""
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        (pd / ".critic-partials" / "manifest.json").write_bytes(b"\xff\xfe\x00binary")
+        condition, detail, manifest = cc.manifest_condition(pd)
+        assert condition == cc.MANIFEST_CORRUPT
+        assert detail and manifest is None
+        # ...and every surface that composes it survives the same disk.
+        assert cc.pending_roster_reading(pd)[0] == "unreadable"
+        assert cc.restore_refusal(pd, ["x.json"], False)
+        assert cc.anything_worth_keeping(pd)[0] is False
+
+    def test_the_unknown_word_belongs_to_the_module(self):
+        """A caller that catches an exception needs a word for "could not
+        tell"; the first cut invented one at the call site, re-opening in
+        miniature the split this module exists to close."""
+        assert cc.MANIFEST_UNKNOWN == "unknown"
+        assert cc.MANIFEST_UNKNOWN not in {
+            cc.MANIFEST_ABSENT, cc.MANIFEST_CORRUPT,
+            cc.MANIFEST_STALE_SCHEMA, cc.MANIFEST_VALID,
+        }
 
 
 class TestRestoreRefusalDescribesTheDisk:
