@@ -429,7 +429,7 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   hold what `open` excluded; the git-tracked source file is the actual preservation mechanism. The
   consequence the owner must hear at scrub time — skipped items are git history, not searchable
   backlog, because the skill stops reading the source file after cutover — is stated with the lever
-  in `skills/backlog/migration-scrub.md` step 2c.)* The importer honors the chosen scope through an
+  in `skills/backlog/migration-scrub.md`'s archive-scope decision step.)* The importer honors the chosen scope through an
   `--archive-scope` selector (AG1 — a deterministic lever, not a model inference). `open` also
   **reduces the total write volume** of a large migration (fewer creates) — but the write-*rate*
   ceiling is enforced by the Pacer, **not** by this lever; crediting the archive window as the

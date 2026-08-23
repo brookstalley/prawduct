@@ -221,7 +221,7 @@ Each was verified **against the tree**, not read off its own annotation:
 
 | Item | Verification performed | Proposed |
 |---|---|---|
-| **BKL-2Q7F** | `migration-scrub.md` Step 0 (target selection + owner confirm + `provision`) present; all seven `--repo` occurrences carry `<target>` | `shipped` |
+| **BKL-2Q7F** | `migration-scrub.md`'s target-selection step (select and confirm the target repo, owner confirm, `provision`) present; all seven `--repo` occurrences carry `<target>` | `shipped` |
 | **BKL-5N9W** | `skills/backlog/SKILL.md` grants 12 everyday ops explicitly; `import`/`merge`/`provision`/`reconcile-labels` absent, with the rationale stated in-file | `shipped` |
 | **BKL-8V3D** | `adapter-mode.md` now reads "No generic preview-or-apply flag sits over those mutations"; `tests/test_backlog_instruction_surface.py` exists | `shipped` |
 | **BKL-72AS** | Run live through the production parser: `MIG-M4-REMOVE` parses, `is_pfx` → True, **0 unaliasable items** in the whole corpus | `shipped` |
@@ -506,7 +506,9 @@ namespaced base labels and touched none of the repo's existing nine (PROV-1, cre
 
 ## Migration-session runbook pointer
 
-`skills/backlog/migration-scrub.md` (steps 0–4, incl. 2b restructure pre-pass). Sequence:
+`skills/backlog/migration-scrub.md` — the whole runbook, from target selection through the
+cutover and the post-gate disposition step, including the restructure pre-pass that follows owner
+confirmation. Sequence:
 re-confirm sign-off → author the v1 restructure plan for the keep set → `restructure-preview` →
 owner batch approval → `import --restructure` (git history of the source is the pre-import
 backup) → `export` backup **after** the import (it dumps the migrated repo — running it before

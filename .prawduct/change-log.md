@@ -9966,8 +9966,8 @@ beside the rest of the Status parsing, and `_parse_build_plan_status` now applie
 consumer, gate and report alike, is correct by construction instead of by a fourth local patch.
 A test pins that only `buildplan_refs` walks the Status section.
 
-`_parse_build_plan_status`, `_current_chunk_id_from_status`, `_has_active_build_plan_file` and
-`_get_active_work` now take the **project dir**, not `.prawduct/`. The wider signature is the
+`_parse_build_plan_status`, `_current_chunk_id_from_status`, `_get_active_work` and
+`_get_work_in_progress` now take the **project dir**, not `.prawduct/`. The wider signature is the
 point: resolving "current" reads git, and every call site should say so. A `.parent` derivation
 would have worked and kept the sweep invisible — which is how a local fix escaped notice twice.
 

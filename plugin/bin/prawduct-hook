@@ -1179,7 +1179,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
     while a Critic review is plausibly in progress so an independent reviewer
     cannot clobber the session it is reviewing. A continuation neither sweeps nor
-    refuses — it mutates nothing, so the guard has nothing to protect.
+    refuses — it mutates no session state, so the guard has nothing to protect.
 
     ``--brief-only`` exists because the SessionStart matcher is the only thing
     that knows whether this invocation ends a session or continues one, and
