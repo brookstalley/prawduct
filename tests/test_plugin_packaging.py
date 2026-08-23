@@ -232,7 +232,21 @@ def test_no_shipped_file_points_at_an_unshipped_plugin_root_path():
     """
     import re
 
-    pattern = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([A-Za-z0-9_.@/-]+)")
+    # BOTH spellings of "go read this file inside the plugin". The check used to key
+    # on `${CLAUDE_PLUGIN_ROOT}` alone, and when the prose reads were repointed to the
+    # skill-dir-relative form — because the plugin-root variable does not expand in
+    # prose — every one of them fell out of this sweep and out of
+    # `test_path_reference_resolution.py` too, whose extractor rejects any token
+    # holding `$`, `{` or `}`. They were checked by nothing, and a relocation could
+    # strand them with the suite green. Keying on both sigils keeps one owner for the
+    # question regardless of which spelling a file uses.
+    pattern = re.compile(
+        r"\$\{CLAUDE_PLUGIN_ROOT\}/([A-Za-z0-9_.@/-]+)"
+        # The captured segment may not itself start with `.`, so a bare
+        # `${CLAUDE_SKILL_DIR}/../../` — the plugin root with no file named, which is
+        # how prose refers to the root itself — is not read as a reference to `..`.
+        r"|\$\{CLAUDE_SKILL_DIR\}/(?:\.\./)+([A-Za-z0-9_@-][A-Za-z0-9_.@/-]*)"
+    )
     # Compare against exact tracked paths, not just top-level names. A first-segment check passes
     # `${CLAUDE_PLUGIN_ROOT}/docs/work-model.md` because `docs` ships -- yet that file moved to
     # documentation/ in 003599e, i.e. the exact defect this bundle fixed by hand. And it must read
@@ -253,10 +267,12 @@ def test_no_shipped_file_points_at_an_unshipped_plugin_root_path():
             text = (REPO / rel).read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        for ref in pattern.findall(text):
+        for plugin_root_ref, skill_dir_ref in pattern.findall(text):
+            ref = plugin_root_ref or skill_dir_ref
+            sigil = "${CLAUDE_PLUGIN_ROOT}" if plugin_root_ref else "${CLAUDE_SKILL_DIR}/../.."
             ref = ref.rstrip(".,;:)`").rstrip("/")  # trailing-slash dir refs are legitimate
             if ref not in shipped_exact and ref not in shipped_dirs:
-                offenders.append(f"{rel} -> ${{CLAUDE_PLUGIN_ROOT}}/{ref}")
+                offenders.append(f"{rel} -> {sigil}/{ref}")
     assert not offenders, (
         "shipped files reference plugin-root paths that are not distributed:\n  "
         + "\n  ".join(sorted(offenders))

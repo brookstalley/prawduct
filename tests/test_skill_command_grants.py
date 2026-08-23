@@ -56,6 +56,59 @@ _INVOCATION_RE = re.compile(r"prawduct-hook\s+([a-z][a-z0-9-]*)")
 #: does — lets a skill hold only the self-hosted half and still read as covered.
 _BARE_GRANT_RE = re.compile(r"(?<![\w/-])prawduct-hook\s+([a-z][a-z0-9-]*)")
 
+#: A ``prawduct-hook`` invocation, as the SEQUENCE of subcommand words after the
+#: binary — not just the first one. Comparing first tokens alone is what let a
+#: group-level call read as granted: `Bash(prawduct-hook backlog list *)` and the
+#: instruction `prawduct-hook backlog --help` both reduce to `backlog`, so a skill
+#: that may run thirteen named ops looked equally able to run the group itself. It
+#: cannot — a grant is a literal prefix match — so the instruction prompts, and a
+#: prompt the model cannot get answered is indistinguishable from the command
+#: failing.
+_SUBCOMMAND_WORD = re.compile(r"^[a-z][a-z0-9-]*$")
+
+
+def _hook_call_key(text: str, start: int) -> tuple[str, ...]:
+    """The command words following a ``prawduct-hook`` match at ``start``.
+
+    Two shapes end a command name and begin its arguments: a token that is not a
+    bare subcommand word, and the end of the code span it was written in. Both are
+    honoured, because prose runs straight on from a closing backtick — reading two
+    tokens blind turns "``prawduct-hook review-stats`` for the history" into a
+    command called ``review-stats for``.
+
+    A ``--flag`` IS kept, as the second element and the last. That is what makes a
+    group-level call distinguishable from the group: ``backlog --help`` is a command
+    a skill must be granted, and a grant naming thirteen sub-ops does not confer it.
+    """
+    key: list[str] = []
+    for raw in text[start:].split()[:2]:
+        ended = "`" in raw
+        token = raw.split("`")[0].strip(",.;:)").rstrip("*")
+        if token.startswith("--"):
+            key.append(token)
+            break
+        if not _SUBCOMMAND_WORD.match(token):
+            break
+        key.append(token)
+        if ended:
+            break
+    return tuple(key)
+
+
+def _covers(grant_key: tuple[str, ...], call_key: tuple[str, ...]) -> bool:
+    """Whether a grant covers a call: the grant must be a PREFIX of the call.
+
+    A broader grant covers a narrower call (``backlog *`` covers ``backlog list``);
+    the reverse is the defect — ``backlog list *`` does not confer a bare
+    ``backlog --help``. A call naming only a group is a REFERENCE rather than an
+    invocation (the binary refuses it without an op), so it is satisfied by any
+    grant into that group and this rule only bites where a second token is written.
+    """
+    if len(call_key) == 1:
+        return bool(grant_key) and grant_key[0] == call_key[0]
+    return len(grant_key) <= len(call_key) and call_key[: len(grant_key)] == grant_key
+
+
 #: The self-hosted spelling: reaches the hook through the in-tree checkout. Optional
 #: — a skill is free to grant only the bare form — but never sufficient on its own.
 _SELF_HOSTED_GRANT_RE = re.compile(r"bin/prawduct-hook\s+([a-z][a-z0-9-]*)")
@@ -67,6 +120,31 @@ _GH_GRANT_RE = re.compile(r"Bash\(gh(?![\w-])([^)]*)\)")
 #: What a scoped ``gh`` grant looks like: whitespace, then a subcommand family.
 _GH_SCOPED_RE = re.compile(r"^\s+[a-z][a-z0-9-]*\b")
 
+#: ``gh`` subcommands that do not narrow anything, so naming one is not scoping.
+#: Both send an arbitrary request to an arbitrary endpoint against every repo the
+#: ambient token reaches — `Bash(gh api *)` is the wildcard wearing a subcommand's
+#: name, and it would satisfy the shape check above while giving up exactly the
+#: boundary that check exists to hold. Prawduct's own raw calls live in the
+#: backlog transport, which runs as a hook subprocess under its own grant and is
+#: unaffected by this rule. A skill that genuinely needs one should have to argue
+#: for it rather than inherit it from a regex.
+_GH_UNSCOPING = frozenset({"api", "graphql"})
+
+
+def _unscoped_gh_grants(grant_line: str) -> list[str]:
+    """The ``gh`` grants on this line that hand over more than a subcommand family.
+
+    Factored out so the controls below exercise THIS expression rather than a
+    re-spelling of it — a control that tests a different predicate than the rule
+    passes while the rule rots.
+    """
+    out = []
+    for tail in _GH_GRANT_RE.findall(grant_line):
+        scoped = _GH_SCOPED_RE.match(tail)
+        if scoped is None or scoped.group().strip() in _GH_UNSCOPING:
+            out.append(f"Bash(gh{tail})")
+    return out
+
 #: Commands a skill NAMES but is deliberately not granted. Every entry is a
 #: decision with a reason, not a suppression: the whole value of this test is
 #: that adding a row is uncomfortable enough to make you check.
@@ -77,6 +155,12 @@ _GH_SCOPED_RE = re.compile(r"^\s+[a-z][a-z0-9-]*\b")
 #:   * a DELIBERATE EXCLUSION — the skill's own protocol states that it must not
 #:     run the command, and the missing grant is the mechanism enforcing that.
 _NOT_GRANTED: dict[tuple[str, str], str] = {
+    # Cross-reference: the janitor EMITS this string to the operator when the
+    # backlog cache is unreadable ("run `prawduct-hook backlog sync --repo
+    # <scope>`") — it is the remedy a human runs, not a step the janitor takes.
+    # Granting it would hand a maintenance survey a network write it has no
+    # business making, which is the opposite of what the grant is for.
+    ("janitor", "backlog sync"): "remedy text printed for the operator, never run by the janitor",
     # Deliberate exclusion, stated in the Critic's own protocol: "what happens
     # to a completed review's findings — discarded, or brought back — is an
     # operator decision and belongs to the main session, which is why both are
@@ -136,12 +220,31 @@ def test_every_instructed_command_is_granted(skill_path: Path) -> None:
     if grant is None:
         pytest.skip(f"{name} declares no allowed-tools (unrestricted)")
 
-    granted = set(_BARE_GRANT_RE.findall(grant))
+    granted = {
+        _hook_call_key(grant, m.end())
+        for m in re.finditer(r"(?<![\w/-])prawduct-hook(?=\s)", grant)
+    }
+    granted |= {
+        _hook_call_key(grant, m.end())
+        for m in re.finditer(r"bin/prawduct-hook(?=\s)", grant)
+    }
+    # SKILL.md only. A skill's BUNDLED files are instruction prose read under this
+    # same grant, and sweeping them finds real gaps — but dozens of them, each a
+    # decision about whether the sentence instructs the agent or narrates what an
+    # operator does by hand. That is its own work, filed rather than half-made here;
+    # the referent this batch depends on is pinned directly below instead.
     body = text[text.index(grant) + len(grant) :]
+    calls = {
+        _hook_call_key(body, m.end())
+        for m in re.finditer(r"prawduct-hook(?=\s)", body)
+    }
     missing = sorted(
-        command
-        for command in set(_INVOCATION_RE.findall(body))
-        if command not in granted and (name, command) not in _NOT_GRANTED
+        " ".join(call)
+        for call in calls
+        if call
+        and not any(_covers(g, call) for g in granted if g)
+        and (name, call[0]) not in _NOT_GRANTED
+        and (name, " ".join(call)) not in _NOT_GRANTED
     )
     assert not missing, (
         f"skills/{name}/SKILL.md tells its reader to run "
@@ -167,7 +270,16 @@ def test_no_stale_exemptions() -> None:
         if not path.is_file():
             stale.append((name, command, "skill no longer exists"))
             continue
-        if command not in _INVOCATION_RE.findall(path.read_text(encoding="utf-8")):
+        text = path.read_text(encoding="utf-8")
+        mentioned = {
+            " ".join(_hook_call_key(text, m.end()))
+            for m in re.finditer(r"prawduct-hook(?=\s)", text)
+        }
+        # A row may be keyed by the whole call (`backlog sync`) or by its first word,
+        # so a first-word row stays live while any call into that family is mentioned.
+        if command not in mentioned and not any(
+            m.split(" ")[0] == command for m in mentioned if m
+        ):
             stale.append((name, command, f"no longer mentioned ({reason})"))
     assert not stale, f"stale _NOT_GRANTED rows: {stale}"
 
@@ -223,15 +335,12 @@ def test_a_gh_grant_names_the_subcommand_it_needs(skill_path: Path) -> None:
     if grant is None:
         pytest.skip(f"{name} declares no allowed-tools (unrestricted)")
 
-    unscoped = [
-        f"Bash(gh{tail})"
-        for tail in _GH_GRANT_RE.findall(grant)
-        if not _GH_SCOPED_RE.match(tail)
-    ]
+    unscoped = _unscoped_gh_grants(grant)
     assert not unscoped, (
-        f"skills/{name}/SKILL.md grants {', '.join(unscoped)} — the entire GitHub "
-        f"CLI against every repo the token reaches. Name the subcommand family the "
-        f"skill actually runs, e.g. `Bash(gh pr *)`."
+        f"skills/{name}/SKILL.md grants {', '.join(unscoped)} — reach the whole "
+        f"GitHub CLI, or an arbitrary endpoint through it, against every repo the "
+        f"token covers. Name the subcommand family the skill actually runs, e.g. "
+        f"`Bash(gh pr *)`; `gh api`/`gh graphql` do not count as naming one."
     )
 
 
@@ -314,13 +423,22 @@ def test_the_repo_binding_sweep_has_subjects() -> None:
 def test_an_unscoped_gh_grant_is_recognised(grant: str) -> None:
     """The gh rule pins a narrowing that already shipped, so nothing in the tree can
     demonstrate it has teeth. These do: each is a spelling of "the whole CLI"."""
-    assert [t for t in _GH_GRANT_RE.findall(grant) if not _GH_SCOPED_RE.match(t)]
+    assert _unscoped_gh_grants(grant)
 
 
 @pytest.mark.parametrize("grant", [" Bash(gh pr *)", " Bash(gh issue view *)"])
 def test_a_scoped_gh_grant_is_accepted(grant: str) -> None:
     """And the complement — naming a subcommand family is what the rule asks for."""
-    assert not [t for t in _GH_GRANT_RE.findall(grant) if not _GH_SCOPED_RE.match(t)]
+    assert not _unscoped_gh_grants(grant)
+
+
+@pytest.mark.parametrize("grant", [" Bash(gh api *)", " Bash(gh graphql *)"])
+def test_a_raw_endpoint_subcommand_does_not_count_as_scoping(grant: str) -> None:
+    """`gh api` satisfies "names a subcommand family" and narrows nothing — it sends
+    an arbitrary request to an arbitrary endpoint against every repo the token
+    covers. Without this the rule reads as closed while the widest grant available
+    walks through it wearing a subcommand's name."""
+    assert _unscoped_gh_grants(grant)
 
 
 def test_a_self_hosted_only_grant_is_recognised() -> None:
@@ -332,4 +450,96 @@ def test_a_self_hosted_only_grant_is_recognised() -> None:
     assert set(_INVOCATION_RE.findall(grant)) == {"review-stats"}, (
         "the pre-existing pattern reads the self-hosted spelling as a bare grant — "
         "that conflation is what the bare pattern exists to break"
+    )
+
+
+def test_the_op_set_referent_is_granted_where_it_is_instructed() -> None:
+    """The bound that stops a model inventing a mutation path has to be RUNNABLE.
+
+    `backlog/adapter-mode.md` bounds its reader to "the ops in the usage table
+    `prawduct-hook backlog --help` prints". A grant naming thirteen sub-ops does not
+    confer the group-level call: grants match literally, so the instruction prompts,
+    and a prompt the model cannot get answered is indistinguishable from the command
+    failing — at which point the reader falls back to its own notion of the op set,
+    which is the whole failure the bound exists to prevent.
+
+    Pinned here rather than by sweeping the bundled files, which surfaces a wider
+    class than this asserts (see the note in `test_every_instructed_command_is_granted`).
+    """
+    grant = _frontmatter_grant((SKILLS_DIR / "backlog" / "SKILL.md").read_text(encoding="utf-8"))
+    assert grant is not None
+    adapter = (SKILLS_DIR / "backlog" / "adapter-mode.md").read_text(encoding="utf-8")
+    assert "prawduct-hook backlog --help" in adapter, (
+        "adapter-mode.md no longer cites `prawduct-hook backlog --help` as the op-set "
+        "referent — if the bound moved, move this pin with it rather than deleting it"
+    )
+    for spelling in ("prawduct-hook backlog --help",
+                     "python3 plugin/bin/prawduct-hook backlog --help"):
+        assert spelling in grant, (
+            f"skills/backlog/SKILL.md instructs `prawduct-hook backlog --help` as the "
+            f"op-set referent but does not grant `{spelling}`. Both spellings are "
+            f"needed: the bare one is the only form that runs in a governed product, "
+            f"and the self-hosted one is the only form that runs in this checkout."
+        )
+
+
+# --- agent definitions -------------------------------------------------------
+#
+# `plugin/agents/*.md` ships a `tools:` grant and is read verbatim as a subagent's
+# system prompt. It is the same PROPERTY the rules above exist for — instruction
+# prose carrying a permission grant — reached through a different frontmatter key
+# and a different directory, which is exactly how it escaped all three of them.
+# Bounding a rule by the container it was written for is what leaves the next
+# member silent; these bound it by the property instead. The tree complies today,
+# which is why the omission was invisible rather than harmless.
+
+AGENTS_DIR = SKILLS_DIR.parent / "agents"
+
+
+def _agent_files() -> list[Path]:
+    return sorted(AGENTS_DIR.glob("*.md"))
+
+
+def _agent_grant(text: str) -> str | None:
+    match = re.search(r"^tools:(.*)$", text, re.M)
+    return match.group(1) if match else None
+
+
+def test_the_agent_sweep_has_subjects() -> None:
+    """A rule asserted over an empty set is a rule that cannot fail."""
+    files = _agent_files()
+    assert files, f"no agent definitions found under {AGENTS_DIR}"
+    assert any(_agent_grant(f.read_text(encoding="utf-8")) for f in files), (
+        "no agent definition declares a `tools:` grant — if the key was renamed, "
+        "follow it here rather than leaving the sweep green over nothing"
+    )
+
+
+@pytest.mark.parametrize("agent_path", _agent_files(), ids=lambda p: p.stem)
+def test_an_agent_gh_grant_names_the_subcommand_it_needs(agent_path: Path) -> None:
+    grant = _agent_grant(agent_path.read_text(encoding="utf-8"))
+    if grant is None:
+        pytest.skip(f"{agent_path.name} declares no tools (unrestricted)")
+    unscoped = _unscoped_gh_grants(grant)
+    assert not unscoped, (
+        f"agents/{agent_path.name} grants {', '.join(unscoped)} — reach the whole "
+        f"GitHub CLI, or an arbitrary endpoint through it, against every repo the "
+        f"token covers. Name the subcommand family it actually runs."
+    )
+
+
+@pytest.mark.parametrize("agent_path", _agent_files(), ids=lambda p: p.stem)
+def test_an_agent_self_hosted_hook_grant_never_stands_alone(agent_path: Path) -> None:
+    grant = _agent_grant(agent_path.read_text(encoding="utf-8"))
+    if grant is None:
+        pytest.skip(f"{agent_path.name} declares no tools (unrestricted)")
+    self_hosted = set(_SELF_HOSTED_GRANT_RE.findall(grant))
+    bare = set(_BARE_GRANT_RE.findall(grant))
+    orphaned = sorted(self_hosted - bare)
+    assert not orphaned, (
+        f"agents/{agent_path.name} grants "
+        f"{', '.join('python3 plugin/bin/prawduct-hook ' + c for c in orphaned)} with "
+        f"no bare `prawduct-hook` sibling — that covers only a checkout carrying the "
+        f"plugin in its own tree. In a governed product the plugin installs elsewhere "
+        f"and the bare spelling is the only one that runs."
     )

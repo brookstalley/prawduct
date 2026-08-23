@@ -48,6 +48,32 @@ governed_by:
       - "local-first; which call sites may egress is enumerated in this artifact ->
         inapplicable because nothing here adds or moves an egress call site. WP2 touches
         `lib/backlog/cli.py` argument parsing only, not `transport.py`."
+      - "an independent reviewer never mutates the session it reviews, enforced at the mutation site ->
+        inapplicable because nothing here touches the review lifecycle or the clear/marker path. WP4
+        BUDGETS `skills/critic/SKILL.md` and does not edit it, which is the nearest approach."
+      - "the plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared
+        evidence store, and the files it must reconcile -> conforms. No chunk adds a write path of any
+        kind; `--help` prints to stdout and returns."
+      - "prawduct is written in Python and must never be specific to Python; a language with no rules is
+        reported unchecked, never silently passed -> inapplicable because nothing here classifies a
+        governed product's files. Every check this batch adds inspects PRAWDUCT'S OWN shipped markdown
+        and frontmatter, which is a fixed surface the framework authors, not product code whose
+        language it must not assume."
+      - "prawduct guides and reviews; it never implements, and never re-implements what a product's own
+        tooling already does -> conforms. The four new checks assert prawduct's own instruction surfaces
+        against prawduct's own runtime; none of them inspects product code, and none duplicates a linter."
+      - "goals and verification bind; prescribed method is advice -> conforms, and WP1 EXERCISED it
+        rather than merely complying: #583's issue prescribed mirroring `doctor/SKILL.md:69`, and that
+        precedent no longer exists in the tree. The goal (a prose read that resolves) was met against
+        the live precedents instead, and the departure is recorded rather than left as folklore.
+        `plugin/docs/runbook-authoring.md` is the second departure — the prescribed variable does not
+        expand in a doc either, so it names the path in prose."
+      - "every fact has one home; every other mention is a reference to it -> conforms, and it is the
+        rule this whole batch enforces. WP4's contract entry deliberately REFERENCES the operational
+        detail rather than restating it; the retry budget's numbers live once as constants the test
+        reads; `_ALL_OPS` stops being a second copy of the op set. The one place a fact is stated twice
+        on purpose is the stability reconciliation, where the artifact governs the tier and the feature
+        doc governs the detail — stated as a precedence rule, which is a reference, not a copy."
 partition: >-
   delegated, four ways, at the user's explicit request ("use subagents ... and solve them",
   Principle 23). The partition is drawn by FILE TREE rather than by theme, because the delegates

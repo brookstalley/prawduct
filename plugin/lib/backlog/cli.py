@@ -61,12 +61,7 @@ _WRITE_OPS: frozenset[str] = frozenset(
 #: service-backed early return fires before the per-op set), which is precisely
 #: the stranded write that guard exists to refuse. Adding an op therefore has to
 #: fail something until it is classified.
-_ALL_OPS: tuple[str, ...] = (
-    "file", "get", "show", "status", "update", "comment", "list", "pick",
-    "counts", "verify-migration", "refresh-counts", "reconcile-labels",
-    "link", "unlink", "provision", "import",
-    "restructure-preview", "export", "merge", "sync", "cache-query",
-)
+_ALL_OPS: tuple[str, ...] = ()  # bound below, once the usage table exists
 
 # code → exit class. A code absent here (should not happen) falls back to 1.
 _EXIT_CLASS: dict[str, int] = {
@@ -189,6 +184,15 @@ _OP_USAGE: dict[str, str] = {
 #: `--help` still answers for the spelling the caller actually typed.
 _OP_ALIASES: dict[str, str] = {"show": "get"}
 
+#: One enumeration, not two. `_ALL_OPS` used to be a hand-kept tuple beside the
+#: usage table, and the pins all iterated it — so an op wired into `run` alone was
+#: dispatchable, absent from `--help`, and invisible to every check, while this
+#: file's own contract promises callers that the published op set is what
+#: dispatches. Deriving it from the table that `--help` prints makes the promise
+#: structural in one direction; `test_every_dispatched_op_is_in_the_op_set` closes
+#: the other, reading the dispatch chain itself.
+_ALL_OPS = tuple(_OP_USAGE) + tuple(_OP_ALIASES)
+
 _GLOBAL_HELP = "global: --json  (machine envelope on stdout; default is human)\n"
 
 #: The **caller-side** retry budget. No adapter code enforces it — a single op
@@ -279,6 +283,54 @@ def _unknown_op(op: str, *, json_mode: bool) -> int:
     )
 
 
+#: Every flag name that takes a value anywhere in this CLI. Used ONLY to tell a
+#: value slot from a flag position when scanning for a global flag — never to
+#: validate, which stays each handler's own `_parse_flags(valued=...)` call.
+#:
+#: The union rather than a per-op map, deliberately: a per-op map is a second
+#: enumeration of something the handlers already state, and it would drift the way
+#: the op set did. The union is equivalent for every real invocation as long as no
+#: name is valued for one op and boolean for another —
+#: `test_no_flag_name_is_valued_here_and_boolean_there` is that condition, and
+#: `test_the_valued_flag_union_matches_what_the_handlers_parse` reads the handlers
+#: by AST so this set cannot fall behind them.
+_VALUED_FLAG_NAMES: frozenset[str] = frozenset({
+    "affected", "archive", "archive-scope", "area", "assignee", "body",
+    "direction", "edge", "effort", "from", "if-updated-at", "impact", "into",
+    "kind", "limit", "older-than", "out", "page", "per-page", "plan", "repo",
+    "restructure", "sort", "source", "stage", "state", "status", "tag", "tags",
+    "title", "to", "working-branch",
+})
+
+
+def _take_global_flag(argv: list[str], flag: str, named: str | None) -> tuple[bool, list[str]]:
+    """Whether ``flag`` is present as a FLAG, and ``argv`` with those occurrences gone.
+
+    A token that fills a valued flag's value slot belongs to that flag whatever it
+    spells, so ``--body --help`` is a body of ``--help`` and not a help request.
+    Membership alone cannot see that, which is how a write that never happened came
+    back as a success envelope.
+    """
+    present = False
+    out: list[str] = []
+    skip_value = False
+    for i, token in enumerate(argv):
+        if i == 0 and named is not None:
+            out.append(token)          # the op itself
+            continue
+        if skip_value:
+            out.append(token)          # this token is someone's value
+            skip_value = False
+            continue
+        if token == flag:
+            present = True
+            continue
+        if token.startswith("--") and "=" not in token and token[2:] in _VALUED_FLAG_NAMES:
+            skip_value = True
+        out.append(token)
+    return present, out
+
+
 def run(project_dir, argv: list[str], *, transport=None) -> int:
     """Dispatch ``backlog <op> ...``; emit the envelope, return an exit code.
 
@@ -286,16 +338,28 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
     injected by tests (the L1 fake); in production it defaults to the real
     ``gh``-backed transport built lazily so no import cost lands on other paths.
     """
-    json_mode = "--json" in argv
-    argv = [tok for tok in argv if tok != "--json"]
+    # The op is argv[0] or there is no op. Resolving it by "first token that does
+    # not look like a flag" reads a VALUED FLAG'S ARGUMENT as the op the moment one
+    # is present, and `--repo <owner/repo>` is in the invocation this adapter's own
+    # instruction surface teaches — so the habitual spelling of a help request came
+    # back "unknown op 'owner/repo'", which is the exit-2-on-help this surface was
+    # corrected to stop doing.
+    named = argv[0] if argv and not argv[0].startswith("-") else None
 
-    # `--help` anywhere in the call is a request for the usage table, answered
-    # before anything else can turn it into an error: no op is dispatched, no
-    # flag is parsed, and a write op under a withheld-writes trigger still gets
-    # its usage (printing help is not writing). An unrecognized op still gets
-    # the unknown-op envelope, so a typo is never dressed up as success.
-    if "--help" in argv:
-        named = next((tok for tok in argv if not tok.startswith("-")), None)
+    # `--json` and `--help` are global, but "global" is about which flag it is, not
+    # about where the token sits: a token occupying a VALUE slot belongs to the flag
+    # that claimed it, whatever it spells. Scanning by membership instead let
+    # `comment <id> --body --help` print usage and report ok for a write that never
+    # happened. `_valued_flags_for` is what distinguishes a value slot from a flag,
+    # and it is pinned against what each handler actually parses.
+    json_mode, argv = _take_global_flag(argv, "--json", named)
+    wants_help, argv = _take_global_flag(argv, "--help", named)
+
+    # Help is answered before anything can turn it into an error: no op is
+    # dispatched, no flag is parsed, and a write op under a withheld-writes trigger
+    # still gets its usage (printing help is not writing). An unrecognized op still
+    # gets the unknown-op envelope, so a typo is never dressed up as success.
+    if wants_help:
         if named is None or _op_usage(named) is not None:
             return _emit_help(named, json_mode=json_mode)
         return _unknown_op(named, json_mode=json_mode)

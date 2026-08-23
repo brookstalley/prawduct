@@ -159,6 +159,23 @@ _SOURCE_DIR_SEGMENTS = frozenset(
 )
 
 
+#: A skill reads the plugin through its own directory: `${CLAUDE_SKILL_DIR}` expands
+#: at skill load, and the plugin root is one directory pair above it. That form
+#: replaced `${CLAUDE_PLUGIN_ROOT}`, which does not expand in prose — and in doing so
+#: the reads fell out of BOTH checks that could see them: the packaging test matches
+#: the retired sigil, and `_PATH_SHAPED` rejects any token holding `$`, `{` or `}`.
+#: Five cross-plugin reads were therefore checked by nothing, and could be stranded
+#: by any relocation with the suite green — the third-recurrence class this file
+#: exists to mechanize. Normalizing the prefix hands them to the resolver that
+#: already owns path references, so present and future ones share one owner.
+_SKILL_DIR_PREFIX = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/(?:\.\./)+")
+
+
+def _normalize_skill_relative(token: str) -> str:
+    """Rewrite a skill-dir-relative read as the repo path it names."""
+    return _SKILL_DIR_PREFIX.sub("plugin/", token)
+
+
 def _is_repo_path(token: str) -> bool:
     """Path-shaped and plausibly naming something in this tree.
 
@@ -166,6 +183,7 @@ def _is_repo_path(token: str) -> bool:
     extensionless ``plugin/bin/prawduct-hook``. Together they exclude ``owner/repo`` arguments,
     which are path-shaped, appear in command position after ``--repo``, and name nothing on disk.
     """
+    token = _normalize_skill_relative(token)
     if not _PATH_SHAPED.match(token):
         return False
     return bool(_HAS_EXTENSION.search(_strip_ref(token))) or (
@@ -181,7 +199,7 @@ _ALLOWED_TOOLS = re.compile(r"^allowed-tools:(.*)$", re.M)
 
 def _strip_ref(raw: str) -> str:
     """Trim trailing prose punctuation, a line-number suffix, and an anchor."""
-    ref = raw.rstrip(".,;:)`").rstrip("/")
+    ref = _normalize_skill_relative(raw).rstrip(".,;:)`").rstrip("/")
     ref = ref.split("#", 1)[0]
     ref = re.sub(r":\d+(?:[,-]\d+)*$", "", ref)  # foo.py:182 and foo.md:58-60
     return ref
@@ -558,7 +576,16 @@ def test_relative_targets_resolve_against_the_containing_file():
 # product copies. ``plugin/CHANGELOG.md`` sits outside them because it is a record —
 # it narrates the packaging change that curated the plugin root, and naming the
 # variable is the subject of the sentence rather than a path anyone follows.
-_INSTRUCTION_TREES = ("plugin/skills/", "plugin/docs/", "plugin/methodology/", "plugin/templates/")
+#: `plugin/agents/` is here for a reason worth stating: `critic-reviewer.md` ships in
+#: the plugin and is read verbatim as a subagent's system prompt, and it is the one
+#: tree where the remedy does NOT apply — `${CLAUDE_SKILL_DIR}` is not defined for an
+#: agent, so an agent file must name its paths in prose. It is clean today, which is
+#: exactly why omitting it was invisible: the next agent definition would reopen the
+#: defect with CI green, in the one instruction surface the guard could not see.
+_INSTRUCTION_TREES = (
+    "plugin/skills/", "plugin/docs/", "plugin/methodology/",
+    "plugin/templates/", "plugin/agents/",
+)
 
 #: The INTERPOLATION, not the name. Prose is free to discuss `CLAUDE_PLUGIN_ROOT`
 #: as a variable — that reads as documentation. `${...}` reads as a path to follow,

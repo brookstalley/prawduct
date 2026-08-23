@@ -523,3 +523,135 @@ def test_no_surface_claims_a_close_records_the_closed_by_scope():
         "for without ever seeing a failure. Say the scope is not recorded, and "
         "where to put it instead.\n  - " + "\n  - ".join(offenders)
     )
+
+
+class TestGlobalFlagsAreReadByPositionNotMembership:
+    """`--help` and `--json` are global, but a token in a VALUE slot belongs to the
+    flag that claimed it, whatever it spells.
+
+    Both members of this class shipped at once and both were invisible to the
+    original pins, which only ever called `[op, "--help"]` or `["--help"]`. The live
+    one resolved the op as "the first token that does not look like a flag", so any
+    valued flag's argument became the op — and `--repo <owner/repo>` is in the
+    invocation this adapter's own instruction surface teaches, which made the
+    habitual spelling of a help request answer "unknown op 'owner/repo'". That is
+    the exit-2-on-help the surface was corrected to stop doing, surviving in the
+    composition a reader is most likely to type. The quiet one let a flag VALUE of
+    literally `--help` serve usage at exit 0 with a success envelope, so a caller
+    parsing `--json` read ok for a provider write that never happened.
+    """
+
+    @pytest.mark.parametrize("argv", [
+        ["--help", "--repo", "owner/repo"],
+        ["--repo", "owner/repo", "--help"],
+        ["get", "--repo", "owner/repo", "--help"],
+        ["get", "--help", "--repo", "owner/repo"],
+        ["list", "--state", "open", "--help"],
+    ])
+    def test_a_flag_bearing_help_request_is_still_a_help_request(self, argv, capsys):
+        assert cli.run(".", list(argv)) == 0
+        assert capsys.readouterr().out.startswith("usage: prawduct-hook backlog")
+
+    @pytest.mark.parametrize("flag", ["--help", "--json"])
+    def test_a_global_flag_in_a_value_slot_belongs_to_the_flag_that_claimed_it(self, flag):
+        taken, rest = cli._take_global_flag(["comment", "ID", "--body", flag], flag, "comment")
+        assert taken is False, (
+            f"`comment ID --body {flag}` read the body as a global flag — the write "
+            "is silently replaced by a success envelope for something that did not run"
+        )
+        assert rest == ["comment", "ID", "--body", flag]
+
+    @pytest.mark.parametrize("argv,expected", [
+        (["sync", "--rebuild", "--json"], ["sync", "--rebuild"]),
+        (["list", "--state", "open", "--json"], ["list", "--state", "open"]),
+        (["list", "--repo=o/r", "--json"], ["list", "--repo=o/r"]),
+    ])
+    def test_a_real_global_flag_is_still_taken(self, argv, expected):
+        """The floor: a rule that called everything a value would pass the test above
+        and break every documented invocation."""
+        taken, rest = cli._take_global_flag(list(argv), "--json", argv[0])
+        assert taken is True and rest == expected
+
+    def test_the_valued_flag_union_matches_what_the_handlers_parse(self):
+        """The union exists to tell a value slot from a flag; if it falls behind the
+        handlers, a newly-valued flag's argument starts being read as a global flag."""
+        tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
+        parsed: set[str] = set()
+        for fn in [n for n in tree.body if isinstance(n, ast.FunctionDef)
+                   and n.name.startswith("_run_")]:
+            for node in ast.walk(fn):
+                if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_parse_flags":
+                    for kw in node.keywords:
+                        if kw.arg == "valued":
+                            parsed |= set(ast.literal_eval(kw.value))
+        assert parsed == set(cli._VALUED_FLAG_NAMES), (
+            "_VALUED_FLAG_NAMES disagrees with the handlers' own `valued=` sets; "
+            f"only in handlers: {sorted(parsed - set(cli._VALUED_FLAG_NAMES))}; "
+            f"only in the union: {sorted(set(cli._VALUED_FLAG_NAMES) - parsed)}"
+        )
+
+    def test_no_flag_name_is_valued_here_and_boolean_there(self):
+        """The condition under which one union is equivalent to a per-op map. If a
+        name is ever both, the union starts eating the token after a boolean flag."""
+        tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
+        booleans: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_parse_flags":
+                for kw in node.keywords:
+                    if kw.arg == "boolean":
+                        booleans |= set(ast.literal_eval(kw.value))
+        assert booleans & set(cli._VALUED_FLAG_NAMES) == set(), (
+            "a flag name is valued for one op and boolean for another, so the single "
+            "union can no longer stand in for a per-op map: "
+            f"{sorted(booleans & set(cli._VALUED_FLAG_NAMES))}"
+        )
+
+    def test_every_dispatched_op_is_in_the_op_set(self):
+        """`_ALL_OPS` is derived from the usage table, which pins one direction: every
+        published op has usage. This is the other — an op wired into `run` alone would
+        be dispatchable, absent from `--help`, and invisible to every other check,
+        while `api-contract.md` tells a reader the enumeration cannot drift from what
+        dispatches."""
+        tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
+        run_fn = next(n for n in tree.body
+                      if isinstance(n, ast.FunctionDef) and n.name == "run")
+        dispatched: set[str] = set()
+        for node in ast.walk(run_fn):
+            if isinstance(node, ast.Compare) and isinstance(node.left, ast.Name) \
+                    and node.left.id == "op":
+                for comp in node.comparators:
+                    if isinstance(comp, ast.Constant) and isinstance(comp.value, str):
+                        dispatched.add(comp.value)
+                    elif isinstance(comp, (ast.Tuple, ast.List, ast.Set)):
+                        dispatched |= {e.value for e in comp.elts
+                                       if isinstance(e, ast.Constant)}
+        assert dispatched, "found no `op == ...` dispatch in run(); the extractor is blind"
+        assert dispatched - set(cli._ALL_OPS) == set(), (
+            "run() dispatches op(s) the published set does not contain: "
+            f"{sorted(dispatched - set(cli._ALL_OPS))}"
+        )
+
+
+def test_the_router_states_what_a_close_does_with_the_scope_on_each_backend():
+    """The correction has to land where the argument is HANDED OUT, not only where the
+    behaviour is described.
+
+    `adapter-mode.md` is read by an agent already in adapter mode; `SKILL.md`'s `update`
+    contract is what every caller routes through, and two surfaces outside this skill
+    (`pr/SKILL.md`'s create flow and the Critic's backlog-reconciliation template) pass
+    `closed-by=` on its authority with no backend caveat. While the router states the
+    write unconditionally, a builder on the Issues backend follows it, the scope is
+    dropped, and nothing fails — and a model told to "write it into the metadata bar"
+    on a backend that has none may reach for a hand-written `prawduct:` block, which
+    the adapter merges away.
+    """
+    router = (_BACKLOG_SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    clause = router[router.index("closed-by=<ref>"):][:1600]
+    assert "backend" in clause.lower(), (
+        "SKILL.md's `update` contract states the `closed-by` write with no backend "
+        "qualifier — on the Issues backend the op parses only --repo and --to, so the "
+        "scope is dropped in silence"
+    )
+    assert "comment" in clause.lower(), (
+        "the router names no route for the scope on the backend that cannot store it"
+    )
