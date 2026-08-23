@@ -51,8 +51,7 @@ banner-marked as deliberately allowed to diverge), `.prawduct/artifacts/archive/
 `migration-restructure-plan.json` (whose hits are verbatim quotations of filed issues — rewriting
 them would falsify the quotes), and the rest of `change-log.md`. All are bookkeeping that records
 past work. Excluding them, the query returns **two**, both in `documentation/issues/622-*.md`, and
-both describe steps issue #622 would *create* — forward specs against an open `stage:design` item,
-not citations of current state. Every live citation is name-anchored.
+both describe steps issue #622 would *create* — forward specs against an open `stage:design` item, not citations of current state. Named rather than left implied, because one of them (`622-requirements.md`, predicting `6b/6c/6d`) is exactly the lettered-sub-step shape the item warns about: it is a requirements record for unbuilt work, describing an intended runbook rather than pointing at the current one, and it is exempt on that ground. If #622 ships without those letters, the record is wrong about its own outcome and is corrected there, not here. Every live citation is name-anchored.
 
 *The Exposed-API sweep.* Four `**Exposed API:**` declarations across live and archived build plans.
 One — the backlog CLI — was missing from the contract artifact and is added. One names

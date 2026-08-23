@@ -48,6 +48,7 @@ scoping). Extend the vocabularies below when a new safety mechanism is coined.
 from __future__ import annotations
 
 import ast
+import json
 import re
 import sys
 from pathlib import Path
@@ -551,6 +552,16 @@ class TestGlobalFlagsAreReadByPositionNotMembership:
     def test_a_flag_bearing_help_request_is_still_a_help_request(self, argv, capsys):
         assert cli.run(".", list(argv)) == 0
         assert capsys.readouterr().out.startswith("usage: prawduct-hook backlog")
+
+    @pytest.mark.parametrize("op", ["get", "list", "import"])
+    def test_the_json_help_envelope_is_the_sole_stdout_content(self, op, capsys):
+        """The `--json` branch of help is the one path every other help assertion runs
+        past in human mode, and it carries the envelope invariant: a `| jq` must never
+        choke, so the envelope is all of stdout."""
+        assert cli.run(".", [op, "--help", "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)   # raises if anything else printed
+        assert payload["status"] == "ok"
+        assert payload["data"]["usage"].startswith(f"usage: prawduct-hook backlog {op}")
 
     @pytest.mark.parametrize("flag", ["--help", "--json"])
     def test_a_global_flag_in_a_value_slot_belongs_to_the_flag_that_claimed_it(self, flag):

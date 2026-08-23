@@ -23,7 +23,16 @@ governed_by:
         resolve; the adapter-surface pin (WP2) catches the `--help` referent going missing
         again; the SKILL.md ceiling (WP4) catches unbudgeted payload growth. All four are
         assertions inside test files that already exist for exactly this class — no new control
-        surface, no new advisory, nothing added to the hot path."
+        surface, no new advisory, nothing added to the hot path.
+        A FIFTH addition is a different shape and needs saying: the published retry budget bounds a
+        MODEL'S behaviour in prose that no code enforces — the adapter makes one call and returns, as
+        its own docs state — so it emits nothing, and its yield against the 23-retry incident is not
+        falsifiable. Recorded as a bounded exception rather than argued away: it IS a control on this
+        norm's plain reading, and the emission arm cannot be met by a prose bound addressed to a
+        reader. Instrumenting the caller to observe it would be the accumulation this norm exists to
+        stop. What is falsifiable is the bound's PRESENCE — the two surfaces that hand a model
+        `retryable` must state attempts, deadline and give-up, read from the constants, which is what
+        the pin asserts. Clock: the first time a caller-side retry loop becomes observable."
       - "state-file growth is an advisory warning, never a hard block -> conforms; the standing
         briefing nags (`project-state.yaml` 41KB, `learnings.md` 91KB) are deliberately untouched.
         Compaction is its own work and folding it into a defect batch is what the advisory posture

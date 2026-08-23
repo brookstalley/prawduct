@@ -244,10 +244,14 @@ axis.
 retries for the caller — a single op runs `gh` once and returns, and only `import` retries a
 rate-limited *record* inside its own run — so the entire retry loop lives in the caller, and
 `retryable: true` with no ceiling beside it reads as a licence to loop until success, which is the
-opposite of never-block. Every surface that documents `retryable` therefore states a **max attempt
-count, a wall-clock deadline and a give-up rule**; `lib/backlog/cli.py` carries the numbers as
-constants and publishes them in `--help`, and `skills/backlog/adapter-mode.md` carries the
-operational form. Not restated here — a third copy is a third drift source.
+opposite of never-block. Every surface that hands a MODEL `retryable` therefore states a **max
+attempt count, a wall-clock deadline and a give-up rule** — `lib/backlog/cli.py`, which carries the
+numbers as constants and publishes them in `--help`, and `skills/backlog/adapter-mode.md`, which
+carries the operational form. The obligation is scoped to those two deliberately, and this document
+is not one of them: the rule exists to bound a reader who is about to retry, and this section
+describes the field for a human rather than instructing an agent. Stating it as "every surface that
+documents `retryable`" made the sentence false of the paragraph it sits in — which declines to
+restate the numbers, correctly, because a third copy is a third drift source.
 
 **Stable `code` vocabulary (the contract — not free-text):**
 
