@@ -183,9 +183,9 @@ the plugin install was a guess wearing a fact's clothes.
 a comment narrating review ids or round numbers a deletion finding — a bare `R-6` is a dangling
 pointer, since every review has one — and this branch had taken the count from 3 to ~12 while
 fixing the very defects it was narrating. The reasons stay; the ids and the "first cut / first
-repair" framing go from every file this branch touched — which is where it put them, tests
-included. The shape survives in libs and test modules this branch does not touch; sweeping those is
-not this branch's job, and the entry says so rather than implying a clean repo-wide grep. Also: a manifest holding non-object JSON was being diagnosed as "written by an
+repair" framing go wherever this branch put them, tests included. Lines that predate the branch
+still carry the shape — in files this diff touches as well as in ones it does not — and sweeping
+those is not this branch's job; the entry says so rather than implying a clean repo-wide grep. Also: a manifest holding non-object JSON was being diagnosed as "written by an
 OLDER PRAWDUCT", which is a provenance claim about a file no prawduct ever wrote; it classifies
 CORRUPT now.
 

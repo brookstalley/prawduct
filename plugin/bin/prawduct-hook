@@ -1057,9 +1057,9 @@ def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
     # are three, not one: absent, corrupt, and stale-schema (the shared reading
     # now says which — `critic_consolidate.manifest_condition`). Deliberately
     # says nothing about how OFTEN each shape carries an id: "a stale-schema
-    # manifest usually does" is false for the v2 shape #676 reports — that one fails validation precisely BECAUSE `id` is
-    # missing, so this fallback is exactly what prints. The one case reaching
-    # here is "the id could not be read", whatever the cause.
+    # manifest usually does" is false for the v2 shape #676 reports, which has
+    # no `id` at all, so this fallback is exactly what prints there. The one
+    # case reaching here is "the id could not be read", whatever the cause.
     review_id = _review_id_for_notice(prawduct_dir)
     state, reading = "unknown", ""
     try:

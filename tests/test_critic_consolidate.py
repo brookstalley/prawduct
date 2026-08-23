@@ -2182,8 +2182,9 @@ def _payload_for(text):
 
 
 class TestNoSurfacePairsPreservationWithDiscard:
-    """The shared verdict as a property rather than string assertions: compose the operator-facing messages under every manifest
-    condition and assert none says both things at once.
+    """The shared verdict as a property rather than string assertions: compose
+    the operator-facing messages under every manifest condition and assert none
+    says both things at once.
 
     **Three of the four production verdict-bearing notices**, named rather than
     rounded up to "every surface"; `reading+verdict` below is this test's own
