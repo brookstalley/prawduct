@@ -6455,17 +6455,29 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
         return "--apply" in argv
 
     if command == "backlog":
-        # Printing usage is not writing, and the adapter answers `--help` anywhere
-        # in the call before it dispatches an op or parses a flag — so classifying
-        # by the first positional would refuse `backlog import --help` on every
-        # backend, and `backlog file --help` on a markdown one. That matters more
-        # than the narrowness suggests: the adapter's instruction surface bounds a
-        # model to "the ops in the usage table `backlog --help` prints", so a
-        # refusal here puts the referent back out of reach for exactly the agent
-        # most likely to need it — one running in a worktree it did not create.
-        # Mirror the adapter's own rule rather than approximating it.
-        if "--help" in argv:
-            return False
+        # Printing usage is not writing, so a help request is never refused here —
+        # and classifying by the first positional would refuse `backlog import
+        # --help` on every backend and `backlog file --help` on a markdown one.
+        # That matters more than its narrowness suggests: the adapter's instruction
+        # surface bounds a model to "the ops in the usage table `backlog --help`
+        # prints", so a refusal puts the referent out of reach for exactly the
+        # agent most likely to need it — one running in a worktree it did not
+        # create.
+        #
+        # ASK the adapter rather than re-spelling its rule. Whether a token is a
+        # help request depends on whether it sits in a value slot, and only the
+        # adapter knows which flags take values. A membership test here would
+        # disagree with it on a malformed call — `backlog import --from --help` is
+        # a real import to the adapter — and the disagreement resolves the unsafe
+        # way, waving a local write through in a tree that discards it.
+        try:
+            from lib.backlog import cli as _backlog_cli
+            if _backlog_cli._take_global_flag(argv, "--help", _first_positional(argv))[0]:
+                return False
+        except ImportError:
+            # No adapter reachable means no adapter call to classify; fall through
+            # to the positional rule, which is the fail-closed direction.
+            pass
         op = _first_positional(argv)
         if op in _BACKLOG_LOCAL_WRITE_OPS:
             return True

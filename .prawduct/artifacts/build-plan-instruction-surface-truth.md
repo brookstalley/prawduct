@@ -138,7 +138,7 @@ the fix is the investigation.
 
 ## Status
 
-- [ ] Chunk 01: Eleven instruction surfaces stop misdescribing the runtime
+- [x] Chunk 01: Eleven instruction surfaces stop misdescribing the runtime
 
 **One chunk, four work packages, and the reason is the review.** WP1-WP4 below are a *delegation*
 partition, not a build sequence: nothing in any of them depends on any other, four delegates built
@@ -150,6 +150,25 @@ have bought four dispatches over one tree -- the run-count waste the P0 wall-clo
 `/prawduct:critic cumulative` over `merge-base...HEAD`, which is also the `/prawduct:pr create`
 gate. Commits stay per-concern (one per work package) -- commit granularity and review granularity
 are different axes.
+
+Chunk closed 2026-08-23. Eleven items shipped, two filed (#706, #707). One cumulative review
+(3 blocking, 9 warnings, 9 notes across three reviewers) and one `verify-resolutions` — 12 of 12
+resolved, no new blocking. Suite 5079 green.
+
+**What the batch taught, and it is not what the plan expected.** Every one of the eleven items was
+partly stale and **two were wholly stale** — #204's three claims were all fixed already, and #210's
+janitor was correct on both invocation paths, so what landed there is hardening. Line numbers had
+drifted (`change-log.md:228` → `:9969`), counts undercounted (three unrostered pins, not one), a
+precedent the issue told a delegate to mirror had been deleted, and the runbook whose stale step
+references were #178's subject **renumbered again during the work**. The delegate brief line that
+saved this was "verify every claim against the tree before acting on it" — without it four agents
+would have fixed things that were not broken.
+
+**The review found more in the fixes than the items described in the originals.** The blocking
+three were all introduced by this batch: a help request that read a flag's VALUE as the op (so the
+invocation the adapter's own docs teach answered "unknown op"), a worktree guard that refused help
+as a write, and a referent instructed but not granted. That is the honest cost of a batch of
+instruction-surface fixes — the fixes are themselves instruction surfaces.
 
 Context: Batch drawn 2026-08-23 from the GitHub Issues backlog by scanning `effort:S` +
 `stage:ready` for a single theme, on the user's "about 10 thematically aligned, high-ROI" ask.

@@ -736,6 +736,27 @@ class TestBacklogOpClassificationIsBound:
                 f"{'service-backed' if service_backed else 'markdown-backend'} repo"
             )
 
+    def test_a_help_token_in_a_value_slot_is_still_a_write(self, tmp_path):
+        """The guard and the adapter must agree on what a help request IS.
+
+        A membership test here would call `backlog import --from --help` a read while
+        the adapter treats it as a real import — `--help` fills `--from`'s value slot —
+        and the disagreement resolves the unsafe way: a local write waved through in a
+        tree that discards it, with the caller told it succeeded. The guard asks the
+        adapter instead of re-spelling the rule, so there is one answer.
+        """
+        hook = _hook_module()
+        project = tmp_path / "markdown"
+        (project / ".prawduct").mkdir(parents=True)
+        (project / ".prawduct" / "project-state.yaml").write_text("backlog_format_version: 2\n")
+
+        assert hook._ephemeral_command_writes(
+            "backlog", ["import", "--from", "--help"], project
+        ) is True, (
+            "`--help` in a value slot read as a help request — the adapter would run "
+            "the import, and the guard would have let it strand"
+        )
+
     def test_a_real_op_is_still_classified_when_help_is_absent(self, tmp_path):
         """The floor under the test above: without `--help`, the ops it exercises are
         still judged on their merits. A rule that made every backlog call a read

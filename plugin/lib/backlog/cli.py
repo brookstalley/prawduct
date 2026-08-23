@@ -350,7 +350,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
     # about where the token sits: a token occupying a VALUE slot belongs to the flag
     # that claimed it, whatever it spells. Scanning by membership instead let
     # `comment <id> --body --help` print usage and report ok for a write that never
-    # happened. `_valued_flags_for` is what distinguishes a value slot from a flag,
+    # happened. `_VALUED_FLAG_NAMES` is what distinguishes a value slot from a flag,
     # and it is pinned against what each handler actually parses.
     json_mode, argv = _take_global_flag(argv, "--json", named)
     wants_help, argv = _take_global_flag(argv, "--help", named)
