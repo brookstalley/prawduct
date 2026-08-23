@@ -1223,7 +1223,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
     while a Critic review is plausibly in progress so an independent reviewer
     cannot clobber the session it is reviewing. A continuation neither sweeps nor
-    refuses — it mutates nothing, so the guard has nothing to protect.
+    refuses — it mutates no session state, so the guard has nothing to protect.
 
     ``--brief-only`` exists because the SessionStart matcher is the only thing
     that knows whether this invocation ends a session or continues one, and
@@ -6560,6 +6560,38 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
         return "--apply" in argv
 
     if command == "backlog":
+        # Printing usage is not writing, so a help request is never refused here —
+        # and classifying by the first positional would refuse `backlog import
+        # --help` on every backend and `backlog file --help` on a markdown one.
+        # That matters more than its narrowness suggests: the adapter's instruction
+        # surface bounds a model to "the ops in the usage table `backlog --help`
+        # prints", so a refusal puts the referent out of reach for exactly the
+        # agent most likely to need it — one running in a worktree it did not
+        # create.
+        #
+        # ASK the adapter, through the one predicate it publishes for the purpose.
+        # Whether a token is a help request depends on whether it sits in a value
+        # slot, and only the adapter knows which flags take values — so a rule
+        # re-spelled here can disagree with the runner about what the call IS, and
+        # the disagreement resolves the unsafe way: a write classified as a read and
+        # waved through in a tree that discards it.
+        lib_root = _plugin_root()
+        if lib_root not in sys.path:
+            sys.path.insert(0, lib_root)
+        try:
+            from lib.backlog import cli as _backlog_cli  # noqa: PLC0415 — lazy keeps top-level cheap
+        except ImportError as exc:
+            # Falling through to the positional rule is the fail-closed direction, so
+            # nothing unsafe happens — but it restores a false refusal of `backlog
+            # <op> --help`, which is a read. Say so rather than reverting in silence.
+            print(
+                f"NOTE: classifying `backlog` by op name only — the adapter is "
+                f"unreachable ({exc}); a `--help` on a write op may be refused here.",
+                file=sys.stderr,
+            )
+        else:
+            if _backlog_cli.is_help_request(argv):
+                return False
         op = _first_positional(argv)
         if op in _BACKLOG_LOCAL_WRITE_OPS:
             return True

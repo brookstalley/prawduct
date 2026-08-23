@@ -730,10 +730,27 @@ class TestJanitorSkillPluginEra:
         )
 
     def test_template_currency_targets_plugin_root(self):
+        """Template Currency compares against the templates the PLUGIN ships, and it
+        must name them by a path the agent can actually open.
+
+        The proposition is unchanged since this test was written; the spelling that
+        satisfies it is not. `${CLAUDE_PLUGIN_ROOT}` substitutes into hook commands
+        from `hooks.json`, and *only* there — it does not expand in skill prose and is
+        absent from the Bash tool environment, so a prose read through it hands the
+        agent an unresolvable path and the check silently degrades to whatever the
+        skill's own inline prose implies. `${CLAUDE_SKILL_DIR}` does expand at skill
+        load, and the plugin root is one directory pair above it, which is why that is
+        the form a skill reads the plugin through."""
         src = (ROOT / self.SKILL).read_text(encoding="utf-8")
-        assert "${CLAUDE_PLUGIN_ROOT}/templates/" in src, (
-            f"{self.SKILL} must resolve framework templates from "
-            "`${CLAUDE_PLUGIN_ROOT}/templates/` (the plugin ships them read-only)."
+        assert "${CLAUDE_SKILL_DIR}/../../templates/" in src, (
+            f"{self.SKILL} must resolve framework templates out of the plugin, by the "
+            "skill-dir-relative form that expands in prose "
+            "(`${CLAUDE_SKILL_DIR}/../../templates/`; the plugin ships them read-only)."
+        )
+        assert "${CLAUDE_PLUGIN_ROOT}" not in src, (
+            f"{self.SKILL} reads through `${{CLAUDE_PLUGIN_ROOT}}`, which does not "
+            "expand in skill prose — the read resolves to a literal path that does "
+            "not exist. Use `${CLAUDE_SKILL_DIR}/../../…`."
         )
 
 

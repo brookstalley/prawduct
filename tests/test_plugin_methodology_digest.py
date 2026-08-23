@@ -314,8 +314,11 @@ class TestDigestWiring:
         ), "SessionStart must run the bundled digest via ${CLAUDE_PLUGIN_ROOT}"
 
     def test_digest_matcher_includes_compact(self, sessionstart):
-        # Unlike the clear/briefing hook (a state-reset, excluded on compact), the
-        # digest is pure guidance — re-injecting it after a compaction is valuable.
+        # The clear/briefing hook also fires on compact, but only through its
+        # orientation-only registration: it resets session state, so it splits
+        # boundary sources from continuations. The digest needs no such split —
+        # it is pure guidance, so re-injecting it after a compaction is valuable
+        # and costs nothing.
         entries = self._digest_entries(sessionstart)
         assert entries, "no digest SessionStart entry found"
         for e in entries:
@@ -325,7 +328,7 @@ class TestDigestWiring:
 
     def test_digest_does_not_clobber_banner_or_briefing(self, sessionstart):
         # Multiple SessionStart hooks compose; adding the digest must not drop the
-        # Chunk-1 banner or the Chunk-5 clear briefing.
+        # version-delta banner or the clear briefing.
         cmds = [h["command"] for e in sessionstart for h in e["hooks"]]
         assert any("banner.py" in c for c in cmds)
         # The clear briefing now carries `--session-start` (CRT-3X9D guard bypass).

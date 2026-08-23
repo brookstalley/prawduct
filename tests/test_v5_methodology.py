@@ -122,8 +122,11 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: growth is repeatedly recorded and never justified — that is a ceiling's
 #: case, and the readings are what would prove it — or a measured session
 #: opening a guide it did not need, which is an argument about *routing*, not
-#: about size. `skills/critic/SKILL.md` is the standing precedent for the
-#: shape: a reading with no ceiling, and it has held.
+#: about size. What separates this class from the files that DO carry a ceiling
+#: is not size but who pays: an on-demand guide costs only the session that
+#: opens it, while `skills/critic/SKILL.md` is loaded by every Critic dispatch
+#: whether or not anyone chose it — which is why that file's reading sits beside
+#: a ceiling and these three do not.
 #:
 LAST_MEASURED_TOKENS = {
     # -1 on 2026-08-13: the evidence-model paragraph said a rebase/amend
@@ -395,8 +398,10 @@ LAST_MEASURED_TOKENS = {
     # the fast `chunk` path whose whole reason for existing is to not read the
     # seven-goal protocol -- so growth here is the most expensive growth in the
     # skill and was, until now, the only growth nobody had to declare.
-    # No ceiling is asserted with this first measurement; the entry exists so the
-    # next change to this file has to state what paid for it.
+    # A ceiling sits with this reading (`TestCriticSkillRoutesByMode::
+    # test_token_budget`), on that same argument: unconditional payload is where
+    # growth is most expensive, so it is the one destination a relocation must
+    # not be able to hide in.
     # -5 on 2026-08-19: the abandon-a-review parenthetical said the marker "is
     # swept at the next session boundary — `startup` or `/clear`", which the
     # TTL-gated sweep made false for BOTH sources it named, on the payload every
@@ -837,7 +842,7 @@ LAST_MEASURED_INJECTED_TOKENS = {
     "product": 2269,
 }
 
-#: Ceilings. HARD, like the five per-file prose ceilings in this module and
+#: Ceilings. HARD, like the per-file prose ceilings in this module and
 #: unlike the advisory state-file size threshold in
 #: `artifacts/nonfunctional-requirements.md` § Direction -- that norm governs
 #: `.prawduct/` STATE files, these are shipped instruction payloads. Recorded as
@@ -3493,7 +3498,7 @@ class TestCriticSkill:
         # extends the skill while reviewing. Maintainer-facing rationale inside a
         # per-review payload is the same class the goals-1-3.md budget comment
         # records cutting twice. Relocated, not deleted -- review-cycle.md is the
-        # maintainer's companion file and carries no ceiling.
+        # maintainer's companion file, which is the audience that section serves.
         #
         # 3589 -> 3611 (2026-08-05) -- a partial is now bound to the review that
         # dispatched it, not to the commit alone, so the coordinator template
@@ -3913,6 +3918,26 @@ class TestCriticSkillRoutesByMode:
     def load(self):
         self.content = read_file("skills/critic/SKILL.md")
 
+    def test_token_budget(self):
+        # Ceiling 3450 against a reading of 3445 (`estimate_tokens`, recorded in
+        # LAST_MEASURED_TOKENS above): four tokens of slack under the strict
+        # `<`, and deliberately tighter than any sibling ceiling in this module.
+        # This is the one payload EVERY mode loads -- the skill body a reviewer
+        # reads before step 1 has told it which protocol file it needs -- so a
+        # token added here is paid by the fast `chunk` path whose whole reason
+        # for existing is to not read the seven-goal protocol, and paid again by
+        # each coordinator reviewer on a `final`/`cumulative`. Unconditional
+        # payload is therefore the most expensive place in the skill to grow and
+        # the worst available relocation target, not an exempt one; the ceiling
+        # is what stops it being the cheap destination instead. Same standing
+        # rule as every other budget comment here: THE NEXT ADDITION TRIMS OR
+        # RELOCATES, IT DOES NOT BUMP.
+        #
+        # It lives in this class because this class owns SKILL.md; the mode
+        # routing it asserts around it is the reason the ceiling is this tight.
+        tokens = estimate_tokens(self.content)
+        assert tokens < 3450, f"SKILL.md is ~{tokens} tokens, should be <3450"
+
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
         assert "goals-1-3.md" in line
@@ -4038,9 +4063,8 @@ class TestCriticSkillRoutesByMode:
 
 class TestReviewCycle:
     def test_token_budget(self):
-        # Ceiling 9600. Added 2026-08-04 because this file was the only
-        # `final`/`cumulative` payload with no bound, and the gap was being
-        # SPENT: `review-protocol.md`'s relocated "Extending This Skill" and the
+        # Ceiling 9600. It exists because the absence of one was being SPENT:
+        # `review-protocol.md`'s relocated "Extending This Skill" and the
         # verify-narrowing argument both landed here justified by "review-cycle
         # carries no ceiling", while the ceiling test one file over passed on a
         # token DROP. Relocation across an unguarded boundary is a bump wearing
@@ -4055,14 +4079,21 @@ class TestReviewCycle:
         # every other budget comment here: THE NEXT ADDITION TRIMS OR RELOCATES,
         # IT DOES NOT BUMP.
         #
-        # The first draft of this comment closed with "'relocate to the
-        # unbudgeted file' is no longer an available move anywhere in this
-        # skill". That was FALSE when written -- `framework-checks.md` is listed
-        # at SKILL.md:27 as `final`/`cumulative` payload and had no ceiling
-        # either. Caught as an observation by the verify pass over the very
-        # commit that added this. It is true now because the sibling test below
-        # was added to MAKE it true, which is the only honest way to keep a
-        # universal claim: bound the last case, or do not make the claim.
+        # A ceiling binds ONE file, so nothing written here can be true of the
+        # skill as a whole -- and "'relocate to the unbudgeted file' is no
+        # longer an available move anywhere in this skill" is the sentence this
+        # comment must never carry. That is a claim about a SET THAT GROWS: the
+        # next payload file added falsifies it silently while it goes on reading
+        # as settled fact to the maintainer deciding where to put prose, and a
+        # third ceiling would only make it true until the sixth file.
+        #
+        # State the mechanism instead, which survives the set growing: every
+        # accounted payload file has a reading in `LAST_MEASURED_TOKENS`, and
+        # `test_recorded_token_count_matches_the_file` turns an undeclared
+        # change red wherever it lands -- so a relocation out of this file has
+        # to be declared at its destination. Whether that destination also
+        # carries a CEILING is a separate per-file decision, stated at that
+        # file's own assertion and nowhere else.
         #
         # 9471 -> 9532 (2026-08-05) -- the manifest key list gained `rendezvous`
         # and the consolidation contract gained the `dispatch_id` binding. Not
@@ -4119,11 +4150,14 @@ class TestReviewCycle:
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
 
     def test_framework_checks_token_budget(self):
-        # Ceiling 1150. The last `final`/`cumulative` payload file without one
-        # (SKILL.md:27 routes final/cumulative reviewers here for the four
+        # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
+        # header bullets route those reviewers here for the four
         # Framework-Specific Check definitions, and `review-protocol.md` names
-        # the file rather than restating them -- a deliberate relocation that
-        # this bound is what keeps honest).
+        # the file rather than restating them. A relocation is only honest while
+        # its destination is bounded, and this ceiling is what bounds this one.
+        # It says nothing about any other file -- which payload files carry a
+        # ceiling is stated at each one's own assertion, because no comment here
+        # can speak for a set that grows.
         #
         # Small file, so the ceiling is proportionally looser than its siblings'
         # few-token headroom: the point is that the NEXT addition is a decision,
