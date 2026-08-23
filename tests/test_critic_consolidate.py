@@ -2280,6 +2280,66 @@ class TestNoSurfacePairsPreservationWithDiscard:
             )
 
 
+class TestTheReviewIdReadIsSharedToo:
+    """R-5, built as the class it was scoped at rather than closed at the site
+    that happened to hurt. Three notices hand-read the manifest for its `id`:
+    one tracebacked on an undecodable manifest; the other two swallowed it, and
+    one of those ran the read first inside the same `except` — a latent ordering
+    hazard no disk could actually show (mutation-checked; `state` there only
+    selects a branch a valid manifest is a precondition for), which is why
+    nothing below pretends to pin it."""
+
+    def test_a_stale_schema_record_still_lends_its_id(self, tmp_path):
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        stale = _manifest_dict()
+        stale.pop("rendezvous")
+        _plant(pd, json.dumps(stale))
+        assert cc.manifest_condition(pd)[0] == cc.MANIFEST_STALE_SCHEMA
+        assert cc.manifest_review_id(pd) == stale["id"]
+
+    @pytest.mark.parametrize("disk", ["absent", "corrupt", "undecodable", "no-id"])
+    def test_no_disk_makes_the_read_raise(self, tmp_path, disk):
+        """The property the three `except` clauses were standing in for — and
+        `undecodable` is the member that used to escape as a traceback."""
+        pd = tmp_path / f"d-{disk}" / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        mpath = pd / ".critic-partials" / "manifest.json"
+        if disk == "corrupt":
+            mpath.write_text("{not json")
+        elif disk == "undecodable":
+            mpath.write_bytes(b"\xff\xfe\x00binary")
+        elif disk == "no-id":
+            without_id = _manifest_dict()
+            without_id.pop("id")
+            mpath.write_text(json.dumps(without_id))
+        assert cc.manifest_review_id(pd) == cc.MANIFEST_ID_UNAVAILABLE
+
+    def test_the_lib_unreachable_excuse_is_a_different_fact(self, monkeypatch, tmp_path):
+        """Two excuses, deliberately: "no usable manifest" is the lib's answer
+        about a disk; "the lib could not be loaded" is the only thing the hook
+        can say when there is no lib to ask. A single string for both would
+        state one of them falsely."""
+        hook = _load_hook()
+
+        def _boom():
+            raise RuntimeError("plugin root moved")
+
+        monkeypatch.setattr(hook, "_critic_consolidate", _boom)
+        excuse = hook._review_id_for_notice(tmp_path / ".prawduct")
+        assert "could not be loaded" in excuse
+        assert excuse != cc.MANIFEST_ID_UNAVAILABLE
+
+    def test_the_hooks_unknown_default_is_the_modules_word(self):
+        """`cmd_stop` falls back to the literal `"unknown"` where the module it
+        would ask is what failed. Inert while they agree — this is what keeps
+        them agreeing."""
+        hook_src = (
+            Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+        ).read_text()
+        assert f'getattr(_cc, "MANIFEST_UNKNOWN", "{cc.MANIFEST_UNKNOWN}")' in hook_src
+
+
 class TestTheDegradedVerdictIsSharedToo:
     """The verdict clause has one home; so does what it says when the lib that
     owns it cannot be reached. Each of the four notices used to carry its own

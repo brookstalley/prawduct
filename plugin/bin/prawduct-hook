@@ -290,11 +290,29 @@ def _keep_verdict(prawduct_dir) -> tuple[bool, str]:
     try:
         return _critic_consolidate().anything_worth_keeping(prawduct_dir)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        # Flattened: an exception message can carry newlines, and this clause is
+        # spliced into a 2-space-indented block where a raw one would break the
+        # shape an operator is reading.
+        reason = " ".join(f"{type(exc).__name__}: {exc}".split())
         return True, (
-            f"  Could not tell whether reviewer output is attached ({type(exc).__name__}:\n"
-            f"  {exc}) — inspect before discarding anything:\n"
+            f"  Could not tell whether reviewer output is attached ({reason})\n"
+            "  — inspect before discarding anything:\n"
             "    prawduct-hook evidence status\n"
         )
+
+
+def _review_id_for_notice(prawduct_dir) -> str:
+    """The review id a boundary notice names, degrading to what it can know.
+
+    Wraps `critic_consolidate.manifest_review_id` — which owns the read and the
+    "no usable manifest" excuse — with the only thing this side can add: an
+    excuse for the case the lib itself is unreachable, which is a DIFFERENT
+    fact and so a different sentence rather than a second copy of the same one.
+    """
+    try:
+        return _critic_consolidate().manifest_review_id(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        return "(id unavailable — the consolidation lib could not be loaded)"
 
 
 def _reject_unknown_args(
@@ -1015,14 +1033,10 @@ def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
     # shape #676 reports — that one fails validation precisely BECAUSE `id` is
     # missing, so this fallback is exactly what prints. The one case reaching
     # here is "the id could not be read", whatever the cause.
-    review_id = "(id unavailable — no usable dispatch manifest)"
+    review_id = _review_id_for_notice(prawduct_dir)
     state, reading = "unknown", ""
     try:
-        consolidate = _critic_consolidate()
-        state, reading = consolidate.pending_roster_reading(prawduct_dir)
-        review_id = json.loads(
-            consolidate.manifest_path(prawduct_dir).read_text()
-        )["id"]
+        state, reading = _critic_consolidate().pending_roster_reading(prawduct_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
         pass
 
@@ -1095,19 +1109,17 @@ def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> 
     recovery addressable at all.
     """
     age = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
-    review_id = "(id unavailable — no usable dispatch manifest)"
+    # The id read is outside this `try` because it no longer needs one. Its
+    # ordering hazard here was LATENT, not live, and saying so is the point: it
+    # used to run first inside the same `try`, so a raise would have cost
+    # `state` — but `state` only selects the "complete" branch, which a valid
+    # manifest is a precondition for, so no disk could show it. Checked by
+    # mutation rather than assumed, and deliberately left unpinned: a test for
+    # an unreachable difference passes either way.
+    review_id = _review_id_for_notice(prawduct_dir)
     state = "unknown"
     try:
-        consolidate = _critic_consolidate()
-        # Ask the module that OWNS the layout. Building
-        # `.critic-partials/manifest.json` by hand here put a second copy of
-        # that path in a file that already reaches `manifest_path()`, under a
-        # broad except that would have degraded a rename to "id unavailable" —
-        # silently losing the one field this notice exists to carry.
-        review_id = json.loads(
-            consolidate.manifest_path(prawduct_dir).read_text()
-        )["id"]
-        state, _reading = consolidate.pending_roster_reading(prawduct_dir)
+        state, _reading = _critic_consolidate().pending_roster_reading(prawduct_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
         pass
 
@@ -2515,7 +2527,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # Same helper as the three boundary notices: this branch used to
                 # drop the verdict clause entirely when the lib failed, which is
                 # the one disk where an operator most needs to be told to look.
-                _kept = "  cannot be consolidated.\n" + _keep_verdict(prawduct_dir)[1]
+                _verdict = _keep_verdict(prawduct_dir)[1]
+                _kept = "  cannot be consolidated.\n" + _verdict
                 # SHORT form at both sites the finding named. The raw reason for
                 # a `missing 'rendezvous'` manifest — the shape #676 describes —
                 # is a ~700-char paragraph prescribing its own recovery
@@ -2562,7 +2575,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     cause = (
                         "  no coordinator manifest is present — a single-pass review, or a\n"
                         "  coordinator dispatch that crashed before writing one.\n"
-                        + _keep_verdict(prawduct_dir)[1]
+                        + _verdict
                     )
                 blockers.append(_attributed("critic",
                     "CRITIC REVIEW (not completed): a review set the .critic-active marker\n"

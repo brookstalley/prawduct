@@ -2094,6 +2094,33 @@ MANIFEST_UNKNOWN = "unknown"
 _DETAIL_MAX_CHARS = 120
 
 
+#: The excuse a message prints when the manifest cannot lend it a review id.
+#: One string because it is one fact ("this disk has no id to name"), and the
+#: three notices that print it had each spelled their own — which is how they
+#: also each grew their own READ of the manifest to decide it.
+MANIFEST_ID_UNAVAILABLE = "(id unavailable — no usable dispatch manifest)"
+
+
+def manifest_review_id(prawduct_dir: Path) -> str:
+    """The review id an operator message names, or the one excuse for lacking it.
+
+    **The class R-5 named, built rather than closed site by site.** Three
+    notices hand-read the manifest for its `id`, each under its own `except`;
+    the widening that made an undecodable manifest classifiable instead of fatal
+    reached the classifier and none of them, so one tracebacked and the other
+    two silently lost the reading they were about to print (the read ran BEFORE
+    `pending_roster_reading` and took its exception with it).
+
+    Never raises for a disk: :func:`manifest_condition` classifies every one,
+    and a STALE-SCHEMA record is still asked for its id — the field usually
+    survives a schema change, and naming the review is the whole job here.
+    """
+    _condition, _detail, manifest = manifest_condition(prawduct_dir)
+    if isinstance(manifest, dict) and _nonempty_str(manifest.get("id")):
+        return manifest["id"]
+    return MANIFEST_ID_UNAVAILABLE
+
+
 def short_detail(detail: str) -> str:
     """A message-safe one-clause form of a validation reason.
 
@@ -2428,17 +2455,13 @@ def active_dispatch_refusal(
     rather than leaving it to a guess.
     """
     age_note = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
-    prior_id = "(id unavailable — no usable dispatch manifest)"
-    # Reads the classifier's ALREADY-PARSED record rather than re-opening the
-    # file. The hand-read this replaces caught `json.JSONDecodeError`, so an
+    # The hand-read this replaces caught `json.JSONDecodeError`, so an
     # undecodable manifest — `UnicodeDecodeError`, a ValueError — escaped
     # through `begin_review` as a traceback: the exact defect R-7 fixed inside
-    # `manifest_condition`, still live at the surface that motivated it. A
-    # stale-schema record often still carries its `id`, which is why this takes
-    # the record rather than only trusting a VALID condition.
-    _condition, _detail, manifest = manifest_condition(prawduct_dir)
-    if isinstance(manifest, dict) and _nonempty_str(manifest.get("id")):
-        prior_id = manifest["id"]
+    # `manifest_condition`, still live at the surface that motivated it. The
+    # read itself is `manifest_review_id`'s, shared with the two boundary
+    # notices that carried the same defect.
+    prior_id = manifest_review_id(prawduct_dir)
     # The READING is shared with the boundary retained-marker notice
     # (:func:`pending_roster_reading` says why); only the remedy below is local
     # to refusing a dispatch.

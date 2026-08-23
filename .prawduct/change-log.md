@@ -129,6 +129,18 @@ directory after consolidation and the partials are all there is. The cause is no
 known and the branch takes the shared clause. Third recurrence of this concern in this subsystem,
 so it finally gets a row in `cross-cutting-concerns.md`: what keeps being shared is the PROSE, and
 the fact behind it stays distributed.
+
+**The verify round refused to mark one warning resolved, and it was right.** R-5 was scoped CLASS —
+a shared read for the manifest's `id` — and the fix had closed only the site that hurt, leaving two
+hand-reads standing; the review checked rather than took the claim. `manifest_review_id` is now that
+read, with `MANIFEST_ID_UNAVAILABLE` as the single excuse, and the hook's wrapper adds one sentence
+only for the case the lib itself cannot be loaded — a different fact, not a second copy. The
+ordering hazard the review flagged alongside it turned out to be **latent**: at
+`_forced_live_sweep_notice` the id read ran first inside the same `try`, but `state` there only
+selects a branch that a valid manifest is a precondition for, so no disk could show the difference.
+Established by mutation, recorded in the comment, and deliberately left unpinned — a test for an
+unreachable difference passes either way, which is the standard this bundle keeps applying to
+itself.
 ## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
 
 <!-- prawduct: type=fix | scope=instruction-surface-truth -->
