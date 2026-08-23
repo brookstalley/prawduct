@@ -141,6 +141,17 @@ selects a branch that a valid manifest is a precondition for, so no disk could s
 Established by mutation, recorded in the comment, and deliberately left unpinned — a test for an
 unreachable difference passes either way, which is the standard this bundle keeps applying to
 itself.
+
+**And the round after that found the class still had two members, both worse than the one it was
+named for.** Enumerating the sites R-5 listed is not closing a class; re-running its search is.
+`_archive_leftovers` read the manifest raw for the archive directory's name — under the narrow
+`except`, on the disk that is the only reason the sweep runs at all — so `critic-begin` and
+`critic-discard` tracebacked on an undecodable manifest: #676's headline failure, alive one
+function over from where three rounds had been fixing it. `consolidate` had the same tuple on a
+path the SubagentStop hook drives, turning an exit-1 refusal into a hook crash. Both now share the
+classifier's parse, and both are pinned — the totality test composes them on the planted binary
+disk instead of trusting a site list, which is what let this survive two rounds.
+
 ## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
 
 <!-- prawduct: type=fix | scope=instruction-surface-truth -->

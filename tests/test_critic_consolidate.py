@@ -2366,6 +2366,22 @@ class TestTheDegradedVerdictIsSharedToo:
         assert "RuntimeError" in verdict and "plugin root moved" in verdict
         assert "prawduct-hook evidence status" in verdict
 
+    def test_a_multi_line_exception_cannot_break_the_notice_shape(self, monkeypatch, tmp_path):
+        """The clause is spliced into a 2-space-indented block, and an
+        exception message is not obliged to be one line — an ImportError
+        carrying a traceback-ish body would have laid its own lines into the
+        middle of an operator notice."""
+        hook = _load_hook()
+
+        def _boom():
+            raise RuntimeError("could not import lib\nbecause the root moved\n  badly")
+
+        monkeypatch.setattr(hook, "_critic_consolidate", _boom)
+        _keep, verdict = hook._keep_verdict(tmp_path / ".prawduct")
+        body = [line for line in verdict.split("\n") if line]
+        assert all(line.startswith("  ") for line in body), verdict
+        assert "because the root moved badly" in verdict, "flattened, not truncated"
+
     def test_every_notice_takes_its_verdict_from_the_one_helper(self, monkeypatch, tmp_path):
         """Substituting the helper — not the lib — must move all three boundary
         surfaces, which is only true while none of them still calls
@@ -2458,6 +2474,17 @@ class TestManifestConditionIsTotal:
         # `critic-begin` instead of refusing.
         refusal = cc.active_dispatch_refusal(pd, 60.0, True)
         assert "id unavailable" in refusal
+        # The two members the FIRST enumeration of this class missed, both
+        # reachable and both worse than the refusal: `_archive_leftovers` runs
+        # inside `begin_review` on exactly this disk (an unusable manifest is
+        # why the sweep is reached at all), and `consolidate` is driven by the
+        # SubagentStop hook. Composed here rather than trusted to the site list,
+        # because a class closed at the sites someone remembered is how this one
+        # survived two rounds.
+        (pd / ".critic-partials" / "correctness.rev-x.json").write_text("{}")
+        archived = cc._archive_leftovers(pd)
+        assert archived is not None and archived.name.startswith("unmanifested-")
+        assert (archived / "correctness.rev-x.json").is_file()
 
     def test_a_stale_schema_record_still_lends_the_refusal_its_id(self, tmp_path):
         """The reason the refusal reads the classifier's RECORD and not just a
@@ -2593,6 +2620,24 @@ class TestConsolidateIntegration:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "consolidated:" in result.stdout
         assert cc._BATCH_FIX_DIRECTIVE in result.stdout
+
+    def test_an_undecodable_manifest_exits_one_rather_than_tracebacking(self, tmp_path):
+        """The CLI leg of the same class. This path is driven by the
+        SubagentStop hook, so a traceback here surfaces as a hook crash rather
+        than as the "manifest unreadable" refusal the code already had — the
+        narrow `except` simply never covered the byte sequence that produces
+        it."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        (repo / PARTIALS_REL / "manifest.json").write_bytes(b"\xff\xfe\x00binary")
+
+        result = _run_consolidate(repo)
+        assert result.returncode == 1, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "manifest unreadable" in result.stderr
+        assert "Traceback" not in result.stderr
 
     def test_clean_pass_does_not_carry_the_fix_strategy(self, tmp_path):
         """Zero findings, zero fix advice — a clean review that ended with

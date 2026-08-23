@@ -859,21 +859,23 @@ def _archive_leftovers(prawduct_dir: Path, caller: str = "critic-begin") -> Path
     name: str | None = None
     mpath = manifest_path(prawduct_dir)
     if mpath.is_file():
-        try:
-            raw = json.loads(mpath.read_text())
-            candidate = raw.get("id") if isinstance(raw, dict) else None
-            # Same gate as the rendezvous paths, for the same reason: this id
-            # comes off disk and becomes a directory name, so `../../x` walks up
-            # and `/tmp/x` replaces the base outright. Unlike those paths there
-            # is no validator upstream — this reads the manifest raw, precisely
-            # because it must also work when the manifest is unreadable — and an
-            # archive failure degrades to DELETE, so getting it wrong here loses
-            # the evidence silently. Falls through to the timestamp name.
-            if (isinstance(candidate, str) and candidate.strip()
-                    and _path_component_safe(candidate.strip())):
-                name = candidate.strip()
-        except (OSError, json.JSONDecodeError):
-            name = None
+        # `manifest_condition`'s parse, not a second one. The hand-read here
+        # caught `json.JSONDecodeError`, so an undecodable manifest raised
+        # `UnicodeDecodeError` straight out of `begin_review` — the sweep is
+        # reached precisely when the manifest is unusable, so this was #676's
+        # headline failure surviving one function over from where it was fixed.
+        _condition, _detail, raw = manifest_condition(prawduct_dir)
+        candidate = raw.get("id") if isinstance(raw, dict) else None
+        # Same gate as the rendezvous paths, for the same reason: this id comes
+        # off disk and becomes a directory name, so `../../x` walks up and
+        # `/tmp/x` replaces the base outright. There is no validator upstream —
+        # a STALE-SCHEMA record reaches here by design, precisely because this
+        # must also work when the manifest is unusable — and an archive failure
+        # degrades to DELETE, so getting it wrong here loses the evidence
+        # silently. Falls through to the timestamp name.
+        if (isinstance(candidate, str) and candidate.strip()
+                and _path_component_safe(candidate.strip())):
+            name = candidate.strip()
     if name is None:
         name = "unmanifested-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     dest = archive_dir(prawduct_dir) / name
@@ -3147,7 +3149,11 @@ def consolidate(project_dir: Path) -> int:
 
     try:
         manifest = json.loads(mpath.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
+        # `ValueError`, the same widening `manifest_condition` carries and for
+        # the same disk: an undecodable manifest raises `UnicodeDecodeError`,
+        # which the narrow tuple let out as a traceback on a path the
+        # SubagentStop hook drives — instead of this exit 1.
         print(f"critic-consolidate: manifest unreadable ({exc})", file=sys.stderr)
         return 1
     ok, reason = validate_manifest(manifest)
