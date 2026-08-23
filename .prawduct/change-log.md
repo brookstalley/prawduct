@@ -152,6 +152,18 @@ path the SubagentStop hook drives, turning an exit-1 refusal into a hook crash. 
 classifier's parse, and both are pinned — the totality test composes them on the planted binary
 disk instead of trusting a site list, which is what let this survive two rounds.
 
+**The round after THAT found a fourth, and it ends the site-by-site repair.** `restore_review`
+matched no `manifest_path(` search because it builds its path from the archive root — and the file
+it reads is the very binary manifest the previous fix taught the sweep to preserve, reached through
+`critic-restore`, the undo both `critic-begin` and `critic-discard` print by name. It tracebacked
+*after* the all-or-nothing copy completed, so the files were back with no verdict and the retry met
+the "another review is in the way" refusal. The repair is the construction the reviewer asked for
+three rounds ago: `classify_manifest_file` takes a PATH, `manifest_condition` is its
+`prawduct_dir` form, and there is now one manifest parse in the module for a caller to reach for.
+The two look-alike reads in the same file (findings cache, partials) were widened with it — not
+because the byte sequence can arise there, but because leaving the narrow shape in place is what
+re-seeded this class three times.
+
 ## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
 
 <!-- prawduct: type=fix | scope=instruction-surface-truth -->

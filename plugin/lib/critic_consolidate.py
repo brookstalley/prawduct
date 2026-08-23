@@ -1149,10 +1149,20 @@ def restore_review(prawduct_dir: Path, review_id: str) -> dict:
     if MANIFEST_NAME not in {c.name for c in children}:
         usable, why = False, "the archived set carries no dispatch manifest"
     else:
-        try:
-            usable, why = validate_manifest(json.loads(restored_manifest.read_text()))
-        except (OSError, json.JSONDecodeError) as exc:
-            usable, why = False, f"its manifest is unreadable ({exc})"
+        # `classify_manifest_file`, not a fourth hand-read: this one takes the
+        # binary manifest THIS module's own archive step now preserves, and it
+        # runs after the all-or-nothing copy has completed — so a raise here
+        # left the files in place with no verdict printed, and the retry met the
+        # "another review is in the way" refusal the comment above warns about.
+        condition, detail, _m = classify_manifest_file(restored_manifest)
+        if condition == MANIFEST_VALID:
+            usable, why = True, ""
+        elif condition == MANIFEST_ABSENT:
+            usable, why = False, "its manifest could not be read from the archive"
+        elif condition == MANIFEST_CORRUPT:
+            usable, why = False, f"its manifest is unreadable ({detail})"
+        else:
+            usable, why = False, detail
     return {
         "status": "ok",
         "id": review_id,
@@ -1327,7 +1337,13 @@ def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | No
     cache = prawduct_dir / ".critic-findings.json"
     try:
         data = json.loads(cache.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
+        # `ValueError` for the same reason the manifest reads take it, though
+        # not for the same reachability: a findings cache is written by this
+        # module as UTF-8, so `UnicodeDecodeError` does not arise here by
+        # construction. The narrow tuple is kept out anyway — it is the SHAPE
+        # that re-seeded this class three times, and a reader who copies this
+        # line does not inherit the reachability argument with it.
         return None, f"no readable prior findings cache ({exc})"
     fact_id = data.get("fact_id") if isinstance(data, dict) else None
     if not isinstance(fact_id, str) or not fact_id.strip():
@@ -2253,7 +2269,19 @@ def manifest_condition(prawduct_dir: Path) -> tuple[str, str, dict | None]:
     as a wedge was the MARKER, which expires on its own TTL and which
     ``critic-end`` clears.
     """
-    mpath = manifest_path(prawduct_dir)
+    return classify_manifest_file(manifest_path(prawduct_dir))
+
+
+def classify_manifest_file(mpath: Path) -> tuple[str, str, dict | None]:
+    """:func:`manifest_condition` for a manifest that is not the pending one.
+
+    The parse lives HERE, in one place, because the class this module kept
+    reopening was never "which sites did we list" — it was that each site had
+    its own read. Three rounds closed it at the sites someone enumerated and it
+    surfaced a fourth time in `restore_review`, whose path is built from the
+    ARCHIVE root and so matched no `manifest_path(` search. A caller with a path
+    now has somewhere to bring it.
+    """
     if not mpath.is_file():
         return MANIFEST_ABSENT, "", None
     try:
@@ -3176,7 +3204,7 @@ def consolidate(project_dir: Path) -> int:
             continue
         try:
             data = json.loads(ppath.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError) as exc:  # ValueError: see the findings-cache read
             print(
                 f"critic-consolidate: partial {role!r} unreadable ({exc}) — "
                 "fail-closed, not persisting a partial review as complete.",

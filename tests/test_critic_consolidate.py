@@ -3498,12 +3498,13 @@ class TestBeginArchivesLeftovers:
 
     def test_a_traversal_shaped_manifest_id_archives_under_the_fallback_name(self, tmp_path):
         # The hostile twin of the fallback test above. `_archive_leftovers`
-        # reads the manifest RAW — deliberately, since it must also work when
-        # the manifest is unreadable — so `validate_manifest`'s component gate
-        # never runs on this path, and the id becomes a directory name
-        # unchecked. `rev-../../escape` walked up out of the archive dir; and
-        # the failure is silent by construction, because a successful traversal
-        # prints nothing and an OSError degrades to DELETE.
+        # takes the id from a record that may be STALE-SCHEMA — it must work
+        # when the manifest is unusable, which is the case that reaches it — so
+        # the validator's verdict is discarded here and the id becomes a
+        # directory name on the strength of the local component gate alone.
+        # `rev-../../escape` walked up out of the archive dir; and the failure
+        # is silent by construction, because a successful traversal prints
+        # nothing and an OSError degrades to DELETE.
         repo = self._repo_with_leftovers(tmp_path, "rev-../../escape")
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
