@@ -159,7 +159,9 @@ it reads is the very binary manifest the previous fix taught the sweep to preser
 *after* the all-or-nothing copy completed, so the files were back with no verdict and the retry met
 the "another review is in the way" refusal. The repair is the construction the reviewer asked for
 three rounds ago: `classify_manifest_file` takes a PATH, `manifest_condition` is its
-`prawduct_dir` form, and there is now one manifest parse in the module for a caller to reach for.
+`prawduct_dir` form, and a caller holding a path now has somewhere to bring it instead of opening
+the file. One read is deliberately left outside it — `consolidate` needs the raw record to tell its
+two exit-1 refusals apart — so this is one CLASSIFIER, not literally one `json.loads`.
 The two look-alike reads in the same file (findings cache, partials) were widened with it — not
 because the byte sequence can arise there, but because leaving the narrow shape in place is what
 re-seeded this class three times.
