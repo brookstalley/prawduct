@@ -198,7 +198,7 @@ def _store_lines(repo: Path) -> list[str]:
 
 FAKE_REVIEW_ID = "rev-test-0001"
 
-from conftest import V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home (R-8)
+from conftest import V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home for the shape
 
 
 def _review_id(repo: Path) -> str:
@@ -1767,7 +1767,7 @@ class TestVerifyRatesBlockingOnlyDirective:
         should not manufacture work and then records the WARNING in front of
         it, because nothing made it recognize THIS finding as the instance.
 
-        The first cut of this check was itself the defect it screens for. Its
+        This check was once itself the defect it screens for. Its
         verb tuple was `("goes ", "report", "rate ", "spend ", "Spend ")`:
         `"report"` matched the NOUN in "in your report", `"rate "` never matched
         the capitalized "Rate these", and `"spend "`/`"Spend "` were leftovers
@@ -2068,7 +2068,7 @@ class TestActiveDispatchRefusalDescribesTheDisk:
 
 
 class TestAnythingWorthKeeping:
-    """The keep-or-discard VERDICT has one home (#676 follow-up, R-6).
+    """The keep-or-discard VERDICT has one home (#676 follow-up).
 
     Routing the *reading* through one place did not route this: two of five
     surfaces kept a locally-authored tail, so a stale-schema manifest printed
@@ -2087,9 +2087,10 @@ class TestAnythingWorthKeeping:
         return cc.anything_worth_keeping(pd)
 
     def test_a_lone_stale_manifest_has_nothing_to_keep(self, tmp_path):
-        """R-11: the disk that broke the first cut. A stale-schema manifest
-        sitting alone promises a `critic-restore` handle with nothing behind
-        it — the operator goes looking for an empty archive."""
+        """The disk an unconditional preservation clause gets wrong: a
+        stale-schema manifest sitting alone promises a `critic-restore` handle
+        with nothing behind it, and the operator goes looking for an empty
+        archive."""
         keep, clause = self._verdict(tmp_path, json.dumps(_V2_MANIFEST), partials=0)
         assert keep is False
         assert "nothing here is worth keeping" in clause.lower()
@@ -2181,8 +2182,7 @@ def _payload_for(text):
 
 
 class TestNoSurfacePairsPreservationWithDiscard:
-    """The construction R-6 asked for, as a property rather than string
-    assertions: compose the operator-facing messages under every manifest
+    """The shared verdict as a property rather than string assertions: compose the operator-facing messages under every manifest
     condition and assert none says both things at once.
 
     **Three of the four production verdict-bearing notices**, named rather than
@@ -2197,10 +2197,11 @@ class TestNoSurfacePairsPreservationWithDiscard:
     disjoint from the one the finding named, which is how a pin comes to read as
     coverage it does not have.
 
-    **It must compose the surfaces R-6 was actually about.** The first cut of
-    this class composed three LIB surfaces and none of the two hook boundary
-    notices R-6 named — while its own docstring claimed "every surface". A pin
-    that names a class and covers a disjoint set is worse than none: it reads
+    **It must compose the surfaces the defect was actually about.** This class
+    once composed three LIB surfaces and neither of the two hook boundary
+    notices that carried the contradiction — while its own docstring claimed
+    "every surface". A pin that names a class and covers a disjoint set is
+    worse than none: it reads
     as coverage. The hook notices are loaded in-process below so the assertion
     runs over the bytes an operator reads.
     """
@@ -2248,7 +2249,7 @@ class TestNoSurfacePairsPreservationWithDiscard:
             "reading+verdict": reading + verdict,
             "dispatch_refusal": cc.active_dispatch_refusal(pd, 60.0, True),
             "restore_refusal": cc.restore_refusal(pd, ["correctness.x.json"], False),
-            # The two members of the class R-6 named.
+            # The two hook notices that carried the contradiction.
             "boundary_retained": hook._boundary_retained_marker_notice(
                 pd, marker.SWEEP_RETAINED_LIVE
             ),
@@ -2318,8 +2319,8 @@ class TestNoSurfacePairsPreservationWithDiscard:
 
 
 class TestTheReviewIdReadIsSharedToo:
-    """R-5, built as the class it was scoped at rather than closed at the site
-    that happened to hurt. Three notices hand-read the manifest for its `id`:
+    """The id read, built as a class rather than closed at the site that
+    happened to hurt. Three notices hand-read the manifest for its `id`:
     one tracebacked on an undecodable manifest; the other two swallowed it, and
     one of those ran the read first inside the same `except` — a latent ordering
     hazard no disk could actually show (mutation-checked; `state` there only
@@ -2449,8 +2450,8 @@ class TestTheDegradedVerdictIsSharedToo:
 
 
 class TestShortDetail:
-    """R-12: a validation reason can be a seven-sentence paragraph carrying its
-    own recovery sequence. Embedded in a message that then gives a different
+    """A validation reason can be a seven-sentence paragraph carrying its own
+    recovery sequence. Embedded in a message that then gives a different
     remedy, that is one disk with two recovery stories."""
 
     def test_the_rendezvous_reason_is_not_smuggled_whole_into_a_message(self, tmp_path):
@@ -2495,7 +2496,7 @@ class TestShortDetail:
 
 
 class TestManifestConditionIsTotal:
-    """R-7: the vocabulary is only a vocabulary if every disk maps into it."""
+    """The vocabulary is only a vocabulary if every disk maps into it."""
 
     def test_undecodable_manifest_is_corrupt_not_a_traceback(self, tmp_path):
         """`read_text()` raises UnicodeDecodeError — a ValueError, not a
@@ -2511,10 +2512,10 @@ class TestManifestConditionIsTotal:
         assert cc.pending_roster_reading(pd)[0] == "unreadable"
         assert cc.restore_refusal(pd, ["x.json"], False)
         assert cc.anything_worth_keeping(pd)[0] is False
-        # The surface #676 was filed against, and the one this test's first cut
-        # left out: `active_dispatch_refusal` hand-read the manifest under the
-        # pre-R-7 narrow `except`, so the widening landed everywhere EXCEPT the
-        # refusal that motivated it and this disk tracebacked out of
+        # The surface #676 was filed against, and the one an earlier version of
+        # this test left out: `active_dispatch_refusal` hand-read the manifest
+        # under the narrow `except`, so the widening landed everywhere EXCEPT
+        # the refusal that motivated it and this disk tracebacked out of
         # `critic-begin` instead of refusing.
         refusal = cc.active_dispatch_refusal(pd, 60.0, True)
         assert "id unavailable" in refusal
@@ -2560,8 +2561,8 @@ class TestManifestConditionIsTotal:
 
     def test_the_unknown_word_belongs_to_the_module(self):
         """A caller that catches an exception needs a word for "could not
-        tell"; the first cut invented one at the call site, re-opening in
-        miniature the split this module exists to close."""
+        tell"; inventing one at the call site re-opens in miniature the split
+        this module exists to close."""
         assert cc.MANIFEST_UNKNOWN == "unknown"
         assert cc.MANIFEST_UNKNOWN not in {
             cc.MANIFEST_ABSENT, cc.MANIFEST_CORRUPT,

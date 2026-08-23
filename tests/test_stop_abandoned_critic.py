@@ -430,8 +430,8 @@ class TestChunk05ConsolidateOrBlock:
         assert "not valid JSON" not in result.stderr
         assert "no coordinator manifest is present" not in result.stderr
         # This fixture plants the manifest ALONE, so the honest verdict is that
-        # there is nothing to preserve. The first cut asserted "are NOT lost"
-        # here, pinning a claim that was false in the very disk it built (R-11).
+        # there is nothing to preserve. Asserting "are NOT lost" here would pin
+        # a claim that is false in the very disk this fixture builds.
         assert "No reviewer output is on disk" in result.stderr
         # Scoped to the preservation clause, not to the whole message: the
         # escape-hatch text below it names `critic-restore` on every branch and
@@ -644,7 +644,7 @@ class TestNoShippedSurfaceSanctionsTheBareDelete:
     #: The act, not its spellings: an `rm` (any flags) reaching either file.
     #: Backticks are allowed through — a prohibition often quotes the command
     #: it forbids, and relying on punctuation to tell those apart is what made
-    #: the first cut of this pin fire on the sentence doing the forbidding.
+    #: an earlier version of this pin fire on the sentence doing the forbidding.
     _NAMES_THE_ACT = re.compile(
         r"\brm\b[^\n]{0,40}?\.(?:prawduct/\.)?critic-(?:active|partials)"
     )
@@ -755,7 +755,7 @@ class TestTheBlockerComposesSharedProse:
     not paraphrase (#676)."""
 
     def test_the_long_validation_reason_is_not_smuggled_into_the_blocker(self, tmp_path):
-        """R-12's SECOND interpolation site, pinned where it actually composes.
+        """The reason's SECOND interpolation site, pinned where it composes.
 
         Every other Stop-hook fixture plants `V2_MANIFEST`, whose invalid `mode`
         short-circuits validation into a one-line reason — so `short_detail()`

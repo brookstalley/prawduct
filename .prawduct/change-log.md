@@ -3,7 +3,7 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-08-22: a nested checkout is not a misplaced test
+## 2026-08-23: a nested checkout is not a misplaced test
 
 <!-- prawduct: type=fix | scope=test-location-nested-checkout -->
 
@@ -27,7 +27,7 @@ matters — a genuinely misplaced `test_oops.py` in an ordinary subdirectory, wh
 caught. Pruning that keyed on depth or on "has a `tests/` child" would have passed the first two and
 quietly disarmed the module.
 
-## 2026-08-22: a wedged manifest says which kind of wedged it is
+## 2026-08-23: a wedged manifest says which kind of wedged it is
 
 <!-- prawduct: type=fix | scope=manifest-state-diagnosis -->
 
@@ -183,8 +183,9 @@ the plugin install was a guess wearing a fact's clothes.
 a comment narrating review ids or round numbers a deletion finding — a bare `R-6` is a dangling
 pointer, since every review has one — and this branch had taken the count from 3 to ~12 while
 fixing the very defects it was narrating. The reasons stay; the ids and the "first cut / first
-repair" framing go — in the two modules this branch touched, which is where it put them. Four other
-libs and one test module still carry the shape and are not this branch's to sweep. Also: a manifest holding non-object JSON was being diagnosed as "written by an
+repair" framing go from every file this branch touched — which is where it put them, tests
+included. The shape survives in libs and test modules this branch does not touch; sweeping those is
+not this branch's job, and the entry says so rather than implying a clean repo-wide grep. Also: a manifest holding non-object JSON was being diagnosed as "written by an
 OLDER PRAWDUCT", which is a provenance claim about a file no prawduct ever wrote; it classifies
 CORRUPT now.
 

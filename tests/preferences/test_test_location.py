@@ -113,7 +113,7 @@ class TestTestLocation:
         (nested / ".git").write_text("gitdir: /elsewhere/.git/worktrees/devchk\n")
         (nested / "tests" / "preferences" / "test_dummy.py").write_text("def test_y(): pass\n")
 
-        # Exact, not depth-coupled. The first cut asserted
+        # Exact, not depth-coupled. A weaker form of this asserted
         # `nested not in [p.parent.parent.parent for p in found]`, which only
         # detects a leak at the one depth this fixture plants — a leak from
         # `devchk/tests/test_x.py` or `devchk/a/b/c/test_x.py` would have

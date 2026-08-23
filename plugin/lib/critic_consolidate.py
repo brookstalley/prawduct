@@ -2130,8 +2130,10 @@ def manifest_review_id(prawduct_dir: Path) -> str:
     `pending_roster_reading` and took its exception with it).
 
     Never raises for a disk: :func:`manifest_condition` classifies every one,
-    and a STALE-SCHEMA record is still asked for its id — the field usually
-    survives a schema change, and naming the review is the whole job here.
+    and a STALE-SCHEMA record is still asked for its id — no claim is made about
+    how often that field is there (the v2 shape #676 reports fails validation
+    precisely BECAUSE it is missing); asking costs nothing and naming the review
+    is the whole job here.
     """
     _condition, _detail, manifest = manifest_condition(prawduct_dir)
     if isinstance(manifest, dict) and _nonempty_str(manifest.get("id")):
