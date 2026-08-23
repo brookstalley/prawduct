@@ -532,3 +532,86 @@ def test_relative_targets_resolve_against_the_containing_file():
     # The same target from a file one level up DOES resolve — proving the base is the containing
     # file rather than a constant.
     assert _resolves("plugin/principles.md", "../.prawduct/learnings.md", "md-link")
+
+
+# ---------------------------------------------------------------------------
+# Which interpolation a shipped instruction may use
+#
+# Claude Code substitutes ``${CLAUDE_PLUGIN_ROOT}`` into hook commands declared in
+# ``hooks/hooks.json``, and exports it into the environment of the process those
+# commands start. It does NOT substitute it into skill prose, and the Bash tool the
+# agent runs does not carry it either — so a prose instruction spelled that way
+# reaches the reader as the literal seven-token string and names nothing.
+# ``${CLAUDE_SKILL_DIR}`` *is* substituted when a skill loads, which makes
+# ``${CLAUDE_SKILL_DIR}/../../<path>`` the form that resolves from a skill to
+# anything else the plugin ships.
+#
+# The failure is silent and it is worse than a missing file: the reader that cannot
+# open the path does not stop. Doctor's install-reference check, told to read the
+# install contract out of the plugin, falls back to the illustrative list printed
+# beside the instruction — a list its own text forbids grading against, and one that
+# has already gone stale once. So the check reports a verdict, and the verdict is
+# whatever the stale list says.
+#
+# The trees below are the ones whose markdown is READ AS INSTRUCTIONS: skill prose,
+# the docs skills route readers into, the methodology guides, and the templates a
+# product copies. ``plugin/CHANGELOG.md`` sits outside them because it is a record —
+# it narrates the packaging change that curated the plugin root, and naming the
+# variable is the subject of the sentence rather than a path anyone follows.
+_INSTRUCTION_TREES = ("plugin/skills/", "plugin/docs/", "plugin/methodology/", "plugin/templates/")
+
+#: The INTERPOLATION, not the name. Prose is free to discuss `CLAUDE_PLUGIN_ROOT`
+#: as a variable — that reads as documentation. `${...}` reads as a path to follow,
+#: and in these trees it is always a path that will not resolve. Keeping the rule on
+#: the sigil is what lets it stay absolute instead of growing an exemption list.
+_PLUGIN_ROOT_INTERPOLATION = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}")
+_SKILL_DIR_INTERPOLATION = re.compile(r"\$\{CLAUDE_SKILL_DIR\}")
+
+
+def _instruction_markdown() -> list[str]:
+    return [
+        p for p in _TRACKED
+        if p.endswith(".md") and p.startswith(_INSTRUCTION_TREES)
+    ]
+
+
+def test_no_shipped_instruction_interpolates_the_plugin_root():
+    """Skill prose and the docs it routes to must not spell a path they cannot resolve."""
+    offenders = []
+    for rel in _instruction_markdown():
+        for lineno, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):
+            if _PLUGIN_ROOT_INTERPOLATION.search(line):
+                offenders.append(f"{rel}:{lineno}")
+    assert not offenders, (
+        "${CLAUDE_PLUGIN_ROOT} does not expand outside a hooks.json command, so these "
+        "instructions hand their reader a literal that names nothing. Use "
+        "${CLAUDE_SKILL_DIR}/../../<path> from a skill; from a doc, which is read as "
+        "plain content and interpolates nothing at all, describe the location instead:"
+        "\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_the_resolving_interpolation_is_the_one_in_use():
+    """The rule above is assert-absent, and deleting every path would satisfy it.
+
+    This is the other half: skills really do have to reach across the plugin, and
+    they reach with the form that expands. If this goes quiet, the reads were not
+    repointed — they were removed, or the substitution contract changed under them.
+    """
+    users = {
+        rel for rel in _instruction_markdown()
+        if _SKILL_DIR_INTERPOLATION.search((REPO / rel).read_text(encoding="utf-8"))
+    }
+    assert len(users) >= 4, (
+        f"only {len(users)} shipped instruction files reach across the plugin with "
+        "${CLAUDE_SKILL_DIR} — either the cross-plugin reads are gone, or they are "
+        "being written some other way that this check no longer sees"
+    )
+
+
+def test_the_interpolation_sweep_has_subjects():
+    """An assert-absent check over an empty file list is green and worthless."""
+    assert len(_instruction_markdown()) > 20, (
+        f"only {len(_instruction_markdown())} instruction-bearing markdown files found "
+        f"under {_INSTRUCTION_TREES} — the trees moved and the sweep is dark"
+    )

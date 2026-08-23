@@ -48,7 +48,7 @@ Verify on a feature branch (not main/master/develop). Verify commits ahead of ba
 ### Step 1b: Doc-only fast-path
 **Run `prawduct-hook check-pr-doc-only`.** This mirrors the stop hook's session-end behavior at the PR boundary: when every file in `merge-base...HEAD` ends in `.md` and none is governance-protected (`skills/`, `methodology/`, `templates/`, root `CLAUDE.md` — skill prose is behavioral logic, not docs; same bound list as the `Type: trivial` gate), the cumulative-Critic and PR-reviewer gates add no value and are skipped.
 
-- **Exit 0 (`doc-only`)**: Skip Steps 2, 2b, 3, and 4 — jump straight to Step 5 (Create PR). Note the skip in the PR description (e.g. "Doc-only PR — review gates skipped per check-pr-doc-only"). Tell the user which gates were skipped and why.
+- **Exit 0 (`doc-only`)**: the **review gates** are what a doc-only diff skips — Steps 2, 2b, 3, and 4 — and nothing else. **Continue through Steps 1c and 1d, then resume at Step 5 (Create PR).** Step 1c costs nothing here (a doc-only diff has no judgeable file, so the probe exits 0 by its own exemption) and running it keeps one path through this skill instead of two; Step 1d is load-bearing on any PR — a doc-only branch still archives the backlog items it closes and still carries its change-log release tag, and a protected base takes those only by PR. Note the skip in the PR description (e.g. "Doc-only PR — review gates skipped per check-pr-doc-only"). Tell the user which gates were skipped and why.
 - **Exit 1 (anything else — `not-doc-only`, `empty-diff`, `no-base`, `git-failed`)**: Proceed to Step 2.
 
 > There is no code-side "trivial" fast-path. A `Type: trivial` *chunk* is still

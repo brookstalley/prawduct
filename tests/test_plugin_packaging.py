@@ -6,9 +6,9 @@ so the only lever is which directory ``marketplace.json`` points at. Before v3.1
 which meant the whole repo shipped: prawduct's own backlog, learnings, change-log, build plans,
 test suite and internal requirements docs all landed in the cache of every product using prawduct.
 
-That is not a tidiness problem. A model working in a *consuming* repo reads
-``${CLAUDE_PLUGIN_ROOT}`` legitimately — skills instruct it to — and a broad glob there returns
-another product's requirements as though they were relevant. Confidently wrong context is the
+That is not a tidiness problem. A model working in a *consuming* repo reads the plugin root
+legitimately — skills instruct it to, through the skill-dir-relative form that expands in prose —
+and a broad glob there returns another product's requirements as though they were relevant. Confidently wrong context is the
 failure mode this whole framework exists to prevent.
 
 The fix is ``plugin/``: a curated plugin root holding the distributed surface as **real files**.
