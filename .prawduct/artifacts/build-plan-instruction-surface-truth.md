@@ -11,17 +11,17 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0; cost = unit-cost x run-count, both levers -> conforms, and
-        Chunk 04 acts on the unit-cost lever directly: `skills/critic/SKILL.md` is payload every
+        WP4 acts on the unit-cost lever directly: `skills/critic/SKILL.md` is payload every
         Critic mode loads and it carries no ceiling, so nothing today would notice it growing.
-        Run-count: the whole batch takes ONE `cumulative` review rather than four chunk reviews
-        (`Critic mode:` below), because the four chunks are independent single-file corrections
-        with no shared design surface for a per-chunk review to protect."
+        Run-count: the whole batch is ONE chunk taking ONE `cumulative` review rather than four,
+        because the four work packages are independent single-file corrections that land as one
+        diff — the reasoning is under `## Status`."
       - "proportionality ratchets both ways — a new control names its expected yield AND emits it
         observably -> conforms. This batch adds four mechanical checks and each names its catch at
-        the pin: the grant/instruction pin (Chunk 01) catches a skill instructing a command it may
-        not run; the `${CLAUDE_PLUGIN_ROOT}` pin (Chunk 01) catches a prose read that cannot
-        resolve; the adapter-surface pin (Chunk 02) catches the `--help` referent going missing
-        again; the SKILL.md ceiling (Chunk 04) catches unbudgeted payload growth. All four are
+        the pin: the grant/instruction pin (WP1) catches a skill instructing a command it may
+        not run; the `${CLAUDE_PLUGIN_ROOT}` pin (WP1) catches a prose read that cannot
+        resolve; the adapter-surface pin (WP2) catches the `--help` referent going missing
+        again; the SKILL.md ceiling (WP4) catches unbudgeted payload growth. All four are
         assertions inside test files that already exist for exactly this class — no new control
         surface, no new advisory, nothing added to the hot path."
       - "state-file growth is an advisory warning, never a hard block -> conforms; the standing
@@ -31,10 +31,10 @@ governed_by:
   - artifact: api-contract
     dispositions:
       - "whole-surface semver on the plugin; the internal CLI subcommand surface carries no
-        per-subcommand version -> conforms. Chunk 02 adds `--help` output to existing backlog
+        per-subcommand version -> conforms. WP2 adds `--help` output to existing backlog
         subcommands and changes no flag name, no exit-code meaning and no `--json` key."
       - "exit codes are the contract; errors are attributed, never raised as stack traces ->
-        conforms, and Chunk 02 REPAIRS an instance: `--help` currently exits 2 `unknown flag`,
+        conforms, and WP2 REPAIRS an instance: `--help` currently exits 2 `unknown flag`,
         which is an exit code carrying the wrong contract. It becomes usage on stdout at exit 0."
       - "additive-first evolution: flags are added, never repurposed -> conforms. `--help` is
         additive; nothing existing changes meaning."
@@ -46,20 +46,19 @@ governed_by:
         test assertion (CI authority, fails closed at the right place); no advisory is added and
         no session-time behaviour changes."
       - "local-first; which call sites may egress is enumerated in this artifact ->
-        inapplicable because no chunk adds or moves an egress call site. Chunk 02 touches
+        inapplicable because nothing here adds or moves an egress call site. WP2 touches
         `lib/backlog/cli.py` argument parsing only, not `transport.py`."
 partition: >-
   delegated, four ways, at the user's explicit request ("use subagents ... and solve them",
   Principle 23). The partition is drawn by FILE TREE rather than by theme, because the delegates
-  share one working tree: Chunk 01 owns `plugin/skills/{doctor,janitor,runbook,pr}/`, Chunk 02
-  owns `plugin/skills/backlog/` + `plugin/lib/backlog/`, Chunk 03 owns the `.prawduct/` records
-  and `documentation/release-process.md`, Chunk 04 owns `.prawduct/artifacts/api-contract.md` +
-  `tests/test_v5_methodology.py`. Two items that theme together were deliberately NOT put in
-  different chunks for that reason — #219 is a `pr/SKILL.md` prose defect and sits with the skill
-  chunk, not the docs chunk, because Chunk 01 already edits that file's frontmatter for #174.
+  share one working tree: WP1 owns `plugin/skills/{doctor,janitor,runbook,pr}/`, WP2 owns
+  `plugin/skills/backlog/` + `plugin/lib/backlog/`, WP3 owns the `.prawduct/` records and
+  `documentation/release-process.md`, WP4 owns `.prawduct/artifacts/api-contract.md` +
+  `tests/test_v5_methodology.py`. Two items that theme together were deliberately NOT split for
+  that reason — #219 is a `pr/SKILL.md` prose defect and sits with the skill package, not the docs
+  package, because WP1 already edits that file's frontmatter for #174.
   The delegates do the build half only: no commits, no `.prawduct/` bookkeeping, no full suite,
   no Critic. This session owns integration, the combined run, the review and all governance.
-Critic mode: cumulative-final
 last_validated: 2026-08-23
 ---
 
@@ -91,23 +90,31 @@ sites. Nothing here is fast-moving or post-cutoff — every claim is checkable a
   safe | MEDIUM impact | verified at integration by `git diff --stat` against the declared
   ownership boundaries] — the partition was drawn from the issues' `refs:` and verified by reading
   the tree, not from the issue text alone. The one near-collision found and designed around:
-  `plugin/skills/backlog/migration-scrub.md` is Chunk 02's file and Chunk 01 needs to *assert*
-  against it (#174's second leg), so Chunk 01 reads it and writes only its test.
+  `plugin/skills/backlog/migration-scrub.md` is WP2's file and WP1 needs to *assert* against it
+  (#174's second leg), so WP1 reads it and writes only its test.
 - [ASSUMPTION: #178's acceptance query cannot literally return empty | LOW impact | resolved in
-  Chunk 03 and reported honestly either way] — several stale references live in frozen records
+  WP3 and reported honestly either way] — several stale references live in frozen records
   (`.prawduct/backlog.md`'s migration snapshot, `artifacts/archive/`,
   `migration-restructure-plan.json`), which CLAUDE.md exempts as bookkeeping that records the
-  work. The chunk fixes live durable prose and reports the refined query.
+  work. WP3 fixes live durable prose and reports the refined query.
 
 **What would raise confidence:** nothing cheaper than building it. Each item is small enough that
 the fix is the investigation.
 
 ## Status
 
-- [ ] Chunk 01: The skill surface says what it can run and points where it can read
-- [ ] Chunk 02: The backlog adapter describes its own contract
-- [ ] Chunk 03: Nine documentation claims stop being false
-- [ ] Chunk 04: The exposed API and the unbudgeted payload are both accounted
+- [ ] Chunk 01: Eleven instruction surfaces stop misdescribing the runtime
+
+**One chunk, four work packages, and the reason is the review.** WP1-WP4 below are a *delegation*
+partition, not a build sequence: nothing in any of them depends on any other, four delegates built
+them concurrently against one working tree, and they reach the integrator as one uncommitted diff.
+There is no moment at which WP1 is done and WP2 is not, so there is no interval a per-package
+`chunk` review could scope to that a single `cumulative` does not already cover. Four boxes would
+have bought four dispatches over one tree -- the run-count waste the P0 wall-clock norm names.
+`Type: cumulative-final` is therefore declared on this one chunk: its review IS the single
+`/prawduct:critic cumulative` over `merge-base...HEAD`, which is also the `/prawduct:pr create`
+gate. Commits stay per-concern (one per work package) -- commit granularity and review granularity
+are different axes.
 
 Context: Batch drawn 2026-08-23 from the GitHub Issues backlog by scanning `effort:S` +
 `stage:ready` for a single theme, on the user's "about 10 thematically aligned, high-ROI" ask.
@@ -135,28 +142,43 @@ attributed, and the coordinator has to run the suite once at integration regardl
 
 ## Build Chunks
 
-### Chunk 01: The skill surface says what it can run and points where it can read
+### Chunk 01: Eleven instruction surfaces stop misdescribing the runtime
+
+The chunk is the whole batch. Its four work packages follow; each was one delegate's brief.
+
+- **Type:** cumulative-final
+- **Depends on:** none
+- **Acceptance criteria:** every work package's own criteria met; the combined suite green; the
+  ownership boundaries the partition declared hold against `git diff --stat`
+- **Done when:**
+  1. All four work packages' acceptance criteria met and the combined suite passes
+  2. ONE `/prawduct:critic cumulative` run and blocking findings resolved
+  3. Committed per concern and the chunk marked `[x]` in Status
+
+#### WP1: The skill surface says what it can run and points where it can read
 
 - **Description:** Four defects in the non-backlog skill surfaces, all one class — the file tells
   an agent to do something the file itself makes impossible or ambiguous.
-  - **#210** — `janitor/SKILL.md` instructs `prawduct-hook review-stats` and grants only the bare
+  - **#210** — `plugin/skills/janitor/SKILL.md` instructs `prawduct-hook review-stats` and grants only the bare
     form (verified against the tree: the grant exists but carries no trailing `*` and has no
     `python3 plugin/bin/…` sibling). Audit the file for *every* hook subcommand it instructs and
     grant each in both invocation forms; `skills/backlog/SKILL.md:7` is the house precedent.
-  - **#174** — `85753fd` narrowed `pr/SKILL.md`'s `Bash(gh *)` to `Bash(gh pr *)` and nothing
+  - **#174** — `85753fd` narrowed `plugin/skills/pr/SKILL.md`'s `Bash(gh *)` to `Bash(gh pr *)` and nothing
     asserts it, so restoring the wildcard leaves the suite green. Close the **class**: no bare
     `Bash(gh *)` in any skill frontmatter. Second leg, a missing test not a missing fix: every
     `--repo` in `skills/backlog/migration-scrub.md` is followed by `<target>`, and Step 6's
     cutover scalar reuses that bound value.
   - **#583** — `${CLAUDE_PLUGIN_ROOT}` does not expand in skill *prose* (it substitutes only into
     `hooks.json` commands). Every prose read through it hands the agent an unresolvable path.
-    Repoint to the `${CLAUDE_SKILL_DIR}/../../…` form `doctor/SKILL.md:69` already uses. The
+    Repoint to the skill-dir-relative form that `plugin/skills/doctor/SKILL.md` already uses at
+    line 69 — CLAUDE_SKILL_DIR does expand in prose, and the plugin root is reachable relative to
+    it. The
     issue enumerates the affected sites AND the not-affected ones — honour both lists.
-  - **#219** — `pr/SKILL.md` tells a doc-only PR to "skip Steps 2, 2b, 3, and 4" and then to
+  - **#219** — `plugin/skills/pr/SKILL.md` tells a doc-only PR to "skip Steps 2, 2b, 3, and 4" and then to
     "jump straight to Step 5", and the two halves disagree about Step 1c, which is a STOP. One
     rule, skip-list and jump target agreeing.
-- **Depends on:** none
-- **Deliverables:** corrected frontmatter and prose in `plugin/skills/{janitor,pr,doctor,runbook}/SKILL.md`
+- **Deliverables:** corrected frontmatter and prose in `plugin/skills/janitor/SKILL.md`,
+  `plugin/skills/pr/SKILL.md`, `plugin/skills/doctor/SKILL.md`, `plugin/skills/runbook/SKILL.md`
   and `plugin/docs/runbook-authoring.md`; new assertions in `tests/test_skill_command_grants.py`
   and `tests/test_path_reference_resolution.py`
 - **Tests:** `tests/test_skill_command_grants.py`, `tests/test_path_reference_resolution.py`
@@ -165,10 +187,9 @@ attributed, and the coordinator has to run the suite once at integration regardl
   bare `Bash(gh *)`, asserted; no shipped skill prose instructs a read through
   `${CLAUDE_PLUGIN_ROOT}`, asserted, with the four documented non-sites untouched; a doc-only PR
   has exactly one reading of which steps it skips
-- **Type:** bugfix
 - **Done when:** acceptance criteria met · owned tests pass · handed back to the coordinator
 
-### Chunk 02: The backlog adapter describes its own contract
+#### WP2: The backlog adapter describes its own contract
 
 - **Description:** Two items against the surface that bounds the model's backlog mutations.
   - **#175** — `adapter-mode.md` bounds the model with *"the adapter exposes exactly the ops in
@@ -186,7 +207,6 @@ attributed, and the coordinator has to run the suite once at integration regardl
     `{"repo", "to"}`, and `core.py`'s `set_status` docstring already records the deferral. Correct
     the doc to state the scope is not recorded and where it should go. #550 owns the write path;
     do not build it.
-- **Depends on:** none
 - **Deliverables:** `plugin/skills/backlog/adapter-mode.md` corrected on both counts;
   `--help` implemented in `plugin/lib/backlog/cli.py`; new assertions in
   `tests/test_backlog_instruction_surface.py`
@@ -195,10 +215,9 @@ attributed, and the coordinator has to run the suite once at integration regardl
   and exits 0, for every op; the sentence that cites a usage table names a referent that resolves;
   the retry budget states max attempts *and* a give-up rule; block ownership is stated as a
   prohibition; the `closed_by` claim matches `_run_status`'s actual flag set
-- **Type:** bugfix
 - **Done when:** acceptance criteria met · owned tests pass · handed back to the coordinator
 
-### Chunk 03: Nine documentation claims stop being false
+#### WP3: Nine documentation claims stop being false
 
 - **Description:** Three items, nine verified-false claims in durable prose.
   - **#204** — `documentation/release-process.md` omits three prep steps that get rediscovered
@@ -217,7 +236,6 @@ attributed, and the coordinator has to run the suite once at integration regardl
     (d) `cmd_clear`'s docstring keeps a quantifier its own change-log entry records as falsified;
     (e) a test comment says the clear hook is "excluded on compact" and it fires on compact now.
     The issue's Scope-out forbids one tempting non-fix for (e) — read it.
-- **Depends on:** none
 - **Deliverables:** `documentation/release-process.md`; name-anchored references at the live
   sites; the five corrections at their five sites
 - **Tests:** none new — these are prose corrections at sites no test asserts. Where an existing
@@ -226,10 +244,9 @@ attributed, and the coordinator has to run the suite once at integration regardl
   closure query is stated and its result reported honestly, with exempt frozen records named
   rather than silently skipped; all five #190 corrections landed, (b) as a roster row rather than
   a re-statement
-- **Type:** bugfix
 - **Done when:** acceptance criteria met · handed back to the coordinator
 
-### Chunk 04: The exposed API and the unbudgeted payload are both accounted
+#### WP4: The exposed API and the unbudgeted payload are both accounted
 
 - **Description:** Two items about a claim that is false because a set grew under it.
   - **#198** — the backlog-service build plan declares `prawduct-hook backlog` an
@@ -247,7 +264,6 @@ attributed, and the coordinator has to run the suite once at integration regardl
     SKILL.md is unbudgeted. The issue prefers remedy (2) and warns that doing only (1) reproduces
     the defect — a third ceiling makes the sentence true only until a sixth payload file appears.
     Do both: give SKILL.md a ceiling **and** replace the universal claim with the bounded fact.
-- **Depends on:** none
 - **Deliverables:** a backlog-surface section in `.prawduct/artifacts/api-contract.md`; a
   `skills/critic/SKILL.md` ceiling + `LAST_MEASURED_TOKENS` entry; both false comments replaced
 - **Tests:** `tests/test_v5_methodology.py`
@@ -255,5 +271,4 @@ attributed, and the coordinator has to run the suite once at integration regardl
   gets a complete answer from the artifact; the `**Exposed API:**` sweep's result is stated;
   `skills/critic/SKILL.md` has a ceiling whose reading is measured, not copied; neither remaining
   comment asserts a universal over a set that can grow
-- **Type:** bugfix
 - **Done when:** acceptance criteria met · owned tests pass · handed back to the coordinator
