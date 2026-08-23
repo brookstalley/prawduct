@@ -2300,7 +2300,7 @@ def classify_manifest_file(mpath: Path) -> tuple[str, str, dict | None]:
         # parses and fails validation like a v2 record does, but no prawduct
         # ever wrote it — telling an operator it came from an older version
         # sends them looking for an upgrade story that does not exist.
-        ok, reason = validate_manifest(manifest)
+        _ok, reason = validate_manifest(manifest)
         return MANIFEST_CORRUPT, reason, None
     ok, reason = validate_manifest(manifest)
     if not ok:

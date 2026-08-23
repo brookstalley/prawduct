@@ -2168,6 +2168,18 @@ def _load_hook():
     return hook
 
 
+def _payload_for(text):
+    """The `text` parametrisation's disks. "VALID" is the fourth verdict branch —
+    a dispatched review whose manifest is current — and it was missing while the
+    other three (absent, corrupt, stale-schema) were covered, so no composed
+    message was ever graded on the ordinary `--force` disk."""
+    if text == "V2":
+        return json.dumps(_V2_MANIFEST)
+    if text == "VALID":
+        return json.dumps(_manifest_dict())
+    return text
+
+
 class TestNoSurfacePairsPreservationWithDiscard:
     """The construction R-6 asked for, as a property rather than string
     assertions: compose the operator-facing messages under every manifest
@@ -2212,6 +2224,15 @@ class TestNoSurfacePairsPreservationWithDiscard:
         "reading+verdict", "boundary_retained", "boundary_swept", "forced_live_sweep",
     )
 
+    #: On a VALID manifest the two boundary notices answer with a state-specific
+    #: remedy — consolidate it, or wait for the missing reviewers — and return
+    #: before any verdict clause. That is the design, not a gap: the verdict
+    #: answers "is there output worth keeping", which is not the question a
+    #: reader of "this review needs consolidating" is asking. So the valid disk
+    #: grades the two surfaces that DO reach the tail, rather than asserting a
+    #: universal that would have to be weakened to hold.
+    _VERDICT_BEARING_ON_A_VALID_MANIFEST = ("reading+verdict", "forced_live_sweep")
+
     def _compose(self, tmp_path, text, partials):
         pd = tmp_path / ".prawduct"
         (pd / ".critic-partials").mkdir(parents=True)
@@ -2236,9 +2257,9 @@ class TestNoSurfacePairsPreservationWithDiscard:
         }
 
     @pytest.mark.parametrize("partials", [0, 2])
-    @pytest.mark.parametrize("text", [None, "{not json", "V2"])
+    @pytest.mark.parametrize("text", [None, "{not json", "V2", "VALID"])
     def test_no_composed_message_contradicts_itself(self, tmp_path, text, partials):
-        payload = json.dumps(_V2_MANIFEST) if text == "V2" else text
+        payload = _payload_for(text)
         root = tmp_path / f"contra-{text}-{partials}"
         for name, message in self._compose(root, payload, partials).items():
             low = message.lower()
@@ -2249,7 +2270,7 @@ class TestNoSurfacePairsPreservationWithDiscard:
             )
 
     @pytest.mark.parametrize("partials", [0, 2])
-    @pytest.mark.parametrize("text", [None, "{not json", "V2"])
+    @pytest.mark.parametrize("text", [None, "{not json", "V2", "VALID"])
     def test_every_verdict_matches_the_disk(self, tmp_path, text, partials):
         """The property that actually has teeth, and the reason the sibling
         above does not carry this alone.
@@ -2264,7 +2285,7 @@ class TestNoSurfacePairsPreservationWithDiscard:
         present => no message may promise a `critic-restore` handle for an
         archive that will be empty.
         """
-        payload = json.dumps(_V2_MANIFEST) if text == "V2" else text
+        payload = _payload_for(text)
         root = tmp_path / f"disk-{text}-{partials}"
         pd = root / ".prawduct"
         composed = self._compose(root, payload, partials)
@@ -2282,7 +2303,9 @@ class TestNoSurfacePairsPreservationWithDiscard:
         _other, wrong = cc.anything_worth_keeping(pd)
         assert right != wrong, "fixture guard: the two disks must differ"
 
-        for name in self._VERDICT_BEARING:
+        bearing = (self._VERDICT_BEARING_ON_A_VALID_MANIFEST if text == "VALID"
+                   else self._VERDICT_BEARING)
+        for name in bearing:
             message = composed[name]
             assert right in message, (
                 f"{name} does not carry the verdict for its disk "

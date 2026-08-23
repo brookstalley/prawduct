@@ -1080,7 +1080,13 @@ def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
             "  for this review again. Its partials are still on disk and the next\n"
             "  `critic-begin` archives them; re-run the review when you are ready:\n"
             "    /prawduct:critic\n"
-            f"  To go back to this one instead: prawduct-hook critic-restore {review_id}\n"
+            + (
+                f"  To go back to this one instead: prawduct-hook critic-restore {review_id}\n"
+                if _is_usable_review_id(review_id) else
+                "  To go back to this one instead: `prawduct-hook critic-restore` with no\n"
+                "  argument lists the archived reviews by name — this one's is not readable\n"
+                "  from here.\n"
+            ) +
             "  (after the next dispatch has consolidated — `critic-restore` refuses while\n"
             "  partials or a marker are present)."
         )

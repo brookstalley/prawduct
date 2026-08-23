@@ -181,7 +181,8 @@ the plugin install was a guess wearing a fact's clothes.
 a comment narrating review ids or round numbers a deletion finding — a bare `R-6` is a dangling
 pointer, since every review has one — and this branch had taken the count from 3 to ~12 while
 fixing the very defects it was narrating. The reasons stay; the ids and the "first cut / first
-repair" framing go. Also: a manifest holding non-object JSON was being diagnosed as "written by an
+repair" framing go — in the two modules this branch touched, which is where it put them. Four other
+libs and one test module still carry the shape and are not this branch's to sweep. Also: a manifest holding non-object JSON was being diagnosed as "written by an
 OLDER PRAWDUCT", which is a provenance claim about a file no prawduct ever wrote; it classifies
 CORRUPT now.
 
