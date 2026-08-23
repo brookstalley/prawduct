@@ -166,6 +166,25 @@ The two look-alike reads in the same file (findings cache, partials) were widene
 because the byte sequence can arise there, but because leaving the narrow shape in place is what
 re-seeded this class three times.
 
+**The spanning review closed the class and found the notice one layer out.** Three reviewers landed
+independently on the same site: `_forced_live_sweep_notice` derived its preservation clause from
+the shared verdict but still interpolated the id into `prawduct-hook critic-restore <id>`
+unconditionally — so on the disk that clause newly admits (partials present, nothing naming them)
+the only recovery handle offered was the words "id unavailable". An operator copying it gets a
+refusal, the two handles that DO work go unmentioned, and the partials the sentence above promises
+are preserved age out of the archive ring unread. A predicate over the two excuse constants now
+gates the line, and the unusable branch names the bare listing instead. The wrapper's own excuse
+stopped naming a channel too: its `except` spans the lazy import AND the classify call, so blaming
+the plugin install was a guess wearing a fact's clothes.
+
+**And the round-by-round provenance came out of the shipped comments.** `review-protocol.md` makes
+a comment narrating review ids or round numbers a deletion finding — a bare `R-6` is a dangling
+pointer, since every review has one — and this branch had taken the count from 3 to ~12 while
+fixing the very defects it was narrating. The reasons stay; the ids and the "first cut / first
+repair" framing go. Also: a manifest holding non-object JSON was being diagnosed as "written by an
+OLDER PRAWDUCT", which is a provenance claim about a file no prawduct ever wrote; it classifies
+CORRUPT now.
+
 ## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
 
 <!-- prawduct: type=fix | scope=instruction-surface-truth -->

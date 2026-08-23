@@ -301,18 +301,47 @@ def _keep_verdict(prawduct_dir) -> tuple[bool, str]:
         )
 
 
+#: What this side says when it could not even ask. Kept beside its predicate so
+#: a notice can tell "here is a review id" from "here is a sentence about not
+#: having one" — the distinction that decides whether a `critic-restore <id>`
+#: line is runnable.
+_ID_UNASKABLE = "(id unavailable — the review id could not be read here)"
+
+
 def _review_id_for_notice(prawduct_dir) -> str:
     """The review id a boundary notice names, degrading to what it can know.
 
-    Wraps `critic_consolidate.manifest_review_id` — which owns the read and the
-    "no usable manifest" excuse — with the only thing this side can add: an
-    excuse for the case the lib itself is unreachable, which is a DIFFERENT
-    fact and so a different sentence rather than a second copy of the same one.
+    Wraps `critic_consolidate.manifest_review_id`, which owns the read and the
+    "no usable manifest" excuse. The wrapper's own excuse deliberately names NO
+    channel: this `except` spans the lazy import AND the classify call, so a
+    stat failure inside the latter would print a plugin-install story that did
+    not happen — the failure mode of a degradation clause written from the
+    error the author had in mind rather than the one the `except` catches.
     """
     try:
         return _critic_consolidate().manifest_review_id(prawduct_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
-        return "(id unavailable — the consolidation lib could not be loaded)"
+        return _ID_UNASKABLE
+
+
+def _is_usable_review_id(review_id: str) -> bool:
+    """Can this be pasted after `critic-restore`, or is it a sentence?
+
+    A predicate over the two excuse constants rather than a string test at each
+    site: both surfaces that interpolate an id have to make the same call, and a
+    notice that renders `critic-restore (id unavailable — …)` hands an operator
+    a line that cannot run while the two handles that DO work — bare
+    `critic-restore`, which lists the archive, and the `unmanifested-<ts>` name
+    the next dispatch prints — go unmentioned. The partials then age out of the
+    archive ring unread, which is the harm the preservation clause exists to
+    prevent.
+    """
+    if review_id == _ID_UNASKABLE:
+        return False
+    try:
+        return review_id != _critic_consolidate().MANIFEST_ID_UNAVAILABLE
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        return False
 
 
 def _reject_unknown_args(
@@ -993,11 +1022,10 @@ def _boundary_retained_marker_notice(prawduct_dir: Path, outcome: str) -> str:
             "  Only if nothing lands: abandon the review explicitly, then re-dispatch:\n"
             "    prawduct-hook critic-end"
         )
-    # R-6: this tail used to hardcode "Nothing here is worth keeping", printed
-    # directly beneath a reading that (since the classifier landed) may say the
-    # partials ARE real reviewer output. The verdict now comes from the same
-    # module the reading does — a verdict authored beside a shared sentence is
-    # not shared by being adjacent to it.
+    # The tail hardcoded "Nothing here is worth keeping" directly beneath a
+    # reading that may say the partials ARE real reviewer output. The verdict
+    # comes from the same module the reading does, because a verdict authored
+    # beside a shared sentence is not shared by being adjacent to it.
     _keep, verdict = _keep_verdict(prawduct_dir)
     return head + reading + verdict + (
         "  Clear the marker when you have decided:\n"
@@ -1028,9 +1056,8 @@ def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
     # The excuse has to cover every state that reaches it, and since #676 those
     # are three, not one: absent, corrupt, and stale-schema (the shared reading
     # now says which — `critic_consolidate.manifest_condition`). Deliberately
-    # says nothing about how OFTEN each shape carries an id: the first cut
-    # claimed a stale-schema manifest "usually DOES", which is false for the v2
-    # shape #676 reports — that one fails validation precisely BECAUSE `id` is
+    # says nothing about how OFTEN each shape carries an id: "a stale-schema
+    # manifest usually does" is false for the v2 shape #676 reports — that one fails validation precisely BECAUSE `id` is
     # missing, so this fallback is exactly what prints. The one case reaching
     # here is "the id could not be read", whatever the cause.
     review_id = _review_id_for_notice(prawduct_dir)
@@ -1089,9 +1116,9 @@ def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> 
     """What `--force` just destroyed, when the marker it removed was still live.
 
     The retention notice's mirror image — and being a mirror means asking the
-    same question, not merely facing the same way. The first cut of this called
-    itself the mirror while asking nothing, and was wrong on a complete roster
-    in both directions: `begin_review` refuses on `roster_state == "complete"`
+    same question, not merely facing the same way. A notice that calls itself
+    the mirror while asking nothing is wrong on a complete roster in both
+    directions: `begin_review` refuses on `roster_state == "complete"`
     at any age, so the next dispatch does NOT archive those partials, and the
     consequence it failed to name is the one that matters — the Stop hook's
     self-heal keys on ``marker_present``, so sweeping the marker is what removes
@@ -1139,10 +1166,10 @@ def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> 
         )
     # The fourth `pending_roster_reading` call site, and the last surface still
     # authoring its own preservation claim. It said "They are archived, not
-    # deleted" unconditionally — R-11's over-claim shape: true when reviewer
-    # output exists, and a promise of an empty archive when it does not. Not
-    # R-6's contradiction (it only ever says preserve), but the same defect, so
-    # it comes from the same place as the rest.
+    # deleted" unconditionally — the over-claim shape: true when reviewer output
+    # exists, and a promise of an empty archive when it does not. Not the
+    # contradiction the retained-marker notice carried (this one only ever says
+    # preserve), but the same defect, so it comes from the same place.
     _keep, verdict = _keep_verdict(prawduct_dir)
     if not _keep:
         return head + (
@@ -1150,12 +1177,25 @@ def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> 
             "  directory without refusing.\n"
             + verdict
         )
+    if _is_usable_review_id(review_id):
+        recovery = (
+            "  Recover that review once the next one has consolidated:\n"
+            f"    prawduct-hook critic-restore {review_id}\n"
+        )
+    else:
+        # The disk the keep=True branch admits without a usable manifest:
+        # partials present, nothing naming them. Interpolating the excuse here
+        # produced a command that cannot run, as the ONLY handle offered.
+        recovery = (
+            "  Recover it once the next one has consolidated. Its name is not readable\n"
+            "  from here — the dispatch that archives it prints the handle, and\n"
+            "  `prawduct-hook critic-restore` with no argument lists them:\n"
+            "    prawduct-hook critic-restore\n"
+        )
     return head + (
         "  That review is no longer guarded: the next `critic-begin` will archive its\n"
         "  partials instead of refusing.\n"
-        + verdict +
-        "  Recover that review once the next one has consolidated:\n"
-        f"    prawduct-hook critic-restore {review_id}\n"
+        + verdict + recovery +
         "  (Not before: `critic-restore` refuses while partials or a marker are present,\n"
         "  which a dispatch makes true.) If its reviewers had all reported, consolidate\n"
         "  now instead: `prawduct-hook critic-consolidate`."
@@ -1226,7 +1266,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
        source.
 
     Only (3) runs on a continuation. Sorting purely on "does it destroy evidence"
-    puts (2) in the wrong column, which is what the first cut of this split did.
+    puts (2) in the wrong column.
 
     Flags (argv): ``--session-start`` marks the genuine SessionStart-hook
     invocation (as opposed to a reviewer subagent's bare ``clear``); it always
@@ -1402,7 +1442,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
 
     # Check previous session's governance gates (warn, never block).
     #
-    # BOUNDARY-only (SCN-5B8Q review R-4). This reads `.session-reflected`,
+    # BOUNDARY-only. This reads `.session-reflected`,
     # `.gates-waived` and the session-change baseline and interprets them as a
     # *finished* session's record. On a continuation those files belong to the
     # session still running, so the check would nag "reflection not captured"
@@ -1411,7 +1451,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # the same thing: the comment there notes `.gates-waived` is deleted right
     # after this runs, which is true only on the path that deletes it.
     #
-    # This is the second member of a category the first cut of the split missed:
+    # It belongs to a category that reads as orientation and is not:
     # statements that destroy nothing but *interpret* session state as belonging
     # to a previous session. They are not orientation, however read-only they look.
     if not brief_only:
@@ -1529,7 +1569,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         # uncommitted work AND skips the merge-base rescue (that rescue is gated on
         # base_source == 'marker'). The boundary path announces the same narrowing
         # when it fails to resolve HEAD^{tree}; the continuation path attempts no
-        # write, so without this there is no notice at all (review R-15). Reaching
+        # write, so without this there is no notice at all. Reaching
         # it is ordinary now — a mid-cycle worktree entry followed by resume/fork.
         print(
             "NOTE: no .prawduct/.session-base-tree and this is a continuation "
@@ -2517,13 +2557,12 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # prints the `critic-restore` handle) — and the remedy below is
                 # `/prawduct:critic`, which is that dispatch.
                 #
-                # DERIVED, not asserted (R-11). The first cut stated flatly that
-                # "the partials beside it are NOT lost" — for any stale-schema or
-                # corrupt manifest, INCLUDING one sitting alone with no reviewer
-                # output at all, which `pending_state` reaches identically. Its
-                # own regression test planted just `manifest.json` and then
-                # pinned that sentence, so the fixture asserted a claim that was
-                # false in the very disk it built.
+                # DERIVED, not asserted. Stating flatly that "the partials
+                # beside it are NOT lost" is false for a stale-schema or corrupt
+                # manifest sitting ALONE with no reviewer output, which
+                # `pending_state` reaches identically — and a regression test
+                # that plants just `manifest.json` and pins that sentence
+                # asserts a claim false in the very disk it builds.
                 # Same helper as the three boundary notices: this branch used to
                 # drop the verdict clause entirely when the lib failed, which is
                 # the one disk where an operator most needs to be told to look.
@@ -2548,22 +2587,27 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         + _kept
                     )
                 elif condition == getattr(_cc, "MANIFEST_UNKNOWN", "unknown"):
-                    # Says what is known, which is nothing. The first cut named
-                    # one cause ("the governance lib failed to load") for a
-                    # broad `except` that also catches a raise from inside the
-                    # classifier — a justification naming a channel it cannot
-                    # have verified, which is the shape this whole change is
-                    # about. The word itself is the module's
-                    # (`MANIFEST_UNKNOWN`), not one invented here.
+                    # Says what is known, which is nothing about the MANIFEST —
+                    # and deliberately names no cause for that, because the
+                    # `except` above spans the lazy import and the classify call
+                    # alike, so any channel named here would be a guess wearing
+                    # a fact's clothes. The word itself belongs to the module
+                    # (`MANIFEST_UNKNOWN`), not to this branch.
+                    #
+                    # The VERDICT is still known — it comes off the partials
+                    # directory, not the manifest — and this branch used to
+                    # discard it, telling the operator nothing about attached
+                    # reviewer output on the disk where they can least infer it.
                     cause = (
                         "  the coordinator manifest could not be classified at all, so the pending\n"
                         "  review's state is genuinely unknown — inspect before discarding\n"
                         "  anything:\n"
                         "    prawduct-hook evidence status\n"
+                        + _verdict
                     )
                 else:
-                    # R-7 (round 6): the fourth branch, and the one that asserted
-                    # a CAUSE where its siblings derive a verdict. A
+                    # The fourth branch, and the one that asserted a CAUSE
+                    # where its siblings derive a verdict. A
                     # manifest-less directory is not always a dispatch that
                     # crashed before writing one — partials outlive their
                     # manifest when a late reviewer re-creates the directory

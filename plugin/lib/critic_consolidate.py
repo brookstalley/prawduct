@@ -2095,8 +2095,8 @@ MANIFEST_CORRUPT = "corrupt"
 MANIFEST_STALE_SCHEMA = "stale-schema"
 MANIFEST_VALID = "valid"
 #: The fifth value, and it lives HERE rather than at a call site. A caller whose
-#: classify call raised needs a word for "could not tell", and the first cut let
-#: ``cmd_stop`` invent one locally — re-opening in miniature the exact split this
+#: classify call raised needs a word for "could not tell", and letting
+#: ``cmd_stop`` invent one locally re-opens in miniature the exact split this
 #: module exists to close (a vocabulary is not shared by being mostly shared).
 #: :func:`manifest_condition` never returns it; only a caller that caught an
 #: exception does.
@@ -2122,8 +2122,8 @@ MANIFEST_ID_UNAVAILABLE = "(id unavailable — no usable dispatch manifest)"
 def manifest_review_id(prawduct_dir: Path) -> str:
     """The review id an operator message names, or the one excuse for lacking it.
 
-    **The class R-5 named, built rather than closed site by site.** Three
-    notices hand-read the manifest for its `id`, each under its own `except`;
+    **Built as a class rather than closed site by site.** Three notices
+    hand-read the manifest for its `id`, each under its own `except`;
     the widening that made an undecodable manifest classifiable instead of fatal
     reached the classifier and none of them, so one tracebacked and the other
     two silently lost the reading they were about to print (the read ran BEFORE
@@ -2182,7 +2182,7 @@ def anything_worth_keeping(prawduct_dir: Path) -> tuple[bool, str]:
     condition, and whether reviewer partials are actually on disk. A
     stale-schema manifest sitting ALONE has nothing to preserve, and a message
     promising a ``critic-restore`` handle there sends an operator looking for an
-    archive with nothing in it (R-11).
+    archive with nothing in it.
     """
     condition, _detail, _manifest = manifest_condition(prawduct_dir)
     partials = [
@@ -2275,25 +2275,33 @@ def manifest_condition(prawduct_dir: Path) -> tuple[str, str, dict | None]:
 def classify_manifest_file(mpath: Path) -> tuple[str, str, dict | None]:
     """:func:`manifest_condition` for a manifest that is not the pending one.
 
-    The parse lives HERE, in one place, because the class this module kept
-    reopening was never "which sites did we list" — it was that each site had
-    its own read. Three rounds closed it at the sites someone enumerated and it
-    surfaced a fourth time in `restore_review`, whose path is built from the
-    ARCHIVE root and so matched no `manifest_path(` search. A caller with a path
-    now has somewhere to bring it.
+    **The classification's parse lives here** — `consolidate` keeps its own,
+    which its comment argues — because the class this module kept reopening was
+    never "which sites did we list": it was that each site had its own read.
+    Closing it at enumerated sites left it alive in `restore_review`, whose path
+    is built from the ARCHIVE root and so matches no `manifest_path(` search. A
+    caller holding a path now has somewhere to bring it.
     """
     if not mpath.is_file():
         return MANIFEST_ABSENT, "", None
     try:
         manifest = json.loads(mpath.read_text())
     except (OSError, ValueError) as exc:
-        # ValueError, not `json.JSONDecodeError` (#676 follow-up, R-7): a
-        # manifest that is not decodable UTF-8 raises `UnicodeDecodeError` out
+        # ValueError, not `json.JSONDecodeError` (#676): a manifest
+        # that is not decodable UTF-8 raises `UnicodeDecodeError` out
         # of `read_text()`, which the narrower clause let through — so a
         # refusal that called this tracebacked instead of refusing, at the one
         # moment the caller is trying to explain a broken file. JSONDecodeError
         # is itself a ValueError, so the wider clause is a superset, not a swap.
         return MANIFEST_CORRUPT, str(exc), None
+    if not isinstance(manifest, dict):
+        # STALE-SCHEMA means "an older prawduct wrote this", and the readings
+        # say so in those words. A file holding `null`, a number or a string
+        # parses and fails validation like a v2 record does, but no prawduct
+        # ever wrote it — telling an operator it came from an older version
+        # sends them looking for an upgrade story that does not exist.
+        ok, reason = validate_manifest(manifest)
+        return MANIFEST_CORRUPT, reason, None
     ok, reason = validate_manifest(manifest)
     if not ok:
         return MANIFEST_STALE_SCHEMA, reason, manifest
@@ -2390,9 +2398,9 @@ def pending_roster_reading(prawduct_dir: Path) -> tuple[str, str]:
 
     **This describes the MANIFEST and nothing else.** It deliberately makes no
     keep-or-discard claim — that is :func:`anything_worth_keeping`, and the
-    separation is load-bearing rather than tidy. The first repair had the
-    stale-schema reading assert that partials beside it were real reviewer
-    output; composed with a verdict computed from the actual disk, that produced
+    separation is load-bearing rather than tidy. A stale-schema reading that
+    asserts partials beside it are real reviewer output, composed with a verdict
+    computed from the actual disk, produces
     "…printing a `critic-restore` handle" directly above "No reviewer output is
     on disk", which is the same self-contradiction one layer in. The manifest's
     condition and whether reviewer output exists are two independent facts, and
@@ -2487,10 +2495,9 @@ def active_dispatch_refusal(
     age_note = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
     # The hand-read this replaces caught `json.JSONDecodeError`, so an
     # undecodable manifest — `UnicodeDecodeError`, a ValueError — escaped
-    # through `begin_review` as a traceback: the exact defect R-7 fixed inside
-    # `manifest_condition`, still live at the surface that motivated it. The
-    # read itself is `manifest_review_id`'s, shared with the two boundary
-    # notices that carried the same defect.
+    # through `begin_review` as a traceback, at the one moment the caller was
+    # trying to explain a broken file. The read is `manifest_review_id`'s,
+    # shared with the two boundary notices that carried the same defect.
     prior_id = manifest_review_id(prawduct_dir)
     # The READING is shared with the boundary retained-marker notice
     # (:func:`pending_roster_reading` says why); only the remedy below is local
@@ -2633,7 +2640,7 @@ DUPLICATE_SIMILARITY = 0.4
 #: so it is punished by length asymmetry: three reviewers meeting one defect
 #: describe it at whatever length their goal calls for, and a terse title inside
 #: a verbose one scores low while sharing every word it has. The observed
-#: triplicate (R-1/R-5/R-11 on one branch — same file, same claim) reported as
+#: triplicate (three findings on one branch — same file, same claim) reported as
 #: `[]` for exactly that reason. Overlap coefficient — |A∩B| / min(|A|,|B|) — is
 #: the length-insensitive form of the same question, and it is gated on
 #: identical file attributions because that is the condition under which a

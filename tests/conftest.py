@@ -58,13 +58,12 @@ def pytest_report_header(config):
 
 
 #: The v2 (pre-3.3.4, model-written) dispatch-manifest shape: parseable JSON
-#: carrying none of the v3 interval fields. Lives HERE because three modules pin
-#: behaviour against it — the CRT-W2NV validation regression, the #676 message
-#: readings, and the Stop-hook backstop's version-skew cause — and the first cut
-#: hoisted it into one test module with the rationale "ONE definition … a second
-#: copy is how those two drift into describing different files", then hand-inlined
-#: the second copy in another module in the same commit (R-8). One definition, or
-#: the comment claiming one is just decoration.
+#: carrying none of the v3 interval fields. Lives HERE because two test modules
+#: import it, pinning three distinct behaviours — the CRT-W2NV validation
+#: regression and the #676 message readings in `test_critic_consolidate.py`, and
+#: the Stop-hook backstop's version-skew cause in `test_stop_abandoned_critic.py`.
+#: Hoisting it into ONE of those modules and hand-inlining the copy into the
+#: other is how a "one definition" rationale ships with two definitions under it.
 V2_MANIFEST = {
     "mode": "final-chunk-review", "mode_chosen_by": "rule-3",
     "roster": ["correctness", "design", "sustainability"],

@@ -2126,6 +2126,20 @@ class TestAnythingWorthKeeping:
         assert "dispatched review is here" in clause
         assert "not reported yet" in clause
 
+    def test_a_valid_manifest_with_partials_names_the_count(self, tmp_path):
+        """The fourth branch, and the only one no assertion reached — a
+        mutation putting a discard tail on this disk shipped green. It is the
+        ORDINARY `--force` case: `critic-begin` dispatched, some reviewers have
+        reported, and the operator sweeps the marker anyway."""
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        _write_manifest(tmp_path, "abc")
+        (pd / ".critic-partials" / "correctness.rev-x.json").write_text("{}")
+        keep, clause = cc.anything_worth_keeping(pd)
+        assert keep is True
+        assert "1 reviewer partial(s)" in clause
+        assert "nothing here is worth keeping" not in clause.lower()
+
     def test_orphaned_partials_with_no_manifest_are_named_as_orphaned(self, tmp_path):
         keep, clause = self._verdict(tmp_path, None, partials=1)
         assert keep is True
@@ -2315,11 +2329,13 @@ class TestTheReviewIdReadIsSharedToo:
             mpath.write_text(json.dumps(without_id))
         assert cc.manifest_review_id(pd) == cc.MANIFEST_ID_UNAVAILABLE
 
-    def test_the_lib_unreachable_excuse_is_a_different_fact(self, monkeypatch, tmp_path):
+    def test_the_hook_sides_excuse_names_no_channel_it_cannot_verify(self, monkeypatch, tmp_path):
         """Two excuses, deliberately: "no usable manifest" is the lib's answer
-        about a disk; "the lib could not be loaded" is the only thing the hook
-        can say when there is no lib to ask. A single string for both would
-        state one of them falsely."""
+        about a disk, and the hook's is for having failed to ask at all. But the
+        hook's `except` spans the lazy import AND the classify call, so a
+        sentence blaming the plugin install would be a guess wearing a fact's
+        clothes on the disk where the classifier itself raised. It says what it
+        knows — the id could not be read here — and nothing about why."""
         hook = _load_hook()
 
         def _boom():
@@ -2327,8 +2343,13 @@ class TestTheReviewIdReadIsSharedToo:
 
         monkeypatch.setattr(hook, "_critic_consolidate", _boom)
         excuse = hook._review_id_for_notice(tmp_path / ".prawduct")
-        assert "could not be loaded" in excuse
         assert excuse != cc.MANIFEST_ID_UNAVAILABLE
+        assert "could not be read" in excuse
+        for channel in ("lib", "plugin", "import", "load"):
+            assert channel not in excuse.lower(), (
+                f"names {channel!r}, which this `except` cannot isolate: {excuse}"
+            )
+        assert hook._is_usable_review_id(excuse) is False
 
     def test_the_hooks_unknown_default_is_the_modules_word(self):
         """`cmd_stop` falls back to the literal `"unknown"` where the module it
@@ -2497,6 +2518,22 @@ class TestManifestConditionIsTotal:
         _plant(pd, json.dumps(stale))
         assert cc.manifest_condition(pd)[0] == cc.MANIFEST_STALE_SCHEMA
         assert stale["id"] in cc.active_dispatch_refusal(pd, 60.0, True)
+
+    def test_non_object_json_is_corrupt_rather_than_an_older_prawduct(self):
+        """STALE-SCHEMA is a claim about provenance — the readings spell it "an
+        OLDER PRAWDUCT wrote this" — so a file holding `null`, a number or a
+        string must not land there. It parses and fails validation exactly as a
+        v2 record does, but no prawduct ever wrote it, and the version-skew
+        story sends an operator looking for an upgrade that does not exist."""
+        import tempfile  # noqa: PLC0415 — one-off disk, no fixture needed
+        for payload in ("null", "3", '"a string"', "[1, 2]"):
+            pd = Path(tempfile.mkdtemp()) / ".prawduct"
+            (pd / ".critic-partials").mkdir(parents=True)
+            _plant(pd, payload)
+            condition, detail, manifest = cc.manifest_condition(pd)
+            assert condition == cc.MANIFEST_CORRUPT, payload
+            assert manifest is None and detail
+            assert "OLDER PRAWDUCT" not in cc.pending_roster_reading(pd)[1], payload
 
     def test_the_unknown_word_belongs_to_the_module(self):
         """A caller that catches an exception needs a word for "could not
