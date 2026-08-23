@@ -757,6 +757,26 @@ class TestBacklogOpClassificationIsBound:
             "the import, and the guard would have let it strand"
         )
 
+    def test_the_guard_asks_the_adapter_rather_than_re_spelling_its_rule(self):
+        """One predicate, so the two cannot drift into disagreeing.
+
+        The guard decides whether to refuse a call before the runner ever sees it. If
+        it carries its own notion of what a help request is, the two can disagree —
+        and the disagreement resolves the unsafe way, since the guard is the one that
+        can wave a write through. Asserting the call site rather than the behaviour is
+        deliberate: behaviour tests pass while two copies happen to agree, which is
+        exactly the state that precedes the drift.
+        """
+        source = Path(_hook_module().__file__).read_text(encoding="utf-8")
+        assert "_backlog_cli.is_help_request(argv)" in source, (
+            "the guard no longer asks the adapter's published predicate — if it has "
+            "started deciding for itself what a help request is, the two can disagree"
+        )
+        assert "_take_global_flag" not in source, (
+            "the guard reaches into the adapter's private helper; use the published "
+            "`is_help_request` so the rule has one home"
+        )
+
     def test_a_real_op_is_still_classified_when_help_is_absent(self, tmp_path):
         """The floor under the test above: without `--help`, the ops it exercises are
         still judged on their merits. A rule that made every backlog call a read

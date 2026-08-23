@@ -331,6 +331,31 @@ def _take_global_flag(argv: list[str], flag: str, named: str | None) -> tuple[bo
     return present, out
 
 
+def resolve_op(argv: list[str]) -> str | None:
+    """The op this call names, or ``None``.
+
+    ``argv[0]`` or nothing. Resolving it as "the first token that does not look like
+    a flag" reads a VALUED FLAG'S ARGUMENT as the op the moment one is present, and
+    ``--repo <owner/repo>`` is in the invocation this adapter's own instruction
+    surface teaches — which is how the habitual spelling of a help request came back
+    ``unknown op 'owner/repo'``.
+    """
+    return argv[0] if argv and not argv[0].startswith("-") else None
+
+
+def is_help_request(argv: list[str]) -> bool:
+    """Whether this call asks for usage rather than doing anything.
+
+    Public because more than one caller needs the answer and there must only be one:
+    the ephemeral-worktree guard in ``bin/prawduct-hook`` decides whether to refuse a
+    call before this module ever sees it, and a guard that re-spells the rule is a
+    guard that can disagree with the runner about what the call *is*. A disagreement
+    resolves the unsafe way — the guard waves through a write it has classified as a
+    read.
+    """
+    return _take_global_flag(argv, "--help", resolve_op(argv))[0]
+
+
 def run(project_dir, argv: list[str], *, transport=None) -> int:
     """Dispatch ``backlog <op> ...``; emit the envelope, return an exit code.
 
@@ -338,13 +363,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
     injected by tests (the L1 fake); in production it defaults to the real
     ``gh``-backed transport built lazily so no import cost lands on other paths.
     """
-    # The op is argv[0] or there is no op. Resolving it by "first token that does
-    # not look like a flag" reads a VALUED FLAG'S ARGUMENT as the op the moment one
-    # is present, and `--repo <owner/repo>` is in the invocation this adapter's own
-    # instruction surface teaches — so the habitual spelling of a help request came
-    # back "unknown op 'owner/repo'", which is the exit-2-on-help this surface was
-    # corrected to stop doing.
-    named = argv[0] if argv and not argv[0].startswith("-") else None
+    named = resolve_op(argv)
 
     # `--json` and `--help` are global, but "global" is about which flag it is, not
     # about where the token sits: a token occupying a VALUE slot belongs to the flag

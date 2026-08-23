@@ -6464,12 +6464,12 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
         # agent most likely to need it — one running in a worktree it did not
         # create.
         #
-        # ASK the adapter rather than re-spelling its rule. Whether a token is a
-        # help request depends on whether it sits in a value slot, and only the
-        # adapter knows which flags take values. A membership test here would
-        # disagree with it on a malformed call — `backlog import --from --help` is
-        # a real import to the adapter — and the disagreement resolves the unsafe
-        # way, waving a local write through in a tree that discards it.
+        # ASK the adapter, through the one predicate it publishes for the purpose.
+        # Whether a token is a help request depends on whether it sits in a value
+        # slot, and only the adapter knows which flags take values — so a rule
+        # re-spelled here can disagree with the runner about what the call IS, and
+        # the disagreement resolves the unsafe way: a write classified as a read and
+        # waved through in a tree that discards it.
         lib_root = _plugin_root()
         if lib_root not in sys.path:
             sys.path.insert(0, lib_root)
@@ -6477,17 +6477,15 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
             from lib.backlog import cli as _backlog_cli  # noqa: PLC0415 — lazy keeps top-level cheap
         except ImportError as exc:
             # Falling through to the positional rule is the fail-closed direction, so
-            # nothing unsafe happens — but it silently restores the false refusal of
-            # `backlog <op> --help` that this branch exists to remove, and no test can
-            # see it (conftest seeds the plugin root, so the suite never reaches an
-            # unseeded path). Say so on stderr rather than reverting in silence.
+            # nothing unsafe happens — but it restores a false refusal of `backlog
+            # <op> --help`, which is a read. Say so rather than reverting in silence.
             print(
                 f"NOTE: classifying `backlog` by op name only — the adapter is "
                 f"unreachable ({exc}); a `--help` on a write op may be refused here.",
                 file=sys.stderr,
             )
         else:
-            if _backlog_cli._take_global_flag(argv, "--help", _first_positional(argv))[0]:
+            if _backlog_cli.is_help_request(argv):
                 return False
         op = _first_positional(argv)
         if op in _BACKLOG_LOCAL_WRITE_OPS:
