@@ -2549,9 +2549,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         "    prawduct-hook evidence status\n"
                     )
                 else:
+                    # R-7 (round 6): the fourth branch, and the one that asserted
+                    # a CAUSE where its siblings derive a verdict. A
+                    # manifest-less directory is not always a dispatch that
+                    # crashed before writing one — partials outlive their
+                    # manifest when a late reviewer re-creates the directory
+                    # after consolidation (`_archive_leftovers` documents that
+                    # disk), and `anything_worth_keeping` has a clause authored
+                    # for exactly it that nothing here consumed. So the cause is
+                    # hedged to what is known, and the verdict comes from the
+                    # same home as the other three.
                     cause = (
-                        "  no coordinator manifest is present, so a single-pass review or a\n"
-                        "  coordinator dispatch crashed before writing.\n"
+                        "  no coordinator manifest is present — a single-pass review, or a\n"
+                        "  coordinator dispatch that crashed before writing one.\n"
+                        + _keep_verdict(prawduct_dir)[1]
                     )
                 blockers.append(_attributed("critic",
                     "CRITIC REVIEW (not completed): a review set the .critic-active marker\n"

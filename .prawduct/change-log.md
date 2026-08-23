@@ -121,6 +121,14 @@ instead of an unactionable "could not tell"), and `MANIFEST_UNKNOWN` had no prod
 `cmd_stop` spelled the literal under a comment claiming the opposite. Plus `short_detail`'s hard cap
 — the property the function exists for — was executed by every stale-schema test and asserted by
 none, so deleting the branch shipped green.
+
+A fourth of the same shape, from the same round: `cmd_stop`'s absent-manifest branch was the one of
+four that asserted a CAUSE ("a dispatch crashed before writing") instead of deriving a verdict —
+false on the disk `_archive_leftovers` documents, where a late reviewer re-creates the partials
+directory after consolidation and the partials are all there is. The cause is now hedged to what is
+known and the branch takes the shared clause. Third recurrence of this concern in this subsystem,
+so it finally gets a row in `cross-cutting-concerns.md`: what keeps being shared is the PROSE, and
+the fact behind it stays distributed.
 ## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
 
 <!-- prawduct: type=fix | scope=instruction-surface-truth -->

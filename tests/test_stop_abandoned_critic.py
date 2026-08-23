@@ -794,6 +794,34 @@ class TestTheBlockerComposesSharedProse:
         # reason — which makes it a clean signal rather than a false positive.
         assert "critic-end" not in result.stderr
 
+    def test_orphaned_partials_with_no_manifest_are_not_declared_a_crash(self, tmp_path):
+        """The disk `_archive_leftovers` documents: a late reviewer re-creates
+        the partials directory after consolidation, so there are partials and no
+        manifest. The absent branch used to assert a cause for that ("a
+        dispatch crashed before writing") and, alone among the four, skipped the
+        preservation clause — telling an operator nothing was attached on the
+        one disk where reviewer output is all there is."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        d = prawduct / ".critic-partials"
+        d.mkdir()
+        (d / "correctness.rev-old.json").write_text('{"role": "correctness"}')
+
+        sys.path.insert(0, str(ROOT))
+        from lib.critic_consolidate import anything_worth_keeping  # noqa: PLC0415
+        keep, clause = anything_worth_keeping(prawduct)
+        assert keep is True, "fixture guard: this disk HAS reviewer output"
+
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert clause in result.stderr, (
+            "the absent branch must take the shared verdict too. Expected:\n"
+            f"{clause}\nGot:\n{result.stderr}"
+        )
+        assert "crashed before writing.\n" not in result.stderr, (
+            "and must not assert a cause it cannot know"
+        )
+
     def test_the_stop_blocker_carries_the_shared_keep_verdict(self, tmp_path):
         """The fifth `anything_worth_keeping` call site.
 
