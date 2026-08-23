@@ -49,11 +49,22 @@ from __future__ import annotations
 
 import ast
 import re
+import sys
 from pathlib import Path
 
 PLUGIN = Path(__file__).resolve().parents[1] / "plugin"
 CLI_PATH = PLUGIN / "lib" / "backlog" / "cli.py"
 ADAPTER_DIR = PLUGIN / "lib" / "backlog"
+
+# The adapter itself is one of the two things this file compares: several checks
+# below assert that a surface's claim matches what the CLI actually does, which
+# means importing it rather than re-reading its source into a second opinion.
+if str(PLUGIN) not in sys.path:
+    sys.path.insert(0, str(PLUGIN))
+
+import pytest  # noqa: E402
+
+from lib.backlog import cli  # noqa: E402
 
 # Evasion 3 — derive the surface set instead of hardcoding one directory. Any
 # skill markdown that drives the adapter can make a safety claim about it.
@@ -290,4 +301,225 @@ def test_dedup_surfaces_ask_the_shared_root_cause_question():
         "the length/shape half alone uses the window to build a large, tidy, "
         "OVER-SPLIT backlog that then has to be merged back by hand. Restore it "
         "rather than relaxing this test.\n  - " + "\n  - ".join(missing)
+    )
+
+
+# --- the op set is discoverable, so the bound that cites it can resolve -------
+#
+# The whole mutation surface rests on one sentence: "the adapter exposes exactly
+# the ops in the usage table." It bounded the model by REFERENCE, and for a long
+# stretch the referent did not exist anywhere — `--help` answered exit 2,
+# "unknown flag". A bound whose referent cannot be resolved is not a bound, and
+# it fails in the worst direction: a reader who cannot find the table does not
+# stop, it falls back to its own notion of the op set. So the referent is now a
+# command, and these pins keep the command, the table and the sentence in step.
+
+
+@pytest.mark.parametrize("op", cli._ALL_OPS)
+def test_every_op_prints_its_own_usage_at_exit_zero(op, capsys):
+    """Asked by rule over the whole dispatch surface, never by naming today's ops:
+    an op added tomorrow inherits this assertion instead of quietly reopening the
+    gap. Help is a request that SUCCEEDED — stdout, exit 0 — because a reader
+    discovering the surface is the intended use, and an error exit teaches the
+    opposite."""
+    code = cli.run(".", [op, "--help"])
+    captured = capsys.readouterr()
+
+    assert code == 0, f"`backlog {op} --help` exited {code}: {captured.err.strip()!r}"
+    assert f"prawduct-hook backlog {op}" in captured.out, (
+        f"`backlog {op} --help` printed no usage for {op!r} on stdout"
+    )
+
+
+def test_the_usage_table_covers_every_dispatched_op():
+    """The table is composed from the same dict `--help` serves, so this catches
+    the one way they can still come apart: an op dispatched by `run` with no
+    entry to render."""
+    unserved = [op for op in cli._ALL_OPS if cli._op_usage(op) is None]
+    assert not unserved, (
+        f"{unserved} are dispatched but have no usage entry, so `--help` cannot "
+        "describe them and any surface bounding a reader to the usage table "
+        "under-reports the op set"
+    )
+
+
+def test_a_bare_help_renders_the_whole_table(capsys):
+    code = cli.run(".", ["--help"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    missing = [op for op in cli._ALL_OPS if op not in captured.out]
+    assert not missing, f"the usage table does not name {missing}"
+
+
+_OP_SET_BOUND = re.compile(
+    r"exposes exactly the ops|the ops in the usage table", re.I
+)
+#: The referent that resolves: a command the reader can run, not a document to
+#: go looking for.
+_RESOLVABLE_REFERENT = "backlog --help"
+
+
+def _bounding_citations() -> list[tuple[str, str]]:
+    """Every line that bounds a reader to the adapter's op set, paired with a
+    two-line window (the citation is free to wrap)."""
+    found: list[tuple[str, str]] = []
+    for surface in SURFACES:
+        lines = surface.read_text(encoding="utf-8").splitlines()
+        for lineno, line in enumerate(lines, 1):
+            if not _in_adapter_context(surface, line):
+                continue
+            if _OP_SET_BOUND.search(line):
+                rel = surface.relative_to(PLUGIN).as_posix()
+                found.append((f"{rel}:{lineno}", " ".join(lines[lineno - 1 : lineno + 1])))
+    return found
+
+
+def test_the_op_set_bound_cites_something_that_resolves():
+    citations = _bounding_citations()
+    assert citations, (
+        "no instruction surface bounds the reader to the adapter's op set any "
+        "more. That sentence is the only thing standing between a model and an "
+        "invented mutation path — restore it, with its referent."
+    )
+    dangling = [ref for ref, window in citations if _RESOLVABLE_REFERENT not in window]
+    assert not dangling, (
+        "an instruction surface bounds the reader by 'the ops in the usage "
+        f"table' without naming `prawduct-hook {_RESOLVABLE_REFERENT}`, the "
+        "command that prints it. A reference a reader cannot resolve is not a "
+        f"bound.\n  - " + "\n  - ".join(dangling)
+    )
+
+
+# --- the retry budget: bounded, or it is not a budget ------------------------
+#
+# `retryable: true` says re-attempting CAN work. It never said how often, so a
+# run of GitHub 503s met a caller that retried 23 times across 5+ minutes. The
+# adapter is innocent: a single op runs `gh` once and returns immediately, so
+# the loop only ever existed in the caller — which is precisely why the bound
+# has to be published where the caller reads, and why every surface that hands
+# out the hint owes the budget beside it.
+
+_RETRY_BUDGET_SIGNALS = {
+    "a maximum attempt count": re.compile(
+        rf"attempts?\b[^\n]{{0,24}}\b{cli.RETRY_MAX_ATTEMPTS}\b"
+        rf"|\b{cli.RETRY_MAX_ATTEMPTS}\b[^\n]{{0,24}}attempts?",
+        re.I,
+    ),
+    "a deadline": re.compile(rf"\b{cli.RETRY_DEADLINE_SECONDS}\s?s(?:econds)?\b", re.I),
+    "a give-up rule": re.compile(r"give[s]? up", re.I),
+}
+
+
+def _retryable_surfaces() -> list[Path]:
+    """Surfaces that hand the reader the `retryable` hint."""
+    return [
+        s for s in SURFACES if "retryable" in s.read_text(encoding="utf-8")
+    ]
+
+
+def test_every_surface_that_hands_out_retryable_also_bounds_the_retrying():
+    surfaces = _retryable_surfaces()
+    assert surfaces, "no surface documents `retryable` any more — check the derivation"
+    missing: list[str] = []
+    for surface in surfaces:
+        text = surface.read_text(encoding="utf-8")
+        for what, pattern in _RETRY_BUDGET_SIGNALS.items():
+            if not pattern.search(text):
+                missing.append(f"{surface.relative_to(PLUGIN).as_posix()}: no {what}")
+    assert not missing, (
+        "a surface tells a reader an error is `retryable` without bounding the "
+        "retrying. The budget is the caller's whole ceiling — no adapter code "
+        "enforces it, because a single op makes one call and returns — so a "
+        "surface that omits it hands out a licence to loop.\n  - "
+        + "\n  - ".join(missing)
+    )
+
+
+def test_the_help_output_carries_the_budget_it_publishes():
+    """`--help` is the referent the bound points at, so it is where a reader
+    lands with no other context. The numbers come from the CLI's own constants,
+    which is what keeps the command and the prose from drifting apart."""
+    for what, pattern in _RETRY_BUDGET_SIGNALS.items():
+        assert pattern.search(cli._HELP), f"the usage table states no {what}"
+
+
+# --- the `prawduct:` block is the adapter's to write -------------------------
+
+_BLOCK_OWNERSHIP = re.compile(r"adapter[- ]owned", re.I)
+_BLOCK_PROHIBITION = re.compile(r"(?:do not|don't|never)\s+hand[- ]writ", re.I)
+
+
+def test_the_prawduct_block_is_declared_adapter_owned_and_off_limits():
+    """Ownership stated without a prohibition is a preference, and a preference
+    is what a skill overrode when it hand-wrote a block: the adapter's composer
+    strips the attribution stamps from any embedded block in both directions, so
+    a hand-written one is at best redundant and at worst a field nothing reads.
+    Both halves are required — the fact and the instruction."""
+    text = (_BACKLOG_SKILL_DIR / "adapter-mode.md").read_text(encoding="utf-8")
+    assert _BLOCK_OWNERSHIP.search(text), (
+        "adapter-mode.md no longer states that the `prawduct:` block is "
+        "adapter-owned; a reader with no owner for it will write one"
+    )
+    assert _BLOCK_PROHIBITION.search(text), (
+        "adapter-mode.md states the ownership but no longer prohibits "
+        "hand-writing a block — ownership alone reads as a preference"
+    )
+
+
+# --- a close records no scope, and no surface may say it does ----------------
+
+
+def _status_valued_flags() -> set[str]:
+    """The flags `status` actually parses, read off `_run_status`'s own
+    `_parse_flags(valued=…)` call. Derived rather than typed here so the day the
+    op learns `--closed-by` this check stands down by itself."""
+    tree = ast.parse(CLI_PATH.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_run_status":
+            for inner in ast.walk(node):
+                if (
+                    isinstance(inner, ast.Call)
+                    and getattr(inner.func, "id", None) == "_parse_flags"
+                ):
+                    for kw in inner.keywords:
+                        if kw.arg == "valued":
+                            return {
+                                elt.value
+                                for elt in kw.value.elts
+                                if isinstance(elt, ast.Constant)
+                            }
+    raise AssertionError(
+        "`_run_status` no longer parses its flags through `_parse_flags(valued=…)`; "
+        "this check reads that call to learn what a close can record"
+    )
+
+
+_CLOSED_BY_CLAIMS = (
+    re.compile(r"records?\s+(?:the\s+)?`?closed[_-]by", re.I),
+    re.compile(r"closed[_-]by`?\s+(?:is\s+)?(?:recorded|stamped|native)", re.I),
+)
+
+
+def test_no_surface_claims_a_close_records_the_closed_by_scope():
+    """The skill-facing contract accepts `closed-by=<scope>` on a close, and the
+    op it routes to has nowhere to put it: the scope is dropped, silently. The
+    code has always been honest — `set_status` records the deferral in its own
+    docstring — so this pins the only layer that overstated it, against the flag
+    set the op really parses."""
+    if "closed-by" in _status_valued_flags():
+        return  # the op learned the flag; the claim is then true
+
+    def _find(line: str):
+        hits = [m.start() for p in _CLOSED_BY_CLAIMS if (m := p.search(line))]
+        return min(hits) if hits else None
+
+    offenders = _offending_lines(_find)
+    assert not offenders, (
+        "a backlog instruction surface says a close records `closed_by`. The "
+        "`status` op parses only "
+        f"{sorted(_status_valued_flags())}, so a `closed-by=<scope>` argument is "
+        "dropped — and a caller told otherwise loses the traceability it asked "
+        "for without ever seeing a failure. Say the scope is not recorded, and "
+        "where to put it instead.\n  - " + "\n  - ".join(offenders)
     )

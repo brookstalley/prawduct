@@ -33,7 +33,7 @@ there before the build plan would be premature; they are authoritative *here* un
 | Front | Surface type | Consumers | Stability |
 |---|---|---|---|
 | **Core library** `lib/backlog/…` | in-process Python (sync, return-value) | CLI + MCP only (internal seam, D7) | internal — *not* a stable external contract; the CLI is the contract |
-| **CLI** `prawduct-hook backlog <op>` | commands + flags + exit codes + stdout/stderr | prawduct's own skill & gates; **adopter** agents (GV4); scripts | **stable public contract** |
+| **CLI** `prawduct-hook backlog <op>` | commands + flags + exit codes + stdout/stderr | prawduct's own skill & gates; **adopter** agents (GV4); scripts | **the binding surface, evolved additive-first** — see the note below on which sense of "stable" this is |
 | **MCP** server | tool calls over the same core | any MCP client (P2) | **experimental** |
 
 **CLI invocation (O5).** The canonical command is **`prawduct-hook backlog <op>`** — a subcommand
@@ -42,10 +42,25 @@ platform-exposure/executable/PATH surface; the durable contract is the flags + J
 on-GitHub encoding, not the binary name — §5). **`prawduct backlog` is used as readable shorthand
 throughout the doc set** (PRD §6, Test Specs §1.1, this doc's prose).
 
-**Consumers = both internal and external.** External raises the stakes: an adopter's agent parses the
-CLI's JSON, so its output schema is a contract (§5). The canonical contract lives in **this doc + the
-documented flag/output spec** (a CLI has no OpenAPI/SDL); the durable *cross-version* contract is the
-on-GitHub encoding (Data Model §2/§3), not the CLI signature (§5).
+**Which sense of "stable" — the column above is relative, not a versioning promise.** Against the
+other two fronts it means: this is the layer consumers bind to (unlike the core library, which is an
+internal seam) and it is not experimental (unlike MCP). It does **not** mean the subcommand group
+sits in the product's *published* stable tier. It does not: `.prawduct/artifacts/api-contract.md`
+§ Direction enumerates that tier as exactly two read-only commands and rules that every other
+subcommand carries no cross-version promise to a third party. What this front does guarantee is the
+product-wide additive-first rule — flag names, exit-code meanings and `--json` keys are never
+repurposed, and readers tolerate unknown keys — which is what makes an adopter's parser safe to
+write without a tier behind it. The artifact governs the tier; this document governs the operational
+detail.
+
+**Consumers are internal, and an adopter is not the exception it looks like.** An adopter's agent does
+parse this CLI's JSON — but it reaches the CLI through the skills of the same plugin install, at the
+same version, which is the lockstep case §5.2 already describes rather than a second party binding
+across versions. That is what the output schema's discipline rests on: a **same-version** caller
+depends on it, which is a reason to hold the line without anyone having promised a compatibility
+window outside. The canonical contract lives in **this doc + the documented flag/output spec** (a CLI
+has no OpenAPI/SDL); the durable *cross-version* contract is the on-GitHub encoding (Data Model
+§2/§3), not the CLI signature (§5).
 
 ## 2. Operations
 
@@ -225,6 +240,15 @@ whether re-attempting *this class* can succeed: `unavailable`/`rate_limited` →
 governs the caller's *degradation*; `retryable` governs a driver's *re-attempt* — they are not the same
 axis.
 
+**The hint ships with a published budget (a third obligation, on whoever hands the hint out).** No op
+retries for the caller — a single op runs `gh` once and returns, and only `import` retries a
+rate-limited *record* inside its own run — so the entire retry loop lives in the caller, and
+`retryable: true` with no ceiling beside it reads as a licence to loop until success, which is the
+opposite of never-block. Every surface that documents `retryable` therefore states a **max attempt
+count, a wall-clock deadline and a give-up rule**; `lib/backlog/cli.py` carries the numbers as
+constants and publishes them in `--help`, and `skills/backlog/adapter-mode.md` carries the
+operational form. Not restated here — a third copy is a third drift source.
+
 **Stable `code` vocabulary (the contract — not free-text):**
 
 | `code` | Meaning | retryable | Parent |
@@ -300,8 +324,15 @@ a coordinated retrofit.
 Preventing "improper inventory management" (the CLI analogue of a zombie endpoint) — every surface is
 tiered, none is undocumented-but-live.
 
-- **Stable (public contract):** the §2.1 item lifecycle, §2.2 `list`/`pick`/`counts`, the **JSON
-  envelope + `code` vocabulary** (§4), the ID-normalization inputs (§3). Adopter agents depend on these.
+**What a tier promises, and to whom** (the §1 note, in its operational form). These tiers govern
+change *inside the plugin*: they are what a skill shipped at version N relies on, and §6's per-tier
+commitments — deprecation window, removal only on a major — are real and binding in that scope. None
+of them promises anything to a caller outside the plugin. Read `stable` below as *hardest to change*,
+never as *published*.
+
+- **Stable (hardest to change; a same-version caller may rely on it):** the §2.1 item lifecycle,
+  §2.2 `list`/`pick`/`counts`, the **JSON envelope + `code` vocabulary** (§4), the ID-normalization
+  inputs (§3). An adopter's agent depends on these through the skills its plugin install ships.
 - **Experimental (may break within a minor):** the **MCP** front; `search --semantic` (capability-probed
   — absent only where the instance lacks semantic search); **attachments** (`attach` mechanism gated on
   S5); `rollup` cross-owner fan-out.
@@ -320,6 +351,11 @@ Small choices expensive to reverse once consumers depend on them:
 - **Enums:** named string values, never magic ints; **soft** (unknown → `warning`, not reject; DM1).
 - **null vs. absent:** absence = "unset / use default"; explicit `null` = "clear this field." A
   fail-closed reader here would re-create the tolerated-variant bug — `[]`/absent both mean "none."
+- **Self-describing surface:** `<op> --help` prints that op's usage on stdout at **exit 0**, and a
+  bare `--help` prints the whole usage table. Help is a request that succeeded, never a validation
+  error, so the op set and each op's flags are discoverable without reading source or prose — which
+  is what lets an instruction surface bound a caller to "the ops the adapter exposes" by naming a
+  command instead of a document.
 - **Output discipline:** JSON is the **sole stdout content**; diagnostics/warnings/progress →
   **stderr**. Non-interactive **always** (AG1): the CLI never prompts, and drives `gh` with
   `GH_PROMPT_DISABLED=1`, no pager, no inherited TTY (Security §1a) — nothing to hang on.
