@@ -181,6 +181,26 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating).
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
+- **Backlog service** — `backlog <op>`: a subcommand *group*, not a single command. The op set is
+  `_ALL_OPS` in `lib/backlog/cli.py` — the same tuple the CLI builds its unknown-op message from, so
+  the enumeration cannot drift from what dispatches — and `_WRITE_OPS` inside it is the
+  provider-mutating half; the rest read, some writing only the local cache (`sync`).
+  **This artifact deliberately restates none of the ops, the `--json` envelope, or the error
+  vocabulary.** `documentation/backlog-service-api-contract.md` is the operational contract for all
+  three (§ 2 the operations, § 3 inputs and outputs, § 4 the error model), and
+  `skills/backlog/adapter-mode.md` is the form an agent binds to. A copy here would be a second
+  thing to drift. What this entry owes instead is the **promise**, which neither of those documents
+  can settle for the product: a surface described in detail elsewhere and unnamed here still leaves
+  the reader who asks "what does prawduct expose, and under what promise?" a confidently incomplete
+  answer, and that silence is the drift nobody can see.
+  **The promise is the one this artifact already makes for the rest of the CLI.** `backlog` is
+  internal/unstable (§ Surface Inventory), carried at the plugin version like its skill callers, and
+  outside the two-member stable tier § Direction's 2026-08-02 ruling enumerates. Adopter agents do
+  call it — a real dependency, and still not a promise: a request to bind a third party to its
+  `--json` envelope is exactly the second of the two conditions that ruling names as its next
+  revisit trigger, and it has not been made. Where the feature-local contract's own stability
+  language is more generous than that, **this artifact governs the tier and that document governs
+  the operational detail.** Exit classes: § Error Model.
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
   `jurisdiction`, `cost-of-commit [--json] [<paths>...]` (does committing these paths — the
   working tree by default — buy a review round? Asks the gates' own `is_judgeable_path`, so it
@@ -359,8 +379,7 @@ Fail-direction is deliberate and per-purpose:
   appears per check as the `unchecked` list rather than a silently absent result.
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `critic-begin` **3** = no review needed (added 2026-08-06);
-  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
-  `backlog verify-migration` **4** = completeness failure (a source item with no target issue).
+  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
   unconditionally, so those two meanings were removed rather than given new ones. Retiring a
   meaning is what the additive-first norm permits; the thing it forbids is a new meaning wearing
@@ -379,6 +398,18 @@ Fail-direction is deliberate and per-purpose:
   not a silent no-op, though: since 2026-08-06 a 3 appends exactly one `guard-refusal` fact to the
   clone-shared evidence store, which is what makes the guard's own yield falsifiable. That fact is
   inert by construction (no gate reads a non-`review` kind), so it changes no verdict.
+
+**The `backlog` group carries its own exit-class set — a documented scheme, not an exception to the
+table above.** `lib/backlog/cli.py`'s `_EXIT_CLASS` maps every error `code` the group can return onto
+a fixed class: **2** validation, **3** not-found, **4** conflict, **5** auth, **6** unavailable, with
+**0** for success and **1** reserved for a code that reaches the map unlisted. The discipline is this
+section's — exit codes are the contract, the failure is attributed inside the envelope, no stack
+trace crosses the boundary — and the wider vocabulary is what a caller needs in order to branch on
+*why* a write failed, which 0/1/2 cannot carry. `backlog verify-migration`'s **4** is that ordinary
+`conflict` class applied to a completeness disagreement (a source item with no target issue), not a
+sentinel meaning of its own, which is why the class set belongs here rather than one member of it.
+Which `code` maps to which class, and the envelope the code rides in, are
+`documentation/backlog-service-api-contract.md` § 4.
 
 **Message vocabulary:** `CRITICAL:` / `WARNING:` / `NOTE:` / `PRAWDUCT:` / `BLOCKED —…`, with a
 channel split — **stdout is agent-facing** (composed into model context), **stderr is
@@ -481,6 +512,10 @@ Evolution rules we want to hold, so new versions stay rare:
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`.
+  **`backlog <op>` sits in this tier on different grounds:** its callers are the
+  `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
+  ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
+  § Operations, "Backlog service", is the entry, and it names what would move it.
 - **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). Four
   members in two sub-shapes, split by **who calls them** — which decides whether they announce
   themselves:

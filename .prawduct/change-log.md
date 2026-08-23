@@ -3,6 +3,82 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
+
+<!-- prawduct: type=fix | scope=instruction-surface-truth -->
+
+A batch of backlog items selected under one lens rather than by area: **a surface that tells a
+reader something false or unresolvable about this system**. Skill frontmatter, skill prose, adapter
+docs, a process doc, a contract artifact, test comments. The lens is the point — each defect is
+individually trivial and the class is not, because every one of these surfaces is read by an agent
+as licence to act, and a wrong instruction is obeyed rather than noticed.
+
+**The largest was a bound with no referent.** `adapter-mode.md` told the model "you never invent a
+mutation path — the adapter exposes exactly the ops in the usage table", and no reachable usage
+table existed: a per-op table lived in the CLI but only on an error path, printed to stderr, while
+`--help` itself exited 2 as an unknown flag. That fails in the worst direction. A model that cannot
+find the table does not stop; it falls back to its own notion of the op set. `--help` now prints
+usage on stdout at exit 0 for every op, answered before dispatch and before flag parsing, and the
+sentence cites something that resolves. The same surface gained a retry budget whose numbers are
+traceable to the transport rather than chosen — the 5+ minutes a forked skill once spent retrying a
+run of 503s was never the adapter's doing, it was prose that failed to bound the caller.
+
+**Prose that reads a variable it cannot expand.** `${CLAUDE_PLUGIN_ROOT}` substitutes into hook
+commands and only there. Eleven skill-prose reads through it handed the agent a path that does not
+resolve — worst in doctor's install-reference check, which either declines or silently grades
+against the inline list its own text forbids using. A test asserted the broken spelling, so it
+pinned the defect rather than the contract; its proposition is unchanged and now checked against a
+form that works.
+
+**Two sentences that disagreed with each other.** The `pr` skill told a doc-only PR to skip four
+steps and then to jump past a fifth, so whether a STOP gate ran depended on which half the model
+read. And `adapter-mode.md` claimed a close records `closed_by` when the op parses only two flags,
+dropping the scope in silence while the code's own docstring recorded the deferral honestly.
+
+**Claims that decayed because a set grew under them.** The API contract artifact never mentioned a
+surface its own build plan declares Exposed, so the question "what does prawduct expose, and under
+what promise?" got a confidently incomplete answer. The critic skill body — payload every review
+mode loads — carried no growth ceiling, and two test comments asserted that no unbudgeted payload
+file remained. Both were false, both had been corrected once before and re-asserted, and a third
+ceiling would have made the sentence true only until a sixth file appeared. They now state the
+mechanism that survives the set growing rather than a census of it.
+
+**Three results this batch owes as reports rather than as code.**
+
+*The stale-step-reference closure.* The broad query returns 32 hits and cannot reach empty. The
+exempt paths, named rather than skipped: `.prawduct/backlog.md` (the frozen migration snapshot,
+banner-marked as deliberately allowed to diverge), `.prawduct/artifacts/archive/`,
+`migration-restructure-plan.json` (whose hits are verbatim quotations of filed issues — rewriting
+them would falsify the quotes), and the rest of `change-log.md`. All are bookkeeping that records
+past work. Excluding them, the query returns **six hits across two files**, both under
+`documentation/issues/622-*.md` — the unit is hits, as it is above, and reporting a file count there
+was the same slip this batch exists to correct. Both files describe steps issue #622 would *create*
+— forward specs against an open `stage:design` item, not citations of current state. Named rather
+than left implied, because **both** predict `6b/6c/6d` (`622-design.md` in its file table,
+`622-requirements.md` in prose), which is exactly the lettered-sub-step shape the item warns about: it is a requirements record for unbuilt work, describing an intended runbook rather than pointing at the current one, and it is exempt on that ground. If #622 ships without those letters, the record is wrong about its own outcome and is corrected there, not here. Every live citation is name-anchored.
+
+*The Exposed-API sweep.* Four `**Exposed API:**` declarations across live and archived build plans.
+One — the backlog CLI — was missing from the contract artifact and is added. One names
+`backlog file-upstream`, whose chunk never shipped (its Status box is unticked and the op is absent
+from the CLI), so documenting it as exposed would be the mirror defect. Two are already covered.
+No live build plan carries a declaration. The item's hypothesis is confirmed: nothing links the
+declaration to the artifact — the Goal-2 check verifies only that the two recorded decisions exist,
+never that the artifact describes the named surface. That gap is filed, not fixed here.
+
+*The norm-index roster.* Closed as a **roster row per unrostered pin**, never as a restatement of
+the rule — a rule with two homes is a rule with one wrong one. The count in the report was low:
+three pins were enforced in CI without the index knowing, not one. The closure condition is now the
+set difference between `tests/preferences/test_*.py` and the paths the Enforcement table cites
+being empty, which is checkable, rather than a number, which is true of any prefix of the real set.
+
+**The batch's own lesson, earned twice.** Every one of the eleven items was partly stale and two
+were wholly stale — line numbers drifted, counts undercounted, a cited precedent had been deleted,
+and the runbook whose stale step references were the subject renumbered *again* during the work.
+Fixes were made against the tree, never against the report; where an item turned out already
+shipped it is recorded as such rather than claimed. The stale-reference item is closed by a query
+whose exempt paths are named, not by a count — a count is unfalsifiable, being true of any prefix
+of the real set.
+
 ## 2026-08-22: an abandoned delegate worktree is not silent
 
 <!-- prawduct: type=feature | scope=adhoc-delegation -->
@@ -9966,8 +10042,8 @@ beside the rest of the Status parsing, and `_parse_build_plan_status` now applie
 consumer, gate and report alike, is correct by construction instead of by a fourth local patch.
 A test pins that only `buildplan_refs` walks the Status section.
 
-`_parse_build_plan_status`, `_current_chunk_id_from_status`, `_has_active_build_plan_file` and
-`_get_active_work` now take the **project dir**, not `.prawduct/`. The wider signature is the
+`_parse_build_plan_status`, `_current_chunk_id_from_status`, `_get_active_work` and
+`_get_work_in_progress` now take the **project dir**, not `.prawduct/`. The wider signature is the
 point: resolving "current" reads git, and every call site should say so. A `.parent` derivation
 would have worked and kept the sweep invisible — which is how a local fix escaped notice twice.
 

@@ -9,7 +9,7 @@ substrate — web frontend, backend service, embedded device, data pipeline, mob
 | | what it is | reach for it when |
 |---|---|---|
 | **`/prawduct:runbook`** | the skill — `survey` proposes what your product is missing, `new` authors one, `review` checks an existing one, `list` inventories them | you want the work done rather than the rules. It reads this guide first, so you are not skipping anything by starting there |
-| **`${CLAUDE_PLUGIN_ROOT}/templates/runbook.md`** | the blank, with each section cross-referenced back into the rules here | you are writing one by hand, or you want to see the shape before reading 1,600 lines |
+| **the plugin's `templates/runbook.md`** | the blank, with each section cross-referenced back into the rules here | you are writing one by hand, or you want to see the shape before reading 1,600 lines |
 | **this guide** | the rules, the reasoning, and the evidence appendix separating what is verified from what is convention | you are deciding a judgment call, reviewing someone else's runbook, or the template's inline note is not enough |
 
 Runbooks live in your product's `.prawduct/runbooks/`. The three prawduct templates that ask for
@@ -1607,7 +1607,7 @@ Raw research, verdicts, provenance, and resume instructions live in the prawduct
 `.prawduct/research/runbook-authoring/CHECKPOINT.md` —
 [on GitHub](https://github.com/brookstalley/prawduct/blob/main/.prawduct/research/runbook-authoring/CHECKPOINT.md).
 It is **not** part of the installed plugin: `.prawduct/` is prawduct's own development state and is
-excluded from what ships, so do not look for it under `${CLAUDE_PLUGIN_ROOT}`.
+excluded from what ships, so do not look for it inside the installed plugin.
 
 ### Refuted — do not reintroduce ✗
 

@@ -66,6 +66,13 @@ not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `p
 
 When `develop` is ready to release as `vX.Y.Z`:
 
+**The numbering below is the checklist's order, not the running order.** Every prep item in it —
+the version bump across the three files, the `release=` tags, the `active_build_plan` clear and
+the plan sweep, the `plugin/CHANGELOG.md` section rename — is committed on `develop` **before**
+the promotion, not edited onto `main` after it; the reason is in the ordering note that closes
+"Step 1 mechanics" below. `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 1 is the
+same set in executable running order, and is the document to work from when actually cutting.
+
 0. **Confirm it is fit to ship**, not merely that something is unreleased:
    `./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z`. Every release-pending scope
    must be classified `ships`, or `withheld` behind a **named open** blocker, in the
