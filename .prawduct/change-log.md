@@ -173,7 +173,9 @@ unconditionally — so on the disk that clause newly admits (partials present, n
 the only recovery handle offered was the words "id unavailable". An operator copying it gets a
 refusal, the two handles that DO work go unmentioned, and the partials the sentence above promises
 are preserved age out of the archive ring unread. A predicate over the two excuse constants now
-gates the line, and the unusable branch names the bare listing instead. The wrapper's own excuse
+gates that line at both notices that interpolate an id — the second one is unreachable today, and
+took the gate anyway because it reads the id from a different read than the state it relies on.
+The unusable branch names the bare listing instead. The wrapper's own excuse
 stopped naming a channel too: its `except` spans the lazy import AND the classify call, so blaming
 the plugin install was a guess wearing a fact's clothes.
 
