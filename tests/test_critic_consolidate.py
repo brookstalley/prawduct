@@ -2159,11 +2159,13 @@ class TestNoSurfacePairsPreservationWithDiscard:
     assertions: compose the operator-facing messages under every manifest
     condition and assert none says both things at once.
 
-    **Three of the four production `anything_worth_keeping` call sites**
-    (`prawduct-hook` 961, 1050, 1124), named rather than rounded up to "every
-    surface"; `reading+verdict` below is this test's own direct call, not a
-    fourth. The remaining production site is `cmd_stop`'s, reachable only
-    through the CLI, and it is pinned in
+    **Three of the four production verdict-bearing notices**, named rather than
+    rounded up to "every surface"; `reading+verdict` below is this test's own
+    direct call, not a fourth. All four now reach the verdict through
+    `prawduct-hook`'s `_keep_verdict` rather than each guarding the call
+    itself — deliberately no line numbers here, since they renumber and the
+    function name does not. The remaining production site is `cmd_stop`'s,
+    reachable only through the CLI, and it is pinned in
     `test_stop_abandoned_critic.py::test_the_stop_blocker_carries_the_shared_keep_verdict`.
     An earlier docstring here did say "every surface" while composing a set
     disjoint from the one the finding named, which is how a pin comes to read as
@@ -2278,6 +2280,54 @@ class TestNoSurfacePairsPreservationWithDiscard:
             )
 
 
+class TestTheDegradedVerdictIsSharedToo:
+    """The verdict clause has one home; so does what it says when the lib that
+    owns it cannot be reached. Each of the four notices used to carry its own
+    copy of the guard AND of the degraded wording, in the change whose thesis is
+    that a verdict has one home — and the copy said only "could not tell",
+    naming neither a cause nor anything to run, while the sibling degradations
+    in that file all point at `evidence status`."""
+
+    def _degraded(self, monkeypatch, tmp_path):
+        hook = _load_hook()
+
+        def _boom():
+            raise RuntimeError("plugin root moved")
+
+        monkeypatch.setattr(hook, "_critic_consolidate", _boom)
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        return hook, pd
+
+    def test_the_degraded_clause_names_its_cause_and_a_command(self, monkeypatch, tmp_path):
+        hook, pd = self._degraded(monkeypatch, tmp_path)
+        keep, verdict = hook._keep_verdict(pd)
+        assert keep is True, "err toward preserve: the alternative discards real output"
+        assert "RuntimeError" in verdict and "plugin root moved" in verdict
+        assert "prawduct-hook evidence status" in verdict
+
+    def test_every_notice_takes_its_verdict_from_the_one_helper(self, monkeypatch, tmp_path):
+        """Substituting the helper — not the lib — must move all three boundary
+        surfaces, which is only true while none of them still calls
+        `anything_worth_keeping` itself. The disk is a marker with no manifest
+        (`pending_state` "none"), the one state that reaches the verdict tail:
+        complete, incomplete and unknown each return earlier with a remedy of
+        their own."""
+        hook = _load_hook()
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        from lib import critic_marker as marker  # noqa: PLC0415 — the sweep outcome vocabulary
+
+        monkeypatch.setattr(hook, "_keep_verdict", lambda _pd: (True, "  SENTINEL-CLAUSE\n"))
+        composed = [
+            hook._boundary_retained_marker_notice(pd, marker.SWEEP_RETAINED_LIVE),
+            hook._boundary_swept_marker_notice(pd),
+            hook._forced_live_sweep_notice(pd, 60.0),
+        ]
+        for message in composed:
+            assert "SENTINEL-CLAUSE" in message, message
+
+
 class TestShortDetail:
     """R-12: a validation reason can be a seven-sentence paragraph carrying its
     own recovery sequence. Embedded in a message that then gives a different
@@ -2310,6 +2360,19 @@ class TestShortDetail:
     def test_short_detail_is_empty_for_no_detail(self):
         assert cc.short_detail("") == ""
 
+    def test_the_hard_cap_is_the_backstop_when_there_is_no_sentence_to_cut_at(self):
+        """The clause split handles reasons that HAVE sentence ends; the cap is
+        what stands between a message and a 700-character reason that has none.
+        Every other test here exercises it incidentally and asserts nothing
+        about it, so deleting the branch shipped green — the standard this
+        bundle set for itself is that a pin which cannot fail is decoration."""
+        run_on = "rendezvous covers " + ", ".join(f"role{i}" for i in range(60))
+        assert len(run_on) > 400 and ". " not in run_on and "; " not in run_on
+        short = cc.short_detail(run_on)
+        assert len(short) <= cc._DETAIL_MAX_CHARS
+        assert short.endswith("\u2026")
+        assert short[:40] == run_on[:40]
+
 
 class TestManifestConditionIsTotal:
     """R-7: the vocabulary is only a vocabulary if every disk maps into it."""
@@ -2328,6 +2391,25 @@ class TestManifestConditionIsTotal:
         assert cc.pending_roster_reading(pd)[0] == "unreadable"
         assert cc.restore_refusal(pd, ["x.json"], False)
         assert cc.anything_worth_keeping(pd)[0] is False
+        # The surface #676 was filed against, and the one this test's first cut
+        # left out: `active_dispatch_refusal` hand-read the manifest under the
+        # pre-R-7 narrow `except`, so the widening landed everywhere EXCEPT the
+        # refusal that motivated it and this disk tracebacked out of
+        # `critic-begin` instead of refusing.
+        refusal = cc.active_dispatch_refusal(pd, 60.0, True)
+        assert "id unavailable" in refusal
+
+    def test_a_stale_schema_record_still_lends_the_refusal_its_id(self, tmp_path):
+        """The reason the refusal reads the classifier's RECORD and not just a
+        `valid` verdict: a manifest can fail validation on some other field and
+        still carry the id the operator needs to name the review."""
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        stale = _manifest_dict()
+        stale.pop("rendezvous")
+        _plant(pd, json.dumps(stale))
+        assert cc.manifest_condition(pd)[0] == cc.MANIFEST_STALE_SCHEMA
+        assert stale["id"] in cc.active_dispatch_refusal(pd, 60.0, True)
 
     def test_the_unknown_word_belongs_to_the_module(self):
         """A caller that catches an exception needs a word for "could not

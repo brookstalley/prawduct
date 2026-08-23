@@ -103,6 +103,24 @@ marker or a complete roster, and this is neither, so it archives the leftovers u
 `unmanifested-<ts>` name and proceeds. Reproduced end to end before any code was written; a test now
 pins it, because if that ever goes red the defect is a real wedge and a message fix is the wrong
 repair. What the reporter experienced as a wedge was the marker, which expires on its own TTL.
+
+**Round 6 found the widening one surface short of the defect it was named for.** R-7 widened
+`json.JSONDecodeError` to `ValueError` inside `manifest_condition` so an undecodable manifest is
+classified rather than thrown — and `active_dispatch_refusal`, the surface #676 was actually filed
+against, was still hand-reading the file under the narrow clause to get its `id`. A binary or
+truncated manifest under a live marker therefore tracebacked out of `critic-begin` instead of
+printing the refusal. The regression test for the widening composed three surfaces on that disk and
+not this one, which is how a construction stops one site short of its own class and its pin agrees.
+The refusal now takes the classifier's already-parsed record — a stale-schema manifest usually still
+carries its `id`, so the record, not a `valid` verdict, is the right input.
+
+The same shape twice more, both taken rather than dispositioned because the file's whole thesis is
+that a verdict has one home: the guarded `anything_worth_keeping` call was copy-pasted at four
+notices (now `_keep_verdict`, and its degraded form names the exception and an inspection command
+instead of an unactionable "could not tell"), and `MANIFEST_UNKNOWN` had no production reader while
+`cmd_stop` spelled the literal under a comment claiming the opposite. Plus `short_detail`'s hard cap
+— the property the function exists for — was executed by every stale-schema test and asserted by
+none, so deleting the branch shipped green.
 ## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
 
 <!-- prawduct: type=fix | scope=instruction-surface-truth -->

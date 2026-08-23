@@ -2429,10 +2429,16 @@ def active_dispatch_refusal(
     """
     age_note = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
     prior_id = "(id unavailable — no usable dispatch manifest)"
-    try:
-        prior_id = json.loads(manifest_path(prawduct_dir).read_text())["id"]
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        pass
+    # Reads the classifier's ALREADY-PARSED record rather than re-opening the
+    # file. The hand-read this replaces caught `json.JSONDecodeError`, so an
+    # undecodable manifest — `UnicodeDecodeError`, a ValueError — escaped
+    # through `begin_review` as a traceback: the exact defect R-7 fixed inside
+    # `manifest_condition`, still live at the surface that motivated it. A
+    # stale-schema record often still carries its `id`, which is why this takes
+    # the record rather than only trusting a VALID condition.
+    _condition, _detail, manifest = manifest_condition(prawduct_dir)
+    if isinstance(manifest, dict) and _nonempty_str(manifest.get("id")):
+        prior_id = manifest["id"]
     # The READING is shared with the boundary retained-marker notice
     # (:func:`pending_roster_reading` says why); only the remedy below is local
     # to refusing a dispatch.

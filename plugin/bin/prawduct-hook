@@ -274,6 +274,29 @@ def _critic_consolidate():
     return critic_consolidate
 
 
+def _keep_verdict(prawduct_dir) -> tuple[bool, str]:
+    """The keep-or-discard verdict for an operator notice, degrading safely.
+
+    Four notices append this clause, and each one used to carry its own copy of
+    the guard AND of the degraded wording — in the change whose thesis is that a
+    verdict has one home. A clause copied four times is four places to drift.
+
+    The degraded form errs toward preserve (``True``) because the alternative is
+    telling someone nothing is attached when reviewer output may be sitting
+    there, and it names its CAUSE and an inspection command: an operator told
+    only "could not tell" has nothing to do next, while the sibling degradations
+    in this file all point at `evidence status`.
+    """
+    try:
+        return _critic_consolidate().anything_worth_keeping(prawduct_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        return True, (
+            f"  Could not tell whether reviewer output is attached ({type(exc).__name__}:\n"
+            f"  {exc}) — inspect before discarding anything:\n"
+            "    prawduct-hook evidence status\n"
+        )
+
+
 def _reject_unknown_args(
     command: str, argv: list[str], allowed_flags: set[str]
 ) -> int | None:
@@ -957,13 +980,7 @@ def _boundary_retained_marker_notice(prawduct_dir: Path, outcome: str) -> str:
     # partials ARE real reviewer output. The verdict now comes from the same
     # module the reading does — a verdict authored beside a shared sentence is
     # not shared by being adjacent to it.
-    try:
-        _keep, verdict = _critic_consolidate().anything_worth_keeping(prawduct_dir)
-    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
-        _keep, verdict = True, (
-            "  Could not tell whether reviewer output is attached — inspect before\n"
-            "  discarding anything.\n"
-        )
+    _keep, verdict = _keep_verdict(prawduct_dir)
     return head + reading + verdict + (
         "  Clear the marker when you have decided:\n"
         "    prawduct-hook critic-end"
@@ -1046,13 +1063,7 @@ def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
             "  Inspect before acting:\n"
             "    prawduct-hook evidence status"
         )
-    try:
-        _keep, verdict = _critic_consolidate().anything_worth_keeping(prawduct_dir)
-    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
-        _keep, verdict = True, (
-            "  Could not tell whether reviewer output is attached — inspect before\n"
-            "  discarding anything.\n"
-        )
+    _keep, verdict = _keep_verdict(prawduct_dir)
     return head + reading + verdict + (
         "  No gate will mention this review again — the marker is gone. Re-run it when\n"
         "  you are ready:\n"
@@ -1120,13 +1131,7 @@ def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> 
     # output exists, and a promise of an empty archive when it does not. Not
     # R-6's contradiction (it only ever says preserve), but the same defect, so
     # it comes from the same place as the rest.
-    try:
-        _keep, verdict = _critic_consolidate().anything_worth_keeping(prawduct_dir)
-    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
-        _keep, verdict = True, (
-            "  Could not tell whether reviewer output is attached — inspect before\n"
-            "  discarding anything.\n"
-        )
+    _keep, verdict = _keep_verdict(prawduct_dir)
     if not _keep:
         return head + (
             "  That review is no longer guarded: the next `critic-begin` will take the\n"
@@ -2478,14 +2483,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # which `pending_roster_reading` explicitly forbids and which
                 # recurred because nobody had computed the distinction anywhere.
                 # `manifest_condition` computes it once; this reads it.
+                _cc = None
                 try:
                     _cc = _critic_consolidate()
                     condition, detail, _m = _cc.manifest_condition(prawduct_dir)
                     stale, corrupt = _cc.MANIFEST_STALE_SCHEMA, _cc.MANIFEST_CORRUPT
                 except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-                    condition, detail = "unknown", ""
+                    # `getattr`, not the bare literal: when the import itself is
+                    # what failed there is no module to ask, but when the
+                    # CLASSIFY call raised there is — and taking the word from
+                    # the module wherever it can be reached is what makes
+                    # `MANIFEST_UNKNOWN` the owner rather than a duplicate that
+                    # a test merely keeps in step.
+                    condition, detail = getattr(_cc, "MANIFEST_UNKNOWN", "unknown"), ""
                     stale = corrupt = None
-                    _cc = None
                 # The preservation clause names the act that actually archives.
                 # `critic-end` does NOT: it clears the marker and nothing else
                 # (its own docstring says so), so pointing at it here would be
@@ -2501,10 +2512,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # own regression test planted just `manifest.json` and then
                 # pinned that sentence, so the fixture asserted a claim that was
                 # false in the very disk it built.
-                try:
-                    _kept = "  cannot be consolidated.\n" + _cc.anything_worth_keeping(prawduct_dir)[1]
-                except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-                    _kept = "  cannot be consolidated.\n"
+                # Same helper as the three boundary notices: this branch used to
+                # drop the verdict clause entirely when the lib failed, which is
+                # the one disk where an operator most needs to be told to look.
+                _kept = "  cannot be consolidated.\n" + _keep_verdict(prawduct_dir)[1]
                 # SHORT form at both sites the finding named. The raw reason for
                 # a `missing 'rendezvous'` manifest — the shape #676 describes —
                 # is a ~700-char paragraph prescribing its own recovery
@@ -2523,7 +2534,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         f"  a coordinator manifest is present but is not valid JSON ({_short}), so it\n"
                         + _kept
                     )
-                elif condition == "unknown":
+                elif condition == getattr(_cc, "MANIFEST_UNKNOWN", "unknown"):
                     # Says what is known, which is nothing. The first cut named
                     # one cause ("the governance lib failed to load") for a
                     # broad `except` that also catches a raise from inside the
