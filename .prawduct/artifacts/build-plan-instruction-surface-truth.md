@@ -153,7 +153,9 @@ are different axes.
 
 Chunk closed 2026-08-23. Eleven items shipped, two filed (#706, #707). One cumulative review
 (3 blocking, 9 warnings, 9 notes across three reviewers) and one `verify-resolutions` — 12 of 12
-resolved, no new blocking. Suite 5079 green.
+resolved, no new blocking. Suite green — the evidence store is per-tree and authoritative
+(`prawduct-hook test-status`); a total copied into prose is stale the next time anyone adds a test,
+and this one had already drifted by one in the commit that wrote it.
 
 **What the batch taught, and it is not what the plan expected.** Every one of the eleven items was
 partly stale and **two were wholly stale** — #204's three claims were all fixed already, and #210's
