@@ -243,8 +243,11 @@ class TestIssuesBackendCloseIsDeferred:
         """The class: any live instruction surface that tells the reader WHEN to
         archive a backlog item is restating the timing the backlog skill owns —
         and every such restatement found so far took the on-branch form, which is
-        false on the Issues backend. The owner file is exempt: it states the
-        branch case as one half of an explicit split, which is the correct form.
+        false on the Issues backend. The owner's own rule paragraph is exempt: it
+        states the branch case as one half of an explicit split, which is the
+        correct form. The exemption is scoped to that paragraph and not to the
+        owner FILE — the file-wide version hid a live member sitting three
+        sections below the rule.
 
         Matched as a family of phrasings rather than the one sentence that broke,
         because pinning that sentence would pass the moment someone reworded it.
@@ -253,7 +256,7 @@ class TestIssuesBackendCloseIsDeferred:
         obvious rewordings do not."""
         # Each names a TIME for the call. "on the branch that closes it" is the
         # owner's own phrasing and appears in its routing sentences, so it is
-        # matched too -- the owner is exempted by file, not by wording.
+        # matched too -- only the rule paragraph itself is exempt.
         TIMING_CLAIMS = re.compile(
             r"archive it now"
             r"|now, on this branch"
@@ -266,11 +269,13 @@ class TestIssuesBackendCloseIsDeferred:
         for path in instruction_surfaces():
             for para in _paragraphs(path.read_text()):
                 # The owner's OWN rule is the one place a timing may be stated,
-                # and it states both halves. Exempting the whole owner FILE (the
-                # first cut) hid a live member: its reconciliation step restated
-                # the markdown half as the universal "primary path". Exempt the
-                # paragraph, never the file.
-                if "When to mark shipped" in para:
+                # and it states both halves. Two narrowings, each from a real
+                # miss: exempting the whole owner FILE hid a live member three
+                # sections below the rule, and keying the exemption on the
+                # section NAME re-exempted it the moment it routed to the owner
+                # by that name. The key is the rule's own opening clause, which
+                # only the rule itself carries.
+                if path == BACKLOG_SKILL and "the timing rule lives here" in para:
                     continue
                 if "status=shipped" not in para:
                     continue

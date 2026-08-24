@@ -70,8 +70,13 @@ the unfixed twin and did the early close the fix exists to prevent. Two reviewer
 independently under different goals, which is the tell that the fact had been distributed rather than
 shared. `skills/backlog/SKILL.md` "When to mark shipped" now owns *when* the call runs and states the
 split; `/prawduct:pr` Step 1d and the Critic's reconciliation template (`review-cycle.md`) route to it
-instead of restating it. A guard closes the class rather than the sentence: no surface outside the
-owner may tell a reader to archive "now, on this branch".
+instead of restating it. A guard closes the class rather than the sentence: no live instruction surface may
+state WHEN the archive happens except the owner's own rule paragraph. That exemption took two
+narrowings, each from a real miss — it started file-wide, which hid a live member three sections
+below the rule in the owner's own file, and then keyed on the section NAME, which re-exempted that
+member the moment it routed to the owner by name. It now keys on the rule's opening clause, which
+only the rule carries. A guard whose exemption is broader than its subject is not a guard; it is a
+list of what it happens to catch.
 
 **The close moved ahead of the deletions.** It was numbered after the branch and evidence-file
 cleanup while its own text said "before anything else" — and those deletions destroy the only local
