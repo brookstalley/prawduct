@@ -36,6 +36,13 @@ loading, and a missing banner is otherwise indistinguishable from a quiet one to
 never seen this repo governed. Now a cold agent is told what a missing banner means and what to hand
 the operator.
 
+**`prawduct-hook install-status [<path>]` is the shared surface, and the optional path is the
+contract rather than a convenience.** Bare, the subject is the session's project dir — which is the
+*onboarding* repo when `/prawduct:onboard <target>` asks, because onboard runs in a different repo's
+session by construction. The review caught that as blocking: without the path it answered
+`installed` about the wrong repo, a false all-clear on the one fact the feature exists to establish.
+Doctor, whose subject genuinely is the session's repo, passes nothing.
+
 **Doctor's half is deliberately smaller than it first looked.** Health Check #19 relays which install
 is carrying the repo, and grades nothing: doctor is a plugin skill, so reaching it proves the plugin
 loaded — the total failure is unreachable from there — and `--plugin-dir` self-hosting bypasses the

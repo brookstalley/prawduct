@@ -58,9 +58,12 @@ Worth doing if the exact-match assumption ever produces a false alarm in practic
 
 ## Status
 
-- [ ] Chunk 01: onboard verifies the install, and the surfaces that read it
-Context: Plan written 2026-08-24 on `fix/onboard-verify-plugin-install`; baseline suite green
-before any edit. Single chunk by design — see "Why one chunk" below. Nothing committed yet.
+- [x] Chunk 01: onboard verifies the install, and the surfaces that read it
+Context: Complete. Built and committed (`c10b14ba`), reviewed `cumulative`
+(`rev-20260824T161452Z-6b07635a`: 4 blocking / 6 warning / 11 note, all 21 dispositioned), fixes
+landed in one commit (`b6cf575d`), `verify-resolutions` clean — 0 findings. Suite green: 5329
+passed, 17 skipped. The general anchor-refresh gap is filed as `#714`, deliberately not fixed here.
+No PR — the user has not asked.
 
 ## Why one chunk
 
