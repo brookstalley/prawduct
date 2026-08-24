@@ -264,9 +264,14 @@ class TestIssuesBackendCloseIsDeferred:
         )
         offenders = []
         for path in instruction_surfaces():
-            if path == BACKLOG_SKILL:
-                continue
             for para in _paragraphs(path.read_text()):
+                # The owner's OWN rule is the one place a timing may be stated,
+                # and it states both halves. Exempting the whole owner FILE (the
+                # first cut) hid a live member: its reconciliation step restated
+                # the markdown half as the universal "primary path". Exempt the
+                # paragraph, never the file.
+                if "When to mark shipped" in para:
+                    continue
                 if "status=shipped" not in para:
                     continue
                 hit = TIMING_CLAIMS.search(para)

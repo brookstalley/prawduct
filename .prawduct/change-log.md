@@ -75,9 +75,15 @@ owner may tell a reader to archive "now, on this branch".
 
 **The close moved ahead of the deletions.** It was numbered after the branch and evidence-file
 cleanup while its own text said "before anything else" — and those deletions destroy the only local
-artifacts recording that a close was owed. It is now the step immediately after the merge, and every
-reference to it is by name rather than by number, because a durable pointer must not ride on a
-position that renumbers.
+artifacts recording that a close was owed. It is now the step immediately after the merge, and
+references to it are by name rather than by number, because a durable pointer must not ride on a
+position that renumbers. The renumber broke two cross-references outside the skill —
+`plugin/methodology/planning.md` and `documentation/release-process.md` both cited "merge-flow
+step 7", which the insert turned into *Clean up evidence file* — and the first cut of this entry
+claimed the by-name sweep was complete when it had only been done inside `skills/pr/SKILL.md`.
+Both now cite the step by name. That is the rule failing on the very commit that states it: a
+pointer that rides a position rots the moment the position moves, and the sweep has to be
+repo-wide or it is not a sweep.
 
 **What this does not fix, stated rather than implied.** The close step is its own only detector: merge
 through the GitHub UI, or end the session at the merge, and nothing notices it never fired. The

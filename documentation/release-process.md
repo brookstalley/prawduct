@@ -216,7 +216,7 @@ same set in executable running order, and is the document to work from when actu
   `scope=` as pending and advises when that scope resolves to no plan file — work shipping
   with nothing describing it. The plan and the `active_build_plan` pointer are **retained**
   until the release, because that pairing is what the gate reads; the `/prawduct:pr` merge
-  flow honors this (a feature→`develop` merge retains both — merge-flow step 7), while on a
+  flow honors this (a feature→`develop` merge retains both — the Merge Flow's *"Confirm the bookkeeping merged WITH the PR"* step), while on a
   trunk repo the closing PR itself carries the `release=`-tagged entry and the plan
   retirement (create-flow Step 1d).
 - **Shipped** — `release=vX.Y.Z` present. Step 3 adds it, and adding it is the whole

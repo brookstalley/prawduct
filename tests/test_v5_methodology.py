@@ -505,7 +505,11 @@ LAST_MEASURED_TOKENS = {
     # without blocking — the cost is opt-in, paid by a session that opens the
     # guide. Recorded here rather than absorbed, because an unrecorded change is
     # the only thing a reading refuses.
-    "methodology/planning.md": 4851,
+    # +9 on 2026-08-24: the plan-retention pointer cited "/prawduct:pr merge-flow
+    # step 7", which a step inserted into that flow turned into "Clean up evidence
+    # file". Replaced with the step's NAME, which costs tokens and cannot rot --
+    # a durable pointer must not ride on a position that renumbers.
+    "methodology/planning.md": 4860,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
