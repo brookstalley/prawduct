@@ -848,8 +848,19 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # a project preference on the one surface that cannot be opted out of. It is
     # also the form the two neighbouring policy bullets already use, naming the
     # governing row inline rather than behind the pointer.
+    # product 2269 -> 2267, 2026-08-24. The anchor gained the missing-banner
+    # self-check (`#710`: a repo can be scaffolded, enabled, and never actually
+    # installed for its path, and CLAUDE.md is the only channel still working in
+    # that state) and still came out SMALLER. Funded from the anchor itself: the
+    # marker's maintainer note, which duplicated the code comment above the
+    # constant at every product's runtime expense; "not as committed framework
+    # files"; "they are intentionally not copied into this repo"; "(everything
+    # else is in the plugin)" on a line that says it twice more; and the
+    # version-free sentence, which addressed a maintainer and is stated in the
+    # code comment that ships nowhere. A cut at the source of duplication, not a
+    # relocation -- no prose moved between two members of this set.
     "framework": 3343,
-    "product": 2269,
+    "product": 2267,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -923,8 +934,13 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # here, because a revert target copied into prose goes stale the next time
     # either shape moves and reads as fact while it is wrong. Drop the bullet
     # and read what the assertion prints.)
+    # product 2270 -> 2268, 2026-08-24. RATCHETED with the reading above, per
+    # this table's standing rule: a ceiling left at its old value after a cut
+    # silently re-funds the growth the cut paid for. The banner self-check
+    # landed 2 under where the branch started, so the ceiling follows it down
+    # and headroom stays at 1. Not a raise -- nothing to declare.
     "framework": 3344,
-    "product": 2270,
+    "product": 2268,
 }
 
 

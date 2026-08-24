@@ -416,6 +416,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("audit-learnings", ["--apply", "--json"]),
         ("norm-index-scaffold", ["--apply", "--json"]),
         ("learnings-obligation", ["--apply", "--json"]),
+        ("install-status", ["--json"]),
         ("lifecycle-repair", ["--apply", "--json"]),
         ("plan-backfill", ["--apply", "--date", "2026-01-01"]),
         ("repo-disable", ["--local", "--apply"]),
@@ -445,7 +446,8 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "evidence", "bug-inbox", "version", "print-install-reference", "advisory",
         "backlog", "coverage-status", "coverage-scaffold", "migrate-plugin",
         "init-product", "update-gitignore", "audit-learnings", "norm-index-scaffold",
-        "learnings-obligation", "lifecycle-repair", "plan-backfill", "repo-disable",
+        "learnings-obligation", "install-status", "lifecycle-repair", "plan-backfill",
+        "repo-disable",
     }
     assert set(_dispatch_branches()) == listed
 

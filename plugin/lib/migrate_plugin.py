@@ -43,6 +43,13 @@ INSTALL_REFERENCE: dict[str, dict] = {
     "enabledPlugins": {"prawduct@prawduct": True},
 }
 
+#: The ``name@marketplace`` key, taken from the contract above rather than typed
+#: again — the anchor names it in the one instruction a cold agent can still act
+#: on when the plugin has NOT loaded, so a drifted copy would misfire exactly when
+#: it is the only thing working. ``lib/plugin_install`` derives the same key for
+#: the machine-level check.
+PLUGIN_KEY = next(iter(INSTALL_REFERENCE["enabledPlugins"]))
+
 DISTRIBUTION_KEY = "distribution"
 DISTRIBUTION_VALUE = "plugin"
 
@@ -69,24 +76,27 @@ _EDIT_IN_PLACE = frozenset({"CLAUDE.md", ".claude/settings.json"})
 # treats the anchor as a strippable block) makes anchor insertion idempotent and
 # future re-anchoring detectable.
 ANCHOR_SENTINEL = "PRAWDUCT:ANCHOR"
+# The trailing prose is deliberately terse. This marker ships into every governed
+# repo's CLAUDE.md and is charged to the injected per-session footprint
+# (tests/test_v5_methodology.py), so a maintainer note here is paid for by every
+# session in every product — and the same note already lives in the comment above,
+# which costs nothing at runtime. Keep explanations there, not in the string.
 ANCHOR_MARKER = (
     "<!-- PRAWDUCT:ANCHOR — static governance pointer managed by the prawduct "
-    "plugin. Keep it small and version-free: principles, methodology, and the "
-    "active version live in the plugin and are injected at session start. -->"
+    "plugin. Keep it small and version-free. -->"
 )
 STATIC_ANCHOR = f"""{ANCHOR_MARKER}
 
 ## Governance (Prawduct)
 
-This repo is governed by **Prawduct**, installed as a Claude Code plugin — not as
-committed framework files. The principles, methodology, Critic protocol, and PR
-review live in the plugin and are read on demand (run `/prawduct:methodology`);
-they are intentionally not copied into this repo.
+This repo is governed by **Prawduct**, installed as a Claude Code plugin. The
+principles, methodology, Critic protocol, and PR review live in the plugin and
+are read on demand (run `/prawduct:methodology`).
 
 **Before writing any code, STOP and read the build cycle: `/prawduct:methodology building`.**
 Skipping it is the #1 governance failure.
 
-The hardest rules (everything else is in the plugin):
+The hardest rules:
 
 - **Tests are contracts** — fix the code, never weaken a test.
 - **No "pre-existing" exception** — fix what you find, or flag why you can't.
@@ -96,8 +106,11 @@ The hardest rules (everything else is in the plugin):
 
 **Enforcement is structural:** the plugin's Stop hook runs at session end and
 **blocks** if code changed against an active build plan with no Critic findings.
-The session-start banner shows the active version and what changed — this anchor
-stays version-free.
+
+**Saw no banner this session?** Then it is enabled here but not installed for
+this path, and none of the above runs — no `/prawduct:*` skills, no gates. Don't
+proceed as if governed: report it, and give the fix — `claude plugin install
+{PLUGIN_KEY} --scope project` here, then restart.
 """
 
 

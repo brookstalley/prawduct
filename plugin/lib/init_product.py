@@ -45,6 +45,7 @@ from .migrate_plugin import (
     record_distribution,
     transform_settings,
 )
+from .plugin_install import install_status
 
 # Product-owned state rendered from the plugin's bundled ``templates/``
 # (place-once: created only when missing). (repo-relative dst, template filename)
@@ -200,6 +201,10 @@ def init_product(
             "edited": edited,
             "created_dirs": created_dirs,
             "backlog_service_repo": None,
+            # Reported on the no-op path too, and deliberately: re-running onboard
+            # against a repo that "looks onboarded but isn't working" is exactly how
+            # someone reaches for a diagnosis, and this is the fact they need.
+            "install_status": install_status(project_dir),
             "warnings": warnings,
         }
 
@@ -316,6 +321,12 @@ def init_product(
         # field must therefore gate on `applied`: provisioning against a dry run
         # writes labels into a real repo whose scaffold does not exist.
         "backlog_service_repo": backlog_repo_recorded,
+        # Whether the plugin is INSTALLED for this path on this machine — a fact
+        # the committed install reference does not carry and cannot supply. Absent
+        # here means the scaffold is correct and governance still will not load.
+        # Consumer: `skills/onboard/SKILL.md` and `skills/doctor/SKILL.md` both
+        # grade on `install_status.status`, so renaming it is a consumer break.
+        "install_status": install_status(project_dir),
         "warnings": warnings,
     }
 
@@ -379,6 +390,34 @@ def _parse_argv(
     return target, name, backlog_repo, apply, as_json, unknown
 
 
+def _print_install_status(result: dict) -> bool:
+    """Render the machine-level install verdict. Returns True iff installed.
+
+    Ordered most-specific-first and never silent: an ``unchecked`` registry prints
+    as loudly as an absent entry, because to the operator the two look the same
+    from the outside and only one of them is safe to ignore.
+    """
+    status = (result.get("install_status") or {})
+    state = status.get("status")
+    if state == "installed":
+        print(f"\n  plugin      installed — {status.get('reason', '')}")
+        return True
+
+    label = "NOT INSTALLED" if state == "absent" else "NOT VERIFIED"
+    print(f"\n  !! {label} for this path on this machine")
+    print(f"     {status.get('reason', 'no reason reported')}")
+    remedy = status.get("remedy")
+    if remedy:
+        print(f"     Fix it with:  {remedy}")
+    # Naming the normal case is what keeps this from reading as "the repo is
+    # broken". The committed reference is correct and portable either way; what is
+    # missing is machine-local, and a teammate cloning this repo will hit their own
+    # one-time install prompt regardless of what happens here.
+    print("     (This is about THIS machine, not the repo — the committed install")
+    print("      reference is still correct, and every other clone installs its own.)")
+    return False
+
+
 def run(argv: list[str]) -> int:
     """CLI entry: ``prawduct-hook init-product <target> --name "<name>" [--backlog-repo owner/repo] [--apply] [--json]``."""
     target, name, backlog_repo, apply, as_json, unknown = _parse_argv(argv)
@@ -430,6 +469,7 @@ def run(argv: list[str]) -> int:
 
     if result["already_scaffolded"]:
         print(f"Already a plugin product (distribution: plugin) — nothing to do: {result['target']}")
+        _print_install_status(result)
         return 0
 
     verb = "Created" if apply else "Would create"
@@ -450,10 +490,20 @@ def run(argv: list[str]) -> int:
               "(GitHub Issues backend — provision its labels next)")
     for w in result.get("warnings", []):
         print(f"  warning     {w}")
+    installed = _print_install_status(result)
+
+    # The closing line is conditional on the install, not on the scaffold. Spoken
+    # unconditionally it is the defect: "governance activates there" is said with
+    # full confidence in exactly the state where it is false, and the agent that
+    # reads it has nothing to check it against.
     if not apply:
-        print("\nDry run — re-run with --apply to write. Then open the target in a "
-              "new Claude Code session for governance.")
-    else:
+        print("\nDry run — re-run with --apply to write.")
+        if installed:
+            print("Then open the target in a new Claude Code session for governance.")
+    elif installed:
         print("\nDone. Open the target in a new Claude Code session — the plugin's "
               "hooks and briefing activate there. Run /prawduct:doctor to health-check.")
+    else:
+        print("\nScaffold complete, but do NOT rely on governance in the target yet — "
+              "run the command above first, then open it in a new Claude Code session.")
     return 0

@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-24: onboard can tell whether the plugin is actually installed
+
+<!-- prawduct: type=fix | scope=onboard-install-verification -->
+
+A repo could come out of `/prawduct:onboard` fully scaffolded — `.prawduct/` state, the `CLAUDE.md`
+anchor, a correct install reference in `.claude/settings.json` — and have **no governance at all**:
+no session banner, no `/prawduct:*` skills, no Stop-hook gates. The agent that opened it read the
+anchor's "Enforcement is structural" sentence, believed it, and proceeded ungoverned. `#710` caught
+this in the field, and it is the one failure prawduct exists to prevent.
+
+**The cause is that enablement and installation are different facts.** A repo's committed
+`enabledPlugins` enables a plugin that must already be installed for that path in
+`~/.claude/plugins/installed_plugins.json`, keyed by `(scope, projectPath)`. The trust prompt that
+installs it is skippable, and under `--dangerously-skip-permissions` there is no prompt. Nothing in
+prawduct read that registry — `init-product` and doctor's Health Check #1 both graded
+`settings.json` and called it the install.
+
+`lib/plugin_install.py` reads it now, and `init-product` reports the answer in both modes. Two
+choices in it are the whole design. **It fails toward alarming:** only an exact resolved-path match
+or a `user`-scope entry counts, and an ancestor-directory entry does not, because a false alarm
+costs one idempotent install command while a false all-clear recreates the ungoverned repo. **And it
+fails soft:** the exit code does not move. The scaffold genuinely succeeded and its state is correct
+and portable; what is missing is machine-local. What changes instead is the closing line — "the
+plugin's hooks and briefing activate there" was spoken with full confidence in precisely the state
+where it was false, and now it is withheld, with the exact `cd <target> && claude plugin install …`
+remedy in its place.
+
+**The `CLAUDE.md` anchor gained the line that matters most**, because in the broken state it is the
+only channel still working: no skills resolve, so `/prawduct:ping` cannot diagnose the plugin not
+loading, and a missing banner is otherwise indistinguishable from a quiet one to an agent that has
+never seen this repo governed. Now a cold agent is told what a missing banner means and what to hand
+the operator.
+
+**Doctor's half is deliberately smaller than it first looked.** Health Check #19 relays which install
+is carrying the repo, and grades nothing: doctor is a plugin skill, so reaching it proves the plugin
+loaded — the total failure is unreachable from there — and `--plugin-dir` self-hosting bypasses the
+registry by design, so grading would report every framework checkout broken. Its one real yield is
+naming a `user`-scope-only install, which is what an operator needs when a teammate's clone of the
+same repo does not work. `install_reference_probes` had already written down that doctor *could* read
+the machine-level file and that the two checks were complementary; this makes that description true.
+
+**Not done, on purpose:** `#710` also suggested writing `.prawduct/.prawduct-version` at onboard
+time. That marker is written by the banner hook — only when the plugin actually loads — so its
+absence is the single on-disk trace distinguishing "never loaded" from "loaded at least once".
+Writing it at scaffold time would destroy the evidence to gain nothing.
+
 ## 2026-08-24: the evidence file can say which commit it read
 
 <!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit -->

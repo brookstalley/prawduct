@@ -50,6 +50,17 @@ advisory still routes to doctor, which is model-side and *can* read the
 machine-level file: the two halves are complementary checks, not two ends of
 one loop.
 
+**Doctor now takes that half up** — Health Check #19 reads
+``installed_plugins.json`` through :mod:`lib.plugin_install`, so the sentence
+above is a description of what happens rather than a plan. Two things it does
+NOT do, stated here because this docstring is where a reader forms the
+expectation: it does not close the false negative for the *total* failure (a repo
+scaffolded with no install for its path never loads the plugin, so doctor cannot
+run there at all — that case is caught at onboard and by the ``CLAUDE.md``
+anchor's missing-banner line), and it grades nothing. What it adds is the one
+fact neither half could see before: whether a repo is being carried by a
+``user``-scope install rather than by anything the repo itself supplies.
+
 **Self-resolving.** Trigger and resolution are the same observable state — the
 repo's own committed ``.claude/settings.json`` — so a teammate's committed fix
 resolves it for every clone on next sync (§3.5), the same shape as

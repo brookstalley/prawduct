@@ -3,7 +3,7 @@ description: Onboard a repo to Prawduct — scaffold a new or existing repo onto
 argument-hint: "[target-path]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook init-product *), Bash(prawduct-hook coverage-scaffold *), Bash(prawduct-hook backlog provision *), Bash(python3 plugin/bin/prawduct-hook backlog provision *), Read, Glob
+allowed-tools: Bash(prawduct-hook init-product *), Bash(prawduct-hook install-status *), Bash(python3 plugin/bin/prawduct-hook install-status *), Bash(prawduct-hook coverage-scaffold *), Bash(prawduct-hook backlog provision *), Bash(python3 plugin/bin/prawduct-hook backlog provision *), Read, Glob
 ---
 
 You are onboarding a repo onto Prawduct under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Onboarding is the same whether the repo is brand-new or an existing codebase, and it operates on the consumer's own repo — there is no framework checkout to call back to.
@@ -42,6 +42,12 @@ When they do want it, onboard **owns provisioning for this entry path** (scrub o
 
 ### Either way
 
+- **Verify the install actually took for the target — writing the reference is not installing.** `init-product` reports `install_status` (also `prawduct-hook install-status`, run from the target). The committed `enabledPlugins` *enables* a plugin that must already be installed for that path in the operator's `~/.claude/plugins/installed_plugins.json`; the trust prompt that installs it is skippable, and under `--dangerously-skip-permissions` there is no prompt at all. When the status is `absent` or `unchecked`, **say so as the headline of your report** and hand over the exact remedy the command prints:
+  ```
+  cd <target> && claude plugin install prawduct@prawduct --scope project
+  ```
+  followed by opening the target in a **new** session. Do not tell the user governance is active — a scaffolded-but-uninstalled repo looks fully onboarded and has no banner, no `/prawduct:*` skills and no Stop-hook gates, which is the one failure mode prawduct cannot detect from inside. Never diagnose this with `claude plugin list`: run from a repo with no install of its own, it prints *other* projects' project-scoped entries with no `projectPath` qualifier, so it reports "installed and enabled" in precisely the state where it is neither.
+  The scaffold itself is unaffected and the exit code stays 0 — the repo's state is correct and portable; what is missing is machine-local, and every other clone installs its own.
 - The committed install *reference* (project scope) in `.claude/settings.json` is the only prawduct content the repo commits, and it never drifts — `init-product` writes it for new repos, `/prawduct:migrate` for existing file-sync ones:
   ```json
   {
@@ -49,8 +55,8 @@ When they do want it, onboard **owns provisioning for this entry path** (scrub o
     "enabledPlugins": { "prawduct@prawduct": true }
   }
   ```
-  On first trusted open, Claude Code prompts each developer to install the marketplace + plugin (one-time, skippable).
-- Governance activates only in the target's OWN session: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."**
+  On first trusted open, Claude Code prompts each developer to install the marketplace + plugin — one-time, and **skippable**, which is the hole the verification step above closes: a skipped or suppressed prompt leaves this reference enabling a plugin nobody installed.
+- Governance activates only in the target's OWN session, **and only once the plugin is installed for it**: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."** If the install check above came back `absent`, that sentence is false until the remedy runs; lead with the remedy instead.
 - After onboarding, run **`/prawduct:doctor`** in the repo anytime to health-check the install.
 
 ## Next: capture discovery

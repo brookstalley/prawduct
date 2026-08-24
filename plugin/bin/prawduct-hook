@@ -5545,6 +5545,46 @@ def cmd_update_gitignore(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+def cmd_install_status(project_dir: Path, argv: list[str]) -> int:
+    """Report whether prawduct is INSTALLED for this path on this machine.
+
+    The committed ``.claude/settings.json`` declares enablement; Claude Code's
+    ``installed_plugins.json`` records installation, keyed by
+    ``(scope, projectPath)``. Every other prawduct check reads the first — this
+    reads the second. ``/prawduct:doctor`` Health Check #19 relays it.
+
+    **Read-only and ungraded.** Exit is 0 whenever the command ran, including
+    ``absent``: a missing entry is a fact about one machine, not a failure of this
+    command, and a nonzero here would turn an informational read into a gate. Only
+    an unimportable lib exits 1.
+    """
+    rejected = _reject_unknown_args("install-status", argv, {"--json"})
+    if rejected is not None:
+        return rejected
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import plugin_install  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(f"error: install-status could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 1
+
+    result = plugin_install.install_status(project_dir)
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+        return 0
+
+    print(f"install-status: {result['status']}")
+    print(f"  {result['reason']}")
+    if result.get("remedy"):
+        print(f"  remedy: {result['remedy']}")
+    return 0
+
+
 def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
     """Check — and on ``--apply`` repair — the descent obligation in ``learnings.md``.
 
@@ -6201,6 +6241,7 @@ _USAGE = (
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore [--dry-run]|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
+    "install-status [--json]|"
     "norm-index-scaffold [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
     "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
@@ -6543,6 +6584,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "evidence",
     "handoff",
     "infer-critic-mode",
+    "install-status",
     "jurisdiction",
     "print-install-reference",
     "render-dispositions",
@@ -7158,6 +7200,8 @@ def _dispatch() -> int:
         return cmd_norm_index_scaffold(project_dir, sys.argv[2:])
     elif command == "learnings-obligation":
         return cmd_learnings_obligation(project_dir, sys.argv[2:])
+    elif command == "install-status":
+        return cmd_install_status(project_dir, sys.argv[2:])
     elif command == "lifecycle-repair":
         return cmd_lifecycle_repair(project_dir, sys.argv[2:])
     elif command == "plan-backfill":
