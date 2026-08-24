@@ -133,6 +133,7 @@ If no findings: "No issues found. PR is ready to create."
   "mode": "pr",
   "model": "opus",
   "duration_seconds": 240,
+  "commit_reviewed": "9f3c1ab2d4e5f6079182a3b4c5d6e7f809123456",
   "commits_reviewed": 5,
   "files_reviewed": ["src/app.py", "tests/test_app.py"],
   "findings": [
@@ -150,7 +151,11 @@ If no findings: "No issues found. PR is ready to create."
 
 `mode`: always `"pr"` — release-readiness scope (code soundness is gate-certified before dispatch). `model`: the model id the review ran as. `duration_seconds`: best-estimate wall-clock.
 
-After PR creation, update `pr_number` in the evidence file. After merge, delete the evidence file with the branch.
+`commit_reviewed`: **the full SHA of the branch HEAD you actually read**, captured with `git rev-parse HEAD` **at the moment you resolve the diff**, not when you write the file. This is the one field a later caller cannot reconstruct: `/prawduct:pr`'s Update Flow needs `git diff --name-only <commit_reviewed>..HEAD` to decide whether the branch has moved since the review, and without the field it has only your `timestamp` and `commits_reviewed` to infer from — which fails silently in exactly the case that matters, a commit landing *during* your run. Capture it early and report the SHA you read, even if HEAD has moved by the time you finish; a review that under-claims its coverage costs one re-review, while one that over-claims ships unreviewed code.
+
+**Do not credit a closing keyword with closing anything.** `Closes #N` / `Fixes #N` / `Resolves #N` in a PR body fires only when the PR merges into the repository's **default** branch, so on a gitflow base (feature→`develop`) it is inert. If you are dispositioning a backlog item as handled-by-this-merge, check `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` against the PR's base before saying so — and on an Issues backend the close is a step the operator owes at merge (`/prawduct:pr` Merge Flow step 7), not something the merge performs.
+
+After PR creation, update `pr_number` in the evidence file — `pr_number` is the only field the caller may edit after the fact. **Never rewrite `commit_reviewed` to a newer HEAD**: it records what was read, and moving it forward silently launders unreviewed commits into the reviewed set. After merge, delete the evidence file with the branch.
 
 ## Relationship to the Critic
 

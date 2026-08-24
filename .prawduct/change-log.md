@@ -3,6 +3,63 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-24: the evidence file can say which commit it read
+
+<!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit -->
+
+The Update Flow's substantive-delta test says to diff from "the reviewed commit" — and nothing in a
+PR-review evidence file recorded which commit that was. The caller had `timestamp` and
+`commits_reviewed` to work from, and reconstructing a SHA from those is right exactly until a commit
+lands *during* the review, which is the one case the test exists to catch. PR #709's evidence was
+written at 12:05 claiming 16 commits while its 17th landed at 12:02, inside the reviewer's own
+420-second window; the file looked complete and the branch was one judgeable commit past it.
+
+**The fix is a field the reviewer captures, not one the caller computes.** `commit_reviewed` is
+`git rev-parse HEAD` at the moment the reviewer resolves its diff — the only actor who knows what was
+read. A caller stamping it before dispatch would record a commit the review may never have seen, and
+a caller stamping it after would record commits that landed mid-run: both directions launder
+unreviewed code into the reviewed set, which is why the protocol now says the field is never
+rewritten and `pr_number` is the only field backfilled after the fact.
+
+**Absent means substantive.** Evidence from an older reviewer has no field, and the honest reading of
+that is "unknown", not "unchanged" — so the Update Flow re-runs rather than reconstructing. Create
+Step 4 also checks the SHA is an ancestor of HEAD, which is what catches a rebase or amend having
+moved the tree out from under a review that still looks valid.
+
+This retires `@{u}..HEAD` as the stand-in. It answered a different question — what changed since the
+last *push* — and the two diverge precisely when a mid-review commit is pushed before the caller
+looks. A test pins that it does not come back.
+
+## 2026-08-24: an issue close has no branch to ride
+
+<!-- prawduct: type=fix | scope=pr-issues-backend-close -->
+
+`/prawduct:pr` Step 1d opens by promising that every release tag, archive and Status tick "rides IN
+this branch, atomic with the merge", and then lists the backlog archive among them. That atomicity is
+a property of *being a commit*. On the markdown backlog backend the archive is a file edit and the
+promise holds exactly as written. On the Issues backend closing an item is an API call with no branch
+to ride, and the skill said nothing about the difference — so the step read as satisfied by a PR body
+that said `Closes #676`, and the item was still open after the merge.
+
+**`Closes #N` does not fire on a gitflow base.** GitHub honours closing keywords only for PRs merged
+into the repository's *default* branch. This repo defaults to `main` and PRs base on `develop`, so
+the keyword is inert here and always has been. It is still worth writing — it links the PR to the
+issue, and it does fire on a trunk repo — but it closes nothing on the path this project actually
+uses. What makes it costly is that it *looks* like bookkeeping: an independent PR reviewer read the
+keyword and signed the item off as closed-by-the-merge, so the gap survived the review whose job was
+to catch it.
+
+**Deferring the close to merge is the deliberate answer, not the lazy one.** An API close made at
+Step 1d lands immediately, so an abandoned PR leaves an item wrongly closed — invisible, because
+nothing sweeps for items closed too early. Merge Flow step 7 now owns it, seconds after the merge
+succeeds, and Step 1d says why it is the one item that waits. No commit is involved, so the standing
+"never push a bookkeeping commit to the integration branch" rule is untouched.
+
+The guard is written against the keyword family rather than the sentence that got it wrong: any
+plugin surface naming `Closes`/`Fixes`/`Resolves #N` must name the default-branch condition in the
+same paragraph. Pinning the one sentence would have closed the instance and left the class open —
+the failure mode `test_backlog_instruction_surface.py` was hardened against.
+
 ## 2026-08-23: a nested checkout is not a misplaced test
 
 <!-- prawduct: type=fix | scope=test-location-nested-checkout -->
