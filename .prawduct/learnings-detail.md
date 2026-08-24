@@ -4434,3 +4434,27 @@ confident the blind spot feels. The fix was a reference at the accounting site r
 mechanism: the token table now opens by naming the character wall and saying which one wins when
 they disagree. Watch for the same shape wherever a thorough "budget" comment exists — its
 thoroughness is evidence about one budget only.
+
+## When designing any flow step that records status or bookkeeping, make it ride IN the PR that does the work
+
+Ride-in-the-PR is a property of **being a commit**, not of the bookkeeping. The rule was written when
+every archive was a file edit, and it was stated unconditionally: "an abandoned PR abandons the
+archive too, so state can't drift." That is true of a commit and false of a remote side effect.
+
+On a GitHub Issues backlog backend, `status --to shipped` closes the issue over the API the moment it
+runs. Run on an unmerged branch — which is what "in the PR" tells you to do — it lands immediately
+and survives an abandoned PR, leaving an item wrongly closed. Same drift the rule exists to prevent,
+in the opposite direction, and worse: nothing sweeps for items closed too early
+(brookstalley/prawduct#697; #687 and #688 are instances).
+
+The equivalent for a remote side effect is to run it **at the merge, in the same breath** — after the
+merge succeeds, before the local artifacts that record the debt are deleted. That is
+`/prawduct:pr`'s Merge Flow *"Close the backlog items this PR resolves"* step. It is not the
+post-merge commit the rule forbids: no commit is involved and the integration branch is never
+touched.
+
+Two consequences worth carrying. A `Closes #N` in a PR body does not substitute — GitHub fires
+closing keywords only for merges into the repository's *default* branch, so on a gitflow base it is
+inert. And this arrangement has no detector: `documentation/backlog-service-requirements.md` **GV3**
+replaces ship-atomicity with traceability plus a reconciliation sweep, and the sweep is prescribed
+but unbuilt, so the step running is the whole guarantee.

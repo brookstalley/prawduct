@@ -92,8 +92,8 @@ class TestBranchScopedPlanBriefing:
         """The gitflow retention window, which is the whole point of the narrowing.
 
         A merged branch goes away, so a plan with every box ticked and a claim on
-        a branch that is gone is the documented end state — `/prawduct:pr` step 7
-        says to RETAIN it there until the release archives it. Firing would nag
+        a branch that is gone is the documented end state — `/prawduct:pr`'s Merge
+        Flow "Confirm the bookkeeping merged WITH the PR" step says to RETAIN it there until the release archives it. Firing would nag
         every session for weeks with the one remedy that flow forbids.
 
         This is the test that fails if the `_has_unfinished_chunk` filter is

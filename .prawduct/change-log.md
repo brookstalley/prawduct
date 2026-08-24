@@ -3,6 +3,103 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-24: the evidence file can say which commit it read
+
+<!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit -->
+
+The Update Flow's substantive-delta test says to diff from "the reviewed commit" — and nothing in a
+PR-review evidence file recorded which commit that was. The caller had `timestamp` and
+`commits_reviewed` to work from, and reconstructing a SHA from those is right exactly until a commit
+lands *during* the review, which is the one case the test exists to catch. PR #709's evidence was
+written at 12:05 claiming 16 commits while its 17th landed at 12:02, inside the reviewer's own
+420-second window; the file looked complete and the branch was one judgeable commit past it.
+
+**The fix is a field the reviewer captures, not one the caller computes.** `commit_reviewed` is
+`git rev-parse HEAD` at the moment the reviewer resolves its diff — the only actor who knows what was
+read. A caller stamping it before dispatch would record a commit the review may never have seen, and
+a caller stamping it after would record commits that landed mid-run: both directions launder
+unreviewed code into the reviewed set, which is why the protocol now says the field is never
+rewritten and `pr_number` is the only field backfilled after the fact.
+
+**Absent means substantive.** Evidence from an older reviewer has no field, and the honest reading of
+that is "unknown", not "unchanged" — so the Update Flow re-runs rather than reconstructing. Create
+Step 4 also checks the SHA is an ancestor of HEAD, which is what catches a rebase or amend having
+moved the tree out from under a review that still looks valid.
+
+This retires `@{u}..HEAD` as the stand-in. It answered a different question — what changed since the
+last *push* — and the two diverge precisely when a mid-review commit is pushed before the caller
+looks. A test pins that it does not come back.
+
+## 2026-08-24: an issue close has no branch to ride
+
+<!-- prawduct: type=fix | scope=pr-issues-backend-close -->
+
+`/prawduct:pr` Step 1d opens by promising that every release tag, archive and Status tick "rides IN
+this branch, atomic with the merge", and then lists the backlog archive among them. That atomicity is
+a property of *being a commit*. On the markdown backlog backend the archive is a file edit and the
+promise holds exactly as written. On the Issues backend closing an item is an API call with no branch
+to ride, and the skill said nothing about the difference — so the step read as satisfied by a PR body
+that said `Closes #676`, and the item was still open after the merge.
+
+**`Closes #N` does not fire on a gitflow base.** GitHub honours closing keywords only for PRs merged
+into the repository's *default* branch. This repo defaults to `main` and PRs base on `develop`, so
+the keyword is inert here and always has been. It is still worth writing — it links the PR to the
+issue, and it does fire on a trunk repo — but it closes nothing on the path this project actually
+uses. What makes it costly is that it *looks* like bookkeeping: an independent PR reviewer read the
+keyword and signed the item off as closed-by-the-merge, so the gap survived the review whose job was
+to catch it.
+
+**Deferring the close to merge is the deliberate answer, not the lazy one.** An API close made at
+Step 1d lands immediately, so an abandoned PR leaves an item wrongly closed — invisible, because
+nothing sweeps for items closed too early. The Merge Flow's *Close the backlog items this PR
+resolves* step owns it, firing seconds after the merge
+succeeds, and Step 1d says why it is the one item that waits. No commit is involved, so the standing
+"never push a bookkeeping commit to the integration branch" rule is untouched.
+
+The guard is written against the keyword family rather than the sentence that got it wrong: any live
+instruction surface naming `Closes`/`Fixes`/`Resolves #N` must name the default-branch condition in
+the same paragraph. Pinning the one sentence would have closed the instance and left the class open —
+the failure mode `test_backlog_instruction_surface.py` was hardened against. The surface set is bounded
+by the property (prose that instructs an agent) rather than by the `plugin/` container, so
+`documentation/` runbooks are in scope and append-only records are not.
+
+**The timing rule now has one owner, which is what the review round changed.** The first cut fixed
+`/prawduct:pr` and left `skills/backlog/SKILL.md` — the rule Step 1d cites *by name* as its authority —
+still asserting the falsified guarantee unconditionally, so an agent following the citation landed in
+the unfixed twin and did the early close the fix exists to prevent. Two reviewers found it
+independently under different goals, which is the tell that the fact had been distributed rather than
+shared. `skills/backlog/SKILL.md` "When to mark shipped" now owns *when* the call runs and states the
+split; `/prawduct:pr` Step 1d and the Critic's reconciliation template (`review-cycle.md`) route to it
+instead of restating it. A guard closes the class rather than the sentence: no live instruction surface may
+state WHEN the archive happens except the owner's own rule paragraph. That exemption took two
+narrowings, each from a real miss — it started file-wide, which hid a live member three sections
+below the rule in the owner's own file, and then keyed on the section NAME, which re-exempted that
+member the moment it routed to the owner by name. It now keys on the rule's opening clause, which
+only the rule carries. A guard whose exemption is broader than its subject is not a guard; it is a
+list of what it happens to catch.
+
+**The close moved ahead of the deletions.** It was numbered after the branch and evidence-file
+cleanup while its own text said "before anything else" — and those deletions destroy the only local
+artifacts recording that a close was owed. It is now the step immediately after the merge, and
+references to it are by name rather than by number, because a durable pointer must not ride on a
+position that renumbers. The renumber broke two cross-references outside the skill —
+`plugin/methodology/planning.md` and `documentation/release-process.md` both cited "merge-flow
+step 7", which the insert turned into *Clean up evidence file* — and the first cut of this entry
+claimed the by-name sweep was complete when it had only been done inside `skills/pr/SKILL.md`.
+Both now cite the step by name. That is the rule failing on the very commit that states it: a
+pointer that rides a position rots the moment the position moves, and the sweep has to be
+repo-wide or it is not a sweep.
+
+**What this does not fix, stated rather than implied.** The close step is its own only detector: merge
+through the GitHub UI, or end the session at the merge, and nothing notices it never fired. The
+reconciliation sweep that would catch it is already prescribed by
+`documentation/backlog-service-requirements.md` **GV3** — "merged work whose item is still open… this
+is the price of leaving git; pay it explicitly" — and is unbuilt. The skill says so at the step rather
+than implying coverage it does not have. Likewise the prohibition on advancing `commit_reviewed` is
+prose: `git merge-base --is-ancestor` passes for every commit on the branch, so it cannot see a
+laundered field. The Update Flow now cross-checks the evidence file against the `review.pr` ledger
+event, whose `review` payload is an independent verbatim copy — a second witness, not enforcement.
+
 ## 2026-08-23: a nested checkout is not a misplaced test
 
 <!-- prawduct: type=fix | scope=test-location-nested-checkout -->

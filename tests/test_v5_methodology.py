@@ -392,7 +392,13 @@ LAST_MEASURED_TOKENS = {
     # block it landed in: "a severity with no remedy is a false blocker" was the
     # tail of the `graded` bullet and is now the lead sentence both it and the
     # new bullet lean on, and the BLOCKING bullet's provenance narration went.
-    "skills/critic/review-cycle.md": 9599,
+    # -3 on 2026-08-24: the reconciliation NOTE template stopped stating WHEN the
+    # archive call runs and now routes to the backlog skill, which owns that
+    # timing and splits it by backend. Paid in the same sentence -- the template
+    # was asserting a timing that is false on the Issues backend, so the routing
+    # replaced prose rather than adding to it, and the "why" the routing would
+    # have restated stayed at the owner where the reader is already being sent.
+    "skills/critic/review-cycle.md": 9596,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -499,7 +505,11 @@ LAST_MEASURED_TOKENS = {
     # without blocking — the cost is opt-in, paid by a session that opens the
     # guide. Recorded here rather than absorbed, because an unrecorded change is
     # the only thing a reading refuses.
-    "methodology/planning.md": 4851,
+    # +9 on 2026-08-24: the plan-retention pointer cited "/prawduct:pr merge-flow
+    # step 7", which a step inserted into that flow turned into "Clean up evidence
+    # file". Replaced with the step's NAME, which costs tokens and cannot rot --
+    # a durable pointer must not ride on a position that renumbers.
+    "methodology/planning.md": 4860,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
