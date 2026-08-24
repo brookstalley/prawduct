@@ -209,7 +209,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
   `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`,
   `plan-backfill`, `repo-disable`, `bug-inbox` (dry-run-by-default where they mutate, with
-  one stated exception). **`update-gitignore` is the exception: it repairs by default and
+  one stated exception), and `install-status [<path>] [--json]` — a **pure read**, so
+  dry-run-by-default does not apply to it: it answers whether `prawduct@prawduct` is
+  installed for a path in `~/.claude/plugins/installed_plugins.json`, which is the
+  machine-level fact the committed install reference cannot carry. **The optional
+  positional is the contract**, not a convenience: bare, the subject is the session's
+  project dir, which is the wrong repo for `/prawduct:onboard <target>` — it runs in a
+  different repo's session by construction. **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
   which is why the default is the mutating one — but a reader who assumed the blanket
   claim above got the opposite of the truth, and for a while so did the command: it took

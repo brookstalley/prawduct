@@ -498,7 +498,7 @@ def test_install_status_subcommand_is_classified_read_only():
 
     assert '"install-status",' in text
     assert 'elif command == "install-status":' in text
-    assert "install-status [--json]" in text
+    assert "install-status [<path>] [--json]" in text
 
 
 def test_probe_docstring_no_longer_describes_doctor_check_as_future():
@@ -544,3 +544,172 @@ def test_unresolvable_home_is_unchecked_not_a_crash(monkeypatch: pytest.MonkeyPa
     assert result["status"] == "unchecked"
     assert result["registry"] is None
     assert result["remedy"]
+
+
+def test_path_scope_wins_over_user_scope_regardless_of_order(config_dir: Path, tmp_path: Path):
+    """Doctor Health Check #19's whole yield is "`user`-scope ONLY" — this repo
+    runs on a machine-wide install and carries nothing of its own. First-match-wins
+    would make that claim depend on the registry's list order, so a repo with BOTH
+    kinds of entry could be reported as user-scope and read as carrying nothing."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    both = [
+        {"scope": "user", "version": "3.4.0"},
+        {"scope": "project", "projectPath": str(repo)},
+    ]
+    for entries in (both, list(reversed(both))):
+        write_registry(config_dir, entries)
+        result = install_status(repo)
+        assert result["status"] == "installed"
+        assert result["scope"] == "project", "the path-scoped entry must win either order"
+
+
+def test_user_scope_only_says_a_clone_gets_nothing_from_it(config_dir: Path, tmp_path: Path):
+    """The fact an operator needs when a teammate's clone of the same repo fails."""
+    write_registry(config_dir, [{"scope": "user"}])
+
+    result = install_status(tmp_path / "repo")
+
+    assert result["scope"] == "user"
+    assert "machine-wide" in result["reason"]
+    assert "another machine" in result["reason"]
+
+
+# =============================================================================
+# `prawduct-hook install-status` — behavior, not source text
+# =============================================================================
+
+
+def _run_status(cfg: Path, *argv: str, project_dir: Path | None = None,
+                home: Path | None = None) -> subprocess.CompletedProcess:
+    env = {
+        "HOME": str(home or cfg.parent),
+        "CLAUDE_CONFIG_DIR": str(cfg),
+        "CLAUDE_PLUGIN_ROOT": str(ROOT),
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    if project_dir is not None:
+        env["CLAUDE_PROJECT_DIR"] = str(project_dir)
+    return subprocess.run(
+        [sys.executable, str(HOOK), "install-status", *argv],
+        capture_output=True, text=True, timeout=30, env=env,
+    )
+
+
+def test_explicit_path_beats_the_ambient_project_dir(tmp_path: Path):
+    """The blocking defect this argument exists for.
+
+    `/prawduct:onboard <target>` runs in a DIFFERENT repo's session by
+    construction, and `resolve_project_dir` returns the `CLAUDE_PROJECT_DIR`
+    launch pin when cwd is an unrelated repo. Without a path, the command answers
+    about the ONBOARDING repo — normally `installed` — which is a confident false
+    all-clear on exactly the path the feature exists to alarm about.
+    """
+    cfg = tmp_path / "cfg"
+    onboarding_repo = tmp_path / "onboarding"
+    target = tmp_path / "target"
+    for d in (onboarding_repo, target):
+        d.mkdir()
+    # The onboarding session's repo IS installed; the target is not.
+    write_registry(cfg, [{"scope": "project", "projectPath": str(onboarding_repo)}])
+
+    ambient = _run_status(cfg, "--json", project_dir=onboarding_repo)
+    explicit = _run_status(cfg, str(target), "--json", project_dir=onboarding_repo)
+
+    assert json.loads(ambient.stdout)["status"] == "installed"
+    assert json.loads(explicit.stdout)["status"] == "absent", (
+        "an explicit path must override the session's project dir"
+    )
+
+
+def test_bare_invocation_still_answers_for_the_session_repo(tmp_path: Path):
+    """Doctor's subject genuinely is the session's repo, and passes nothing."""
+    cfg = tmp_path / "cfg"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_registry(cfg, [{"scope": "project", "projectPath": str(repo)}])
+
+    proc = _run_status(cfg, "--json", project_dir=repo)
+
+    assert json.loads(proc.stdout)["status"] == "installed"
+
+
+def test_human_output_names_the_registry_in_every_branch(tmp_path: Path):
+    """Doctor #19 is told to relay "which file it read". A renderer that prints it
+    only on failure leaves the model to guess `~/.claude/...`, which is wrong
+    exactly when `CLAUDE_CONFIG_DIR` is set."""
+    cfg = tmp_path / "cfg"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for entries in ([{"scope": "user"}], []):
+        write_registry(cfg, entries)
+        proc = _run_status(cfg, str(repo))
+        assert str(cfg) in proc.stdout, f"registry path missing for entries={entries}"
+
+
+def test_absent_human_output_carries_the_remedy(tmp_path: Path):
+    cfg = tmp_path / "cfg"
+    write_registry(cfg, [])
+    proc = _run_status(cfg, str(tmp_path / "repo"))
+
+    assert proc.returncode == 0
+    assert "install-status: absent" in proc.stdout
+    assert "claude plugin install" in proc.stdout
+
+
+def test_absent_does_not_fail_the_exit_code(tmp_path: Path):
+    """Ungraded by design: a nonzero here would turn an informational read into a
+    gate, and doctor relays it as information rather than a verdict."""
+    cfg = tmp_path / "cfg"
+    write_registry(cfg, [])
+
+    assert _run_status(cfg, str(tmp_path / "nope")).returncode == 0
+
+
+def test_unknown_flag_is_a_usage_error(tmp_path: Path):
+    cfg = tmp_path / "cfg"
+    write_registry(cfg, [])
+
+    proc = _run_status(cfg, "--nope")
+
+    assert proc.returncode == 2
+    assert "unknown argument" in proc.stderr
+
+
+def test_two_paths_is_a_usage_error(tmp_path: Path):
+    """One subject or none — silently using the first would answer about a path
+    the caller did not single out."""
+    cfg = tmp_path / "cfg"
+    write_registry(cfg, [])
+
+    proc = _run_status(cfg, str(tmp_path / "a"), str(tmp_path / "b"))
+
+    assert proc.returncode == 2
+    assert "at most one path" in proc.stderr
+
+
+def test_remedy_quotes_a_path_with_spaces(tmp_path: Path):
+    """An unquoted remedy pasted for `/Users/me/My Repo` runs `cd /Users/me/My`,
+    which usually succeeds somewhere else and installs into the wrong directory."""
+    cfg = tmp_path / "cfg"
+    spaced = tmp_path / "My Repo"
+    spaced.mkdir()
+    write_registry(cfg, [])
+
+    remedy = json.loads(_run_status(cfg, str(spaced), "--json").stdout)["remedy"]
+
+    assert "'" in remedy or '"' in remedy, f"path not quoted: {remedy}"
+    assert remedy.split(" && ")[0] != f"cd {spaced}"
+
+
+def test_unresolvable_target_is_unchecked_not_absent(config_dir: Path):
+    """The module is explicit that an empty answer and a could-not-ask answer must
+    differ; with no resolved target every `projectPath` entry is unreachable, so
+    the scan would otherwise fall through and assert a registry fact."""
+    write_registry(config_dir, [{"scope": "project", "projectPath": "/somewhere"}])
+
+    result = install_status("bad\x00path")
+
+    assert result["status"] == "unchecked"
+    assert "could not resolve" in result["reason"]

@@ -5546,22 +5546,42 @@ def cmd_update_gitignore(project_dir: Path, argv: list[str]) -> int:
 
 
 def cmd_install_status(project_dir: Path, argv: list[str]) -> int:
-    """Report whether prawduct is INSTALLED for this path on this machine.
+    """Report whether prawduct is INSTALLED for ``[<path>]`` on this machine.
 
     The committed ``.claude/settings.json`` declares enablement; Claude Code's
     ``installed_plugins.json`` records installation, keyed by
     ``(scope, projectPath)``. Every other prawduct check reads the first — this
     reads the second. ``/prawduct:doctor`` Health Check #19 relays it.
 
+    **The optional positional is load-bearing, not a convenience.** The subject is
+    a *path*, and the ambient project dir is the wrong one for the caller who most
+    needs this: ``/prawduct:onboard <target>`` runs in a DIFFERENT repo's session
+    by construction, and ``resolve_project_dir`` returns the ``CLAUDE_PROJECT_DIR``
+    launch pin when cwd is an unrelated repo (or not a repo at all). So a bare
+    ``cd <target> && prawduct-hook install-status`` answers about the ONBOARDING
+    repo — normally ``installed`` — which is a confident false all-clear on
+    precisely the path this feature exists to alarm about. Doctor, whose subject
+    genuinely is the session's repo, passes nothing and keeps the old behaviour.
+
     **Read-only and ungraded.** Exit is 0 whenever the command ran, including
     ``absent``: a missing entry is a fact about one machine, not a failure of this
     command, and a nonzero here would turn an informational read into a gate. Only
     an unimportable lib exits 1.
     """
-    rejected = _reject_unknown_args("install-status", argv, {"--json"})
+    positionals = [a for a in argv if not a.startswith("-")]
+    flags = [a for a in argv if a.startswith("-")]
+    rejected = _reject_unknown_args("install-status", flags, {"--json"})
     if rejected is not None:
         return rejected
+    if len(positionals) > 1:
+        print(
+            f"install-status: expected at most one path, got {len(positionals)} "
+            f"({', '.join(repr(p) for p in positionals)})",
+            file=sys.stderr,
+        )
+        return 2
     as_json = "--json" in argv
+    subject = positionals[0] if positionals else project_dir
 
     lib_root = _plugin_root()
     if lib_root not in sys.path:
@@ -5572,7 +5592,7 @@ def cmd_install_status(project_dir: Path, argv: list[str]) -> int:
         print(f"error: install-status could not import the plugin lib/ ({exc})", file=sys.stderr)
         return 1
 
-    result = plugin_install.install_status(project_dir)
+    result = plugin_install.install_status(subject)
 
     if as_json:
         print(json.dumps(result, indent=2))
@@ -5580,6 +5600,12 @@ def cmd_install_status(project_dir: Path, argv: list[str]) -> int:
 
     print(f"install-status: {result['status']}")
     print(f"  {result['reason']}")
+    # The registry path is printed in EVERY branch, including `installed`. Doctor
+    # Health Check #19 is told to relay "which file it read", and a renderer that
+    # drops it leaves the model to fall back on the literal `~/.claude/...` —
+    # wrong exactly when `CLAUDE_CONFIG_DIR` is set, which is the one case where
+    # naming the file carries information.
+    print(f"  registry: {result.get('registry') or '(could not locate)'}")
     if result.get("remedy"):
         print(f"  remedy: {result['remedy']}")
     return 0
@@ -6241,7 +6267,7 @@ _USAGE = (
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore [--dry-run]|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
-    "install-status [--json]|"
+    "install-status [<path>] [--json]|"
     "norm-index-scaffold [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
     "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"

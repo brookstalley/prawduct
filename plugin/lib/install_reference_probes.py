@@ -56,8 +56,12 @@ above is a description of what happens rather than a plan. Two things it does
 NOT do, stated here because this docstring is where a reader forms the
 expectation: it does not close the false negative for the *total* failure (a repo
 scaffolded with no install for its path never loads the plugin, so doctor cannot
-run there at all — that case is caught at onboard and by the ``CLAUDE.md``
-anchor's missing-banner line), and it grades nothing. What it adds is the one
+run there at all — that case is caught at onboard, and by the ``CLAUDE.md``
+anchor's missing-banner line **in repos scaffolded or re-anchored after that line
+existed**; ``apply_claude_anchor`` no-ops once the sentinel is present, so a repo
+onboarded before it keeps an anchor that makes the enforcement claim without the
+escape hatch, and doctor Health Check #4 is what surfaces that), and it grades
+nothing. What it adds is the one
 fact neither half could see before: whether a repo is being carried by a
 ``user``-scope install rather than by anything the repo itself supplies.
 

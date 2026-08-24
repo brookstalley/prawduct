@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 
 # One derivation, one owner: ``migrate_plugin`` derives the ``name@marketplace``
@@ -104,7 +105,10 @@ def remedy_for(project_dir: str | Path) -> str:
     entry on the *current* directory, and the caller that most needs this string
     (``/prawduct:onboard <target>``) is by construction running somewhere else.
     """
-    return f"cd {project_dir} && claude plugin install {PLUGIN_KEY} --scope project"
+    # Quoted: the caller supplies this path and a space in it turns a pasted
+    # remedy into `cd /Users/me/My` — which usually succeeds somewhere else and
+    # installs project-scope into the wrong directory.
+    return f"cd {shlex.quote(str(project_dir))} && claude plugin install {PLUGIN_KEY} --scope project"
 
 
 def install_status(project_dir: str | Path) -> dict:
@@ -138,6 +142,13 @@ def install_status(project_dir: str | Path) -> dict:
             "cannot locate the Claude Code config home ($CLAUDE_CONFIG_DIR unset "
             "and the home directory did not resolve)",
         )
+
+    if target is None:
+        # The one branch where an empty answer and a could-not-ask answer would
+        # otherwise collide: with no resolved target every `projectPath` entry is
+        # unreachable, so the scan falls through to `absent` and asserts a registry
+        # fact when the truth is that the path never resolved.
+        return _unchecked(registry, project_dir, f"could not resolve the path {project_dir}")
 
     try:
         raw = registry.read_text(encoding="utf-8")
@@ -178,35 +189,51 @@ def install_status(project_dir: str | Path) -> dict:
     if not isinstance(entries, list):
         entries = []
 
+    # Both kinds of match are scanned before either is reported, and the
+    # path-scoped one wins. First-match-wins would make the answer depend on the
+    # registry's list order, and the ONE fact doctor Health Check #19 exists to
+    # report is "`user`-scope only" — this repo runs on a machine-wide install and
+    # carries nothing of its own. That claim is only true if a path entry, when
+    # one exists, is what gets reported.
+    wildcard_scope: str | None = None
+    path_scope: str | None = None
+
     for entry in entries:
         if not isinstance(entry, dict):
             continue
         scope = entry.get("scope")
         if scope in _WILDCARD_SCOPES:
-            return {
-                "status": "installed",
-                "reason": (
-                    f"{PLUGIN_KEY} is installed at {scope} scope — it loads for "
-                    "every repo on this machine"
-                ),
-                "scope": scope,
-                "registry": str(registry),
-                "remedy": None,
-            }
+            if wildcard_scope is None:
+                wildcard_scope = scope
+            continue
         entry_path = entry.get("projectPath")
         if not isinstance(entry_path, str) or target is None:
             continue
-        if _resolve(entry_path) == target:
-            return {
-                "status": "installed",
-                "reason": (
-                    f"{PLUGIN_KEY} is installed at {scope or 'project'} scope for "
-                    f"{target}"
-                ),
-                "scope": scope or "project",
-                "registry": str(registry),
-                "remedy": None,
-            }
+        if path_scope is None and _resolve(entry_path) == target:
+            path_scope = scope or "project"
+
+    if path_scope is not None:
+        return {
+            "status": "installed",
+            "reason": f"{PLUGIN_KEY} is installed at {path_scope} scope for {target}",
+            "scope": path_scope,
+            "registry": str(registry),
+            "remedy": None,
+        }
+
+    if wildcard_scope is not None:
+        return {
+            "status": "installed",
+            "reason": (
+                f"{PLUGIN_KEY} is installed at {wildcard_scope} scope and has no "
+                f"entry of its own for this path — it loads here because of a "
+                f"machine-wide install, so a clone of this repo on another machine "
+                f"gets nothing from it"
+            ),
+            "scope": wildcard_scope,
+            "registry": str(registry),
+            "remedy": None,
+        }
 
     shown = target if target is not None else project_dir
     return {

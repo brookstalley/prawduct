@@ -42,7 +42,7 @@ When they do want it, onboard **owns provisioning for this entry path** (scrub o
 
 ### Either way
 
-- **Verify the install actually took for the target — writing the reference is not installing.** `init-product` reports `install_status` (also `prawduct-hook install-status`, run from the target). The committed `enabledPlugins` *enables* a plugin that must already be installed for that path in the operator's `~/.claude/plugins/installed_plugins.json`; the trust prompt that installs it is skippable, and under `--dangerously-skip-permissions` there is no prompt at all. When the status is `absent` or `unchecked`, **say so as the headline of your report** and hand over the exact remedy the command prints:
+- **Verify the install actually took for the target — writing the reference is not installing.** `init-product` reports `install_status`; to re-check later, run **`prawduct-hook install-status <target>` and pass the path** — bare, it answers about *this* session's repo, which is the onboarding repo, not the one you scaffolded. The committed `enabledPlugins` *enables* a plugin that must already be installed for that path in the operator's `~/.claude/plugins/installed_plugins.json`, and the trust prompt that installs it is skippable. When the status is `absent` or `unchecked`, **say so as the headline of your report** and hand over the exact remedy the command prints:
   ```
   cd <target> && claude plugin install prawduct@prawduct --scope project
   ```

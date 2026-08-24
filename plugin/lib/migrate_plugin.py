@@ -409,7 +409,14 @@ def apply_claude_anchor(project_dir: Path) -> bool:
         pieces = [p for p in (head, anchor, tail) if p]
         new = "\n\n".join(pieces) + "\n"
     elif ANCHOR_SENTINEL in original:
-        return False  # already-migrated CLAUDE.md: anchor present, no block
+        # Anchor present, no block: nothing to do. Note the consequence — this is
+        # a PRESENCE check, not a freshness one, so an anchor written by an older
+        # version is never refreshed and every later edit to STATIC_ANCHOR reaches
+        # new onboards only. Refreshing safely needs an end marker the anchor does
+        # not have (bounding the replacement by guesswork would eat product prose
+        # below it), so the reach gap is reported rather than repaired: doctor
+        # Health Check #4 compares the anchor's content, not just its marker.
+        return False
     else:
         base = original.rstrip("\n")
         new = f"{base}\n\n{anchor}\n" if base else f"{anchor}\n"

@@ -324,8 +324,10 @@ def init_product(
         # Whether the plugin is INSTALLED for this path on this machine — a fact
         # the committed install reference does not carry and cannot supply. Absent
         # here means the scaffold is correct and governance still will not load.
-        # Consumer: `skills/onboard/SKILL.md` and `skills/doctor/SKILL.md` both
-        # grade on `install_status.status`, so renaming it is a consumer break.
+        # Consumer: `skills/onboard/SKILL.md`, which branches on
+        # `install_status.status` — renaming this field is a consumer break. NOT
+        # doctor: it calls the `install-status` subcommand, whose JSON carries
+        # `status` at top level with no wrapper, so this name never reaches it.
         "install_status": install_status(project_dir),
         "warnings": warnings,
     }
