@@ -111,8 +111,7 @@ against, was still hand-reading the file under the narrow clause to get its `id`
 truncated manifest under a live marker therefore tracebacked out of `critic-begin` instead of
 printing the refusal. The regression test for the widening composed three surfaces on that disk and
 not this one, which is how a construction stops one site short of its own class and its pin agrees.
-The refusal now takes the classifier's already-parsed record — a stale-schema manifest usually still
-carries its `id`, so the record, not a `valid` verdict, is the right input.
+The refusal now takes the classifier's already-parsed record, not a `valid` verdict.
 
 The same shape twice more, both taken rather than dispositioned because the file's whole thesis is
 that a verdict has one home: the guarded `anything_worth_keeping` call was copy-pasted at four
@@ -185,9 +184,9 @@ pointer, since every review has one — and this branch had taken the count from
 fixing the very defects it was narrating. The reasons stay; the ids and the "first cut / first
 repair" framing go wherever this branch put them, tests included. Lines that predate the branch
 still carry the shape — in files this diff touches as well as in ones it does not — and sweeping
-those is not this branch's job; the entry says so rather than implying a clean repo-wide grep. Also: a manifest holding non-object JSON was being diagnosed as "written by an
-OLDER PRAWDUCT", which is a provenance claim about a file no prawduct ever wrote; it classifies
-CORRUPT now.
+those is not this branch's job; the entry says so rather than implying a clean repo-wide grep.
+Also: a manifest holding non-object JSON was being diagnosed as "written by an OLDER PRAWDUCT",
+which is a provenance claim about a file no prawduct ever wrote; it classifies CORRUPT now.
 
 ## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
 
