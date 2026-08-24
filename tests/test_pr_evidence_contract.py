@@ -79,9 +79,13 @@ def instruction_surfaces() -> list[Path]:
 # The keyword family GitHub actually honours, spelled as prose writes them.
 CLOSING_KEYWORDS = re.compile(
     # GitHub honours the keyword only immediately before an issue reference, so
-    # require one. Without the trailing reference this matches ordinary prose --
-    # "suggested fix #2" already appears in this repo's own backlog -- and a guard
-    # that misfires trains its reader to ignore the one real catch.
+    # require one -- a bare "closes the loop" is not a closing keyword. This
+    # narrows the match; it does not make it exact. "suggested fix #2" still
+    # matches, because the shape is genuinely ambiguous in prose. That residual is
+    # accepted rather than chased: the surface set excludes append-only records,
+    # and every live hit today carries the qualification. Narrowing further would
+    # start missing the instruction prose this exists to catch, and a guard that
+    # misfires trains its reader to ignore the one real catch.
     r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(?:\d+|N)\b",
     re.IGNORECASE,
 )
@@ -236,11 +240,28 @@ class TestIssuesBackendCloseIsDeferred:
         )
 
     def test_no_surface_restates_the_timing_as_unconditionally_on_the_branch(self):
-        """The class: any live instruction surface that tells the reader to
-        archive a backlog item *now, on this branch* is restating the timing the
-        backlog skill owns — and restating it in the form that is false on the
-        Issues backend. The backlog skill itself is exempt: it is the owner, and
-        it states the branch case as one half of an explicit split."""
+        """The class: any live instruction surface that tells the reader WHEN to
+        archive a backlog item is restating the timing the backlog skill owns —
+        and every such restatement found so far took the on-branch form, which is
+        false on the Issues backend. The owner file is exempt: it states the
+        branch case as one half of an explicit split, which is the correct form.
+
+        Matched as a family of phrasings rather than the one sentence that broke,
+        because pinning that sentence would pass the moment someone reworded it.
+        The residual limit is real and stated in the module docstring: a
+        paraphrase outside the family still escapes. What this buys is that the
+        obvious rewordings do not."""
+        # Each names a TIME for the call. "on the branch that closes it" is the
+        # owner's own phrasing and appears in its routing sentences, so it is
+        # matched too -- the owner is exempted by file, not by wording.
+        TIMING_CLAIMS = re.compile(
+            r"archive it now"
+            r"|now, on this branch"
+            r"|on this branch,? so it ships"
+            r"|so it ships in this PR"
+            r"|archiv\w+ (?:an? )?item \*?on the branch",
+            re.IGNORECASE,
+        )
         offenders = []
         for path in instruction_surfaces():
             if path == BACKLOG_SKILL:
@@ -248,12 +269,28 @@ class TestIssuesBackendCloseIsDeferred:
             for para in _paragraphs(path.read_text()):
                 if "status=shipped" not in para:
                     continue
-                claims_now = "archive it now, on this branch" in para.lower()
-                if claims_now:
-                    offenders.append(f"{path.relative_to(REPO)}: {para[:200]}")
+                hit = TIMING_CLAIMS.search(para)
+                if hit:
+                    offenders.append(
+                        f"{path.relative_to(REPO)}: ...{hit.group(0)}... in {para[:160]}"
+                    )
         assert not offenders, (
-            "These surfaces restate the archive timing as unconditionally on-branch, "
-            "which is false on the Issues backend — an API close on an unmerged branch "
-            "survives an abandoned PR. Point at the backlog skill's 'When to mark "
-            "shipped' rule instead of restating it:\n" + "\n".join(offenders)
+            "These surfaces state WHEN a backlog item is archived, which the backlog "
+            "skill's 'When to mark shipped' rule owns — and state it in the on-branch "
+            "form that is false on the Issues backend, where an API close on an unmerged "
+            "branch survives an abandoned PR. Route to the owner instead of "
+            "restating:\n" + "\n".join(offenders)
+        )
+
+    def test_the_ledger_cross_check_on_commit_reviewed_is_present(self):
+        """The remedy for a `commit_reviewed` advanced after the fact. The
+        is-ancestor check cannot see that failure — every commit on the branch
+        passes it — so the second witness is the `review.pr` ledger event, whose
+        payload is the evidence record verbatim. Unpinned, this is the same shape
+        the deferral guard above was added for: a remedy with nothing holding it."""
+        skill = PR_SKILL.read_text()
+        assert "review.pr" in skill and ".review.commit_reviewed" in skill, (
+            "The Update Flow no longer cross-checks `commit_reviewed` against the "
+            "ledger's independent copy. Without it the field is self-certifying, and "
+            "the prohibition on advancing it has nothing behind it."
         )

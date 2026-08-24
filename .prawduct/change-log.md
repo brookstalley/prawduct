@@ -51,7 +51,8 @@ to catch it.
 
 **Deferring the close to merge is the deliberate answer, not the lazy one.** An API close made at
 Step 1d lands immediately, so an abandoned PR leaves an item wrongly closed — invisible, because
-nothing sweeps for items closed too early. Merge Flow step 7 now owns it, seconds after the merge
+nothing sweeps for items closed too early. The Merge Flow's *Close the backlog items this PR
+resolves* step owns it, firing seconds after the merge
 succeeds, and Step 1d says why it is the one item that waits. No commit is involved, so the standing
 "never push a bookkeeping commit to the integration branch" rule is untouched.
 
