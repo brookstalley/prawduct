@@ -25,11 +25,16 @@ below is therefore written against the keyword family rather than that one
 sentence: any plugin surface that names a closing keyword must also name the
 condition under which it fires.
 
-**Honest limit (Principle 5).** These are prose guards over a curated
-vocabulary, not a proof. They catch a renamed/dropped field and an unqualified
-closing-keyword claim; they cannot catch a paraphrase that never writes the
-keyword ("the merge will close the issue"). That is the same scoping rationale
-`tests/test_backlog_instruction_surface.py` states for its own vocabulary.
+**Honest limits (Principle 5).** These are prose guards over a curated
+vocabulary, not a proof. Three things they do not do. They cannot catch a
+paraphrase that never writes the keyword ("the merge will close the issue") --
+the same scoping rationale `tests/test_backlog_instruction_surface.py` states for
+its own vocabulary. `_paragraphs` splits on blank lines, so a whole markdown
+bullet list is one "paragraph": on list-shaped surfaces the locality these guards
+claim is looser than it reads, and a qualification several bullets away still
+counts. And the closing-keyword check asserts that two words are *present*, not
+that the claim around them is *right* -- it prevents omission, not divergence, so
+a future correction to GitHub's semantics has to be applied at each site.
 """
 
 from __future__ import annotations
@@ -40,12 +45,46 @@ from pathlib import Path
 
 import pytest
 
-PLUGIN = Path(__file__).resolve().parents[1] / "plugin"
+REPO = Path(__file__).resolve().parents[1]
+PLUGIN = REPO / "plugin"
 PROTOCOL = PLUGIN / "skills" / "pr" / "review-protocol.md"
 PR_SKILL = PLUGIN / "skills" / "pr" / "SKILL.md"
+BACKLOG_SKILL = PLUGIN / "skills" / "backlog" / "SKILL.md"
+
+# Append-only history. A release note that writes `Closes #12` is recording what
+# happened, not instructing anyone, and editing it to satisfy a prose guard would
+# mean rewriting history to please a test.
+_RECORD_FILENAMES = {"CHANGELOG.md", "change-log.md", "learnings.md", "learnings-detail.md"}
+
+
+def instruction_surfaces() -> list[Path]:
+    """Every live instruction surface in the repo, bounded by the property that
+    justifies the guard — "prose that tells an agent what to do" — rather than by
+    the directory it happens to sit in. `documentation/` carries runbooks and
+    requirements that instruct exactly as `plugin/` does; excluding it would have
+    left the class open at the container boundary, which is the failure this
+    repo's own learnings name."""
+    out = []
+    for root in (PLUGIN, REPO / "documentation"):
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*.md"):
+            if path.name in _RECORD_FILENAMES:
+                continue
+            if "archive" in path.parts:
+                continue
+            out.append(path)
+    return sorted(out)
 
 # The keyword family GitHub actually honours, spelled as prose writes them.
-CLOSING_KEYWORDS = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#", re.IGNORECASE)
+CLOSING_KEYWORDS = re.compile(
+    # GitHub honours the keyword only immediately before an issue reference, so
+    # require one. Without the trailing reference this matches ordinary prose --
+    # "suggested fix #2" already appears in this repo's own backlog -- and a guard
+    # that misfires trains its reader to ignore the one real catch.
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(?:\d+|N)\b",
+    re.IGNORECASE,
+)
 
 
 def _fenced_json_blocks(text: str) -> list[dict]:
@@ -83,13 +122,18 @@ class TestEvidenceSchemaCarriers:
             )
 
     def test_caller_reads_the_field_at_both_points_it_matters(self):
-        """Create Step 4 validates the field; the Update Flow consumes it. Both
-        carriers, one name."""
+        """Create Step 4 validates the field; the Update Flow consumes it. Two
+        sites, asserted separately — a bare occurrence count does not do this
+        job, because Create Step 4 alone contributes three and the Update Flow
+        half could be deleted whole with the count still passing."""
         skill = PR_SKILL.read_text()
-        assert skill.count("commit_reviewed") >= 2, (
-            "`SKILL.md` names `commit_reviewed` fewer than twice — it is needed both "
-            "where the evidence is validated (Create Step 4) and where the delta is "
-            "priced (Update Flow step 2)."
+        assert "git merge-base --is-ancestor <commit_reviewed> HEAD" in skill, (
+            "Create Step 4 no longer validates `commit_reviewed` against HEAD. That check "
+            "is what catches a rebase or amend moving the tree out from under a review."
+        )
+        assert "git diff --name-only <commit_reviewed>..HEAD" in skill, (
+            "The Update Flow no longer prices its delta from `commit_reviewed` — the "
+            "consumer the field exists for. Without it the field is written and never read."
         )
 
     def test_reviewed_commit_is_never_inferred_from_the_upstream_ref(self):
@@ -116,7 +160,7 @@ class TestEvidenceSchemaCarriers:
 
 
 class TestClosingKeywordClaims:
-    @pytest.mark.parametrize("path", sorted(PLUGIN.rglob("*.md")), ids=lambda p: p.name)
+    @pytest.mark.parametrize("path", instruction_surfaces(), ids=lambda p: p.name)
     def test_closing_keyword_is_never_named_without_its_condition(self, path: Path):
         """Wherever a plugin surface names `Closes #N` and friends, the same
         paragraph must name the default-branch condition. Paragraph scope, not
@@ -127,8 +171,89 @@ class TestClosingKeywordClaims:
                 continue
             qualified = "default" in para.lower() and "branch" in para.lower()
             assert qualified, (
-                f"{path.relative_to(PLUGIN)} names a GitHub closing keyword without saying "
+                f"{path.relative_to(REPO)} names a GitHub closing keyword without saying "
                 "it fires only for merges into the repository's DEFAULT branch. On a "
                 "gitflow base the keyword is inert and the item silently stays open.\n\n"
                 f"Paragraph:\n{para[:400]}"
             )
+
+class TestIssuesBackendCloseIsDeferred:
+    """The remedy this bugfix installs, pinned. Without these, deleting the
+    deferral from either surface leaves the whole suite green — a bugfix whose
+    behavioural fix has no regression test, in a repo whose idiom is to pin
+    exactly such prose norms.
+
+    Class-scoped where it can be: the timing rule has ONE owner, and what the
+    other surfaces must not do is restate it. That is checkable — a surface that
+    tells the reader to archive "now, on this branch" unconditionally is asserting
+    the timing itself."""
+
+    def test_backlog_skill_owns_the_timing_and_splits_it_by_backend(self):
+        """`skills/backlog/SKILL.md` is the single home. It must name both
+        backends where it states when the call runs — the unconditional version
+        was false for every Issues-backend product (#697)."""
+        text = BACKLOG_SKILL.read_text()
+        para = next(
+            (p for p in _paragraphs(text) if "When to mark shipped" in p), None
+        )
+        assert para, "`skills/backlog/SKILL.md` lost its 'When to mark shipped' rule"
+        block = text[text.index(para):text.index(para) + 3000]
+        assert "Markdown backend" in block and "Issues backend" in block, (
+            "The 'When to mark shipped' rule no longer splits by backend. Archiving is "
+            "atomic with the merge only when it IS a commit: a markdown archive is a file "
+            "edit and rides the branch, an Issues close is an API call that does not."
+        )
+        assert "backlog_service_repo" in block, (
+            "The rule must name the scalar that selects the backend, or the reader "
+            "cannot tell which half applies to them."
+        )
+
+    def test_pr_skill_defers_the_close_to_the_merge_and_names_the_step(self):
+        skill = PR_SKILL.read_text()
+        assert "Close the backlog items this PR resolves" in skill, (
+            "The Merge Flow lost its named close step — the sole discharge point for the "
+            "deferral Step 1d makes."
+        )
+        step_1d = skill[skill.index("Step 1d"):skill.index("### Step 2")]
+        assert "Close the backlog items this PR resolves" in step_1d, (
+            "Step 1d defers the Issues-backend close but no longer names where it lands. "
+            "A deferral with no named target is a drop."
+        )
+
+    def test_the_close_step_precedes_the_deletions_that_destroy_its_record(self):
+        """Ordering is the property, so assert the order — not the numbers. Steps
+        5-7 delete the branch and the evidence file; a close numbered after them
+        has had its own audit trail deleted first."""
+        skill = PR_SKILL.read_text()
+        merge_flow = skill[skill.index("## Merge Flow"):]
+        close_at = merge_flow.index("Close the backlog items this PR resolves")
+        delete_at = merge_flow.index("Delete remote branch")
+        evidence_at = merge_flow.index("Clean up evidence file")
+        assert close_at < delete_at < evidence_at, (
+            "The close must come before the branch and evidence deletions. Those destroy "
+            "the local artifacts that record the close was owed, and this step is its own "
+            "only detector until the GV3 reconciliation sweep exists."
+        )
+
+    def test_no_surface_restates_the_timing_as_unconditionally_on_the_branch(self):
+        """The class: any live instruction surface that tells the reader to
+        archive a backlog item *now, on this branch* is restating the timing the
+        backlog skill owns — and restating it in the form that is false on the
+        Issues backend. The backlog skill itself is exempt: it is the owner, and
+        it states the branch case as one half of an explicit split."""
+        offenders = []
+        for path in instruction_surfaces():
+            if path == BACKLOG_SKILL:
+                continue
+            for para in _paragraphs(path.read_text()):
+                if "status=shipped" not in para:
+                    continue
+                claims_now = "archive it now, on this branch" in para.lower()
+                if claims_now:
+                    offenders.append(f"{path.relative_to(REPO)}: {para[:200]}")
+        assert not offenders, (
+            "These surfaces restate the archive timing as unconditionally on-branch, "
+            "which is false on the Issues backend — an API close on an unmerged branch "
+            "survives an abandoned PR. Point at the backlog skill's 'When to mark "
+            "shipped' rule instead of restating it:\n" + "\n".join(offenders)
+        )

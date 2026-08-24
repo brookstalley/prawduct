@@ -392,7 +392,12 @@ LAST_MEASURED_TOKENS = {
     # block it landed in: "a severity with no remedy is a false blocker" was the
     # tail of the `graded` bullet and is now the lead sentence both it and the
     # new bullet lean on, and the BLOCKING bullet's provenance narration went.
-    "skills/critic/review-cycle.md": 9599,
+    # -2 on 2026-08-24: the reconciliation NOTE template stopped stating WHEN the
+    # archive call runs and now routes to the backlog skill, which owns that
+    # timing and splits it by backend. Paid in the same sentence -- the template
+    # was asserting a timing that is false on the Issues backend, so the routing
+    # replaced prose rather than adding to it.
+    "skills/critic/review-cycle.md": 9597,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the

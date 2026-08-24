@@ -55,10 +55,38 @@ nothing sweeps for items closed too early. Merge Flow step 7 now owns it, second
 succeeds, and Step 1d says why it is the one item that waits. No commit is involved, so the standing
 "never push a bookkeeping commit to the integration branch" rule is untouched.
 
-The guard is written against the keyword family rather than the sentence that got it wrong: any
-plugin surface naming `Closes`/`Fixes`/`Resolves #N` must name the default-branch condition in the
-same paragraph. Pinning the one sentence would have closed the instance and left the class open —
-the failure mode `test_backlog_instruction_surface.py` was hardened against.
+The guard is written against the keyword family rather than the sentence that got it wrong: any live
+instruction surface naming `Closes`/`Fixes`/`Resolves #N` must name the default-branch condition in
+the same paragraph. Pinning the one sentence would have closed the instance and left the class open —
+the failure mode `test_backlog_instruction_surface.py` was hardened against. The surface set is bounded
+by the property (prose that instructs an agent) rather than by the `plugin/` container, so
+`documentation/` runbooks are in scope and append-only records are not.
+
+**The timing rule now has one owner, which is what the review round changed.** The first cut fixed
+`/prawduct:pr` and left `skills/backlog/SKILL.md` — the rule Step 1d cites *by name* as its authority —
+still asserting the falsified guarantee unconditionally, so an agent following the citation landed in
+the unfixed twin and did the early close the fix exists to prevent. Two reviewers found it
+independently under different goals, which is the tell that the fact had been distributed rather than
+shared. `skills/backlog/SKILL.md` "When to mark shipped" now owns *when* the call runs and states the
+split; `/prawduct:pr` Step 1d and the Critic's reconciliation template (`review-cycle.md`) route to it
+instead of restating it. A guard closes the class rather than the sentence: no surface outside the
+owner may tell a reader to archive "now, on this branch".
+
+**The close moved ahead of the deletions.** It was numbered after the branch and evidence-file
+cleanup while its own text said "before anything else" — and those deletions destroy the only local
+artifacts recording that a close was owed. It is now the step immediately after the merge, and every
+reference to it is by name rather than by number, because a durable pointer must not ride on a
+position that renumbers.
+
+**What this does not fix, stated rather than implied.** The close step is its own only detector: merge
+through the GitHub UI, or end the session at the merge, and nothing notices it never fired. The
+reconciliation sweep that would catch it is already prescribed by
+`documentation/backlog-service-requirements.md` **GV3** — "merged work whose item is still open… this
+is the price of leaving git; pay it explicitly" — and is unbuilt. The skill says so at the step rather
+than implying coverage it does not have. Likewise the prohibition on advancing `commit_reviewed` is
+prose: `git merge-base --is-ancestor` passes for every commit on the branch, so it cannot see a
+laundered field. The Update Flow now cross-checks the evidence file against the `review.pr` ledger
+event, whose `review` payload is an independent verbatim copy — a second witness, not enforcement.
 
 ## 2026-08-23: a nested checkout is not a misplaced test
 
