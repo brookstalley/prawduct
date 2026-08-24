@@ -55,3 +55,18 @@ def pytest_report_header(config):
             "NOTE: Running with pytest-xdist (parallel). Use '-n0' for sequential execution.",
         ]
     return []
+
+
+#: The v2 (pre-3.3.4, model-written) dispatch-manifest shape: parseable JSON
+#: carrying none of the v3 interval fields. Lives HERE because two test modules
+#: import it, pinning three distinct behaviours — the CRT-W2NV validation
+#: regression and the #676 message readings in `test_critic_consolidate.py`, and
+#: the Stop-hook backstop's version-skew cause in `test_stop_abandoned_critic.py`.
+#: Hoisting it into ONE of those modules and hand-inlining the copy into the
+#: other is how a "one definition" rationale ships with two definitions under it.
+V2_MANIFEST = {
+    "mode": "final-chunk-review", "mode_chosen_by": "rule-3",
+    "roster": ["correctness", "design", "sustainability"],
+    "commit_reviewed": "abc", "files_reviewed": ["x.py"],
+    "scope": "demo", "model": "opus",
+}

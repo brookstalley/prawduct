@@ -3,6 +3,191 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-23: a nested checkout is not a misplaced test
+
+<!-- prawduct: type=fix | scope=test-location-nested-checkout -->
+
+`git worktree add ./devchk` inside the primary checkout turned the test-location preference red for
+every session in the clone. The walk found `devchk/tests/**/test_*.py`, correctly observed they were
+outside `tests/`, and reported them as silently-skipped tests. They are not this checkout's tests at
+all, and `testpaths` skipping them is right — but the only way to get a green suite was to delete
+another session's worktree, which is exactly what a session must not do.
+
+**The exclusion list already had this bug once and was fixed by naming the path.** `.claude/` is on
+it because a worktree-isolated workflow leaves a full duplicate `tests/` tree under
+`.claude/worktrees/wf_*/` (TST-9K4W). That fix held until a worktree appeared under a different name,
+which is the standing failure mode of a by-name exclusion: it closes the instance and leaves the
+class open. The predicate is *does this directory carry its own `.git`* — a FILE for a linked
+worktree, a directory for a clone or submodule, both meaning the tests below it belong to another
+checkout. It now prunes all of them, including the ones nobody has thought of.
+
+**The risk in this kind of fix is making the check blind, so that is what the new tests aim at.**
+Three cases: a linked worktree at an arbitrary path, a nested clone or submodule, and — the one that
+matters — a genuinely misplaced `test_oops.py` in an ordinary subdirectory, which must still be
+caught. Pruning that keyed on depth or on "has a `tests/` child" would have passed the first two and
+quietly disarmed the module.
+
+## 2026-08-23: a wedged manifest says which kind of wedged it is
+
+<!-- prawduct: type=fix | scope=manifest-state-diagnosis -->
+
+An operator who met a dispatch manifest written by an older prawduct was told, by the surface that
+refuses `critic-begin`: *"no readable dispatch manifest — a review set the marker but never recorded
+what it was reviewing. Nothing here is worth keeping."* Every clause of that is false for the case
+that produces it. The manifest is readable JSON. It **did** record what it was reviewing — in the
+schema of the version that wrote it, `commit_reviewed` and all. And the partials beside it are real
+reviewer output that `_archive_leftovers` deliberately archives rather than deletes, naming
+`critic-restore` as it goes. The message told an operator to throw away exactly what the mechanism
+one function over was carefully preserving.
+
+**The interesting part is why it recurred.** `pending_roster_reading` exists precisely to stop this:
+its docstring says two surfaces "must not differ in what they say the on-disk state IS. They did:
+only one of them was taught the fact, and the untaught one sits at the more dangerous surface." That
+had already been fixed once. It came back because the thing being shared was the **reading**, and a
+reading cannot be shared for a distinction nobody had computed — so the Stop hook's backstop
+computed "unreadable or schema-invalid" for itself, `restore_refusal` computed "no readable dispatch
+manifest", and the dispatch refusal computed the false paragraph. Three surfaces, three answers, one
+disk. The fix is therefore a **classifier**, not a fourth message: `manifest_condition` returns
+`absent` / `corrupt` / `stale-schema` / `valid` plus the validation reason and the parsed record,
+and all three surfaces read it.
+
+**`pending_state`'s `"unreadable"` collapse deliberately stays.** For *deciding* — can this be
+consolidated? — corrupt and stale-schema are one answer, and four callers branch on it. Widening
+that vocabulary to fix a message would have made every one of them handle a case that changes none
+of their decisions. The distinction is real only when *telling someone*, so it lives with the
+telling. Pinned both ways: a test asserts the collapse holds, and a test asserts the three readings
+are mutually distinguishable.
+
+**The keep-or-discard verdict is a SECOND home, and finding that out took a second round.** The
+first repair routed the *reading* through one place and left two of five surfaces authoring their
+own tail — so a stale-schema manifest still printed "any partials beside it are real reviewer
+output" and then, four lines later, "Nothing here is worth keeping". The swept-marker variant was
+the worse of the two: the marker is gone, so that notice is the only report the operator ever gets,
+and one told nothing was attached will not run `critic-restore` before the archive ring evicts the
+partials. A verdict authored beside a shared sentence is not shared by being adjacent to it.
+
+So `anything_worth_keeping` owns it, and the readings now describe **the manifest and nothing else**.
+That separation is load-bearing rather than tidy: the manifest's condition and whether reviewer
+output exists are two independent facts, and any sentence answering both from one of them is wrong
+whenever they disagree — an orphaned partial set with no manifest is exactly that disk, and so is a
+stale manifest sitting alone. The first cut of the *repair* reintroduced the contradiction one layer
+in, and the test written to catch it did.
+
+**The pin took two goes to become falsifiable, which is the part worth recording.** The first
+version asserted "no message says both things at once" and composed three *library* surfaces —
+neither of the two hook boundary notices the finding was actually about. Worse, once the readings
+stopped making keep/discard claims, "says both" became *unreachable* at those notices: reverting one
+to its hardcoded "Nothing recoverable was attached" passed the contradiction test cleanly. A pin
+that cannot fail is decoration, and one that names a class while covering a disjoint set is worse
+than none, because it reads as coverage.
+
+The property with teeth is not internal consistency but **agreement with the disk**: every
+verdict-bearing surface must carry the exact clause `anything_worth_keeping` returns for the disk it
+is describing, and must not carry the one it would return for the opposite disk. Both notices are
+loaded in-process and composed under absent/corrupt/stale-schema × {0, 2 partials}; both mutations
+that restore the old tails now go red.
+
+**#676's other two acceptance criteria were already discharged and are recorded as such rather than
+re-fixed.** A branch in an agent worktree has had a route to a recorded review since #648 —
+`is_ephemeral_worktree` classifies by branch identity, so a named-branch agent worktree is a peer
+checkout you review in place (pinned in `test_ephemeral_worktree.py`). Two agents already hold
+reviews concurrently across worktrees: `.critic-active` lives in each worktree's own `.prawduct/`,
+and the shared evidence store takes concurrent appends through a single `O_APPEND` write. What is
+**not** covered, and is deliberately left alone, is several agents sharing one checkout with no
+worktrees — per-actor governance state is a large change to serve a configuration a worktree already
+solves.
+
+**The report's headline claim was tested rather than believed, and did not hold.** A stale-schema
+manifest with no marker does not wedge dispatch: `begin_review`'s in-flight guard fires on a live
+marker or a complete roster, and this is neither, so it archives the leftovers under a recoverable
+`unmanifested-<ts>` name and proceeds. Reproduced end to end before any code was written; a test now
+pins it, because if that ever goes red the defect is a real wedge and a message fix is the wrong
+repair. What the reporter experienced as a wedge was the marker, which expires on its own TTL.
+
+**Round 6 found the widening one surface short of the defect it was named for.** R-7 widened
+`json.JSONDecodeError` to `ValueError` inside `manifest_condition` so an undecodable manifest is
+classified rather than thrown — and `active_dispatch_refusal`, the surface #676 was actually filed
+against, was still hand-reading the file under the narrow clause to get its `id`. A binary or
+truncated manifest under a live marker therefore tracebacked out of `critic-begin` instead of
+printing the refusal. The regression test for the widening composed three surfaces on that disk and
+not this one, which is how a construction stops one site short of its own class and its pin agrees.
+The refusal now takes the classifier's already-parsed record, not a `valid` verdict.
+
+The same shape twice more, both taken rather than dispositioned because the file's whole thesis is
+that a verdict has one home: the guarded `anything_worth_keeping` call was copy-pasted at four
+notices (now `_keep_verdict`, and its degraded form names the exception and an inspection command
+instead of an unactionable "could not tell"), and `MANIFEST_UNKNOWN` had no production reader while
+`cmd_stop` spelled the literal under a comment claiming the opposite. Plus `short_detail`'s hard cap
+— the property the function exists for — was executed by every stale-schema test and asserted by
+none, so deleting the branch shipped green.
+
+A fourth of the same shape, from the same round: `cmd_stop`'s absent-manifest branch was the one of
+four that asserted a CAUSE ("a dispatch crashed before writing") instead of deriving a verdict —
+false on the disk `_archive_leftovers` documents, where a late reviewer re-creates the partials
+directory after consolidation and the partials are all there is. The cause is now hedged to what is
+known and the branch takes the shared clause. Third recurrence of this concern in this subsystem,
+so it finally gets a row in `cross-cutting-concerns.md`: what keeps being shared is the PROSE, and
+the fact behind it stays distributed.
+
+**The verify round refused to mark one warning resolved, and it was right.** R-5 was scoped CLASS —
+a shared read for the manifest's `id` — and the fix had closed only the site that hurt, leaving two
+hand-reads standing; the review checked rather than took the claim. `manifest_review_id` is now that
+read, with `MANIFEST_ID_UNAVAILABLE` as the single excuse, and the hook's wrapper adds one sentence
+only for the case the lib itself cannot be loaded — a different fact, not a second copy. The
+ordering hazard the review flagged alongside it turned out to be **latent**: at
+`_forced_live_sweep_notice` the id read ran first inside the same `try`, but `state` there only
+selects a branch that a valid manifest is a precondition for, so no disk could show the difference.
+Established by mutation, recorded in the comment, and deliberately left unpinned — a test for an
+unreachable difference passes either way, which is the standard this bundle keeps applying to
+itself.
+
+**And the round after that found the class still had two members, both worse than the one it was
+named for.** Enumerating the sites R-5 listed is not closing a class; re-running its search is.
+`_archive_leftovers` read the manifest raw for the archive directory's name — under the narrow
+`except`, on the disk that is the only reason the sweep runs at all — so `critic-begin` and
+`critic-discard` tracebacked on an undecodable manifest: #676's headline failure, alive one
+function over from where three rounds had been fixing it. `consolidate` had the same tuple on a
+path the SubagentStop hook drives, turning an exit-1 refusal into a hook crash. Both now share the
+classifier's parse, and both are pinned — the totality test composes them on the planted binary
+disk instead of trusting a site list, which is what let this survive two rounds.
+
+**The round after THAT found a fourth, and it ends the site-by-site repair.** `restore_review`
+matched no `manifest_path(` search because it builds its path from the archive root — and the file
+it reads is the very binary manifest the previous fix taught the sweep to preserve, reached through
+`critic-restore`, the undo both `critic-begin` and `critic-discard` print by name. It tracebacked
+*after* the all-or-nothing copy completed, so the files were back with no verdict and the retry met
+the "another review is in the way" refusal. The repair is the construction the reviewer asked for
+three rounds ago: `classify_manifest_file` takes a PATH, `manifest_condition` is its
+`prawduct_dir` form, and a caller holding a path now has somewhere to bring it instead of opening
+the file. One read is deliberately left outside it — `consolidate` needs the raw record to tell its
+two exit-1 refusals apart — so this is one CLASSIFIER, not literally one `json.loads`.
+The two look-alike reads in the same file (findings cache, partials) were widened with it — not
+because the byte sequence can arise there, but because leaving the narrow shape in place is what
+re-seeded this class three times.
+
+**The spanning review closed the class and found the notice one layer out.** Three reviewers landed
+independently on the same site: `_forced_live_sweep_notice` derived its preservation clause from
+the shared verdict but still interpolated the id into `prawduct-hook critic-restore <id>`
+unconditionally — so on the disk that clause newly admits (partials present, nothing naming them)
+the only recovery handle offered was the words "id unavailable". An operator copying it gets a
+refusal, the two handles that DO work go unmentioned, and the partials the sentence above promises
+are preserved age out of the archive ring unread. A predicate over the two excuse constants now
+gates that line at both notices that interpolate an id — the second one is unreachable today, and
+took the gate anyway because it reads the id from a different read than the state it relies on.
+The unusable branch names the bare listing instead. The wrapper's own excuse
+stopped naming a channel too: its `except` spans the lazy import AND the classify call, so blaming
+the plugin install was a guess wearing a fact's clothes.
+
+**And the round-by-round provenance came out of the shipped comments.** `review-protocol.md` makes
+a comment narrating review ids or round numbers a deletion finding — a bare `R-6` is a dangling
+pointer, since every review has one — and this branch had taken the count from 3 to ~12 while
+fixing the very defects it was narrating. The reasons stay; the ids and the "first cut / first
+repair" framing go wherever this branch put them, tests included. Lines that predate the branch
+still carry the shape — in files this diff touches as well as in ones it does not — and sweeping
+those is not this branch's job; the entry says so rather than implying a clean repo-wide grep.
+Also: a manifest holding non-object JSON was being diagnosed as "written by an OLDER PRAWDUCT",
+which is a provenance claim about a file no prawduct ever wrote; it classifies CORRUPT now.
+
 ## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
 
 <!-- prawduct: type=fix | scope=instruction-surface-truth -->

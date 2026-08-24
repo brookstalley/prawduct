@@ -198,6 +198,8 @@ def _store_lines(repo: Path) -> list[str]:
 
 FAKE_REVIEW_ID = "rev-test-0001"
 
+from conftest import V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home for the shape
+
 
 def _review_id(repo: Path) -> str:
     """The id of the review currently on disk.
@@ -429,13 +431,7 @@ class TestValidateManifest:
         hand-authored (and omitted keys from) — carries none of the v3
         interval fields, so nothing a stale cached skill writes by hand can
         pass validation. The omitted-key defect class has no author left."""
-        v2_manifest = {
-            "mode": FINAL_MODE, "mode_chosen_by": "rule-3",
-            "roster": ["correctness", "design", "sustainability"],
-            "commit_reviewed": "abc", "files_reviewed": ["x.py"],
-            "scope": "demo", "model": "opus",
-        }
-        ok, reason = cc.validate_manifest(v2_manifest)
+        ok, reason = cc.validate_manifest({**_V2_MANIFEST, "mode": FINAL_MODE})
         assert not ok
         assert "id" in reason
 
@@ -1771,7 +1767,7 @@ class TestVerifyRatesBlockingOnlyDirective:
         should not manufacture work and then records the WARNING in front of
         it, because nothing made it recognize THIS finding as the instance.
 
-        The first cut of this check was itself the defect it screens for. Its
+        This check was once itself the defect it screens for. Its
         verb tuple was `("goes ", "report", "rate ", "spend ", "Spend ")`:
         `"report"` matched the NOUN in "in your report", `"rate "` never matched
         the capitalized "Rate these", and `"spend "`/`"Spend "` were leftovers
@@ -1908,6 +1904,713 @@ class TestPendingState:
         (repo / PARTIALS_REL / "manifest.json").write_text("{not json")
         assert cc.pending_state(repo / ".prawduct") == ("unreadable", [])
 
+    def test_stale_schema_dispatch_is_not_wedged(self, tmp_path):
+        """#676's premise, tested rather than believed.
+
+        The source report said a pre-3.3.4 manifest "wedged all dispatch". It
+        does not, and the fix shipped here is a message fix precisely BECAUSE
+        this holds: `begin_review`'s in-flight guard fires on `active` or
+        `"complete"`, and a stale-schema manifest is neither. If this ever goes
+        red, the defect is a real wedge and the message work is the wrong
+        repair."""
+        repo = tmp_path
+        (repo / ".prawduct").mkdir()
+        _partials_dir(repo)
+        (repo / PARTIALS_REL / "manifest.json").write_text(json.dumps(_V2_MANIFEST))
+        state, _missing = cc.pending_state(repo / ".prawduct")
+        assert state == "unreadable"
+        assert state != "complete", "would trip begin_review's in-flight guard"
+
+    def test_stale_schema_manifest_is_also_unreadable(self, tmp_path):
+        """The COLLAPSE is deliberate and must not regress (#676).
+
+        Corrupt and stale-schema are one answer to "can this be consolidated",
+        and four callers branch on that answer. Splitting this vocabulary to fix
+        a message would have made them all handle a case that changes none of
+        their decisions — the distinction belongs to `manifest_condition`, which
+        the message surfaces read, and this pins that `pending_state` stays out
+        of it."""
+        repo = tmp_path
+        (repo / ".prawduct").mkdir()
+        _partials_dir(repo)
+        (repo / PARTIALS_REL / "manifest.json").write_text(json.dumps(_V2_MANIFEST))
+        assert cc.pending_state(repo / ".prawduct") == ("unreadable", [])
+
+
+# ---------------------------------------------------------------------------
+# Unit: manifest_condition + what each condition is TOLD to an operator (#676)
+#
+# The defect these pin is not a crash and not a wrong decision — every decision
+# was already right. It is that two surfaces described one disk differently and
+# the more dangerous one described it falsely, telling an operator to discard
+# reviewer output that the mechanism beside it deliberately archives. So these
+# assert SENTENCES, and each names the false clause it exists to keep out.
+# ---------------------------------------------------------------------------
+
+
+def _plant(prawduct: Path, text: str) -> Path:
+    (prawduct / ".critic-partials").mkdir(parents=True, exist_ok=True)
+    (prawduct / ".critic-partials" / "manifest.json").write_text(text)
+    return prawduct
+
+
+class TestManifestCondition:
+    def test_absent(self, tmp_path):
+        (tmp_path / ".prawduct").mkdir()
+        condition, detail, manifest = cc.manifest_condition(tmp_path / ".prawduct")
+        assert condition == cc.MANIFEST_ABSENT
+        assert (detail, manifest) == ("", None)
+
+    def test_corrupt_carries_the_parse_reason(self, tmp_path):
+        (tmp_path / ".prawduct").mkdir()
+        condition, detail, manifest = cc.manifest_condition(_plant(tmp_path / ".prawduct", "{not json"))
+        assert condition == cc.MANIFEST_CORRUPT
+        assert detail, "the parse error is the whole diagnostic — dropping it re-hides the cause"
+        assert manifest is None
+
+    def test_stale_schema_carries_the_reason_and_the_record(self, tmp_path):
+        (tmp_path / ".prawduct").mkdir()
+        condition, detail, manifest = cc.manifest_condition(
+            _plant(tmp_path / ".prawduct", json.dumps(_V2_MANIFEST))
+        )
+        assert condition == cc.MANIFEST_STALE_SCHEMA
+        assert detail
+        # The parsed record comes back so a caller can say what the stale
+        # manifest still knows — which is the fact that decides whether the
+        # partials beside it are worth restoring.
+        assert manifest["commit_reviewed"] == "abc"
+
+    def test_valid(self, tmp_path):
+        repo = tmp_path
+        (repo / ".prawduct").mkdir()
+        _write_manifest(repo, "abc")
+        condition, detail, manifest = cc.manifest_condition(repo / ".prawduct")
+        assert (condition, detail) == (cc.MANIFEST_VALID, "")
+        assert manifest["id"] == FAKE_REVIEW_ID
+
+
+class TestPendingRosterReadingNamesTheRealCondition:
+    def _reading(self, tmp_path, text=None):
+        (tmp_path / ".prawduct").mkdir(parents=True)
+        if text is not None:
+            _plant(tmp_path / ".prawduct", text)
+        return cc.pending_roster_reading(tmp_path / ".prawduct")
+
+    def test_stale_schema_does_not_claim_the_manifest_is_unreadable(self, tmp_path):
+        """The three false clauses, pinned out one at a time.
+
+        A v2 manifest IS readable and DID record what it was reviewing."""
+        state, reading = self._reading(tmp_path, json.dumps(_V2_MANIFEST))
+        assert state == "unreadable"  # the DECISION is unchanged
+        assert "no readable dispatch manifest" not in reading
+        assert "never recorded what it was reviewing" not in reading
+        assert "Nothing here is worth keeping" not in reading
+        # ...and says the true thing instead, including what it still knows.
+        assert "OLDER PRAWDUCT" in reading
+        assert "abc" in reading, "what it recorded is what the reading exists to surface"
+        # The keep/discard verdict is deliberately NOT here: it is computed from
+        # the partials on disk, which this reading cannot see. See
+        # TestNoSurfacePairsPreservationWithDiscard.
+        assert "worth keeping" not in reading
+
+    def test_corrupt_says_corrupt_not_stale(self, tmp_path):
+        state, reading = self._reading(tmp_path, "{not json")
+        assert state == "unreadable"
+        assert "not valid JSON" in reading
+        assert "OLDER PRAWDUCT" not in reading, "an interrupted write is not a version skew"
+
+    def test_absent_says_absent(self, tmp_path):
+        """The harsh verdict moved to `anything_worth_keeping`, which computes
+        it from the disk rather than inferring it from the manifest — an absent
+        manifest beside ORPHANED partials is a real state, and a reading that
+        pre-judged it would contradict the verdict composed beneath it."""
+        state, reading = self._reading(tmp_path)
+        assert state == "none"
+        assert "no dispatch manifest at all" in reading
+        assert "worth keeping" not in reading
+
+    def test_the_three_readings_are_mutually_distinguishable(self, tmp_path):
+        """The point of the change is that an operator can tell which disk they
+        have. Identical-looking readings would satisfy every assertion above
+        while restoring the defect."""
+        readings = {
+            name: self._reading(tmp_path / name, text)[1]
+            for name, text in (
+                ("absent", None),
+                ("corrupt", "{not json"),
+                ("stale", json.dumps(_V2_MANIFEST)),
+            )
+        }
+        assert len(set(readings.values())) == 3, readings
+
+    def test_every_reading_is_indented_two_spaces(self, tmp_path):
+        """The shared formatting contract the docstring states — every caller
+        composes these into an already-indented block."""
+        for idx, text in enumerate((None, "{not json", json.dumps(_V2_MANIFEST))):
+            _, reading = self._reading(tmp_path / f"case{idx}", text)
+            assert reading.endswith("\n")
+            for line in reading.splitlines():
+                assert line.startswith("  "), f"{line!r} in {reading!r}"
+
+
+class TestActiveDispatchRefusalDescribesTheDisk:
+    def test_refusal_carries_the_stale_schema_reading(self, tmp_path):
+        """`critic-begin`'s refusal is the surface #676 was filed against —
+        the reading has to reach it, not just exist."""
+        (tmp_path / ".prawduct").mkdir()
+        _plant(tmp_path / ".prawduct", json.dumps(_V2_MANIFEST))
+        message = cc.active_dispatch_refusal(tmp_path / ".prawduct", 120.0, True)
+        assert "OLDER PRAWDUCT" in message
+        assert "no readable dispatch manifest" not in message
+        # The recovery was already named and stays named — #676's third
+        # acceptance criterion is about the DIAGNOSIS, not the remedy.
+        assert "prawduct-hook critic-end" in message
+
+
+class TestAnythingWorthKeeping:
+    """The keep-or-discard VERDICT has one home (#676 follow-up).
+
+    Routing the *reading* through one place did not route this: two of five
+    surfaces kept a locally-authored tail, so a stale-schema manifest printed
+    "any partials beside it are real reviewer output" and then, four lines
+    later, "Nothing here is worth keeping" — one message, both verdicts,
+    discard last.
+    """
+
+    def _verdict(self, tmp_path, text=None, partials=0):
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        if text is not None:
+            _plant(pd, text)
+        for i in range(partials):
+            (pd / ".critic-partials" / f"role{i}.rev-x.json").write_text("{}")
+        return cc.anything_worth_keeping(pd)
+
+    def test_a_lone_stale_manifest_has_nothing_to_keep(self, tmp_path):
+        """The disk an unconditional preservation clause gets wrong: a
+        stale-schema manifest sitting alone promises a `critic-restore` handle
+        with nothing behind it, and the operator goes looking for an empty
+        archive."""
+        keep, clause = self._verdict(tmp_path, json.dumps(_V2_MANIFEST), partials=0)
+        assert keep is False
+        assert "nothing here is worth keeping" in clause.lower()
+        assert "critic-restore" not in clause
+
+    def test_a_stale_manifest_with_partials_is_worth_keeping(self, tmp_path):
+        keep, clause = self._verdict(tmp_path, json.dumps(_V2_MANIFEST), partials=2)
+        assert keep is True
+        assert "2 reviewer partial(s)" in clause
+        assert "critic-restore" in clause
+
+    def test_absent_manifest_with_partials_is_still_worth_keeping(self, tmp_path):
+        """The verdict keys on reviewer output, not on the manifest: orphaned
+        partials are real output whether or not anything describes them."""
+        keep, clause = self._verdict(tmp_path, None, partials=1)
+        assert keep is True
+
+    def test_a_valid_manifest_is_worth_keeping_before_any_reviewer_reports(self, tmp_path):
+        """"Is there reviewer output" and "is there a review here" are different
+        questions, and only the second licenses a discard.
+
+        An earlier cut counted partials alone, so a live review with an
+        incomplete roster answered "nothing is worth keeping" — and
+        `_forced_live_sweep_notice` dropped its `critic-restore` instruction
+        entirely, which `test_forcing_a_sweep_names_a_recovery_that_can_actually
+        _be_run` caught. Reviewers may still be writing; the manifest records
+        what is under review; `critic-restore` restores the directory including
+        it."""
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        _write_manifest(tmp_path, "abc")
+        keep, clause = cc.anything_worth_keeping(pd)
+        assert keep is True
+        assert "dispatched review is here" in clause
+        assert "not reported yet" in clause
+
+    def test_a_valid_manifest_with_partials_names_the_count(self, tmp_path):
+        """The fourth branch, and the only one no assertion reached — a
+        mutation putting a discard tail on this disk shipped green. It is the
+        ORDINARY `--force` case: `critic-begin` dispatched, some reviewers have
+        reported, and the operator sweeps the marker anyway."""
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        _write_manifest(tmp_path, "abc")
+        (pd / ".critic-partials" / "correctness.rev-x.json").write_text("{}")
+        keep, clause = cc.anything_worth_keeping(pd)
+        assert keep is True
+        assert "1 reviewer partial(s)" in clause
+        assert "nothing here is worth keeping" not in clause.lower()
+
+    def test_orphaned_partials_with_no_manifest_are_named_as_orphaned(self, tmp_path):
+        keep, clause = self._verdict(tmp_path, None, partials=1)
+        assert keep is True
+        assert "orphaned" in clause
+
+    def test_the_manifest_itself_is_not_counted_as_reviewer_output(self, tmp_path):
+        keep, _clause = self._verdict(tmp_path, json.dumps(_V2_MANIFEST), partials=0)
+        assert keep is False, "manifest.json is not a partial"
+
+
+def _load_hook():
+    """The hook script, in-process. Same idiom as
+    `test_critic_session_guard.py` — the boundary notices are plain functions
+    and composing them is the only way to assert what an operator actually
+    reads; a subprocess would give the CLI's output, not these."""
+    import importlib.machinery  # noqa: PLC0415 — the extensionless hook script
+    import importlib.util  # noqa: PLC0415
+
+    loader = importlib.machinery.SourceFileLoader(
+        "prawduct_hook_for_notice_composition",
+        str(Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"),
+    )
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    hook = importlib.util.module_from_spec(spec)
+    loader.exec_module(hook)
+    return hook
+
+
+def _payload_for(text):
+    """The `text` parametrisation's disks. "VALID" is the fourth verdict branch —
+    a dispatched review whose manifest is current — and it was missing while the
+    other three (absent, corrupt, stale-schema) were covered, so no composed
+    message was ever graded on the ordinary `--force` disk."""
+    if text == "V2":
+        return json.dumps(_V2_MANIFEST)
+    if text == "VALID":
+        return json.dumps(_manifest_dict())
+    return text
+
+
+class TestNoSurfacePairsPreservationWithDiscard:
+    """The shared verdict as a property rather than string assertions: compose
+    the operator-facing messages under every manifest condition and assert none
+    says both things at once.
+
+    **Three of the four production verdict-bearing notices**, named rather than
+    rounded up to "every surface"; `reading+verdict` below is this test's own
+    direct call, not a fourth. All four now reach the verdict through
+    `prawduct-hook`'s `_keep_verdict` rather than each guarding the call
+    itself — deliberately no line numbers here, since they renumber and the
+    function name does not. The remaining production site is `cmd_stop`'s,
+    reachable only through the CLI, and it is pinned in
+    `test_stop_abandoned_critic.py::test_the_stop_blocker_carries_the_shared_keep_verdict`.
+    An earlier docstring here did say "every surface" while composing a set
+    disjoint from the one the finding named, which is how a pin comes to read as
+    coverage it does not have.
+
+    **It must compose the surfaces the defect was actually about.** This class
+    once composed three LIB surfaces and neither of the two hook boundary
+    notices that carried the contradiction — while its own docstring claimed
+    "every surface". A pin that names a class and covers a disjoint set is
+    worse than none: it reads
+    as coverage. The hook notices are loaded in-process below so the assertion
+    runs over the bytes an operator reads.
+    """
+
+    _DISCARD = (
+        "nothing here is worth keeping",
+        "nothing recoverable was attached",
+        "no reviewer output is on disk",
+    )
+    _PRESERVE = (
+        "critic-restore",
+        "are real output",
+        "archives them rather than",
+        "reviewer partial(s) are on disk",
+    )
+
+    #: The surfaces that report a keep/discard verdict about the CURRENT disk.
+    #: The two refusals are composed above for the contradiction check but are
+    #: not verdict-bearing — they describe what a dispatch WOULD do.
+    _VERDICT_BEARING = (
+        "reading+verdict", "boundary_retained", "boundary_swept", "forced_live_sweep",
+    )
+
+    #: On a VALID manifest the two boundary notices answer with a state-specific
+    #: remedy — consolidate it, or wait for the missing reviewers — and return
+    #: before any verdict clause. That is the design, not a gap: the verdict
+    #: answers "is there output worth keeping", which is not the question a
+    #: reader of "this review needs consolidating" is asking. So the valid disk
+    #: grades the two surfaces that DO reach the tail, rather than asserting a
+    #: universal that would have to be weakened to hold.
+    _VERDICT_BEARING_ON_A_VALID_MANIFEST = ("reading+verdict", "forced_live_sweep")
+
+    def _compose(self, tmp_path, text, partials):
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        if text is not None:
+            _plant(pd, text)
+        for i in range(partials):
+            (pd / ".critic-partials" / f"role{i}.rev-x.json").write_text("{}")
+        _state, reading = cc.pending_roster_reading(pd)
+        _keep, verdict = cc.anything_worth_keeping(pd)
+        hook = _load_hook()
+        from lib import critic_marker as marker  # noqa: PLC0415 — the sweep outcome vocabulary
+        return {
+            "reading+verdict": reading + verdict,
+            "dispatch_refusal": cc.active_dispatch_refusal(pd, 60.0, True),
+            "restore_refusal": cc.restore_refusal(pd, ["correctness.x.json"], False),
+            # The two hook notices that carried the contradiction.
+            "boundary_retained": hook._boundary_retained_marker_notice(
+                pd, marker.SWEEP_RETAINED_LIVE
+            ),
+            "boundary_swept": hook._boundary_swept_marker_notice(pd),
+            "forced_live_sweep": hook._forced_live_sweep_notice(pd, 60.0),
+        }
+
+    @pytest.mark.parametrize("partials", [0, 2])
+    @pytest.mark.parametrize("text", [None, "{not json", "V2", "VALID"])
+    def test_no_composed_message_contradicts_itself(self, tmp_path, text, partials):
+        payload = _payload_for(text)
+        root = tmp_path / f"contra-{text}-{partials}"
+        for name, message in self._compose(root, payload, partials).items():
+            low = message.lower()
+            says_discard = any(d in low for d in self._DISCARD)
+            says_preserve = any(p in low for p in self._PRESERVE)
+            assert not (says_discard and says_preserve), (
+                f"{name} says BOTH under text={text!r} partials={partials}:\n{message}"
+            )
+
+    @pytest.mark.parametrize("partials", [0, 2])
+    @pytest.mark.parametrize("text", [None, "{not json", "V2", "VALID"])
+    def test_every_verdict_matches_the_disk(self, tmp_path, text, partials):
+        """The property that actually has teeth, and the reason the sibling
+        above does not carry this alone.
+
+        Once the readings stopped making keep/discard claims, "says both" became
+        unreachable at the two hook notices — so a mutation putting the
+        hardcoded "Nothing recoverable was attached" back into
+        `_boundary_swept_marker_notice` passed the contradiction test cleanly.
+        A pin that cannot fail is decoration. The real requirement was never
+        internal consistency: it is that the verdict match the DISK. Reviewer
+        output present => no message may tell the operator to discard; none
+        present => no message may promise a `critic-restore` handle for an
+        archive that will be empty.
+        """
+        payload = _payload_for(text)
+        root = tmp_path / f"disk-{text}-{partials}"
+        pd = root / ".prawduct"
+        composed = self._compose(root, payload, partials)
+
+        # Exact clause, not a keyword sweep. A keyword list flagged
+        # `active_dispatch_refusal` for naming `critic-restore` inside a
+        # HYPOTHETICAL ("dispatching now would … until someone ran
+        # `critic-restore` on it by name"), which is not a claim about this
+        # disk at all — the crude version was finding its own noise.
+        _keep, right = cc.anything_worth_keeping(pd)
+        for i in range(partials):
+            (pd / ".critic-partials" / f"role{i}.rev-x.json").unlink()
+        if not partials:
+            (pd / ".critic-partials" / "spare.rev-x.json").write_text("{}")
+        _other, wrong = cc.anything_worth_keeping(pd)
+        assert right != wrong, "fixture guard: the two disks must differ"
+
+        bearing = (self._VERDICT_BEARING_ON_A_VALID_MANIFEST if text == "VALID"
+                   else self._VERDICT_BEARING)
+        for name in bearing:
+            message = composed[name]
+            assert right in message, (
+                f"{name} does not carry the verdict for its disk "
+                f"(text={text!r} partials={partials}). Expected:\n{right}\nGot:\n{message}"
+            )
+            assert wrong not in message, (
+                f"{name} carries the verdict for the OPPOSITE disk "
+                f"(text={text!r} partials={partials}):\n{message}"
+            )
+
+
+class TestTheReviewIdReadIsSharedToo:
+    """The id read, built as a class rather than closed at the site that
+    happened to hurt. Three notices hand-read the manifest for its `id`:
+    one tracebacked on an undecodable manifest; the other two swallowed it, and
+    one of those ran the read first inside the same `except` — a latent ordering
+    hazard no disk could actually show (mutation-checked; `state` there only
+    selects a branch a valid manifest is a precondition for), which is why
+    nothing below pretends to pin it."""
+
+    def test_a_stale_schema_record_still_lends_its_id(self, tmp_path):
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        stale = _manifest_dict()
+        stale.pop("rendezvous")
+        _plant(pd, json.dumps(stale))
+        assert cc.manifest_condition(pd)[0] == cc.MANIFEST_STALE_SCHEMA
+        assert cc.manifest_review_id(pd) == stale["id"]
+
+    @pytest.mark.parametrize("disk", ["absent", "corrupt", "undecodable", "no-id"])
+    def test_no_disk_makes_the_read_raise(self, tmp_path, disk):
+        """The property the three `except` clauses were standing in for — and
+        `undecodable` is the member that used to escape as a traceback."""
+        pd = tmp_path / f"d-{disk}" / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        mpath = pd / ".critic-partials" / "manifest.json"
+        if disk == "corrupt":
+            mpath.write_text("{not json")
+        elif disk == "undecodable":
+            mpath.write_bytes(b"\xff\xfe\x00binary")
+        elif disk == "no-id":
+            without_id = _manifest_dict()
+            without_id.pop("id")
+            mpath.write_text(json.dumps(without_id))
+        assert cc.manifest_review_id(pd) == cc.MANIFEST_ID_UNAVAILABLE
+
+    def test_the_hook_sides_excuse_names_no_channel_it_cannot_verify(self, monkeypatch, tmp_path):
+        """Two excuses, deliberately: "no usable manifest" is the lib's answer
+        about a disk, and the hook's is for having failed to ask at all. But the
+        hook's `except` spans the lazy import AND the classify call, so a
+        sentence blaming the plugin install would be a guess wearing a fact's
+        clothes on the disk where the classifier itself raised. It says what it
+        knows — the id could not be read here — and nothing about why."""
+        hook = _load_hook()
+
+        def _boom():
+            raise RuntimeError("plugin root moved")
+
+        monkeypatch.setattr(hook, "_critic_consolidate", _boom)
+        excuse = hook._review_id_for_notice(tmp_path / ".prawduct")
+        assert excuse != cc.MANIFEST_ID_UNAVAILABLE
+        assert "could not be read" in excuse
+        for channel in ("lib", "plugin", "import", "load"):
+            assert channel not in excuse.lower(), (
+                f"names {channel!r}, which this `except` cannot isolate: {excuse}"
+            )
+        assert hook._is_usable_review_id(excuse) is False
+
+    def test_the_hooks_unknown_default_is_the_modules_word(self):
+        """`cmd_stop` falls back to the literal `"unknown"` where the module it
+        would ask is what failed. Inert while they agree — this is what keeps
+        them agreeing."""
+        hook_src = (
+            Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+        ).read_text()
+        assert f'getattr(_cc, "MANIFEST_UNKNOWN", "{cc.MANIFEST_UNKNOWN}")' in hook_src
+
+
+class TestTheDegradedVerdictIsSharedToo:
+    """The verdict clause has one home; so does what it says when the lib that
+    owns it cannot be reached. Each of the four notices used to carry its own
+    copy of the guard AND of the degraded wording, in the change whose thesis is
+    that a verdict has one home — and the copy said only "could not tell",
+    naming neither a cause nor anything to run, while the sibling degradations
+    in that file all point at `evidence status`."""
+
+    def _degraded(self, monkeypatch, tmp_path):
+        hook = _load_hook()
+
+        def _boom():
+            raise RuntimeError("plugin root moved")
+
+        monkeypatch.setattr(hook, "_critic_consolidate", _boom)
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        return hook, pd
+
+    def test_the_degraded_clause_names_its_cause_and_a_command(self, monkeypatch, tmp_path):
+        hook, pd = self._degraded(monkeypatch, tmp_path)
+        keep, verdict = hook._keep_verdict(pd)
+        assert keep is True, "err toward preserve: the alternative discards real output"
+        assert "RuntimeError" in verdict and "plugin root moved" in verdict
+        assert "prawduct-hook evidence status" in verdict
+
+    def test_a_multi_line_exception_cannot_break_the_notice_shape(self, monkeypatch, tmp_path):
+        """The clause is spliced into a 2-space-indented block, and an
+        exception message is not obliged to be one line — an ImportError
+        carrying a traceback-ish body would have laid its own lines into the
+        middle of an operator notice."""
+        hook = _load_hook()
+
+        def _boom():
+            raise RuntimeError("could not import lib\nbecause the root moved\n  badly")
+
+        monkeypatch.setattr(hook, "_critic_consolidate", _boom)
+        _keep, verdict = hook._keep_verdict(tmp_path / ".prawduct")
+        body = [line for line in verdict.split("\n") if line]
+        assert all(line.startswith("  ") for line in body), verdict
+        assert "because the root moved badly" in verdict, "flattened, not truncated"
+
+    def test_every_notice_takes_its_verdict_from_the_one_helper(self, monkeypatch, tmp_path):
+        """Substituting the helper — not the lib — must move all three boundary
+        surfaces, which is only true while none of them still calls
+        `anything_worth_keeping` itself. The disk is a marker with no manifest
+        (`pending_state` "none"), the one state that reaches the verdict tail:
+        complete, incomplete and unknown each return earlier with a remedy of
+        their own."""
+        hook = _load_hook()
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        from lib import critic_marker as marker  # noqa: PLC0415 — the sweep outcome vocabulary
+
+        monkeypatch.setattr(hook, "_keep_verdict", lambda _pd: (True, "  SENTINEL-CLAUSE\n"))
+        composed = [
+            hook._boundary_retained_marker_notice(pd, marker.SWEEP_RETAINED_LIVE),
+            hook._boundary_swept_marker_notice(pd),
+            hook._forced_live_sweep_notice(pd, 60.0),
+        ]
+        for message in composed:
+            assert "SENTINEL-CLAUSE" in message, message
+
+
+class TestShortDetail:
+    """A validation reason can be a seven-sentence paragraph carrying its own
+    recovery sequence. Embedded in a message that then gives a different
+    remedy, that is one disk with two recovery stories."""
+
+    def test_the_rendezvous_reason_is_not_smuggled_whole_into_a_message(self, tmp_path):
+        """The manifest shape #676 actually describes — a v3-ish record missing
+        only `rendezvous`. No earlier fixture reached it: `_V2_MANIFEST`'s
+        invalid `mode` short-circuits validation first, so the composed output
+        for the MOTIVATING disk had never been read."""
+        manifest = _manifest_dict()
+        manifest.pop("rendezvous")
+        ok, reason = cc.validate_manifest(manifest)
+        assert not ok and "rendezvous" in reason
+        assert len(reason) > 200, "fixture guard: this is the long remedy-bearing reason"
+
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        _plant(pd, json.dumps(manifest))
+        _state, reading = cc.pending_roster_reading(pd)
+        assert "OLDER PRAWDUCT" in reading
+        # The borrowed reason must not bring its own competing remedy along.
+        assert "critic-end" not in reading
+        assert "/reload-plugins" not in reading
+        assert len(reading) < len(reason)
+
+    def test_short_detail_keeps_a_short_reason_intact(self):
+        assert cc.short_detail("missing/empty 'id'") == "missing/empty 'id'"
+
+    def test_short_detail_is_empty_for_no_detail(self):
+        assert cc.short_detail("") == ""
+
+    def test_the_hard_cap_is_the_backstop_when_there_is_no_sentence_to_cut_at(self):
+        """The clause split handles reasons that HAVE sentence ends; the cap is
+        what stands between a message and a 700-character reason that has none.
+        Every other test here exercises it incidentally and asserts nothing
+        about it, so deleting the branch shipped green — the standard this
+        bundle set for itself is that a pin which cannot fail is decoration."""
+        run_on = "rendezvous covers " + ", ".join(f"role{i}" for i in range(60))
+        assert len(run_on) > 400 and ". " not in run_on and "; " not in run_on
+        short = cc.short_detail(run_on)
+        assert len(short) <= cc._DETAIL_MAX_CHARS
+        assert short.endswith("\u2026")
+        assert short[:40] == run_on[:40]
+
+
+class TestManifestConditionIsTotal:
+    """The vocabulary is only a vocabulary if every disk maps into it."""
+
+    def test_undecodable_manifest_is_corrupt_not_a_traceback(self, tmp_path):
+        """`read_text()` raises UnicodeDecodeError — a ValueError, not a
+        JSONDecodeError — so the narrower clause let it out of a refusal at the
+        one moment the caller was trying to explain a broken file."""
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        (pd / ".critic-partials" / "manifest.json").write_bytes(b"\xff\xfe\x00binary")
+        condition, detail, manifest = cc.manifest_condition(pd)
+        assert condition == cc.MANIFEST_CORRUPT
+        assert detail and manifest is None
+        # ...and every surface that composes it survives the same disk.
+        assert cc.pending_roster_reading(pd)[0] == "unreadable"
+        assert cc.restore_refusal(pd, ["x.json"], False)
+        assert cc.anything_worth_keeping(pd)[0] is False
+        # The surface #676 was filed against, and the one an earlier version of
+        # this test left out: `active_dispatch_refusal` hand-read the manifest
+        # under the narrow `except`, so the widening landed everywhere EXCEPT
+        # the refusal that motivated it and this disk tracebacked out of
+        # `critic-begin` instead of refusing.
+        refusal = cc.active_dispatch_refusal(pd, 60.0, True)
+        assert "id unavailable" in refusal
+        # The two members the FIRST enumeration of this class missed, both
+        # reachable and both worse than the refusal: `_archive_leftovers` runs
+        # inside `begin_review` on exactly this disk (an unusable manifest is
+        # why the sweep is reached at all), and `consolidate` is driven by the
+        # SubagentStop hook. Composed here rather than trusted to the site list,
+        # because a class closed at the sites someone remembered is how this one
+        # survived two rounds.
+        (pd / ".critic-partials" / "correctness.rev-x.json").write_text("{}")
+        archived = cc._archive_leftovers(pd)
+        assert archived is not None and archived.name.startswith("unmanifested-")
+        assert (archived / "correctness.rev-x.json").is_file()
+
+    def test_a_stale_schema_record_still_lends_the_refusal_its_id(self, tmp_path):
+        """The reason the refusal reads the classifier's RECORD and not just a
+        `valid` verdict: a manifest can fail validation on some other field and
+        still carry the id the operator needs to name the review."""
+        pd = tmp_path / ".prawduct"
+        (pd / ".critic-partials").mkdir(parents=True)
+        stale = _manifest_dict()
+        stale.pop("rendezvous")
+        _plant(pd, json.dumps(stale))
+        assert cc.manifest_condition(pd)[0] == cc.MANIFEST_STALE_SCHEMA
+        assert stale["id"] in cc.active_dispatch_refusal(pd, 60.0, True)
+
+    def test_non_object_json_is_corrupt_rather_than_an_older_prawduct(self):
+        """STALE-SCHEMA is a claim about provenance — the readings spell it "an
+        OLDER PRAWDUCT wrote this" — so a file holding `null`, a number or a
+        string must not land there. It parses and fails validation exactly as a
+        v2 record does, but no prawduct ever wrote it, and the version-skew
+        story sends an operator looking for an upgrade that does not exist."""
+        import tempfile  # noqa: PLC0415 — one-off disk, no fixture needed
+        for payload in ("null", "3", '"a string"', "[1, 2]"):
+            pd = Path(tempfile.mkdtemp()) / ".prawduct"
+            (pd / ".critic-partials").mkdir(parents=True)
+            _plant(pd, payload)
+            condition, detail, manifest = cc.manifest_condition(pd)
+            assert condition == cc.MANIFEST_CORRUPT, payload
+            assert manifest is None and detail
+            assert "OLDER PRAWDUCT" not in cc.pending_roster_reading(pd)[1], payload
+
+    def test_the_unknown_word_belongs_to_the_module(self):
+        """A caller that catches an exception needs a word for "could not
+        tell"; inventing one at the call site re-opens in miniature the split
+        this module exists to close."""
+        assert cc.MANIFEST_UNKNOWN == "unknown"
+        assert cc.MANIFEST_UNKNOWN not in {
+            cc.MANIFEST_ABSENT, cc.MANIFEST_CORRUPT,
+            cc.MANIFEST_STALE_SCHEMA, cc.MANIFEST_VALID,
+        }
+
+
+class TestRestoreRefusalDescribesTheDisk:
+    """`restore_refusal` carried the same defect in miniature and had no test
+    of its own — it printed "no readable dispatch manifest" for an ABSENT
+    manifest and for a stale-schema one alike."""
+
+    def _refuse(self, tmp_path, text=None):
+        (tmp_path / ".prawduct").mkdir(parents=True)
+        if text is not None:
+            _plant(tmp_path / ".prawduct", text)
+        return cc.restore_refusal(tmp_path / ".prawduct", ["correctness.x.json"], False)
+
+    def test_absent(self, tmp_path):
+        message = self._refuse(tmp_path / "a")
+        assert "no dispatch manifest" in message
+        assert "older prawduct" not in message
+
+    def test_corrupt(self, tmp_path):
+        message = self._refuse(tmp_path / "c", "{not json")
+        assert "not valid JSON" in message
+
+    def test_stale_schema(self, tmp_path):
+        message = self._refuse(tmp_path / "s", json.dumps(_V2_MANIFEST))
+        assert "older prawduct" in message
+
+    def test_all_three_stay_distinguishable(self, tmp_path):
+        messages = [
+            self._refuse(tmp_path / f"d{i}", text)
+            for i, text in enumerate((None, "{not json", json.dumps(_V2_MANIFEST)))
+        ]
+        assert len(set(messages)) == 3, messages
+
+    def test_every_condition_still_names_critic_discard(self, tmp_path):
+        """The remedy is what this surface exists for, and it must survive the
+        message split — `critic-end` would send the caller back to an identical
+        refusal, which is the failure the function's docstring names."""
+        for i, text in enumerate((None, "{not json", json.dumps(_V2_MANIFEST))):
+            message = self._refuse(tmp_path / f"r{i}", text)
+            assert "prawduct-hook critic-discard" in message
+            assert "archived, never deleted" in message
+
 
 # ---------------------------------------------------------------------------
 # Integration: real git + real ledger-append through the hook
@@ -1979,6 +2682,24 @@ class TestConsolidateIntegration:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "consolidated:" in result.stdout
         assert cc._BATCH_FIX_DIRECTIVE in result.stdout
+
+    def test_an_undecodable_manifest_exits_one_rather_than_tracebacking(self, tmp_path):
+        """The CLI leg of the same class. This path is driven by the
+        SubagentStop hook, so a traceback here surfaces as a hook crash rather
+        than as the "manifest unreadable" refusal the code already had — the
+        narrow `except` simply never covered the byte sequence that produces
+        it."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        (repo / PARTIALS_REL / "manifest.json").write_bytes(b"\xff\xfe\x00binary")
+
+        result = _run_consolidate(repo)
+        assert result.returncode == 1, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "manifest unreadable" in result.stderr
+        assert "Traceback" not in result.stderr
 
     def test_clean_pass_does_not_carry_the_fix_strategy(self, tmp_path):
         """Zero findings, zero fix advice — a clean review that ended with
@@ -2839,12 +3560,13 @@ class TestBeginArchivesLeftovers:
 
     def test_a_traversal_shaped_manifest_id_archives_under_the_fallback_name(self, tmp_path):
         # The hostile twin of the fallback test above. `_archive_leftovers`
-        # reads the manifest RAW — deliberately, since it must also work when
-        # the manifest is unreadable — so `validate_manifest`'s component gate
-        # never runs on this path, and the id becomes a directory name
-        # unchecked. `rev-../../escape` walked up out of the archive dir; and
-        # the failure is silent by construction, because a successful traversal
-        # prints nothing and an OSError degrades to DELETE.
+        # takes the id from a record that may be STALE-SCHEMA — it must work
+        # when the manifest is unusable, which is the case that reaches it — so
+        # the validator's verdict is discarded here and the id becomes a
+        # directory name on the strength of the local component gate alone.
+        # `rev-../../escape` walked up out of the archive dir; and the failure
+        # is silent by construction, because a successful traversal prints
+        # nothing and an OSError degrades to DELETE.
         repo = self._repo_with_leftovers(tmp_path, "rev-../../escape")
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
