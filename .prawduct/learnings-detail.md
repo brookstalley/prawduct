@@ -4490,3 +4490,44 @@ is withheld.
 Generalises past reviewers: any filter over an agent's inputs — context pruning, scope narrowing,
 tool restriction, a cheaper model — removes evidence in both roles at once, and the cheap reading
 of the result is almost always the flattering one.
+
+## When a fix NARROWS a detector, the verification set must contain the TRUE POSITIVES it exists to catch
+
+`record_lint._frontmatter_break` grades a build-plan YAML header no parser can read. Its first
+version reported three legal shapes as broken, so the fix widened what may follow a closing quote
+from `#` alone to `#:,]}` — admitting the punctuation a scalar inside a multi-line `[...]` closes
+onto.
+
+Inert for legal YAML, because those continuation lines carry no `- `/`key: ` marker and a companion
+change had already stopped them opening a scalar at all. Live for the break case, where a scalar is
+*already open*: in `a: "one` / `b: ", two"` the unterminated scalar swallows the next line and closes
+on its quote, stranding `, two"`. Reported before the fix; silently passed after it. `governed-by-gap`
+is a machine-answered channel a reviewer relays verbatim, so the miss surfaces to nobody.
+
+Six shapes were run to verify the fix and all six were shapes the review had named as *legal*. The
+check that the wolf-crying had stopped was thorough; nothing asked whether the barking had. The two
+outcomes are indistinguishable in the only number anyone looks at.
+
+Generalises to every threshold loosened after a false positive — a linter rule, an alert, a retry
+predicate, a spam filter. The regression test that matters is not the false alarm you removed; it is
+the true positive you might have taken with it.
+
+## When a change redefines a FIELD, enumerate its READERS, not the documents that describe it
+
+`files_reviewed` was narrowed from an interval's whole diff to its findings-eligible subset. The plan
+enumerated "surfaces this concept touches" and got all five prose files right. It never enumerated
+the four modules that *compare against* the field, and two of them broke silently in the expensive
+direction: `critic_consolidate._scope_widened` and `critic_mode`'s rules 1 and 1b all measure a raw
+delta against `files_reviewed`, so once that side narrowed, prose riding along on a fix tightened the
+threshold and demoted a cheap verify pass into a full review round — the exact cost the change
+existed to remove, reintroduced by the change.
+
+The second was found only by grepping every consumer of the field after fixing the first. A third
+hazard sits behind both and outlives them: facts written *before* the narrowing still carry the old
+meaning, so a reader meets both and any comment asserting "this field holds only judgeable paths" is
+false of half its inputs.
+
+A documentation-surface enumeration reads like completeness because it is exhaustive over the wrong
+set. Prose describes a field; code compares against it, and only the second silently changes
+behaviour.
+

@@ -566,3 +566,8 @@ never by dropping them.
 ## A general policy sentence is NOT evidence that a specific procedure in the same document inherits what you are adding — read that procedure end to end and ask what it RE-STATES, because restating a step it would inherit means replacing, not supplementing. Tell: you answered "does B inherit from A?" from a sentence about the class — [learnings-detail.md]
 
 ## When one rule is carried by two surfaces on purpose, pin it in the module that reads BOTH — a bar reworded in one carrier is two bars for one decision, and no single-file guard sees that. Bound the assertion to the smallest region that must carry the phrase. Tell: a mutation stays green on a neighbouring sentence — [learnings-detail.md]
+
+## When a fix NARROWS a detector, the verification set must contain the TRUE POSITIVES it exists to catch, not only the false alarms you narrowed it to stop — suppressing a real detection and removing a false one read identically at the call site: zero findings. Tell: every shape you tested is one you were told was legal — [learnings-detail.md]
+
+## When a change redefines a FIELD, enumerate its READERS, not the documents that describe it — a surface list reads like completeness and is blind to the consumers comparing against the field's old meaning. Tell: your plan lists "surfaces this concept touches" and the field is a published key other modules compare against — [learnings-detail.md]
+

@@ -104,18 +104,21 @@ Deliberately not built here, each with why:
 ## Status
 
 - [x] Chunk 01: Cost-to-clear rendered on every finding
-- [ ] Chunk 02: Judgeability governs review scope; Records Pass covers what it drops
+- [x] Chunk 02: Judgeability governs review scope; Records Pass covers what it drops
 - [ ] Chunk 03: Round budget, auto-accept at exhaustion, and the yield prose correction
 
 Context: Plan authored 2026-08-25 from `review-loop-nontermination-diagnosis.md`, owner-approved
 scope (options 1 + B + A of seven framed). **Chunk 01 complete** — `fix_cost` on every finding,
 reviewed `cumulative` (rev-20260825T125948Z-a43f7fae): 0 blocking, 3 warning, 2 note; R-4/R-5
-accepted, R-2/R-3 fixed in a batch `cost-of-commit` priced free (no round bought). **Chunk 02 built, review
-pending** — `review_edges` claim re-verified first, then `files_reviewed` narrowed to the
+accepted, R-2/R-3 fixed in a batch `cost-of-commit` priced free (no round bought). **Chunk 02 complete** — `review_edges` claim re-verified first, then `files_reviewed` narrowed to the
 findings-eligible subject set with `files_oracle` delivered beside it, a Records Pass added as the
 third final-mode cross-check, and the guard test that fails when the oracle is withheld. Chunk 01's
 carried R-1 (relational FREE phrase) and the latent plan-frontmatter defect (`governed-by-gap` now
-grades an unparseable header) rode this chunk's commit. **RC9 is absorbed into Chunk 03 by owner
+grades an unparseable header) rode this chunk's commit. Reviewed `cumulative`
+(rev-20260825T135438Z-39bd933b): 0 blocking, 5 warning, 15 note — twelve fixed in one commit, six
+accepted, R-2/R-10 accepted and carried below; then two `verify-resolutions` rounds, the first
+returning one BLOCKING (my own regression in the frontmatter check) and the second clean at
+rev-20260825T143252Z-9b65d4f9. Coverage gate `satisfied`. **RC9 is absorbed into Chunk 03 by owner
 decision** — the `--fixed` disposition, guarded by the judgeability predicate at record time.
 Next: Chunk 03, whose budget (6 rounds, on by default, `null` disables) is already decided.
 
@@ -304,6 +307,18 @@ falsify the premise:
   partial that fails closed in the documented direction; take it only if the classifier is scoped out
   here, and say which was chosen. **This is a requirement that surfaced mid-build and it is written
   here rather than designed in chat**, per the mid-build tripwire.
+
+- **Carried in from Chunk 02's verify pass** (observation, not a recorded finding — the pass that
+  saw it returned clean): **the no-work refusal takes the wrong exit code, and the exit table then
+  buys a round.** `begin_review`'s `not delta and not actionable` branch returns a bare
+  `{"status": "error"}`, which surfaces as **exit 1**, because it is an early return sitting ABOVE
+  the gate-as-dispatcher free-edge path that owns exit 3. Semantically it is a `no review needed`,
+  and `SKILL.md`'s exit table routes *exit 1 on `verify-resolutions`* to "re-dispatch per the
+  demotion property" — which here means spending a full `cumulative` on a bundle the gate already
+  reports `satisfied`. That is a manufactured round produced by the framework's own routing, which
+  is this plan's whole subject; it belongs beside the budget rather than after it. Fix: give the
+  branch exit 3 with its existing message, and check whether the table needs anything said. Rides
+  this chunk's commit; standalone it re-opens the gate for no behavioural gain.
 
 - **Yield emission is a deliverable, not a nicety** (`nonfunctional-requirements.md` § Direction:
   a new control must emit its yield observably, or it can never be retired on evidence). The
