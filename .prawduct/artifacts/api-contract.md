@@ -286,9 +286,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
   their **exit codes**, not parsed text.
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
   a documented key set, consumed by a specific skill:
-  - `coverage-status --json` / `coverage-scaffold --json` → doctor, **partly**: Health Check #11
-    runs the bare command and relays its human form, and reaches for `--json` only to distinguish
-    `discovery_expected` false from null. Keys (`structural_recorded`,
+  - `coverage-status --json` → doctor, **partly**: Health Check #11 runs the bare command and
+    relays its human form, reaching for `--json` only to distinguish `discovery_expected` false from
+    null. **`coverage-scaffold --json` has no consumer** — #11 runs it bare and with `--apply`.
+    Keys (`structural_recorded`,
     `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
     `applied`, `created[]`). `discovery_expected` is the layer-0 staging half, and it has **three**
     states, not two. **False** = no product work *this scan recognises* — it reads source by suffix

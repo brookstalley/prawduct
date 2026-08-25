@@ -19,6 +19,7 @@ did not.
 from __future__ import annotations
 
 import ast
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -382,6 +383,27 @@ def test_repair_declines_an_owner_edited_anchor(tmp_path: Path):
     assert (root / "CLAUDE.md").read_bytes() == before
 
 
+def test_inserting_into_a_crlf_file_does_not_mix_endings(tmp_path: Path):
+    """The `absent` path had the CRLF defect the `stale` path was fixed for.
+
+    Reading with `newline=""` keeps a CRLF document intact, but the anchor
+    constant is LF-only — so the insert branch spliced LF lines into a CRLF file
+    and handed back a mixed-ending document. A whole-file diff dressed as a
+    one-block edit, and the same class the swap branch had already closed.
+    """
+    root = tmp_path / "crlf-insert"
+    root.mkdir()
+    (root / "CLAUDE.md").write_bytes(
+        (_PRODUCT_HEAD + "## Mine\n\nkeep me\n").replace("\n", "\r\n").encode("utf-8")
+    )
+    assert ar.repair(root, apply=True)["applied"] is True
+
+    raw = (root / "CLAUDE.md").read_bytes()
+    assert raw.count(b"\n") == raw.count(b"\r\n"), "no bare LF may be introduced"
+    assert ar.NOTICE_PROBE.encode() in raw
+    assert b"keep me" in raw
+
+
 def test_absent_anchor_is_inserted_through_the_one_inserter(tmp_path: Path):
     """`absent` delegates to `apply_claude_anchor` rather than inserting again.
 
@@ -498,11 +520,93 @@ def test_the_current_anchor_is_never_listed_as_superseded(tmp_path: Path):
     when the next revision lands instead of appending beside it.
     """
     assert STATIC_ANCHOR.strip() not in ar.SUPERSEDED_ANCHORS
-    for old in ar.SUPERSEDED_ANCHORS:
-        assert ar.NOTICE_PROBE not in old, (
-            "a superseded anchor carrying the notice would grade `ok` and never "
-            "be reachable as `stale`"
+    # No second assertion that an archived anchor must LACK the notice. It was
+    # true only while `check` asked the notice probe first, and this bundle
+    # reversed that ordering — the archive is now consulted before the probe, so a
+    # superseded anchor carrying the notice is still reachable as `stale`. Left in
+    # place it would have closed the archive structurally: every anchor from here
+    # on carries the notice, so the day one of them is superseded, the sibling
+    # tag guard demands the append and this assertion forbids it.
+
+
+class TestCommand:
+    """The chunk names `plugin/bin/prawduct-hook` as a deliverable, so the command
+    is driven rather than only its lib.
+
+    Ported from `test_norm_index_scaffold.py::TestCommand`, which is the precedent
+    this module cites — and whose own docstring records that testing the lib alone
+    left the formatter, `--json` and both exit-code mappings executing in no test
+    at all. Citing that precedent while not copying its test file is the active
+    learnings rule "When you cite a precedent, COPY ITS TEST FILE FIRST", and this
+    module re-instanced it: `_run` drove the binary four times and read only
+    `returncode`.
+
+    **The confirmation block is the load-bearing part.** `security-model.md`
+    § Direction requires one informed approval naming the blast radius before a
+    repair rewrites a file the framework did not author. That approval IS this
+    stdout. Untested, it could be dropped or truncated and ship green.
+    """
+
+    def test_the_human_dry_run_prints_the_whole_replacement(self, tmp_path: Path):
+        root = _write_claude(tmp_path / "cmd-preview", ar.ANCHOR_V2)
+        result = _run(root)
+        assert result.returncode == 0
+        assert "dry-run" in result.stdout
+        assert "Would rewrite" in result.stdout
+        # The entire anchor, not a summary of it — an approval given for text the
+        # owner has not seen is not informed.
+        for line in STATIC_ANCHOR.strip().split("\n"):
+            assert f"| {line}" in result.stdout, f"preview omits: {line!r}"
+
+    def test_the_absent_preview_says_insert_not_rewrite(self, tmp_path: Path):
+        root = _write_claude(tmp_path / "cmd-insert", None)
+        result = _run(root)
+        assert "Would insert into" in result.stdout
+        assert "Would rewrite" not in result.stdout
+
+    def test_a_declined_status_prints_no_offer(self, tmp_path: Path):
+        """`legacy-block` must not print a preview it will refuse to apply."""
+        legacy = "<!-- PRAWDUCT:BEGIN -->\n\nheavy\n\n<!-- PRAWDUCT:END -->"
+        root = _write_claude(tmp_path / "cmd-legacy", legacy)
+        result = _run(root)
+        assert result.returncode == 0
+        assert ar.STATUS_LEGACY_BLOCK in result.stdout
+        assert "/prawduct:migrate" in result.stdout
+        assert "Would " not in result.stdout, "an offer that cannot be honoured is worse than none"
+
+    def test_apply_reports_the_write_not_the_defect_it_fixed(self, tmp_path: Path):
+        """The success report, which `--apply` got wrong for a whole review round.
+
+        `repair` starts from `check`'s dict, so a successful write kept returning
+        `stale` and the prose describing the lying anchor. Only `applied`
+        distinguished success from refusal — and the CLI's confirmation block is
+        gated on `not applied`, so it printed the defect and stopped.
+        """
+        root = _write_claude(tmp_path / "cmd-apply", ar.ANCHOR_V2)
+        result = _run(root, "--apply")
+        assert result.returncode == 0
+        assert ar.STATUS_STALE not in result.stdout, (
+            "a repair that worked must not report the condition it repaired"
         )
+        assert f"reanchor (apply): {ar.STATUS_OK}" in result.stdout
+
+    def test_json_publishes_the_documented_key_set(self, tmp_path: Path):
+        """`api-contract.md` publishes these keys; nothing executed this branch."""
+        root = _write_claude(tmp_path / "cmd-json", ar.ANCHOR_V2)
+        result = _run(root, "--json")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert set(data) >= {
+            "status", "path", "repairable", "detail", "applied", "replacement",
+        }
+        assert data["status"] == ar.STATUS_STALE
+        assert data["applied"] is False
+        assert data["replacement"] == STATIC_ANCHOR.strip()
+
+    def test_json_after_apply_reports_ok(self, tmp_path: Path):
+        root = _write_claude(tmp_path / "cmd-json-apply", ar.ANCHOR_V2)
+        data = json.loads(_run(root, "--apply", "--json").stdout)
+        assert data["status"] == ar.STATUS_OK and data["applied"] is True
 
 
 @pytest.mark.parametrize(

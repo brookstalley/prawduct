@@ -63,7 +63,7 @@ import time, so the infrastructure stays feature-agnostic.
 from __future__ import annotations
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .migrate_plugin import INSTALL_REFERENCE, install_reference_drift
+from .migrate_plugin import INSTALL_REFERENCE, PLUGIN_ID, install_reference_drift
 
 FEATURE = "install-reference"
 PROBE_VERSION = 1
@@ -71,7 +71,7 @@ PROBE_VERSION = 1
 #: The one contract field whose drift is not a *version* problem — governance is
 #: off rather than pinned, so it earns a different consequence clause. Derived
 #: from the contract's own key so it tracks a rename.
-_ENABLED_PLUGINS_FIELD = f"enabledPlugins.{next(iter(INSTALL_REFERENCE['enabledPlugins']))}"
+_ENABLED_PLUGINS_FIELD = f"enabledPlugins.{PLUGIN_ID}"
 
 
 def _fmt(value: object) -> str:

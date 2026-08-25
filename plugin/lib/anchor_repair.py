@@ -136,6 +136,27 @@ ANCHOR_V2 = ANCHOR_V1.replace(
 SUPERSEDED_ANCHORS: tuple[str, ...] = (ANCHOR_V1, ANCHOR_V2)
 
 
+def _record_success(result: dict, verb: str) -> None:
+    """Turn a graded finding into a report of the write that closed it.
+
+    ``repair`` starts from ``check``'s dict, so without this a successful
+    ``--apply`` hands back the status and the detail that DESCRIBED THE DEFECT —
+    "stale", and the prose about an anchor that lies to plugin-less clones — with
+    only ``applied`` distinguishing it from a refusal. The CLI prints exactly
+    that and stops, ``--json`` publishes it, and doctor maps every non-``ok``
+    status to degraded: a repair that worked would have been reported as the
+    problem it had just fixed. Both cited precedents (``learnings_obligation``,
+    ``norm_index_scaffold``) return their OK status on success, and this is that
+    line.
+    """
+    result["status"] = STATUS_OK
+    result["repairable"] = False
+    result["detail"] = (
+        f"{CLAUDE_REL}'s governance anchor was {verb} — it now tells a session without "
+        f"the plugin that governance is off and names `{NOTICE_PROBE}`"
+    )
+
+
 def _read(path: Path) -> str | None:
     """The file's text, or ``None`` when it is not decodable as UTF-8.
 
@@ -178,7 +199,7 @@ def _match_superseded(text: str) -> tuple[str, str] | None:
 def check(project_dir: Path) -> dict:
     """Grade this repo's governance anchor. Reads only; writes nothing.
 
-    Five answers, and the two "not current" ones are deliberately distinct
+    Six answers, and the two "not current" ones are deliberately distinct
     because they route to different people: ``stale`` is prawduct's to fix and
     ``stale-modified`` is the owner's. Collapsing them would either offer a repair
     that cannot run or refuse one that can.
@@ -313,6 +334,8 @@ def repair(project_dir: Path, apply: bool = False) -> dict:
                 # the status doctor advertises as "the repair inserts one", so the
                 # unguarded path was the advertised one.
                 result["applied"] = apply_claude_anchor(project_dir)
+                if result["applied"]:
+                    _record_success(result, "inserted")
             except (OSError, UnicodeError) as exc:
                 result.update({
                     "status": STATUS_UNWRITABLE,
@@ -358,5 +381,6 @@ def repair(project_dir: Path, apply: bool = False) -> dict:
             })
             return result
         result["applied"] = True
+        _record_success(result, "rewritten")
 
     return result

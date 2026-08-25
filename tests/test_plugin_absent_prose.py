@@ -52,6 +52,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT / "plugin") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "plugin"))
 
+from lib import anchor_repair  # noqa: E402
 from lib.migrate_plugin import PLUGIN_ID  # noqa: E402
 
 #: The command every surface must name, built from the install contract rather
@@ -182,9 +183,20 @@ def test_doctor_grades_the_anchor_by_running_the_command():
     text = (_REPO_ROOT / "plugin/skills/doctor/SKILL.md").read_text(encoding="utf-8")
     check4 = text.split("4. **Static governance anchor**", 1)[1].split("\n5. ", 1)[0]
     assert "prawduct-hook reanchor" in check4
-    # All four non-healthy statuses route somewhere; `stale-modified` in
-    # particular must not be described as repairable, because the repair declines
-    # it by design and an offer that cannot be honoured is worse than none.
-    for status in ("stale", "stale-modified", "absent", "unreadable"):
-        assert f"`{status}`" in check4, f"Health Check #4 does not say what `{status}` means"
+    # EVERY non-ok status the code can return, derived from the module rather than
+    # transcribed. A transcribed list is what shipped: it asserted four while the
+    # grader returned six, and it lagged silently inside the very bundle that
+    # added `legacy-block` and `unwritable`. `stale-modified` in particular must
+    # not be described as repairable — the repair declines it by design, and an
+    # offer that cannot be honoured is worse than none.
+    graded = {
+        value
+        for name, value in vars(anchor_repair).items()
+        if name.startswith("STATUS_") and value != anchor_repair.STATUS_OK
+    }
+    for status in sorted(graded):
+        assert f"`{status}`" in check4, (
+            f"Health Check #4 does not say what `{status}` means — the grader can "
+            "return it, so a doctor session meeting it has no rubric"
+        )
     assert "--apply" in check4, "the repair must be offered explicitly, not implied"

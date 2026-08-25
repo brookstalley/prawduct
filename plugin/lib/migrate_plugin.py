@@ -423,6 +423,14 @@ def apply_claude_anchor(project_dir: Path) -> bool:
         base = original.rstrip("\n")
         new = f"{base}\n\n{anchor}\n" if base else f"{anchor}\n"
 
+    # Match the file's OWN endings before writing. Reading with newline="" keeps
+    # a CRLF document intact, but `anchor` is LF-only — so splicing it in produced
+    # a file with mixed endings, which is a whole-file diff dressed as a one-block
+    # edit. Detected from the document rather than assumed: a file with no CRLF at
+    # all is left exactly as it is.
+    if "\r\n" in original and "\r\n" not in anchor:
+        new = new.replace("\r\n", "\n").replace("\n", "\r\n")
+
     if new == original:
         return False
     # Atomic, and endings-preserving: this is the product's own instruction file,

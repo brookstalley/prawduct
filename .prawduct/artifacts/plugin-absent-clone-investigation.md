@@ -136,6 +136,19 @@ reads it cannot install the plugin itself — installation is a shell command it
 the anchor degrades to "tell the human." That is a large improvement on silence and is not
 enforcement, and no wording makes it enforcement.
 
+## The follow-up this deliberately did not build
+
+**An ambient advisory probe for a stale or lying anchor.** `/prawduct:doctor` is invoked, not
+emitting — so under the approved scope a repo whose anchor still promises an unconditional Stop gate
+stays silent until somebody thinks to run a health check on a repo that appears to be working. That
+is the same "nobody runs a health check on a repo that looks fine" difficulty
+`install_reference_probes.py` was written for, and that module is the model to copy: cause-agnostic,
+state-not-event, self-resolving, `info` priority so it never reaches the person-facing relay.
+
+It was not built because it is scope the owner did not approve, and the bounded exception is
+recorded against the proportionality norm in the build plan's `governed_by` dispositions. **Build it
+if the doctor route proves too quiet** — the signal would be repos that stay stale across releases.
+
 ## Out of scope
 
 - Changing `INSTALL_REFERENCE` (it is correct).
