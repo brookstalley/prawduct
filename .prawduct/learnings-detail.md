@@ -4458,3 +4458,35 @@ closing keywords only for merges into the repository's *default* branch, so on a
 inert. And this arrangement has no detector: `documentation/backlog-service-requirements.md` **GV3**
 replaces ship-atomicity with traceability plus a reconciliation sweep, and the sweep is prescribed
 but unbuilt, so the step running is the whole guarantee.
+
+## When a control narrows what a REVIEWER sees, say which of the two roles it narrows
+
+Caught by the owner, not by a reviewer, while Chunk 01 of `review-loop-termination` was already
+building. The plan's Chunk 02 said "drop non-judgeable files from per-round reviewer scope",
+justified by a real measurement: of 3,826 findings across 728 review facts, 1,372 (36%) cite only
+non-judgeable files, and 5,869 of 14,860 file-slots handed to reviewers (39%) are non-judgeable.
+Both numbers are correct. The inference from them was not.
+
+The owner's question was: if docs are only reviewed at final/cumulative, what happens when the docs
+are right and the code is wrong against them? Checking it made the hole bigger than the question.
+`is_judgeable_path` returns False for everything under `.prawduct/` — which is the build plan, every
+`artifacts/*.md`, `project-preferences.md`, and `cross-cutting-concerns.md`. And `goals-1-3.md`
+step 3 instructs the reviewer to read a change's build plan and every artifact it cites, because
+Goal 2 ("every requirement implemented or explicitly descoped") and Goal 3's norm-departure check
+both rate **BLOCKING** and both need the spec in hand.
+
+So the narrowing would have removed the reviewer's oracle. A finding of the form "the code violates
+this spec" has the *code* as its subject and survives untouched — those are the `mixed`-target class,
+692 findings, and they were never the 1,372 the change was aimed at. Subject and oracle are
+different sets and the measurement only ever spoke to the first.
+
+The part worth carrying past this instance is the verification failure. Blinding the reviewer and
+narrowing the reviewer produce the same observable: fewer findings, less reader load. That is the
+chunk's *success metric*. A metric that moves the right way for the wrong reason cannot falsify the
+change it was chosen to prove, so the acceptance criterion had to be rewritten from "the count fell"
+to "the dispatched reviewer's oracle set contains this plan", with a test that fails when the oracle
+is withheld.
+
+Generalises past reviewers: any filter over an agent's inputs — context pruning, scope narrowing,
+tool restriction, a cheaper model — removes evidence in both roles at once, and the cheap reading
+of the result is almost always the flattering one.

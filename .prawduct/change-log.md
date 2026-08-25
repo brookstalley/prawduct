@@ -14,8 +14,8 @@ that same round was run to close. A builder told to "fix anything cheap" reads *
 and the smallest fixes — a change-log sentence, a stale count — are exactly the ones where the
 surface, not the size, sets the price.
 
-Measured on this repo's evidence store: of 3,834 findings across 732 reviews, **1,374 cite only
-non-judgeable files** and were free to fix all along, while 2,367 buy a round and 93 cite no file at
+Measured on this repo's evidence store: of 3,826 findings across 728 reviews, **1,372 cite only
+non-judgeable files** and were free to fix all along, while 2,361 buy a round and 93 cite no file at
 all. Nothing at the decision point told those three classes apart.
 
 `.critic-findings.json` now carries a `fix_cost` on every finding. The predicate is

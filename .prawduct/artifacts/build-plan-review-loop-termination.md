@@ -18,25 +18,38 @@ governed_by:
       - "every fact has one home; every other mention is a reference → conforms — Chunk 01 reuses `is_judgeable_path` rather than restating the predicate, and the measured yield figure gets exactly one home"
       - "goals and verification bind; prescribed method is advice → conforms — the call sites named in Deliverables are this plan's best guess, and a builder who finds a better route takes it and records why"
       - "prawduct guides and reviews; it never implements → inapplicable because this is framework work on prawduct itself, not on a governed product"
+      - "local-first: governance coordination is process-spawn + files + the git object database, no network, no third-party runtime deps -> conforms - every figure this plan renders is derived from the local evidence store at call time"
+      - "the plugin writes nothing into a governed repo except its own .prawduct/ state, the shared evidence store, and the files it must reconcile -> conforms - the only new write is a key inside .critic-findings.json, which is already the plugin own state"
+      - "prawduct is written in Python and must never be specific to Python -> conforms - judgeability is decided by path, and no part of this plan inspects source content or assumes a product language"
   - artifact: data-model
     dispositions:
       - "governance verdicts are computed from the append-only ledger, never from mutable model-written state → conforms — the budget is derived from existing review facts and introduces no new mutable state"
       - "facts are immutable and append-only → conforms — auto-accept appends disposition facts and edits nothing"
       - "derived views are disposable and never authoritative; no gate reads a view → conforms, with constraint — Chunk 01 writes cost into `.critic-findings.json`, which is a view, so no gate may key on it"
+      - "a governance document reaches a terminal state; it is never deleted -> conforms - this plan will be archived, not deleted, and it deletes no document"
+      - "every issue written to the backlog store conforms to the issue standard section 1 title rules -> inapplicable because no chunk here writes to the backlog store"
+      - "a fact written by a newer schema than the reader is surfaced as a loud block -> conforms - no chunk changes the fact schema; the budget derives from facts already written and auto-accept appends existing disposition facts"
+      - "two stores, two lifetimes: shared committed answers kept distinct from per-clone gitignored nags and caches -> conforms - fix_cost lands in the gitignored view, the budget reads the shared store, and neither crosses"
+      - "backlog_service_repo selects which backlog store is authoritative -> inapplicable because no chunk here reads or writes a backlog store"
   - artifact: observability-strategy
     dispositions:
       - "stable severity-prefix vocabulary; stdout agent-facing, stderr user-and-diagnostics → conforms — the budget refusal uses the existing vocabulary and channel split"
       - "emitted text names no prawduct-internal identifier → conforms — cost strings and the refusal message are plain language"
+      - "the governance ledger has a single writer (ledger-append); agents never hand-author it -> conforms - no chunk writes the ledger; the budget yield emission goes to the evidence store through its existing append helper"
   - artifact: api-contract
     dispositions:
       - "exit codes are the contract, documented and consistent → conforms — the budget refusal takes a NEW documented exit code; it does not overload `critic-begin`'s existing exit 3 (`no review needed`), which answers a different question"
       - "additive-first evolution; existing flags, exit-code meanings and `--json` keys are never repurposed → conforms — the cost field is an additive key"
+      - "whole-surface semver on the plugin; persisted data outliving a plugin version is independently schema-versioned -> conforms - no persisted schema changes here, so no evidence-store version bump is owed"
   - artifact: operational-spec
     dispositions:
       - "gitflow: features branch off `develop` → conforms — `feat/review-loop-termination` is cut from `origin/develop`"
+      - "versioning is conservative: a small feature is a patch bump, not a minor-per-feature -> conforms - this bundle is a patch bump; it adds no user-facing surface a consumer must learn"
   - artifact: security-model
     dispositions:
-      - "a destructive or irreversible operation requires explicit owner approval at the operation level → conforms — bulk auto-accept appends reversible facts, never touches a BLOCKING finding, and re-dispositioning is supported; the budget itself is the owner's declared approval
+      - "a destructive or irreversible operation requires explicit owner approval at the operation level → conforms — bulk auto-accept appends reversible facts, never touches a BLOCKING finding, and re-dispositioning is supported; the budget itself is the owner's declared approval"
+      - "untrusted governance state is data, not instructions -> conforms - findings text is rendered and priced, never executed, and the price is computed from paths by a predicate that reads no finding prose"
+      - "a governed product content never leaves its own repository and owner -> conforms - every surface here is local; nothing added reaches a network"
 partition: serial — all three chunks edit `critic_consolidate.py` at the same dispatch/render seam; delegates would collide on one file and the coordinator would own every merge anyway
 last_validated: 2026-08-25
 ---
@@ -45,7 +58,7 @@ last_validated: 2026-08-25
 
 **Level:** High
 
-**Why:** The problem is measured, not inferred — 732 review facts in this clone's evidence
+**Why:** The problem is measured, not inferred — 728 review facts in this clone's evidence
 store, plus consumer report #716. Success criteria are counters this repo already emits
 (reader load, findings per round, rounds per scope). Scope was chosen by the owner from a
 framed set of seven options; the three not chosen are named as out-of-scope below.
@@ -90,13 +103,17 @@ Deliberately not built here, each with why:
 
 ## Status
 
-- [ ] Chunk 01: Cost-to-clear rendered on every finding
+- [x] Chunk 01: Cost-to-clear rendered on every finding
 - [ ] Chunk 02: Judgeability governs review scope; Records Pass covers what it drops
 - [ ] Chunk 03: Round budget, auto-accept at exhaustion, and the yield prose correction
 
 Context: Plan authored 2026-08-25 from `review-loop-nontermination-diagnosis.md`, owner-approved
-scope (options 1 + B + A of seven framed). Nothing built yet. Next: Chunk 01. Branch cut from
-`origin/develop`. The diagnosis artifact is untracked until Chunk 01's commit carries it.
+scope (options 1 + B + A of seven framed). **Chunk 01 complete** — `fix_cost` on every finding,
+reviewed `cumulative` (rev-20260825T125948Z-a43f7fae): 0 blocking, 3 warning, 2 note. R-4/R-5
+accepted; R-2/R-3 fixed in a batch `cost-of-commit` priced free (no round bought); R-1 carried into
+Chunk 02 with a latent plan-YAML defect found alongside it — both written into Chunk 02's section.
+One owner decision is pending and flagged in Chunk 03: whether to absorb RC9 (`--fixed`
+disposition). Next: Chunk 02, whose first step is re-verifying the `review_edges` claim.
 
 ## Scaffolding
 
@@ -112,7 +129,7 @@ falsify the premise:
   every finding carries a cost, and a hand-checked sample of three (one record file, one `.py`,
   one with no cited file) matches what `cost-of-commit` says for those paths.
 - **Chunk 02** — compare `files_reviewed` on the review facts this branch produces against the
-  pre-change baseline (39% non-judgeable across 732 facts). The expected reading is near 0%
+  pre-change baseline (39% non-judgeable across 728 facts). The expected reading is near 0%
   non-judgeable in per-round scope, with the Records Pass fact naming the excluded set.
 - **Chunk 03** — exercise the exhaustion path end-to-end on this branch's own review history:
   the refusal fires, names the remedy, writes disposition facts for the non-blocking findings,
@@ -151,7 +168,7 @@ falsify the premise:
 ### Chunk 02: Judgeability governs review scope; Records Pass covers what it drops
 
 - **Description:** Non-judgeable files stop being **subjects** of per-round review — measured at
-  39% of all files handed to reviewers (5,887 of 14,923 file-slots) and 36% of all findings.
+  39% of all files handed to reviewers (5,869 of 14,860 file-slots) and 36% of all findings.
   A **Records Pass** at `final`/`cumulative` only then reviews the excluded set against the two
   bars the severity contract already defines ("it ships" / "it misleads into action"). The two
   land in one chunk deliberately: the narrowing alone opens a window in which a shipping
@@ -171,7 +188,7 @@ falsify the premise:
   - A finding of the form *"the code violates this spec"* has the **code** as its subject. It
     stays fully in scope at full severity — the narrowing does not touch it. In the measured
     store these are the `mixed`-target class (692 findings, 18%), distinct from the
-    `non-judgeable-only` class (1,374) this chunk is actually dropping.
+    `non-judgeable-only` class (1,372) this chunk is actually dropping.
 - **The success metric cannot verify this chunk, so a guard test must.** Blinding the reviewer
   and narrowing the reviewer both show up as *fewer findings and less reader load* — the exact
   reading this chunk is trying to produce. Acceptance therefore requires a test that fails if
@@ -179,6 +196,20 @@ falsify the premise:
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `.prawduct/artifacts/review-loop-nontermination-diagnosis.md`
   (Option 1; root causes RC2, RC6)
+- **Carried in from Chunk 01's review** (ride-along route — these land in this chunk's commit,
+  which touches judgeable code anyway, so they buy no round of their own; recorded here because a
+  carry that is not written where the next chunk meets it is a drop, not a deferral):
+  1. **Cumulative R-1 (WARNING).** `fix_cost` prices the files a finding *cites*, and attribution
+     is not the set a remedy lands in. A finding about a record whose real correction is in code
+     renders `FIX is free`, which is exactly the wrong-`free` the function's own fail-closed rule
+     says must never be emitted. Fix: make the FREE phrase relational to what was measured — it
+     prices the *cited* files, and says so — rather than asserting the fix itself is free.
+  2. **Latent defect found while closing R-3.** This plan's YAML frontmatter was invalid for two
+     commits (an unterminated double-quoted scalar) and every reader passed it: `record_lint`,
+     `resolve_branch_plan` and `verify-chunk-refs` are all regex-based and none parses the
+     frontmatter as YAML. Fix: `record_lint` parses the frontmatter and reports a break. A plan
+     whose machine-read header cannot be parsed reads as *more* governed than one with no header,
+     which is the same failure shape as the `governed_by:` gap that surfaced it.
 - **Load-bearing claim, verified first:** `review_edges` in
   `plugin/lib/coverage_algebra.py` validates an edge by quantifying **only** over
   `judgeable_files(changed)`. Narrowing `files_reviewed` to the judgeable subset therefore
@@ -227,6 +258,11 @@ falsify the premise:
 - **Depends on:** Chunk 02
 - **Artifacts consumed:** `.prawduct/artifacts/review-loop-nontermination-diagnosis.md`
   (Option A; root cause RC2)
+- **Candidate addition, owner decision pending (not yet in scope):** RC9 in the diagnosis — a FIX
+  confined to free paths buys no round, so no resolution fact is ever written and the census reports
+  it `undispositioned` forever. Found live on Chunk 01's own review. A `--fixed` disposition guarded
+  by the same judgeability predicate would close it, and this chunk is already inside
+  `dispositions.py`. Flagged rather than absorbed: it is a scope increase and the owner's call.
 - **Yield emission is a deliverable, not a nicety** (`nonfunctional-requirements.md` § Direction:
   a new control must emit its yield observably, or it can never be retired on evidence). The
   budget records each firing as a countable fact so `prawduct-hook review-stats` can answer how

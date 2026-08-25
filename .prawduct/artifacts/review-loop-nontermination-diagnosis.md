@@ -1,7 +1,7 @@
 # Diagnosis: why review cycles do not terminate
 
 Status: discovery / not yet planned. Measured 2026-08-25 against this clone's shared
-evidence store (`.git/prawduct/evidence.jsonl`, 3334 facts, 732 review facts,
+evidence store (`.git/prawduct/evidence.jsonl`, 3334 facts, 728 review facts,
 2026-07-13 → 2026-08-24). Every number below is computed from that store, not recalled.
 
 A second, independent source is folded in: **consumer report #716** (2026-08-25, prawduct
@@ -15,9 +15,9 @@ reviewer-quality problem — "make the reviewer less picky" is the wrong lever.
 
 | Measure | Value |
 |---|---|
-| Review facts | 732 across 149 tree-linked chains (4.9 reviews per work cycle) |
-| Findings | 3834 — 236 BLOCKING (6%), 1606 WARNING, 1992 NOTE |
-| Reviews returning zero BLOCKING | 562 / 732 = **77%** |
+| Review facts | 728 across 149 tree-linked chains (4.9 reviews per work cycle) |
+| Findings | 3826 — 236 BLOCKING (6%), 1606 WARNING, 1992 NOTE |
+| Reviews returning zero BLOCKING | 560 / 728 = **77%** |
 | Longest chains | 34, 22, 21, 21, 20, 20, 18, 17 reviews |
 | Chain of 22 (2026-07-28 → 07-29) | **one** BLOCKING finding in 22 reviews |
 | Reviews per BLOCKING finding found | 3.1 |
@@ -43,11 +43,11 @@ BLOCKING decays hard (74 → 27 → 10 → 4). Total yield does not — it is fl
 
 | Measure | Value |
 |---|---|
-| Findings whose only subject is a non-judgeable (free-to-edit) file | 1374 / 3834 = **36%** |
+| Findings whose only subject is a non-judgeable (free-to-edit) file | 1372 / 3826 = **36%** |
 | Non-blocking findings in that class | 1320 (34% of all findings) |
 | BLOCKING findings in that class | 54 (**23% of all BLOCKING**) |
 | Reviews whose *entire* yield was non-judgeable-only findings | 68 / 534 = 13% |
-| Free-interval dispatch refusals (`critic-begin` exit 3) | **6 in 732 = 0.8%** |
+| Free-interval dispatch refusals (`critic-begin` exit 3) | **6 in 728 = 0.8%** |
 
 Top non-judgeable finding targets: `.prawduct/change-log.md` (360), `.prawduct/backlog.md`
 (290), `.prawduct/learnings.md` (190), `.prawduct/cross-cutting-concerns.md` (121),
@@ -138,6 +138,30 @@ rewritten wholesale for free. The severity bar in `review-cycle.md` ("a finding 
 subject is a non-judgeable record is a NOTE unless it ships or misleads") is prose the
 reviewer is asked to remember; nothing enforces it at consolidation.
 
+## RC9 — A FIX that costs nothing cannot be recorded as a FIX
+
+Found live, dogfooding Chunk 01's own review (2026-08-25). A FIX's only machine-readable trace is
+the resolution fact a `verify-resolutions` pass appends. A fix confined to non-judgeable paths buys
+no round — which is the outcome the whole framework is steering toward — so **no verify pass runs,
+and no resolution fact is ever written.** `render-dispositions` then reports the finding as
+`undispositioned` forever.
+
+Measured on the review of Chunk 01: two WARNINGs (R-2, R-3) were fixed completely, the batch priced
+`free` by `cost-of-commit`, and the census still reads *"3 undispositioned — every finding takes an
+ACCEPT, FIX or FILE regardless of severity."*
+
+The incentive this creates is the inverted gradient again, one level up. An agent that wants a clean
+census has two routes that work — **ACCEPT it** (a fact, free) or **buy a round** (a resolution
+fact) — and one that does not: fix it for free. So the cheapest and most virtuous action is the only
+one the record cannot see, and the two visible options are "don't fix it" and "spend ten minutes".
+This sits directly beside RC7 (a demoted observation cannot be accepted) and has the same shape: a
+disposition vocabulary with a hole exactly where the cheap correct action is.
+
+**Fix:** let a fix be recordable without a review — `disposition <review> <fid> --fixed "<what
+changed>"`, valid only where the change is confined to non-judgeable paths (the same predicate,
+verified at record time, so it can never launder a judgeable fix past a gate). A BLOCKING finding
+still clears only through a real resolution fact; nothing about gating changes.
+
 ## Recommended fixes, in leverage order
 
 Ordered by (round-count reduction) / (cost + risk). 1–3 are small and carry no miss-rate
@@ -206,8 +230,8 @@ touching what the reviewer reads.
 # Second pass: options review (2026-08-25)
 
 Four owner-proposed ideas, stress-tested against the store, plus alternatives. New
-measurements: **39% of files handed to reviewers are non-judgeable** (5,887 of 14,923
-file-slots across 732 reviews); coordinator reviews are 3 roles × ~25 files = ~75 file-reads,
+measurements: **39% of files handed to reviewers are non-judgeable** (5,869 of 14,860
+file-slots across 728 reviews); coordinator reviews are 3 roles × ~25 files = ~75 file-reads,
 **the same 25 files read three times**; roster is a fixed `(correctness, design,
 sustainability)` triple, never sharded by file.
 
