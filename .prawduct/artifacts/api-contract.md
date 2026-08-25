@@ -286,7 +286,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
   their **exit codes**, not parsed text.
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
   a documented key set, consumed by a specific skill:
-  - `coverage-status --json` / `coverage-scaffold --json` → doctor (`structural_recorded`,
+  - `coverage-status --json` / `coverage-scaffold --json` → doctor, **partly**: Health Check #11
+    runs the bare command and relays its human form, and reaches for `--json` only to distinguish
+    `discovery_expected` false from null. Keys (`structural_recorded`,
     `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
     `applied`, `created[]`). `discovery_expected` is the layer-0 staging half, and it has **three**
     states, not two. **False** = no product work *this scan recognises* — it reads source by suffix
@@ -296,9 +298,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
     state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
     consumer must not read it as a clean layer 1.
   - `norm-index-scaffold --json` → **no JSON consumer today** — Health Check #14 runs the command
-    and relays its human form, the same as #4. (`status` —
-    one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable`; plus `rows`, `path`, `detail`, `applied`,
-    `removed`). Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
+    and relays its human form, the same as #4. The shape is published for programmatic consumers:
+    `status` — one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable` — plus `rows`,
+    `path`, `detail`, `applied`, `removed`. Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
     write or idempotent no-op and 1 on refusal.
   - `reanchor --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #4 runs the
     command and relays its human form; the `--json` shape is published for programmatic consumers
@@ -336,7 +338,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     code is deliberately NOT the contract here: 0 means "answered", including `unknown`, because
     the command gates nothing; 1 is reserved for bad arguments.
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
-    `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
+    `audit-learnings --json` → doctor. **`repo-disable --json` has no consumer** — the
+    repo-disable skill documents and runs only the bare form. Corrected 2026-08-25 after a review
+    re-ran this list's own premise across every row: two rows named a consumer that parses nothing,
+    and both were inert, which is exactly why neither failed.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any

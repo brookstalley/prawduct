@@ -110,7 +110,7 @@ the plugin, so it degrades to telling the human.
 
 - [x] Chunk 01: The anchor tells a plugin-less session the truth
 - [x] Chunk 02: Detect a stale anchor, offer the re-anchor
-- [ ] Chunk 03: Doctor grades it; three documents stop asserting the retired behaviour
+- [x] Chunk 03: Doctor grades it; three documents stop asserting the retired behaviour
 
 Context: Plan authored 2026-08-25 from `plugin-absent-clone-investigation.md`, owner-approved scope
 (anchor-only, of three framed options). Branched off `origin/develop` at 98731932. Baseline suite
@@ -132,12 +132,26 @@ been edited locally. Fixed at the class — a tag-derived guard reconstructs eve
 parsing and fails naming the tag when one is unarchived. Cleared by
 `rev-20260825T214436Z-835ca6ea` (verify-resolutions): 0 findings.
 
-Next: Chunk 03, whose commit carries three things from Chunk 02's verify round (all demoted
-observations, none blocking, each cheaper to ride this commit than to schedule):
+**Chunk 03 complete — and with it the plan.** Health Check #4 grades the anchor by running
+`reanchor` instead of looking for the marker; four documents (three, plus a fourth copy the new
+tripwire found) stop promising automatic activation. Reviewed by the branch's one `cumulative`
+(`rev-20260825T215922Z-cd34b5bb`): 4 blocking, 9 warnings, 6 notes — every one dispositioned. The
+blocking four were cleared across two verify rounds (`…-ec49836e`, then `…-c55e2cc5` after the first
+round's own body flagged that R-12 had survived its fix while its summary line said otherwise).
 
-1. **`api-contract.md` documents ahead of its implementation.** Its new `reanchor --json` entry
-   already says Health Check #4 consumes it; Chunk 03 is what makes that true. Nothing to change if
-   Chunk 03 lands as planned — this is the note that makes it a deferral rather than a drop.
+**The finding worth carrying out of this plan** is the pattern the cumulative reviewer named: three
+of the four blocking findings were *a guard or a promise that is green over the defect it exists to
+catch* — a tag guard that could not read the anchor this branch ships, a prose tripwire whose
+docstring claimed to match the claim while matching four literal phrasings, and an `absent` preview
+promising an insertion where the code performed a migration. Mutation is what caught each one.
+
+Below: the three items Chunk 02's verify round carried into this chunk, kept as the record of how
+they resolved rather than deleted.
+
+1. **`api-contract.md` names a consumer for `reanchor --json`.** *(Resolved the other way: Chunk 03
+   made Health Check #4 relay the command's human form, so the contract now states plainly that
+   there is no JSON consumer. The claim this item planned to make true was deleted instead — and a
+   review then found two more rows of the same shape, which is the class this carry belonged to.)*
 2. **The tag guard can pass vacuously.** `_shipped_anchor` returns `None` for any f-string shape it
    cannot resolve and `None` is skipped, so a future anchor interpolating something other than a
    module-level string constant would make the guard green by resolving nothing. Every tag resolves

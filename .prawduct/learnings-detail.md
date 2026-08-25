@@ -4499,3 +4499,35 @@ edited* rather than against *what the plan said was owed*. The plan is the check
 re-read at the step that exists to check it — the "acceptance criteria met" step. The tell is
 mechanical and available before the work starts: a Tests or Deliverables line naming more than one
 file, where the editing will naturally concentrate in one of them.
+
+## A CLASS finding closed at the site where it was NOTICED is not closed
+
+**Two instances in one verify round (2026-08-25, plugin-absent-governance-anchor).** Both findings
+said, in their own text, that they covered more than one site. Both were fixed at one.
+
+* **R-12 (blocking)** named two owners: `anchor_repair.repair`'s swap branch, and
+  `migrate_plugin.apply_claude_anchor`'s writes *"that the `absent` branch delegates to"*. The fix
+  wrapped the swap. `repair()`'s `absent` branch calls `apply_claude_anchor` outside that `try`, and
+  `core.atomic_write_text`'s contract is explicitly that OSErrors propagate to the caller — so an
+  unwritable `CLAUDE.md` still raised `PermissionError` out of a doctor session. Worse than a random
+  miss: `absent` is the status Health Check #4 *advertises* ("the repair inserts one"), so the branch
+  left unguarded was the advertised one.
+* **R-4 (warning)** asked that *every* `--json` row be checked. Only the row it named was fixed, and
+  the sibling row went on claiming a JSON consumer that parses nothing.
+
+**Why the tests did not catch either.** The new test for R-12 used a `stale` fixture, because that
+was the branch being fixed — so it exercised the guarded path and asserted the guard worked. A test
+written from the fix inherits the fix's blind spot; parametrizing it over both writing branches is
+what closes that, and it is the same shape as "tests written from the same mental model inherit its
+blind spot".
+
+**Root cause.** Reading a finding for *what to change* rather than for *what it says is in scope*.
+The severity and the recommendation get read; the sentence enumerating the owners is skimmed,
+because by then the fix already feels identified. The cheap counter is mechanical: before committing
+a fix, re-read the finding's own text and list the sites it names — the words are right there
+("two owners", "every row", "both writers", "re-sweep all three").
+
+**A second, smaller lesson from the same round.** The verify review's `NEXT-ACTION` line said "0
+blocking, 0 findings — THE REVIEW IS OVER" while its own body said R-12 survived. The body was
+right, and it took three lines of running the code to confirm. A summary line is not evidence about
+the analysis above it; when they disagree, the specific and checkable half wins.
