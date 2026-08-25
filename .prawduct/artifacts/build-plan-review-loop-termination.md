@@ -269,6 +269,42 @@ falsify the premise:
   gate; a BLOCKING finding still clears only through a real resolution fact, and nothing about gating
   changes. It rides this chunk because this chunk is already inside `dispositions.py`. Owner asked
   for the bundling explicitly; it is a scope increase, taken deliberately.
+- **Carried in from Chunk 02** (ride-along route — lands in this chunk's commit, which touches
+  judgeable code anyway, so it buys no round of its own): **`agents/` is missing from the
+  governance-protected path set.** `buildplan_refs._TRIVIAL_PROTECTED_PATHS` holds `skills/`,
+  `methodology/`, `templates/` and root `CLAUDE.md`, so `plugin/agents/critic-reviewer.md` — a
+  review subagent's own system prompt, behavioural logic by exactly the argument that docstring
+  makes for skill prose — classifies **non-judgeable**. Found live on Chunk 02's own review, where
+  that file landed in `files_oracle`. The gap predates Chunk 02; Chunk 02 is what makes it bite,
+  because agent prose used to be a review subject by virtue of being in the diff and now is not.
+  Fix: add `("agents/", False, "agent-file-edited")`. The direction is fail-closed — strictly more
+  review — which is the posture `protected_path_violation` already states for over-inclusion. It
+  touches the coverage kernel's predicate, so every consumer moves with it (`cost-of-commit`, free
+  edges, the dispatch guard, the trivial gate, the doc-only PR gate); that breadth is why it did not
+  ride Chunk 02's own commit while its review was in flight, and it is a deliberate carry, not a
+  drop.
+
+  **Chunk 02's own review found the same thing from a stronger angle and bounded it wider (R-2/R-10,
+  both WARNING, Scope: class).** `agents/` is one member; `plugin/docs/{norms,principles,waivers}.md`
+  is another. The class is not "a directory the list forgot" — it is that **review ELIGIBILITY is
+  being derived by negating the COVERAGE predicate, and they answer different questions.**
+  `is_judgeable_path` answers *does an edit to this path re-open the gate?*; the subject set needs
+  *may a finding be about this file?*. They coincided until Chunk 02 gave the predicate the second
+  meaning, and its excluded paths were never re-vetted against it. The generality case is the sharp
+  one and it is not this repo's: for a governed product whose **deliverable is markdown** — a docs
+  site, a spec repo, a prompt library — every product file is non-judgeable, so one incidental `.py`
+  in the interval defeats the all-prose floor and the product's actual output becomes read-but-never-
+  rated for all seven goals. `is_judgeable_path` is not product-configurable, and the plan's
+  `governed_by:` dispositions cover language-independence but never this shape.
+
+  So the fix is a **construction, not a longer path list**: give the split its own classifier —
+  subject = deliverable or behaviour-governing prose; oracle = a record *about* the work
+  (`.prawduct/**`, archived artifacts) — owned in one place so it cannot drift from the coverage
+  predicate while answering a different question. Adding `agents/` to the protected set is the cheap
+  partial that fails closed in the documented direction; take it only if the classifier is scoped out
+  here, and say which was chosen. **This is a requirement that surfaced mid-build and it is written
+  here rather than designed in chat**, per the mid-build tripwire.
+
 - **Yield emission is a deliverable, not a nicety** (`nonfunctional-requirements.md` § Direction:
   a new control must emit its yield observably, or it can never be retired on evidence). The
   budget records each firing as a countable fact so `prawduct-hook review-stats` can answer how

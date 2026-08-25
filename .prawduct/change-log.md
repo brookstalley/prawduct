@@ -51,6 +51,30 @@ cannot see.
 `## Directional Change Review` was cut from `review-cycle.md` — three bullets restating Goals 1, 4
 and 5 under a trigger condition that is just `cumulative` mode, referenced by nothing.
 
+**The chunk's own review corrected the rule it shipped, and the correction matters more than the
+rule.** The subject restriction went out as an *absolute* — "a finding may only be about a
+`files_reviewed` path" — while the protocol eleven lines below it still ordered `chunk-ref-missing`
+to BLOCKING on a record, which is an oracle path by construction. The review proved it by producing
+one: its single `record_lint` finding sits on `.prawduct/learnings.md`. A reviewer obeying the
+absolute in `chunk` or `verify-resolutions` — modes with no Records Pass to route it to — would have
+swallowed a machine-detected BLOCKING. Closed by construction rather than by a longer list: three
+passes own oracle findings and are exempt (the record-lint relay, the Learnings Cross-Check, the
+Records Pass), stated once in `review-cycle.md` with every other surface pointing at it.
+
+**Record-only BLOCKING is still reachable, and that is now a decision rather than an oversight.** The
+narrowing was justified from a table bucketed by finding count; the row of that same table measuring
+severity cost was never disposed. **54 of 236 BLOCKING findings (23%) had a record as their only
+subject**, and a Records Pass whose bars both read WARNING would have traded that class away in
+silence. It has a third bar: an instruction that actively misleads — a wrong command, a deleted
+config reference — is BLOCKING there, exactly as Goal 4 has always rated it.
+
+Also from that review: `_scope_widened` counted through the all-prose floor and so reinstated the
+prose it means to discount; the verify-resolutions arm rebuilt its oracle from the prior *subject*
+set and dropped the plan a verify pass must be handed; `critic_mode` asserted `files_reviewed` holds
+judgeable paths only, which is false of every fact written before this commit; and
+`_frontmatter_break` reported three legal YAML shapes as broken (a quoted key, and continuation lines
+of flow and plain scalars that begin with a quote).
+
 ## 2026-08-25: every finding says what acting on it costs
 
 <!-- prawduct: type=feature | scope=review-loop-termination -->

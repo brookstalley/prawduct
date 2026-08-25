@@ -1537,6 +1537,7 @@ def begin_review(
     notes: list[str] = []
     base_reviewed = None
     files_reviewed: list[str] | None = None
+    prior_oracle: list[str] = []
     # Findings a THIS-mode review could still resolve. Only verify-resolutions
     # records resolution facts, so it is the only mode that can carry a nonzero
     # value; for every other mode there is nothing outstanding that running it
@@ -1672,8 +1673,17 @@ def begin_review(
         prior_files = [
             f for f in (prior_body.get("files_reviewed") or []) if isinstance(f, str)
         ]
-        delta_subject, _ = split_subject_oracle(delta)
-        prior_subject, _ = split_subject_oracle(prior_files)
+        from . import coverage_algebra as _ca  # noqa: PLC0415 — lazy; import graph
+        # `judgeable_files` directly, NOT through `split_subject_oracle`: that
+        # function's all-prose FLOOR returns the whole list, which exists only so
+        # `validate_manifest`'s non-empty `files_reviewed` is satisfiable. Counting
+        # through it reinstates every prose file on exactly the interval this
+        # threshold means to discount — an all-prose delta would refuse as though
+        # nothing had narrowed. `critic_mode._rule_postfix_fix_fires` computes the
+        # identical bound the same way; two implementations of one threshold have
+        # to agree on the edge case or the bound is not one threshold.
+        delta_subject = _ca.judgeable_files(delta)
+        prior_subject = _ca.judgeable_files(prior_files)
         if _scope_widened(len(delta_subject), len(prior_subject)):
             fallback, why = _widened_fallback_mode(
                 project_dir, capture["head_tree"], committed_differs
@@ -1714,6 +1724,15 @@ def begin_review(
         for f in delta:
             if f not in files_reviewed:
                 files_reviewed.append(f)
+        # The prior fact's ORACLE carries forward too. `prior_files` is that
+        # review's subject set — judgeable paths only — so rebuilding the oracle
+        # from it alone yields `[]` whenever the fix touched no record, and the
+        # reviewer is told in the same breath that the manifest is authoritative
+        # and that `files_oracle` is what the code is judged against. A verify
+        # pass anchored to a review that read the plan must be handed the plan.
+        prior_oracle = [
+            f for f in (prior_body.get("files_oracle") or []) if isinstance(f, str)
+        ]
 
     files_changed = evidence.tree_diff(project_dir, base_tree, head_tree)
     if files_changed is None:
@@ -1816,6 +1835,9 @@ def begin_review(
     # quantifying only over `judgeable_files(files_changed)`, so a subject-set
     # `files_reviewed` still covers every file an edge asks about.
     files_reviewed, files_oracle = split_subject_oracle(files_reviewed)
+    for f in prior_oracle:
+        if f not in files_oracle and f not in files_reviewed:
+            files_oracle.append(f)
 
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()

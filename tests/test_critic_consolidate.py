@@ -398,6 +398,20 @@ class TestValidateManifest:
         ok, reason = cc.validate_manifest(_manifest_dict())
         assert ok, reason
 
+    def test_files_oracle_rejected_when_not_a_string_list(self):
+        """The optional-but-typed branch. It is optional so a manifest restored
+        from before the subject/oracle split still consolidates; it is typed
+        because the value reaches the review fact, where a reader walking it
+        must not meet a non-string."""
+        ok, reason = cc.validate_manifest(_manifest_dict(files_oracle=[1, 2]))
+        assert not ok
+        assert "files_oracle" in reason
+
+    def test_files_oracle_absent_is_valid(self):
+        assert "files_oracle" not in _manifest_dict()
+        ok, reason = cc.validate_manifest(_manifest_dict())
+        assert ok, reason
+
     def test_bare_mode_token_rejected(self):
         ok, reason = cc.validate_manifest(_manifest_dict(mode="final"))
         assert not ok
@@ -5597,6 +5611,54 @@ class TestSubjectAndOracleSets:
         fact = _store_facts(repo, "review")[-1]
         assert fact["body"]["files_oracle"] == [".prawduct/change-log.md"]
         assert fact["body"]["files_reviewed"] == ["src/app.py"]
+
+    def test_an_all_prose_delta_does_not_widen_through_the_floor(self):
+        """R-3: `split_subject_oracle`'s floor exists only so a manifest stays
+        valid; counting the widening threshold through it would hand back every
+        prose file and refuse exactly the interval the threshold means to
+        discount. The two call sites of this one bound must agree here."""
+        prose = [f".prawduct/notes_{i}.md" for i in range(20)]
+        floored, _ = cc.split_subject_oracle(prose)
+        assert floored == prose, "the floor still guards manifest validity"
+        from lib import coverage_algebra
+        assert coverage_algebra.judgeable_files(prose) == [], (
+            "the counting path must see zero, not the floor's whole list"
+        )
+
+    def test_the_verify_arm_carries_the_prior_oracle_forward(self, tmp_path):
+        """R-5: a verify pass anchored to a review that read the plan must be
+        handed the plan. Rebuilding the oracle from the prior SUBJECT set alone
+        yields `[]` whenever the fix touched no record — the reviewer told in the
+        same breath that the manifest is authoritative and that `files_oracle` is
+        what the code is judged against."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        prior_id = _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        # Teach the prior fact an oracle, as a post-narrowing fact carries one.
+        path = evidence.store_path(repo)
+        lines = [ln for ln in path.read_text().splitlines() if ln.strip()]
+        out = []
+        for ln in lines:
+            fact = json.loads(ln)
+            if fact.get("id") == prior_id:
+                fact["body"]["files_oracle"] = [
+                    ".prawduct/artifacts/build-plan-demo.md"
+                ]
+            out.append(json.dumps(fact))
+        path.write_text("\n".join(out) + "\n")
+
+        (repo / "src/app.py").write_text("x = 2  # fixed\n")  # code-only fix
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert ".prawduct/artifacts/build-plan-demo.md" in manifest["files_oracle"], (
+            "the verify pass lost the plan the review it anchors to was reading"
+        )
 
     def test_scope_widening_is_measured_on_the_subject_sets(self, tmp_path):
         """Prose riding along on a fix must not demote the re-review. Both

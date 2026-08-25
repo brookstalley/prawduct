@@ -348,10 +348,14 @@ LAST_MEASURED_TOKENS = {
     # share; the raises are justified there, not here.
     # +125 review-protocol.md (3794 -> 3919), +52 goals-1-3.md (2247 -> 2299),
     # +190 review-cycle.md (9596 -> 9786), +9 SKILL.md (3445 -> 3454).
-    # The last 9 are a widened `governed-by-gap` definition: it now also
+    # Then the chunk's own review corrected the rule it shipped (R-9/R-15 — the
+    # subject rule was an absolute the protocol contradicted): +191 review-cycle
+    # (9786 -> 9977), +18 goals-1-3 (2299 -> 2317), +66 review-protocol
+    # (3919 -> 3985), each ceiling moved with its reading and the reason at the
+    # ceiling. The last 9 of the first pass are a widened `governed-by-gap` definition: it now also
     # covers a plan frontmatter no parser can read, the defect class that
     # let THIS plan ship an invalid header past three regex-based readers.
-    "skills/critic/review-protocol.md": 3919,
+    "skills/critic/review-protocol.md": 3985,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -377,7 +381,7 @@ LAST_MEASURED_TOKENS = {
     # below already owns, `chunk_graded`/`plan_graded` re-listed what they name
     # right after naming it, and the two false-blocker arguments (no-subject and
     # graded) were one sentence said twice. Ceiling 2250 untouched, 1 to spare.
-    "skills/critic/goals-1-3.md": 2299,
+    "skills/critic/goals-1-3.md": 2317,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -409,7 +413,7 @@ LAST_MEASURED_TOKENS = {
     # was asserting a timing that is false on the Issues backend, so the routing
     # replaced prose rather than adding to it, and the "why" the routing would
     # have restated stayed at the owner where the reader is already being sent.
-    "skills/critic/review-cycle.md": 9786,
+    "skills/critic/review-cycle.md": 9977,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -3569,7 +3573,19 @@ class TestCriticSkill:
         # record-only-text clause is gone, because record-only text is no longer a
         # per-round subject at all — it was a rule about severity for a class this
         # file's reader can no longer rate.
-        assert tokens < 3922, f"review-protocol.md is ~{tokens} tokens, should be <3922"
+        #
+        # RAISED AGAIN 3922 -> 3988 (2026-08-25, Chunk 02's own cumulative
+        # review, R-9/R-15). The first raise priced the narrowing and UNDERPRICED
+        # it: the subject rule shipped as an absolute while the protocol still
+        # mandated findings about oracle files, and this review proved it by
+        # producing one — its single `record_lint` finding sits on an oracle
+        # path. Closing that by construction costs the carve-out naming the three
+        # passes that own oracle findings, plus the third Records-Pass bar that
+        # keeps record-only BLOCKING reachable (54 of 236, 23%) instead of
+        # trading it away silently. Corrections to a rule this file introduced
+        # two commits ago, not new scope — but they are a real cost the first
+        # estimate missed, and recording that is the point of this dict.
+        assert tokens < 3988, f"review-protocol.md is ~{tokens} tokens, should be <3988"
 
 
 # =============================================================================
@@ -3778,7 +3794,19 @@ class TestCriticGoals13:
         # store. Funded first where it could be: the same record-only-text clause in the
         # Severity section, and `files_changed` dropped from step 1's scope list —
         # the subject/oracle split is what a reviewer scopes by now.
-        assert tokens < 2302, f"goals-1-3.md is ~{tokens} tokens, should be <2302"
+        #
+        # RAISED AGAIN 2302 -> 2320 (2026-08-25, Chunk 02's own cumulative
+        # review, R-9/R-15). The first raise priced the narrowing and UNDERPRICED
+        # it: the subject rule shipped as an absolute while the protocol still
+        # mandated findings about oracle files, and this review proved it by
+        # producing one — its single `record_lint` finding sits on an oracle
+        # path. Closing that by construction costs the carve-out naming the three
+        # passes that own oracle findings, plus the third Records-Pass bar that
+        # keeps record-only BLOCKING reachable (54 of 236, 23%) instead of
+        # trading it away silently. Corrections to a rule this file introduced
+        # two commits ago, not new scope — but they are a real cost the first
+        # estimate missed, and recording that is the point of this dict.
+        assert tokens < 2320, f"goals-1-3.md is ~{tokens} tokens, should be <2320"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -4221,7 +4249,19 @@ class TestReviewCycle:
         # restating Goals 1, 4 and 5 under a trigger condition that is just
         # `cumulative`, referenced by nothing; and the ledger section's second,
         # verbatim statement of where `scope` comes from.
-        assert tokens < 9789, f"review-cycle.md is ~{tokens} tokens, should be <9789"
+        #
+        # RAISED AGAIN 9789 -> 9980 (2026-08-25, Chunk 02's own cumulative
+        # review, R-9/R-15). The first raise priced the narrowing and UNDERPRICED
+        # it: the subject rule shipped as an absolute while the protocol still
+        # mandated findings about oracle files, and this review proved it by
+        # producing one — its single `record_lint` finding sits on an oracle
+        # path. Closing that by construction costs the carve-out naming the three
+        # passes that own oracle findings, plus the third Records-Pass bar that
+        # keeps record-only BLOCKING reachable (54 of 236, 23%) instead of
+        # trading it away silently. Corrections to a rule this file introduced
+        # two commits ago, not new scope — but they are a real cost the first
+        # estimate missed, and recording that is the point of this dict.
+        assert tokens < 9980, f"review-cycle.md is ~{tokens} tokens, should be <9980"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -4555,6 +4595,49 @@ class TestSubjectAndOracleReachTheReviewer:
         agent = read_file("agents/critic-reviewer.md")
         sustainability = agent.split("- **sustainability**", 1)[1].split("\n\n", 1)[0]
         assert "Records Pass" in sustainability
+
+    def test_the_subject_rule_names_the_passes_that_own_oracle_findings(self):
+        """The subject rule is NOT an absolute, and stating it as one collided
+        with the protocol that still mandates oracle findings — `chunk-ref-missing`
+        is BLOCKING on a record by construction, and `chunk`/`verify-resolutions`
+        have no Records Pass to route it to. A reviewer obeying an absolute there
+        swallows a machine-detected BLOCKING, which is the expensive direction.
+        One statement owns the carve-out; the other surfaces point at it."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        # Whitespace-normalized: these files are hard-wrapped, so a two-word
+        # name legitimately straddles a line break and a literal substring test
+        # would grade the wrapping rather than the rule.
+        pass_section = " ".join(
+            cycle.split("### Records Pass", 1)[1].split("\n### ", 1)[0].split()
+        )
+        for owner in ("record-lint relay", "Learnings Cross-Check"):
+            assert owner in pass_section, f"the carve-out omits the {owner}"
+        assert "chunk-ref-missing" in pass_section, (
+            "the carve-out does not say the machine's BLOCKING answer survives"
+        )
+        # And the reviewer-facing surfaces must not restate it as an absolute.
+        for rel in ("skills/critic/goals-1-3.md", "skills/critic/review-protocol.md",
+                    "agents/critic-reviewer.md"):
+            content = read_file(rel)
+            assert "may only be *about*" not in content, (
+                f"{rel} still states the subject rule as an absolute"
+            )
+
+    def test_record_only_blocking_stays_reachable(self):
+        """54 of 236 BLOCKING findings (23%) had a record as their only subject.
+        Making records oracle-only per round retired no severity — a Records Pass
+        whose bars all read WARNING would have traded that class away silently,
+        and nothing in the plan disposed of it."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        pass_section = " ".join(
+            cycle.split("### Records Pass", 1)[1].split("\n### ", 1)[0].split()
+        )
+        assert "**BLOCKING**" in pass_section, (
+            "the Records Pass offers no bar that can stop a merge"
+        )
+        assert "23%" in pass_section, (
+            "the traded-away class is not priced where the decision is made"
+        )
 
     def test_the_builder_facing_severity_rule_points_at_the_pass(self):
         """The old rule ("a record-only finding is a NOTE") is gone from the

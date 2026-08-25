@@ -325,7 +325,7 @@ are ACCEPTs, and saying so takes a clause each.
 
 ## Final-Mode Cross-Checks
 
-After the goal-based review in `final` mode, run three additional passes that `chunk` mode skips. **`final`/`cumulative` is the owner of both cross-checks** — the PR reviewer does not re-run them (see `skills/pr/review-protocol.md`), so each runs once per PR:
+After the goal-based review in `final` mode, run three additional passes that `chunk` mode skips. **`final`/`cumulative` owns all three** — the PR reviewer does not re-run them (see `skills/pr/review-protocol.md`), so each runs once per PR:
 
 ### Learnings Cross-Check
 
@@ -359,14 +359,20 @@ These flag; they never adjudicate whether an item "really" closed (the builder's
 
 **Judgeability governs review SCOPE, not review READING.** A non-judgeable file plays two parts and
 only one narrows: it can be *wrong* (**subject**), and it is what the code is judged *against*
-(**oracle**). Every spec here is non-judgeable, and Goal 2's requirement coverage and Goal 3's norm
-departures both need one in hand and both rate BLOCKING — so `critic-begin` narrows `files_reviewed`
-to judgeable paths and hands what it sheds over as `files_oracle`, delivered and read but not rated
-per round. *"The code violates this spec"* has the **code** as its subject; nothing here touches it.
+(**oracle**). Every spec here is non-judgeable and Goal 2 and Goal 3 both need one in hand, both
+rating BLOCKING — so `critic-begin` narrows `files_reviewed` to judgeable paths and hands what it
+sheds over as `files_oracle`, read and not rated. *"The code violates this spec"* has the **code** as
+its subject; nothing here touches it.
+
+**Three passes own oracle findings and are NOT narrowed** — the subject rule governs what a reviewer
+*derives*, and every site that assigns a severity to an oracle target reads this sentence rather than
+restating it: the **record-lint relay** (its table below governs, `chunk-ref-missing` BLOCKING
+included — the machine already answered and no mode may swallow that answer), the **Learnings
+Cross-Check**, and this pass. Anything else you derive has a `files_reviewed` subject.
 
 That leaves one window — a shipping falsehood in a record, unreviewed — and this pass is its cover.
 At `final`/`cumulative` (`sustainability` under a coordinator roster), rate `files_oracle` against the
-two bars and **name the set you covered**, so the exclusion is visible rather than silent:
+three bars and **name the set you covered**, so the exclusion is visible rather than silent:
 
 - **It ships** — the inaccuracy reaches consumers as a false claim (release note, `CHANGELOG.md`, a
   published doc). *A change-log entry asserting a guard that was never built → WARNING: a reader
@@ -374,10 +380,16 @@ two bars and **name the set you covered**, so the exclusion is visible rather th
 - **It misleads into action** — an operator or agent following the record would do the wrong thing.
   *A measurement table assigning a probe a question it cannot answer → WARNING: the next operator
   runs it and records a fact it cannot produce.*
+- **It must stop the merge** — an instruction that actively misleads (a wrong command, a deleted
+  config reference) → **BLOCKING**, exactly as Goal 4 has always rated it. Making records oracle-only
+  per round retired no severity: **54 of the store's 236 BLOCKING findings (23%) had a record as
+  their only subject**, and this bar is where that class lands now. A ceiling of WARNING here would
+  have traded them away silently.
 
 Everything else — an imprecise count, a narration one revision short, a phrasing that could be truer —
-clears neither bar and is **not a finding**. Those were 36% of all findings across 728 measured
-reviews: correct, and not worth what clearing one costs.
+clears no bar and is **not a finding**. Record-only findings were 36% of all findings across 728
+measured reviews; the ones that clear a bar stay, and what this drops is the rest: correct, and not
+worth what clearing one costs.
 
 ### Record-Lint — the checks the machine already ran
 

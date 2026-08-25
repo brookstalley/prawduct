@@ -15,9 +15,10 @@ already-planned commit.
 
 1. Read `.prawduct/.critic-partials/manifest.json` — the review interval, `commit_reviewed`,
    `rendezvous` (where you write) and `record_lint` (below). Code-written and authoritative — derive
-   no interval yourself. **`files_reviewed` is the SUBJECT set: a finding may only be *about* a file
-   in it. `files_oracle` is what the code is judged *against* — read every one, rate none.** *"The
-   code violates this spec"* has the code as its subject and is fully in scope at full severity.
+   no interval yourself. **`files_reviewed` is the SUBJECT set: a finding you DERIVE is *about* a file
+   in it. `files_oracle` is what the code is judged *against* — read every one; rate one only from a
+   pass that owns oracle findings, which here is the record-lint relay below, whose severities stand
+   unchanged.** *"The code violates this spec"* has the code as its subject, at full severity.
 2. Read `.prawduct/project-state.yaml`, then the changed files and `git diff` over the interval.
 3. Read the `.prawduct/artifacts/` a change touches — its build plan, and any artifact it cites.
 4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes.

@@ -56,11 +56,13 @@ project directory, so join a relative one onto the project directory your prompt
    round, whichever goal noticed it. (`truncated` = older answers dropped; `unavailable` = the join
    failed, so you know nothing.)
 4. Read the changed files and inspect the diff (read-only git). Do NOT run tests or builds.
-   **The manifest splits them: `files_reviewed` is your SUBJECT set — a finding may only be *about*
-   a file in it — and `files_oracle` is what the code is judged *against*, read by every role and
-   rated by none (the `sustainability` Records Pass above is the one exception). Narrowing what a
-   finding may be about is never a licence to read less.** *"The code violates this spec"* has the
-   code as its subject and is fully in scope at full severity.
+   **The manifest splits them: `files_reviewed` is your SUBJECT set — a finding you DERIVE is
+   *about* a file in it — and `files_oracle` is what the code is judged *against*, read by every
+   role. Three passes own oracle findings and are not narrowed (`review-cycle.md` "Records Pass"
+   states the carve-out): the record-lint relay, the Learnings Cross-Check, and the Records Pass,
+   all `sustainability`'s under this roster. Narrowing what a finding may be about is never a
+   licence to read less.** *"The code violates this spec"* has the code as its subject, at full
+   severity.
 5. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
    (definitions in `review-protocol.md`). A clean pass has zero findings — that is normal and
    correct; do not invent findings to fill space.

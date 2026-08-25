@@ -399,7 +399,9 @@ def _rule_verify_resolutions_fires(
     # instead of a verify pass. `_is_metadata_path` above drops `.prawduct/`,
     # not every non-judgeable path; THE predicate is the one that agrees with
     # what the manifest recorded.
-    return set(coverage_algebra.judgeable_files(sorted(diff_files))).issubset(prior_set)
+    return set(coverage_algebra.judgeable_files(sorted(diff_files))).issubset(
+        set(coverage_algebra.judgeable_files(sorted(prior_set)))
+    )
 
 
 def _cumulative_anchor(data: dict) -> str | None:
@@ -428,8 +430,9 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     ``cumulative`` review (see :func:`_cumulative_anchor`), its
     ``commit_reviewed`` resolves, and the committed delta since it holds at
     least one judgeable file while staying under the verify-resolutions
-    widening threshold (``len(delta) > 2 * prior + 5`` — mirrored so the
-    rule never recommends a mode that would immediately demote). Without
+    widening threshold, measured on the judgeable subset of both sides —
+    mirroring ``critic_consolidate._scope_widened`` exactly, so the rule never
+    recommends a mode that would immediately demote. Without
     this rule the canonical no-args ``/prawduct:critic`` after a
     post-cumulative fix falls through to rule 2 and recommends a FULL
     bundle re-review — the run-count treadmill this rule exists to kill
@@ -481,16 +484,19 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     judgeable_delta = coverage_algebra.judgeable_files(sorted(delta))
     if not judgeable_delta:
         return ""
-    # Both counts are subject-set counts, matching `critic_consolidate`'s
-    # `_scope_widened`: `prior_set` holds judgeable paths only, so measuring a
-    # raw delta against it would tighten this bound by exactly the prose that
-    # rode along on the previous round.
-    if len(judgeable_delta) > 2 * len(prior_set) + 5:
+    # BOTH sides through the predicate, matching `critic_consolidate`'s
+    # `_scope_widened`. `files_reviewed` is the subject set only on facts written
+    # since that narrowing shipped; every older one carries its whole diff, and
+    # this reader meets both. Narrowing the delta alone would measure a subject
+    # count against a raw one on exactly those older records — the same
+    # like-for-unlike comparison the narrowing itself introduced, inverted.
+    judgeable_prior = coverage_algebra.judgeable_files(sorted(prior_set))
+    if len(judgeable_delta) > 2 * len(judgeable_prior) + 5:
         return ""
     return (
-        f"committed delta of {len(delta)} file(s) since the prior "
-        f"cumulative review ({commit_reviewed[:12]}); a verify pass "
-        "extends the cumulative's vouching to HEAD at delta-review cost"
+        f"committed delta of {len(judgeable_delta)} findings-eligible file(s) "
+        f"since the prior cumulative review ({commit_reviewed[:12]}); a verify "
+        "pass extends the cumulative's vouching to HEAD at delta-review cost"
     )
 
 

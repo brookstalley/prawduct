@@ -127,12 +127,23 @@ _LIST_ITEM_RE = re.compile(r"^(\s*)-\s+\S")
 #: `key: `, or after both. A `"` only opens a quoted scalar in that position —
 #: anywhere else in a plain scalar it is an ordinary character — so anchoring
 #: here is what keeps `_frontmatter_break` from calling `msg: he said "hi"` a
-#: defect.
-_VALUE_START_RE = re.compile(r"^\s*(?:-\s+)?(?:[A-Za-z_][\w.-]*:\s+)?(?P<value>\S.*)$")
+#: defect. **A marker is REQUIRED**, which is what excludes the continuation
+#: line of a multi-line PLAIN scalar that happens to begin with a quote
+#: (`"the thing" is true`, wrapped under an unquoted `note:`): that line opens
+#: nothing, and reading it as an opener reported legal YAML as broken.
+_VALUE_START_RE = re.compile(
+    r"^\s*(?:-\s+(?:[A-Za-z_][\w.-]*:\s+)?|[A-Za-z_][\w.-]*:\s+)(?P<value>\S.*)$"
+)
 #: A value that opens a BLOCK scalar (``|``/``>`` with any chomping or
 #: indentation indicator). Everything more-indented below it is literal text,
 #: quotes included — a `>-` note quoting `"inapplicable, because —"` is the real
 #: shape that made this necessary, not a hypothetical.
+#: What may legally follow a closing double quote in block context. A comment,
+#: the colon of a QUOTED KEY (`- "a b": 1`), or a flow-collection separator or
+#: terminator when the scalar sat inside a multi-line `[...]`/`{...}`. Anything
+#: else is content stranded after the close, which is the break this grades.
+_LEGAL_AFTER_CLOSING_QUOTE = frozenset("#:,]}")
+
 _BLOCK_SCALAR_RE = re.compile(
     r"^(?P<indent>\s*)(?:-\s+)?(?:[A-Za-z_][\w.-]*:\s+)[|>][-+]?\d*\s*(?:#.*)?$"
 )
@@ -737,7 +748,7 @@ def _frontmatter_break(text: str) -> "tuple[int, str] | None":
                 # comment, so trailing content IS the break, and it is the shape
                 # the defect that prompted this check actually had.
                 trailing = rest[i + 1:].strip()
-                if trailing and not trailing.startswith("#"):
+                if trailing and trailing[0] not in _LEGAL_AFTER_CLOSING_QUOTE:
                     return open_line, (
                         "a double-quoted value opens here and closes only on a "
                         "later line, stranding that line's content after it, so "
@@ -782,16 +793,24 @@ def _check_governed_by(
     broken = _frontmatter_break(text)
     if broken is not None:
         line, why = broken
-        findings.append(
+        # RETURN, not continue. The line-based parser below still produces
+        # entries from a broken block, and they are entries no YAML reader would
+        # agree with — a stranded fragment reads as an artifact name and renders
+        # a second, spurious "cites an artifact that does not exist". One
+        # structural defect must produce one finding, and grading a block this
+        # function has just called untrustworthy contradicts it in the same
+        # breath.
+        return [
             _finding(
                 "governed-by-gap",
                 plan_rel,
                 line,
                 f"the frontmatter is structurally broken — {why}. Nothing in it "
                 "can be trusted, `governed_by:` included, and a header no parser "
-                "can read presents as more governed than no header at all",
+                "can read presents as more governed than no header at all. Fix "
+                "the header; the norm dispositions are not graded until it parses",
             )
-        )
+        ]
     for entry in _parse_governed_by(text):
         artifact = entry["artifact"]
         resolved = _resolve_artifact(project_dir, prawduct_dir, artifact)
