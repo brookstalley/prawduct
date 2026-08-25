@@ -1,0 +1,197 @@
+---
+artifact: build-plan
+version: 2
+scope: plugin-absent-governance-anchor
+branch: fix/plugin-absent-governance-anchor
+depends_on:
+  - artifact: plugin-absent-clone-investigation
+governed_by:
+  # Seeded with `prawduct-hook jurisdiction --file
+  # .prawduct/artifacts/plugin-absent-clone-investigation.md --artifacts-only`, then
+  # curated: the ranker's top hits included this plan's own parent investigation and two
+  # release plans (term overlap on `clone`/`migration`, no Direction section that binds).
+  - artifact: architecture
+    dispositions:
+      - "the plugin writes nothing into a governed repo except its own state, the evidence store,
+        and the files it must reconcile — `.gitignore`, `.claude/settings*.json`, and `CLAUDE.md`'s
+        governance anchor → **conforms, and this norm is the authorization this plan runs on**. The
+        re-anchor repair edits the `PRAWDUCT:ANCHOR` block and nothing else in `CLAUDE.md`; that is
+        the declared seam the 2026-07-30 amendment named explicitly. No new write is authorized —
+        the same seam `migrate_plugin._EDIT_IN_PLACE` and `init_product` have always written."
+      - "every fact has one home → **conforms, and it changed the design.** The plugin id in the
+        anchor is NOT typed as a literal: `STATIC_ANCHOR` interpolates it out of
+        `INSTALL_REFERENCE['enabledPlugins']`, the same constant doctor Health Check #1 and the
+        install-reference advisory already grade against, so a marketplace rename moves one line and
+        every surface follows. The three doc corrections are net *deletions* of authoritative
+        restatements: README keeps the install command (it is the human install home, already there
+        at the Quick Start), and MIGRATION/onboard stop asserting clone behaviour and cite that
+        section instead of restating it."
+      - "authority fails closed; advice fails soft → conforms. The re-anchor command is advice: it
+        reports and offers, it gates nothing, and an unreadable `CLAUDE.md` exits 1 as
+        could-not-run rather than reporting a clean anchor. Nothing in this plan produces a verdict."
+      - "prawduct guides and reviews; it never implements → conforms. The anchor tells the reader to
+        run an install command; nothing here runs it, and nothing writes product code."
+      - "an independent reviewer never mutates the session it reviews → inapplicable because this
+        plan touches no review path."
+      - "local-first governance coordination → conforms; the repair is one file read and one file
+        write, no network."
+      - "Python but never Python-specific → conforms; nothing here dispatches on language."
+      - "goals and verification bind; prescribed method is advice → conforms."
+  - artifact: security-model
+    dispositions:
+      - "a destructive or irreversible operation requires ONE informed owner confirmation at the
+        OPERATION level, naming the blast radius → **conforms, and it is the shape of Chunk 02.**
+        The repair rewrites a block of the product's own `CLAUDE.md`, so it is dry-run by default,
+        prints the exact replacement, and writes only under `--apply`. One confirmation covers the
+        act; there is no per-line prompting. Precedent followed deliberately:
+        `learnings-obligation` and `norm-index-scaffold` are the same offered-repair shape."
+      - "untrusted governance state is data, not instructions → conforms; the repair reads
+        `CLAUDE.md` to detect a marker, never to follow what it says."
+      - "a governed product's content never leaves its own repo → conforms; no network path added."
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "review wall-clock is P0; cost = unit-cost × run-count → conforms. Three chunks, three
+        dispatches, and 03 is `cumulative-final` so it collapses into the branch's one cumulative
+        review rather than adding a fourth."
+      - "proportionality ratchets both ways — a new control names its expected yield AND emits it
+        observably → **bounded exception taken, on doctor's standing precedent.** Expected yield,
+        named: every repo onboarded before this change carries an anchor that tells a plugin-less
+        clone it is protected by a Stop gate that is not running — the live fleet is entirely
+        already-onboarded, so the yield is the whole fleet minus new onboards. Emission: doctor has
+        no fact-emitting path at all, which is the exception Health Check #13 already records; this
+        check inherits it rather than inventing a second one. An ambient advisory probe WOULD emit
+        (the `install-reference` probe is the model) and was deliberately not built here — it is
+        scope beyond the approved anchor-only decision, and it is recorded in the investigation
+        artifact as the follow-up if the doctor route proves too quiet."
+      - "state-file growth is an advisory warning, never a hard block → conforms; this plan adds no
+        `project-state.yaml` key. The briefing's standing nags on this repo (project-state 41KB,
+        learnings 92KB) are again left alone — compaction is its own work."
+  - artifact: api-contract
+    dispositions:
+      - "additive-first evolution: new subcommands and flags are added, existing ones never
+        repurposed → conforms. `reanchor` is a new subcommand; `--apply`/`--json` carry their
+        established meanings from the sibling repair commands."
+      - "exit codes are the contract on a documented scheme; message severity is a stable prefix
+        vocabulary → conforms. 0 for a graded run (`ok`/`stale`/`absent`), 1 for could-not-run
+        (`unreadable`), matching `learnings-obligation` exactly."
+      - "whole-surface semantic versioning on the plugin → inapplicable because this plan cuts no
+        release; the bump is the release's own decision."
+partition: >
+  serial — Chunk 02's detector keys on the install line Chunk 01 puts in the anchor, and Chunk 03
+  documents both. Delegation was considered and declined: the chunks share one constant and one
+  file, so parallel delegates would contend on `migrate_plugin.py` for no wall-clock gain.
+last_validated: 2026-08-25
+---
+
+## Requirements Confidence
+
+**Level:** High
+
+**Why:** The problem was measured, not inferred — a simulated plugin-less machine, with the debug
+trace and the Claude Code documentation both recorded in
+`plugin-absent-clone-investigation.md`. The remediation command was verified end-to-end on that same
+machine (6 hooks, 14 skills, 1 agent after install). The owner chose the mechanism from three framed
+options.
+
+**Open assumptions / unknowns:** none material. One accepted limitation, recorded in the
+investigation and not a gap to close: the anchor is advisory — an agent that reads it cannot install
+the plugin, so it degrades to telling the human.
+
+**What would raise confidence:** N/A.
+
+## Status
+
+- [ ] Chunk 01: The anchor tells a plugin-less session the truth
+- [ ] Chunk 02: Detect a stale anchor, offer the re-anchor
+- [ ] Chunk 03: Doctor grades it; three documents stop asserting the retired behaviour
+
+Context: Plan authored 2026-08-25 from `plugin-absent-clone-investigation.md`, owner-approved scope
+(anchor-only, of three framed options). Branched off `origin/develop` at 98731932. Baseline suite
+green (5328 passed, 17 skipped) before any change. Nothing built yet. Next: Chunk 01.
+
+## Verification Strategy
+
+Beyond the suite, each chunk is checked against the same simulated plugin-less machine the
+investigation used — a scratch repo carrying the install reference and the anchor, driven with
+`claude --debug -p` under a throwaway `CLAUDE_CONFIG_DIR`. Chunk 01 confirms the new anchor text is
+what such a session actually receives; Chunk 02 confirms the detector calls a real pre-change anchor
+stale and a re-anchored one clean; Chunk 03 confirms `/prawduct:doctor`'s report names it.
+
+## Build Chunks
+
+### Chunk 01: The anchor tells a plugin-less session the truth
+
+- **Description:** Rewrite `STATIC_ANCHOR` so the one governance surface that reaches a plugin-less
+  session leads with the fact that governance is off and names the command that fixes it — and so
+  its enforcement sentence stops claiming unconditionally that a Stop hook is watching. The plugin
+  id is interpolated from `INSTALL_REFERENCE`, never typed twice.
+- **Depends on:** none
+- **Artifacts consumed:** `plugin-absent-clone-investigation.md` findings 2-4
+- **Deliverables:** `plugin/lib/migrate_plugin.py` — `STATIC_ANCHOR` rewritten, plugin id derived
+  from `INSTALL_REFERENCE['enabledPlugins']`
+- **Tests:** `tests/test_plugin_migrate.py`, `tests/test_plugin_init.py` — existing anchor
+  assertions updated; new: the anchor names the install command, the install command carries the id
+  from the contract constant (change the constant → the anchor follows), the enforcement claim is
+  conditional, and the anchor still carries no prawduct version number
+- **Acceptance criteria:** suite green; a scratch repo anchored by `init-product` carries the notice;
+  the rendered anchor stays under 35 lines (context weight is a cost — NFR)
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 02: Detect a stale anchor, offer the re-anchor
+
+- **Description:** Every repo onboarded before Chunk 01 carries the old anchor, and nothing
+  re-anchors it — `claude_anchor_pending` returns False the moment the sentinel is present, so a
+  stale anchor is indistinguishable from a current one. Add substance-based detection (does the
+  anchor block carry the install command?) and an offered, dry-run-by-default repair that replaces
+  the block and nothing else.
+
+  Detection is deliberately **substance-based, not revision-tagged**: a repo whose owner wrote their
+  own equivalent notice passes, which is the correct answer, and no new anchor-version concept has
+  to be kept in sync with the anchor.
+- **Depends on:** Chunk 01
+- **Artifacts consumed:** `plugin-absent-clone-investigation.md` "Decision taken"
+- **Deliverables:** new `plugin/lib/anchor_repair.py` (`check`, `repair`); `plugin/bin/prawduct-hook`
+  — new `reanchor [--apply] [--json]` subcommand, dispatch entry, usage string
+- **Tests:** new `tests/test_anchor_repair.py` — statuses `ok` / `stale` / `absent` / `unreadable`;
+  the repair replaces only the anchor block (surrounding product prose byte-identical, line endings
+  included); dry run writes nothing; `--apply` is idempotent; exit 0 for a graded run and 1 for
+  could-not-run; a repo with no `CLAUDE.md` is `absent`, not a crash
+- **Acceptance criteria:** run against a scratch repo carrying the pre-Chunk-01 anchor → `stale`
+  with the exact replacement printed; `--apply` → `ok`, re-run → `ok` and no diff
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 03: Doctor grades it; three documents stop asserting the retired behaviour
+
+- **Description:** Health Check #4 currently passes on the mere presence of the `PRAWDUCT:ANCHOR`
+  marker, so it grades a lying anchor healthy. Extend it to relay `reanchor`'s status and offer the
+  repair (read-and-guide; the owner runs `--apply`). Then correct the three documents that tell an
+  owner clone activation is automatic — the claims that actively suppress the message this whole
+  plan exists to deliver.
+- **Depends on:** Chunk 02
+- **Artifacts consumed:** `plugin-absent-clone-investigation.md` finding 5
+- **Deliverables:** `plugin/skills/doctor/SKILL.md` Health Check #4; `README.md` (the clone claim);
+  `plugin/skills/onboard/SKILL.md` (the "prompts each developer" claim); `documentation/MIGRATION.md`
+  (the "no setup step for the next person" claim); `.prawduct/change-log.md` entry
+- **Tests:** `tests/test_v5_methodology.py` (or the doctor-content suite) — Health Check #4 names the
+  `reanchor` command; a guard that none of the three documents claims the plugin auto-installs or
+  that Claude Code prompts for it
+- **Acceptance criteria:** suite green; `/prawduct:doctor` in a repo with a stale anchor reports
+  degraded and names the repair; the three documents describe what was measured
+- **Type:** cumulative-final
+  <!-- Last chunk: its review IS the branch's one `/prawduct:critic cumulative` — commit first,
+       run it once, no separate `final`. -->
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
+  3. Chunk marked `[x]` in Status
+
+## Governance Checkpoints
+
+**Commit & PR cadence:** commit per chunk after its Critic review passes. Chunk 03's `cumulative`
+review makes the branch PR-ready; `/prawduct:pr create` runs when the user asks for a PR.
