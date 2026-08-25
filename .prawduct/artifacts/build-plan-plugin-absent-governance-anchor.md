@@ -101,13 +101,24 @@ the plugin, so it degrades to telling the human.
 
 ## Status
 
-- [ ] Chunk 01: The anchor tells a plugin-less session the truth
+- [x] Chunk 01: The anchor tells a plugin-less session the truth
 - [ ] Chunk 02: Detect a stale anchor, offer the re-anchor
 - [ ] Chunk 03: Doctor grades it; three documents stop asserting the retired behaviour
 
 Context: Plan authored 2026-08-25 from `plugin-absent-clone-investigation.md`, owner-approved scope
 (anchor-only, of three framed options). Branched off `origin/develop` at 98731932. Baseline suite
-green (5328 passed, 17 skipped) before any change. Nothing built yet. Next: Chunk 01.
+green before any change (`prawduct-hook test-status` is the reading; a copied total here was wrong
+within the hour — it was carried over from a run on a different branch).
+
+**Chunk 01 complete** — the anchor carries the plugin-absent notice, the install command is
+interpolated from `INSTALL_REFERENCE`, and the enforcement claim is conditional. Reviewed
+(`rev-20260825T211056Z-c74a15bc`, chunk mode): 0 blocking, 1 warning + 2 notes, all dispositioned.
+The whole +76-token notice was funded by trimming restatements inside the anchor, so it came out
+smaller than it went in and the `product` ceiling ratcheted 2270 → 2266 rather than banking the
+difference.
+
+Next: Chunk 02 — and its commit must carry the already-written, deliberately-uncommitted
+`tests/test_plugin_init.py` asserts (R-1), which are listed in its Tests line.
 
 ## Verification Strategy
 
@@ -155,7 +166,13 @@ stale and a re-anchored one clean; Chunk 03 confirms `/prawduct:doctor`'s report
 - **Artifacts consumed:** `plugin-absent-clone-investigation.md` "Decision taken"
 - **Deliverables:** new `plugin/lib/anchor_repair.py` (`check`, `repair`); `plugin/bin/prawduct-hook`
   — new `reanchor [--apply] [--json]` subcommand, dispatch entry, usage string
-- **Tests:** new `tests/test_anchor_repair.py` — statuses `ok` / `stale` / `absent` / `unreadable`;
+- **Tests:** `tests/test_plugin_init.py` — **carried from Chunk 01's review (R-1)**: its
+  `test_static_anchor_present` gains two asserts so the scaffold path is pinned to render the
+  plugin-absent notice. It rides this commit rather than buying Chunk 01 a second review round, and
+  it belongs here on its own merit — new onboards are the one population this chunk's repair never
+  reaches. Already written and held uncommitted; commit it with this chunk.
+
+  new `tests/test_anchor_repair.py` — statuses `ok` / `stale` / `absent` / `unreadable`;
   the repair replaces only the anchor block (surrounding product prose byte-identical, line endings
   included); dry run writes nothing; `--apply` is idempotent; exit 0 for a graded run and 1 for
   could-not-run; a repo with no `CLAUDE.md` is `absent`, not a crash

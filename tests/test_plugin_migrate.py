@@ -643,6 +643,101 @@ def test_anchor_is_version_free(repo: Path):
     assert re.search(r"\bv?\d+\.\d+", text) is None, "anchor must not embed a version number"
 
 
+def test_anchor_tells_a_plugin_less_session_that_governance_is_off(repo: Path):
+    """The anchor is the ONLY governance surface a plugin-less clone receives.
+
+    `CLAUDE.md` is a repo file, so it loads whether or not the plugin does —
+    while the hooks, skills and gates it describes do not. Measured on a
+    simulated fresh machine (`artifacts/plugin-absent-clone-investigation.md`):
+    a clone registers the marketplace from `.claude/settings.json` and installs
+    nothing, Claude Code says nothing about it on any session, and the anchor
+    used to assure that reader a Stop gate was watching. Silence would have been
+    better than that; naming the condition and the one command that ends it is
+    better still.
+    """
+    run_migrate(repo, "--apply")
+    text = (repo / "CLAUDE.md").read_text()
+    assert "governance is OFF" in text, "the anchor must name the condition"
+    assert "claude plugin install" in text, "and the command that ends it"
+    # Not merely present — the reader is told to hand it to a human, because an
+    # agent cannot install a plugin for itself. Matched against whitespace-collapsed
+    # text: the anchor is hard-wrapped prose, so which words a line break falls
+    # between is formatting, and a test that pins it fails on a reflow that changed
+    # nothing.
+    flowed = " ".join(text.split())
+    assert "Tell the user to run" in flowed
+    assert "don't proceed as if governed" in flowed
+
+
+def test_anchor_install_command_names_the_id_from_the_install_contract(repo: Path):
+    """One home for the plugin id: `INSTALL_REFERENCE`, never typed twice.
+
+    The anchor's command and `.claude/settings.json`'s `enabledPlugins` key must
+    name the same plugin, and a marketplace rename must not be able to leave a
+    correct settings file beside an anchor pointing at something that no longer
+    exists. Checked mechanically (architecture.md § Direction, "every fact has
+    one home"), the same way the retired-key set is — a literal the code acts on
+    is the copy that goes stale silently.
+    """
+    tree = ast.parse((ROOT / "lib" / "migrate_plugin.py").read_text())
+    docstrings = {
+        node.body[0].value
+        for node in ast.walk(tree)
+        if isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        )
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+    live = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node not in docstrings
+    ]
+    plugin_ids = [s for s in live if "@" in s and s.startswith("prawduct")]
+    assert plugin_ids == ["prawduct@prawduct"], (
+        f"the plugin id must appear exactly once as a live literal, in "
+        f"INSTALL_REFERENCE; found {plugin_ids!r}"
+    )
+
+    # And what the contract enables is what the anchor tells the reader to install.
+    run_migrate(repo, "--apply")
+    text = (repo / "CLAUDE.md").read_text()
+    settings = json.loads((repo / ".claude" / "settings.json").read_text())
+    (enabled_id,) = settings["enabledPlugins"].keys()
+    assert f"claude plugin install {enabled_id}" in text
+
+
+def test_anchor_enforcement_claim_is_conditional_on_the_plugin(repo: Path):
+    """The claim that changed, and why it had to.
+
+    "Enforcement is structural: the Stop hook blocks" is true of a governed
+    session and false of the session that most needs to know — and an agent that
+    believes a gate is behind it builds differently from one that knows there is
+    none. The sentence now carries its own precondition, so it cannot be read
+    correctly and be wrong at the same time.
+
+    Pinned as the precondition plus the absence of the unconditional form, and
+    deliberately not as a second sentence spelling out "no hook without the
+    plugin": the check paragraph above already states that consequence, so a
+    third statement of it is what the footprint ratchet charged for and what the
+    one-home rule forbids.
+    """
+    run_migrate(repo, "--apply")
+    text = (repo / "CLAUDE.md").read_text()
+    assert "Enforcement is structural — while the plugin is loaded:" in text
+    assert "Enforcement is structural:" not in text, (
+        "the unconditional form is the claim this test exists to keep out"
+    )
+    assert "no Stop gate, no Critic, nothing below enforced" in text, (
+        "the consequence of an absent plugin must be stated once, up top"
+    )
+
+
 def test_anchor_not_duplicated_on_reapply(repo: Path):
     # Anchor insertion is idempotent independent of the already_migrated guard:
     # if the distribution marker is absent (partial/reverted state) migrate runs

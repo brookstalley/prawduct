@@ -848,8 +848,23 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # a project preference on the one surface that cannot be opted out of. It is
     # also the form the two neighbouring policy bullets already use, naming the
     # governing row inline rather than behind the pointer.
+    #
+    # -4 on `product` only, 2026-08-25: the anchor gained the notice a
+    # plugin-less clone needs -- that `/prawduct:*` being unavailable means
+    # governance is OFF, and the one command that ends it -- and came out
+    # SMALLER than it went in. `framework` does not move because the anchor is
+    # not one of its members; this is the CLAUDE.md-edit case in reverse.
+    #
+    # The +76 the notice cost was funded in place, and by cutting restatements
+    # rather than words: the marker restated the version-free rule that the
+    # block comment above it already owns (and that no session pays for); the
+    # opening paragraph said "lives in the plugin" and "never copied into this
+    # repo", which are one fact; and the enforcement paragraph closed by
+    # restating "no hook and no gate" two paragraphs after the new check says
+    # "no Stop gate, no Critic, nothing below enforced". The conditional in its
+    # heading is what carries that fact now, so the sentence was a third copy.
     "framework": 3343,
-    "product": 2269,
+    "product": 2265,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -923,8 +938,14 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # here, because a revert target copied into prose goes stale the next time
     # either shape moves and reads as fact while it is wrong. Drop the bullet
     # and read what the assertion prints.)
+    #
+    # 2270 -> 2266 on 2026-08-25, `product` only: ratcheted with the reading, per
+    # the rule above. The anchor's plugin-absent notice was paid for by more trim
+    # than it cost, and leaving the ceiling at 2270 would bank that difference as
+    # headroom for the next addition -- the re-funding the ratchet exists to stop.
+    # NOT a declared raise: nothing here grew.
     "framework": 3344,
-    "product": 2270,
+    "product": 2266,
 }
 
 
