@@ -207,8 +207,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
   to `unknown` rather than a reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
-  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`,
-  `plan-backfill`, `repo-disable`, `bug-inbox` (dry-run-by-default where they mutate, with
+  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
+  `lifecycle-repair`, `plan-backfill`, `repo-disable`, `bug-inbox` (dry-run-by-default where they
+  mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
   which is why the default is the mutating one — but a reader who assumed the blanket
@@ -268,7 +269,7 @@ allowlist; `#667` carries the audit.
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
 `repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
-`lifecycle-repair`, `plan-backfill`) default to a
+`reanchor`, `lifecycle-repair`, `plan-backfill`) default to a
 **dry run** and require
 `--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
 named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which
@@ -298,6 +299,13 @@ files to touch previews first. That framing is descriptive — the binding rule 
     one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable`; plus `rows`, `path`, `detail`, `applied`,
     `removed`). Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
     write or idempotent no-op and 1 on refusal.
+  - `reanchor --json` → consumed by `/prawduct:doctor` Health Check #4 (`status` — one of `ok` /
+    `stale` / `stale-modified` / `absent` / `unreadable`; plus `path`, `repairable`, `detail`,
+    `applied`, `replacement`). Dry run exits 0 when it ran and 1 only when it could not; `--apply`
+    exits 0 on a write or idempotent no-op and 1 on refusal. **`stale` and `stale-modified` are
+    separate statuses on purpose** and a consumer must not collapse them: the first is prawduct's
+    to repair, the second is an anchor the owner has edited, which this command reports and
+    declines to overwrite.
   - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
     `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
     `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).

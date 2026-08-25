@@ -163,6 +163,13 @@ def test_static_anchor_present(scaffolded: Path):
     text = (scaffolded / "CLAUDE.md").read_text()
     assert "PRAWDUCT:ANCHOR" in text
     assert "/prawduct:methodology building" in text  # the anchor points at the build cycle
+    # A newly scaffolded repo must carry the plugin-absent notice too, and this is
+    # the only test that can say so: the re-anchor repair converges repos that were
+    # onboarded EARLIER, so new onboards are the one population it never reaches. If
+    # this path stopped rendering STATIC_ANCHOR, every migrated repo would still be
+    # correct and every new one silently would not.
+    assert "governance is OFF" in text
+    assert "claude plugin install" in text
 
 
 def test_install_reference_committed(scaffolded: Path):

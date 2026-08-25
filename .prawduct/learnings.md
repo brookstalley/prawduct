@@ -373,7 +373,7 @@ never by dropping them.
 
 ## When the deliverable is INSTRUCTIONS, at least one guardrail must model the READER — tests that measure the artifact (size, budget, "the right words are present") all pass while the instruction has no effect, because none of them read the file in the order an agent reads it
 
-## A spike that discards its code leaves its numbers unfalsifiable — commit the derivation as a runnable script and cite the command, never the digits, because a count transcribed into prose goes stale silently as the corpus grows; the fix is not counting more carefully but moving the count out of prose entirely
+## A spike that discards its code leaves its numbers unfalsifiable — commit the derivation as a runnable script and cite the command, never the digits, because a count transcribed into prose goes stale silently as the corpus grows; the fix is not counting more carefully but moving the count out of prose entirely — [learnings-detail.md]
 
 ## Routing a filing to the handoff is NOT filing it — file the item the moment you decide it should exist, because a handoff note is read by a session that arrives with its own plan and treats an inherited instruction as context rather than work, and an unwritten handoff (crash, context exhaustion) loses it outright; "later" has two independent ways to never happen and costs the same as now
 
@@ -454,6 +454,8 @@ never by dropping them.
 ## For every value you plan to PERSIST from a provider, verify the exact request that will later REPLAY it, not just the one that produced it — a verify-api step scoped to the plan's own mechanism confirms that mechanism and misses the one the plan got wrong
 
 ## A build plan can name a CODE IDENTIFIER it never opened, and that is where a plan is most confidently wrong — before implementing a deliverable phrased as "add X to `Y`", open `Y` and check it does what the sentence assumes. Tell: the plan names a symbol and you are about to edit it without having read it
+
+## Verify a chunk against the PLAN's deliverable list, not against the files you actually edited — the two diverge silently, because work concentrates in one file and "done" gets judged from what is in front of you rather than from what was owed. Tell: a Tests or Deliverables line naming more than one file, where the editing concentrated in one — [learnings-detail.md]
 
 ## A VALIDATOR that only refuses the malformed can still let a control fail OPEN — when a validated value is interpolated into a URL path, a filesystem path, or any other resolver, ask what ELSE the value could successfully resolve, not just whether it parses. Tell: your validator's rejections are all shaped like "this is not well-formed" and none like "this is not the thing"
 

@@ -2312,6 +2312,24 @@ Chunk 05c widened an id-shape regex; `grep -rn "A-Za-z0-9"` correctly found all 
 
 ## A spike that discards its code leaves its numbers unfalsifiable — commit the derivation as a runnable script and cite the command, never the digits, because a count transcribed into prose goes stale silently as the corpus grows; the fix is not counting more carefully but moving the count out of prose entirely
 
+**A second instance, wrong on arrival rather than by decay (2026-08-25).** A build plan's Context
+line stated a baseline as a passed/skipped pair. The count was real — it just came from a run on
+`feat/review-loop-termination`, a different branch carrying a different test set, while the sentence
+described the branch the plan governed. So it was not a figure that drifted; it was never true of
+the thing it described, and the Critic reconciled it against the evidence store within the hour of
+it being written.
+
+(This entry deliberately quotes no digits. The first draft of it did, and `record-lint` flagged the
+copy inside the very entry warning against copies — which is the rule catching its own author, and
+the best evidence that the mechanism beats the intention.)
+
+The remedy the repo's own rule prescribes is **deletion, not correction** — the plan now says
+"baseline suite green" and cites `prawduct-hook test-status` as the reading. Worth recording that
+the rule had been read minutes earlier, in `building.md`'s "suite totals keep coming back": reading
+a rule is not applying it. The tell that would have caught it is narrower and more mechanical than
+the rule itself — **the number came from a different tree than the sentence is about**, which is
+checkable at the moment of writing without knowing the rule at all.
+
 Confirmed 2026-07-31 (record-mechanization Chunk 05, the change-log ledger spike). `change-log-ledger-design.md`
 §1 opened with a hand-authored tag census that matched **no** query over its own named tree, and the wrong
 sizing had already propagated into the migration plan's conversion and archive sets. A design artifact whose
@@ -4458,3 +4476,26 @@ closing keywords only for merges into the repository's *default* branch, so on a
 inert. And this arrangement has no detector: `documentation/backlog-service-requirements.md` **GV3**
 replaces ship-atomicity with traceability plus a reconciliation sweep, and the sweep is prescribed
 but unbuilt, so the step running is the whole guarantee.
+
+## Verify a chunk against the PLAN's deliverable list, not against the files you actually edited
+
+**The instance (2026-08-25, plugin-absent-governance-anchor Chunk 01).** The chunk's Tests line named
+two files: `tests/test_plugin_migrate.py` and `tests/test_plugin_init.py`. Three tests went into the
+first, none into the second, and the chunk was declared to have met its acceptance criteria with a
+full green suite behind it. The Critic found it.
+
+**Why green said nothing.** `init_product` imports `apply_claude_anchor`, so the scaffold path was
+in fact rendering the new anchor correctly — nothing was broken, and no test could have gone red.
+What was missing was a test that *would* go red if that path ever stopped rendering it. Green is
+evidence about what could have made it red, and no assertion reached this path at all.
+
+**Why this particular omission bit harder than most.** The unpinned path was the scaffold one, and
+the same plan's next chunk was a repair that converges *already-onboarded* repos. New onboards are
+precisely the population that repair can never reach, so the untested path was the one with no
+second line of defence behind it.
+
+**Root cause, and it is not carelessness about testing.** Verification ran against *what had been
+edited* rather than against *what the plan said was owed*. The plan is the checklist, and it was not
+re-read at the step that exists to check it — the "acceptance criteria met" step. The tell is
+mechanical and available before the work starts: a Tests or Deliverables line naming more than one
+file, where the editing will naturally concentrate in one of them.
