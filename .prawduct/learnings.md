@@ -459,7 +459,7 @@ never by dropping them.
 
 ## Checking the STATE after a repair does not verify what the repair REPORTED — read the writing run's own output, because the idempotent re-run that follows prints the right answer and covers the wrong one. Tell: you confirmed a fix by running it twice and reading the second — [learnings-detail.md]
 
-## A CLASS finding closed at the site where it was NOTICED is not closed — re-read the finding for the owners it names and fix every one in the same pass, because the site you saw it at is an accident of where the reviewer looked. Tell: your fix cites a finding whose text says "two owners" / "every row" / "both writers", and touches one — [learnings-detail.md]
+## A CLASS finding closed at the site where it was NOTICED is not closed — fix every site it names AND check a test fails for each, because fixing both while pinning one lets the other be deleted green. Tell: your fix cites a finding saying "two owners" / "every row" / "both writers", and touches or tests one — [learnings-detail.md]
 
 ## A VALIDATOR that only refuses the malformed can still let a control fail OPEN — when a validated value is interpolated into a URL path, a filesystem path, or any other resolver, ask what ELSE the value could successfully resolve, not just whether it parses. Tell: your validator's rejections are all shaped like "this is not well-formed" and none like "this is not the thing"
 

@@ -4521,6 +4521,18 @@ written from the fix inherits the fix's blind spot; parametrizing it over both w
 what closes that, and it is the same shape as "tests written from the same mental model inherit its
 blind spot".
 
+**A fourth instance, and a sharper sub-shape: the CODE was fixed at both sites and only one was
+PINNED.** `repair`'s success report was corrected on both write branches, but both new assertions
+started from a `stale` fixture — so deleting the `absent` branch's two success lines shipped green,
+reinstating the defect on the one status Health Check #4 advertises as repairable. The test file had
+*already learned this shape one round earlier*: `test_an_unwritable_claude_md_is_reported_not_raised`
+is parametrized over these same two branches for exactly this reason, and the next test written
+against those same branches was not.
+
+So the rule has two halves, and the second is the one that keeps recurring: **fix every site the
+finding names, then check that a test fails for each of them.** A fix verified only where it was
+noticed is a fix that can be deleted anywhere else.
+
 **Root cause.** Reading a finding for *what to change* rather than for *what it says is in scope*.
 The severity and the recommendation get read; the sentence enumerating the owners is skimmed,
 because by then the fix already feels identified. The cheap counter is mechanical: before committing
