@@ -49,7 +49,7 @@ When they do want it, onboard **owns provisioning for this entry path** (scrub o
     "enabledPlugins": { "prawduct@prawduct": true }
   }
   ```
-  On first trusted open, Claude Code prompts each developer to install the marketplace + plugin (one-time, skippable).
+  On first trusted open, Claude Code adds the marketplace from this reference without prompting — but it **does not install the plugin**, because it never auto-installs one sourced from a repository. So tell the owner plainly: **every contributor runs `claude plugin install prawduct@prawduct` once**, and until they do, their clone runs with no hooks, no `/prawduct:*` and no gates, and Claude Code says nothing about it. The `CLAUDE.md` anchor is what tells such a session to raise it — do not describe onboarding as making governance automatic for the next person, because it does not.
 - Governance activates only in the target's OWN session: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."**
 - After onboarding, run **`/prawduct:doctor`** in the repo anytime to health-check the install.
 

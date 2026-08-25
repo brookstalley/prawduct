@@ -70,8 +70,19 @@ def _release_tags() -> list[str]:
     return r.stdout.split() if r.returncode == 0 else []
 
 
-def _shipped_anchor(tag: str) -> str | None:
-    """`STATIC_ANCHOR` as that tag rendered it, or None if it cannot be read.
+#: Returned for a tag that predates `migrate_plugin.py` itself. Distinct from
+#: `None`, and the distinction is the point: "this release had no anchor" is a
+#: correct skip, while "this release had one and I could not read it" is the
+#: guard going blind. One value for both would have made the second look like the
+#: first — which is the vacuous pass this reader exists to avoid.
+_NO_MODULE = object()
+
+
+def _shipped_anchor(tag: str):
+    """`STATIC_ANCHOR` as that tag rendered it.
+
+    Returns the rendered text, ``_NO_MODULE`` when the tag predates the module,
+    or ``None`` when the module is there but its anchor could not be rendered.
 
     Parses rather than executes, and resolves the f-string's interpolations from
     the same module's own string constants — which is the whole of what the anchor
@@ -89,7 +100,7 @@ def _shipped_anchor(tag: str) -> str | None:
             src = r.stdout
             break
     if src is None:
-        return None
+        return _NO_MODULE
 
     try:
         tree = ast.parse(src)
@@ -307,10 +318,27 @@ def test_the_archive_covers_every_anchor_prawduct_ever_shipped():
 
     known = {a.strip() for a in ar.SUPERSEDED_ANCHORS} | {STATIC_ANCHOR.strip()}
     missing: dict[str, str] = {}
+    unresolved: list[str] = []
     for tag in tags:
         shipped = _shipped_anchor(tag)
-        if shipped is not None and shipped not in known:
+        if shipped is _NO_MODULE:
+            continue  # predates migrate_plugin.py; there was no anchor to ship
+        if shipped is None:
+            unresolved.append(tag)
+        elif shipped not in known:
             missing.setdefault(shipped, tag)
+
+    # A tag whose anchor could not be rendered is skipped by the loop, and a loop
+    # that skipped every tag would pass having checked nothing. Assert the reader
+    # still works before trusting what it did not find: `_shipped_anchor` resolves
+    # only the f-string shape the anchor has always had, so a future anchor that
+    # interpolates something else would silently empty this guard rather than
+    # fail it. Every tag carrying the module must resolve.
+    assert not unresolved, (
+        f"could not render STATIC_ANCHOR for {unresolved} — the guard skips what it "
+        "cannot read, so this is the guard going blind, not the tags being fine. "
+        "Teach `_shipped_anchor` the new shape before trusting a green run here"
+    )
 
     assert not missing, (
         "these anchors shipped in a release and are in neither SUPERSEDED_ANCHORS "

@@ -117,6 +117,14 @@ stays version-free."""
 
 #: v2.3.0 – v3.4.0 (26 releases). Differs from :data:`ANCHOR_V1` only in the
 #: build-cycle line, which gained the `methodology` reader.
+#:
+#: **This one entry is derived rather than frozen, which bends "append, never
+#: edit" and is worth knowing before you edit V1:** a change to V1 silently
+#: changes V2 too. Kept because the alternative is 1.3 KB of near-duplicate
+#: literal whose only difference is one line — and because the coupling is
+#: guarded rather than trusted: `test_the_archive_covers_every_anchor_prawduct_\
+#: ever_shipped` reconstructs both from the release tags and fails if either
+#: stops matching what shipped.
 ANCHOR_V2 = ANCHOR_V1.replace(
     "`/prawduct:building`",
     "`/prawduct:methodology building`",

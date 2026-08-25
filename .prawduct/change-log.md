@@ -3,6 +3,58 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-25: a clone without the plugin is told so, instead of being told a gate is watching
+
+<!-- prawduct: type=fix | scope=plugin-absent-governance-anchor -->
+
+A repo governed by prawduct, cloned onto a machine where the plugin was never installed, ran
+completely ungoverned and said nothing about it. Measured rather than reasoned about: on a simulated
+fresh machine the committed install reference registers the marketplace and installs nothing —
+Claude Code has not auto-installed a repository-sourced plugin since v2.1.195 — so the session loads
+zero hooks and zero skills, prints zero bytes about it, and behaves identically on every subsequent
+session. There is no error, and after the first run there is not even a debug line.
+
+**The defect worth fixing was not the absence of governance; it was the false assurance.**
+`CLAUDE.md` loads whether or not the plugin does, so its `PRAWDUCT:ANCHOR` block was the one surface
+reaching that session — and it told it enforcement was structural and a Stop hook would block it. An
+agent that believes a gate is behind it builds differently from one that knows there is none, so
+silence would have been better than what was there. The anchor now opens with the check, names
+`claude plugin install prawduct@prawduct`, tells the reader to hand it to their user, and qualifies
+the enforcement sentence. The plugin id is interpolated from `INSTALL_REFERENCE` rather than typed
+twice, so a marketplace rename cannot leave a correct settings file beside an anchor pointing at
+something that no longer exists.
+
+**The notice was funded, not added.** The injected-footprint ceiling refused it, and this repo's rule
+is that the next addition trims rather than bumps — so the +76 tokens came out of three restatements
+inside the anchor itself. It ended smaller than it started, and the `product` ceiling ratcheted down
+with the reading rather than banking the difference.
+
+**Fixing new repos would have fixed nobody.** `apply_claude_anchor` returns the moment it sees the
+sentinel, so a stale anchor was indistinguishable from a current one and every already-onboarded repo
+— which is the entire live fleet — would have kept its old text. `prawduct-hook reanchor
+[--apply] [--json]` detects by **substance** (does this anchor name the install command? — so an
+owner's own equivalent notice grades healthy) and repairs by **exact match** against anchors prawduct
+actually shipped. The sentinel has no END delimiter, so inferring where the anchor stops is a chance
+to eat the line below it; an anchor matching nothing is reported and left to its owner. Dry run by
+default, one informed confirmation to write. `/prawduct:doctor` Health Check #4 stopped being
+satisfied by the marker's mere presence — that check graded a lying anchor healthy, because every
+stale anchor carries the sentinel.
+
+**Review caught the archive covering the wrong set.** It held the anchor that had just been replaced
+rather than the ones prawduct shipped, missing the 31 releases from v2.0.0 to v2.2.3 (one line apart:
+`/prawduct:building`, before the methodology reader was renamed). That cohort — the oldest repos —
+would have been refused the repair *and told their anchor had been edited locally*, blaming owners
+for text prawduct wrote. Fixed at the class: a guard reconstructs `STATIC_ANCHOR` from every release
+tag by parsing the historical module and fails, naming the tag, when an anchor shipped that the
+archive lacks.
+
+**Three shipped documents promised the retired behaviour** — README, the onboard skill, and
+MIGRATION each said activation was automatic and one said there was "no setup step for the next
+person". They are what an owner reads when deciding what to tell their team, so each was actively
+suppressing the message that closes the gap. Corrected, and pinned by tripwires that match the
+*claim* rather than the wording — a class of decay worth naming, because this prose describes a
+mechanism prawduct does not control and went false with nothing in this repo changing.
+
 ## 2026-08-24: the evidence file can say which commit it read
 
 <!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit -->
