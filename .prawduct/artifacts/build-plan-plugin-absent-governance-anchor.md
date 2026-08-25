@@ -102,7 +102,7 @@ the plugin, so it degrades to telling the human.
 ## Status
 
 - [x] Chunk 01: The anchor tells a plugin-less session the truth
-- [ ] Chunk 02: Detect a stale anchor, offer the re-anchor
+- [x] Chunk 02: Detect a stale anchor, offer the re-anchor
 - [ ] Chunk 03: Doctor grades it; three documents stop asserting the retired behaviour
 
 Context: Plan authored 2026-08-25 from `plugin-absent-clone-investigation.md`, owner-approved scope
@@ -117,8 +117,29 @@ The whole +76-token notice was funded by trimming restatements inside the anchor
 smaller than it went in and the `product` ceiling ratcheted 2270 → 2266 rather than banking the
 difference.
 
-Next: Chunk 02 — and its commit must carry the already-written, deliberately-uncommitted
-`tests/test_plugin_init.py` asserts (R-1), which are listed in its Tests line.
+**Chunk 02 complete** — `prawduct-hook reanchor` detects by substance and repairs by exact match.
+Reviewed (`rev-20260825T213108Z-2f26dd47`): 1 blocking, 2 warnings, 1 note. The blocking one was
+real and mine: the archive covered the anchor I had just replaced rather than the anchors prawduct
+shipped, stranding the v2.0.0–v2.2.3 cohort (31 releases) AND telling those owners their anchor had
+been edited locally. Fixed at the class — a tag-derived guard reconstructs every shipped anchor by
+parsing and fails naming the tag when one is unarchived. Cleared by
+`rev-20260825T214436Z-835ca6ea` (verify-resolutions): 0 findings.
+
+Next: Chunk 03, whose commit carries three things from Chunk 02's verify round (all demoted
+observations, none blocking, each cheaper to ride this commit than to schedule):
+
+1. **`api-contract.md` documents ahead of its implementation.** Its new `reanchor --json` entry
+   already says Health Check #4 consumes it; Chunk 03 is what makes that true. Nothing to change if
+   Chunk 03 lands as planned — this is the note that makes it a deferral rather than a drop.
+2. **The tag guard can pass vacuously.** `_shipped_anchor` returns `None` for any f-string shape it
+   cannot resolve and `None` is skipped, so a future anchor interpolating something other than a
+   module-level string constant would make the guard green by resolving nothing. Every tag resolves
+   today (verified twice, independently). Make it assert that every tag resolved, so "I could not
+   read it" stops being spelled the same as "it was fine".
+3. **`ANCHOR_V2` is derived from `ANCHOR_V1` by `.replace()`**, which couples two entries the
+   archive's own "append, never edit" rule treats as independent literals. The tag guard catches any
+   breakage, so this is defended rather than unguarded — but say so at the constant, or the next
+   reader trusts the stated rule over the code.
 
 ## Verification Strategy
 
