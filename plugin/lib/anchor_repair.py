@@ -305,7 +305,20 @@ def repair(project_dir: Path, apply: bool = False) -> dict:
     if result["status"] == STATUS_ABSENT:
         result["replacement"] = STATIC_ANCHOR.strip()
         if apply:
-            result["applied"] = apply_claude_anchor(project_dir)
+            try:
+                # `apply_claude_anchor` writes through `core.atomic_write_text`,
+                # whose contract is that OSErrors propagate and each CALLER owns
+                # its failure policy. This is that caller. Guarding only the swap
+                # branch below left the delegating one raising — and `absent` is
+                # the status doctor advertises as "the repair inserts one", so the
+                # unguarded path was the advertised one.
+                result["applied"] = apply_claude_anchor(project_dir)
+            except (OSError, UnicodeError) as exc:
+                result.update({
+                    "status": STATUS_UNWRITABLE,
+                    "repairable": False,
+                    "detail": f"could not write {CLAUDE_REL}: {exc}",
+                })
         return result
 
     path = project_dir / CLAUDE_REL

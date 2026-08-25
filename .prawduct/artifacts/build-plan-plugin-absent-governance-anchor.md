@@ -25,7 +25,14 @@ governed_by:
         every surface follows. The three doc corrections are net *deletions* of authoritative
         restatements: README keeps the install command (it is the human install home, already there
         at the Quick Start), and MIGRATION/onboard stop asserting clone behaviour and cite that
-        section instead of restating it."
+        section instead of restating it. **PARTLY REVERSED at the cumulative review (R-7/R-15), and
+        the why belongs here rather than only in the disposition ledger:** MIGRATION and onboard now
+        each carry the install command literally, because the R-7 fix requires every paragraph making
+        a clone claim to discharge the install step *in that paragraph* — a reader of MIGRATION step
+        1 does not scroll to line 117 before telling their team what to do, which is exactly how the
+        false promise survived. So the one-home rule still holds for the plugin *id* (one derivation,
+        `INSTALL_REFERENCE`, consumed by the anchor and by the test) and is deliberately traded away
+        for the human-typed *command*, where a copy beside each claim is the point."
       - "authority fails closed; advice fails soft → conforms. The re-anchor command is advice: it
         reports and offers, it gates nothing, and an unreadable `CLAUDE.md` exits 1 as
         could-not-run rather than reporting a clean anchor. Nothing in this plan produces a verdict."

@@ -280,13 +280,22 @@ def test_a_crlf_repo_is_repaired_without_reformatting_the_file(tmp_path: Path):
     assert raw == expected.encode("utf-8")
 
 
-def test_an_unwritable_claude_md_is_reported_not_raised(tmp_path: Path):
+@pytest.mark.parametrize("start", ["stale", "absent"])
+def test_an_unwritable_claude_md_is_reported_not_raised(tmp_path: Path, start):
     """This command is offered BY doctor by name, so a failed write is a report.
 
     A traceback out of a health check is not a finding, it is a crash — and the
     two precedents this module copies both own their write failure explicitly.
+
+    **Parametrized over BOTH writing branches, because guarding one was the
+    defect.** `repair` writes in two places: the swap, and the `absent` branch
+    that delegates to `apply_claude_anchor`. The first fix wrapped the swap only,
+    and `absent` is the status Health Check #4 advertises as "the repair inserts
+    one" — so the branch left raising was the advertised one, and a `stale`-only
+    fixture could not see it.
     """
-    root = _write_claude(tmp_path / "readonly", ar.ANCHOR_V2)
+    anchor = ar.ANCHOR_V2 if start == "stale" else None
+    root = _write_claude(tmp_path / f"readonly-{start}", anchor)
     root.chmod(0o555)  # the DIRECTORY: atomic_write_text needs to create a sibling
     try:
         result = ar.repair(root, apply=True)

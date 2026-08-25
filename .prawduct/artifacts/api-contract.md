@@ -295,7 +295,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `discovery_expected` or `structural_recorded` = the staging check **could not run**, and in that
     state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
     consumer must not read it as a clean layer 1.
-  - `norm-index-scaffold --json` → consumed by `/prawduct:doctor` Health Check #14 (`status` —
+  - `norm-index-scaffold --json` → **no JSON consumer today** — Health Check #14 runs the command
+    and relays its human form, the same as #4. (`status` —
     one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable`; plus `rows`, `path`, `detail`, `applied`,
     `removed`). Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
     write or idempotent no-op and 1 on refusal.
