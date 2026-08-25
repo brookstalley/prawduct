@@ -307,6 +307,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
     command and relays its human form; the `--json` shape is published for programmatic consumers
     and carries `status` — one of `ok` / `stale` / `stale-modified` / `legacy-block` / `absent` /
     `unreadable` / `unwritable` — plus `path`, `repairable`, `detail`, `applied`, `replacement`.
+    **A successful `--apply` returns `ok`**, not the status it repaired: a graded status describes
+    the state on the way IN, and a consumer reading it back after a write would report the condition
+    that was just fixed.
     Said plainly because the first version of this entry named HC#4 as the JSON consumer while HC#4
     parses nothing: a contract asserting a consumer it does not have is how a `--json` shape drifts
     from the command that emits it. Dry run exits 0 when it ran and 1 only when it could not; `--apply`

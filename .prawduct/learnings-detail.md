@@ -4531,3 +4531,33 @@ a fix, re-read the finding's own text and list the sites it names — the words 
 blocking, 0 findings — THE REVIEW IS OVER" while its own body said R-12 survived. The body was
 right, and it took three lines of running the code to confirm. A summary line is not evidence about
 the analysis above it; when they disagree, the specific and checkable half wins.
+
+## Checking the STATE after a repair does not verify what the repair REPORTED
+
+**The instance (2026-08-25, `prawduct-hook reanchor`).** `repair()` built its result by copying
+`check()`'s dict and setting only `applied`. A successful `--apply` therefore returned `status:
+stale` and the detail prose describing an anchor that lies to plugin-less clones — the condition it
+had just removed. The CLI prints status and detail and stops (its confirmation block is gated on
+`not applied`), `--json` published the same false state, and doctor maps every non-`ok` status to
+degraded. A repair that worked reported itself as the problem.
+
+**How it survived a product verification that ran the exact command.** The check was: seed a stale
+repo, run `--apply`, run again, confirm `ok`. The transcript literally read
+
+    reanchor (apply): stale        <- the wrong report, looked straight at
+    reanchor (dry-run): ok         <- the re-run, which is what got believed
+
+The second line answered the question being asked ("did the repair work?") and in doing so supplied
+a plausible reading for the first. Idempotency checks are especially good at this: the follow-up run
+is *designed* to print the healthy state, so it will always be there to explain away whatever the
+writing run said.
+
+**The rule is about which run you read, not about testing more.** A repair has two observable
+outputs — the state afterwards, and the report it made while getting there — and only the second
+reaches an operator in the moment. Verifying the first is not evidence about the second.
+
+**What closes it mechanically:** an assertion on the WRITING run's output that names the pre-fix
+status as forbidden (`assert STATUS_STALE not in result.stdout`), not merely the post state as
+present. Both precedents in this family (`learnings_obligation`, `norm_index_scaffold`) return their
+OK status on success, so copying the precedent's TEST file — not just its shape — would also have
+caught it.

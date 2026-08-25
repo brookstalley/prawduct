@@ -457,6 +457,8 @@ never by dropping them.
 
 ## Verify a chunk against the PLAN's deliverable list, not against the files you actually edited — the two diverge silently, because work concentrates in one file and "done" gets judged from what is in front of you rather than from what was owed. Tell: a Tests or Deliverables line naming more than one file, where the editing concentrated in one — [learnings-detail.md]
 
+## Checking the STATE after a repair does not verify what the repair REPORTED — read the writing run's own output, because the idempotent re-run that follows prints the right answer and covers the wrong one. Tell: you confirmed a fix by running it twice and reading the second — [learnings-detail.md]
+
 ## A CLASS finding closed at the site where it was NOTICED is not closed — re-read the finding for the owners it names and fix every one in the same pass, because the site you saw it at is an accident of where the reviewer looked. Tell: your fix cites a finding whose text says "two owners" / "every row" / "both writers", and touches one — [learnings-detail.md]
 
 ## A VALIDATOR that only refuses the malformed can still let a control fail OPEN — when a validated value is interpolated into a URL path, a filesystem path, or any other resolver, ask what ELSE the value could successfully resolve, not just whether it parses. Tell: your validator's rejections are all shaped like "this is not well-formed" and none like "this is not the thing"

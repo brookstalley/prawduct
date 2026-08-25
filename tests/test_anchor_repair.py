@@ -574,18 +574,36 @@ class TestCommand:
         assert "/prawduct:migrate" in result.stdout
         assert "Would " not in result.stdout, "an offer that cannot be honoured is worse than none"
 
-    def test_apply_reports_the_write_not_the_defect_it_fixed(self, tmp_path: Path):
+    @pytest.mark.parametrize(
+        ("start", "anchor", "was"),
+        [("stale", ar.ANCHOR_V2, ar.STATUS_STALE), ("absent", None, ar.STATUS_ABSENT)],
+    )
+    def test_apply_reports_the_write_not_the_defect_it_fixed(
+        self, tmp_path: Path, start, anchor, was
+    ):
         """The success report, which `--apply` got wrong for a whole review round.
 
         `repair` starts from `check`'s dict, so a successful write kept returning
-        `stale` and the prose describing the lying anchor. Only `applied`
-        distinguished success from refusal — and the CLI's confirmation block is
-        gated on `not applied`, so it printed the defect and stopped.
+        the graded defect — only `applied` distinguished success from refusal, and
+        the CLI's confirmation block is gated on `not applied`, so it printed the
+        defect and stopped.
+
+        **Parametrized over both write branches, because pinning one was the
+        follow-up defect.** `repair` writes in two places — the swap and the
+        `absent` delegation — and a first cut asserted only the swap, so deleting
+        the `absent` branch's two success lines shipped green. That branch is the
+        one Health Check #4 advertises as repairable, so a doctor session that
+        inserted a missing anchor would have read the defect back and graded the
+        repo degraded immediately after fixing it. `test_an_unwritable_claude_md_\
+        is_reported_not_raised` is parametrized for this same reason, one round
+        earlier, on these same two branches.
         """
-        root = _write_claude(tmp_path / "cmd-apply", ar.ANCHOR_V2)
+        root = _write_claude(tmp_path / f"cmd-apply-{start}", anchor)
+        assert ar.check(root)["status"] == was, "fixture must actually start from the defect"
+
         result = _run(root, "--apply")
         assert result.returncode == 0
-        assert ar.STATUS_STALE not in result.stdout, (
+        assert was not in result.stdout, (
             "a repair that worked must not report the condition it repaired"
         )
         assert f"reanchor (apply): {ar.STATUS_OK}" in result.stdout
