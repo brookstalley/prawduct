@@ -150,12 +150,32 @@ falsify the premise:
 
 ### Chunk 02: Judgeability governs review scope; Records Pass covers what it drops
 
-- **Description:** Non-judgeable files are dropped from per-round reviewer scope — measured at
+- **Description:** Non-judgeable files stop being **subjects** of per-round review — measured at
   39% of all files handed to reviewers (5,887 of 14,923 file-slots) and 36% of all findings.
   A **Records Pass** at `final`/`cumulative` only then reviews the excluded set against the two
   bars the severity contract already defines ("it ships" / "it misleads into action"). The two
   land in one chunk deliberately: the narrowing alone opens a window in which a shipping
   falsehood in a record goes unreviewed, and the Records Pass is that window's only cover.
+- **Subject and oracle are different roles, and only the subject role narrows** (owner
+  challenge, 2026-08-25 — the original draft conflated them and would have shipped a severe
+  regression). A non-judgeable file plays two parts in a review: it is a thing that can be
+  *wrong* (subject), and it is the authority the code is judged *against* (oracle). Every spec
+  this repo has is non-judgeable — the build plan, every `.prawduct/artifacts/*.md`,
+  `project-preferences.md`, `cross-cutting-concerns.md` — and `goals-1-3.md` step 3 instructs
+  the reviewer to read exactly those, because Goal 2's requirement-coverage check and Goal 3's
+  norm-departure check both rate **BLOCKING** and both need the spec in front of them.
+  Therefore:
+  - **Subject set** (findings-eligible, what `files_reviewed` narrows to): judgeable files only.
+  - **Oracle set** (delivered to the reviewer, read, never rated): the build plan, the artifacts
+    a change cites, the preferences and cross-cutting-concerns registries.
+  - A finding of the form *"the code violates this spec"* has the **code** as its subject. It
+    stays fully in scope at full severity — the narrowing does not touch it. In the measured
+    store these are the `mixed`-target class (692 findings, 18%), distinct from the
+    `non-judgeable-only` class (1,374) this chunk is actually dropping.
+- **The success metric cannot verify this chunk, so a guard test must.** Blinding the reviewer
+  and narrowing the reviewer both show up as *fewer findings and less reader load* — the exact
+  reading this chunk is trying to produce. Acceptance therefore requires a test that fails if
+  the oracle is withheld, not merely a smaller number.
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `.prawduct/artifacts/review-loop-nontermination-diagnosis.md`
   (Option 1; root causes RC2, RC6)
@@ -173,14 +193,20 @@ falsify the premise:
   `plugin/agents/critic-reviewer.md`. Four of these carry token accounting in
   `LAST_MEASURED_TOKENS` (`tests/test_v5_methodology.py`) — update the readings in the **same**
   commit, never as a follow-up.
-- **Tests:** `tests/test_critic_consolidate.py` — reviewer scope excludes non-judgeable paths
-  while `files_changed` stays whole; `tests/test_coverage_algebra.py` — an edge whose
-  `files_reviewed` is the judgeable subset of `files_changed` still validates, and one missing a
-  judgeable file still fails; `tests/test_v5_methodology.py` — the Records Pass prose is pinned
-  where a reviewer meets it, and the token readings are updated.
+- **Tests:** `tests/test_critic_consolidate.py` — the subject set excludes non-judgeable paths
+  while `files_changed` stays whole; **the oracle set still carries the build plan and every
+  cited artifact when those are the only non-judgeable files in the diff** (the guard for the
+  regression above, and it must fail if the oracle is withheld); a finding citing a judgeable
+  file plus a spec stays findings-eligible at full severity.
+  `tests/test_coverage_algebra.py` — an edge whose `files_reviewed` is the judgeable subset of
+  `files_changed` still validates, and one missing a judgeable file still fails.
+  `tests/test_v5_methodology.py` — the Records Pass prose and the subject/oracle distinction are
+  pinned where a reviewer meets them, and the token readings are updated.
 - **Acceptance criteria:** `pytest tests/ -v` green; a live `final` or `cumulative` run on this
-  branch records a fact whose `files_reviewed` is ~0% non-judgeable, and whose Records Pass
-  section names the excluded set explicitly rather than silently omitting it.
+  branch records a fact whose `files_reviewed` is ~0% non-judgeable, whose Records Pass section
+  names the excluded set explicitly rather than silently omitting it, **and whose reviewer
+  demonstrably still had the spec** — verified by confirming the dispatched reviewer's oracle
+  set contains this plan, not by observing that the finding count fell.
 - **Done when:**
   1. The `review_edges` claim re-verified against the code
   2. Acceptance criteria met and tests pass

@@ -3,6 +3,32 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-25: every finding says what acting on it costs
+
+<!-- prawduct: type=feature | scope=review-loop-termination -->
+
+The disposition menu is priced backwards from the intuition, and nothing said so at the point of
+decision. ACCEPT is always free. FIX is free on a non-judgeable surface and costs a whole review
+round on a judgeable one — coverage is keyed on the tree, so any judgeable edit re-opens the gate
+that same round was run to close. A builder told to "fix anything cheap" reads *cheap* as *small*,
+and the smallest fixes — a change-log sentence, a stale count — are exactly the ones where the
+surface, not the size, sets the price.
+
+Measured on this repo's evidence store: of 3,834 findings across 732 reviews, **1,374 cite only
+non-judgeable files** and were free to fix all along, while 2,367 buy a round and 93 cite no file at
+all. Nothing at the decision point told those three classes apart.
+
+`.critic-findings.json` now carries a `fix_cost` on every finding. The predicate is
+`coverage_algebra.is_judgeable_path` — the same one the gate charges by, so the price quoted to the
+builder and the price charged at the gate cannot drift. It states only *whether* a round is bought;
+`telemetry.round_price` still owns what a round costs and the record's `next_action` already carries
+that sentence, so no figure is restated per finding.
+
+**It fails closed toward charged.** A finding citing no file reads `unknown`, never `free` — a wrong
+"free" is the reading that spends an unbudgeted round, while a wrong "charged" only declines a
+saving. The key is additive and the schema validator checks required fields only, so no existing
+reader breaks.
+
 ## 2026-08-24: the evidence file can say which commit it read
 
 <!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit -->

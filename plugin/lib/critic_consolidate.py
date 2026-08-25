@@ -2860,6 +2860,59 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
     }
 
 
+#: The three readings :func:`finding_fix_cost` can return. Phrases rather than
+#: tokens because the reader is a model deciding what to do with the finding,
+#: and a token would need a legend it will not open.
+FIX_COST_FREE = (
+    "FIX is free — every file this finding cites is non-judgeable, so fixing it "
+    "moves no coverage and buys no review round."
+)
+FIX_COST_CHARGED = (
+    "FIX buys a review round — this finding cites a judgeable file, so the fix "
+    "moves the tree and re-opens coverage."
+)
+FIX_COST_UNKNOWN = (
+    "FIX cost unknown — this finding cites no file; assume it buys a review round."
+)
+
+
+def finding_fix_cost(files: "list | None") -> str:
+    """What acting on one finding costs the builder, from the paths it cites.
+
+    **Why the findings view carries this.** The disposition menu is priced
+    backwards from the intuition and nothing said so: ACCEPT is always free,
+    while FIX is free on some surfaces and costs a whole round on others —
+    coverage is keyed on the tree, so any judgeable edit re-opens the gate that
+    the same round was run to close. A builder told to "fix anything cheap"
+    reads cheap as *small*, and the smallest fixes (a change-log sentence, a
+    stale count) are exactly the ones whose surface decides the price. Measured
+    on this repo's evidence store, 36% of all findings cite only non-judgeable
+    files — free to fix — and nothing at the decision point distinguished them
+    from the rest.
+
+    The predicate is :func:`coverage_algebra.is_judgeable_path`, the same one
+    the gate charges by, so the price quoted here and the price charged there
+    cannot drift. This function decides only *whether* a round is bought;
+    :func:`telemetry.round_price` owns what a round costs, and the record's
+    ``next_action`` already carries that sentence — the two are not restated
+    per finding.
+
+    **Fails closed toward charged.** An absent or empty ``files`` list reads
+    UNKNOWN, never FREE: a wrong "free" is precisely the reading that spends an
+    unbudgeted round, while a wrong "charged" only declines a saving.
+    """
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    if not files or not isinstance(files, list):
+        return FIX_COST_UNKNOWN
+    paths = [f for f in files if isinstance(f, str) and f]
+    if not paths:
+        return FIX_COST_UNKNOWN
+    if any(coverage_algebra.is_judgeable_path(f) for f in paths):
+        return FIX_COST_CHARGED
+    return FIX_COST_FREE
+
+
 def fact_to_cache_record(fact: dict, price_sentence: "str | None" = None) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -2883,6 +2936,9 @@ def fact_to_cache_record(fact: dict, price_sentence: "str | None" = None) -> dic
         }
         if f.get("files"):
             entry["files"] = list(f["files"])
+        # Additive key; the schema validator checks required fields only and
+        # `--json` readers tolerate unknown ones (api-contract § Direction).
+        entry["fix_cost"] = finding_fix_cost(f.get("files"))
         findings.append(entry)
     counts = body.get("counts") or {}
     blocking = counts.get("blocking", 0)

@@ -728,6 +728,102 @@ class TestNextActionLine:
         assert "<review-id>" in line
 
 
+class TestFindingFixCost:
+    """The disposition menu is priced backwards from the intuition, and until
+    now nothing said so at the point of decision.
+
+    ACCEPT is always free. FIX is free on a non-judgeable surface and costs a
+    whole review round on a judgeable one, because coverage is keyed on the tree
+    and any judgeable edit re-opens the gate the round was run to close. A
+    builder told to "fix anything cheap" reads cheap as *small*, and the
+    smallest fixes are exactly the ones whose surface decides the price.
+
+    The predicate is the gate's own (``coverage_algebra.is_judgeable_path``), so
+    what is quoted here and what is charged there cannot drift.
+    """
+
+    def test_records_only_finding_is_free(self):
+        # 36% of findings in this repo's evidence store cite only files like
+        # these — the class the builder was paying full price to fix.
+        assert cc.finding_fix_cost([".prawduct/change-log.md"]) == cc.FIX_COST_FREE
+        assert cc.finding_fix_cost(
+            [".prawduct/backlog.md", ".prawduct/learnings.md"]
+        ) == cc.FIX_COST_FREE
+
+    def test_code_finding_buys_a_round(self):
+        assert cc.finding_fix_cost(["lib/gates.py"]) == cc.FIX_COST_CHARGED
+
+    def test_governance_prose_buys_a_round(self):
+        # Fork-skill prose is behavioural logic here, so it is judgeable even
+        # though it is Markdown. Pricing it free would be the unsafe direction.
+        assert cc.finding_fix_cost(
+            ["skills/critic/review-cycle.md"]
+        ) == cc.FIX_COST_CHARGED
+
+    def test_mixed_finding_buys_a_round(self):
+        # One judgeable path in the set is enough: the fix moves the tree.
+        assert cc.finding_fix_cost(
+            [".prawduct/change-log.md", "lib/gates.py"]
+        ) == cc.FIX_COST_CHARGED
+
+    def test_no_files_is_unknown_never_free(self):
+        # Fails closed. 93 findings in the store cite no file at all, and a
+        # wrong "free" is the reading that spends an unbudgeted round, while a
+        # wrong "charged" only declines a saving.
+        for empty in (None, [], [""], ["", None]):
+            assert cc.finding_fix_cost(empty) == cc.FIX_COST_UNKNOWN
+
+    def test_non_list_is_unknown_never_free(self):
+        assert cc.finding_fix_cost("lib/gates.py") == cc.FIX_COST_UNKNOWN
+
+    def test_every_finding_in_the_record_carries_a_cost(self, tmp_path):
+        # The view is where the builder meets the finding, so the price has to
+        # ride on every entry — not on a summary line they may not read.
+        manifest = _manifest_dict(roster=["correctness"])
+        body = cc.build_fact_body(manifest, [_partial(
+            "correctness", "abc123", findings=[
+                {"name": "Stale count", "goal": "Nothing Is Missing",
+                 "severity": "note", "recommendation": "r",
+                 "files": [".prawduct/change-log.md"]},
+                {"name": "Broken guard", "goal": "Nothing Is Broken",
+                 "severity": "blocking", "recommendation": "r",
+                 "files": ["lib/gates.py"]},
+                {"name": "Unsited", "goal": "Nothing Unintended",
+                 "severity": "note", "recommendation": "r"},
+            ])])
+        fact = {"schema": 1, "kind": "review", "id": manifest["id"],
+                "ts": "2026-07-13T00:00:00Z", "body": body}
+        record = cc.fact_to_cache_record(fact)
+        costs = [f["fix_cost"] for f in record["findings"]]
+        assert costs == [cc.FIX_COST_FREE, cc.FIX_COST_CHARGED, cc.FIX_COST_UNKNOWN]
+        # Additive only: the record must still satisfy the schema its readers
+        # trust (api-contract § Direction — `--json` readers tolerate unknown
+        # keys, so a new one may never break an old reader).
+        path = tmp_path / "f.json"
+        path.write_text(json.dumps(record))
+        assert gates.validate_critic_findings(path)
+
+    def test_cost_does_not_restate_what_a_round_costs(self):
+        # `telemetry.round_price` owns the minutes and the record's
+        # `next_action` already carries them. Restating a number per finding is
+        # how a figure drifts from the mechanism that derives it.
+        for phrase in (cc.FIX_COST_FREE, cc.FIX_COST_CHARGED, cc.FIX_COST_UNKNOWN):
+            assert "minute" not in phrase and "median" not in phrase
+
+    def test_predicate_is_the_gates_own(self):
+        # If these ever diverge, the price quoted to the builder stops matching
+        # the price the gate charges, which is worse than quoting nothing.
+        from lib import coverage_algebra
+
+        for path in (".prawduct/change-log.md", "lib/gates.py", "README.md",
+                     "skills/critic/SKILL.md", "docs/waivers.md"):
+            expected = (
+                cc.FIX_COST_CHARGED if coverage_algebra.is_judgeable_path(path)
+                else cc.FIX_COST_FREE
+            )
+            assert cc.finding_fix_cost([path]) == expected, path
+
+
 class TestNextLineRelayContract:
     """`NEXT-ACTION:` is code-owned and relay-only — the design that made this
     affordable inside two files at their token ceilings.
