@@ -32,7 +32,9 @@ Two defect families die here rather than being patched:
   (``base_commit``/``base_tree`` → ``head_tree``/``head_commit``, D3 tree
   keying via ``evidence.capture_tree``), the ``files_changed`` snapshot
   (``git diff`` between exactly those trees, so the recorded set and the
-  D6 edge-validity check agree by construction), ``files_reviewed``,
+  D6 edge-validity check agree by construction), the subject/oracle split of
+  that snapshot (``files_reviewed`` — findings-eligible — and
+  ``files_oracle``, delivered to read and not to rate),
   ``rendezvous`` (each role's resolved partial + started paths — see below),
   and telemetry/attribution (``tier``, ``scope``, ``chunk``).
 - One partial per roster role, written by that reviewer, at the path
@@ -591,9 +593,50 @@ def mint_review_id() -> str:
 
 _RESOLUTION_DISPOSITIONS = frozenset({"fixed", "waived"})
 
+
+def split_subject_oracle(files: "list[str]") -> "tuple[list[str], list[str]]":
+    """Split an interval's files into the review's SUBJECT set and its ORACLE set.
+
+    A non-judgeable file plays two parts in a review, and only one of them
+    narrows. It is a thing that can be *wrong* (subject), and it is the
+    authority the code is judged *against* (oracle). Every spec this repo has
+    is non-judgeable — the build plan, every `.prawduct/artifacts/*.md`,
+    `project-preferences.md`, `cross-cutting-concerns.md` — and the reviewer is
+    sent to exactly those for the requirement-coverage and norm-departure
+    checks, both of which rate BLOCKING. So the oracle set is RETURNED for
+    delivery, never discarded: dropping the subject role removes findings whose
+    only remedy costs a review round, while dropping the oracle role blinds the
+    reviewer, and the two are indistinguishable from outside — both read as
+    fewer findings and less reader load, which is the very reading the
+    narrowing is trying to produce. A measurement that moves the right way for
+    the wrong reason cannot tell them apart; only delivering the oracle can.
+
+    FLOOR — an interval holding no judgeable file at all keeps its whole list
+    as the subject. ``validate_manifest`` requires a non-empty
+    ``files_reviewed``, and the only two dispatches that reach here on an
+    all-prose interval are the ones that must not be refused: a ``--force``
+    run, and a ``verify-resolutions`` pass clearing findings raised on prose,
+    whose sole remedy is that pass. Returning an empty subject would fail
+    consolidation closed and leave those findings unclearable.
+    """
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    subject = coverage_algebra.judgeable_files(files)
+    if not subject:
+        return list(files), []
+    in_subject = set(subject)
+    return subject, [f for f in files if f not in in_subject]
+
+
 # verify-resolutions scope-widening demotion threshold (unchanged from v2's
 # canonical helper): a delta this much larger than the prior surface means a
 # partial re-review would mislead — fall back to a full review.
+#
+# BOTH counts are subject-set counts, and they have to be: `files_reviewed` on
+# a fact is the judgeable subset, so measuring an unnarrowed delta against a
+# narrowed prior would tighten this threshold by exactly the prose that rode
+# along on the previous round — refusing a re-review for growth in files no
+# finding can be about.
 def _scope_widened(delta_count: int, prior_count: int) -> bool:
     return delta_count > 2 * prior_count + 5
 
@@ -1629,7 +1672,9 @@ def begin_review(
         prior_files = [
             f for f in (prior_body.get("files_reviewed") or []) if isinstance(f, str)
         ]
-        if _scope_widened(len(delta), len(prior_files)):
+        delta_subject, _ = split_subject_oracle(delta)
+        prior_subject, _ = split_subject_oracle(prior_files)
+        if _scope_widened(len(delta_subject), len(prior_subject)):
             fallback, why = _widened_fallback_mode(
                 project_dir, capture["head_tree"], committed_differs
             )
@@ -1638,9 +1683,10 @@ def begin_review(
                 "kind": "scope-widened",
                 "fallback_mode": fallback,
                 "reason": (
-                    f"scope-widened: {len(delta)} files changed since the prior "
-                    f"review of {len(prior_files)} — a partial re-review would "
-                    f"mislead. Re-dispatch as `{fallback}`: {why}."
+                    f"scope-widened: {len(delta_subject)} findings-eligible "
+                    f"file(s) changed since the prior review of "
+                    f"{len(prior_subject)} — a partial re-review would mislead. "
+                    f"Re-dispatch as `{fallback}`: {why}."
                 ),
             }
         prior_counts = prior_body.get("counts") or {}
@@ -1762,6 +1808,14 @@ def begin_review(
 
     if files_reviewed is None:
         files_reviewed = list(files_changed)
+    # Judgeability governs review SCOPE, not review READING. `files_reviewed`
+    # becomes the findings-eligible subject set; what it sheds is handed over
+    # as `files_oracle` rather than dropped, because the reviewer is judging
+    # the code against exactly those records. `files_changed` stays whole — it
+    # is the interval, and `coverage_algebra.review_edges` validates an edge by
+    # quantifying only over `judgeable_files(files_changed)`, so a subject-set
+    # `files_reviewed` still covers every file an edge asks about.
+    files_reviewed, files_oracle = split_subject_oracle(files_reviewed)
 
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
@@ -1816,6 +1870,11 @@ def begin_review(
         "head_commit": head_commit,
         "files_changed": files_changed,
         "files_reviewed": files_reviewed,
+        # Delivered to the reviewer to READ; never findings-eligible per round.
+        # The Records Pass at `final`/`cumulative` is what rates this set, and
+        # it can only do so because the set is named here rather than silently
+        # subtracted.
+        "files_oracle": files_oracle,
         "tier": tier,
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
@@ -2071,6 +2130,12 @@ def validate_manifest(data) -> tuple[bool, str]:
         return False, "missing 'files_reviewed' (non-empty list)"
     if not _str_list(data.get("files_changed")):
         return False, "'files_changed' must be a list of non-empty strings"
+    # Optional, not required: a manifest restored from before the subject/oracle
+    # split carries no oracle set, and refusing it would strand a review that
+    # can still be consolidated honestly. Typed when present, because it reaches
+    # the fact and a reader that walks it must not meet a non-string.
+    if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
+        return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "chunk", "model", "base_reviewed", "worktree", "branch"):
         val = data.get(opt)
@@ -2839,6 +2904,10 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         ],
         "files_reviewed": list(manifest["files_reviewed"]),
         "files_changed": list(manifest["files_changed"]),
+        # The set the per-round review did NOT rate, recorded so the exclusion
+        # is auditable. A narrowing that leaves no trace of what it dropped is
+        # indistinguishable from a reviewer that simply found less.
+        "files_oracle": list(manifest.get("files_oracle") or []),
         "findings": findings,
         "counts": {"blocking": blocking, "warning": warning, "note": note},
         "duration_seconds": max(durations) if durations else None,
@@ -2864,8 +2933,9 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
 #: tokens because the reader is a model deciding what to do with the finding,
 #: and a token would need a legend it will not open.
 FIX_COST_FREE = (
-    "FIX is free — every file this finding cites is non-judgeable, so fixing it "
-    "moves no coverage and buys no review round."
+    "FIX is free WHERE THIS FINDING POINTS — every file it cites is non-judgeable, "
+    "so an edit confined to those moves no coverage and buys no round. If the real "
+    "correction lands elsewhere, price the actual batch with `cost-of-commit` first."
 )
 FIX_COST_CHARGED = (
     "FIX buys a review round — this finding cites a judgeable file, so the fix "
@@ -2900,6 +2970,17 @@ def finding_fix_cost(files: "list | None") -> str:
     **Fails closed toward charged.** An absent or empty ``files`` list reads
     UNKNOWN, never FREE: a wrong "free" is precisely the reading that spends an
     unbudgeted round, while a wrong "charged" only declines a saving.
+
+    **What it prices, and what it cannot.** ``files`` is the finding's
+    ATTRIBUTION — where the reviewer saw the problem — and that is not the set a
+    remedy lands in. A finding about a record whose real correction is in code
+    cites only the record, and this function can see nothing else. So the FREE
+    phrase is deliberately relational: it prices an edit *confined to the cited
+    files* and says so, rather than asserting the fix is free. Asserting the
+    stronger thing would emit exactly the wrong-``free`` the paragraph above
+    says must never be emitted, from the one input that cannot detect it.
+    ``prawduct-hook cost-of-commit <paths>`` prices the real batch, and the
+    phrase routes there.
     """
     from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
 

@@ -1900,3 +1900,61 @@ class TestBranchProgressCRT7B4M:
 # then deleted that copy's multi-link ``extends_cumulative`` arm — the
 # stays-deleted guards live in TestRule1bPostCumulativeFix and the rule-2
 # class above.)
+
+
+class TestInferenceMeasuresTheSubjectSet:
+    """`files_reviewed` is the review's SUBJECT set — judgeable paths only —
+    so every comparison against it must narrow the other side too.
+
+    Left raw, a fix that touched a README alongside the code would fall out of
+    rule 1's subset and out of rule 1b's widening bound, sending exactly the
+    cheap batched fix the framework tells the builder to make into a full round
+    instead of a verify pass. `_is_metadata_path` drops `.prawduct/`, not every
+    non-judgeable path; `is_judgeable_path` is the predicate that agrees with
+    what the manifest recorded.
+    """
+
+    def test_rule_1_ignores_a_non_judgeable_file_beside_the_fix(
+        self, tmp_path: Path
+    ):
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# v1\n")
+        _write(tmp_path, "README.md", "# hi\n")
+        prior_sha = _commit(tmp_path, "v1")
+
+        _write(tmp_path, "src/app.py", "# v2\n")
+        _write(tmp_path, "README.md", "# hi there\n")  # doc touch-up, riding along
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            commit_reviewed=prior_sha,
+            files_reviewed=["src/app.py"],
+            severity="blocking",
+        )
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "verify-resolutions", (
+            f"a README beside the fix demoted the verify pass: {rationale}"
+        )
+
+    def test_rule_1_still_demotes_on_judgeable_work_outside_the_surface(
+        self, tmp_path: Path
+    ):
+        """The direction the subset check exists for is unchanged: new
+        judgeable work alongside a fix is a chunk/final case."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# v1\n")
+        prior_sha = _commit(tmp_path, "v1")
+
+        _write(tmp_path, "src/app.py", "# v2\n")
+        _write(tmp_path, "src/brand_new.py", "# new chunk work\n")
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            commit_reviewed=prior_sha,
+            files_reviewed=["src/app.py"],
+            severity="blocking",
+        )
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode != "verify-resolutions"

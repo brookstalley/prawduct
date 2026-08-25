@@ -340,7 +340,18 @@ LAST_MEASURED_TOKENS = {
     # meant). `chunk` mode is UNCOVERED and explicitly so: `goals-1-3.md` has 2
     # tokens of headroom and the rule costs ~65, which is an owner ruling on
     # that ceiling, not a trim to slip into this chunk.
-    "skills/critic/review-protocol.md": 3794,
+    # 2026-08-25, review-loop-termination Chunk 02 — one change, four readings.
+    # Judgeability now governs review SCOPE: `files_reviewed` narrows to the
+    # findings-eligible subject set, what it sheds rides as `files_oracle` (read,
+    # not rated), and a new Records Pass at `final`/`cumulative` rates that set
+    # against the two bars. Each file's ceiling comment carries what funded its
+    # share; the raises are justified there, not here.
+    # +125 review-protocol.md (3794 -> 3919), +52 goals-1-3.md (2247 -> 2299),
+    # +190 review-cycle.md (9596 -> 9786), +9 SKILL.md (3445 -> 3454).
+    # The last 9 are a widened `governed-by-gap` definition: it now also
+    # covers a plan frontmatter no parser can read, the defect class that
+    # let THIS plan ship an invalid header past three regex-based readers.
+    "skills/critic/review-protocol.md": 3919,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -366,7 +377,7 @@ LAST_MEASURED_TOKENS = {
     # below already owns, `chunk_graded`/`plan_graded` re-listed what they name
     # right after naming it, and the two false-blocker arguments (no-subject and
     # graded) were one sentence said twice. Ceiling 2250 untouched, 1 to spare.
-    "skills/critic/goals-1-3.md": 2247,
+    "skills/critic/goals-1-3.md": 2299,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -398,7 +409,7 @@ LAST_MEASURED_TOKENS = {
     # was asserting a timing that is false on the Issues backend, so the routing
     # replaced prose rather than adding to it, and the "why" the routing would
     # have restated stayed at the owner where the reader is already being sent.
-    "skills/critic/review-cycle.md": 9596,
+    "skills/critic/review-cycle.md": 9786,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -456,7 +467,7 @@ LAST_MEASURED_TOKENS = {
     # sweep") instead of restating it, and by trimming the restore bound to
     # "the newest few" rather than naming the constant, which would be a second
     # carrier for a number `_ARCHIVE_KEEP` already owns.
-    "skills/critic/SKILL.md": 3445,
+    "skills/critic/SKILL.md": 3454,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -3545,7 +3556,20 @@ class TestCriticSkill:
         # every correctly-sequenced chunk. The PR reviewer's protocol carries it
         # instead, where the sequencing is finished.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3800, f"review-protocol.md is ~{tokens} tokens, should be <3800"
+        #
+        # RAISED 3800 -> 3922 (2026-08-25, review-loop-termination Chunk 02).
+        # The one raise the standing rule allows: a control that removes more
+        # review work than it costs. Judgeability now governs review SCOPE —
+        # `files_reviewed` narrows to the findings-eligible subject set and what
+        # it sheds is handed over as `files_oracle`, read and not rated — which
+        # takes 36% of ALL findings out of per-round review, measured across
+        # 3,826 findings in 728 review facts. The reviewer payload grows ~3%
+        # to buy that, and the trade is checkable in both directions from the
+        # store. Funded first where it could be: the NOTE bullet's
+        # record-only-text clause is gone, because record-only text is no longer a
+        # per-round subject at all — it was a rule about severity for a class this
+        # file's reader can no longer rate.
+        assert tokens < 3922, f"review-protocol.md is ~{tokens} tokens, should be <3922"
 
 
 # =============================================================================
@@ -3742,7 +3766,19 @@ class TestCriticGoals13:
         # THIS file is the only surface whose reader writes both, and they sat
         # eight lines apart with no cue. Three words in the schema example.
         tokens = estimate_tokens(self.content)
-        assert tokens < 2250, f"goals-1-3.md is ~{tokens} tokens, should be <2250"
+        #
+        # RAISED 2250 -> 2302 (2026-08-25, review-loop-termination Chunk 02).
+        # The one raise the standing rule allows: a control that removes more
+        # review work than it costs. Judgeability now governs review SCOPE —
+        # `files_reviewed` narrows to the findings-eligible subject set and what
+        # it sheds is handed over as `files_oracle`, read and not rated — which
+        # takes 36% of ALL findings out of per-round review, measured across
+        # 3,826 findings in 728 review facts. The reviewer payload grows ~2%
+        # to buy that, and the trade is checkable in both directions from the
+        # store. Funded first where it could be: the same record-only-text clause in the
+        # Severity section, and `files_changed` dropped from step 1's scope list —
+        # the subject/oracle split is what a reviewer scopes by now.
+        assert tokens < 2302, f"goals-1-3.md is ~{tokens} tokens, should be <2302"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -3946,7 +3982,18 @@ class TestCriticSkillRoutesByMode:
         # It lives in this class because this class owns SKILL.md; the mode
         # routing it asserts around it is the reason the ceiling is this tight.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3450, f"SKILL.md is ~{tokens} tokens, should be <3450"
+        #
+        # RAISED 3450 -> 3457 (2026-08-25, review-loop-termination Chunk 02).
+        # The one raise the standing rule allows: a control that removes more
+        # review work than it costs. Judgeability now governs review SCOPE —
+        # `files_reviewed` narrows to the findings-eligible subject set and what
+        # it sheds is handed over as `files_oracle`, read and not rated — which
+        # takes 36% of ALL findings out of per-round review, measured across
+        # 3,826 findings in 728 review facts. The reviewer payload grows ~0.3%
+        # to buy that, and the trade is checkable in both directions from the
+        # store. Funded first where it could be: nothing here — step 5 is one line and
+        # the +9 is the split it now names.
+        assert tokens < 3457, f"SKILL.md is ~{tokens} tokens, should be <3457"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -4073,7 +4120,9 @@ class TestCriticSkillRoutesByMode:
 
 class TestReviewCycle:
     def test_token_budget(self):
-        # Ceiling 9600. It exists because the absence of one was being SPENT:
+        # The ceiling is the number this test asserts, and nothing else restates
+        # it — a second copy here would go stale at the next raise and ship as
+        # fact. It exists because the absence of one was being SPENT:
         # `review-protocol.md`'s relocated "Extending This Skill" and the
         # verify-narrowing argument both landed here justified by "review-cycle
         # carries no ceiling", while the ceiling test one file over passed on a
@@ -4157,7 +4206,22 @@ class TestReviewCycle:
         # ceiling, but the explanation of it would have been.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
-        assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
+        #
+        # RAISED 9600 -> 9789 (2026-08-25, review-loop-termination Chunk 02).
+        # The one raise the standing rule allows: a control that removes more
+        # review work than it costs. Judgeability now governs review SCOPE —
+        # `files_reviewed` narrows to the findings-eligible subject set and what
+        # it sheds is handed over as `files_oracle`, read and not rated — which
+        # takes 36% of ALL findings out of per-round review, measured across
+        # 3,826 findings in 728 review facts. The reviewer payload grows ~2%
+        # to buy that, and the trade is checkable in both directions from the
+        # store. Funded first where it could be: the two-bar severity rule RELOCATED
+        # within this file into the new Records Pass (where it is now a pass, not a
+        # severity floor); `## Directional Change Review` CUT — three bullets
+        # restating Goals 1, 4 and 5 under a trigger condition that is just
+        # `cumulative`, referenced by nothing; and the ledger section's second,
+        # verbatim statement of where `scope` comes from.
+        assert tokens < 9789, f"review-cycle.md is ~{tokens} tokens, should be <9789"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -4424,3 +4488,80 @@ class TestPrinciplesDoc:
         assert [int(h) for h in headings] == list(range(1, 27)), (
             f"expected principle headings 1..26 in order, found {headings}"
         )
+
+
+# =============================================================================
+# Subject vs oracle — judgeability governs review SCOPE, not review READING
+# =============================================================================
+
+
+class TestSubjectAndOracleReachTheReviewer:
+    """The narrowing is delivered to every surface a reviewer meets, and the
+    ORACLE half is delivered with it.
+
+    Blinding the reviewer and narrowing the reviewer produce the same reading —
+    fewer findings, less reader load — so the success metric cannot tell them
+    apart. These pin the half the metric is blind to: that each surface still
+    hands the reviewer what the code is judged against.
+    """
+
+    SURFACES = [
+        "skills/critic/goals-1-3.md",
+        "skills/critic/review-protocol.md",
+        "skills/critic/SKILL.md",
+        "agents/critic-reviewer.md",
+    ]
+
+    @pytest.mark.parametrize("rel_path", SURFACES)
+    def test_every_reviewer_surface_names_both_sets(self, rel_path):
+        content = read_file(rel_path)
+        assert "files_reviewed" in content, f"{rel_path} does not name the subject set"
+        assert "files_oracle" in content, (
+            f"{rel_path} narrows the subject set without delivering the oracle — "
+            "a reviewer reading it would rate less AND read less"
+        )
+
+    @pytest.mark.parametrize("rel_path", ["skills/critic/goals-1-3.md",
+                                          "skills/critic/review-protocol.md",
+                                          "agents/critic-reviewer.md"])
+    def test_a_spec_violation_stays_in_scope(self, rel_path):
+        """The class the narrowing must not touch: a finding that the code
+        violates a spec has the CODE as its subject."""
+        content = read_file(rel_path)
+        assert "violates this spec" in content, (
+            f"{rel_path} does not say that code-violates-spec stays in scope — "
+            "the reviewer is left to infer that the narrowing swallowed it"
+        )
+
+    def test_review_cycle_owns_the_records_pass(self):
+        content = read_file("skills/critic/review-cycle.md")
+        assert "### Records Pass" in content
+        # The two bars moved here from the builder-facing severity paragraph;
+        # they are the pass's whole contract, so both must survive the move.
+        assert "**It ships**" in content
+        assert "**It misleads into action**" in content
+        assert "files_oracle" in content
+
+    def test_the_records_pass_is_a_final_mode_cross_check(self):
+        """Not a fourth reviewer role — adding lenses is what the measurement
+        said drives finding count. It rides `sustainability`, which already
+        owns the other two cross-checks."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        header = cycle.split("## Final-Mode Cross-Checks", 1)[1]
+        assert "### Records Pass" in header.split("\n## ", 1)[0], (
+            "the Records Pass is not inside Final-Mode Cross-Checks"
+        )
+        assert "three additional passes" in cycle
+        agent = read_file("agents/critic-reviewer.md")
+        sustainability = agent.split("- **sustainability**", 1)[1].split("\n\n", 1)[0]
+        assert "Records Pass" in sustainability
+
+    def test_the_builder_facing_severity_rule_points_at_the_pass(self):
+        """The old rule ("a record-only finding is a NOTE") is gone from the
+        builder section rather than left standing beside its replacement. Two
+        stopping rules where one is false is the failure this whole plan exists
+        to fix."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        builder_half = cycle.split("## Final-Mode Cross-Checks", 1)[0]
+        assert "only subject is a non-judgeable record is a **NOTE**" not in builder_half
+        assert "Records Pass** below" in builder_half

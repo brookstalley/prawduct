@@ -810,6 +810,18 @@ class TestFindingFixCost:
         for phrase in (cc.FIX_COST_FREE, cc.FIX_COST_CHARGED, cc.FIX_COST_UNKNOWN):
             assert "minute" not in phrase and "median" not in phrase
 
+    def test_the_free_phrase_prices_what_it_measured_and_no_more(self):
+        """`files` is ATTRIBUTION — where the reviewer saw it — not the set the
+        remedy lands in. A finding about a record whose real correction is in
+        code cites only the record, and the function can see nothing else. So
+        the phrase must scope its claim to the cited files and route the real
+        batch to `cost-of-commit`; asserting the FIX itself is free would emit
+        the wrong-`free` this function's own fail-closed rule forbids, from the
+        one input that cannot detect it."""
+        assert "WHERE THIS FINDING POINTS" in cc.FIX_COST_FREE
+        assert "cost-of-commit" in cc.FIX_COST_FREE
+        assert "FIX is free —" not in cc.FIX_COST_FREE
+
     def test_predicate_is_the_gates_own(self):
         # If these ever diverge, the price quoted to the builder stops matching
         # the price the gate charges, which is worse than quoting nothing.
@@ -5478,4 +5490,126 @@ class TestPartialBelongsToItsReview:
         assert offenders == [], (
             "an instruction surface spells a partial filename — the shape must "
             f"come from the manifest's `rendezvous` entry: {offenders}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Judgeability governs review SCOPE — subject set vs oracle set
+# ---------------------------------------------------------------------------
+
+
+class TestSubjectAndOracleSets:
+    """Non-judgeable files stop being SUBJECTS of a per-round review; they do
+    not stop being the records the code is judged AGAINST.
+
+    Both halves need pinning, and only one of them is visible in the metric the
+    narrowing was built to move. Withholding the specs and narrowing the
+    findings-eligible set produce the same reading — fewer findings, less
+    reader load — so the guard below is what tells them apart. A falling
+    finding count is not evidence this worked.
+    """
+
+    def test_the_subject_set_drops_non_judgeable_paths(self):
+        subject, oracle = cc.split_subject_oracle(
+            ["lib/gates.py", ".prawduct/change-log.md", "docs/guide.md"]
+        )
+        assert subject == ["lib/gates.py"]
+        assert oracle == [".prawduct/change-log.md", "docs/guide.md"]
+
+    def test_a_governance_protected_md_stays_a_subject(self):
+        """The predicate is the gate's, not a private notion of "docs": skill
+        and methodology prose is behavioural logic here, so it is findings-
+        eligible like any other code."""
+        subject, oracle = cc.split_subject_oracle(
+            ["skills/critic/SKILL.md", ".prawduct/artifacts/architecture.md"]
+        )
+        assert subject == ["skills/critic/SKILL.md"]
+        assert oracle == [".prawduct/artifacts/architecture.md"]
+
+    def test_an_all_prose_interval_keeps_its_whole_subject_set(self):
+        """THE FLOOR. `validate_manifest` requires a non-empty `files_reviewed`,
+        and a `--force` run or a verify pass clearing prose findings is exactly
+        the dispatch that must not be refused — that pass is the only thing
+        that can clear them."""
+        subject, oracle = cc.split_subject_oracle(
+            [".prawduct/change-log.md", ".prawduct/backlog.md"]
+        )
+        assert subject == [".prawduct/change-log.md", ".prawduct/backlog.md"]
+        assert oracle == []
+
+    def test_dispatch_narrows_the_subject_and_delivers_the_oracle(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        (repo / "src/app.py").write_text("x = 2\n")
+        (repo / ".prawduct/change-log.md").write_text("## entry\n")
+        result = _run_begin(repo, "--mode", "chunk", "--chosen-by", "test")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        ok, reason = cc.validate_manifest(manifest)
+        assert ok, reason
+        assert manifest["files_reviewed"] == ["src/app.py"]
+        assert manifest["files_oracle"] == [".prawduct/change-log.md"]
+        # The interval itself is untouched — it is what the coverage edge is
+        # validated against, and narrowing it would move coverage.
+        assert set(manifest["files_changed"]) == {"src/app.py", ".prawduct/change-log.md"}
+
+    def test_the_oracle_set_still_carries_the_build_plan(self, tmp_path):
+        """THE GUARD. Every spec this repo has is non-judgeable, and the
+        reviewer is sent to exactly those for the requirement-coverage and
+        norm-departure checks — both BLOCKING. If the narrowing ever starts
+        subtracting the plan instead of handing it over, this fails; the
+        finding count would not."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        (repo / "src/app.py").write_text("x = 2\n")
+        plan = repo / ".prawduct/artifacts/build-plan-demo.md"
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_text("# Plan\n\n## Status\n\n- [ ] Chunk 01: demo\n")
+        result = _run_begin(repo, "--mode", "final")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert ".prawduct/artifacts/build-plan-demo.md" in manifest["files_oracle"], (
+            "the build plan was dropped, not delivered — the reviewer has no "
+            "oracle for Goal 2 or Goal 3"
+        )
+        assert manifest["files_reviewed"] == ["src/app.py"]
+
+    def test_the_fact_records_the_set_the_round_did_not_rate(self, tmp_path):
+        """The exclusion is auditable. A narrowing that leaves no trace of what
+        it dropped is indistinguishable from a reviewer that found less."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        (repo / "src/app.py").write_text("x = 2\n")
+        (repo / ".prawduct/change-log.md").write_text("## entry\n")
+        assert _run_begin(repo, "--mode", "chunk", "--chosen-by", "t").returncode == 0
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(
+            repo, "reviewer", manifest["commit_reviewed"],
+            dispatch_id=manifest["id"], findings=[],
+        )
+        assert _run_consolidate(repo).returncode == 0
+        fact = _store_facts(repo, "review")[-1]
+        assert fact["body"]["files_oracle"] == [".prawduct/change-log.md"]
+        assert fact["body"]["files_reviewed"] == ["src/app.py"]
+
+    def test_scope_widening_is_measured_on_the_subject_sets(self, tmp_path):
+        """Prose riding along on a fix must not demote the re-review. Both
+        counts are subject-set counts, so growth in files no finding can be
+        about cannot trip the threshold."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        TestVerifyResolutionsDispatch()._seed_and_fix(repo)
+        for i in range(2 * 1 + 6):
+            p = repo / f".prawduct/notes_{i}.md"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(f"note {i}\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, (
+            f"prose growth demoted the verify pass: {result.stderr!r}"
         )

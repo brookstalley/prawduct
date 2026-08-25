@@ -109,11 +109,15 @@ Deliberately not built here, each with why:
 
 Context: Plan authored 2026-08-25 from `review-loop-nontermination-diagnosis.md`, owner-approved
 scope (options 1 + B + A of seven framed). **Chunk 01 complete** — `fix_cost` on every finding,
-reviewed `cumulative` (rev-20260825T125948Z-a43f7fae): 0 blocking, 3 warning, 2 note. R-4/R-5
-accepted; R-2/R-3 fixed in a batch `cost-of-commit` priced free (no round bought); R-1 carried into
-Chunk 02 with a latent plan-YAML defect found alongside it — both written into Chunk 02's section.
-One owner decision is pending and flagged in Chunk 03: whether to absorb RC9 (`--fixed`
-disposition). Next: Chunk 02, whose first step is re-verifying the `review_edges` claim.
+reviewed `cumulative` (rev-20260825T125948Z-a43f7fae): 0 blocking, 3 warning, 2 note; R-4/R-5
+accepted, R-2/R-3 fixed in a batch `cost-of-commit` priced free (no round bought). **Chunk 02 built, review
+pending** — `review_edges` claim re-verified first, then `files_reviewed` narrowed to the
+findings-eligible subject set with `files_oracle` delivered beside it, a Records Pass added as the
+third final-mode cross-check, and the guard test that fails when the oracle is withheld. Chunk 01's
+carried R-1 (relational FREE phrase) and the latent plan-frontmatter defect (`governed-by-gap` now
+grades an unparseable header) rode this chunk's commit. **RC9 is absorbed into Chunk 03 by owner
+decision** — the `--fixed` disposition, guarded by the judgeability predicate at record time.
+Next: Chunk 03, whose budget (6 rounds, on by default, `null` disables) is already decided.
 
 ## Scaffolding
 
@@ -258,11 +262,13 @@ falsify the premise:
 - **Depends on:** Chunk 02
 - **Artifacts consumed:** `.prawduct/artifacts/review-loop-nontermination-diagnosis.md`
   (Option A; root cause RC2)
-- **Candidate addition, owner decision pending (not yet in scope):** RC9 in the diagnosis — a FIX
-  confined to free paths buys no round, so no resolution fact is ever written and the census reports
-  it `undispositioned` forever. Found live on Chunk 01's own review. A `--fixed` disposition guarded
-  by the same judgeability predicate would close it, and this chunk is already inside
-  `dispositions.py`. Flagged rather than absorbed: it is a scope increase and the owner's call.
+- **Absorbed by owner decision, 2026-08-25:** RC9 in the diagnosis — a FIX confined to free paths
+  buys no round, so no resolution fact is ever written and the census reports it `undispositioned`
+  forever. Found live on Chunk 01's own review. The remedy is a `--fixed` disposition guarded by the
+  same judgeability predicate, verified at record time so it can never launder a judgeable fix past a
+  gate; a BLOCKING finding still clears only through a real resolution fact, and nothing about gating
+  changes. It rides this chunk because this chunk is already inside `dispositions.py`. Owner asked
+  for the bundling explicitly; it is a scope increase, taken deliberately.
 - **Yield emission is a deliverable, not a nicety** (`nonfunctional-requirements.md` § Direction:
   a new control must emit its yield observably, or it can never be retired on evidence). The
   budget records each firing as a countable fact so `prawduct-hook review-stats` can answer how
@@ -290,11 +296,14 @@ falsify the premise:
   `--force` passes through; a `null` budget never refuses; the default reads 6 and a repo
   override wins over it; `tests/test_dispositions.py` — the
   auto-accept path writes accept facts for WARNING and NOTE and **refuses every BLOCKING**,
-  with a test that fails if a blocking finding is ever swept; `tests/test_v5_methodology.py` —
+  with a test that fails if a blocking finding is ever swept; `--fixed` records on an all-free
+  path set and **refuses a set holding any judgeable path**, with a test that fails if a judgeable
+  fix records without a review; `tests/test_v5_methodology.py` —
   the corrected yield paragraph carries its figure, and the token reading is updated.
 - **Acceptance criteria:** `pytest tests/ -v` green; exercised on this branch's own review
   history — the refusal fires at the ceiling, the census renders, every BLOCKING survives
-  untouched and still blocks the gate.
+  untouched and still blocks the gate; and the two WARNINGs Chunk 01 fixed for free record as
+  `--fixed`, taking that review's census to zero undispositioned without a round being bought.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run ONCE (Type: cumulative-final — no

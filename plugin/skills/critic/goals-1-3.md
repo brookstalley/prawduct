@@ -13,9 +13,11 @@ already-planned commit.
 
 ## Before you review
 
-1. Read `.prawduct/.critic-partials/manifest.json` — `files_changed`, `files_reviewed`, the review
-   interval, `commit_reviewed`, `rendezvous` (where you write) and `record_lint` (below) are your
-   scope. Code-written and authoritative — derive no interval yourself.
+1. Read `.prawduct/.critic-partials/manifest.json` — the review interval, `commit_reviewed`,
+   `rendezvous` (where you write) and `record_lint` (below). Code-written and authoritative — derive
+   no interval yourself. **`files_reviewed` is the SUBJECT set: a finding may only be *about* a file
+   in it. `files_oracle` is what the code is judged *against* — read every one, rate none.** *"The
+   code violates this spec"* has the code as its subject and is fully in scope at full severity.
 2. Read `.prawduct/project-state.yaml`, then the changed files and `git diff` over the interval.
 3. Read the `.prawduct/artifacts/` a change touches — its build plan, and any artifact it cites.
 4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes.
@@ -99,7 +101,7 @@ Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_grade
 
 - **BLOCKING** — must fix before proceeding.
 - **WARNING** — true *and* worth the builder's time. Name the consequence: *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
-- **NOTE** — genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly. That covers record-only text (change-log, learnings, plan text) and comment, docstring and doc wording, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
+- **NOTE** — genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly. That covers comment, docstring and doc wording inside a subject file, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 - **Prose remedies** — stale prose gets one of three: delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
 **Never name the backlog as a finding's destination** — disposition is the builder's call.

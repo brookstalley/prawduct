@@ -3,6 +3,54 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-25: judgeability decides what a review RATES, not what it READS
+
+<!-- prawduct: type=feature | scope=review-loop-termination -->
+
+Non-judgeable files were 39% of every file-slot handed to a reviewer (5,869 of 14,860) and 36% of
+every finding returned (1,372 of 3,826). Those findings are correct — the measured false-positive
+rate across this class is zero — and almost none of them are worth what clearing one costs: a fix on
+a record buys nothing at a gate, and a builder who fixes it anyway moves the tree and buys a round.
+
+`critic-begin` now splits an interval into two sets. `files_reviewed` is the **subject** set —
+judgeable paths only, the sole files a finding may be *about*. What it sheds rides as
+`files_oracle`, delivered to every reviewer to read and rate by none.
+
+**Only the subject role narrows, and the distinction is the whole design.** A non-judgeable file
+plays two parts: it can be *wrong*, and it is the authority the code is judged *against*. Every spec
+in this repo is non-judgeable — the build plan, every artifact, `project-preferences.md`,
+`cross-cutting-concerns.md` — and the reviewer is sent to exactly those for Goal 2's
+requirement-coverage check and Goal 3's norm-departure check, both of which rate BLOCKING. Narrowing
+what a reviewer may *read* would have removed its oracle while looking, on every metric this change
+is measured by, exactly like the narrowing working: fewer findings, less reader load. A guard test
+now fails when the oracle is withheld, because the success metric cannot tell the two apart.
+
+`coverage_algebra.review_edges` validates an edge by quantifying only over
+`judgeable_files(files_changed)`, so a subject-set `files_reviewed` still covers every file an edge
+asks about — re-verified against the code before a line changed, and pinned by a test in both
+directions. The verify-resolutions scope-widening threshold now measures subject sets on both sides;
+prose riding along on a fix can no longer demote a re-review.
+
+**The window this opens has one cover: the Records Pass**, a third final-mode cross-check (the
+`sustainability` role) that rates the excluded set against the two bars the severity contract
+already defined — *it ships*, *it misleads into action* — and names the set it covered. Those bars
+moved out of the builder-facing severity paragraph rather than being restated beside it: two
+stopping rules where one is false is the failure this whole plan exists to fix. The review fact
+records `files_oracle`, so an exclusion is auditable rather than indistinguishable from a reviewer
+that simply found less.
+
+Two items rode this commit rather than buying a round of their own. **The `fix_cost` FREE phrase is
+now relational** — a finding's `files` is where the reviewer *saw* the problem, not where a remedy
+lands, so the phrase prices an edit confined to the cited files, says so, and routes the real batch
+to `cost-of-commit`. And **`governed-by-gap` now grades a frontmatter no parser can read**: this
+plan's own YAML header was invalid for two commits and three regex-based readers passed it, which
+presents as *more* governed than no header at all. There is no YAML dependency to reach for, so the
+check grades the one structural break the line-based readers are blind to and reports nothing it
+cannot see.
+
+`## Directional Change Review` was cut from `review-cycle.md` — three bullets restating Goals 1, 4
+and 5 under a trigger condition that is just `cumulative` mode, referenced by nothing.
+
 ## 2026-08-25: every finding says what acting on it costs
 
 <!-- prawduct: type=feature | scope=review-loop-termination -->

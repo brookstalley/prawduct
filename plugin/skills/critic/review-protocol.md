@@ -30,6 +30,8 @@ The Critic reviews changes against principles and specifications as a **separate
 
 **Work type**: Feature → spec compliance + coverage. Bugfix → root cause + regression test. Refactor → behavior preservation. Optimization → baseline measured? Debt → scope discipline.
 
+**Subject and oracle — judgeability governs SCOPE, not READING.** The manifest's `files_reviewed` is the **subject** set: findings-eligible, judgeable paths only. `files_oracle` is what the code is judged *against* — read every one, rate none per round. *"The code violates this spec"* has the **code** as its subject and stays fully in scope at full severity. The excluded set is rated once, at `final`/`cumulative`, by the Records Pass (`review-cycle.md`).
+
 ## Review Goals
 
 Your goals, in priority order — you run all seven.
@@ -112,15 +114,15 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 **Applies when reviewing framework instruction files, templates, or structural decisions.** Product builds skip these. Read `framework-checks.md` for the definitions: **Generality**, **Instruction Clarity**, **Cumulative Health**, **Pipeline Coverage**.
 
-### Learnings Cross-Check and Backlog Reconciliation
+### Learnings Cross-Check, Backlog Reconciliation and Records Pass
 
-**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then reconcile the backlog (cache-backed — `skills/backlog/cache-reads.md`; skip the walk only on exit 6, its "unavailable" NOTE), emitting **NOTE** findings for items resolved.
+**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts; reconcile the backlog (cache-backed — `skills/backlog/cache-reads.md`; skip the walk only on exit 6, its "unavailable" NOTE), emitting **NOTE** findings for items resolved; and rate `files_oracle` against the Records Pass's two bars, naming the set you covered.
 
 ## Severity Levels
 
 - **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
 - **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
-- **NOTE**: Genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly — Goal 4's actively-misleading **BLOCKING**, and its stale-artifact **WARNING**, both stand. That covers record-only text (change-log, learnings, plan text) and comment, docstring and doc wording, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
+- **NOTE**: Genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly — Goal 4's actively-misleading **BLOCKING**, and its stale-artifact **WARNING**, both stand. That covers comment, docstring and doc wording inside a subject file, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 - **Scope grades the remedy**: a site-naming finding answers `instance` or `class` in its `recommendation`. Say why it broke in one sentence; one that does not name the site you found names a **class** and bounds it — say what to search, and expect members outside the diff. An instance closes by fixing it; an unbounded class closes only by a **construction** — one owner every member passes through, or a check derived from the source of truth — never by a longer list.
 - **Prose remedies**: stale prose gets one of three — delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
@@ -141,11 +143,11 @@ Persistence is **decoupled from the review**: reviewers write partials; `critic-
 
 2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY the two files the manifest's `rendezvous` names for its role — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template — substitute `<ROLE>`/`<GOALS>`/`<SHA>`/`<ID>`/`<STARTED>`/`<PARTIAL>` from the manifest (`commit_reviewed`, `id`, and `rendezvous.<ROLE>`):
 
-   > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `<STARTED>` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. Review id: `<ID>` — record it verbatim as `dispatch_id`. NO tests/builds. Write ONLY your partial to `<PARTIAL>`; nothing else."
+   > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `<STARTED>` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Subject files (findings-eligible): [`files_reviewed`]. Oracle files (read, do not rate): [`files_oracle`]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. Review id: `<ID>` — record it verbatim as `dispatch_id`. NO tests/builds. Write ONLY your partial to `<PARTIAL>`; nothing else."
 
    - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3.
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
-   - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Learnings Cross-Check and Backlog Reconciliation (as NOTE findings in its partial).
+   - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Learnings Cross-Check and Backlog Reconciliation (as NOTE findings in its partial) + the Records Pass over the oracle files.
 
 3. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once). You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
 

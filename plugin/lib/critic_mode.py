@@ -18,8 +18,9 @@ return the first that fires:
 
   1. ``verify-resolutions`` — prior ``.critic-findings.json`` has
      BLOCKING/WARNING findings + ``commit_reviewed`` anchor resolves **and is
-     an ancestor of HEAD** + uncommitted diff is non-empty AND is a subset of
-     prior ``files_reviewed``. Signal: builder is in the middle of fixing
+     an ancestor of HEAD** + uncommitted diff is non-empty AND its judgeable
+     subset is within prior ``files_reviewed`` (the review's subject set, which
+     holds judgeable paths only). Signal: builder is in the middle of fixing
      findings from the last review.
   1b. ``verify-resolutions`` (post-cumulative fix, CRT-4J8W) — tree clean,
      prior record is a ``cumulative`` review, and the committed delta since
@@ -384,13 +385,21 @@ def _rule_verify_resolutions_fires(
     if not diff_files:
         return False
 
-    # Subset check: every uncommitted file must be in the prior review's
-    # surface. Even one file outside scope means the builder added new
-    # work alongside the fix — that's a chunk/final case, not a verify
-    # pass. The dispatch side enforces the same "diff ⊆ scope" contract in
+    # Subset check: every uncommitted JUDGEABLE file must be in the prior
+    # review's surface. Even one such file outside scope means the builder added
+    # new work alongside the fix — that's a chunk/final case, not a verify pass.
+    # The dispatch side enforces the same "diff ⊆ scope" contract in
     # ``critic_consolidate.begin_review``, whose verify arm anchors on
     # ``_prior_review_fact`` and refuses once ``_scope_widened`` trips.
-    return diff_files.issubset(prior_set)
+    #
+    # Judgeable on the diff side because `files_reviewed` is the SUBJECT set —
+    # judgeable paths only — so comparing a raw diff against it would fail the
+    # subset the moment a fix touched a README or a doc, and send exactly the
+    # cheap prose-plus-code fix this framework steers toward into a full round
+    # instead of a verify pass. `_is_metadata_path` above drops `.prawduct/`,
+    # not every non-judgeable path; THE predicate is the one that agrees with
+    # what the manifest recorded.
+    return set(coverage_algebra.judgeable_files(sorted(diff_files))).issubset(prior_set)
 
 
 def _cumulative_anchor(data: dict) -> str | None:
@@ -469,9 +478,14 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     # protected prose (`skills/`, `methodology/`, `templates/`, root CLAUDE.md)
     # IS judgeable, so a committed delta of only skill prose used to suppress the
     # verify-resolutions suggestion as though nothing reviewable had landed.
-    if not coverage_algebra.judgeable_files(list(delta)):
+    judgeable_delta = coverage_algebra.judgeable_files(sorted(delta))
+    if not judgeable_delta:
         return ""
-    if len(delta) > 2 * len(prior_set) + 5:
+    # Both counts are subject-set counts, matching `critic_consolidate`'s
+    # `_scope_widened`: `prior_set` holds judgeable paths only, so measuring a
+    # raw delta against it would tighten this bound by exactly the prose that
+    # rode along on the previous round.
+    if len(judgeable_delta) > 2 * len(prior_set) + 5:
         return ""
     return (
         f"committed delta of {len(delta)} file(s) since the prior "
