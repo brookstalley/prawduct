@@ -1497,6 +1497,37 @@ class TestFrontmatterBreak:
         )
         assert self.fb(text) is None
 
+    def test_a_quoted_key_is_quiet(self):
+        """`- "a b": 1` opens a scalar at a value position, closes it, and leaves
+        a colon. The ONLY legal shape that still reaches the trailing-content
+        branch — which is why `:` is in `_LEGAL_AFTER_CLOSING_QUOTE` and the flow
+        punctuation is not."""
+        assert self.fb('---\n- "a b": 1\nx: 2\n---\n') is None
+
+    def test_a_quote_initial_continuation_of_a_plain_scalar_is_quiet(self):
+        """A wrapped plain scalar whose second line begins with a quote opens
+        nothing — it carries no `- `/`key: ` marker. Reading it as an opener
+        reported legal YAML as broken."""
+        text = '---\nnote: the rule says\n  "the thing" is true\nx: 1\n---\n'
+        assert self.fb(text) is None
+
+    def test_a_flow_collection_continuation_is_quiet(self):
+        """Same marker rule closes the multi-line `[...]` case, which is why the
+        trailing-content branch never needs to admit `,`/`]`/`}`."""
+        assert self.fb('---\nk: ["a",\n  "b"]\nx: 1\n---\n') is None
+
+    def test_a_stranded_fragment_beginning_with_a_comma_is_still_a_break(self):
+        """THE REGRESSION GUARD. Admitting flow punctuation after a closing quote
+        looks harmless — the shapes it was meant for are already excluded by the
+        marker rule — but it is reachable with a scalar ALREADY OPEN, which is
+        the break case. Here the unterminated scalar on line 2 swallows line 3
+        and closes on its quote, stranding `, two"`. Genuinely unparseable YAML,
+        and a false negative here is silent by construction: `governed-by-gap` is
+        the machine-answered channel a reviewer relays verbatim."""
+        line, why = self.fb('---\na: "one\nb: ", two"\n---\n')
+        assert line == 2
+        assert "closes only on a later line" in why
+
     def test_no_frontmatter_at_all_is_not_a_break(self):
         """A missing header is a different (and lesser) thing than a broken one;
         `governed-by-gap` already grades the absence via its own rules."""
@@ -1507,7 +1538,12 @@ class TestFrontmatterBreak:
         arts = repo / ".prawduct" / "artifacts"
         (arts / "security-model.md").write_text(THREE_NORM_ARTIFACT)
         base = _commit(repo, "seed artifact")
-        broken = _plan(3).replace('      - "norm 0 → conforms"\n',
+        # UNDER-disposed *and* broken: the fixture has to be able to produce the
+        # spurious second finding, or "exactly one" passes against an
+        # append-and-continue implementation too and pins nothing. One
+        # disposition against a three-norm artifact is a real `governed-by-gap`
+        # that the line-based parser still reports from the broken block.
+        broken = _plan(1).replace('      - "norm 0 → conforms"\n',
                                   '      - "norm 0 → conforms\n')
         (arts / "build-plan-demo.md").write_text(broken)
         head = _commit(repo, "add plan")
@@ -1516,3 +1552,10 @@ class TestFrontmatterBreak:
             "governed-by-gap",
         )
         assert any("structurally broken" in f["detail"] for f in found), found
+        # ONE structural defect, ONE finding. The line-based parser still yields
+        # entries from a broken block, and they are entries no YAML reader would
+        # agree with — a stranded fragment reads as an artifact name and renders
+        # a spurious "cites an artifact that does not exist" beside the break.
+        # Grading a block the same function just called untrustworthy is the
+        # contradiction the early return exists to prevent.
+        assert len(found) == 1, f"the broken block was graded anyway: {found}"

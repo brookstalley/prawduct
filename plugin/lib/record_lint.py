@@ -134,16 +134,25 @@ _LIST_ITEM_RE = re.compile(r"^(\s*)-\s+\S")
 _VALUE_START_RE = re.compile(
     r"^\s*(?:-\s+(?:[A-Za-z_][\w.-]*:\s+)?|[A-Za-z_][\w.-]*:\s+)(?P<value>\S.*)$"
 )
+#: What may legally follow a closing double quote in block context: a comment,
+#: or the colon of a QUOTED KEY (``- "a b": 1``). Anything else is content
+#: stranded after the close, which is the break this grades.
+#:
+#: **Deliberately NOT the flow-collection punctuation** ``,``/``]``/``}``. Those
+#: look like they belong — a scalar inside a multi-line ``[...]`` closes onto
+#: them — but a flow continuation line carries no ``- ``/``key: `` marker, so
+#: :data:`_VALUE_START_RE` never opens a scalar on one and the branch is
+#: unreachable for that shape. Where they ARE reachable is with a scalar already
+#: open, which is precisely the break case: in ``a: "one`` / ``b: ", two"`` the
+#: unterminated scalar swallows the next line and closes on its quote, stranding
+#: ``, two"``. Admitting ``,`` there suppressed the exact defect this check was
+#: built for, silently, on a machine-answered channel reviewers relay verbatim.
+_LEGAL_AFTER_CLOSING_QUOTE = frozenset("#:")
+
 #: A value that opens a BLOCK scalar (``|``/``>`` with any chomping or
 #: indentation indicator). Everything more-indented below it is literal text,
 #: quotes included — a `>-` note quoting `"inapplicable, because —"` is the real
 #: shape that made this necessary, not a hypothetical.
-#: What may legally follow a closing double quote in block context. A comment,
-#: the colon of a QUOTED KEY (`- "a b": 1`), or a flow-collection separator or
-#: terminator when the scalar sat inside a multi-line `[...]`/`{...}`. Anything
-#: else is content stranded after the close, which is the break this grades.
-_LEGAL_AFTER_CLOSING_QUOTE = frozenset("#:,]}")
-
 _BLOCK_SCALAR_RE = re.compile(
     r"^(?P<indent>\s*)(?:-\s+)?(?:[A-Za-z_][\w.-]*:\s+)[|>][-+]?\d*\s*(?:#.*)?$"
 )

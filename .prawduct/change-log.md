@@ -68,6 +68,16 @@ subject**, and a Records Pass whose bars both read WARNING would have traded tha
 silence. It has a third bar: an instruction that actively misleads — a wrong command, a deleted
 config reference — is BLOCKING there, exactly as Goal 4 has always rated it.
 
+**And the verify pass caught the fix's own regression, which is the sharpest thing in this entry.**
+Widening what may follow a closing quote to admit flow punctuation (`,`, `]`, `}`) looked free: the
+shapes it was meant for — a scalar inside a multi-line `[...]` — are already excluded by the marker
+rule, because a flow continuation line carries no `- `/`key: `. But those characters are reachable
+with a scalar **already open**, which is the break case. In `a: "one` / `b: ", two"` the unterminated
+scalar swallows the next line and closes on its quote, stranding `, two"` — unparseable YAML that the
+check reported before the fix and passed after it. A false negative on `governed-by-gap` is silent by
+construction: it is the machine-answered channel a reviewer relays verbatim. The allowance is back to
+`#` and `:`, and each of the three boundaries that moved now has a test that fails when it moves back.
+
 Also from that review: `_scope_widened` counted through the all-prose floor and so reinstated the
 prose it means to discount; the verify-resolutions arm rebuilt its oracle from the prior *subject*
 set and dropped the plan a verify pass must be handed; `critic_mode` asserted `files_reviewed` holds
