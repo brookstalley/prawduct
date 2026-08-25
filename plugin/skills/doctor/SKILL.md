@@ -78,7 +78,7 @@ Plugin-native — the *subject* of every check is the consumer's OWN `.prawduct/
 
 Classify and report:
 - **healthy**: install reference + `distribution: plugin` + no residue + core state present + discovery captured (or no product work yet) → "Your prawduct plugin setup is healthy."
-- **degraded**: governance works but something is off (missing anchor, a missing non-critical file, discovery uncaptured despite product work, an exposed API with no recorded versioning decision, norm-registry integrity findings, an active strategy-class coverage layer, a learnings corpus whose descent obligation is missing or below the first rule, or a check that could not run) — list each with its implication and the fix.
+- **degraded**: governance works but something is off (an anchor that is missing, stale, locally edited, or ungradable — Check #4 names which, and they route differently; a missing non-critical file, discovery uncaptured despite product work, an exposed API with no recorded versioning decision, norm-registry integrity findings, an active strategy-class coverage layer, a learnings corpus whose descent obligation is missing or below the first rule, or a check that could not run) — list each with its implication and the fix.
 - **broken**: no install reference, or file-sync residue still committed — recommend `/prawduct:migrate` (or installing the plugin first).
 
 ## Lifecycle Convergence Flow (Health Check #15/#16's repair)

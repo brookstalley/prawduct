@@ -48,6 +48,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from . import core
 from .migrate_plugin import (
     ANCHOR_SENTINEL,
     PLUGIN_ID,
@@ -62,7 +63,9 @@ STATUS_OK = "ok"
 STATUS_STALE = "stale"
 STATUS_STALE_MODIFIED = "stale-modified"
 STATUS_ABSENT = "absent"
+STATUS_LEGACY_BLOCK = "legacy-block"
 STATUS_UNREADABLE = "unreadable"
+STATUS_UNWRITABLE = "unwritable"
 
 #: What makes an anchor current, expressed as the one thing a plugin-less reader
 #: can act on. Derived from the install contract for the same reason the anchor
@@ -141,9 +144,35 @@ def _read(path: Path) -> str | None:
     indistinguishable from one that ran and found nothing.
     """
     try:
-        return path.read_text(encoding="utf-8")
+        # newline="" — read the file's OWN line endings rather than translating
+        # them. `read_text` would hand back LF for a CRLF file, and writing that
+        # back reformats every line of a document this module promises to leave
+        # untouched outside one swapped region.
+        with path.open(encoding="utf-8", newline="") as fh:
+            return fh.read()
     except (UnicodeDecodeError, OSError):
         return None
+
+
+def _match_superseded(text: str) -> tuple[str, str] | None:
+    """The archived anchor present in ``text``, and the current one in ITS line
+    endings — or ``None`` when no shipped anchor is present verbatim.
+
+    The archive is stored LF-only because that is how the plugin writes it, but a
+    product's `CLAUDE.md` may be CRLF, and on a CRLF repo an LF-only comparison
+    finds nothing: the repo would be told its anchor had been edited locally,
+    which is the same false accusation the missing-archive-entry defect made.
+    So each entry is compared in the file's own ending, and the replacement is
+    rendered to match what was found.
+    """
+    current = STATIC_ANCHOR.strip()
+    for old in SUPERSEDED_ANCHORS:
+        if old in text:
+            return old, current
+        crlf = old.replace("\n", "\r\n")
+        if crlf in text:
+            return crlf, current.replace("\n", "\r\n")
+    return None
 
 
 def check(project_dir: Path) -> dict:
@@ -179,6 +208,26 @@ def check(project_dir: Path) -> dict:
             ),
         }
 
+    # A pre-2.0 file-sync repo carries the heavy PRAWDUCT:BEGIN/END block and no
+    # sentinel, so every check below would read it as "no anchor" and the repair
+    # would hand it to `apply_claude_anchor` — which STRIPS that block and
+    # reformats the prose around it. That is a migration, performed silently,
+    # under a preview promising an insertion. It is `/prawduct:migrate`'s act and
+    # takes its own informed approval, so it is graded and declined here.
+    if core.extract_block(text)[0] is not None:
+        return {
+            "status": STATUS_LEGACY_BLOCK,
+            "path": CLAUDE_REL,
+            "repairable": False,
+            "detail": (
+                f"{CLAUDE_REL} still carries the pre-2.0 PRAWDUCT:BEGIN/END block, so this "
+                "repo has not cut over to the plugin — re-anchoring it would mean stripping "
+                "that block and rewriting the prose around it, which is `/prawduct:migrate`'s "
+                "act and takes its own approval. Run that first; it installs the current anchor "
+                "on the way through"
+            ),
+        }
+
     if ANCHOR_SENTINEL not in text:
         return {
             "status": STATUS_ABSENT,
@@ -190,7 +239,16 @@ def check(project_dir: Path) -> dict:
             ),
         }
 
-    if NOTICE_PROBE in text:
+    # ORDER IS THE CHECK. A verbatim shipped-stale anchor settles the question
+    # before the notice probe is asked, because the probe scans the WHOLE file:
+    # a repo whose anchor still promises an unconditional Stop gate, and which
+    # names the install command anywhere else — a contributing section, a
+    # troubleshooting note — would otherwise grade healthy while the anchor goes
+    # on lying. Asked in this order, the probe only ever decides files that carry
+    # no anchor prawduct shipped, which is exactly where its judgement is wanted.
+    matched = _match_superseded(text)
+
+    if matched is None and NOTICE_PROBE in text:
         return {
             "status": STATUS_OK,
             "path": CLAUDE_REL,
@@ -201,7 +259,7 @@ def check(project_dir: Path) -> dict:
             ),
         }
 
-    if not any(old in text for old in SUPERSEDED_ANCHORS):
+    if matched is None:
         return {
             "status": STATUS_STALE_MODIFIED,
             "path": CLAUDE_REL,
@@ -257,14 +315,35 @@ def repair(project_dir: Path, apply: bool = False) -> dict:
         result["repairable"] = False
         return result
 
-    superseded = next(old for old in SUPERSEDED_ANCHORS if old in text)
-    current = STATIC_ANCHOR.strip()
-    result["replacement"] = current
+    matched = _match_superseded(text)
+    if matched is None:  # pragma: no cover — check() already graded it stale
+        result["status"] = STATUS_STALE_MODIFIED
+        result["repairable"] = False
+        return result
+    superseded, current = matched
+    result["replacement"] = STATIC_ANCHOR.strip()
 
     if apply:
         # `1` — replace the one occurrence found. A CLAUDE.md carrying the anchor
         # twice is malformed, and swapping both would hide that rather than fix it.
-        path.write_text(text.replace(superseded, current, 1), encoding="utf-8")
+        body = text.replace(superseded, current, 1)
+        try:
+            # The writer both cited precedents use, for the reasons they cite:
+            # `os.replace` so a crash mid-write cannot leave the owner's
+            # instructions truncated, and `newline=""` so the endings this file
+            # already had survive — a repair promising to touch one region must
+            # not hand back a whole-file reformat on a CRLF repo.
+            core.atomic_write_text(path, body, encoding="utf-8", newline="")
+        except (OSError, UnicodeError) as exc:
+            # This command is offered BY `/prawduct:doctor` by name, so an
+            # unwritable CLAUDE.md must come back as a report. A traceback out of
+            # a health check is not a finding, it is a crash.
+            result.update({
+                "status": STATUS_UNWRITABLE,
+                "repairable": False,
+                "detail": f"could not write {CLAUDE_REL}: {exc}",
+            })
+            return result
         result["applied"] = True
 
     return result

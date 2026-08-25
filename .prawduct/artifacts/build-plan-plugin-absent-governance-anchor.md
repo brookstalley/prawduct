@@ -221,6 +221,11 @@ stale and a re-anchored one clean; Chunk 03 confirms `/prawduct:doctor`'s report
   that Claude Code prompts for it
 - **Acceptance criteria:** suite green; `/prawduct:doctor` in a repo with a stale anchor reports
   degraded and names the repair; the three documents describe what was measured
+- **Verification performed (2026-08-25):** every status Health Check #4 promises was reproduced on a
+  scratch repo and observed directly — `ok`, `stale`, `stale-modified`, `absent`, `unreadable` — plus
+  `legacy-block` and `unwritable` after the cumulative review added them. The stale → `--apply` → `ok`
+  round trip was checked for byte-identity of the product prose either side of the swapped anchor.
+  Recorded here because a manual check with no record is indistinguishable from one never run.
 - **Type:** cumulative-final
   <!-- Last chunk: its review IS the branch's one `/prawduct:critic cumulative` — commit first,
        run it once, no separate `final`. -->

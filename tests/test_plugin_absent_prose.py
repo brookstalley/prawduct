@@ -19,19 +19,46 @@ actively harmful — **they are what an owner reads when deciding what to tell
 their team, so a false promise of automatic activation suppresses the one message
 that would close the gap.**
 
-The negative tests are the load-bearing ones. A guard that only checks the new
-text is present would pass over a document that also still carries the old
-promise two paragraphs down.
+**Two guards, and only one of them is derived — the distinction matters, because
+the first version of this module claimed to catch "the claim, not the wording"
+while in fact matching four literal phrasings.** It shipped green over
+`MIGRATION.md`'s "everyone who clones the repo gets the plugin automatically",
+sixty lines above the paragraph retiring it, in the same commit. A phrase list
+cannot make that claim; it can only ever catch the phrasings someone already
+thought of.
+
+* :data:`_RETIRED_CLAIMS` is the phrase list, kept for what it is: known-false
+  wordings, cheap, matched anywhere in the file. It is a backstop, not the guard.
+* :func:`test_clone_claims_are_discharged_where_they_are_made` is the derived
+  one. It needs no list of wordings: **any paragraph that talks about cloning and
+  the plugin together must also discharge the install step**, because that is the
+  structural property a false promise necessarily lacks — a paragraph claiming
+  activation is automatic is exactly a paragraph that does not tell you to
+  install anything. It catches rewordings nobody has written yet, and it catches
+  the one that shipped.
 """
 
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# Self-sufficient on sys.path (mirrors tests/test_anchor_repair.py).
+if str(_REPO_ROOT / "plugin") not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT / "plugin"))
+
+from lib.migrate_plugin import PLUGIN_ID  # noqa: E402
+
+#: The command every surface must name, built from the install contract rather
+#: than frozen here. A literal in this file would be one more home for the plugin
+#: id — and the one that keeps passing after a marketplace rename, because a test
+#: asserting a stale string against stale docs agrees with itself.
+_INSTALL_COMMAND = f"claude plugin install {PLUGIN_ID}"
 
 #: Every surface that describes clone-time activation to a human.
 _CLONE_SURFACES = (
@@ -89,9 +116,58 @@ def test_every_surface_names_the_install_step(rel):
     *product* in, reproduced in the docs.
     """
     text = (_REPO_ROOT / rel).read_text(encoding="utf-8")
-    assert "claude plugin install prawduct@prawduct" in text, (
+    assert _INSTALL_COMMAND in text, (
         f"{rel} describes clone-time setup but never names the one command that "
         "actually installs the plugin"
+    )
+
+
+#: A paragraph is making a clone claim when it mentions cloning and the plugin
+#: together — that is the shape of every promise about what the next person gets.
+_CLONE_MENTION = re.compile(r"\bclon(?:e|es|ed|ing)\b", re.I)
+_PLUGIN_MENTION = re.compile(r"\bplugin\b", re.I)
+
+#: What discharges such a claim: naming the install step, or saying plainly that
+#: it does not happen for them. Deliberately a *family of discharges* rather than
+#: one required sentence — the surfaces legitimately phrase it several ways, and
+#: pinning one phrasing would make this the same phrase-list guard one level up.
+_DISCHARGED = re.compile(
+    r"claude plugin install"
+    r"|installs? (?:it|the plugin|that) once"
+    r"|each contributor"
+    r"|does not install"
+    r"|not install the plugin"
+    r"|installs nothing",
+    re.I,
+)
+
+
+@pytest.mark.parametrize("rel", _CLONE_SURFACES)
+def test_clone_claims_are_discharged_where_they_are_made(rel):
+    """The derived guard: a clone claim must discharge the install step in place.
+
+    Not "somewhere in the file" — *in the paragraph making the claim*. A reader
+    of `MIGRATION.md` step 1 does not scroll to line 117 before telling their
+    team what to do, and that is precisely how the false promise survived: the
+    same file already said the opposite twice, further down.
+
+    This needs no catalogue of bad phrasings. A paragraph promising the plugin
+    arrives automatically is, structurally, a paragraph that names no install
+    step — so the property is checkable without anyone having anticipated the
+    wording.
+    """
+    text = (_REPO_ROOT / rel).read_text(encoding="utf-8")
+    undischarged = [
+        " ".join(para.split())
+        for para in re.split(r"\n\s*\n", text)
+        if _CLONE_MENTION.search(para)
+        and _PLUGIN_MENTION.search(para)
+        and not _DISCHARGED.search(para)
+    ]
+    assert not undischarged, (
+        f"{rel} has {len(undischarged)} paragraph(s) describing what a clone gets "
+        "without saying the plugin must be installed once per machine — the reader "
+        f"of this paragraph tells their team nothing: {undischarged}"
     )
 
 

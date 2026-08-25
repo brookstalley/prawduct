@@ -400,10 +400,16 @@ def apply_claude_anchor(project_dir: Path) -> bool:
     if not path.is_file():
         # Defensive: a file-sync repo always carries CLAUDE.md, but if it is
         # absent the migrated repo must still carry the governance anchor.
-        path.write_text(f"# CLAUDE.md\n\n{anchor}\n", encoding="utf-8")
+        core.atomic_write_text(
+            path, f"# CLAUDE.md\n\n{anchor}\n", encoding="utf-8", newline=""
+        )
         return True
 
-    original = path.read_text(encoding="utf-8")
+    # newline="" — read this product's OWN line endings. `read_text` translates
+    # them, so writing back reformats every line of a file this function promises
+    # to edit only at the anchor seam.
+    with path.open(encoding="utf-8", newline="") as fh:
+        original = fh.read()
     block, before, after = core.extract_block(original)
 
     if block is not None:
@@ -419,7 +425,9 @@ def apply_claude_anchor(project_dir: Path) -> bool:
 
     if new == original:
         return False
-    path.write_text(new, encoding="utf-8")
+    # Atomic, and endings-preserving: this is the product's own instruction file,
+    # and a crash between truncate and write would leave it half-written.
+    core.atomic_write_text(path, new, encoding="utf-8", newline="")
     return True
 
 

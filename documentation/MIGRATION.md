@@ -19,8 +19,9 @@ claude plugin install prawduct@prawduct
 ```
 
 This gives *you* the `/prawduct:*` skills (needed for step 2). Step 2 then commits a per-repo
-install reference, so everyone who clones the repo gets the plugin automatically — no flags, no
-framework files in the tree.
+install reference, which registers the marketplace for everyone who clones the repo — no flags, no
+framework files in the tree. **It does not install the plugin for them**: each contributor runs the
+two commands above once, on their own machine, exactly as you just did.
 
 > **Developing the framework itself?** Skip the install and load your working copy instead:
 > `claude --plugin-dir /path/to/prawduct/plugin --add-dir /path/to/prawduct`. The `--add-dir` (same

@@ -84,11 +84,19 @@ def _shipped_anchor(tag: str):
     Returns the rendered text, ``_NO_MODULE`` when the tag predates the module,
     or ``None`` when the module is there but its anchor could not be rendered.
 
-    Parses rather than executes, and resolves the f-string's interpolations from
-    the same module's own string constants — which is the whole of what the anchor
-    has ever interpolated. A shape this cannot resolve returns None rather than a
-    wrong answer; the tag path moved (`lib/` -> `plugin/lib/`) at v2.3.0, so both
-    are tried.
+    **Evaluates the module-level assignments; never imports the module.** An
+    import would run `from . import core, lifecycle_repair`, which a historical
+    tree need not satisfy, and would put an old revision of the code under test
+    into the interpreter testing the current one. Only `Assign` statements are
+    evaluated, in a namespace holding nothing but builtins and what earlier
+    assignments produced — so no historical function body ever runs.
+
+    This replaced a version that hand-rendered the f-string from `ast.Constant`
+    parts only. It could resolve `{ANCHOR_MARKER}` and nothing else, so the day
+    `STATIC_ANCHOR` began interpolating `{PLUGIN_ID}` — a `next(iter(...))` call
+    — it returned None for every tag carrying that code. Green then, because no
+    tag did yet; red at the first release cut from that branch, pointing the
+    release at this reader rather than at the anchor.
     """
     src = None
     for rel in ("plugin/lib/migrate_plugin.py", "lib/migrate_plugin.py"):
@@ -102,37 +110,45 @@ def _shipped_anchor(tag: str):
     if src is None:
         return _NO_MODULE
 
+    return _render_anchor(src, tag)
+
+
+def _render_anchor(src: str, origin: str):
+    """`STATIC_ANCHOR` rendered from module source, or None if unresolvable."""
     try:
         tree = ast.parse(src)
-    except SyntaxError:  # pragma: no cover — a tag that does not parse
+    except SyntaxError:  # pragma: no cover — source that does not parse
         return None
 
-    consts: dict[str, str] = {}
-    joined: ast.JoinedStr | None = None
+    namespace: dict = {}
     for node in tree.body:
-        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
-            continue
-        target = node.targets[0]
-        if not isinstance(target, ast.Name):
-            continue
-        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-            consts[target.id] = node.value.value
-        elif target.id == "STATIC_ANCHOR" and isinstance(node.value, ast.JoinedStr):
-            joined = node.value
-    if joined is None:
-        return None
-
-    parts: list[str] = []
-    for piece in joined.values:
-        if isinstance(piece, ast.Constant):
-            parts.append(piece.value)
-        elif isinstance(piece, ast.FormattedValue) and isinstance(piece.value, ast.Name):
-            if piece.value.id not in consts:
-                return None
-            parts.append(consts[piece.value.id])
+        # BOTH assignment forms. `INSTALL_REFERENCE` carries a type annotation and
+        # is therefore an `AnnAssign`, not an `Assign` — handling only the latter
+        # left `PLUGIN_ID` unresolvable and `STATIC_ANCHOR` with it, which is the
+        # same "the reader cannot see it" defect one level down from the one this
+        # function was rewritten to fix.
+        if isinstance(node, ast.Assign):
+            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+                continue
+            target, value_node = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign):
+            if node.value is None or not isinstance(node.target, ast.Name):
+                continue
+            target, value_node = node.target, node.value
         else:
-            return None
-    return "".join(parts).strip()
+            continue
+        try:
+            value = eval(  # noqa: S307 — module-level literals + builtins only
+                compile(ast.Expression(value_node), f"<{origin}>", "eval"),
+                {"__builtins__": __builtins__},
+                namespace,
+            )
+        except Exception:  # noqa: BLE001 — an assignment we cannot resolve is skipped
+            continue
+        namespace[target.id] = value
+
+    anchor = namespace.get("STATIC_ANCHOR")
+    return anchor.strip() if isinstance(anchor, str) else None
 
 
 # =============================================================================
@@ -170,19 +186,115 @@ def test_owner_edited_anchor_is_reported_not_repaired(tmp_path: Path):
     assert result["repairable"] is False
 
 
-def test_owner_written_equivalent_notice_grades_ok(tmp_path: Path):
+def test_owner_rewritten_anchor_carrying_the_notice_grades_ok(tmp_path: Path):
     """Substance-based detection has to accept a correct anchor it did not write.
 
-    A revision tag would call this stale and offer to overwrite prose that is
-    already doing the job — the wrong answer, and the reason the probe asks what
-    the anchor SAYS rather than which version it is.
+    A revision tag would call this stale and offer to overwrite prose already
+    doing the job — the wrong answer, and the reason the probe asks what the
+    anchor SAYS rather than which version it is.
+
+    The fixture is an anchor the owner **rewrote**, which is what that sentence
+    actually describes. An earlier version of this test used a verbatim shipped
+    stale anchor with a note appended *elsewhere in the file*, and asserted `ok` —
+    encoding the probe-ordering defect as the expected behaviour. That file's
+    anchor still told a plugin-less session a Stop gate was watching; a note three
+    paragraphs away does not unsay it, and the repair now swaps the shipped block
+    and leaves the note alone.
     """
-    home_grown = ar.ANCHOR_V2 + (
-        "\n\nNote from us: if `/prawduct:*` is missing, run "
-        f"`{ar.NOTICE_PROBE}` before doing anything else."
+    home_grown = (
+        "<!-- PRAWDUCT:ANCHOR — ours, kept deliberately short -->\n\n"
+        "## Governance\n\n"
+        "Prawduct governs this repo. If `/prawduct:*` is missing the plugin is not\n"
+        f"installed and nothing here is enforced — run `{ar.NOTICE_PROBE}` first."
     )
     root = _write_claude(tmp_path / "homegrown", home_grown)
     assert ar.check(root)["status"] == ar.STATUS_OK
+
+
+def test_a_shipped_stale_anchor_is_stale_even_when_the_file_names_the_command(tmp_path: Path):
+    """The probe scans the whole file, so ORDER is what makes it honest.
+
+    A repo can carry the install command far from the anchor — a contributing
+    section, a troubleshooting note — while its anchor still carries the
+    unconditional enforcement claim. Asked notice-first, that file grades healthy
+    and the anchor goes on lying to every plugin-less clone. Asked
+    archive-first, the verbatim shipped anchor settles it.
+    """
+    root = _write_claude(tmp_path / "elsewhere", ar.ANCHOR_V2)
+    path = root / "CLAUDE.md"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + f"\n\n## Contributing\n\nNew here? Run `{ar.NOTICE_PROBE}`.\n",
+        encoding="utf-8",
+    )
+    assert ar.check(root)["status"] == ar.STATUS_STALE
+
+
+def test_a_file_sync_repo_is_declined_and_routed_to_migrate(tmp_path: Path):
+    """The silent-migration case, and the reason it is graded rather than repaired.
+
+    A pre-2.0 repo carries the heavy PRAWDUCT:BEGIN/END block and no sentinel, so
+    every later check reads it as "no anchor" — and `absent` hands the file to
+    `apply_claude_anchor`, which strips that block and reformats the prose around
+    it. That is a migration, run silently, under a preview promising an
+    insertion. It is `/prawduct:migrate`'s act and takes its own approval.
+    """
+    legacy = (
+        "<!-- PRAWDUCT:BEGIN -->\n\n## Governance\n\nThe whole heavy block.\n\n"
+        "<!-- PRAWDUCT:END -->"
+    )
+    root = _write_claude(tmp_path / "filesync", legacy)
+    before = (root / "CLAUDE.md").read_bytes()
+
+    result = ar.check(root)
+    assert result["status"] == ar.STATUS_LEGACY_BLOCK
+    assert result["repairable"] is False
+    assert "/prawduct:migrate" in result["detail"]
+
+    # And --apply must not perform the migration behind that verdict.
+    assert ar.repair(root, apply=True)["applied"] is False
+    assert (root / "CLAUDE.md").read_bytes() == before
+
+
+def test_a_crlf_repo_is_repaired_without_reformatting_the_file(tmp_path: Path):
+    """Line endings are bytes the owner chose, and the repair promises to keep them.
+
+    Read through `read_text`, a CRLF file comes back LF and every line of it is
+    rewritten on save — a whole-file diff from an operation that promised to touch
+    one region. Matched LF-only, the same file matches no shipped anchor at all
+    and is told its anchor was edited locally, which is the false accusation this
+    module already made once.
+    """
+    root = tmp_path / "crlf"
+    root.mkdir()
+    body = (_PRODUCT_HEAD + ar.ANCHOR_V2 + _PRODUCT_TAIL).replace("\n", "\r\n")
+    (root / "CLAUDE.md").write_bytes(body.encode("utf-8"))
+
+    assert ar.check(root)["status"] == ar.STATUS_STALE
+    assert ar.repair(root, apply=True)["applied"] is True
+
+    raw = (root / "CLAUDE.md").read_bytes()
+    assert b"\r\n" in raw, "the file's own endings must survive the repair"
+    assert raw.count(b"\n") == raw.count(b"\r\n"), "no bare LF may be introduced"
+    expected = (_PRODUCT_HEAD + STATIC_ANCHOR.strip() + _PRODUCT_TAIL).replace("\n", "\r\n")
+    assert raw == expected.encode("utf-8")
+
+
+def test_an_unwritable_claude_md_is_reported_not_raised(tmp_path: Path):
+    """This command is offered BY doctor by name, so a failed write is a report.
+
+    A traceback out of a health check is not a finding, it is a crash — and the
+    two precedents this module copies both own their write failure explicitly.
+    """
+    root = _write_claude(tmp_path / "readonly", ar.ANCHOR_V2)
+    root.chmod(0o555)  # the DIRECTORY: atomic_write_text needs to create a sibling
+    try:
+        result = ar.repair(root, apply=True)
+    finally:
+        root.chmod(0o755)
+    assert result["applied"] is False
+    assert result["status"] == ar.STATUS_UNWRITABLE
+    assert "could not write" in result["detail"]
 
 
 def test_no_claude_md_is_absent(tmp_path: Path):
@@ -297,6 +409,28 @@ def test_every_archived_anchor_grades_stale_and_repairs(tmp_path: Path, archived
     ar.repair(root, apply=True)
     text = (root / "CLAUDE.md").read_text(encoding="utf-8")
     assert text == _PRODUCT_HEAD + STATIC_ANCHOR.strip() + _PRODUCT_TAIL
+
+
+def test_the_tag_reader_can_render_the_anchor_this_tree_ships():
+    """The reader must handle TODAY's anchor, or the guard fails at the next tag.
+
+    `test_the_archive_covers_every_anchor_prawduct_ever_shipped` walks release
+    tags, and no tag yet carries this branch's `STATIC_ANCHOR` — so a reader that
+    cannot render it is green right up until the release that ships it, and then
+    goes red pointing at the reader rather than at the anchor. That is exactly
+    what the first version did: it resolved f-string interpolations from
+    module-level `ast.Constant` assignments only, and `PLUGIN_ID` is assigned
+    from a `next(iter(...))` call.
+
+    Pinning it against the working tree is what closes the gap between "the guard
+    passes" and "the guard can see".
+    """
+    src = (_PLUGIN_ROOT / "lib" / "migrate_plugin.py").read_text(encoding="utf-8")
+    rendered = _render_anchor(src, "HEAD")
+    assert rendered == STATIC_ANCHOR.strip(), (
+        "the tag reader cannot render the anchor this tree defines, so the archive "
+        "guard would go red at the first release cut from here"
+    )
 
 
 def test_the_archive_covers_every_anchor_prawduct_ever_shipped():
