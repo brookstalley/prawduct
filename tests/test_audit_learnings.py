@@ -1896,6 +1896,71 @@ class TestSentinelRunsTheDeclaredCommand:
 
         source = inspect.getsource(_mod.resolve_sentinel_command)
         assert "pytest" in source, "the history must still be explainable"
-        assert "npx vitest run {sentinel}" in source, (
+        # The example is asserted on the RENDERED message, not the source text:
+        # the diagnostic interpolates `SENTINEL_PLACEHOLDER` rather than repeating
+        # the literal, so that a rename cannot leave the docs teaching a spelling
+        # the parser rejects. A source-text match would forbid exactly that fix.
+        assert "npx vitest run" in source, (
             "the operator-facing example must still be showable"
         )
+
+
+class TestTheDocumentedExampleActuallyWorks:
+    """The key and its placeholder have five homes and nothing compares them.
+
+    `sentinel_command:` / `{sentinel}` appear in the module docstring, the
+    runner's own diagnostics, `templates/project-state.yaml`, this repo's own
+    state file, and `skills/doctor/SKILL.md`. A rename or a typo in the template
+    ships a knob nobody reads — and the failure is silent by this bundle's own
+    design: every sentinel simply reports `ungraded`. That is the exact class
+    this branch exists to close, reappearing in its own documentation.
+
+    Pinned by running the TEMPLATE'S OWN commented example through the real
+    parser, so the docs and the code cannot drift apart without a red test.
+    """
+
+    _TEMPLATE = _REPO_ROOT / "templates" / "project-state.yaml"
+
+    def _example_from_template(self) -> str:
+        for line in self._TEMPLATE.read_text().splitlines():
+            stripped = line.lstrip("# ").strip()
+            if stripped.startswith("sentinel_command:"):
+                return stripped
+        raise AssertionError(
+            "templates/project-state.yaml documents no `sentinel_command:` example — "
+            "the knob is undiscoverable to every product being onboarded"
+        )
+
+    def test_template_example_parses_and_substitutes(self, tmp_path: Path):
+        example = self._example_from_template()
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(example + "\n")
+
+        argv, reason = _mod.resolve_sentinel_command(tmp_path)
+        assert argv is not None, (
+            f"the template's own example is rejected by the parser: {reason}"
+        )
+        assert _mod.SENTINEL_PLACEHOLDER in " ".join(argv), (
+            "the documented example carries no placeholder, so it would grade "
+            "every rule by the whole suite's verdict"
+        )
+        substituted = [
+            tok.replace(_mod.SENTINEL_PLACEHOLDER, "a/b.test.js") for tok in argv
+        ]
+        assert "a/b.test.js" in substituted
+
+    def test_this_repo_state_matches_the_placeholder_constant(self):
+        """The constant is the authority; the repo's own declaration must use it."""
+        state = (_REPO_ROOT.parent / ".prawduct" / "project-state.yaml").read_text()
+        declared = [
+            l for l in state.splitlines() if l.startswith("sentinel_command:")
+        ][0]
+        assert _mod.SENTINEL_PLACEHOLDER in declared
+
+    def test_the_diagnostic_quotes_the_constant_not_a_copy(self, tmp_path: Path):
+        """The undeclared-knob message tells an operator what to type. If it
+        drifts from the constant it teaches a spelling the parser rejects."""
+        (tmp_path / ".prawduct").mkdir()
+        _argv, reason = _mod.resolve_sentinel_command(tmp_path)
+        assert _mod.SENTINEL_PLACEHOLDER in reason

@@ -379,8 +379,8 @@ def resolve_sentinel_command(product_dir: Path) -> tuple[list[str] | None, str |
             "no readable `sentinel_command:` in .prawduct/project-state.yaml "
             "(absent, empty, or the file could not be read) — prawduct cannot "
             "know how this product runs one test file, and will not guess. "
-            "Declare it with a {sentinel} placeholder, e.g. "
-            "`sentinel_command: npx vitest run {sentinel}`"
+            f"Declare it with a {SENTINEL_PLACEHOLDER} placeholder, e.g. "
+            f"`sentinel_command: npx vitest run {SENTINEL_PLACEHOLDER}`"
         )
     if SENTINEL_PLACEHOLDER not in declared:
         return None, (
@@ -418,14 +418,18 @@ def run_sentinel(
     non-zero on it, because "the test is missing" and "the test failed" are
     different facts and only one of them is about the rule.
 
-    **Two known limits of that line, both erring toward running the command.**
+    **Three known limits of that line, all erring toward running the command.**
     The missing-target check fires only for a *path-shaped* sentinel (one
     carrying a separator): an opaque runner id such as ``com.acme.BarTest#testX``
     is not resolvable here, and prawduct will not claim a file is gone when it
-    cannot tell "gone" from "not a path". And a command that starts and then
-    dies on a broken environment — absent dependencies, an unbuilt workspace —
-    still grades ``False``, because no language-agnostic signal separates that
-    from a real failure (``brookstalley/prawduct#720``).
+    cannot tell "gone" from "not a path". **A bare filename is on the wrong side
+    of that line** — ``auth.test.js`` with no directory is indistinguishable from
+    an opaque id, so a deleted one still reaches the runner and can come back
+    ``False``, which is the pre-fix false accusation surviving in the one shape
+    the separator rule cannot catch. And a command that starts and then dies on a
+    broken environment — absent dependencies, an unbuilt workspace — also grades
+    ``False``, because no language-agnostic signal separates that from a real
+    failure (``brookstalley/prawduct#720`` covers both residuals).
 
     Collapsing that third case into ``False`` is the whole defect this shape
     exists to prevent — it accuses a green test and argues for retiring a live

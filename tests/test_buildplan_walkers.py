@@ -1051,3 +1051,52 @@ class TestDeliverableCheckGaps:
         (prawduct / "artifacts").mkdir(parents=True)
         assert buildplan_refs.deliverable_check_gaps(prawduct, None) == []
         assert buildplan_refs.deliverable_check_gaps(tmp_path / "nothing", None) == []
+
+
+class TestChunkRefGapForUnparseablePlan:
+    """#642 Route 2, at the manifest — the half `deliverable_check_gaps` does not cover.
+
+    The dispatch note tells the OPERATOR at `critic-begin`. This is the other
+    reader: `record_lint` rides the manifest into the review itself, and its
+    `chunk_id is None` branch returned `[], None, None, None` — a null count
+    indistinguishable from a healthy plan whose chunks are all ticked. Unlike
+    every other failure on that path it emitted no `unchecked` line at all, so
+    nothing downstream had a word to carry.
+
+    Both causes of "no chunk in scope" must stay distinguishable: a finished
+    plan is silent, an unparseable one is not.
+    """
+
+    def _plan(self, tmp_path: Path, content: str) -> Path:
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        plan = artifacts / "build-plan-x.md"
+        plan.write_text(content)
+        return plan
+
+    def test_a_finished_plan_stays_silent(self, tmp_path: Path):
+        """The no-false-positive half, and the reason this is a predicate rather
+        than an unconditional complaint: every chunk ticked is a normal, healthy
+        end state that must not start reporting a gap."""
+        plan = self._plan(
+            tmp_path,
+            "---\nartifact: build-plan\nscope: s\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: Done\n\n"
+            "## Build Chunks\n\n### Chunk 01: Done\n\n- **Deliverables:** none\n",
+        )
+        assert buildplan_refs.plan_has_parseable_chunk_heading(plan) is True
+
+    def test_an_unparseable_plan_is_distinguishable(self, tmp_path: Path):
+        plan = self._plan(
+            tmp_path, "## Status\n\n- [x] Chunk 01: Done\n\n## Chunks\n\n- Chunk 01: Done\n"
+        )
+        assert buildplan_refs.plan_has_parseable_chunk_heading(plan) is False
+
+    def test_unreadable_is_a_third_answer_not_a_verdict(self, tmp_path: Path):
+        """`None`, never `False`. Collapsing them would report a confident
+        structural claim about a file that was never opened — and the caller
+        branches on `is False` precisely so it cannot."""
+        assert buildplan_refs.plan_has_parseable_chunk_heading(None) is None
+        assert buildplan_refs.plan_has_parseable_chunk_heading(
+            tmp_path / "absent.md"
+        ) is None

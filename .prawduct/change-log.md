@@ -27,7 +27,17 @@ while reporting cleanly.
 plan and grading only its answer misses the defect entirely — a plan declaring neither `scope:` nor
 `branch:` does not resolve *because of* the gap being reported, so the resolver returns nothing and
 the signal goes quiet exactly where it is needed. That was caught by running a real dispatch against
-a real unparseable plan and seeing no note, not by reasoning about it.
+a real unparseable plan and seeing no note, not by reasoning about it. Discovery goes through
+`plan_index`, which owns the recursive, archive-pruning rule — and through `iter_live_plan_files`
+rather than `iter_scoped_plan_candidates`, since the latter yields plans that *declare* a scope,
+which is precisely what a plan missing one cannot do.
+
+**Two readers, two channels.** The dispatch note tells the operator; `record_lint` carries the same
+fact into the review, where the `chunk_id is None` branch had returned a null count that read like a
+healthy plan. It now reports the gap — but only when the plan has neither a Status roster nor a
+chunk heading. Every box ticked also yields "no current chunk", and that is grading being over
+rather than disabled; a first draft keyed only on the missing heading and reported the healthy case
+too.
 
 ## 2026-08-26: a sentinel is graded by the product's own runner, or not at all
 

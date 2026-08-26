@@ -158,10 +158,18 @@ a scope-less plan plus a list-item plan for 03.
   frontmatter, rather than at release time.
 - **Depends on:** none
 - **Artifacts consumed:** `architecture.md` § Direction (authority fails closed, advice fails soft)
-- **Deliverables:** a dispatch-time check in `plugin/lib/critic_consolidate.py::begin_review`
-  naming a resolved plan that declares no `scope:` or exposes no parseable chunk heading;
-  the silent `return [], None, None, None` in `plugin/lib/record_lint.py` replaced with a
-  reported gap; surfaced through `cmd_critic_begin`'s existing diagnostic channel
+- **Deliverables:** a dispatch-time check — `buildplan_refs.deliverable_check_gaps`, called from
+  `plugin/lib/critic_consolidate.py::begin_review` — naming a plan that declares no `scope:` or
+  exposes no parseable chunk heading; the silent `return [], None, None, None` in
+  `plugin/lib/record_lint.py` replaced with a reported gap; surfaced through `cmd_critic_begin`'s
+  existing diagnostic channel
+  <!-- **Amended mid-chunk:** the first line named `critic_consolidate.py::begin_review` as the
+       check's home. That is its CALL site; the check itself lives in `buildplan_refs`, beside the
+       plan parsing it depends on, and `begin_review` only forwards its sentences into `notes`.
+       Corrected rather than left, because a deliverable line that misnames a file is the same
+       silence-as-pass this plan exists to close, relocated into its own record. The
+       `record_lint.py` deliverable was NOT dropped: it was missing from the first Chunk 03 commit
+       and shipped in the fix commit that followed the cumulative review, with its own test. -->
 - **Tests:** unit — a plan with no frontmatter `scope:` produces the named signal; a plan whose
   chunks are `- Chunk 01: …` list items under `## Chunks` produces it too; a well-formed plan
   produces none (the no-false-positive case); the signal is advisory and changes no exit code

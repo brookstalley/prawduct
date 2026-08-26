@@ -1470,8 +1470,38 @@ def chunk_section_gap(chunk_id: str, section: ChunkSection) -> str | None:
     return None
 
 
+def plan_has_parseable_chunk_heading(plan_path: "Path | None") -> "bool | None":
+    """Whether ``plan_path`` exposes at least one ``### Chunk NN:`` heading.
+
+    ``None`` when the plan is absent or unreadable — a third answer, and it
+    earns its keep: "has no headings" and "could not look" prescribe different
+    things, and a caller collapsing them reports a confident structural verdict
+    about a file it never opened.
+
+    Chunk sections are located BY heading, so a plan exposing none has nothing
+    for the deliverable check to grade — and that check answers with a null
+    count rather than a complaint, which is why two independent readers ask this
+    question and why it lives here rather than in either of them.
+    """
+    if plan_path is None or not plan_path.is_file():
+        return None
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    return any(_CHUNK_HEADING_RE.match(line.strip()) for line in content.splitlines())
+
+
 def _plan_gaps(plan_path: Path) -> list[str]:
-    """The gap sentences for one plan file. See :func:`deliverable_check_gaps`."""
+    """The gap sentences for one plan file. See :func:`deliverable_check_gaps`.
+
+    An unreadable plan yields ``[]``, the same as a healthy one, deliberately:
+    a file under ``artifacts/`` that will not decode is already reported by
+    ``plan_index.unreadable_candidates``, and guessing at the structure of
+    content never read — to add a second, differently-worded complaint about
+    one fault — is the confident-wrong-diagnosis shape this bundle fixed twice
+    elsewhere.
+    """
 
     if not plan_path.is_file():
         return []
@@ -1491,7 +1521,7 @@ def _plan_gaps(plan_path: Path) -> list[str]:
         )
     if not any(
         _CHUNK_HEADING_RE.match(line.strip()) for line in content.splitlines()
-    ):
+    ):  # same predicate as `plan_has_parseable_chunk_heading`, on content already read
         gaps.append(
             f"{plan_path.name} exposes no parseable chunk heading, so there is "
             "nothing for the deliverable check to grade and it reports NOTHING "
@@ -1534,11 +1564,15 @@ def deliverable_check_gaps(
     """
     if resolved_plan is not None:
         return _plan_gaps(resolved_plan)
-    artifacts = prawduct_dir / "artifacts"
-    if not artifacts.is_dir():
-        return []
+    # Discovery goes through `plan_index`, which owns the rule — recursive, and
+    # never descending an `archive` subtree. A flat glob of `artifacts/*.md` was
+    # wrong on both axes for a repo laying plans out as
+    # `artifacts/plans/<id>/build-plan.md`, and wrong on the path this function's
+    # own docstring calls the main case. `iter_live_plan_files`, not
+    # `iter_scoped_plan_candidates`: the latter yields plans that DECLARE a
+    # scope, which is exactly what a plan missing one cannot do.
     gaps: list[str] = []
-    for candidate in sorted(artifacts.glob("build-plan-*.md")):
+    for candidate in plan_index.iter_live_plan_files(prawduct_dir / "artifacts"):
         gaps.extend(_plan_gaps(candidate))
     return gaps
 
