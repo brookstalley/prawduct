@@ -109,6 +109,37 @@ in `docs/governance-telemetry.md`.
   Case law: [[deprecation-requires-an-inert-retention-window]]. The rule this makes fully written is
   what unblocks #644's conformance leg from `stage: requirements`.
 
+  **Ruled 2026-08-26 (v3.4.1-dev) — a default that violates a higher norm is withdrawn outright, not
+  retained inertly.** `audit-learnings`' sentinel runner hardcoded `sys.executable -m pytest`, an
+  uninventoried instance of `architecture.md`'s **"never be specific to Python"** norm. Products now
+  declare `sentinel_command:`, and the pytest fallback was **deleted rather than deprecated** —
+  withdrawing working behaviour, which this clause normally defers to a major.
+  Owner decision, stated directly on a direct question about this fix: *"NEVER python specific, never
+  requiring a specific implementation of testing or anything else. We provide absolute business
+  requirements, consuming repos decide the best way to implement for their project."*
+  `[DECISION: withdraw the implicit pytest runner immediately rather than holding it through an
+  inert-retention window | the clause's Why is protecting callers from breakage, and this withdrawal
+  fails CLOSED — an ungraded sentinel withholds a retirement and destroys nothing, where the
+  harness-only case it is modelled on broke every session at startup; and the retention window's own
+  remedy is unavailable here, because what would be retained IS the violation | user can veto/override]`
+  **Why this does not follow [[deprecation-requires-an-inert-retention-window]]**, which is live and
+  governs the neighbouring case: that ruling's bargain is that inert retention is *cheap* — "an inert
+  subcommand is a `return 0` and a docstring" — and costs nothing to hold. Here the thing to hold is
+  a Python-specific default, so every day of the window is a day the architecture norm is still
+  violated. The two norms cannot both be satisfied by waiting, and the retention window is the one
+  whose cost changed. Signalled rather than silent, per this clause's own requirement: an ungraded
+  sentinel prints a `notice:` to stderr naming the knob, and reports `ungraded` rather than the
+  pre-fix loud-and-false `failed`.
+  **Scope of the exception, kept narrow:** immediate withdrawal is in-bounds only where the retained
+  behaviour would itself perpetuate a ratified norm violation AND its removal fails closed. A default
+  that is merely *unfashionable*, or whose removal fails open, still takes the window.
+  Category-level: **an inert-retention window is a courtesy the deprecating norm extends, not one it
+  can extend on another norm's behalf** — when two norms collide the question is not which is senior,
+  but which one's stated *warrant* has stopped holding.
+  Case law: [[inert-retention-cannot-be-extended-across-norms]]. Qualifies, and does not retire,
+  [[deprecation-requires-an-inert-retention-window]] — that ruling still governs every retirement
+  whose retained behaviour is inert rather than itself non-conforming.
+
 ## Operations
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.

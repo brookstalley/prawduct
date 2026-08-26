@@ -3,6 +3,91 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-26: a plan the deliverable check cannot grade says so at dispatch
+
+<!-- prawduct: type=fix | scope=silent-governance-failures -->
+
+Two plan shapes disabled the chunk deliverable check for a plan's whole life, and neither said
+so where it happened. A plan declaring no frontmatter `scope:` reported
+`chunk-ref-missing unchecked — …` into the dispatch manifest, which is real but reads as a pass
+to anyone who does not also read the caveat line. A plan whose chunks are list items under a
+`## Chunks` heading matched no heading pattern at all, so `_chunk_ref_findings` returned an empty
+gap and the check reported **nothing** — not even `unchecked`.
+
+Either cause is sufficient alone, which is why an earlier fix closing the heading-shape half left
+the item open. Both are now named by `critic-begin`, on the existing `PRAWDUCT NOTE:` channel, at
+the moment the remedy is three lines of plan frontmatter — rather than by `check-releasability` at
+release, long after the blind reviews have run.
+
+**Advisory, deliberately.** It rides `notes`, changes no exit code and refuses no dispatch: the
+review is still worth running. What is not worth having is a review that silently grades nothing
+while reporting cleanly.
+
+**The check scans when nothing resolves, and that is the main path.** Asking the resolver for the
+plan and grading only its answer misses the defect entirely — a plan declaring neither `scope:` nor
+`branch:` does not resolve *because of* the gap being reported, so the resolver returns nothing and
+the signal goes quiet exactly where it is needed. That was caught by running a real dispatch against
+a real unparseable plan and seeing no note, not by reasoning about it. Discovery goes through
+`plan_index`, which owns the recursive, archive-pruning rule — and through `iter_live_plan_files`
+rather than `iter_scoped_plan_candidates`, since the latter yields plans that *declare* a scope,
+which is precisely what a plan missing one cannot do. Plans are named by `display_path`, not
+`Path.name`: recursion is what makes `build-plan.md` collisions across `plans/<id>/` reachable, so
+the fix created the condition that helper exists for. An **unreadable** plan is reported here too —
+`unreadable_candidates` covers it for the doctor, its only caller, and nothing on the dispatch path
+calls that, so an undecodable plan under `artifacts/` had been reported to the operator by no one.
+
+**Two readers, two channels.** The dispatch note tells the operator; `record_lint` carries the same
+fact into the review, where the `chunk_id is None` branch had returned a null count that read like a
+healthy plan. It now reports the gap — but only when the plan has neither a Status roster nor a
+chunk heading. Every box ticked also yields "no current chunk", and that is grading being over
+rather than disabled; a first draft keyed only on the missing heading and reported the healthy case
+too.
+
+## 2026-08-26: a sentinel is graded by the product's own runner, or not at all
+
+<!-- prawduct: type=fix | scope=silent-governance-failures -->
+
+`run_sentinel` hardcoded `sys.executable -m pytest`. In a product that does not use pytest,
+every learnings sentinel came back **failing** with "No module named pytest" — against tests
+that were green. That is worse than an inert mechanism. The audit's job is deciding which
+learnings are structurally enforced, so a false-failing sentinel argues for retiring a rule
+that is still enforced, on evidence it never gathered.
+
+It was an uninventoried instance of the ratified "never be specific to Python" norm, whose
+fail-visible clause it also inverted: the norm says an ungraded language is reported
+*unchecked*, never silently passed, and this reported *failed*.
+
+**The remedy is declaration, on the `release_version_files:` precedent.** A product declares
+`sentinel_command:` with a `{sentinel}` placeholder for the file to grade —
+`sentinel_command: npx vitest run {sentinel}`. It cannot reuse `test_command:`, which names
+the whole suite and would grade every rule by the suite's verdict.
+
+**No default survives.** A pytest fallback would be the same violation wearing a default's
+clothes, so an undeclared sentinel is reported `ungraded` with a reason naming the knob, and
+no rule is retired on a verdict nobody took. `passed` is now three-valued and callers must
+branch on identity: `True` enforced, `False` genuinely failing, `None` ungraded. A launch
+failure, a timeout, and a **path-shaped sentinel whose target file is gone** all grade `None` —
+a command that never started, one that never finished, and a test that no longer exists each
+returned no verdict about the rule. The last of those was live in this repo: a learning had
+pointed at a suite deleted in the plugin migration, and the audit reported its rule as failing.
+The path-shaped qualifier is load-bearing: a runner id that is not a filename
+(`com.acme.BarTest#testX`) cannot be resolved, and prawduct will not claim a file is gone when it
+cannot tell "gone" from "not a path".
+
+**A third state is only real once its consumer can name it.** `doctor` is the sole reader of
+`audit-learnings --json`, and it knew two sentinel verdicts — so an ungraded one, which raises
+no `errors[]` entry by design, would have been relayed as *passing*: worse than the loud-false
+error it replaced. Its relay now carries the third rendering, and the ungraded `notice:` goes
+to **stderr**, where it reaches the `--json` path that a stdout line cannot.
+
+That withdraws working behaviour rather than adding to it, which the additive-first norm
+normally defers to a major. In-bounds here because the withdrawal fails *closed*: an ungraded
+sentinel withholds a retirement and destroys nothing, where the norm's purpose is protecting
+callers from breakage. Signalled rather than silent, per the same clause — the reason line
+names the knob. Keeping a pytest default alive through a retention window would have preserved
+exactly the Python-specificity the architecture norm forbids, so the two norms are answered
+together rather than traded against each other.
+
 ## 2026-08-24: the evidence file can say which commit it read
 
 <!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit -->

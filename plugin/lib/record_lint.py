@@ -765,6 +765,32 @@ def _check_chunk_refs(
         chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir, plan.path)
         assumed = chunk_id is not None
     if chunk_id is None:
+        # "No chunk in scope" has two causes that look identical here and are
+        # not alike. A plan whose chunks are all ticked genuinely has nothing to
+        # grade, and silence is right. A plan exposing no `### Chunk NN:`
+        # heading has nothing to grade EITHER — but because no chunk section can
+        # be located at all, which disables this check for the plan's whole life
+        # while reporting a null count that reads exactly like the healthy case.
+        # That is the wholly-silent route: unlike the other failures here it
+        # emits no `unchecked` line, so nothing downstream has a word to carry.
+        # Both conditions, and the second is what keeps a FINISHED plan quiet.
+        # "No current chunk" is also what a plan whose boxes are all ticked
+        # reports, and that is a healthy end state — grading is over, not
+        # disabled. A Status roster is the evidence that chunks were locatable
+        # at all, so only a plan with neither a roster NOR a heading is
+        # structurally ungradeable rather than simply done.
+        total, _complete = buildplan_refs._count_build_plan_chunks(
+            prawduct_dir, plan.path
+        )
+        if total == 0 and buildplan_refs.plan_has_parseable_chunk_heading(
+            plan.path
+        ) is False:
+            return [], (
+                f"chunk-ref-missing unchecked — {plan.rel} exposes no parseable "
+                "chunk heading (`### Chunk NN: Name`), so no chunk section can "
+                "be located and the deliverable check graded nothing. List items "
+                "under a `## Chunks` section match no heading pattern"
+            ), None, None
         return [], None, None, None  # no chunk in scope — nothing declared to check
     refs = buildplan_refs._parse_build_plan_chunk_refs(
         prawduct_dir, chunk_id, plan.path
