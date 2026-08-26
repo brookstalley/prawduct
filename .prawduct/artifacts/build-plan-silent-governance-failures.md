@@ -43,11 +43,23 @@ by symmetry with the established `{junit_xml}` | LOW impact | user can override]
 
 ## Status
 
-- [ ] Chunk 01: Backlog and incoming-report triage
+- [x] Chunk 01: Backlog and incoming-report triage
 - [ ] Chunk 02: A sentinel runs under the product's own toolchain, or reports unchecked
 - [ ] Chunk 03: A plan whose deliverable check cannot run says so at dispatch
-Context: Plan written 2026-08-26 on a clean branch off `develop`; nothing built yet.
-Baseline suite green (`test-status` exit 0, tree-valid). Next: Chunk 01.
+Context: Plan written 2026-08-26 on a clean branch off `develop`. Baseline suite green
+(`test-status` exit 0, tree-valid).
+
+Chunk 01 closed 2026-08-26. Triage debt cleared: #602 closed with evidence (both its defects
+were already fixed — it had been scoring high enough to be picked as live work); the base-sync
+report folded into #672 as a second field instance; the learnings-pairing report filed as #717;
+#718 filed for the surface-classification gap this plan surfaced; nine untriaged issues given
+metadata; four issues repaired where an empty trailing `prawduct:` stub was shadowing the real
+block's `refs:`/`related:` fields. Untriaged count 9 → 0. **Nothing in Chunk 01 touched a
+tracked file** — `incoming-bugs/` is gitignored and the backlog lives on GitHub Issues — so its
+only repo-visible artifact is this Context block.
+
+Next: Chunk 02. Note the ruling that landed after this plan's first draft — no toolchain default
+survives the sentinel fix, so the pytest invocation is deleted rather than kept as a fallback.
 
 ## Verification Strategy
 
