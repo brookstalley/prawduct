@@ -84,11 +84,14 @@ discovery fix whose every fixture was flat. `plan_index.display_path`'s docstrin
 recorded that last lesson, in the same module, and it was read during the work. The reflection
 carries the pattern; it has not been promoted to a `learnings.md` rule, which is an owner call.
 
-**Not swept, deliberately** (the review demoted it and ruled leave-as-written, because the commit
-that fixed it would move the tree and buy a round): `TestIterLivePlanFiles`'s class docstring
-narrates review history and hardcodes a `5312 passing tests` figure that will drift. Nothing reads
-it — `tests/preferences/test_no_suite_total_claims.py` scans `plugin/**/*.md` only. The next commit
-that already touches `tests/test_buildplan_walkers.py` should sweep it.
+**Swept at the PR boundary.** `TestIterLivePlanFiles`'s class docstring narrated review history
+and hardcoded a suite total that had already drifted by the time the branch was ready to merge.
+Nothing read it — `tests/preferences/test_no_suite_total_claims.py` scans `plugin/**/*.md` only —
+so it was deferred here to the next commit that already touched
+`tests/test_buildplan_walkers.py`. The PR review found it independently and that commit came at
+the PR gate rather than mid-chunk. The deferral worked, but only because a second reviewer
+happened to look: a note that nothing enforces is owed to whoever reads the file next, and this
+one was rescued rather than collected.
 
 ## Verification Strategy
 
