@@ -1492,29 +1492,41 @@ def plan_has_parseable_chunk_heading(plan_path: "Path | None") -> "bool | None":
     return any(_CHUNK_HEADING_RE.match(line.strip()) for line in content.splitlines())
 
 
-def _plan_gaps(plan_path: Path) -> list[str]:
+def _plan_gaps(plan_path: Path, artifacts_dir: Path) -> list[str]:
     """The gap sentences for one plan file. See :func:`deliverable_check_gaps`.
 
-    An unreadable plan yields ``[]``, the same as a healthy one, deliberately:
-    a file under ``artifacts/`` that will not decode is already reported by
-    ``plan_index.unreadable_candidates``, and guessing at the structure of
-    content never read — to add a second, differently-worded complaint about
-    one fault — is the confident-wrong-diagnosis shape this bundle fixed twice
-    elsewhere.
+    An unreadable plan is REPORTED, not swallowed. An earlier version returned
+    ``[]`` for it on the reasoning that ``plan_index.unreadable_candidates``
+    already covers the case — which is true of the doctor (its only caller,
+    ``lifecycle_repair``) and false of this channel: nothing on the dispatch
+    path calls it, so an undecodable plan under ``artifacts/`` was reported to
+    the operator by no one at all. Reporting the *fault* is not the same as
+    guessing at the structure of content never read; the sentence claims only
+    that the file could not be opened.
+
+    Paths are rendered by :func:`plan_index.display_path`, never ``Path.name``:
+    recursive discovery makes ``build-plan.md`` a near-certain collision across
+    ``plans/<id>/`` directories, and naming two of them identically tells an
+    operator nothing about which to fix.
     """
 
     if not plan_path.is_file():
         return []
+    shown = plan_index.display_path(plan_path, artifacts_dir)
     try:
         content = plan_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return []
+    except (OSError, UnicodeDecodeError) as exc:
+        return [
+            f"{shown} could not be read ({exc.__class__.__name__}), so no review "
+            "can resolve it and the chunk deliverable check cannot grade it. "
+            "Nothing else on the dispatch path reports this"
+        ]
 
     gaps: list[str] = []
     declared, _value = plan_index.parse_build_plan_frontmatter_scope(content)
     if not declared:
         gaps.append(
-            f"{plan_path.name} declares no frontmatter `scope:`, so no review can "
+            f"{shown} declares no frontmatter `scope:`, so no review can "
             "resolve it by scope and the chunk deliverable check reports "
             "`unchecked` for the life of the plan — which reads as a pass. Add "
             "`scope: <change-log scope tag>` to its frontmatter"
@@ -1523,7 +1535,7 @@ def _plan_gaps(plan_path: Path) -> list[str]:
         _CHUNK_HEADING_RE.match(line.strip()) for line in content.splitlines()
     ):  # same predicate as `plan_has_parseable_chunk_heading`, on content already read
         gaps.append(
-            f"{plan_path.name} exposes no parseable chunk heading, so there is "
+            f"{shown} exposes no parseable chunk heading, so there is "
             "nothing for the deliverable check to grade and it reports NOTHING "
             "— not even `unchecked`. Chunks must be `### Chunk NN: Name` "
             "headings; list items under a `## Chunks` section match no heading "
@@ -1563,7 +1575,7 @@ def deliverable_check_gaps(
     already reports, and this must not complain about twice).
     """
     if resolved_plan is not None:
-        return _plan_gaps(resolved_plan)
+        return _plan_gaps(resolved_plan, prawduct_dir / "artifacts")
     # Discovery goes through `plan_index`, which owns the rule — recursive, and
     # never descending an `archive` subtree. A flat glob of `artifacts/*.md` was
     # wrong on both axes for a repo laying plans out as
@@ -1572,8 +1584,9 @@ def deliverable_check_gaps(
     # `iter_scoped_plan_candidates`: the latter yields plans that DECLARE a
     # scope, which is exactly what a plan missing one cannot do.
     gaps: list[str] = []
-    for candidate in plan_index.iter_live_plan_files(prawduct_dir / "artifacts"):
-        gaps.extend(_plan_gaps(candidate))
+    artifacts = prawduct_dir / "artifacts"
+    for candidate in plan_index.iter_live_plan_files(artifacts):
+        gaps.extend(_plan_gaps(candidate, artifacts))
     return gaps
 
 

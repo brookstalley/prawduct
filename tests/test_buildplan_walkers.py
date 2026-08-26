@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from lib import buildplan_refs, critic_mode, gates, gitstate
+from lib import buildplan_refs, critic_mode, gates, gitstate, plan_index
 from lib.buildplan_refs import (
     _chunk_id_from_item_text,
     _chunk_section_lines,
@@ -1044,6 +1044,45 @@ class TestDeliverableCheckGaps:
             "an unresolved plan must still be named, or the operator cannot act"
         )
 
+    def test_a_nested_unresolvable_plan_is_reported_by_name(self, tmp_path: Path):
+        """The fallback scan, end to end, on a layout the flat glob could not see.
+
+        This is the fixture the review named as required: `TestDeliverableCheckGaps`
+        wrote only flat plans, which the old `artifacts.glob("build-plan-*.md")`
+        also found, so nothing separated the fix from the code it replaced.
+        """
+        prawduct = tmp_path / ".prawduct"
+        nested = prawduct / "artifacts" / "plans" / "007" / "build-plan.md"
+        nested.parent.mkdir(parents=True)
+        nested.write_text("## Chunks\n\n- Chunk 01: Do it\n")
+
+        gaps = buildplan_refs.deliverable_check_gaps(prawduct, None)
+        assert len(gaps) == 2, gaps
+        assert all("plans/007/build-plan.md" in g for g in gaps), (
+            "a nested plan must be named by its PATH — recursion makes "
+            f"`build-plan.md` a near-certain collision: {gaps}"
+        )
+
+    def test_an_unreadable_plan_is_reported_at_the_dispatch_channel(
+        self, tmp_path: Path
+    ):
+        """Nothing else on this path reports it.
+
+        An earlier version swallowed the decode error, reasoning that
+        `plan_index.unreadable_candidates` covers the case. It does — for the
+        doctor, its only caller. `begin_review` never calls it, so at the
+        dispatch channel an undecodable plan was reported by no one.
+        """
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan-binary.md").write_bytes(
+            b"\xff\xfe\x00\x00not utf-8"
+        )
+        gaps = buildplan_refs.deliverable_check_gaps(prawduct, None)
+        assert len(gaps) == 1, gaps
+        assert "could not be read" in gaps[0]
+        assert "build-plan-binary.md" in gaps[0]
+
     def test_no_plan_at_all_is_silent(self, tmp_path: Path):
         """An absent plan is the resolver's report to make, not this one's — two
         differently-worded complaints about one absence is noise."""
@@ -1100,3 +1139,82 @@ class TestChunkRefGapForUnparseablePlan:
         assert buildplan_refs.plan_has_parseable_chunk_heading(
             tmp_path / "absent.md"
         ) is None
+
+
+class TestIterLivePlanFiles:
+    """`plan_index.iter_live_plan_files` — four behaviours, none of which a flat
+    fixture can tell apart from the glob it replaced.
+
+    That is the point of this class. The function was added to fix a flat
+    `artifacts.glob("build-plan-*.md")`, and every fixture written alongside it
+    was itself flat — so reverting to the glob stayed green and 5312 passing
+    tests said nothing about the fix. `display_path`'s own docstring records the
+    same lesson from the same module: "every fixture here is flat, so no fixture
+    could have shown it."
+    """
+
+    def _plan(self, path: Path, scope: str | None = "s") -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fm = f"---\nartifact: build-plan\n{f'scope: {scope}' if scope else ''}\n---\n"
+        path.write_text(fm + "\n## Build Chunks\n\n### Chunk 01: Do it\n")
+        return path
+
+    def test_finds_a_nested_plan_a_flat_glob_would_miss(self, tmp_path: Path):
+        """The regression the function exists for: repos laying plans out as
+        `artifacts/plans/<id>/build-plan.md`. A flat glob sees none of them, and
+        the surveyed fleet carries 16 nested plans per repo."""
+        self._plan(tmp_path / "plans" / "007" / "build-plan.md")
+        found = plan_index.iter_live_plan_files(tmp_path)
+        assert [p.name for p in found] == ["build-plan.md"]
+        assert "007" in str(found[0]), "the nested path must be preserved"
+
+    def test_never_descends_an_archive_subtree(self, tmp_path: Path):
+        """An archived plan is history, not a live assertion — and it must not
+        be reported as a live plan with gaps."""
+        self._plan(tmp_path / "build-plan-live.md")
+        self._plan(tmp_path / "archive" / "build-plan-old.md")
+        self._plan(tmp_path / "plans" / "9" / "archive" / "build-plan-nested-old.md")
+        names = {p.name for p in plan_index.iter_live_plan_files(tmp_path)}
+        assert names == {"build-plan-live.md"}
+
+    def test_typed_by_frontmatter_or_filename_but_not_by_body_text(
+        self, tmp_path: Path
+    ):
+        """Both routes are needed and a body scan is not one of them.
+
+        A plan with NO frontmatter has no declared type — and that is exactly
+        the shape being hunted — so the filename convention is the fallback. But
+        a body substring scan pulled in two design notes in this repo that merely
+        MENTION the string, so typing reads frontmatter only.
+        """
+        (tmp_path / "build-plan-no-frontmatter.md").write_text("## Chunks\n\n- Chunk 01\n")
+        self._plan(tmp_path / "oddly-named-plan.md")
+        (tmp_path / "design-note.md").write_text(
+            "# Note\n\nWe considered `artifact: build-plan` here but chose otherwise.\n"
+        )
+        names = {p.name for p in plan_index.iter_live_plan_files(tmp_path)}
+        assert "build-plan-no-frontmatter.md" in names, "filename fallback"
+        assert "oddly-named-plan.md" in names, "declared type wins over the name"
+        assert "design-note.md" not in names, "a body mention is not a declaration"
+
+    def test_a_file_declaring_another_artifact_type_is_excluded(self, tmp_path: Path):
+        """On its own word, regardless of a plan-shaped filename."""
+        (tmp_path / "build-plan-not-really.md").write_text(
+            "---\nartifact: discovery\nscope: s\n---\n\n# Not a plan\n"
+        )
+        assert plan_index.iter_live_plan_files(tmp_path) == []
+
+    def test_an_unreadable_plan_is_retained_for_the_caller_to_report(
+        self, tmp_path: Path
+    ):
+        """Unreadable is not 'not a plan'. Retaining it is only worth doing
+        because `_plan_gaps` now reports it — an earlier pairing retained the
+        file and then returned [] for it, so the stated intent was dead."""
+        bad = tmp_path / "build-plan-binary.md"
+        bad.write_bytes(b"\xff\xfe\x00\x00not utf-8 at all")
+        assert [p.name for p in plan_index.iter_live_plan_files(tmp_path)] == [
+            "build-plan-binary.md"
+        ]
+
+    def test_absent_artifacts_dir_is_empty_not_an_error(self, tmp_path: Path):
+        assert plan_index.iter_live_plan_files(tmp_path / "nothing") == []

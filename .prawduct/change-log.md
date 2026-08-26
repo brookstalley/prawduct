@@ -30,7 +30,11 @@ the signal goes quiet exactly where it is needed. That was caught by running a r
 a real unparseable plan and seeing no note, not by reasoning about it. Discovery goes through
 `plan_index`, which owns the recursive, archive-pruning rule — and through `iter_live_plan_files`
 rather than `iter_scoped_plan_candidates`, since the latter yields plans that *declare* a scope,
-which is precisely what a plan missing one cannot do.
+which is precisely what a plan missing one cannot do. Plans are named by `display_path`, not
+`Path.name`: recursion is what makes `build-plan.md` collisions across `plans/<id>/` reachable, so
+the fix created the condition that helper exists for. An **unreadable** plan is reported here too —
+`unreadable_candidates` covers it for the doctor, its only caller, and nothing on the dispatch path
+calls that, so an undecodable plan under `artifacts/` had been reported to the operator by no one.
 
 **Two readers, two channels.** The dispatch note tells the operator; `record_lint` carries the same
 fact into the review, where the `chunk_id is None` branch had returned a null count that read like a
