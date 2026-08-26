@@ -1730,11 +1730,16 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         "selective commit (only part of the reviewed state committed), the "
         "commit's tree was never reviewed — /prawduct:critic verify-resolutions "
         "reviews that delta and closes the gap. If verify-resolutions already ran "
-        "but the working tree still holds an uncommitted fix with no committed "
-        "delta, its fact anchored the WORKING tree, not committed HEAD — commit "
-        "that tree VERBATIM and the fact ends at the tree this gate targets, so "
-        "no further pass is owed. Only a selective or further-edited commit "
-        "leaves a gap to close.",
+        "but the working tree still holds an uncommitted fix, WHICH tree that pass "
+        "anchored decides what you owe, and the discriminator is whether anything "
+        "was committed between the review it verified and the pass itself. Nothing "
+        "committed: the fact anchored the WORKING tree, so commit that tree "
+        "VERBATIM and the fact ends at the tree this gate targets — no further "
+        "pass is owed, and only a selective or further-edited commit leaves a gap. "
+        "Something committed: the pass anchored committed HEAD instead and never "
+        "saw those uncommitted files, so committing them now opens a NEW delta "
+        "that needs its own verify-resolutions pass. A dispatch that refuses over "
+        "such an interval (exit 3) names the files it left out.",
         file=sys.stderr,
     )
     return 1

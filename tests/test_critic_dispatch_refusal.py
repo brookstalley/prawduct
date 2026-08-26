@@ -777,3 +777,180 @@ class TestDeliverableCheckGapReachesDispatch:
         assert res.returncode == 0, f"fixture never dispatched: {res.stdout} {res.stderr}"
         assert "no frontmatter `scope:`" not in res.stderr
         assert "no parseable chunk heading" not in res.stderr
+
+
+# ---------------------------------------------------------------------------
+# A refusal names the tree it graded and the work that tree excludes
+# ---------------------------------------------------------------------------
+
+
+class TestARefusalNamesWhatItExcluded:
+    """The refusal is correct; what it *reported* was not.
+
+    `verify-resolutions` anchors at committed HEAD once a commit lands that the
+    prior review never saw — the PR gate's target. Judgeable files still sitting
+    uncommitted are outside that interval by construction, and refusing over it
+    is right: reviewing the interval would not have covered them either. But
+    "no judgeable file in a..b" is a statement about the *interval*, and the
+    operator reads it as a statement about the *repo*. The observed cost is two
+    dispatches for one review — commit, discover the delta exists after all,
+    dispatch again.
+
+    So the contract these tests pin is not "refuse less". It is: a refusal says
+    which tree it graded, names the judgeable work that tree does not contain,
+    and does not end on an instruction that would change nothing.
+    """
+
+    @staticmethod
+    def _repro(repo: Path) -> None:
+        """The issue's repro: a committed fix, plus uncommitted judgeable work."""
+        _seed_prior_review(repo, findings=[])
+        # Committed since the prior review, and non-judgeable — so the interval
+        # this dispatch picks is free, which is what makes it refuse.
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+        # Uncommitted and judgeable — invisible to that interval.
+        (repo / "tests").mkdir(exist_ok=True)
+        (repo / "tests" / "test_wip.py").write_text("def test_wip():\n    assert True\n")
+
+    def test_the_refusal_names_the_excluded_judgeable_file(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._repro(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == EXIT_NO_REVIEW_NEEDED, (
+            f"rc={result.returncode} out={result.stdout!r} err={result.stderr!r}"
+        )
+        assert "tests/test_wip.py" in result.stdout, (
+            "the refusal never named the judgeable uncommitted file it excluded — "
+            f"the operator cannot tell a free interval from a missed one: {result.stdout!r}"
+        )
+        assert "committed HEAD" in result.stdout, (
+            f"the refusal never said which tree it graded: {result.stdout!r}"
+        )
+
+    def test_the_refusal_does_not_claim_there_is_nothing_to_do(self, tmp_path):
+        """The sentence that turned a partial answer into a wrong one."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._repro(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert "Nothing to do" not in result.stdout, (
+            "work sits outside the graded interval, so 'nothing to do' is false — "
+            f"{result.stdout!r}"
+        )
+
+    def test_the_correction_is_the_last_word(self, tmp_path):
+        """A reader of a multi-line block acts on the final imperative.
+
+        Above the exclusion notice that imperative is `--force`, which reviews
+        the very interval that already excluded these files. Ordering is the
+        behaviour here, not decoration.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._repro(repo)
+
+        out = _run_begin(repo, "--mode", "verify-resolutions").stdout
+        # rindex, not index: the route is mentioned twice, and the notice has to
+        # clear the LAST of them to be what the reader acts on.
+        assert out.index("tests/test_wip.py") > out.rindex("--force"), (
+            f"the exclusion notice was buried above the --force route: {out!r}"
+        )
+
+    def test_a_clean_tree_still_reports_nothing_to_do(self, tmp_path):
+        """No-false-positive: the ordinary free interval is unchanged."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == EXIT_NO_REVIEW_NEEDED
+        assert "Nothing to do" in result.stdout, (
+            f"a genuinely free refusal lost its verdict: {result.stdout!r}"
+        )
+        assert "NOT REVIEWED" not in result.stdout, (
+            f"a clean tree was reported as excluding work: {result.stdout!r}"
+        )
+
+    def test_non_judgeable_wip_is_not_reported_as_excluded(self, tmp_path):
+        """Same predicate as the gate. A dirty tree holding only files the
+        coverage gate waves through excludes nothing reviewable, and saying
+        otherwise would send the operator to commit a scratch file."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+        (repo / "docs" / "scratch.md").write_text("draft\n")
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == EXIT_NO_REVIEW_NEEDED
+        # The fixture has to REACH the exclusion branch for the assertion below
+        # to mean anything — a tree that came out clean would pass it forever.
+        assert "working tree dirty" in result.stderr, (
+            f"the dirty-tree branch was never reached: {result.stderr!r}"
+        )
+        assert "NOT REVIEWED" not in result.stdout, (
+            f"non-judgeable WIP was reported as excluded work: {result.stdout!r}"
+        )
+
+    def test_the_guard_fact_records_what_was_excluded(self, tmp_path):
+        """`free_files` alone cannot answer the guard's yield question once an
+        anchor can exclude work: a refusal over a free interval that left
+        judgeable files outside it is a different event from one over a clean
+        tree, and only the record can tell them apart afterwards."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._repro(repo)
+
+        assert _run_begin(
+            repo, "--mode", "verify-resolutions"
+        ).returncode == EXIT_NO_REVIEW_NEEDED
+
+        facts = TestTheRefusalIsObservable._guard_facts(repo)
+        assert len(facts) == 1, f"expected one guard-refusal fact, got {facts}"
+        body = facts[0]["body"]
+        assert body["excluded_wip"] == ["tests/test_wip.py"], (
+            f"the record cannot distinguish this refusal from a clean one: {body}"
+        )
+
+    def test_the_dispatch_note_reaches_the_operator(self, tmp_path):
+        """The dirty-tree note was written and then discarded: this path
+        returned before `notes` reached any channel."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._repro(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert "PRAWDUCT NOTE:" in result.stderr, (
+            f"the dispatch's own notes were dropped on the refusal path: {result.stderr!r}"
+        )
+        assert "tests/test_wip.py" in result.stderr, (
+            f"the note asserts excluded work exists without naming it: {result.stderr!r}"
+        )
+
+    def test_a_dirty_cumulative_names_its_exclusions_too(self, tmp_path):
+        """`cumulative` has always anchored committed HEAD and always noted a
+        dirty tree without naming anything. Same fact, same carrier."""
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "README.md", "start\n", "chore: init")
+        _git(repo, "checkout", "--quiet", "-b", "feature/x")
+        _commit_file(repo, "src/app.py", "x = 1\n", "feat: a thing")
+        (repo / "src" / "wip.py").write_text("y = 2\n")  # judgeable, uncommitted
+
+        result = cc.begin_review(repo, "cumulative")
+
+        assert result["status"] == "ok", result
+        assert any("src/wip.py" in n for n in result["notes"]), (
+            f"the cumulative dirty-tree note named nothing: {result['notes']}"
+        )

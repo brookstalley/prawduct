@@ -1701,16 +1701,37 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         # here needs a review", which is the whole point of asking it first.
         # Goes to STDOUT because it is a normal, correct outcome.
         free = result.get("free_files") or []
-        shown = ", ".join(free[:5]) + (f" (+{len(free) - 5} more)" if len(free) > 5 else "")
+        excluded = result.get("excluded_wip") or []
         print(
             f"PRAWDUCT: no review needed — {result['reason']}.\n"
-            f"  free files: {shown}\n"
-            "  Nothing to do: the coverage gate already passes this interval.\n"
+            f"  free files: {consolidate.name_paths(free)}"
+        )
+        if not excluded:
+            # Withheld when work sits outside the graded interval, because there
+            # IS something to do then and this line says the opposite.
+            print("  Nothing to do: the coverage gate already passes this interval.")
+        print(
             "  To review anyway: `/prawduct:critic <mode> --force`. Prefer that over a "
             "raw `critic-begin --force` — a hand-run dispatch sets the critic-active "
             "marker with no reviewer behind it, and the next `/prawduct:critic` then "
             "refuses as if a review were live (clear it with `prawduct-hook critic-end`)."
         )
+        if excluded:
+            # LAST, deliberately. A reader of a multi-line block acts on the
+            # final imperative, and above it the final imperative is `--force` —
+            # which reviews the same interval that already excluded these files
+            # and would change nothing. The correction has to be the last word.
+            print(
+                f"  NOT REVIEWED: {len(excluded)} judgeable uncommitted file(s) sit "
+                f"outside the graded interval — {consolidate.name_paths(excluded)}\n"
+                f"  This dispatch graded {result.get('anchor', 'the anchored tree')}, "
+                "not your working tree, so those files are still unreviewed and still "
+                "uncovered. The refusal above does NOT mean they are clean.\n"
+                "  Commit them, then run `/prawduct:critic verify-resolutions` again — "
+                "the delta that appears is the one this run could not see."
+            )
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         return 3
     if result["status"] != "ok":
         print(f"critic-begin: {result['reason']}", file=sys.stderr)

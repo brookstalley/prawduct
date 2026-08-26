@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-26: a dispatch refusal names the tree it graded and the work it excluded
+
+<!-- prawduct: type=fix | scope=verify-resolutions-exit3 -->
+
+`verify-resolutions` anchors at committed HEAD once a commit lands that the prior review never
+saw — the PR gate's target, and the fix for the inverse anchoring bug. Judgeable files still
+sitting uncommitted are outside that interval by construction. When the interval then held no
+judgeable file, dispatch returned exit 3 with `no judgeable file in <a>..<b>` and named nothing
+else: a statement about the *interval* that every operator read as a statement about the *repo*.
+The observed cost was two dispatches for one review — commit, discover the delta existed after
+all, dispatch again.
+
+**The refusal was right; its report was not.** Reviewing that interval would not have covered
+those files either, so the predicate is untouched and exit 3 still means exactly what it meant.
+What changed is that a refusal now names the tree it graded (`anchor`) and the judgeable
+uncommitted files that tree does not contain (`excluded_wip`), on the result, on the CLI, and on
+the guard-refusal fact — where `free_files` alone could not tell a refusal that left work outside
+the interval apart from one over a clean tree.
+
+**Ordering is behaviour here.** A reader of a multi-line block acts on the final imperative, and
+above the exclusion notice that imperative is `--force` — which reviews the very interval that
+already excluded these files. The notice prints last, and the "Nothing to do" line is withheld
+when it would be false. The refusal path also stopped discarding the dispatch's own `notes`,
+which it wrote and then returned past.
+
+`cumulative` gets the same treatment from the same helper: it has always anchored committed HEAD
+and always noted a dirty tree without naming anything in it.
+
+**Three prose sites promised working-tree coverage without the condition that makes the promise
+true** — the `check-cumulative-critic` remedy and `skills/pr/SKILL.md` Step 2 both said "commit
+that tree verbatim and no further pass is owed", which holds only when the pass anchored the
+working tree. Both now state the discriminator (was anything committed between the review and
+the pass?) and what the other branch costs. `begin_review`'s docstring described the pre-#395
+working-tree-only anchor and now describes the intent-aware one.
+
+Upstream report: #722.
+
 ## 2026-08-26: a plan the deliverable check cannot grade says so at dispatch
 
 <!-- prawduct: type=fix | scope=silent-governance-failures -->
