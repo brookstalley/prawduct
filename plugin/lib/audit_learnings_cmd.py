@@ -359,14 +359,26 @@ def resolve_sentinel_command(product_dir: Path) -> tuple[list[str] | None, str |
     ``architecture.md`` § Direction forbids: prawduct states the requirement
     ("grade this sentinel") and the product declares how to meet it.
     """
-    from . import advisory_store  # noqa: PLC0415 — lazy; only this path reads state
+    # Read through the SAME reader as `test_command:`, deliberately: the two
+    # keys are documented side by side and the template tells authors they share
+    # a `#`-truncation caveat. Read by two different column-0 parsers that merely
+    # agree today, that promise is a coincidence rather than a property — and
+    # this one scalar would also pull the advisory subsystem into the audit's
+    # import DAG for nothing.
+    from . import core  # noqa: PLC0415 — lazy; only this path reads state
 
-    declared = advisory_store.load_project_state(product_dir).get("sentinel_command")
+    state_path = Path(product_dir) / ".prawduct" / "project-state.yaml"
+    declared = core.read_str_yaml_key(state_path, "sentinel_command")
     declared = declared.strip() if isinstance(declared, str) else ""
     if not declared:
+        # "absent OR unreadable": the reader fails soft to None on both, so
+        # naming only absence would tell a product that HAS declared the key to
+        # go and declare it — a confident diagnostic prescribing an edit already
+        # made. Cheaper to widen the sentence than to split the read.
         return None, (
-            "no `sentinel_command:` in .prawduct/project-state.yaml — prawduct "
-            "cannot know how this product runs one test file, and will not guess. "
+            "no readable `sentinel_command:` in .prawduct/project-state.yaml "
+            "(absent, empty, or the file could not be read) — prawduct cannot "
+            "know how this product runs one test file, and will not guess. "
             "Declare it with a {sentinel} placeholder, e.g. "
             "`sentinel_command: npx vitest run {sentinel}`"
         )
@@ -397,8 +409,14 @@ def run_sentinel(
     * ``True``  — the command exited 0; the rule is structurally enforced.
     * ``False`` — the command ran and exited non-zero; a real failure.
     * ``None``  — prawduct could not grade it at all. **Not a failure**: no
-      command is declared, the declaration is malformed, or the command could
-      not be launched or never finished.
+      command is declared, the declaration is malformed, the sentinel's target
+      file is gone, or the command could not be launched or never finished.
+
+    The line between ``False`` and ``None`` is *did a runner return a verdict
+    about this rule* — not *did prawduct manage to spawn something*. A deleted
+    target is on the ``None`` side even though a runner would happily exit
+    non-zero on it, because "the test is missing" and "the test failed" are
+    different facts and only one of them is about the rule.
 
     Collapsing that third case into ``False`` is the whole defect this shape
     exists to prevent — it accuses a green test and argues for retiring a live
@@ -415,6 +433,21 @@ def run_sentinel(
     argv_template, reason = resolve_sentinel_command(product_dir)
     if argv_template is None:
         return None, reason or "sentinel could not be graded"
+    # A sentinel naming a file that is GONE has no verdict either. Runners
+    # disagree about this — some exit non-zero on an uncollectable target, which
+    # would render "deleted" as "failing" and accuse a test that no longer
+    # exists of breaking. Checked here so the answer does not depend on which
+    # runner the product declared. Path only: the `::node` suffix names a case
+    # inside the file and only the file's existence is knowable without running
+    # anything.
+    target = Path(product_dir) / sentinel.split("::", 1)[0].strip()
+    if not target.exists():
+        return None, (
+            f"sentinel target {sentinel.split('::', 1)[0].strip()!r} does not "
+            "exist — ungraded rather than failed, because a test that is gone "
+            "returned no verdict. Update the learning's `sentinel=` to the "
+            "test's new home, or drop it if the rule is no longer enforced"
+        )
     argv = [tok.replace(SENTINEL_PLACEHOLDER, sentinel) for tok in argv_template]
     try:
         result = subprocess.run(

@@ -6049,6 +6049,22 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
 
     result = run_audit_learnings(str(project_dir), apply=apply)
 
+    # The ungraded notice goes to STDERR, before either renderer, so it reaches
+    # BOTH. On the `--json` path stdout is a machine payload, so a notice
+    # printed there would either corrupt it or (as shipped) be omitted entirely
+    # — leaving the sole `--json` consumer, the doctor skill, with no signal at
+    # all where the pre-fix code at least printed something loud and wrong.
+    ungraded = [
+        r for r in result.get("retirements", []) if r.get("unevaluated_reason")
+    ]
+    if ungraded:
+        print(
+            f"notice: {len(ungraded)} sentinel(s) could not be graded and were "
+            "left active — no rule is retired on a verdict nobody took. "
+            f"First: {ungraded[0]['title']}: {ungraded[0]['unevaluated_reason']}",
+            file=sys.stderr,
+        )
+
     if as_json:
         print(json.dumps(result, indent=2))
         return 1 if "error" in result else 0

@@ -26,8 +26,16 @@ the whole suite and would grade every rule by the suite's verdict.
 clothes, so an undeclared sentinel is reported `ungraded` with a reason naming the knob, and
 no rule is retired on a verdict nobody took. `passed` is now three-valued and callers must
 branch on identity: `True` enforced, `False` genuinely failing, `None` ungraded. A launch
-failure and a timeout both grade `None` — a command that never started, and one that never
-finished, each returned no verdict.
+failure, a timeout, and a sentinel whose **target file is gone** all grade `None` — a command
+that never started, one that never finished, and a test that no longer exists each returned no
+verdict about the rule. The last of those was live in this repo: a learning had pointed at a
+suite deleted in the plugin migration, and the audit reported its rule as failing.
+
+**A third state is only real once its consumer can name it.** `doctor` is the sole reader of
+`audit-learnings --json`, and it knew two sentinel verdicts — so an ungraded one, which raises
+no `errors[]` entry by design, would have been relayed as *passing*: worse than the loud-false
+error it replaced. Its relay now carries the third rendering, and the ungraded `notice:` goes
+to **stderr**, where it reaches the `--json` path that a stdout line cannot.
 
 That withdraws working behaviour rather than adding to it, which the additive-first norm
 normally defers to a major. In-bounds here because the withdrawal fails *closed*: an ungraded
