@@ -26,10 +26,13 @@ the whole suite and would grade every rule by the suite's verdict.
 clothes, so an undeclared sentinel is reported `ungraded` with a reason naming the knob, and
 no rule is retired on a verdict nobody took. `passed` is now three-valued and callers must
 branch on identity: `True` enforced, `False` genuinely failing, `None` ungraded. A launch
-failure, a timeout, and a sentinel whose **target file is gone** all grade `None` — a command
-that never started, one that never finished, and a test that no longer exists each returned no
-verdict about the rule. The last of those was live in this repo: a learning had pointed at a
-suite deleted in the plugin migration, and the audit reported its rule as failing.
+failure, a timeout, and a **path-shaped sentinel whose target file is gone** all grade `None` —
+a command that never started, one that never finished, and a test that no longer exists each
+returned no verdict about the rule. The last of those was live in this repo: a learning had
+pointed at a suite deleted in the plugin migration, and the audit reported its rule as failing.
+The path-shaped qualifier is load-bearing: a runner id that is not a filename
+(`com.acme.BarTest#testX`) cannot be resolved, and prawduct will not claim a file is gone when it
+cannot tell "gone" from "not a path".
 
 **A third state is only real once its consumer can name it.** `doctor` is the sole reader of
 `audit-learnings --json`, and it knew two sentinel verdicts — so an ungraded one, which raises

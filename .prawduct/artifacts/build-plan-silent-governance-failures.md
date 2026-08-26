@@ -44,7 +44,7 @@ by symmetry with the established `{junit_xml}` | LOW impact | user can override]
 ## Status
 
 - [x] Chunk 01: Backlog and incoming-report triage
-- [ ] Chunk 02: A sentinel runs under the product's own toolchain, or reports unchecked
+- [x] Chunk 02: A sentinel runs under the product's own toolchain, or reports unchecked
 - [ ] Chunk 03: A plan whose deliverable check cannot run says so at dispatch
 Context: Plan written 2026-08-26 on a clean branch off `develop`. Baseline suite green
 (`test-status` exit 0, tree-valid).
@@ -58,8 +58,21 @@ block's `refs:`/`related:` fields. Untriaged count 9 → 0. **Nothing in Chunk 0
 tracked file** — `incoming-bugs/` is gitignored and the backlog lives on GitHub Issues — so its
 only repo-visible artifact is this Context block.
 
-Next: Chunk 02. Note the ruling that landed after this plan's first draft — no toolchain default
-survives the sentinel fix, so the pytest invocation is deleted rather than kept as a fallback.
+Chunk 02 closed 2026-08-26 after three review rounds (`cumulative` → two `verify-resolutions`),
+ending 0 blocking / 0 findings. Suite green at 5294, evidence recorded against the reviewed tree.
+
+What the reviews changed, worth carrying: the fix's own signal was unpinned twice over — the
+stderr notice that delivers it to the `--json` consumer had no test, while three durable records
+(including the `api-contract.md` Ruling's in-bounds argument) already asserted it as fact. And the
+missing-target check shipped with a path assumption, permanently ungrading an opaque runner id with
+a confidently wrong remedy — the same shape as the defect it sat beside. Both fixed and
+red-verified. The norm departure is homed as case law
+`[[inert-retention-cannot-be-extended-across-norms]]`.
+
+Next: Chunk 03. Its two routes are located — `record_lint._chunk_ref_findings` returns a buried
+`unchecked` for a plan with no frontmatter `scope:`, and `[], None, None, None` (wholly silent) for
+one whose chunks are list items. Both want the signal at `critic_consolidate.begin_review`, where
+the IN-FLIGHT GUARD is the model for a dispatch-time diagnostic.
 
 ## Verification Strategy
 

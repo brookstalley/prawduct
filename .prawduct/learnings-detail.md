@@ -3849,6 +3849,7 @@ signalled rather than silent, per the clause's own requirement — an ungraded s
 **Category-level: an inert-retention window is a courtesy the deprecating norm extends, not one it
 can extend on another norm's behalf.** When two norms collide, the question is not which is senior
 but which one's stated *warrant* has stopped holding.
+
 ## (one-home-is-the-predicate-not-the-token) Sharing a matcher shares syntax, not the definition — 2026-08-11
 
 `record_lint._norm_field_re` imports `norm_probes._FIELD_MARKER_RE` *specifically* so that one
