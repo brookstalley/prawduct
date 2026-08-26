@@ -45,7 +45,7 @@ by symmetry with the established `{junit_xml}` | LOW impact | user can override]
 
 - [x] Chunk 01: Backlog and incoming-report triage
 - [x] Chunk 02: A sentinel runs under the product's own toolchain, or reports unchecked
-- [ ] Chunk 03: A plan whose deliverable check cannot run says so at dispatch
+- [x] Chunk 03: A plan whose deliverable check cannot run says so at dispatch
 Context: Plan written 2026-08-26 on a clean branch off `develop`. Baseline suite green
 (`test-status` exit 0, tree-valid).
 
@@ -69,10 +69,26 @@ a confidently wrong remedy — the same shape as the defect it sat beside. Both 
 red-verified. The norm departure is homed as case law
 `[[inert-retention-cannot-be-extended-across-norms]]`.
 
-Next: Chunk 03. Its two routes are located — `record_lint._chunk_ref_findings` returns a buried
-`unchecked` for a plan with no frontmatter `scope:`, and `[], None, None, None` (wholly silent) for
-one whose chunks are list items. Both want the signal at `critic_consolidate.begin_review`, where
-the IN-FLIGHT GUARD is the model for a dispatch-time diagnostic.
+Chunk 03 closed 2026-08-26 after a `cumulative` and two `verify-resolutions` rounds, ending
+0 blocking / 0 findings. Suite green at 5320, evidence recorded against the reviewed tree.
+**All three chunks complete — this plan is done and stays live until the branch merges.**
+
+Both #642 routes now speak: the operator hears them at `critic-begin` (via
+`buildplan_refs.deliverable_check_gaps`, forwarded into `notes`), and `record_lint` carries the
+same fact into the review where the wholly-silent route used to return a null count.
+
+Three review rounds went to the same defect class, and none of them was in the shipped behaviour —
+each was a fix that nothing distinguished from the code it replaced. A guard that stripped the very
+literal it hunted; a stderr notice asserted as fact in three records with no test; a recursive
+discovery fix whose every fixture was flat. `plan_index.display_path`'s docstring had already
+recorded that last lesson, in the same module, and it was read during the work. The reflection
+carries the pattern; it has not been promoted to a `learnings.md` rule, which is an owner call.
+
+**Not swept, deliberately** (the review demoted it and ruled leave-as-written, because the commit
+that fixed it would move the tree and buy a round): `TestIterLivePlanFiles`'s class docstring
+narrates review history and hardcodes a `5312 passing tests` figure that will drift. Nothing reads
+it — `tests/preferences/test_no_suite_total_claims.py` scans `plugin/**/*.md` only. The next commit
+that already touches `tests/test_buildplan_walkers.py` should sweep it.
 
 ## Verification Strategy
 
