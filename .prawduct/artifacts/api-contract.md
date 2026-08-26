@@ -134,7 +134,11 @@ in `docs/governance-telemetry.md`.
   behaviour would itself perpetuate a ratified norm violation AND its removal fails closed. A default
   that is merely *unfashionable*, or whose removal fails open, still takes the window.
   Category-level: **an inert-retention window is a courtesy the deprecating norm extends, not one it
-  can extend on another norm's behalf.**
+  can extend on another norm's behalf** — when two norms collide the question is not which is senior,
+  but which one's stated *warrant* has stopped holding.
+  Case law: [[inert-retention-cannot-be-extended-across-norms]]. Qualifies, and does not retire,
+  [[deprecation-requires-an-inert-retention-window]] — that ruling still governs every retirement
+  whose retained behaviour is inert rather than itself non-conforming.
 
 ## Operations
 

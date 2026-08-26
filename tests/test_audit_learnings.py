@@ -706,7 +706,38 @@ class TestSentinelWithoutAVerdictIsUngradedNotFailed:
         assert record["passed"] is None
         assert record["applied"] is False, "--apply must not retire an ungraded rule"
         assert record["unevaluated_reason"]
+        # The excerpt slot means "what the test printed"; on the ungraded route
+        # nothing printed, and the reason lives in its own field. Empty iff
+        # `unevaluated_reason` is set is the invariant that keeps a reader from
+        # mistaking a prawduct diagnostic for runner output.
+        assert record["output_excerpt"] == ""
         assert "Enforced rule" in learnings.read_text(), "the rule stays active"
+
+    def test_opaque_runner_id_is_not_claimed_to_be_missing(self, tmp_path: Path):
+        """A sentinel that is not path-shaped must reach the runner.
+
+        The missing-target check is a filesystem question, and a runner id need
+        not be a filename: JUnit's `com.acme.BarTest#testX`, Go's `./pkg -run X`.
+        Reporting "does not exist — update the learning" about one of those is a
+        confident diagnostic naming the wrong fault, which is the defect shape
+        fixed one function over for the unreadable state file.
+        """
+        seen = {}
+
+        def fake_run(cmd, **kwargs):
+            seen["cmd"] = cmd
+            return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+        _declare_sentinel_command(tmp_path, "gradle test --tests {sentinel}")
+        monkeypatch_run = pytest.MonkeyPatch()
+        monkeypatch_run.setattr(_mod.subprocess, "run", fake_run)
+        try:
+            passed, _detail = run_sentinel(tmp_path, "com.acme.BarTest#testX")
+        finally:
+            monkeypatch_run.undo()
+
+        assert passed is True, "an opaque id must be handed to the declared runner"
+        assert seen["cmd"] == ["gradle", "test", "--tests", "com.acme.BarTest#testX"]
 
     def test_timeout_is_ungraded_not_failed(self, tmp_path: Path, monkeypatch):
         _declare_sentinel_command(tmp_path, "sleep {sentinel}")
@@ -1395,6 +1426,49 @@ class TestAuditLearningsHumanOutputPerRoute:
         assert res.returncode == 0, res.stderr
         assert "retire[blocked]: Enforced rule (sentinel=tests/nope.py::test_missing)" in res.stdout
 
+    def test_ungraded_notice_reaches_stderr_on_both_renderers(self, tmp_path: Path):
+        """The machine half of the ungraded signal, pinned on the path that needs it.
+
+        `--json` writes a payload to stdout, so a notice printed there would
+        either corrupt it or be omitted — as shipped, it was omitted, leaving
+        `doctor` (the only `--json` consumer) with no signal where the pre-fix
+        code at least printed something loud and wrong. Routing it to stderr is
+        what carries R-1's fix to that path, and three durable records now assert
+        it as fact — including the `api-contract.md` Ruling whose in-bounds
+        argument for the norm departure rests on this notice existing.
+
+        Nothing pinned it: the human CLI test reads stdout only and the `--json`
+        test ignored stderr, so deleting the branch left the suite green and the
+        defect restored.
+        """
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n## Enforced rule\n"
+            "<!-- prawduct-learning: sentinel=bridge/auth.test.js -->\n\nBody.\n",
+        )
+        for args in (["--json"], []):
+            res = self._run(tmp_path, *args)
+            assert res.returncode == 0, res.stderr
+            assert "notice:" in res.stderr, (
+                f"the ungraded notice must reach stderr with args={args!r}"
+            )
+            assert "sentinel_command" in res.stderr, "it must name the remedy"
+        # ...and the payload it rides beside stays parseable.
+        payload = json.loads(self._run(tmp_path, "--json").stdout)
+        assert payload["retirements"][0]["passed"] is None
+
+    def test_no_notice_when_every_sentinel_was_graded(self, tmp_path: Path):
+        """The notice must not cry wolf — otherwise it stops being read."""
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n## Superseded rule\n"
+            "<!-- prawduct-learning: superseded-by=General rule -->\n\nBody.\n\n"
+            "## General rule\n\nBody.\n",
+        )
+        res = self._run(tmp_path)
+        assert res.returncode == 0, res.stderr
+        assert "notice:" not in res.stderr
+
     def test_undeclared_sentinel_renders_ungraded_not_blocked(self, tmp_path: Path):
         """The operator-facing half of the fix.
 
@@ -1715,6 +1789,13 @@ class TestThisRepoDeclaresWhatItAsksOthersFor:
     def test_every_declared_sentinel_target_exists(self):
         """A sentinel naming a deleted test grades ungraded — permanently, and
         without complaint. One had been dead since the plugin migration.
+
+        **Vacuous today, and deliberately kept.** Retiring that dead key left
+        this repo with zero sentinels, so there is currently nothing to check.
+        It is a FORWARD guard: it binds the moment a sentinel is declared again,
+        which is exactly when the mistake it catches becomes possible. Said out
+        loud because a reader counting green tests would otherwise credit it
+        with checking something it cannot yet reach.
         """
         missing = []
         for match in re.finditer(

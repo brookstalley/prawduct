@@ -117,7 +117,13 @@ a scope-less plan plus a list-item plan for 03.
   command missing `{sentinel}` is refused with an attributed message; a non-zero exit grades
   the sentinel failed while a launch failure grades it unchecked (the two must not collapse).
   Integration — a fixture product declaring a non-pytest command grades a sentinel through
-  `audit-learnings --json`, and this repo's own sentinels still grade under its declaration
+  `audit-learnings --json`.
+  **Amended mid-chunk:** this leg originally also read "and this repo's own sentinels still grade
+  under its declaration". That clause now has no subject — the repo's single sentinel pointed at a
+  suite deleted in the plugin migration and was retired by this chunk's own missing-target route,
+  leaving zero. Stated rather than quietly dropped: `test_every_declared_sentinel_target_exists`
+  consequently passes vacuously today and is a **forward** guard, binding the moment a sentinel
+  returns, and `sentinel_command:` in this repo is correct-but-unexercised config
 - **Acceptance criteria:** the reported vitest repro (`sentinel_command: npx vitest run {sentinel}`)
   grades a passing sentinel as passed; with no knob, output carries `passed: null` plus a
   reason naming the knob, and the retirement is withheld without accusing the test; no

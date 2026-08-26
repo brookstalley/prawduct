@@ -418,6 +418,15 @@ def run_sentinel(
     non-zero on it, because "the test is missing" and "the test failed" are
     different facts and only one of them is about the rule.
 
+    **Two known limits of that line, both erring toward running the command.**
+    The missing-target check fires only for a *path-shaped* sentinel (one
+    carrying a separator): an opaque runner id such as ``com.acme.BarTest#testX``
+    is not resolvable here, and prawduct will not claim a file is gone when it
+    cannot tell "gone" from "not a path". And a command that starts and then
+    dies on a broken environment — absent dependencies, an unbuilt workspace —
+    still grades ``False``, because no language-agnostic signal separates that
+    from a real failure (``brookstalley/prawduct#720``).
+
     Collapsing that third case into ``False`` is the whole defect this shape
     exists to prevent — it accuses a green test and argues for retiring a live
     rule. Callers must branch on ``is True`` / ``is False`` / ``is None`` and
@@ -440,13 +449,23 @@ def run_sentinel(
     # runner the product declared. Path only: the `::node` suffix names a case
     # inside the file and only the file's existence is knowable without running
     # anything.
-    target = Path(product_dir) / sentinel.split("::", 1)[0].strip()
-    if not target.exists():
+    #
+    # ONLY for a sentinel that is unambiguously a path, which here means it
+    # carries a separator. A runner's id need not be a filename at all — JUnit's
+    # `com.acme.BarTest#testX` and Go's `./pkg -run X` are ids this cannot
+    # resolve — and claiming "does not exist, update the learning" about one of
+    # those is a confident diagnostic naming the wrong fault, the exact shape of
+    # the unreadable-state-file defect fixed a few lines above. When the sentinel
+    # is not path-shaped prawduct cannot tell "gone" from "opaque id", so it
+    # declines to guess and lets the declared runner answer.
+    path_part = sentinel.split("::", 1)[0].strip()
+    looks_like_path = "/" in path_part or "\\" in path_part
+    if looks_like_path and not (Path(product_dir) / path_part).exists():
         return None, (
-            f"sentinel target {sentinel.split('::', 1)[0].strip()!r} does not "
-            "exist — ungraded rather than failed, because a test that is gone "
-            "returned no verdict. Update the learning's `sentinel=` to the "
-            "test's new home, or drop it if the rule is no longer enforced"
+            f"sentinel target {path_part!r} does not exist — ungraded rather "
+            "than failed, because a test that is gone returned no verdict. "
+            "Update the learning's `sentinel=` to the test's new home, or drop "
+            "it if the rule is no longer enforced"
         )
     argv = [tok.replace(SENTINEL_PLACEHOLDER, sentinel) for tok in argv_template]
     try:

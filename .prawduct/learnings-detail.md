@@ -3813,6 +3813,42 @@ is every product repo erroring at session start and once per prompt, which is wh
 its own Scope-out said the rule it checks against was not fully written until this was ruled. It is
 written now.
 
+
+## RULING (inert-retention-cannot-be-extended-across-norms), 2026-08-26
+
+Owner decision, stated directly when the question was put during `fix/silent-governance-failures`:
+**"NEVER python specific, never requiring a specific implementation of testing or anything else. We
+provide absolute business requirements, consuming repos decide the best way to implement for their
+project."**
+
+The occasion: `audit-learnings`' sentinel runner hardcoded `sys.executable -m pytest`, an
+uninventoried instance of `architecture.md`'s **"never be specific to Python"** norm. Products now
+declare `sentinel_command:`. The question was what to do with the pytest fallback — and
+`api-contract.md`'s additive-first clause, read alone, says withdrawing working behaviour defers to
+a major, with `[[deprecation-requires-an-inert-retention-window]]` prescribing an inert window
+meanwhile.
+
+**Why the window does not reach this case.** That ruling's whole warrant is that retention is
+cheap — its own words, "an inert subcommand is a `return 0` and a docstring". The cost it prices is
+the cost of *keeping a stub alive*. Here the thing to keep alive is a Python-specific default, so
+retention is not cheap at all: every day of the window is a day the architecture norm is still
+violated, in the exact code the fix exists to correct. The two norms cannot both be satisfied by
+waiting, and the one whose premise changed is the retention window's.
+
+**Why it was safe to withdraw immediately.** The deprecation clause's Why is protecting *callers*
+from breakage, and this withdrawal fails CLOSED: an ungraded sentinel withholds a retirement and
+destroys nothing. Contrast the case that produced the window — a deleted subcommand that broke every
+governed session at startup. Same clause, opposite blast radius.
+
+**Scope, kept narrow.** Immediate withdrawal is in-bounds only where BOTH hold: the retained
+behaviour would itself perpetuate a ratified norm violation, AND its removal fails closed. A default
+that is merely unfashionable, or whose removal fails open, still takes the window. The departure was
+signalled rather than silent, per the clause's own requirement — an ungraded sentinel prints a
+`notice:` to stderr naming the knob.
+
+**Category-level: an inert-retention window is a courtesy the deprecating norm extends, not one it
+can extend on another norm's behalf.** When two norms collide, the question is not which is senior
+but which one's stated *warrant* has stopped holding.
 ## (one-home-is-the-predicate-not-the-token) Sharing a matcher shares syntax, not the definition — 2026-08-11
 
 `record_lint._norm_field_re` imports `norm_probes._FIELD_MARKER_RE` *specifically* so that one

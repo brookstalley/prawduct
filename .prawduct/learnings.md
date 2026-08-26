@@ -522,6 +522,8 @@ never by dropping them.
 
 ## RULING (deprecation-requires-an-inert-retention-window), 2026-08-11 (v3.3.4) — when you retire a harness-invoked subcommand, unregister it now and keep it INERT until no supported install still registers it, because plugin pins are per-project and lazy. Settles the question `[[harness-only-removal-is-not-a-major]]` left open; the tier permission is unchanged — [learnings-detail.md]
 
+## RULING (inert-retention-cannot-be-extended-across-norms), 2026-08-26 — when the behaviour an inert-retention window would preserve IS a violation of another ratified norm, withdraw it outright instead: the window's bargain is that retention is CHEAP, and here every day of it is a day the other norm is still broken. Qualifies `[[deprecation-requires-an-inert-retention-window]]`; requires the withdrawal to fail CLOSED — [learnings-detail.md]
+
 ## When a re-measurement CORRECTS a prior test, run it against the QUESTION, not the prior test's conclusion — otherwise each new instrument re-grades the last one's output and a wrong verdict survives every correction. Ask what the check is a fact ABOUT, then pick the unit that carries it. Tell: your re-measurement reuses the previous framing — [learnings-detail.md]
 
 ## Copying a fix into a sibling procedure is a NEW change needing its own analysis — two documents share a paragraph, not their invariants, so one edit can repair one and break the other. Ask which invariant made the original wrong and whether it holds next door. Tell: you fixed one file and grep found the same lines elsewhere — [learnings-detail.md]
