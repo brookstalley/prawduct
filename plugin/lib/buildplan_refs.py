@@ -1470,6 +1470,79 @@ def chunk_section_gap(chunk_id: str, section: ChunkSection) -> str | None:
     return None
 
 
+def _plan_gaps(plan_path: Path) -> list[str]:
+    """The gap sentences for one plan file. See :func:`deliverable_check_gaps`."""
+
+    if not plan_path.is_file():
+        return []
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+
+    gaps: list[str] = []
+    declared, _value = plan_index.parse_build_plan_frontmatter_scope(content)
+    if not declared:
+        gaps.append(
+            f"{plan_path.name} declares no frontmatter `scope:`, so no review can "
+            "resolve it by scope and the chunk deliverable check reports "
+            "`unchecked` for the life of the plan — which reads as a pass. Add "
+            "`scope: <change-log scope tag>` to its frontmatter"
+        )
+    if not any(
+        _CHUNK_HEADING_RE.match(line.strip()) for line in content.splitlines()
+    ):
+        gaps.append(
+            f"{plan_path.name} exposes no parseable chunk heading, so there is "
+            "nothing for the deliverable check to grade and it reports NOTHING "
+            "— not even `unchecked`. Chunks must be `### Chunk NN: Name` "
+            "headings; list items under a `## Chunks` section match no heading "
+            "pattern and are invisible to every plan reader"
+        )
+    return gaps
+
+
+def deliverable_check_gaps(
+    prawduct_dir: Path, resolved_plan: "Path | None"
+) -> list[str]:
+    """Why the chunk deliverable check will not grade this review's plan.
+
+    **Asked at DISPATCH, answered before a review runs.** Two conditions disable
+    the check for the whole life of a plan, and neither is visible where it
+    happens: a missing frontmatter ``scope:`` surfaces as
+    ``chunk-ref-missing unchecked — …`` buried in the dispatch manifest, where
+    ``unchecked`` reads as a pass to anyone who does not also read the caveat;
+    chunks written as list items surface as nothing at all, because such a plan
+    yields no offending line to name. The only existing signal is
+    ``check-releasability``'s "release-pending scope has no build-plan file",
+    which fires at RELEASE — long after authoring, and long after the reviews
+    that ran blind.
+
+    **Falls back to scanning when nothing resolved, and that is the main case.**
+    Asking the resolver for the plan and checking only what comes back misses the
+    defect entirely: a plan declaring neither ``scope:`` nor ``branch:`` does not
+    resolve *because of* the very gap being reported, so the resolver returns
+    ``None`` and the check goes quiet exactly where it is needed. When no plan
+    resolved, every live plan file is examined instead and its gaps reported with
+    the file named — an unresolved plan that is also unparseable is the whole of
+    #642's first route, and it must not depend on being found first.
+
+    Returned as finished sentences rather than flags: the caller prints them, and
+    the remedy is three lines of plan frontmatter either way. Empty list = the
+    check has a subject, or there is no plan at all (an absence the resolver
+    already reports, and this must not complain about twice).
+    """
+    if resolved_plan is not None:
+        return _plan_gaps(resolved_plan)
+    artifacts = prawduct_dir / "artifacts"
+    if not artifacts.is_dir():
+        return []
+    gaps: list[str] = []
+    for candidate in sorted(artifacts.glob("build-plan-*.md")):
+        gaps.extend(_plan_gaps(candidate))
+    return gaps
+
+
 def _unparsed_chunk_headings(content: str) -> list[tuple[int, str]]:
     """Heading lines that announce a chunk but that the chunk matcher rejects.
 

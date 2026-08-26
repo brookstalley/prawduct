@@ -1492,6 +1492,19 @@ def begin_review(
         }
 
     notes: list[str] = []
+    # A plan the deliverable check cannot grade, said HERE rather than at
+    # release. Advisory by construction — it rides `notes`, changes no exit code
+    # and blocks no dispatch — because the review is still worth running; what
+    # is not worth having is a review that silently grades nothing while
+    # reporting cleanly. `resolve_reviewed_plan` is the same resolution
+    # `record_lint` performs, so this names the file that would actually be
+    # graded rather than whatever the pointer happens to say.
+    notes.extend(
+        buildplan_refs.deliverable_check_gaps(
+            prawduct_dir,
+            buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope).path,
+        )
+    )
     base_reviewed = None
     files_reviewed: list[str] | None = None
     # Findings a THIS-mode review could still resolve. Only verify-resolutions

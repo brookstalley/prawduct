@@ -3,6 +3,32 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-26: a plan the deliverable check cannot grade says so at dispatch
+
+<!-- prawduct: type=fix | scope=silent-governance-failures -->
+
+Two plan shapes disabled the chunk deliverable check for a plan's whole life, and neither said
+so where it happened. A plan declaring no frontmatter `scope:` reported
+`chunk-ref-missing unchecked — …` into the dispatch manifest, which is real but reads as a pass
+to anyone who does not also read the caveat line. A plan whose chunks are list items under a
+`## Chunks` heading matched no heading pattern at all, so `_chunk_ref_findings` returned an empty
+gap and the check reported **nothing** — not even `unchecked`.
+
+Either cause is sufficient alone, which is why an earlier fix closing the heading-shape half left
+the item open. Both are now named by `critic-begin`, on the existing `PRAWDUCT NOTE:` channel, at
+the moment the remedy is three lines of plan frontmatter — rather than by `check-releasability` at
+release, long after the blind reviews have run.
+
+**Advisory, deliberately.** It rides `notes`, changes no exit code and refuses no dispatch: the
+review is still worth running. What is not worth having is a review that silently grades nothing
+while reporting cleanly.
+
+**The check scans when nothing resolves, and that is the main path.** Asking the resolver for the
+plan and grading only its answer misses the defect entirely — a plan declaring neither `scope:` nor
+`branch:` does not resolve *because of* the gap being reported, so the resolver returns nothing and
+the signal goes quiet exactly where it is needed. That was caught by running a real dispatch against
+a real unparseable plan and seeing no note, not by reasoning about it.
+
 ## 2026-08-26: a sentinel is graded by the product's own runner, or not at all
 
 <!-- prawduct: type=fix | scope=silent-governance-failures -->

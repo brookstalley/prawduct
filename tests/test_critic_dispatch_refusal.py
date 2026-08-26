@@ -703,3 +703,77 @@ class TestTheRefusalAgreesWithTheGate:
             "predicate no longer agrees, the refusal is over-broad"
         )
         assert judgeable_files(free + ["src/app.py"]) == ["src/app.py"]
+
+
+class TestDeliverableCheckGapReachesDispatch:
+    """#642 — the gap helper's answer must actually reach the operator.
+
+    `deliverable_check_gaps` is unit-tested in `test_buildplan_walkers.py`; this
+    asserts the wiring, which is the half that was missing. A correct helper
+    nobody calls leaves the check exactly as silently disabled as before, and
+    the whole complaint in #642 is about *where* the signal appears: at dispatch,
+    where the remedy is three lines of frontmatter — not at release, via
+    `check-releasability`, long after the blind reviews have run.
+    """
+
+    def _plan(self, repo: Path, body: str) -> None:
+        plans = repo / ".prawduct" / "artifacts"
+        plans.mkdir(parents=True, exist_ok=True)
+        (plans / "build-plan-thing.md").write_text(body)
+
+    def test_unparseable_plan_notes_reach_stderr_at_dispatch(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        # No frontmatter `scope:`, and chunks as list items — both #642 routes.
+        self._plan(
+            repo,
+            "## Status\n\n- [ ] Chunk 01: Do it\n\n## Chunks\n\n- Chunk 01: Do it\n",
+        )
+        _commit_file(repo, "plugin/lib/thing.py", "x = 1\n", "feat: a thing")
+        # `chunk` diffs HEAD against the WORKING tree, so a fully-committed
+        # fixture is an empty diff and never reaches dispatch.
+        (repo / "plugin" / "lib" / "thing.py").write_text("x = 1\ny = 2\n")
+
+        res = _run_begin(repo, "--mode", "chunk")
+
+        assert "no frontmatter `scope:`" in res.stderr, (
+            f"the scope gap never reached the operator: {res.stderr!r}"
+        )
+        assert "no parseable chunk heading" in res.stderr, (
+            f"the heading gap never reached the operator: {res.stderr!r}"
+        )
+        assert "PRAWDUCT NOTE:" in res.stderr, "must ride the existing note channel"
+
+    def test_the_signal_is_advisory_and_blocks_nothing(self, tmp_path):
+        """Advice fails soft. The review is still worth running — what is not
+        worth having is one that grades nothing while reporting cleanly — so
+        this must not become a refusal, or #642's fix would cost more than the
+        defect."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._plan(repo, "## Chunks\n\n- Chunk 01: Do it\n")
+        _commit_file(repo, "plugin/lib/thing.py", "x = 1\n", "feat: a thing")
+        (repo / "plugin" / "lib" / "thing.py").write_text("x = 1\ny = 2\n")
+
+        res = _run_begin(repo, "--mode", "chunk")
+        assert res.returncode == 0, (
+            f"an advisory gap refused the dispatch: rc={res.returncode} {res.stderr!r}"
+        )
+
+    def test_a_conforming_plan_dispatches_silently(self, tmp_path):
+        """No-false-positive: a template-shaped plan must produce neither note."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._plan(
+            repo,
+            "---\nartifact: build-plan\nscope: thing\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: Do it\n\n"
+            "## Build Chunks\n\n### Chunk 01: Do it\n\n- **Deliverables:** none\n",
+        )
+        _commit_file(repo, "plugin/lib/thing.py", "x = 1\n", "feat: a thing")
+        (repo / "plugin" / "lib" / "thing.py").write_text("x = 1\ny = 2\n")
+
+        res = _run_begin(repo, "--mode", "chunk")
+        assert res.returncode == 0, f"fixture never dispatched: {res.stdout} {res.stderr}"
+        assert "no frontmatter `scope:`" not in res.stderr
+        assert "no parseable chunk heading" not in res.stderr
