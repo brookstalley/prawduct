@@ -1222,6 +1222,23 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
             shown = ", ".join(str(p) for p in free[:3])
             more = f" +{len(free) - 3}" if len(free) > 3 else ""
             guard_note += f" free=[{shown}{more}]"
+        # What the interval EXCLUDED, beside what it waved through. A refusal
+        # taken over a committed-tree anchor while judgeable work sat
+        # uncommitted is a different event from one over a clean tree — the
+        # guard was still right, but the round it saved is the one most likely
+        # to have been wanted, which is exactly what this query is asked to
+        # settle. Recorded and unlisted, it could not settle it.
+        excluded = body.get("excluded_wip") if isinstance(body, dict) else None
+        if isinstance(excluded, list) and excluded:
+            shown = ", ".join(str(p) for p in excluded[:3])
+            more = f" +{len(excluded) - 3}" if len(excluded) > 3 else ""
+            guard_note += f" excluded=[{shown}{more}]"
+        elif isinstance(body, dict) and "excluded_wip" in body and excluded is None:
+            # A recorded null means the check could not run, which is a third
+            # answer and not the empty one. A row that renders it as silence
+            # tells this query the refusal excluded nothing — the fail-open the
+            # writer already refused to take.
+            guard_note += " excluded=?"
         # Marked inline rather than filtered: the fact is real and stays listed;
         # what it does not do is cover a branch.
         origin = " [ephemeral — covers no branch]" if is_ephemeral_fact(fact) else ""

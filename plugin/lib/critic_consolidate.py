@@ -1385,8 +1385,9 @@ def name_paths(paths: "list[str]") -> str:
     return shown + (f" (+{extra} more)" if extra > 0 else "")
 
 
-def _judgeable_wip(project_dir: Path, capture: dict) -> list[str]:
-    """The judgeable uncommitted files a COMMITTED-tree anchor leaves unreviewed.
+def _judgeable_wip(project_dir: Path, capture: dict) -> "list[str] | None":
+    """The judgeable uncommitted files a COMMITTED-tree anchor leaves unreviewed,
+    or ``None`` when the uncommitted diff cannot be computed.
 
     Both committed anchors — ``cumulative`` always, ``verify-resolutions`` once a
     committed delta exists — grade a tree the builder's dirty files are not in.
@@ -1397,20 +1398,39 @@ def _judgeable_wip(project_dir: Path, capture: dict) -> list[str]:
 
     Same predicate the coverage gate grades with, so this can never name a file
     the gate would wave through, nor omit one it would demand.
+
+    ``None`` propagates rather than collapsing to ``[]`` because the two answers
+    drive opposite messages here. ``[]`` licenses the affirmative "no reviewable
+    work is excluded"; a diff that could not be computed licenses nothing, and
+    folding it into the empty list turns a failed check into a clean bill —
+    fail-open, in the one report written to catch work falling outside an
+    interval. :func:`evidence.tree_diff` distinguishes them for exactly this
+    reason, and its callers in this module already return ``error`` on ``None``.
     """
     from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
 
-    wip = evidence.tree_diff(project_dir, capture["head_tree"], capture["tree"]) or []
+    wip = evidence.tree_diff(project_dir, capture["head_tree"], capture["tree"])
+    if wip is None:
+        return None
     return coverage_algebra.judgeable_files(wip)
 
 
-def _dirty_anchor_note(mode_label: str, excluded: "list[str]") -> str:
+def _dirty_anchor_note(mode_label: str, excluded: "list[str] | None") -> str:
     """The note a committed-tree anchor owes a dirty working tree.
 
     Names the files rather than asserting that some exist: an operator who can
     read the list can tell in one glance whether the excluded work is the fix
     they just wrote or a stray editor buffer, and only the first needs action.
+    ``None`` gets its own sentence rather than borrowing the empty one — see
+    :func:`_judgeable_wip`.
     """
+    if excluded is None:
+        return (
+            f"working tree dirty at {mode_label} dispatch — anchored to committed "
+            "HEAD, and the uncommitted diff could NOT be computed, so whether "
+            "judgeable work sits outside the reviewed scope is UNKNOWN. Treat this "
+            "dispatch as covering the committed tree only"
+        )
     if excluded:
         return (
             f"working tree dirty at {mode_label} dispatch — anchored to committed "
@@ -1561,8 +1581,15 @@ def begin_review(
     # which is true of the interval and says nothing about the repo. Prose in a
     # `notes` entry could not fix that, because the refusal path returns before
     # `notes` reaches any channel.
-    excluded_wip: list[str] = []
+    excluded_wip: "list[str] | None" = []
     head_anchor = "the working tree"
+    # The dirty-tree note is held APART from `notes` because its two delivery
+    # paths want different things from it. On a dispatch it is the only carrier
+    # of the exclusion and rides `notes` to stderr. On a refusal the stdout block
+    # names the same files already, and forwarding it there prints one fact twice
+    # in one invocation — which is what "printed LAST, deliberately" was quietly
+    # not true of.
+    dirty_note: "str | None" = None
     # A plan the deliverable check cannot grade, said HERE rather than at
     # release. Advisory by construction — it rides `notes`, changes no exit code
     # and blocks no dispatch — because the review is still worth running; what
@@ -1604,7 +1631,7 @@ def begin_review(
         head_anchor = "committed HEAD"
         if not capture["clean"]:
             excluded_wip = _judgeable_wip(project_dir, capture)
-            notes.append(_dirty_anchor_note("cumulative", excluded_wip))
+            dirty_note = _dirty_anchor_note("cumulative", excluded_wip)
     else:  # verify-resolutions
         prior, reason = _prior_review_fact(project_dir, prawduct_dir)
         if prior is None:
@@ -1678,7 +1705,7 @@ def begin_review(
             head_anchor = "committed HEAD"
             if not capture["clean"]:
                 excluded_wip = _judgeable_wip(project_dir, capture)
-                notes.append(
+                dirty_note = (
                     _dirty_anchor_note("verify-resolutions", excluded_wip)
                     + " (a committed delta exists since the prior review, so this "
                     "pass composes to the PR gate rather than the Stop-hook gate)"
@@ -1691,7 +1718,19 @@ def begin_review(
                 # Computed all the same: whether any of the dirty files is
                 # judgeable is what decides whether the PR-gate warning below
                 # is worth printing.
-                if _judgeable_wip(project_dir, capture):
+                wip = _judgeable_wip(project_dir, capture)
+                if wip is None:
+                    # Unknown is not "no". The warning below asserts judgeable
+                    # WIP exists, which an uncomputable diff cannot support —
+                    # so say what is actually known instead of guessing either way.
+                    notes.append(
+                        "working tree dirty at verify-resolutions dispatch and the "
+                        "uncommitted diff could NOT be computed — whether judgeable "
+                        "work is in it is UNKNOWN. This fact vouches for the WORKING "
+                        "tree; let the cumulative/PR gate's own verdict tell you "
+                        "whether committed HEAD is covered"
+                    )
+                elif wip:
                     notes.append(
                         "working tree dirty with judgeable uncommitted files and no "
                         "committed delta since the prior review — this fact vouches "
@@ -1824,7 +1863,9 @@ def begin_review(
                 # `free_files` alone once an anchor can exclude work: a refusal
                 # over a free interval that left judgeable files outside it is a
                 # different event from one over a clean tree.
-                "excluded_wip": list(excluded_wip),
+                "excluded_wip": (
+                    None if excluded_wip is None else list(excluded_wip)
+                ),
                 "scope": scope,
                 "chunk": chunk,
                 "branch": gitstate.current_branch(project_dir),
@@ -1856,7 +1897,14 @@ def begin_review(
             # dispatch's own notes reached any channel, so the dirty-tree note
             # was written and then discarded.
             "anchor": head_anchor,
-            "excluded_wip": list(excluded_wip),
+            # `None` — not `[]` — when the uncommitted diff could not be
+            # computed, so no consumer can render "nothing excluded" off a
+            # check that never ran.
+            "excluded_wip": None if excluded_wip is None else list(excluded_wip),
+            # WITHOUT `dirty_note`: the block the CLI prints for this result
+            # already names the excluded files, and the note would repeat them
+            # on a second channel in the same invocation. Every other note still
+            # rides — this path used to drop the lot.
             "notes": notes,
             "recorded": recorded.get("status") == "appended",
         }
@@ -1972,7 +2020,8 @@ def begin_review(
         "id": review_id,
         "roster": roster,
         "path": str(manifest_path(prawduct_dir)),
-        "notes": notes,
+        # The dispatch path IS the dirty note's only carrier — it rides here.
+        "notes": notes + ([dirty_note] if dirty_note else []),
         "cleared_leftovers": cleared,
         "archived_leftovers": str(archived) if archived else None,
         "superseded_findings": superseded,

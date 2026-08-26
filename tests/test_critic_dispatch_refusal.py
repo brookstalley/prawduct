@@ -89,6 +89,24 @@ def _commit_file(repo: Path, rel: str, content: str, msg: str) -> str:
     return _git(repo, "rev-parse", "HEAD").stdout.strip()
 
 
+def _load_hook():
+    """`prawduct-hook` as a module, for the rendering assertions.
+
+    The script has a shebang and no `.py` extension; SourceFileLoader is how the
+    rest of the suite reaches its internals. The module name is not "__main__",
+    so importing does not dispatch. Needed here because the failure these tests
+    inject cannot cross a subprocess boundary.
+    """
+    import importlib.machinery
+    import importlib.util
+
+    loader = importlib.machinery.SourceFileLoader("prawduct_hook_refusal", str(HOOK))
+    spec = importlib.util.spec_from_loader("prawduct_hook_refusal", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
 def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["python3", str(HOOK), "critic-begin", *args],
@@ -888,14 +906,21 @@ class TestARefusalNamesWhatItExcluded:
         _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
         (repo / "docs" / "scratch.md").write_text("draft\n")
 
+        import lib.critic_consolidate as cc
+
+        # In-process for the reach-proof: the fixture has to actually enter the
+        # dirty-tree branch, or the CLI assertion below passes forever on a tree
+        # that came out clean. `excluded_wip == []` is that witness — `None`
+        # would mean the diff failed, and a clean tree never reaches the branch.
+        lib_result = cc.begin_review(repo, "verify-resolutions")
+        assert lib_result["status"] == "no-review-needed", lib_result
+        assert lib_result["excluded_wip"] == [], (
+            f"the dirty-tree branch was never reached: {lib_result['excluded_wip']!r}"
+        )
+
         result = _run_begin(repo, "--mode", "verify-resolutions")
 
         assert result.returncode == EXIT_NO_REVIEW_NEEDED
-        # The fixture has to REACH the exclusion branch for the assertion below
-        # to mean anything — a tree that came out clean would pass it forever.
-        assert "working tree dirty" in result.stderr, (
-            f"the dirty-tree branch was never reached: {result.stderr!r}"
-        )
         assert "NOT REVIEWED" not in result.stdout, (
             f"non-judgeable WIP was reported as excluded work: {result.stdout!r}"
         )
@@ -920,20 +945,43 @@ class TestARefusalNamesWhatItExcluded:
             f"the record cannot distinguish this refusal from a clean one: {body}"
         )
 
-    def test_the_dispatch_note_reaches_the_operator(self, tmp_path):
-        """The dirty-tree note was written and then discarded: this path
-        returned before `notes` reached any channel."""
+    def test_the_refusal_forwards_the_notes_it_does_not_deliver_itself(self, tmp_path):
+        """This path returned before `notes` reached ANY channel, so a note about
+        something else entirely — here, a build plan the deliverable check cannot
+        grade — was written and silently discarded.
+
+        The dirty-tree note is the one exception, and for the opposite reason:
+        the refusal block on stdout already names those files, so forwarding it
+        too would print one fact twice in a single invocation.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        plans = repo / ".prawduct" / "artifacts"
+        plans.mkdir(parents=True, exist_ok=True)
+        (plans / "build-plan-thing.md").write_text("## Chunks\n\n- Chunk 01: Do it\n")
+        self._repro(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == EXIT_NO_REVIEW_NEEDED
+        assert "PRAWDUCT NOTE:" in result.stderr, (
+            f"the dispatch's own notes were dropped on the refusal path: {result.stderr!r}"
+        )
+
+    def test_the_exclusion_is_delivered_exactly_once(self, tmp_path):
+        """"Printed LAST, deliberately" is a claim about what the reader meets
+        at the end of the block. It is only true if the same fact does not turn
+        up again on the other stream a line later."""
         repo = tmp_path / "r"
         _init_repo(repo)
         self._repro(repo)
 
         result = _run_begin(repo, "--mode", "verify-resolutions")
 
-        assert "PRAWDUCT NOTE:" in result.stderr, (
-            f"the dispatch's own notes were dropped on the refusal path: {result.stderr!r}"
-        )
-        assert "tests/test_wip.py" in result.stderr, (
-            f"the note asserts excluded work exists without naming it: {result.stderr!r}"
+        both = result.stdout + result.stderr
+        assert both.count("tests/test_wip.py") == 1, (
+            f"the excluded file was named {both.count('tests/test_wip.py')} times "
+            f"in one invocation:\nSTDOUT {result.stdout!r}\nSTDERR {result.stderr!r}"
         )
 
     def test_a_dirty_cumulative_names_its_exclusions_too(self, tmp_path):
@@ -953,4 +1001,99 @@ class TestARefusalNamesWhatItExcluded:
         assert result["status"] == "ok", result
         assert any("src/wip.py" in n for n in result["notes"]), (
             f"the cumulative dirty-tree note named nothing: {result['notes']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# A check that could not run is not a clean bill
+# ---------------------------------------------------------------------------
+
+
+class TestAnUncomputableWipDiffIsNotAnAllClear:
+    """`evidence.tree_diff` returns ``None`` when the diff cannot be computed —
+    a missing object, a git failure — and never guesses. Collapsing that into
+    ``[]`` makes the one report written to catch work falling outside an
+    interval answer "nothing fell outside" on the strength of a check that never
+    ran, which is the fail-open direction in the fail-closed half of the system.
+
+    Driven in-process because the failure has to be *injected*: no filesystem
+    state reliably makes git fail on that diff on every machine.
+    """
+
+    @staticmethod
+    def _fail_the_wip_diff(monkeypatch, repo: Path):
+        """Break exactly the head_tree→working_tree diff, nothing else.
+
+        Breaking `tree_diff` wholesale would take the interval down with it and
+        the dispatch would fail earlier, for a different reason — the test would
+        then pass without ever reaching the branch it names.
+        """
+        import lib.evidence as ev
+
+        cap = ev.capture_tree(repo)
+        real = ev.tree_diff
+
+        def fake(project_dir, tree_a, tree_b, paths=None):
+            if tree_a == cap["head_tree"] and tree_b == cap["tree"]:
+                return None
+            return real(project_dir, tree_a, tree_b, paths)
+
+        monkeypatch.setattr(ev, "tree_diff", fake)
+
+    def test_the_refusal_reports_unknown_rather_than_empty(self, tmp_path, monkeypatch):
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        TestARefusalNamesWhatItExcluded._repro(repo)
+        self._fail_the_wip_diff(monkeypatch, repo)
+
+        result = cc.begin_review(repo, "verify-resolutions")
+
+        assert result["status"] == "no-review-needed", result
+        assert result["excluded_wip"] is None, (
+            "a diff that could not be computed was reported as 'nothing "
+            f"excluded': {result['excluded_wip']!r}"
+        )
+
+    def test_the_guard_fact_records_unknown_as_null(self, tmp_path, monkeypatch):
+        """`[]` and `null` are different answers to the retirement question, and
+        the record is the only place it can be asked later."""
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        TestARefusalNamesWhatItExcluded._repro(repo)
+        self._fail_the_wip_diff(monkeypatch, repo)
+
+        assert cc.begin_review(repo, "verify-resolutions")["status"] == "no-review-needed"
+
+        body = TestTheRefusalIsObservable._guard_facts(repo)[0]["body"]
+        assert body["excluded_wip"] is None, (
+            f"the record cannot tell 'nothing excluded' from 'could not tell': {body}"
+        )
+
+    def test_the_cli_withholds_the_all_clear(self, tmp_path, monkeypatch, capsys):
+        """The rendering half. "Nothing to do" is an all-clear, and only a check
+        that ran may issue one."""
+        hook = _load_hook()
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        TestARefusalNamesWhatItExcluded._repro(repo)
+        self._fail_the_wip_diff(monkeypatch, repo)
+        # `cmd_critic_begin` refuses when cwd resolves to a different tree than
+        # the review (PDT-WT9K), so the shell has to be inside the fixture.
+        monkeypatch.chdir(repo)
+
+        rc = hook.cmd_critic_begin(repo, ["--mode", "verify-resolutions"])
+        out = capsys.readouterr().out
+
+        assert rc == EXIT_NO_REVIEW_NEEDED, out
+        assert "Nothing to do" not in out, (
+            f"an unverifiable tree was reported as an all-clear: {out!r}"
+        )
+        assert "UNVERIFIED" in out, f"the unknown answer never printed: {out!r}"
+        # Last word, same reason as the NOT REVIEWED block.
+        assert out.index("UNVERIFIED") > out.rindex("--force"), (
+            f"the caveat was buried above the --force route: {out!r}"
         )

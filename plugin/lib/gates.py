@@ -1364,8 +1364,9 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     and the loop that actually costs rounds is fix-commit-verify per finding:
     each commit extends HEAD, so each one buys a fresh round whose demoted
     observations tempt the next fix. Fixing everything in the working tree and
-    verifying once is sound — a verify pass reads the dirty tree — and the
-    verified tree is what gets committed.
+    verifying once is sound — a verify pass reads the dirty tree so long as no
+    commit has moved its anchor, which is what the no-commit-between-fixes line
+    below buys — and the verified tree is what gets committed.
 
     Three cases, because the standard remedy is *wrong* for a superseded
     blocker: one carried by a review fact no verify-resolutions pass will
@@ -1386,7 +1387,9 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
     standard = [
         "Fix ALL of them in the working tree first — do not commit between fixes.",
-        "Then run ONE /prawduct:critic verify-resolutions (it reads the dirty tree)",
+        "Then run ONE /prawduct:critic verify-resolutions — it reads the dirty tree",
+        "BECAUSE you did not commit first; a commit of unreviewed content moves its",
+        "anchor to HEAD and leaves the fix outside its own pass —",
         "and commit that verified tree verbatim: it records the resolution facts,",
         "so this same evidence passes with no full re-review.",
     ]
@@ -1731,15 +1734,17 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         "commit's tree was never reviewed — /prawduct:critic verify-resolutions "
         "reviews that delta and closes the gap. If verify-resolutions already ran "
         "but the working tree still holds an uncommitted fix, WHICH tree that pass "
-        "anchored decides what you owe, and the discriminator is whether anything "
-        "was committed between the review it verified and the pass itself. Nothing "
-        "committed: the fact anchored the WORKING tree, so commit that tree "
-        "VERBATIM and the fact ends at the tree this gate targets — no further "
-        "pass is owed, and only a selective or further-edited commit leaves a gap. "
-        "Something committed: the pass anchored committed HEAD instead and never "
-        "saw those uncommitted files, so committing them now opens a NEW delta "
-        "that needs its own verify-resolutions pass. A dispatch that refuses over "
-        "such an interval (exit 3) names the files it left out.",
+        "anchored decides what you owe. It anchored the WORKING tree unless you had "
+        "committed CONTENT the prior review never saw — a commit that materializes "
+        "the reviewed tree verbatim changes no content and does not move the anchor, "
+        "so \"did I commit at all\" is the wrong question to ask yourself here. "
+        "Working-tree anchor: commit that tree VERBATIM and the fact ends at the "
+        "tree this gate targets — no further pass is owed, and only a selective or "
+        "further-edited commit leaves a gap. Otherwise the pass anchored committed "
+        "HEAD and never saw those uncommitted files, so committing them now opens a "
+        "NEW delta that needs its own verify-resolutions pass; a dispatch that "
+        "refuses over such an interval (exit 3) names the files it left out. Full "
+        "derivation: `review-cycle.md` § Verify-resolutions anchoring.",
         file=sys.stderr,
     )
     return 1

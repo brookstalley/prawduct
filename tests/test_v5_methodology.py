@@ -456,7 +456,19 @@ LAST_MEASURED_TOKENS = {
     # sweep") instead of restating it, and by trimming the restore bound to
     # "the newest few" rather than naming the constant, which would be a second
     # carrier for a number `_ARCHIVE_KEEP` already owns.
-    "skills/critic/SKILL.md": 3445,
+    # +1 net on 2026-08-26: the exit-3 rule told the reader a `cumulative` /
+    # `verify-resolutions` 3 means the gate is satisfied — true of the PR gate,
+    # false of the Stop-hook one when the anchor left judgeable uncommitted work
+    # outside the interval it graded, which is the case the refusal block now
+    # names. A correctness fix on the payload every mode loads, so it was paid
+    # for INSIDE the file rather than by a bump: the "waste this exit exists to
+    # prevent" clause restated the two sentences above it, `run it anyway to be
+    # safe` was quoted twice, "never add `--force` on your own initiative" is
+    # step 4's rule stated in full at step 4, and "(it names the free files)"
+    # had become wrong as well as costly — the block names more than those now.
+    # The ceiling holds at 3450 untouched; the standing rule there is that the
+    # next addition trims or relocates, and this one trimmed.
+    "skills/critic/SKILL.md": 3446,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
