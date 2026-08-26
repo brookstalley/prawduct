@@ -1145,12 +1145,11 @@ class TestIterLivePlanFiles:
     """`plan_index.iter_live_plan_files` — four behaviours, none of which a flat
     fixture can tell apart from the glob it replaced.
 
-    That is the point of this class. The function was added to fix a flat
-    `artifacts.glob("build-plan-*.md")`, and every fixture written alongside it
-    was itself flat — so reverting to the glob stayed green and 5312 passing
-    tests said nothing about the fix. `display_path`'s own docstring records the
-    same lesson from the same module: "every fixture here is flat, so no fixture
-    could have shown it."
+    That is the point of this class. A flat fixture cannot distinguish this
+    function from the flat `artifacts.glob("build-plan-*.md")` it replaced, so
+    every case below is nested, scoped, or archived on purpose.
+    `display_path`'s own docstring records the same lesson from the same module:
+    "every fixture here is flat, so no fixture could have shown it."
     """
 
     def _plan(self, path: Path, scope: str | None = "s") -> Path:

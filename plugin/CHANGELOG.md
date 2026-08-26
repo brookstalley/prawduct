@@ -32,6 +32,16 @@ whether delegating is pre-approved. `off` is a complete answer and is honoured w
 names, citing the file each came from, and proposing nothing where it finds nothing. It never grades
 you on this.
 
+**A learnings sentinel is graded by your project's own test runner, or not graded at all.**
+Prawduct used to run every `sentinel=` learning under `python -m pytest`. In a project that does not
+use pytest that reported **failing** — against tests that were green — and the audit then argued to
+retire rules that were still enforced. There is now no default: declare `sentinel_command:` in
+`.prawduct/project-state.yaml` with a `{sentinel}` placeholder for the file to grade
+(`sentinel_command: npx vitest run {sentinel}`). **If you have `sentinel=` learnings and do not
+declare it, those sentinels report `ungraded` from this version on** — a verdict nobody took retires
+nothing, where the old default retired rules on a verdict it invented. `/prawduct:doctor` names the
+key when it sees the gap.
+
 **A verification record can say it was degraded.** A contended run can exit 0 having silently
 dropped part of your suite, and nothing in the counts separates that from a clean pass.
 `test-evidence record --degraded "<what did not report>"` says so, and the gates read it as stale
