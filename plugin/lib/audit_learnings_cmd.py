@@ -16,6 +16,12 @@ The HTML comment must be on the line immediately after the ``## Title`` line.
 A comment placed deeper in the entry body is ignored — the strict placement
 avoids parsing surprises when entries quote example metadata in their prose.
 
+**Grading a ``sentinel=`` needs the product to say how.** ``sentinel_command:``
+in ``project-state.yaml`` supplies the invocation, carrying a ``{sentinel}``
+placeholder for the file to run (``sentinel_command: npx vitest run {sentinel}``).
+Without it a sentinel is reported **ungraded**, never failed — prawduct governs
+products in every language and does not guess at one's test runner.
+
 **Two retirement reasons, never both on one entry.** ``sentinel=`` retires a
 rule because the failure mode it warned about is now structurally enforced by a
 passing test. ``superseded-by=`` retires it because a *broader rule replaced
@@ -36,8 +42,8 @@ lists). The runner does not raise on partial-result conditions — missing
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -329,38 +335,105 @@ def resolve_supersession_target(
     return matches[0], None
 
 
+#: The token a declared ``sentinel_command`` must carry, marking where the one
+#: test file to grade belongs. Spelled to match ``test_command``'s established
+#: ``{junit_xml}``, so a product that has declared its suite already knows the
+#: convention rather than meeting a second one.
+SENTINEL_PLACEHOLDER = "{sentinel}"
+
+
+def resolve_sentinel_command(product_dir: Path) -> tuple[list[str] | None, str | None]:
+    """The product's declared sentinel invocation as an argv template.
+
+    Returns ``(argv, None)`` when ``sentinel_command:`` is declared and usable,
+    or ``(None, reason)`` when it is absent or malformed. The reason is written
+    for an operator, not a log: it names the knob and what to put in it.
+
+    **There is deliberately no default.** An earlier version ran
+    ``sys.executable -m pytest`` whenever nothing was declared, which made every
+    non-Python product's sentinels both inert *and* permanently failing — and a
+    false-failing sentinel is worse than an ungraded one, because the audit
+    decides which learnings are structurally enforced, so it argues for retiring
+    a rule that is still enforced. No default can be written here without
+    assuming the governed product shares this runtime's language, which
+    ``architecture.md`` § Direction forbids: prawduct states the requirement
+    ("grade this sentinel") and the product declares how to meet it.
+    """
+    from . import advisory_store  # noqa: PLC0415 — lazy; only this path reads state
+
+    declared = advisory_store.load_project_state(product_dir).get("sentinel_command")
+    declared = declared.strip() if isinstance(declared, str) else ""
+    if not declared:
+        return None, (
+            "no `sentinel_command:` in .prawduct/project-state.yaml — prawduct "
+            "cannot know how this product runs one test file, and will not guess. "
+            "Declare it with a {sentinel} placeholder, e.g. "
+            "`sentinel_command: npx vitest run {sentinel}`"
+        )
+    if SENTINEL_PLACEHOLDER not in declared:
+        return None, (
+            f"`sentinel_command: {declared}` carries no {SENTINEL_PLACEHOLDER} "
+            "placeholder, so it names no test file to grade — it would run the "
+            "whole suite and report its verdict as this one rule's. Put "
+            f"{SENTINEL_PLACEHOLDER} where the test path belongs"
+        )
+    try:
+        argv = shlex.split(declared)
+    except ValueError as exc:
+        return None, f"`sentinel_command:` is not a parseable command line: {exc}"
+    if not argv:
+        return None, "`sentinel_command:` is empty once parsed"
+    return argv, None
+
+
 def run_sentinel(
     product_dir: Path, sentinel: str, *, timeout: int = 120
-) -> tuple[bool, str]:
-    """Run ``<this interpreter> -m pytest <sentinel> -q`` from ``product_dir``.
+) -> tuple[bool | None, str]:
+    """Grade one sentinel by running the product's declared command against it.
 
-    Spawns :data:`sys.executable`, not a bare ``python3``. Under any virtualenv
-    the PATH ``python3`` is a different interpreter from the one running the
-    audit — usually one without pytest, or without the product importable — so
-    every sentinel reported failing. That matters more than a noisy diagnostic:
-    the audit decides which learnings are structurally enforced, and a
-    false-failing sentinel argues for retiring a rule that is still enforced.
+    Returns ``(passed, detail)`` on a **three-valued** verdict, and the third
+    value carries the point:
 
-    Returns ``(passed, excerpt)``. The excerpt is the trailing portion of
-    pytest's combined stdout/stderr (last ~20 lines) so callers can surface
-    actionable failure context without dumping the full transcript.
+    * ``True``  — the command exited 0; the rule is structurally enforced.
+    * ``False`` — the command ran and exited non-zero; a real failure.
+    * ``None``  — prawduct could not grade it at all. **Not a failure**: no
+      command is declared, the declaration is malformed, or the command could
+      not be launched or never finished.
 
-    Subprocess failures (timeout, missing pytest, OS errors) return
-    ``(False, "<diagnostic>")`` rather than raising — the audit must keep
-    walking through remaining entries even when one sentinel is misconfigured.
+    Collapsing that third case into ``False`` is the whole defect this shape
+    exists to prevent — it accuses a green test and argues for retiring a live
+    rule. Callers must branch on ``is True`` / ``is False`` / ``is None`` and
+    never on truthiness, where ``None`` and ``False`` are indistinguishable.
+
+    A timeout and a launch failure both grade ``None`` rather than ``False``:
+    a command that never started, and one that never finished, each reported no
+    verdict, and "we do not know" is the honest reading of both.
+
+    ``detail`` is the command's trailing combined output (~20 lines) on a real
+    verdict, and the operator-facing reason on ``None``.
     """
+    argv_template, reason = resolve_sentinel_command(product_dir)
+    if argv_template is None:
+        return None, reason or "sentinel could not be graded"
+    argv = [tok.replace(SENTINEL_PLACEHOLDER, sentinel) for tok in argv_template]
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", sentinel, "-q"],
+            argv,
             cwd=str(product_dir),
             capture_output=True,
             text=True,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return False, f"sentinel timed out after {timeout}s"
+        return None, (
+            f"sentinel command timed out after {timeout}s — ungraded rather than "
+            "failed, because a command that never finished returned no verdict"
+        )
     except (OSError, FileNotFoundError) as exc:
-        return False, f"could not invoke pytest: {exc}"
+        return None, (
+            f"could not launch {argv[0]!r}: {exc} — ungraded rather than failed, "
+            "because a launch failure is an environment fault, not a test result"
+        )
 
     combined = (result.stdout or "") + (result.stderr or "")
     tail = "\n".join(combined.splitlines()[-20:])
@@ -401,8 +474,17 @@ def audit_learnings(
         by ``reason`` (``"sentinel"`` | ``"superseded-by"``). Every record
         carries the same keys, so a reader branches on ``reason`` rather than
         probing for which are present: ``sentinel``/``passed``/
-        ``output_excerpt`` are meaningful on the sentinel route and ``None``/
-        ``""`` on the other, and ``superseded_by``/``resolved_to`` the reverse.
+        ``output_excerpt``/``unevaluated_reason`` are meaningful on the sentinel
+        route and ``None``/``""`` on the other, and
+        ``superseded_by``/``resolved_to`` the reverse.
+
+        ``passed`` is three-valued on the sentinel route and a reader must treat
+        it that way: ``True`` enforced, ``False`` genuinely failing, ``None``
+        **ungraded** — no command declared, or one that could not run.
+        ``unevaluated_reason`` is set only for that last case and says why, so
+        "not attempted" (the ``run_sentinels=False`` seam) stays distinguishable
+        from "attempted, no verdict". An ungraded sentinel raises no ``errors``
+        entry: there is nothing to accuse the test of.
         Both routes live in this one list on purpose — a consumer asking "what
         is being retired?" must see all of it, and a separate list would
         under-report to every existing reader while looking complete. Additive
@@ -505,6 +587,12 @@ def audit_learnings(
         superseded_by = meta.get("superseded-by")
         sentinel_passed: bool | None = None
         sentinel_excerpt = ""
+        # Distinct from `sentinel_passed is None`, which has two causes: the
+        # `run_sentinels=False` seam, and a sentinel prawduct genuinely could not
+        # grade. Only the second has something to tell the operator, so only the
+        # second sets this — a caller can then tell "not attempted" from "attempted,
+        # no verdict" without inferring it from an empty excerpt.
+        sentinel_unevaluated: str | None = None
         # `is not None`, NOT truthiness. `parse_learning_metadata` strips the
         # value, so a half-finished `superseded-by=` (or `superseded-by=   `)
         # arrives as `""` — falsy on every branch, so the entry fell through to
@@ -541,6 +629,7 @@ def audit_learnings(
                 "sentinel": None,
                 "passed": None,
                 "output_excerpt": "",
+                "unevaluated_reason": None,
                 "superseded_by": superseded_by,
                 "resolved_to": resolved,
                 "applied": False,
@@ -561,6 +650,14 @@ def audit_learnings(
                 sentinel_passed, sentinel_excerpt = run_sentinel(
                     product_dir, sentinel
                 )
+                if sentinel_passed is None:
+                    # The runner returns its reason in the excerpt slot; move it
+                    # to its own field so `output_excerpt` keeps meaning "what
+                    # the test printed" rather than sometimes meaning "why no
+                    # test ran". A reader scanning excerpts for failure context
+                    # would otherwise read a prawduct diagnostic as test output.
+                    sentinel_unevaluated = sentinel_excerpt
+                    sentinel_excerpt = ""
             retirement_record = {
                 "title": entry.title,
                 "reason": "sentinel",
@@ -569,6 +666,7 @@ def audit_learnings(
                 "sentinel": sentinel,
                 "passed": sentinel_passed,
                 "output_excerpt": sentinel_excerpt,
+                "unevaluated_reason": sentinel_unevaluated,
                 "applied": False,
             }
             if sentinel_passed is False:
@@ -594,8 +692,13 @@ def audit_learnings(
                     retained_entries.append(entry)
                 retirements.append(retirement_record)
             else:
-                # run_sentinels=False — record as candidate without
-                # actually trying to retire.
+                # No verdict, from either cause: the `run_sentinels=False` seam,
+                # or a sentinel prawduct could not grade (`unevaluated_reason`
+                # says which). Recorded as a candidate and RETAINED either way,
+                # and deliberately with no `errors[]` entry — an ungraded
+                # sentinel has nothing to accuse the test of, and the old
+                # "fix the test or update the learning" line was pointing at
+                # green tests in every non-Python product.
                 retirements.append(retirement_record)
                 retained_entries.append(entry)
         else:

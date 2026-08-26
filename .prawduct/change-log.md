@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-26: a sentinel is graded by the product's own runner, or not at all
+
+<!-- prawduct: type=fix | scope=silent-governance-failures -->
+
+`run_sentinel` hardcoded `sys.executable -m pytest`. In a product that does not use pytest,
+every learnings sentinel came back **failing** with "No module named pytest" — against tests
+that were green. That is worse than an inert mechanism. The audit's job is deciding which
+learnings are structurally enforced, so a false-failing sentinel argues for retiring a rule
+that is still enforced, on evidence it never gathered.
+
+It was an uninventoried instance of the ratified "never be specific to Python" norm, whose
+fail-visible clause it also inverted: the norm says an ungraded language is reported
+*unchecked*, never silently passed, and this reported *failed*.
+
+**The remedy is declaration, on the `release_version_files:` precedent.** A product declares
+`sentinel_command:` with a `{sentinel}` placeholder for the file to grade —
+`sentinel_command: npx vitest run {sentinel}`. It cannot reuse `test_command:`, which names
+the whole suite and would grade every rule by the suite's verdict.
+
+**No default survives.** A pytest fallback would be the same violation wearing a default's
+clothes, so an undeclared sentinel is reported `ungraded` with a reason naming the knob, and
+no rule is retired on a verdict nobody took. `passed` is now three-valued and callers must
+branch on identity: `True` enforced, `False` genuinely failing, `None` ungraded. A launch
+failure and a timeout both grade `None` — a command that never started, and one that never
+finished, each returned no verdict.
+
+That withdraws working behaviour rather than adding to it, which the additive-first norm
+normally defers to a major. In-bounds here because the withdrawal fails *closed*: an ungraded
+sentinel withholds a retirement and destroys nothing, where the norm's purpose is protecting
+callers from breakage. Signalled rather than silent, per the same clause — the reason line
+names the knob. Keeping a pytest default alive through a retention window would have preserved
+exactly the Python-specificity the architecture norm forbids, so the two norms are answered
+together rather than traded against each other.
+
 ## 2026-08-24: the evidence file can say which commit it read
 
 <!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit -->

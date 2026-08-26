@@ -191,6 +191,21 @@ def _seed_learnings(product_dir: Path, content: str) -> Path:
     return learnings
 
 
+def _declare_sentinel_command(product_dir: Path, command: str) -> Path:
+    """Give a synthetic product a `sentinel_command:`.
+
+    Needed by every test that expects a real verdict: without a declaration the
+    runner reports `ungraded` by design, so a fixture that forgets this is
+    asserting the undeclared path while looking like it tests the declared one.
+    """
+    prawduct = product_dir / ".prawduct"
+    prawduct.mkdir(parents=True, exist_ok=True)
+    state = prawduct / "project-state.yaml"
+    prior = state.read_text() if state.is_file() else ""
+    state.write_text(f"{prior}sentinel_command: {command}\n")
+    return state
+
+
 class TestAuditLearnings:
     def test_no_learnings_file_returns_empty(self, tmp_path: Path):
         (tmp_path / ".prawduct").mkdir()
@@ -518,6 +533,7 @@ class TestRunSentinel:
         (tmp_path / "tests" / "test_synthetic.py").write_text(
             "def test_passes():\n    assert True\n"
         )
+        _declare_sentinel_command(tmp_path, f"{sys.executable} -m pytest {{sentinel}} -q")
         passed, excerpt = run_sentinel(
             tmp_path, "tests/test_synthetic.py::test_passes"
         )
@@ -529,6 +545,7 @@ class TestRunSentinel:
         (tmp_path / "tests" / "test_synthetic.py").write_text(
             "def test_fails():\n    assert False\n"
         )
+        _declare_sentinel_command(tmp_path, f"{sys.executable} -m pytest {{sentinel}} -q")
         passed, excerpt = run_sentinel(
             tmp_path, "tests/test_synthetic.py::test_fails"
         )
@@ -536,13 +553,62 @@ class TestRunSentinel:
         assert excerpt  # some diagnostic text returned
 
     def test_nonexistent_sentinel_returns_false(self, tmp_path: Path):
-        """pytest exits non-zero when the requested node ID can't be
-        collected. The audit must surface this as a failure, not raise."""
+        """A declared runner that exits non-zero because the node ID can't be
+        collected is a real FAILED verdict — the command ran and judged. It must
+        not be confused with the ungraded case below, where nothing ran."""
         (tmp_path / "tests").mkdir()
+        _declare_sentinel_command(tmp_path, f"{sys.executable} -m pytest {{sentinel}} -q")
         passed, excerpt = run_sentinel(
             tmp_path, "tests/does_not_exist.py::nope"
         )
         assert passed is False
+
+
+class TestSentinelWithoutAVerdictIsUngradedNotFailed:
+    """The three-valued contract, and the reason it exists.
+
+    `run_sentinel` used to hardcode `sys.executable -m pytest`, so in a product
+    that does not use pytest every sentinel came back FAILED with "No module
+    named pytest" — against tests that were green. That is worse than silence:
+    the audit decides which learnings are structurally enforced, so a
+    false-failing sentinel argues for retiring a rule that is still enforced.
+
+    Each case below returns `None`, never `False`. A caller testing truthiness
+    cannot tell them apart, which is why the runner's docstring forbids it.
+    """
+
+    def test_no_declaration_is_ungraded_and_names_the_knob(self, tmp_path: Path):
+        (tmp_path / ".prawduct").mkdir()
+        passed, reason = run_sentinel(tmp_path, "tests/test_x.py")
+        assert passed is None, "undeclared must be ungraded, never failed"
+        assert "sentinel_command" in reason
+        assert "{sentinel}" in reason, "the reason must show the placeholder"
+
+    def test_declaration_without_placeholder_is_refused(self, tmp_path: Path):
+        """A command naming no file would run the whole suite and report its
+        verdict as this one rule's — the defect that rules out reusing
+        `test_command:` for this, so it must not be reachable by hand either."""
+        _declare_sentinel_command(tmp_path, "npx vitest run")
+        passed, reason = run_sentinel(tmp_path, "tests/test_x.py")
+        assert passed is None
+        assert "{sentinel}" in reason
+
+    def test_unlaunchable_command_is_ungraded_not_failed(self, tmp_path: Path):
+        _declare_sentinel_command(tmp_path, "definitely-not-a-real-binary {sentinel}")
+        passed, reason = run_sentinel(tmp_path, "tests/test_x.py")
+        assert passed is None, "a launch failure is an environment fault, not a verdict"
+        assert "could not launch" in reason
+
+    def test_timeout_is_ungraded_not_failed(self, tmp_path: Path, monkeypatch):
+        _declare_sentinel_command(tmp_path, "sleep {sentinel}")
+
+        def fake_run(cmd, **kwargs):
+            raise subprocess.TimeoutExpired(cmd, 120)
+
+        monkeypatch.setattr(_mod.subprocess, "run", fake_run)
+        passed, reason = run_sentinel(tmp_path, "9999")
+        assert passed is None, "a command that never finished returned no verdict"
+        assert "timed out" in reason
 
 
 # =============================================================================
@@ -1212,9 +1278,32 @@ class TestAuditLearningsHumanOutputPerRoute:
             "## Enforced rule\n"
             "<!-- prawduct-learning: sentinel=tests/nope.py::test_missing -->\n\nBody.\n",
         )
+        _declare_sentinel_command(tmp_path, f"{sys.executable} -m pytest {{sentinel}} -q")
         res = self._run(tmp_path)
         assert res.returncode == 0, res.stderr
         assert "retire[blocked]: Enforced rule (sentinel=tests/nope.py::test_missing)" in res.stdout
+
+    def test_undeclared_sentinel_renders_ungraded_not_blocked(self, tmp_path: Path):
+        """The operator-facing half of the fix.
+
+        With no `sentinel_command:` the old code ran pytest anyway, so a
+        non-Python repo saw `retire[blocked]` — reported as a failing test
+        against one that was green, or in this case one that does not exist.
+        `blocked` claims a verdict; `ungraded` reports that none was taken, and
+        the reason line says what to declare.
+        """
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n"
+            "## Enforced rule\n"
+            "<!-- prawduct-learning: sentinel=bridge/auth.test.js -->\n\nBody.\n",
+        )
+        res = self._run(tmp_path)
+        assert res.returncode == 0, res.stderr
+        assert "retire[ungraded]: Enforced rule (sentinel=bridge/auth.test.js)" in res.stdout
+        assert "blocked" not in res.stdout, "an ungraded sentinel accuses nothing"
+        assert "not graded:" in res.stdout
+        assert "sentinel_command" in res.stdout, "the remedy must name the knob"
 
 
 class TestLifecycleMetadataLivesWhereItsReaderLooks:
@@ -1484,31 +1573,66 @@ class TestDescentObligationReachesTheReader:
 # =============================================================================
 
 
-class TestSentinelRunsTheRunningInterpreter:
-    """The sentinel subprocess must be `sys.executable`, not a bare `python3`.
+class TestSentinelRunsTheDeclaredCommand:
+    """The product declares the invocation; prawduct never picks one.
 
-    A bare `python3` resolves through the product's PATH, which under any
-    virtualenv is a *different* interpreter from the one running the audit —
-    typically one without pytest, or without the product installed. Every
-    sentinel then reports failing, and the audit's whole job is deciding which
-    learnings are structurally enforced, so a false-failing sentinel argues for
-    retiring a rule that is in fact still enforced.
+    This replaced a `sys.executable -m pytest` default. That default was
+    correct about one thing worth keeping — a bare `python3` resolves through
+    the product's PATH, which under a virtualenv is a different interpreter —
+    but it answered that by assuming every governed product is Python, which
+    `architecture.md` § Direction forbids. The interpreter question is now the
+    product's to answer in its own declaration, the same posture `test_command:`
+    already takes.
     """
 
-    def test_argv_uses_sys_executable(self, tmp_path, monkeypatch):
+    def test_argv_comes_from_the_declaration(self, tmp_path, monkeypatch):
         seen = {}
 
         def fake_run(cmd, **kwargs):
             seen["cmd"] = cmd
             return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
 
+        _declare_sentinel_command(tmp_path, "npx vitest run {sentinel} --reporter=dot")
         monkeypatch.setattr(_mod.subprocess, "run", fake_run)
-        passed, _excerpt = run_sentinel(tmp_path, "tests/test_x.py")
+        passed, _excerpt = run_sentinel(tmp_path, "bridge/auth.test.js")
 
         assert passed is True
-        assert seen["cmd"][0] == sys.executable, (
-            "the sentinel must run the interpreter running the audit; a bare "
-            "'python3' is whatever the product's PATH resolves to"
-        )
-        assert seen["cmd"][1:] == ["-m", "pytest", "tests/test_x.py", "-q"]
+        assert seen["cmd"] == [
+            "npx", "vitest", "run", "bridge/auth.test.js", "--reporter=dot"
+        ], "the declared command, shlex-split, with {sentinel} substituted in place"
         assert isinstance(seen["cmd"], list), "list-form args, never shell=True"
+
+    def test_no_python_specific_literal_survives_in_the_sentinel_path(self):
+        """The norm this fix discharges, pinned against reintroduction.
+
+        A future edit adding a pytest fallback would restore the exact defect —
+        so the source of the two functions that build and run the invocation
+        must name no test runner and no interpreter at all.
+        """
+        import inspect
+        import io
+        import tokenize
+
+        source = inspect.getsource(_mod.resolve_sentinel_command) + inspect.getsource(
+            _mod.run_sentinel
+        )
+        # Docstrings, comments and the example command inside an operator-facing
+        # message all legitimately name runners — the history is the reason this
+        # code is shaped the way it is, and deleting the explanation to satisfy a
+        # grep would be the worst possible reading of this test. Only EXECUTABLE
+        # code is scanned, so tokenize rather than matching line prefixes: a
+        # docstring's interior lines start with an ordinary word.
+        skip = {tokenize.COMMENT, tokenize.STRING, tokenize.NL, tokenize.NEWLINE}
+        for name in ("FSTRING_START", "FSTRING_MIDDLE", "FSTRING_END"):
+            if hasattr(tokenize, name):  # Python 3.12+ splits f-strings
+                skip.add(getattr(tokenize, name))
+        code = " ".join(
+            tok.string
+            for tok in tokenize.generate_tokens(io.StringIO(source).readline)
+            if tok.type not in skip
+        )
+        for banned in ("pytest", "sys.executable", "unittest", "npx", "go test"):
+            assert banned not in code, (
+                f"{banned!r} appears in the sentinel invocation path — prawduct "
+                "must state the requirement and let the product declare the runner"
+            )

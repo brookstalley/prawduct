@@ -6074,14 +6074,30 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
         # when its pointer resolved. Reading `passed` for both would report
         # every resolvable supersession as "blocked" (its `passed` is None by
         # construction) — a clean candidate rendered as a problem.
+        ungraded = False
         if r.get("reason") == "superseded-by":
             ready = r.get("resolved_to") is not None
             why = f"superseded-by={r.get('resolved_to') or r.get('superseded_by')}"
         else:
-            ready = bool(r.get("passed"))
+            # Three-valued, and `bool()` would flatten it: an UNGRADED sentinel
+            # (`passed is None`) is not a blocked one. Rendering it "blocked"
+            # tells the operator a test is failing when prawduct never ran one,
+            # which is the same false accusation in the report that the runner
+            # stopped making.
+            ready = r.get("passed") is True
+            ungraded = r.get("passed") is None
             why = f"sentinel={r['sentinel']}"
-        state = "retired" if r.get("applied") else ("ready" if ready else "blocked")
+        if r.get("applied"):
+            state = "retired"
+        elif ungraded:
+            state = "ungraded"
+        elif ready:
+            state = "ready"
+        else:
+            state = "blocked"
         print(f"  retire[{state}]: {r['title']} ({why})")
+        if r.get("unevaluated_reason"):
+            print(f"    not graded: {r['unevaluated_reason']}")
     for s in stale:
         print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
     for e in errors:
