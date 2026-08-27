@@ -3,6 +3,49 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-27: a duplicate learnings heading is reported, and refuses a retirement
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+`_take_active_narrative` resolved a heading by exact title and took the **first** match. Two
+same-titled blocks therefore meant a retirement cut one and archived it while its twin stayed in the
+active section with no index entry pointing at it — prose kept, index lost — in a file whose stated
+invariant is *never delete an entry here*. The function's own docstring warned about a *drifted*
+title and guarded exactly that; a *duplicated* one was unguarded, and the two fail in opposite
+directions: drift matches nothing and is a harmless no-op, duplication matches twice and loses an
+entry.
+
+It now scans every match and **refuses** on a second, naming both line numbers, and the refusal
+returns before any cut is composed — so a rejected run leaves both files exactly as it found them
+rather than half-moved. It deliberately does not de-duplicate: which of two identically-titled
+blocks is the real one is not something it can know, and an automatic fix would delete an entry to
+satisfy a check, in the one file that says never to.
+
+A new `check-learnings-pairing` grades the same defect earlier, before a retirement is attempted,
+and `/prawduct:doctor` reports it (Health Check #13a). Both exit **3** when the pair cannot be read,
+per the standing third-outcome rule, and `audit-learnings --apply` exits **1** when it refuses — a
+writer that wrote nothing.
+
+**Review found the refusal was right and its delivery was not**, which is the half worth recording.
+The refusal was appended to `errors` as a bare string where every other member of that list is a
+`{"title", "error"}` pair — so the CLI renderer that reads `e['title']` would raise a `TypeError`
+traceback across the boundary, which the api-contract forbids by name. The per-entry `applied` flag
+stayed `true` while the top-level one was correctly walked back, and the renderer branches on the
+per-entry one, so a refused run printed `retire[retired]` for entries still sitting in the active
+file. And the refused run exited **0**, telling its caller the retirement happened. Three defects,
+all on the delivery path, none of them reachable from a unit test of the cutter — which is why the
+tests now drive `audit-learnings --apply` end to end.
+
+**One half of the issue's ask was narrowed, deliberately and on evidence.** #717 also asked for
+counterpart and ordering findings, on the stated invariant that the two files "mirror each other's
+headings in the same order". Measured against this repo's own corpus *before* building to it, that
+invariant does not hold and never did: 270 active index entries against 179 in the detail file, and
+a detail heading is a truncated **prefix** of its index entry rather than a copy. Grading it would
+have emitted ~117 findings on a corpus nobody considers broken — the misfiring probe `docs/norms.md`
+names by its cost, which is that it teaches its reader to skip the one real catch. The counts ride
+the result for anyone working the drift down; no finding is raised on them. Naming what the pairing
+convention actually *is* has to come before anything can grade conformance to it.
+
 ## 2026-08-27: the verdict cache keys on the code that computed the verdict
 
 <!-- prawduct: type=fix | scope=silent-clear-checks -->

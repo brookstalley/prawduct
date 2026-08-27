@@ -146,7 +146,7 @@ retirement cannot orphan a duplicate; and two operator-facing signals stop being
 - [x] Chunk 02: An input that could not be read or recognised says so (#681, #664)
 - [x] Chunk 03: A verify pass records every blocking finding it discharges (#711)
 - [x] Chunk 04: The verdict cache keys on the code that computed the verdict (#668)
-- [ ] Chunk 05: The learnings pair is graded, and a duplicate heading refuses (#717)
+- [x] Chunk 05: The learnings pair is graded, and a duplicate heading refuses (#717)
 - [ ] Chunk 06: The version-delta headline renders as one sentence (#703)
 
 Context: Plan written 2026-08-27 on `fix/silent-clear-checks`, cut from a clean `develop` at
@@ -218,6 +218,47 @@ root tree and plugin tree the same object, so no test could observe scoping at a
 third test-shaped finding in this plan (chunk 03 had two): a fixture whose input cannot trigger the
 guard. The rule that keeps earning itself — when a test defends a distinction, check that the
 fixture can express both sides of it.
+
+Chunk 05 closed 2026-08-27 after four rounds (`chunk` -> three `verify-resolutions`), ending
+0 blocking / 0 warning / 0 note. Suite green; evidence recorded against the reviewed tree. The most
+expensive chunk of this plan, and the round count is the finding.
+
+What the reviews changed. **The refusal logic was right in round 1 and everything that DELIVERED it
+was broken** — the refusal went into `errors` as a bare string where every sibling is a
+`{"title","error"}` pair (a `TypeError` traceback across the CLI boundary), the per-entry `applied`
+flag stayed true while the top-level one was correctly reset (and the renderer branches on the
+per-entry one), and a refused `--apply` exited 0. Three defects, one delivery path, none reachable
+from a unit test of the cutter — which is why round 1's tests all called the private function.
+
+**The most dangerous defect was in a test.** Two subprocess tests inherited `os.environ`;
+`gitstate.resolve_project_dir` honours the `CLAUDE_PROJECT_DIR` pin whenever cwd is not a work tree,
+and a `tmp_path` never is — so `--apply` would have run against the REAL repo, and these fixtures
+exist to trigger a retirement. Verified empirically (env beats cwd), not taken on faith. The
+identical incident, with its date and its fix, is recorded four lines above those tests in the
+sibling file whose fixture shape I had copied without reading its env comment.
+
+**And the last round's blocker was self-inflicted while tidying.** Fixing an explicitly-ACCEPTED
+cosmetic observation, the refusal's title was changed to `retired_with_notes[0][0].title`, which is
+wrong whenever the duplicate sits on candidate 2+. The rule that earns itself: fix what blocks, and
+leave accepted observations accepted. It also needed a two-candidate fixture to catch — every
+single-candidate test passes whether the attribution is right or wrong.
+
+Carried into chunk 06's commit (deferrals, not drops):
+1. `tests/test_operator_verification.py:815` and `:832`
+and `:832` still pass `env=dict(os.environ)` with a `tmp_path` cwd — the same
+   class as chunk 05's N-1. Both invoke the READ-ONLY `check-operator-verification`, so a
+   mispointed run fails loudly rather than mutating anything, which is why it is an observation and
+   not a finding. Pin the env the way `_run_hook` does.
+2. `plugin/lib/audit_learnings_cmd.py` — `_apply_retirements` is annotated `-> "str | None"` and
+   `_detail_with_retirements` `-> tuple["str | None", "str | None"]`, but both now return a
+   `{"title","error"}` dict in the error slot. The docstrings were updated and the annotations were
+   not. Nothing reads them (no type checker in the repo or CI), so the cost is a future caller
+   trusting the annotation and interpolating a dict as a string.
+3. Same file, the docstring line left at 117 chars by an inserted sentence.
+
+**Chunk 06 is therefore no longer `Type: trivial`** — carrying these makes it more than the
+single-expression banner change its rationale claims, and over-declaring `trivial` is the unsafe
+direction. Declared `code`.
 
 Carried into chunk 05's commit (a deferral, not a drop — a prose trim in a judgeable file, so doing
 it after chunk 04's verify pass would buy a round for one clause): the new `_checkout` docstring in
@@ -471,10 +512,11 @@ list symmetry with the documented surface, not coverage.
   marker; an unbolded headline is unchanged; a headline containing legitimate mid-sentence
   emphasis is not mangled; the real `plugin/CHANGELOG.md` renders clean for every entry
 - **Acceptance criteria:** rendering the live CHANGELOG produces no headline containing `**`
-- **Type:** trivial
-- **Trivial because:** a single-expression change to one headline parser in one file, bounded
-  by a test that renders the whole live CHANGELOG; no new files, no `skills/`, `methodology/`,
-  `templates/` or `CLAUDE.md` edits, no behavioural surface beyond the rendered string.
+- **Type:** code
+  <!-- Was `trivial`. Chunk 05 closed with three carried items in `plugin/lib/` and
+       `tests/`, which this chunk's commit rides. That is more than the single-expression
+       change a `Trivial because:` rationale could honestly claim, and over-declaring
+       `trivial` is the unsafe direction. -->
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved

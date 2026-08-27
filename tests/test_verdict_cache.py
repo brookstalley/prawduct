@@ -373,10 +373,9 @@ class TestBounds:
 def _checkout(tmp_path, name, content="a = 1\n"):
     """A checkout whose plugin directory is a SUBDIRECTORY, not the root.
 
-    The shape matters and an earlier version of these fixtures got it wrong:
-    with the plugin directory at the repo root, root tree and plugin tree are
-    the same object, so no test could observe whether the probe scopes to the
-    plugin. It did not, and the suite was green throughout.
+    The shape is load-bearing: with the plugin directory at the repo root, root
+    tree and plugin tree are the same object, and no test here can observe
+    whether the probe scopes to the plugin at all. Do not flatten it.
 
     Returns (plugin_dir, repo_root).
     """

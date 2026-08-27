@@ -223,6 +223,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   same `inactive` means "this repo loads nothing" to an onboarding session and "the manifest
   record does not name this path" to a doctor run, which by construction executes inside a
   session where the plugin did load. `--json` carries `status` for a caller that must branch.
+- **Learnings pairing** — `check-learnings-pairing [--json]` (read-only). Grades `learnings.md`
+  against `learnings-detail.md`. Exit 0 clean, 1 a duplicate active heading, **3** the pair could
+  not be read — the third-outcome rule below. Only duplicates are graded; counterpart and ordering
+  drift ride `counts` as measurements, because the two files pair by PREFIX rather than exact title
+  and the mirror-exactly invariant does not hold in practice (270 index vs 179 detail active
+  entries on this repo). `audit-learnings --apply` refuses on the same duplicate state and exits
+  **1** — a writer that refused and wrote nothing, per the fail-direction rules below.
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
 - **Backlog service** — `backlog <op>`: a subcommand *group*, not a single command. The op set is
   `_ALL_OPS` in `lib/backlog/cli.py` — the same tuple the CLI builds its unknown-op message from, so
@@ -411,6 +418,9 @@ would have said, because the argument is only convincing in the concrete.
   1 it inherits "there are pending entries, drain or override the first one", and both remedies are
   inapplicable to a file that yielded no entries, leaving the caller at the queue file — the one
   move the refusal forbids. It still BLOCKS: 3 is non-zero, so the gate fails closed.
+- `check-learnings-pairing` (2026-08-27), *unreadable pair* — folded into 0 it reports a clean
+  pairing off a corpus it could not decode, which is this scope's own subject; folded into 1 it
+  claims a duplicate heading it never saw, sending an operator to hand-edit a file that is fine.
 - `check-released` (2026-08-04), *unverified* — see below.
 
 `check-released` (2026-08-04) exits **3** for
