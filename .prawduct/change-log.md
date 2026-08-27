@@ -3,6 +3,56 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-27: an input that could not be read or recognised says so
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+Two instances of one rule — **a present input that yielded nothing must not read as absent.**
+
+**The operator-verification gate was latently inert.** An entry is recognised only as a
+`## VRF-<id>` heading; anything else parses as preamble, which is deliberate and is what lets a
+trailing `## Notes` section coexist with real entries. That leniency is unchanged. What was wrong
+sat downstream: the gate discarded the preamble and reported `pending: 0` for a file it had parsed
+**zero** entries out of. A repo holding 32 entries as bullets under one `## Pending` heading was
+told its queue was empty, and `/pr create` blocked on nothing while every entry sat unseen.
+
+The fix is at the frame that actually discards. The parser was never the problem — it returns the
+preamble intact and loses nothing; the gate was throwing that preamble away unread.
+
+**Scope, stated honestly:** the discriminator reads the preamble, which is everything before the
+first *recognised* entry. So a queue whose entries are ALL unrecognised is caught, which is the
+reported failure and the one that makes a gate inert. A queue holding one good entry plus several
+unrecognised ones is not — those land after the first entry, in the body of a block that did parse.
+That is the same leniency that lets a trailing `## Notes` section coexist with real entries, and it
+is deliberate: the alternative refuses files the format explicitly permits. A required gate that finds unrecognised content now
+refuses with a distinct `unreadable` status, names the expected shape, and exits **3** — the
+standing rule for a gate whose SUBJECT could not be read, now stated once in the api-contract
+rather than as a list of gates that carry it. It still blocks (3 is non-zero), but not as exit 1:
+that code already means "there are pending entries, drain or override the first one", and both
+remedies are inapplicable to a file that yielded no entries, so reusing it would send the caller to
+a fix that cannot work — ending at the queue file, which is the one move the refusal forbids.
+Scoping it to `operator_verification_required: true` is what makes it safe: only a repo that opted
+into the gate can be stopped by it, and there being stopped is correct.
+
+**The override inherits the refusal, because it inherits the door.**
+`accept-operator-verification` reads the same queue and would have reported the gate "already
+satisfied" with `accepted_ids: []` — a recorded bypass covering entries nobody read. It refuses on
+the same state, without touching the file it refused over. Fixing the check and leaving its sibling
+would have been the instance, not the class.
+
+**The refusal also forbids the obvious fix, because the obvious fix is worse than the bug.** An
+agent meeting this block will reach for the queue file and reformat it — a silent rewrite of an
+operator-authored record, performed to satisfy a gate, that nobody reviewed. The message says so in
+the imperative. A refusal in front of an agent is an auto-fix unless it says otherwise.
+
+**An unrecognised `Critic mode:` value now says so once.** Fail-open-to-inference is correct and
+did not change — a typo'd mode must not block a review, and nothing is skipped. The ignore simply
+stopped being silent, which had let an author believe a mode was pinned when it was not and file
+the resulting surprise as a defect. Absent and blank stay silent: they carry no intent to
+contradict. Where the value is a valid `Type:` — `cumulative-final` is the natural trap, since it
+reads like a mode and lives on an orthogonal axis — the line names the right field, tested against
+the real Type vocabulary rather than a copy of it.
+
 ## 2026-08-27: onboarding proves the plugin will load, or says it could not tell
 
 <!-- prawduct: type=fix | scope=silent-clear-checks -->

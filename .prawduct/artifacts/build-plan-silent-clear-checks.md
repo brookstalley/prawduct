@@ -72,8 +72,9 @@ governed_by:
          PLUGIN'S OWN LIB failing to import, not a subject that could not be read — and that
          `check-released` already carries exit 3 for exactly this case, two paragraphs away in
          the same section, arguing that folding could-not-run into 0 reports success. Corrected
-         to exit 3, and the artifact now documents two third-outcome gates sharing one reason
-         rather than one gate and an unexplained divergence"
+         to exit 3, and the artifact was generalised from an enumeration of gates into a standing
+         rule — a gate whose SUBJECT could not be read takes the third outcome — because the
+         sentence carried a count that went stale twice in two chunks"
       - "additive-first evolution; `--json` keys never repurposed → conforms; chunks 01 and 02
          ADD subcommands, flags and result keys and repurpose none"
       - "whole-surface semver; the CLI subcommand surface is internal → conforms;
@@ -142,7 +143,7 @@ retirement cannot orphan a duplicate; and two operator-facing signals stop being
 ## Status
 
 - [x] Chunk 01: An onboarded repo proves governance is live, or says it could not tell (#710)
-- [ ] Chunk 02: An input that could not be read or recognised says so (#681, #664)
+- [x] Chunk 02: An input that could not be read or recognised says so (#681, #664)
 - [ ] Chunk 03: A verify pass records every blocking finding it discharges (#711)
 - [ ] Chunk 04: The verdict cache keys on the code that computed the verdict (#668)
 - [ ] Chunk 05: The learnings pair is graded, and a duplicate heading refuses (#717)
@@ -166,6 +167,27 @@ this exact folding reports success; the ratified fail-open rule turned out to sc
 lib failing to import, not a subject that could not be read. Corrected to exit 3, and the
 api-contract now documents two third-outcome gates under one shared reason instead of one gate and
 an unexplained divergence.
+
+Chunk 02 closed 2026-08-27 after two rounds (`chunk` -> `verify-resolutions`), ending
+0 blocking / 0 warning / 0 note. Suite green; evidence recorded against the reviewed tree.
+
+What the review changed, worth carrying. The blocking finding was an inconsistency I had created
+one chunk earlier and then contradicted: `check-plugin-active` got a distinct exit 3 for "the
+subject could not be read", and here the same semantic was folded into exit 1 — a code that already
+means "pending entries, drain or override the first", whose two remedies are both inapplicable to a
+queue that yielded nothing, leaving the caller at the queue file that the refusal exists to keep
+them away from. The review also found the api-contract sentence carrying a COUNT of third-outcome
+gates, stale twice in two chunks; it is now a standing rule with the gates as examples. And the
+warning was the class-vs-instance test: `accept-operator-verification` reaches the same queue by a
+different door and would have recorded a bypass covering entries nobody read. Fixing only the check
+would have shipped the sibling of the bug.
+
+Carried into chunk 03's commit (a deferral, not a drop — it rides a commit being made anyway
+rather than buying a round): `run_check_operator_verification`'s docstring still describes the old
+five-key return shape and says "the wrapper uses ... 1 otherwise", both stale as of chunk 02.
+Delete the exit-mapping sentence rather than restating it — `api-contract.md` owns that mapping,
+and a second copy is what let this one go stale. Round 3 demoted it (nothing reads the docstring);
+it is judgeable, so fixing it after the verify pass would have opened a delta for a comment.
 
 Carried into chunk 02's commit (a deferral, not a drop — it rides a commit being made anyway rather
 than buying a round): add a `("check-plugin-active", ["--context", "onboard"])` row to the
@@ -227,8 +249,10 @@ list symmetry with the documented surface, not coverage.
   `pending: 0` / "queue is empty" for a file it parsed **zero** entries out of, so a queue
   written in another format (32 entries as bullets, in the reported case) leaves the gate
   permanently inert. Fix: when the gate is **required** and the queue file exists with
-  substantive content but zero entries parsed, return a distinct `unreadable-queue` status and
-  fail **closed**. Scoping it to `operator_verification_required: true` is what makes it safe —
+  substantive content but zero entries parsed, return a distinct `unreadable` status and exit
+  **3** — blocking, but distinguishable from exit 1's "pending entries, drain or override",
+  whose remedies cannot apply here. The same refusal is given to
+  `accept-operator-verification`, which reaches the same queue by a different door. Scoping it to `operator_verification_required: true` is what makes it safe —
   only a repo that opted into the gate can be blocked by it, and being blocked is correct
   there.
 

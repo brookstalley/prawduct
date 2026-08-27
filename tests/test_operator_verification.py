@@ -604,3 +604,233 @@ class TestQueueEncodingRoundTrip:
             "a bare read_text() reintroduces the locale-encoding asymmetry"
         )
         assert "state_path.read_text()" not in src
+
+
+# ---------------------------------------------------------------------------
+# A queue that could not be READ is not a queue that is EMPTY.
+#
+# The reported failure was a repo holding 32 entries as bullets under one
+# `## Pending` heading: `parse_operator_verification` recognised none of them,
+# `run_check_operator_verification` reported `pending: 0`, and the gate blocked
+# on nothing while every entry sat unseen. The parser's leniency is deliberate
+# and unchanged — it is what lets a trailing `## Notes` section coexist with
+# real entries — so the fix is downstream, at the frame that discards the
+# preamble those unrecognised lines land in.
+#
+# The two silence tests are the load-bearing ones. A gate that fires on a
+# healthy repo is worse than the bug, and this one BLOCKS `/pr create`, so both
+# real corpora prawduct ships or maintains are asserted quiet.
+# ---------------------------------------------------------------------------
+
+import sys as _sys  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+_PLUGIN = str(_Path(__file__).resolve().parent.parent / "plugin")
+if _PLUGIN not in _sys.path:
+    _sys.path.insert(0, _PLUGIN)
+
+from lib import core as _core  # noqa: E402
+from lib import operator_verification as _ov  # noqa: E402
+
+
+def _repo(tmp_path, queue_text, *, required=True):
+    prawduct = tmp_path / ".prawduct"
+    prawduct.mkdir(parents=True, exist_ok=True)
+    (prawduct / "project-state.yaml").write_text(
+        f"operator_verification_required: {'true' if required else 'false'}\n",
+        encoding="utf-8",
+    )
+    if queue_text is not None:
+        (prawduct / "operator-verification.md").write_text(queue_text, encoding="utf-8")
+    return tmp_path
+
+
+_FIELD_SHAPE = """# Operator Verification Queue
+
+## Pending
+
+- VRF-001 check the dashboard renders
+- VRF-002 confirm the webhook fires
+- VRF-003 verify the export
+"""
+
+
+def test_unparsed_queue_blocks_instead_of_reporting_empty(tmp_path):
+    """The field case: entries in a shape the parser does not recognise."""
+    result = _ov.run_check_operator_verification(_repo(tmp_path, _FIELD_SHAPE))
+
+    assert result["queue_status"] == _ov.QUEUE_UNREADABLE
+    assert result["unparsed_lines"] == 4
+    assert "NOT a clear queue" in result["message"]
+
+
+def test_unparsed_queue_refusal_forbids_rewriting_the_queue(tmp_path):
+    """An agent meeting this refusal will reach for the file.
+
+    Reformatting an operator-authored record to satisfy a gate is a silent
+    edit nobody reviewed — a worse outcome than the silent no-op being fixed,
+    so the refusal has to say so in the imperative.
+    """
+    result = _ov.run_check_operator_verification(_repo(tmp_path, _FIELD_SHAPE))
+
+    assert "DO NOT rewrite the queue" in result["message"]
+
+
+def test_the_shipped_template_is_not_flagged(tmp_path):
+    """Pinned against the real artifact, not a fixture copy.
+
+    `init_product` copies this file verbatim, so a discriminator that fires on
+    it fires on every freshly onboarded repo.
+    """
+    template = (_Path(_core.TEMPLATES_DIR) / "operator-verification.md").read_text(
+        encoding="utf-8"
+    )
+
+    result = _ov.run_check_operator_verification(_repo(tmp_path, template))
+
+    assert result["queue_status"] == _ov.QUEUE_OK
+
+
+def test_this_repos_own_live_queue_is_not_flagged():
+    """The other real corpus. A false positive here blocks this repo's own PRs."""
+    live = _Path(__file__).resolve().parent.parent / ".prawduct" / "operator-verification.md"
+    if not live.is_file():
+        import pytest as _pytest
+        _pytest.skip("no live queue in this checkout")
+
+    preamble, entries = _ov.parse_operator_verification(live.read_text(encoding="utf-8"))
+
+    assert entries, "the live queue should parse"
+    assert _ov.unparsed_content_lines(preamble) == []
+
+
+def test_a_genuinely_empty_queue_still_reports_empty(tmp_path):
+    result = _ov.run_check_operator_verification(
+        _repo(tmp_path, "# Operator Verification Queue\n\n<!-- notes -->\n")
+    )
+
+    assert result["queue_status"] == _ov.QUEUE_OK
+    assert result["pending"] == 0
+    assert "empty" in result["message"]
+
+
+def test_a_missing_queue_file_still_reports_empty(tmp_path):
+    result = _ov.run_check_operator_verification(_repo(tmp_path, None))
+
+    assert result["queue_status"] == _ov.QUEUE_OK
+    assert result["pending"] == 0
+
+
+def test_a_notes_section_beside_real_entries_is_not_flagged(tmp_path):
+    """The leniency this fix deliberately preserves."""
+    text = (
+        "# Operator Verification Queue\n\n"
+        "## VRF-001 — Chunk 01 — a thing\n\n**Status:** pending\n\n"
+        "## Notes\n\nsome free prose the parser ignores\n"
+    )
+    result = _ov.run_check_operator_verification(_repo(tmp_path, text))
+
+    assert result["queue_status"] == _ov.QUEUE_OK
+    assert result["pending"] == 1
+
+
+def test_not_required_short_circuits_before_the_new_check(tmp_path):
+    """Only a repo that opted into this gate can be blocked by it."""
+    result = _ov.run_check_operator_verification(
+        _repo(tmp_path, _FIELD_SHAPE, required=False)
+    )
+
+    assert result["required"] is False
+    assert result["queue_status"] == _ov.QUEUE_OK
+
+
+def test_every_check_result_carries_the_same_keys(tmp_path):
+    """A caller must not have to know which branch produced its result."""
+    keys = None
+    for text, required in [
+        (_FIELD_SHAPE, True),
+        (None, True),
+        ("# Operator Verification Queue\n", True),
+        (_FIELD_SHAPE, False),
+        ("## VRF-1 — c — t\n\n**Status:** pending\n", True),
+    ]:
+        result = _ov.run_check_operator_verification(_repo(tmp_path, text, required=required))
+        if keys is None:
+            keys = set(result)
+        assert set(result) == keys
+        for f in (tmp_path / ".prawduct").glob("operator-verification.md"):
+            f.unlink()
+
+
+def test_accept_pending_refuses_an_unparsed_queue(tmp_path):
+    """The override reaches the same queue by a different door.
+
+    Without this it reports "gate already satisfied" and records
+    `accepted_ids: []` — a recorded bypass covering entries nobody read, which
+    is worse than the check's version of the same bug because the operator has
+    deliberately chosen to override and is entitled to know what they overrode.
+    """
+    result = _ov.run_accept_pending(_repo(tmp_path, _FIELD_SHAPE), "shipping anyway")
+
+    assert "error" in result
+    assert "parsed 0 entries" in result["error"]
+    assert "accepted_ids" not in result
+
+
+def test_accept_pending_still_reports_satisfied_on_a_genuinely_empty_queue(tmp_path):
+    """The negative: refusing here would break every clean override."""
+    result = _ov.run_accept_pending(
+        _repo(tmp_path, "# Operator Verification Queue\n"), "shipping anyway"
+    )
+
+    assert "error" not in result
+    assert result["accepted_ids"] == []
+
+
+def test_accept_pending_does_not_rewrite_the_unparsed_queue(tmp_path):
+    """It must refuse WITHOUT touching the file it refused over."""
+    repo = _repo(tmp_path, _FIELD_SHAPE)
+    queue = repo / ".prawduct" / "operator-verification.md"
+    before = queue.read_text(encoding="utf-8")
+
+    _ov.run_accept_pending(repo, "shipping anyway")
+
+    assert queue.read_text(encoding="utf-8") == before
+
+
+def test_cli_exits_3_on_an_unparsed_queue_not_1(tmp_path):
+    """Exit 1 already means "pending entries, drain or override the first".
+
+    Both of those remedies are inapplicable to a queue that yielded no entries,
+    so reusing 1 would send the caller to a fix that cannot work — ending at the
+    queue file, which is the move the refusal exists to prevent. 3 still blocks.
+    """
+    import os
+    import subprocess
+
+    repo = _repo(tmp_path, _FIELD_SHAPE)
+    hook = _Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+    proc = subprocess.run(
+        [_sys.executable, str(hook), "check-operator-verification"],
+        capture_output=True, text=True, cwd=str(repo), env=dict(os.environ),
+    )
+
+    assert proc.returncode == 3, (proc.returncode, proc.stderr)
+    assert proc.returncode != 1
+    assert "NOT a clear queue" in proc.stderr
+
+
+def test_cli_still_exits_1_on_genuinely_pending_entries(tmp_path):
+    """The neighbour that must keep its meaning."""
+    import os
+    import subprocess
+
+    repo = _repo(tmp_path, "## VRF-001 — Chunk 01 — a thing\n\n**Status:** pending\n")
+    hook = _Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+    proc = subprocess.run(
+        [_sys.executable, str(hook), "check-operator-verification"],
+        capture_output=True, text=True, cwd=str(repo), env=dict(os.environ),
+    )
+
+    assert proc.returncode == 1
+    assert "VRF-001" in proc.stderr

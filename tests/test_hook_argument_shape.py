@@ -422,6 +422,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("check-plugin-active", []),
         ("check-plugin-active", ["--path", "/tmp/x", "--json"]),
         ("check-plugin-active", ["--path", "/tmp/x", "--context", "doctor"]),
+        ("check-plugin-active", ["--context", "onboard"]),
     ]
     for command, argv in documented:
         assert _hook._check_argument_shape(command, argv) == 0, (

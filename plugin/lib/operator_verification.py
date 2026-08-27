@@ -80,6 +80,55 @@ class VerificationEntry:
         return _STATUS_PENDING
 
 
+#: Statuses a queue check can report. ``unreadable`` is the third outcome, and
+#: it exists for the same reason the other third outcomes in this codebase do:
+#: a file that yielded nothing is not the same answer as a file that held
+#: nothing, and folding them reports a drained queue on a queue nobody parsed.
+QUEUE_OK = "ok"
+QUEUE_UNREADABLE = "unreadable"
+
+
+def unparsed_content_lines(preamble: str) -> list[str]:
+    """Preamble lines that look like queue CONTENT rather than file header.
+
+    :func:`parse_operator_verification` is deliberately lenient — a heading it
+    does not recognise becomes preamble, so a trailing ``## Notes`` section a
+    user appended does not break the parser. That leniency is right and stays.
+    What it costs is that everything the parser failed to recognise lands in the
+    preamble *silently*, and the gate then throws the preamble away.
+
+    So this is the discriminator, and it is a filter rather than a guess: strip
+    the level-1 title and any HTML comment (both of which the shipped template
+    uses, and neither of which is an entry), and report what is left. A queue
+    written in a format this parser cannot read has its entries here; a
+    correctly-formatted queue — empty or full — has nothing here.
+
+    Measured against the real corpora before it was written: the shipped
+    template and this repo's live 16-entry queue each yield 0, and the
+    bullets-under-one-pending-heading shape from the field report yields 4.
+    """
+    out: list[str] = []
+    in_comment = False
+    for line in preamble.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if in_comment:
+            if "-->" in stripped:
+                in_comment = False
+            continue
+        if stripped.startswith("<!--"):
+            if "-->" not in stripped:
+                in_comment = True
+            continue
+        # The level-1 title only. A `## ` heading IS content the parser did not
+        # recognise, and is exactly what the reported failure looked like.
+        if stripped.startswith("#") and not stripped.startswith("##"):
+            continue
+        out.append(stripped)
+    return out
+
+
 def parse_operator_verification(content: str) -> tuple[str, list[VerificationEntry]]:
     """Split ``operator-verification.md`` content into (preamble, entries).
 
@@ -286,6 +335,8 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
         return {
             "required": False,
             "pending": 0,
+            "queue_status": QUEUE_OK,
+            "unparsed_lines": 0,
             "queue_path": str(queue_path),
             "first_pending": None,
             "message": (
@@ -294,12 +345,47 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
             ),
         }
 
-    _, entries = _load_queue(queue_path)
+    preamble, entries = _load_queue(queue_path)
+
+    # A gate that could not read its input has not found an empty queue. The
+    # preamble is where every line this parser failed to recognise ends up, and
+    # discarding it here (the frame that actually loses the information) is what
+    # let a 32-entry queue in another format report as drained while the gate
+    # blocked on nothing. Scoped to the required case by construction — the
+    # not-required branch returned above — so only a repo that opted into this
+    # gate can be stopped by it, which is where being stopped is correct.
+    if not entries:
+        unparsed = unparsed_content_lines(preamble)
+        if unparsed:
+            return {
+                "required": True,
+                "pending": 0,
+                "queue_status": QUEUE_UNREADABLE,
+                "unparsed_lines": len(unparsed),
+                "queue_path": str(queue_path),
+                "first_pending": None,
+                "message": (
+                    f"blocking: parsed 0 entries from a queue file that is not "
+                    f"empty — {len(unparsed)} line(s) in {queue_path} were not "
+                    "recognised as entries. An entry is a level-2 heading "
+                    "`## VRF-<id> - <title>` whose first body line is "
+                    "`**Status:** pending|verified|accepted`. This is NOT a "
+                    "clear queue: nothing was read, so nothing could be found "
+                    "pending.\n"
+                    "DO NOT rewrite the queue to satisfy this check. It is an "
+                    "operator-authored record and reformatting it is a silent "
+                    "edit nobody reviewed - report the mismatch to the operator "
+                    "and let them decide."
+                ),
+            }
+
     pending = pending_entries(entries)
     if not pending:
         return {
             "required": True,
             "pending": 0,
+            "queue_status": QUEUE_OK,
+            "unparsed_lines": 0,
             "queue_path": str(queue_path),
             "first_pending": None,
             "message": (
@@ -312,6 +398,8 @@ def run_check_operator_verification(product_dir: str | Path) -> dict:
     return {
         "required": True,
         "pending": len(pending),
+        "queue_status": QUEUE_OK,
+        "unparsed_lines": 0,
         "queue_path": str(queue_path),
         "first_pending": first.vrf_id,
         "message": (
@@ -437,6 +525,27 @@ def run_accept_pending(
     queue_path = prawduct_dir / "operator-verification.md"
     preamble, entries = _load_queue(queue_path)
     pending = pending_entries(entries)
+
+    # The override reaches the same queue by a different door, so it inherits
+    # the same defect: with nothing parsed it would report the gate "already
+    # satisfied" and record `accepted_ids: []` — an override that overrode
+    # nothing, on entries nobody read. Refusing here matters more than in the
+    # check, because this is the path an operator takes when they have DECIDED
+    # to bypass the gate, and a bypass that silently covers zero entries is a
+    # recorded decision about work that was never seen.
+    if not entries and unparsed_content_lines(preamble):
+        return {
+            "error": (
+                f"Cannot accept: parsed 0 entries from a queue file that is not "
+                f"empty ({queue_path}). Nothing was read, so there is nothing to "
+                "accept and an override here would record a bypass covering no "
+                "entries. Fix the queue's format — an entry is a level-2 heading "
+                "`## VRF-<id> - <title>` whose first body line is "
+                "`**Status:** pending|verified|accepted` — or clear "
+                "`operator_verification_required`. Do NOT reformat the queue on "
+                "the operator's behalf."
+            )
+        }
 
     if not pending:
         return {

@@ -210,7 +210,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   plan could be reported converged — the "path that cannot answer, reporting as one that answered"
   shape this command was written to end.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
-  `verify-operator-verification` (both mutating).
+  `verify-operator-verification` (both mutating). The check is three-way: 0 satisfied, 1 pending
+  entries, **3** the queue could not be parsed (see the third-outcome rule under § Error Model).
+  `accept-operator-verification` refuses on that same unparsed queue rather than recording a bypass
+  that covers no entries — an override reached by a different door must not inherit the defect the
+  check just closed.
 - **Plugin activation** — `check-plugin-active [--path P] [--context onboard|doctor] [--json]`
   (read-only). Answers whether the harness will actually LOAD the plugin for a repo, which
   project-scope enablement in `.claude/settings.json` does not settle on its own. **Three-way by
@@ -393,11 +397,21 @@ raised as stack traces across the boundary.** The intended scheme:
 `ok` | `failed` | `unverifiable`. Registered here because the `--json` emitters are enumerated in
 this section, and a payload documented only by its exit code is a shape a caller has to reverse-engineer.
 
-**Two gates carry a third outcome, for one shared reason: both foldings of "could not run" are
-wrong, and each command's own environment says why.** `check-plugin-active` (2026-08-27) exits **3**
-for *unknown* — folded into 1 it reports a broken install because a harness-internal file would not
-parse, sending an operator to reinstall something that works; folded into 0 it reports a clean bill
-off a check that never ran, which is the class the command exists to close.
+**A gate whose SUBJECT could not be read takes a third outcome — exit 3 — rather than folding into
+0 or 1.** This is a standing rule, not a list to maintain: 0 would report a clean bill off a check
+that never ran, and 1 would put a new meaning on a number that already carries a specific remedy,
+sending the caller to a fix that cannot apply. Each command below states what its own two foldings
+would have said, because the argument is only convincing in the concrete.
+
+- `check-plugin-active` (2026-08-27), *unknown* — folded into 1 it reports a broken install
+  because a harness-internal file would not parse, sending an operator to reinstall something that
+  works; folded into 0 it reports a clean bill off a check that never ran.
+- `check-operator-verification` (2026-08-27), *unreadable queue* — folded into 0 it reports a
+  drained queue on a queue nobody parsed, which is the defect it was written to close; folded into
+  1 it inherits "there are pending entries, drain or override the first one", and both remedies are
+  inapplicable to a file that yielded no entries, leaving the caller at the queue file — the one
+  move the refusal forbids. It still BLOCKS: 3 is non-zero, so the gate fails closed.
+- `check-released` (2026-08-04), *unverified* — see below.
 
 `check-released` (2026-08-04) exits **3** for
 *unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a

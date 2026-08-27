@@ -4307,6 +4307,21 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
     result = ov.run_check_operator_verification(project_dir)
     if not result["required"]:
         return 0
+    # Order matters: an unreadable queue reports `pending: 0` because nothing
+    # was parsed, so testing pending first would let the exact failure this
+    # branch exists for fall through as a pass.
+    #
+    # Exit **3**, not 1. Both block — 3 is non-zero, so `/prawduct:pr` Step 2b stops
+    # either way and the gate still fails closed. What 3 buys is that the
+    # blocking REASON is readable from the code: 1 has always meant "there are
+    # pending entries, here is the first ID, drain or override it", and both of
+    # those remedies are inapplicable to a queue nobody could parse. Reusing 1
+    # would be a new meaning wearing an old number, and it would send an agent
+    # to the two remedies that cannot work — ending at the queue file, which is
+    # the one move this refusal exists to prevent.
+    if result.get("queue_status") == ov.QUEUE_UNREADABLE:
+        print(result["message"], file=sys.stderr)
+        return 3
     if result["pending"] == 0:
         print(result["message"])
         return 0
