@@ -147,7 +147,7 @@ retirement cannot orphan a duplicate; and two operator-facing signals stop being
 - [x] Chunk 03: A verify pass records every blocking finding it discharges (#711)
 - [x] Chunk 04: The verdict cache keys on the code that computed the verdict (#668)
 - [x] Chunk 05: The learnings pair is graded, and a duplicate heading refuses (#717)
-- [ ] Chunk 06: The version-delta headline renders as one sentence (#703)
+- [x] Chunk 06: The version-delta headline renders as one sentence (#703)
 
 Context: Plan written 2026-08-27 on `fix/silent-clear-checks`, cut from a clean `develop` at
 `d47381bd` (immediately after #722 merged via PR #725). Baseline suite green.
@@ -243,7 +243,38 @@ wrong whenever the duplicate sits on candidate 2+. The rule that earns itself: f
 leave accepted observations accepted. It also needed a two-candidate fixture to catch — every
 single-candidate test passes whether the attribution is right or wrong.
 
-Carried into chunk 06's commit (deferrals, not drops):
+Chunk 06 closed 2026-08-27 after three rounds (`final` -> two `verify-resolutions`), ending
+0 blocking / 0 warning / 0 note. Suite green; evidence recorded against the reviewed tree.
+**All six chunks complete.** On a gitflow base the plan stays live past the `develop` merge and is
+archived by the `develop`->`main` release (`plan-backfill`).
+
+What the reviews changed. The "one-liner" was not one: a bullet and an emphasis marker share the
+`*` character, so `lstrip("-* ")` was eating the OPENING `**` and stranding its partner — and the
+first fix checked for a leading `**` after that same lstrip had already removed it. Round 1 then
+found the fix handled `**` and left single `*` broken, reproducing the symptom one marker narrower,
+while three prose copies stated a discriminator the code did not implement. The real rule is the
+FOLLOWING WHITESPACE.
+
+**The acceptance criterion was wrong twice and both corrections are recorded inline** — "no
+headline contains `**`" would have flattened the author's own mid-sentence emphasis, and its
+replacement "every marker is PAIRED" is unachievable over this artifact, because changelog prose
+carries markers that are not emphasis (17 live entries have odd counts; a shell glob in a code span
+supplies 33 stars on its own). The property the stripper actually promises is that a stripped
+headline does not BEGIN with a marker.
+
+**And the recurring class landed one more time, in a guard written to close it.** The env-pin test
+asserted `"CLAUDE_PROJECT_DIR" not in os.environ` with a docstring claiming it would fail if the
+fixture were dropped. It would not: the variable is unset here, so it passed identically either
+way. It now runs a nested pytest WITH the variable set, which is the only condition the fixture
+exists for, and that was verified by deleting the fixture and watching it fail.
+
+The env-inheritance class itself closed by CONSTRUCTION rather than a fourth copy: three files had
+each grown a near-identical pinned-env helper while two write-command call sites (`lifecycle-repair`,
+`archive-plan`) stayed open, because a convention protects only the files whose author knew about
+it. A session-scoped autouse fixture removes the pin once, for every test including ones not yet
+written.
+
+Discharged here (carried from chunk 05):
 1. `tests/test_operator_verification.py:815` and `:832`
 and `:832` still pass `env=dict(os.environ)` with a `tmp_path` cwd — the same
    class as chunk 05's N-1. Both invoke the READ-ONLY `check-operator-verification`, so a
@@ -511,7 +542,19 @@ list symmetry with the documented surface, not coverage.
 - **Tests:** `tests/test_plugin_version_banner.py` — a bolded lead-in renders with no stray
   marker; an unbolded headline is unchanged; a headline containing legitimate mid-sentence
   emphasis is not mangled; the real `plugin/CHANGELOG.md` renders clean for every entry
-- **Acceptance criteria:** rendering the live CHANGELOG produces no headline containing `**`
+- **Acceptance criteria:** rendering the live CHANGELOG produces no headline that BEGINS with an
+  emphasis marker, and none opening with a stray closing one.
+  <!-- Corrected during the build. The original read "no headline containing `**`", which is a
+       different and wrong property: headlines legitimately use mid-sentence emphasis, and
+       satisfying the original would have meant flattening the author's markup — fixing the
+       symptom by deleting the feature.
+
+       Corrected a SECOND time, same route. The replacement ("no UNPAIRED marker") asserted a
+       global parity that is unachievable over this artifact: changelog prose carries markers
+       that are not emphasis — `unbuilt_at_archive` makes `_` odd, `~/.claude*/plugins/…` makes
+       `*` odd — and both guards fired on healthy entries. The property the stripper actually
+       promises is that a stripped headline does not BEGIN with a marker. Recorded rather than
+       quietly amended, twice. -->
 - **Type:** code
   <!-- Was `trivial`. Chunk 05 closed with three carried items in `plugin/lib/` and
        `tests/`, which this chunk's commit rides. That is more than the single-expression

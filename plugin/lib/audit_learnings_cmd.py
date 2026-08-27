@@ -865,7 +865,7 @@ def _apply_retirements(
     retained_entries: list[LearningEntry],
     retired_with_notes: list[tuple[LearningEntry, str]],
     original_content: str,
-) -> "str | None":
+) -> "dict | None":
     """Rewrite ``learnings.md`` with retired entries removed, and append
     those entries to ``learnings-detail.md`` under the historical section.
 
@@ -946,15 +946,17 @@ def _find_historical_section(lines: list[str]) -> int | None:
 
 def _detail_with_retirements(
     detail_path: Path, retired_with_notes: list[tuple[LearningEntry, str]]
-) -> tuple["str | None", "str | None"]:
+) -> tuple["str | None", "dict | None"]:
     """The full new text of ``learnings-detail.md``, or a refusal.
 
     Returns ``(text, None)`` normally and ``(None, {"title", "error"})`` when a
     retiring entry's title is duplicated in the active section — see
     :func:`_take_active_narrative`. The pair is carried rather than a bare
-    reason so the refusal stays attributed to the entry that produced it. Pure — writes nothing either way, and the
-    refusal returns BEFORE any cut is composed, so a rejected run leaves both
-    files exactly as it found them rather than half-moved.
+    reason so the refusal stays attributed to the entry that produced it.
+
+    Pure — writes nothing either way, and the refusal returns BEFORE any cut is
+    composed, so a rejected run leaves both files exactly as it found them
+    rather than half-moved.
     """
     if detail_path.is_file():
         detail_content = detail_path.read_text()

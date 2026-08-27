@@ -3,6 +3,48 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-27: the version-delta headline renders as one sentence
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+Every version-delta headline carried a stray `**` mid-sentence — *"Less waiting on the gates, fewer
+rounds in review.`**` Gate checks stop timing out…"* — and had done since at least v3.3.2. It lands
+on the single most-read line prawduct emits: the one every upgrading repo sees.
+
+The cause is that a bullet and an emphasis marker share a character, so they cannot share a strip
+set. `lstrip("-* ")` consumed the OPENING `**` of a bolded lead-in as though it were bullet
+punctuation, leaving the closing marker with nothing to pair against. The discriminator is now the
+FOLLOWING WHITESPACE — `* ` opens a list item, `*text*` and `**text**` open emphasis — and only
+then is a matched leading pair unwrapped, longest marker first.
+
+**Mid-sentence emphasis is preserved, and that is why this is a function rather than a wider strip
+set.** A blanket `replace("**", "")` would have cleared the symptom by flattening the author's own
+markup.
+
+The acceptance criterion took two corrections during the build, both recorded. "No headline contains
+`**`" would have demanded exactly that flattening. "Every marker is PAIRED" replaced it and was also
+wrong — it is unachievable over this artifact, because changelog prose legitimately carries markers
+that are not emphasis: a snake_case identifier makes the `_` count odd, and a shell glob inside a
+code span (`~/.claude*/plugins/…`) makes the `*` count odd, and both fired on healthy entries. What
+the stripper actually promises is narrower and is the reported symptom's exact inverse: **a stripped
+headline does not begin with an emphasis marker.** That is what is asserted, against the live
+`CHANGELOG.md` rather than a fixture.
+
+Three items carried from the previous chunk ride this commit: two stale return annotations that
+still said `str | None` after the error slot became a `{"title", "error"}` dict, an over-long
+docstring line, and the last two subprocess tests inheriting `os.environ`. That last one did **not** close its class, and the
+claim that it did was wrong: a sweep for `env=dict(os.environ)` missed four more helpers passing a
+`cwd` and no `env` at all, two of which invoke WRITERS (`lifecycle-repair`, `archive-plan`) against
+the real repository whenever the harness sets the pin. They pass today only because the variable is
+unset here.
+
+**So the class is closed by a construction rather than a fourth copy of the fix.** A session-scoped
+autouse fixture removes `CLAUDE_PROJECT_DIR` from the environment for the whole test run, so no test
+can inherit it — including tests not yet written. Three files had each grown a near-identical
+pinned-env helper, and two write-command call sites were still open, because a convention protects
+only the files whose author happened to know about it. A test that genuinely wants the pin still
+sets it explicitly.
+
 ## 2026-08-27: a duplicate learnings heading is reported, and refuses a retirement
 
 <!-- prawduct: type=fix | scope=silent-clear-checks -->

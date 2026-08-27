@@ -19,6 +19,7 @@ nobody considers broken. The narrowing is deliberate and recorded, and
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -422,3 +423,44 @@ def test_the_refusal_names_the_entry_that_refused_not_the_first_candidate(tmp_pa
     assert errors[0]["title"] == "Second rule", errors[0]
     assert "Second rule" in errors[0]["error"]
     assert "First rule" not in errors[0]["title"]
+
+
+def test_the_ambient_project_dir_pin_is_removed_even_when_the_harness_sets_it(tmp_path):
+    """The construction that closes the class, proved under the condition it
+    exists for.
+
+    A bare `assert "CLAUDE_PROJECT_DIR" not in os.environ` is VACUOUS here: the
+    variable is unset in this environment, so it passes identically with the
+    conftest fixture deleted — a guard whose docstring claims a pin it does not
+    hold, which is this plan's own recurring class appearing one more time. The
+    fixture only matters under a harness that SETS the variable (Claude Code
+    does), so the test has to create that condition.
+
+    It runs a nested pytest with the variable set and a one-line test asserting
+    its absence. If the fixture is ever dropped, the inner run fails and so does
+    this one — which is what the previous version only claimed.
+    """
+    inner = tmp_path / "test_inner.py"
+    inner.write_text(
+        "import os\n\n\n"
+        "def test_pin_is_absent():\n"
+        "    assert 'CLAUDE_PROJECT_DIR' not in os.environ\n",
+        encoding="utf-8",
+    )
+    conftest_src = Path(__file__).resolve().parent / "conftest.py"
+    (tmp_path / "conftest.py").write_text(
+        conftest_src.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    env = dict(os.environ)
+    env["CLAUDE_PROJECT_DIR"] = str(tmp_path / "somewhere-else")
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", str(inner), "-q", "-p", "no:cacheprovider",
+         "-p", "no:xdist"],
+        capture_output=True, text=True, cwd=str(tmp_path), env=env,
+    )
+
+    assert proc.returncode == 0, (
+        "the session fixture did not remove an ambient CLAUDE_PROJECT_DIR:\n"
+        + proc.stdout[-1500:]
+    )

@@ -655,6 +655,30 @@ _FIELD_SHAPE = """# Operator Verification Queue
 """
 
 
+import subprocess as _subprocess  # noqa: E402
+
+_HOOK_PATH = _Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+
+
+def _run_check(repo):
+    """Invoke the gate against `repo` with a PINNED environment.
+
+    Inheriting `os.environ` does not work here even with `cwd` set:
+    `gitstate.resolve_project_dir` returns the `CLAUDE_PROJECT_DIR` pin whenever
+    cwd is not a git work tree, and a pytest `tmp_path` never is — so the hook
+    would grade the real repo instead of the fixture. These two calls are
+    read-only, so the failure is a spurious result rather than a mutation; the
+    destructive form of the same mistake is documented at
+    `tests/test_learnings_pairing.py::_run_hook` and at
+    `tests/test_audit_learnings.py::TestAuditLearningsCLI`.
+    """
+    return _subprocess.run(
+        [_sys.executable, str(_HOOK_PATH), "check-operator-verification"],
+        capture_output=True, text=True,
+        env={"CLAUDE_PROJECT_DIR": str(repo), "PATH": "/usr/bin:/bin"},
+    )
+
+
 def test_unparsed_queue_blocks_instead_of_reporting_empty(tmp_path):
     """The field case: entries in a shape the parser does not recognise."""
     result = _ov.run_check_operator_verification(_repo(tmp_path, _FIELD_SHAPE))
@@ -805,15 +829,7 @@ def test_cli_exits_3_on_an_unparsed_queue_not_1(tmp_path):
     so reusing 1 would send the caller to a fix that cannot work — ending at the
     queue file, which is the move the refusal exists to prevent. 3 still blocks.
     """
-    import os
-    import subprocess
-
-    repo = _repo(tmp_path, _FIELD_SHAPE)
-    hook = _Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
-    proc = subprocess.run(
-        [_sys.executable, str(hook), "check-operator-verification"],
-        capture_output=True, text=True, cwd=str(repo), env=dict(os.environ),
-    )
+    proc = _run_check(_repo(tmp_path, _FIELD_SHAPE))
 
     assert proc.returncode == 3, (proc.returncode, proc.stderr)
     assert proc.returncode != 1
@@ -822,14 +838,8 @@ def test_cli_exits_3_on_an_unparsed_queue_not_1(tmp_path):
 
 def test_cli_still_exits_1_on_genuinely_pending_entries(tmp_path):
     """The neighbour that must keep its meaning."""
-    import os
-    import subprocess
-
-    repo = _repo(tmp_path, "## VRF-001 — Chunk 01 — a thing\n\n**Status:** pending\n")
-    hook = _Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
-    proc = subprocess.run(
-        [_sys.executable, str(hook), "check-operator-verification"],
-        capture_output=True, text=True, cwd=str(repo), env=dict(os.environ),
+    proc = _run_check(
+        _repo(tmp_path, "## VRF-001 — Chunk 01 — a thing\n\n**Status:** pending\n")
     )
 
     assert proc.returncode == 1
