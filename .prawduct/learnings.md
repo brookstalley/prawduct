@@ -26,6 +26,20 @@ never by dropping them.
 ## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
+## When a long-lived branch syncs a base that moved a lot, diff the TESTS on both sides before resolving any hunk — a test states the rule the code only instantiates, so two sides that re-implemented one mechanism disagree visibly there. Tell: a hunk where both sides are coherent implementations of the same named thing — [learnings-detail.md]
+
+## When a review finds the SAME class twice, stop fixing instances and enumerate the domain — two spot fixes in two rounds is one missing act, not two mistakes. List every state the thing can be in and make each a case. Tell: your fix cites the reviewer's example — [learnings-detail.md]
+
+## Hand-verifying at the terminal leaves nothing behind — the corpus you ran the grep against IS a fixture, so make it one in the same breath. A guard warning over every repo's real data shipped with only its positive case asserted. Tell: "I checked it against the real file" with no test naming it — [learnings-detail.md]
+
+## A docstring written in the same keystroke as its code describes the design you INTEND, not the code you shipped — "the one reader", "every surface", "always". Twice in one session, both wrong when written. Before a sentence claims reach, grep for the callers; a claim about scope is checkable in seconds and unfalsifiable once it ships — [learnings-detail.md]
+
+## The prose that REPLACES a deleted control is load-bearing logic — pin every rendered branch of it. A message covering two states must be DERIVED from the state, never written for the one in mind: a sentence asserting "no plan has chunks left" met an operator whose plans had them. Tell: you changed a user-facing string and no assertion names it — [learnings-detail.md]
+
+## When prose asserts what a system DOES, make the system do it — the pin is the check, not a formality. One pass here disproved the finding that opened it, then failed against the shipped docstring and exposed a `release=` tag that merged away read by nothing. Reading cannot find either. Tell: a caveat naming a downstream catch nobody has run — [learnings-detail.md]
+
+## A zero from a scan is suspicious until the scan is shown able to return non-zero — `getattr(x, "body", "")` on a field the dataclass lacks measured nothing and reported clean. Before believing a count, feed it a case you know it should catch. Tell: a survey that confirms exactly what you hoped — [learnings-detail.md]
+
 ## When scoping a NEW framework feature, list unmerged branches before writing requirements — this repo parks proposals on branches, not in the working tree, so a grep of `plugin/` + `.prawduct/` + the backlog reads as "no prior art" while a finished investigation sits one `git branch` away. `docs/remote-test-execution-proposal` had already settled the config home, the reusable-surface size and the measured concurrency shape. Tell: your prior-art search touched only paths that exist on HEAD
 
 ## When you rewrite a MEASUREMENT into a BENEFIT, re-attach the number to the sentence you actually wrote — the rewrite is where a claim silently widens past its evidence, because the benefit sentence is shorter and short sentences generalize. v3.4.0 shipped *"the review gates are 57× faster"*; 57× was the gate CHECK, and reviews cost what they always did. Tell: you cannot point at the number behind the noun you just chose — [learnings-detail.md]
@@ -532,7 +546,7 @@ never by dropping them.
 
 ## A rule that LOWERS a severity outranks every rule that raises one unless you say so — state the floor with the ceiling, in one sentence, or the suppression quietly becomes the file's highest authority. The exits that LIFT a ceiling are not the severities it must never touch. Tell: your new rule caps a severity and all you wrote next was how to escape the cap — [learnings-detail.md]
 
-## Scrub the WHOLE diff before dispatching a review, tests and their comments included — a rule you just wrote is a rule you are still violating elsewhere in the same commit, and the reviewer will find it in the place you were not looking. Tell: you scrubbed the files the chunk is "about" and not the ones it added — [learnings-detail.md]
+## Scrub the WHOLE diff before dispatching a review, tests and their comments included, and scrub a grep-able ban BY GREP — a rule you just wrote is one you are still violating elsewhere in the same commit, re-reading missed it twice on one branch, and a reviewer's list of instances is a sample rather than a census. Tell: you scrubbed by re-reading — [learnings-detail.md]
 
 ## "Fail closed" means the CHANNEL's blocking value, not merely a non-zero one — mapping every refusal to a generic error code fails OPEN wherever the contract reads a SPECIFIC code as "block". Check the contract for the surface the refusal can REACH, not the one you were writing. Tell: you wrote "a refused gate is a blocked gate" and never opened the exit-code table — [learnings-detail.md]
 

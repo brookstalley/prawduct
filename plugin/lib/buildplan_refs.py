@@ -11,12 +11,20 @@ the file alone — no git mutation, no network.
 Depends on its lib siblings ``gitstate`` (for ``_is_metadata_path``), ``core``
 (``resolve_build_plan_path``, ``read_str_yaml_key``), ``coverage``
 (``_resolve_base_branch``) and ``plan_index`` (the canonical frontmatter ``scope:``
-reader) plus the stdlib — still a clean DAG node, since ``coverage`` depends only
-on ``core`` and ``plan_index`` on nothing in ``lib`` at all. This module reaches the
-canonical resolver in ``lib.core`` directly, exactly as ``critic_mode`` and
-``change_log`` do — there is one resolver now, the hook's inline mirror of it
-having been retired once branch-scoped resolution left it with no caller and no
-import-light claim.
+reader) plus the stdlib. This module reaches the canonical resolver in ``lib.core``
+directly, exactly as ``critic_mode`` and ``change_log`` do — there is one resolver
+now, the hook's inline mirror of it having been retired once branch-scoped
+resolution left it with no caller and no import-light claim.
+
+**The graph is acyclic only because one edge back is lazy, and that is a
+constraint rather than a tuning knob.** ``core.resolve_branch_claim`` calls
+``_has_unfinished_chunk`` to choose among several plans claiming one branch, and
+imports this module *inside the function* to do it; this module imports ``core``
+at module scope. Hoisting core's import — the optimization applied to the
+``plan_index`` import below, on measured cost — would cycle at plugin load. The
+cleaner shape is to move the Status-roster predicate down into ``plan_index``,
+where core already reaches and nothing in ``lib`` is imported at all; until then,
+the laziness is what holds.
 
 Every read of the plan — here and in every other module that reads it — is
 explicitly UTF-8, and every guarded read catches ``UnicodeDecodeError`` beside
@@ -45,7 +53,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
-from . import gitstate, plan_index, waivers
+from . import core, gitstate, plan_index, waivers
 from .core import read_str_yaml_key, resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
@@ -659,21 +667,19 @@ def _scope_of_branch_claiming_plan(
     no scope has no scope to return, and inventing one would tag a change-log
     entry and a ledger row with a string no plan declares.
 
-    Two plans claiming one branch resolves to ``None`` rather than a pick.
-    :func:`core.resolve_build_plan_path` is where that refusal is raised; making
-    a scope *inference* fail closed too would block advice on a condition the
-    authority path already blocks on, so this simply declines and lets the
-    caller's own routes answer.
+    **Several plans may claim one branch, and this asks the same resolver the
+    gates ask** (``core.resolve_branch_claim``) rather than declining on the
+    second claimant. Declining looked conservative and was not: the ledger scope
+    a dispatch records would then name nothing while every gate graded a plan,
+    so the review and the record it leaves would describe different work — the
+    precise failure that made ``critic-begin`` write scope ``(none)`` before
+    branch declarations existed.
     """
-    matched = [
-        path
-        for path, claimed in plan_index.branch_claiming_plans(prawduct_dir / "artifacts")
-        if claimed == branch
-    ]
-    if len(matched) != 1:
+    claim = core.resolve_branch_claim(prawduct_dir)
+    if claim is None or claim.branch != branch:
         return None
     for scope, plan_path in known.items():
-        if plan_path == matched[0]:
+        if plan_path == claim.chosen:
             return scope
     return None
 
@@ -681,30 +687,28 @@ def _scope_of_branch_claiming_plan(
 def _has_unfinished_chunk(plan_path: Path) -> bool:
     """True when ``plan_path``'s Status section still holds an unchecked chunk.
 
-    The liveness signal for :func:`infer_scope_from_branch` and for the session
-    briefing's "claims a branch this repo does not have" advisory, which fires
-    only for a plan with work left — a finished plan whose merged branch is gone
-    is the documented end state, not a finding.
+    **Read this before tuning it: it now decides which plan GOVERNS.**
+    :func:`core.resolve_branch_claim` uses it to choose among several live plans
+    claiming one branch, so a change here moves what every gate grades — not only
+    what advice infers. Its other consumers are :func:`infer_scope_from_branch`
+    and the session briefing's "claims a branch this repo does not have"
+    advisory, which fires only for a plan with work left, because a finished plan
+    whose merged branch is gone is the documented end state, not a finding.
 
-    **The signal is blunt, and the bluntness is now universal — worth knowing,
-    because it used to be sharp on some repos.** The boxes flip per chunk, so a
-    plan reads finished from the moment its last chunk is ticked, which is
-    typically before the branch merges. In that window the branch stops matching
-    and every caller falls back to the ``active_build_plan`` pointer:
-    attribution, ``plan_graded``, and the Stop hook's ``Type:`` carveouts. That
-    is the behaviour those callers had before branch inference existed, so the
-    window is a *lapse of the improvement*, not a new defect — but it lands at
-    end-of-plan, which is exactly when a `cumulative` review and the last gate
-    run happen.
-
-    Repos whose checkboxes were a derived view did not have this window: their
-    boxes flipped at *release*, so "all checked" meant shipped, which is precisely
-    the question asked here. Retiring the derived view removes that sharpness
-    along with the false readings it produced everywhere else — a deliberate
-    trade, stated here rather than discovered later. Narrowing the window needs a
-    liveness signal a plan does not currently carry (a terminal state in
-    frontmatter is the obvious candidate, and archival introduces exactly that);
-    ``--scope`` is the remedy meanwhile.
+    **The signal is blunt: the boxes flip per chunk, so a plan reads finished
+    from the moment its last chunk is ticked** — typically before its branch
+    merges. Resolution answers that by ordering a *sole* claimant ahead of this
+    test, so a lone plan keeps governing through its own closing PR; what the
+    bluntness still costs is the tie-break among SEVERAL claimants, where a
+    just-ticked plan stops counting as open work. Repos whose checkboxes were a
+    derived view never had this: their boxes flipped at *release*, so "all
+    checked" meant shipped, which is precisely the question asked here. Retiring
+    the derived view removed that sharpness along with the false readings it
+    produced everywhere else — a deliberate trade, stated here rather than
+    discovered later. Sharpening it needs a liveness signal a plan does not carry
+    (a terminal state in frontmatter is the obvious candidate, and archival
+    introduces exactly that); ``active_build_plan`` and ``--scope`` are the
+    remedies meanwhile.
 
     A plan with no Status items at all reads as unfinished — an unparseable plan
     is not evidence of completion, and the caller's fallback (the pointer) is no

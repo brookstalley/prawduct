@@ -119,7 +119,7 @@ def _branch_repo(tmp_path: Path, branch: str, state: str = "") -> Path:
     the detached-HEAD and no-work-tree cases only exist in git.
     """
     repo = tmp_path / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True)
     _git(repo, "init", "-q", "-b", branch)
     _git(repo, "config", "user.email", "t@example.com")
     _git(repo, "config", "user.name", "T")
@@ -132,7 +132,14 @@ def _branch_repo(tmp_path: Path, branch: str, state: str = "") -> Path:
     return repo
 
 
-def _plan(prawduct: Path, rel: str, *, branch: str | None = None, artifact: str | None = "build-plan") -> Path:
+def _plan(
+    prawduct: Path,
+    rel: str,
+    *,
+    branch: str | None = None,
+    artifact: str | None = "build-plan",
+    chunks: str = "- [ ] Chunk 01: a chunk\n",
+) -> Path:
     path = prawduct / "artifacts" / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     fm = ["---"]
@@ -141,7 +148,7 @@ def _plan(prawduct: Path, rel: str, *, branch: str | None = None, artifact: str 
     if branch is not None:
         fm.append(f"branch: {branch}")
     fm.append("---")
-    path.write_text("\n".join(fm) + "\n\n## Status\n\n- [ ] Chunk 01: a chunk\n")
+    path.write_text("\n".join(fm) + f"\n\n## Status\n\n{chunks}")
     return path
 
 
@@ -193,22 +200,240 @@ class TestBranchScopedResolution:
         _plan(prawduct, "pointed-plan.md")
         assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "pointed-plan.md"
 
-    def test_two_live_plans_claiming_one_branch_is_a_loud_error(self, tmp_path: Path):
+    def test_several_plans_may_claim_one_branch(self, tmp_path: Path):
+        # A branch can legitimately carry several plans — a release branch with a
+        # telemetry plan and a documentation plan, or the three plans one consumer
+        # repo built on a single fix branch. Resolution picks among them and names
+        # what it passed over; it never refuses, and it never falls back to a
+        # scalar pointing OUTSIDE the branch's own plans.
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
         )
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
-        _plan(prawduct, "a-plan.md", branch="feat/x")
-        _plan(prawduct, "b-plan.md", branch="feat/x")
-        with pytest.raises(_mod.AmbiguousPlanBranchError) as excinfo:
-            resolve_build_plan_path(prawduct)
-        # It must name BOTH candidates and the branch: an operator cannot act on
-        # "ambiguous" alone, and falling back to the scalar here would be the
-        # silent wrong-plan pick the refusal exists to prevent.
-        message = str(excinfo.value)
-        assert "feat/x" in message
-        assert "a-plan.md" in message and "b-plan.md" in message
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.contested
+        assert claim.branch == "feat/x"
+        assert {p.name for p in claim.claimants} == {"a-plan.md", "b-plan.md"}
+        assert claim.chosen in claim.claimants
+        assert resolve_build_plan_path(prawduct) == claim.chosen
+        # Nothing distinguishes the two, so the basis says so rather than
+        # implying a judgement was made.
+        assert claim.basis == "order"
+        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
+        assert "a-plan.md" in described and "b-plan.md" in described
+        assert "feat/x" in described
+        # BOTH plans have chunks left here, so the sentence must not claim
+        # otherwise — and it must name the act that would decide it.
+        assert "2 of them still hold open work" in described
+        assert "none of them has chunks left" not in described
+        assert "point the scalar" in described
+
+    def test_the_order_sentence_tracks_the_state_it_describes(self, tmp_path: Path):
+        # The `order` basis is reached from two opposite states, and one sentence
+        # for both tells half its readers something false about their own repo.
+        # This is the other state: every claimant ticked.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
+        assert claim.basis == "order"
+        assert "none of them has chunks left" in described
+        assert "still hold open work" not in described
+
+    def test_the_order_sentence_derives_the_pointer_clause_in_every_state(
+        self, tmp_path: Path
+    ):
+        """The `order` sentence has TWO derived clauses, and each has its own
+        states. This is the class that had to be fixed twice: the first fix
+        derived the open-work count and left the pointer clause asserted, which
+        then read "names none of them" on a repo whose scalar named one. Every
+        combination the basis can be reached in is enumerated here so a third
+        state cannot be added without a failing test.
+        """
+        def _claim(case: str, state: str, plans: dict) -> tuple:
+            repo = _branch_repo(tmp_path / case, "feat/x", state)
+            prawduct = repo / ".prawduct"
+            for name, chunks in plans.items():
+                _plan(prawduct, name, branch="feat/x", chunks=chunks)
+            claim = _mod.resolve_branch_claim(prawduct)
+            return claim, _mod.describe_branch_claim(claim, prawduct / "artifacts")
+
+        open_, done = "- [ ] Chunk 01: open\n", "- [x] Chunk 01: shipped\n"
+
+        # (a) two open, scalar unset.
+        claim, text = _claim("a", "", {"a-plan.md": open_, "b-plan.md": open_})
+        assert claim.basis == "order"
+        assert "2 of them still hold open work" in text
+        assert "`active_build_plan` is unset" in text
+
+        # (b) two open, scalar names something that is not on this branch.
+        claim, text = _claim(
+            "b",
+            "active_build_plan: artifacts/elsewhere.md\n",
+            {"a-plan.md": open_, "b-plan.md": open_},
+        )
+        assert claim.basis == "order"
+        assert "names no plan on this branch" in text
+
+        # (c) THE RECURRENCE: two open, scalar names a claimant that is finished.
+        # Step 3 rules it out (it is not in the pool), so the basis is `order` —
+        # and the sentence must not then claim the scalar names nothing.
+        claim, text = _claim(
+            "c",
+            "active_build_plan: artifacts/c-plan.md\n",
+            {"a-plan.md": open_, "b-plan.md": open_, "c-plan.md": done},
+        )
+        assert claim.basis == "order"
+        assert claim.chosen.name in ("a-plan.md", "b-plan.md")
+        assert "c-plan.md" in text and "its chunks are all ticked" in text
+        assert "names none of them" not in text
+        assert "names no plan on this branch" not in text
+
+        # (d) none open, scalar unset — the post-tick window.
+        claim, text = _claim("d", "", {"a-plan.md": done, "b-plan.md": done})
+        assert claim.basis == "order"
+        assert "none of them has chunks left" in text
+
+    def test_the_pointer_does_not_resurrect_a_finished_plan(self, tmp_path: Path):
+        """Step 3's narrowing, as behaviour rather than as wording. The scalar is
+        the operator's choice among plans still in contention; a plan whose boxes
+        are all ticked is not in contention, and live evidence outranks a stale
+        scalar."""
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/done-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "done-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "open-a.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "open-b.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name != "done-plan.md"
+        assert claim.basis == "order"
+
+    def test_each_basis_renders_its_own_reason(self, tmp_path: Path):
+        # The whole replacement for the deleted refusal is this sentence, so each
+        # branch of it is pinned — otherwise the wordings can be swapped or
+        # falsified and the suite stays green.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/b-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        pointer_claim = _mod.resolve_branch_claim(prawduct)
+        assert "`active_build_plan` names it" in _mod.describe_branch_claim(
+            pointer_claim, prawduct / "artifacts"
+        )
+
+        # ...and the unfinished basis, on the same repo, once one plan is ticked.
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        open_claim = _mod.resolve_branch_claim(prawduct)
+        assert open_claim.basis == "unfinished"
+        assert "the only one with chunks left" in _mod.describe_branch_claim(
+            open_claim, prawduct / "artifacts"
+        )
+
+    def test_three_claimants_are_all_named(self, tmp_path: Path):
+        # The plan's acceptance criterion, asserted rather than assumed: three
+        # plans claiming one branch resolve to one, and the reader is told about
+        # the other two by name.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        for name in ("a", "b", "c"):
+            _plan(prawduct, f"{name}-plan.md", branch="feat/x",
+                  chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
+        assert "3 live plans declare `branch: feat/x`" in described
+        for name in ("a", "b", "c"):
+            assert f"{name}-plan.md" in described
+        assert "3 of them still hold open work" in described
+
+    def test_the_claimant_with_open_chunks_wins(self, tmp_path: Path):
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "done-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "live-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name == "live-plan.md"
+        assert claim.basis == "unfinished"
+
+    def test_the_pointer_breaks_a_tie_within_the_branch(self, tmp_path: Path):
+        # The scalar's job once branches carry their own plans: the operator's
+        # explicit choice among THIS branch's plans, not a product-wide singleton.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/b-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name == "b-plan.md"
+        assert claim.basis == "pointer"
+
+    def test_a_sole_claimant_governs_after_its_last_box_is_ticked(self, tmp_path: Path):
+        # The closing-PR case. The unfinished-chunk signal goes false the moment
+        # the last box is ticked — which happens BEFORE the merge — so a sole
+        # claimant must not stop governing between its final review and its PR.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other-plan.md")
+        _plan(prawduct, "the-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name == "the-plan.md"
+        assert claim.basis == "sole"
+        assert not claim.contested
+        # And an uncontested claim has nothing to disambiguate, so it says nothing.
+        assert _mod.describe_branch_claim(claim, prawduct / "artifacts") == ""
+
+    def test_all_claimants_complete_still_resolves_within_the_branch(self, tmp_path: Path):
+        # Every claimant ticked is the post-tick window, not an absence of
+        # candidates: resolution stays among the branch's own plans rather than
+        # falling through to a scalar naming something else entirely.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other-plan.md")
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name in ("a-plan.md", "b-plan.md")
+        assert claim.chosen != prawduct / "artifacts" / "other-plan.md"
+
+    def test_the_consumer_shape_that_found_this_resolves(self, tmp_path: Path):
+        # The population that produced the defect: a repo carrying five plans
+        # that declare `branch:` as free-text documentation, three of them naming
+        # one branch, one of them naming something that is not a branch name at
+        # all. Every one of those branches must resolve without raising.
+        shapes = {
+            "prompt-type-registry": "fix/research-forced-synthesis-never-empty",
+            "research-forced-synthesis": "fix/research-forced-synthesis-never-empty",
+            "research-budget-transparency": "fix/research-forced-synthesis-never-empty",
+            "eval-context-observability": "feature/eval-context-observability",
+            "reasoning-token-telemetry": "feature/reasoning-token-telemetry (off develop)",
+        }
+        prose = "feature/reasoning-token-telemetry (off develop)"
+        for branch in sorted({v for v in shapes.values() if v != prose}):
+            repo = _branch_repo(tmp_path / branch.replace("/", "_"), branch)
+            prawduct = repo / ".prawduct"
+            for name, claimed in shapes.items():
+                _plan(prawduct, f"build-plan-{name}.md", branch=claimed,
+                      chunks="- [x] Chunk 01: shipped\n")
+            claim = _mod.resolve_branch_claim(prawduct)
+            assert claim is not None and claim.branch == branch
+            assert resolve_build_plan_path(prawduct) == claim.chosen
+            # The prose-valued claim is inert wherever it appears: git cannot
+            # name a branch that, so nothing ever matches it.
+            assert all(p.name != "build-plan-reasoning-token-telemetry.md"
+                       for p in claim.claimants)
 
     def test_an_archived_plan_claims_nothing(self, tmp_path: Path):
         # Archiving ends the claim, which is what makes the move the whole
@@ -299,13 +524,13 @@ class TestBranchScopedResolution:
         assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
 
 
-class TestTheCliRefusesRatherThanGuessing:
-    """The fail-closed posture, through the real binary.
+class TestTheCliResolvesRatherThanRefusing:
+    """A contested branch is ordinary, through the real binary.
 
-    A refused gate is a blocked gate — the intended end state — but a traceback
-    would be loud and unreadable, and the refusal already names its own remedy.
-    Subprocess because ``main``'s wrapper and the lazy ``_core()`` lookup in its
-    ``except`` clause exist only when the script is actually run.
+    Resolution used to refuse when a second plan claimed the branch, which
+    blocked the arrangement the declaration exists to serve. Subprocess because
+    the whole point is what the operator's command actually does — a command
+    that exits non-zero on a legitimate repo shape is the defect.
     """
 
     _HOOK = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
@@ -316,28 +541,25 @@ class TestTheCliRefusesRatherThanGuessing:
             cwd=str(repo), capture_output=True, text=True,
         )
 
-    def test_a_contested_branch_exits_nonzero_with_the_remedy(self, tmp_path: Path):
+    def test_a_contested_branch_answers_instead_of_refusing(self, tmp_path: Path):
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "a-plan.md", branch="feat/x")
         _plan(prawduct, "b-plan.md", branch="feat/x")
         result = self._run(repo, "infer-critic-mode")
-        assert result.returncode == 1, result.stdout
-        assert "REFUSING" in result.stderr
-        assert "a-plan.md" in result.stderr and "b-plan.md" in result.stderr
-        # No traceback: the refusal is a message, not a crash.
+        assert result.returncode == 0, result.stderr
+        assert "REFUSING" not in result.stderr
         assert "Traceback" not in result.stderr
 
-    def test_the_same_command_succeeds_once_one_claim_is_withdrawn(self, tmp_path: Path):
+    def test_one_claim_and_two_claims_reach_the_same_exit(self, tmp_path: Path):
         # The control. Without it the assertion above is satisfied by any repo
-        # shape that makes the command exit 1.
+        # shape that makes the command exit 0 for unrelated reasons.
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "a-plan.md", branch="feat/x")
         _plan(prawduct, "b-plan.md")
         result = self._run(repo, "infer-critic-mode")
         assert result.returncode == 0, result.stderr
-        assert "REFUSING" not in result.stderr
 
 
 class TestBranchClaimParsing:

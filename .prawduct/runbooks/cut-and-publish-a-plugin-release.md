@@ -400,7 +400,13 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     prerelease section exists (the first cut after this runbook changed) do you add a fresh
     `## vX.Y.Z` section above the previous release.
 
-    > *Why: the version-delta banner shows exactly that first line to every repo
+    > *Why check first: `develop` runs on a prerelease of the version it is heading for and
+    > accumulates its notes under `## vX.Y.Z-dev.N`, so on any release that was dogfooded the
+    > section already exists under the prerelease heading. Renaming it is what makes it this
+    > release's section; adding a fresh one instead yields two sections for one version, and the
+    > banner reads the first it finds.*
+
+    > *Why a headline at all: the version-delta banner shows exactly that first line to every repo
     > crossing this version.*
 
     > **Rename, do not add a second section.** Adding one leaves the `-dev` section in place
@@ -409,21 +415,29 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     > the *same* release's notes under a working name, not a separate entry.
 
     **On a minor or major bump — not a patch — also refresh `README.md`'s `## Recent
-    Changes`** so the current line is represented there. Rewrite the section; do not
-    append a per-release bullet. A patch has nothing to say on that surface, so skipping
-    it is the correct outcome and not an omission.
+    Changes`** so the current line is represented there. Check it the same way: a release that
+    was dogfooded on `develop` already has its section under the prerelease heading, so rename and
+    bring that one up to date rather than adding a second. Rewrite the section; do not append a
+    per-release bullet. A patch has nothing to say on that surface, so skipping it is the correct
+    outcome and not an omission.
 
     > *Why it is conditional, and why it lives here: the README is the first thing a
     > prospective user reads, and no release had ever updated it — it sat two minor
     > versions and eight releases stale (3.1.0 through 3.2.4) because no release document
     > named the file. A per-release step would no-op on every patch, and a step that
     > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
-    > and has something to say every time it does.*
+    > and has something to say every time it does. `documentation/release-process.md` step 5
+    > points here for both files rather than restating them, so deleting this paragraph is
+    > what makes that pointer dangle.*
 
-11. **Clear the pointer, then archive the plans this release shipped.** On gitflow the
-    closing PR deliberately RETAINS each plan and the `active_build_plan` pointer — the
-    work is not released yet — so this is where that retention ends. Skip it and the live
-    artifacts directory re-accumulates the pile the archive exists to prevent.
+11. **Clear the pointer if one is still set, then archive the plans this release shipped.**
+    On gitflow the closing PR deliberately RETAINS each plan — the work is not released yet
+    — so this is where that retention ends. The pointer may already be unset: a plan that
+    declares `branch:` has it cleared at its own merge (`/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step),
+    because its branch is gone and the declaration resolves for nobody; only a
+    pointer-resolved plan still has one to clear here. Archiving is what ends retention in
+    both cases. Skip it and the live artifacts directory re-accumulates the pile the
+    archive exists to prevent.
 
     First set `active_build_plan:` to `null` in `.prawduct/project-state.yaml`.
 
@@ -691,6 +705,13 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > there. It is avoided because **one call leaves no instant at which the tag exists without
     > its Release**, so the push-triggered job cannot observe the absence it would go red on.
     > v3.2.4 won that race by ~9 seconds of typing speed; v3.2.5 could not have lost it.*
+
+    > *Anyone dogfooding the develop track is, at this instant, running the released plugin
+    > without knowing it: the promotion left `develop` carrying the string `main` now uses,
+    > so the version-keyed cache resolves the released entry
+    > (`documentation/release-process.md` § Dogfooding the develop track). Phase 3 is what
+    > ends that window, which is why it is unconditional and immediately next — there is no
+    > "nobody is on the track today" branch to take.*
 
 ---
 

@@ -329,3 +329,111 @@ class TestUnionMergeRecommendation:
         # header/tag pairing is never crossed.
         assert [e.tags.get("scope") for e in entries] == ["dev", "feat", None]
         assert change_log_mod.validate_change_log_tags(entries) == ([], [])
+
+    def test_the_tag_line_detector_needs_both_of_its_conditions(self):
+        """Each condition, with the corpus case that forces it.
+
+        This detector feeds a release-gate warning over every governed repo's
+        real change log, so a false positive is a warning nobody can act on. Both
+        conditions were verified by hand against this repo's 306 entries and
+        neither was pinned — which is how the looser rule comes back in a
+        refactor that "simplifies" it to the regex alone.
+        """
+        from lib import change_log as cl
+
+        # Positive: a real tag line.
+        assert cl._is_standalone_tag_line("<!-- prawduct: type=fix | scope=x -->")
+        assert cl._is_standalone_tag_line("  <!-- prawduct: scope=x -->  ")
+
+        # Condition 1 — must BEGIN the line. This repo's own change log contains
+        # a sentence quoting the format mid-prose, and `TAG_LINE_RE` matches it.
+        prose = "each entry's `<!-- prawduct: scope=x -->` line still sits under its header"
+        assert cl.TAG_LINE_RE.search(prose), "guarding the wrong thing if this stops matching"
+        assert not cl._is_standalone_tag_line(prose)
+
+        # Condition 2 — must carry a real key=value. An illustration of the
+        # format parses to no pairs and is documentation, not metadata.
+        assert cl.TAG_LINE_RE.search("<!-- prawduct: … -->")
+        assert not cl._is_standalone_tag_line("<!-- prawduct: … -->")
+
+        # And an ordinary comment is not one at all.
+        assert not cl._is_standalone_tag_line("<!-- just a note -->")
+
+    def test_the_real_change_log_trips_no_stray_tag_warning(self):
+        """The corpus itself is the fixture. The detector was measured clean on
+        all 306 entries before it shipped; this keeps it that way, because the
+        cost of a regression is a warning on every session of every repo."""
+        from lib import change_log as cl
+
+        log = Path(__file__).resolve().parent.parent / ".prawduct" / "change-log.md"
+        entries = cl.parse_change_log(log.read_text(encoding="utf-8"))
+        assert len(entries) > 100, "fixture must actually reach the corpus"
+        stray = [e.title for e in entries if e.unconsumed_tag_lines]
+        assert not stray, f"detector fires on real entries: {stray[:3]}"
+
+    def test_the_same_entry_on_both_sides_is_kept_once(self, tmp_path):
+        """The shape a cherry-pick or a twice-landed entry makes.
+
+        Union unions *conflicting* hunks; identical hunks are not conflicting, so
+        the entry is not duplicated. Pinned because the advisory's caveat is a
+        claim about what git does with this log, and a reader deciding whether to
+        take the advice is entitled to have that measured rather than predicted —
+        it was predicted wrongly once.
+        """
+        repo = _repo(tmp_path, attribute=gap.UNION_MERGE_LINE)
+        _git(repo, "checkout", "-q", "-b", "feat")
+        _prepend_entry(repo, "2026-08-13: shared entry", "shared")
+        _git(repo, "checkout", "-q", "main")
+        _prepend_entry(repo, "2026-08-13: shared entry", "shared")
+        proc = subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "--no-edit", "feat"],
+            cwd=str(repo), capture_output=True, text=True, timeout=15,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        merged = (repo / CHANGE_LOG_REL_PATH).read_text()
+        assert merged.count("## 2026-08-13: shared entry") == 1
+        assert "<<<<<<<" not in merged
+
+    def test_a_reworded_entry_keeps_both_lines_under_one_header(self, tmp_path):
+        """The caveat the probe DOES state, measured.
+
+        A genuine two-sided edit to the same line survives as both versions
+        rather than as a conflict. What it does not do is duplicate the entry:
+        the header is identical context on both sides, so only the differing
+        line doubles — which is why the caveat is about a line and not an entry.
+        """
+        repo = _repo(tmp_path, attribute=gap.UNION_MERGE_LINE)
+        _git(repo, "checkout", "-q", "-b", "feat")
+        _prepend_entry(repo, "2026-08-13: shared entry", "written-on-feat")
+        _git(repo, "checkout", "-q", "main")
+        _prepend_entry(repo, "2026-08-13: shared entry", "reworded-on-main")
+        proc = subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "--no-edit", "feat"],
+            cwd=str(repo), capture_output=True, text=True, timeout=15,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        merged = (repo / CHANGE_LOG_REL_PATH).read_text()
+        assert merged.count("## 2026-08-13: shared entry") == 1  # NOT duplicated
+        assert "written-on-feat" in merged and "reworded-on-main" in merged
+        # ...and the doubled tag line reaches the release gate's tag validator,
+        # which is the downstream surface the probe's caveat names. It must not
+        # pass silently: that is the whole reason the trade is acceptable.
+        from lib import change_log as change_log_mod
+
+        entries = [
+            e
+            for e in change_log_mod.parse_change_log(merged)
+            if e.title == "2026-08-13: shared entry"
+        ]
+        assert len(entries) == 1  # one header, not two — the entry is not duplicated
+        # The second version lands PAST the first version's prose, so the
+        # head-of-body tag block never reaches it and its pairs are in no `tags`
+        # dict. It is counted, which is what makes the caveat's downstream claim
+        # true: before this, a merged-away `release=` was read by nothing and
+        # nothing said so.
+        assert entries[0].unconsumed_tag_lines == 1
+        errors, warnings = change_log_mod.validate_change_log_tags(entries)
+        assert any("READ BY NOTHING" in w for w in warnings), (
+            "the surviving both-versions line must be visible downstream — "
+            "the caveat's whole argument is that it is caught, not believed"
+        )

@@ -3,6 +3,217 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-27: the rc track that develop had already replaced, resolved rather than re-merged
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+The branch sat 251 commits behind `develop`, and the sync was not a textual merge. Half of Chunk 04
+— a develop track keyed on an **rc** prerelease — had been independently superseded: `develop`
+shipped its own track on a deliberately narrower rule, `-dev` / `-dev.N` as the ONLY permitted
+suffix, with `test_version_tuple_refuses_an_unpermitted_prerelease` asserting that `3.4.0-rc.1` must
+**not** parse so the banner and the manifest guard keep answering one question about what a legal
+version is. Taking this branch's general-semver parser would have meant deleting that test.
+
+**Resolved in develop's favour, and the descope is recorded rather than inferred.** Every
+version-carrying file — `plugin/VERSION`, `plugin.json`, `pyproject.toml`, `banner.version_tuple`
+and both version test files — took develop's side; Chunk 04 carries a DESCOPED note naming what was
+superseded and what survived. A release-candidate stage now exists in no form, which is a fresh item
+designed against the `-dev` rule, not a resurrection of this chunk.
+
+**The prose had to move with the code, and two places were actively wrong once it did.** The
+dogfooding recipe still instructed maintainers to set `3.4.0-rc.1` — a version this tree's own tests
+reject — and the runbook asserted the open changelog section is written under the FINAL number while
+develop's step 10 opens it under the prerelease heading and renames it at the cut. Both restated in
+`-dev.N` terms. Consumer notes for the `branch:` opt-in and the union-merge advisory went into the
+OPEN `## v3.4.1-dev.2` section, not the shipped `## v3.4.0`, because this work is still
+release-pending; the README bullet joined develop's combined 3.1–3.4 section rather than re-splitting
+a 3.4 heading develop had already folded in.
+
+**Where the two designs genuinely disagreed about `active_build_plan`, the branch's rule won**,
+because it is the one its own code makes true: `core.resolve_branch_claim` falls back to the scalar,
+so a pointer left aimed at a merged branch-declaring plan puts that finished plan back in force on
+every branch with no plan of its own. Three cross-file references to "merge-flow step 7" — renumbered
+to 8 on develop — were replaced with the step's NAME rather than a new number, so the next renumber
+does not strand them again.
+
+**Superseding one clause of this branch's own 2026-08-13 entry**, which ships in the same bundle and says "an rc bump does not owe a changelog entry for a version nobody ships": that reasoning belonged to the rc track and is now false in both halves — there are no rc bumps, and `test_changelog_has_current_version_entry` requires the section to be keyed by the EXACT manifest string, prerelease suffix included. The earlier entry is left standing as written (the log is append-only); this is the correction a reader needs.
+
+Chunk 04's live half stays outstanding and is now visible as VRF-017: the recipe installs from
+`ref: develop`, so no sibling repo can run the track until this merges and pushes.
+
+## 2026-08-14: the derived-sentence defect, found twice, closed by enumeration
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+The branch's cumulative review found the *same class* its predecessor did, surviving in a state the
+first fix did not reach — and that recurrence is the finding, not the sentence.
+
+Precedence step 3 reads "the pointer, when it names a claimant" in prose and `pointed in pool` in
+code, and those differ exactly when the scalar names a claimant whose boxes are all ticked while
+others are open. The code is right — live evidence outranks a stale scalar, and the pointer must not
+resurrect a finished plan — but the `order` sentence then told an operator "`active_build_plan` names
+none of them" about a repo whose scalar named one. The docstring now states the narrowing and why
+it exists; the sentence derives its pointer clause the way it already derived its open-work count.
+
+**The fix is enumeration rather than another correction.** Every state the `order` basis can be
+reached in — pointer unset, pointer naming a non-claimant, pointer naming a ticked claimant, no
+claimant open — is now a case in one test, so a fifth state cannot be added without a failing
+assertion. Two spot fixes in two rounds is the signal that the states were never listed.
+
+**Two guards this bundle added were themselves unpinned**, in the same round that fixed unpinned
+prose. `_is_standalone_tag_line` feeds a release-gate warning over every governed repo's real change
+log and only its positive case was asserted — both conditions now carry the corpus case that forces
+them, and the repo's own 306-entry log is a fixture. The briefing's attributed swallow, which *was*
+the fix for a prior review's silent `except: pass`, had nothing asserting it, so a refactor back to
+`pass` would have restored the silence invisibly.
+
+**The develop track gained the lifecycle it was missing.** Promotion sets the final version on
+`main` — and on `develop`, which was promoted — so the two match and every dogfooding repo silently
+resolves the released cache entry while believing it is on develop. The first work merged after a
+release re-opens the next rc; until then there is nothing unreleased to dogfood, and the equality is
+honest rather than a trap.
+
+Also: the retention rule Chunk 02 reversed was still stated in the release process and its runbook,
+one of them citing as authority the bullet that had changed; `planning.md` contradicted itself on
+whether a branch-declaring plan has a pointer at all; the PR skill pointed at a command that does
+not print the resolved plan in the modes that fire at PR close (`verify-records` does, in every
+mode); and the precedence was restated in four places, two of them already partial — it now lives in
+one, with the others pointing.
+
+## 2026-08-13: develop becomes a track you can actually run on
+
+<!-- prawduct: type=feature | scope=branch-claim-multiplicity -->
+
+`develop` reaches consumers through nothing, which is correct and made it impossible to run
+unreleased governance against real work before promoting it. It is now a track one repo of yours can
+opt onto: a second marketplace entry (`prawduct-dev`, same repo, `ref: develop`) in that repo's
+per-machine `.claude/settings.local.json`. Nothing is pushed to `main`, the repo's committed install
+reference never changes, and the way back off is deleting the block.
+
+**The version is the cache key, and that is what makes this work at all.** The plugin cache is one
+directory per version (`~/.claude/plugins/cache/prawduct/prawduct/<version>/`), so a `develop` whose
+version still matched the released string resolved to the *released* cache entry — you would
+dogfood nothing while believing otherwise. `develop` now carries a prerelease of the version it is
+heading for (`3.4.0-rc.1`), bumped as work lands.
+
+**Which the repo's own tooling then rejected, in three places.** The manifest check demanded exactly
+three numeric parts; the changelog check demanded a section named for the exact running version; and
+`banner.version_tuple` parsed any suffix as "older than everything", so a dogfooding repo would have
+seen no banner and the next real release would have replayed every headline in the file. All three
+understand a prerelease now: it sorts below its own release, and it is satisfied by that release's
+changelog section — an rc bump does not owe a changelog entry for a version nobody ships.
+
+The consumer-facing narrative for the pass ships in `plugin/CHANGELOG.md` under `v3.4.0` — the two
+surfaces a consumer actually meets are the new change-log union-merge advisory (what it is, that it
+is advice, how to make it stop) and the `branch:` opt-in (what it buys, that nothing migrates, and
+that several plans may claim one branch). `.prawduct/release-notes.md` was NOT touched: it is a
+frozen archive of a retired derived view, and writing there would revive it.
+
+## 2026-08-13: a merged-away change-log tag stops disappearing quietly
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+The union-merge advisory told operators that a two-sided edit to one entry's tag line "is surfaced
+downstream rather than silently believed," naming the release gate's tag validator as the catch.
+Writing the test that was supposed to pin that claim disproved it.
+
+`merge=union` concatenates whole **hunks**, so the second version of an edited tag line lands
+*after* the first version's prose — not beside it. Entry parsing ends its tag block at the first
+prose line, by design, so that second tag line was metadata to nobody: its pairs reached no `tags`
+dict and no validator ever saw them. A `release=` stamped on one side while the other side edited
+the same line could vanish in a merge, under a caveat asserting it would be caught.
+
+Parsing now counts tag lines past the prose (`ChangeLogEntry.unconsumed_tag_lines`) and
+`validate_change_log_tags` warns that they are read by nothing. Counted rather than merged,
+deliberately: merging would let a merge driver decide which `release=` wins, and the failure worth
+preventing is not that the value is wrong but that nothing says it is there.
+
+The detector needs both of its conditions, and the corpus proves it — a tag line must *begin* its
+line and parse to at least one real `key=value`. `TAG_LINE_RE` alone also matches a sentence
+quoting the format, and this change log contains one, so the looser rule reports the file that
+documents the format as malformed. Zero of 306 existing entries trip the strict form.
+
+**The finding this chunk was written for did not exist.** The claim under review was that union
+keeps duplicate whole entries; constructing the merge showed identical hunks are not conflicting, so
+a twice-landed entry is kept once. The chunk was rescoped from fixing prose to pinning it — and the
+pin is what found the real defect one layer down. Both shapes are now fixtures, alongside the
+existing no-attribute conflict control.
+
+## 2026-08-13: a branch-declaring plan retires by archiving alone
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+`planning.md` and `/prawduct:pr` both promised that a merged branch-declaring plan "reads
+live-but-inactive with no advisory to ignore." It did not, and this repo's own `develop` was the
+counter-example: the gitflow RETAIN rule says to keep `active_build_plan` aimed at a merged plan, so
+resolution fell through to the scalar and the archive-the-plan advisory fired exactly as before —
+against a plan the same rule says to retain until the release. An advisory with no correct action.
+
+The RETAIN bullet now splits on how the plan resolves. A plan that declares `branch:` gets its
+pointer **cleared** at the closing merge: its branch is gone, so the declaration resolves for
+nobody, the plan reads live-but-inactive, and the release still archives it by scope. A
+pointer-resolved plan keeps the pointer, because clearing it is what makes governance blind. This
+repo's own scalar is now unset, and the absence is annotated as the state rather than left to read
+as an oversight.
+
+## 2026-08-13: several plans may claim one branch
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+Branch-scoped plan resolution shipped with a fail-closed refusal: a second live plan declaring the
+same `branch:` stopped resolution entirely, on the reasoning that governing by the wrong plan looks
+exactly like governing correctly. The reasoning was right and the proposition it guarded was false.
+**A branch can legitimately carry several plans** — a `release/2-0` with a telemetry plan and a
+documentation plan; a consumer repo carries three on one fix branch today. Refusing is the correct
+posture when a control cannot know the answer, and the wrong one when the answer is "all of them,
+and here is the one being worked."
+
+Resolution now picks among the claimants by a stated precedence — sole claimant, then the one with
+chunks left, then the plan `active_build_plan` names, then path order — and **names its choice and
+what it passed over** in the session briefing. That is what answers the original concern: a choice
+stops looking like the only possibility the moment the surface says what else claimed the branch.
+The scalar gains a job rather than losing one — it is now the operator's tie-break *within* a
+branch, instead of one product-wide singleton.
+
+The sole-claimant step sits ahead of the chunks-left step deliberately: the unfinished signal goes
+false the moment the last box is ticked, which happens *during* the closing PR, and a plan that
+stopped governing between its final review and its merge would take the gates with it.
+
+**Found by reading the feature against a consumer, not against its own tests.** That repo's plans
+already carried `branch:` in frontmatter as human documentation, written months before the key had
+meaning — three of them naming one branch, one of them holding prose (`feature/x (off develop)`)
+that is not a branch name at all. The key was declared collision-free on a grep of *this* repo and
+the shipped templates; the population it ships to was never asked. Its shapes are now a test.
+
+**The attribution sentence is derived, because it is the whole replacement for the deleted
+control.** Three reviewers independently found the same defect in it: the `order` basis is reached
+from two opposite states — several claimants still holding open work (the shipped headline case: a
+release branch with two live workstreams and no pointer set) and none of them holding any — and one
+sentence covering both told half its readers their open plans were finished. The clause now counts
+the claimants still holding open work, and ends with the act that decides it: point the scalar. Each
+rendered reason is pinned by a test, including a three-claimant render; before, none of the three
+wordings was asserted anywhere and any of them could have been falsified with the suite green.
+
+**Attribution has one home: the session briefing.** The gates already name the plan they graded
+(`record-lint`'s `plan_graded`), so what is missing at a gate is not the choice but the context for
+it — which is session-scoped, arrives before any gate runs, and would be a fourth copy of one
+sentence if every gate repeated it.
+
+`AmbiguousPlanBranchError`, the hook's `main()` classifier and the `cmd_stop` probe that rendered
+the refusal as the harness block code are **deleted** rather than left as handling for a condition
+nothing can produce (Principle 25). Their tests are redirected, not dropped: each now pins that a
+contested branch reaches the same gates an uncontested one does. `_scope_of_branch_claiming_plan`
+stopped declining on the second claimant too — it asks the same resolver, so a dispatch's ledger
+scope names the plan the gates actually graded.
+
+**Two ripples the review caught, both outside the files the change was "about".** Three skill files
+(`pr/SKILL.md`, `backlog/SKILL.md`, `backlog/adapter-mode.md`) still spelled a one-claimant
+resolution rule in the same commit that declared multiplicity ordinary — and the PR one feeds
+`archive-plan`, so an agent picking by eye on a contested branch could retire a sibling plan that is
+still live work. They now point at the resolver rather than restating a rule with four steps. And
+the briefing's contested-claim line sat inside a broad `except: … pass`, which — with the
+fail-closed route deliberately gone — meant the only surface that ever says a branch is contested
+could vanish with no output at all. It is attributed now: advice fails soft, not silent.
 ## 2026-08-27: the version-delta headline renders as one sentence
 
 <!-- prawduct: type=fix | scope=silent-clear-checks -->

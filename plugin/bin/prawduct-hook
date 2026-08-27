@@ -220,10 +220,7 @@ def _core():
     session markers (STH-8M3V) — each call site is wrapped in an OSError
     guard, so an import or write failure degrades to a stderr NOTE and never
     blocks session start. After the ch.1 __init__ slim this loads only
-    core.py (stdlib-only), isolated.
-
-    Also the route to ``AmbiguousPlanBranchError`` — the one thing the hook needs
-    from core by NAME rather than by behaviour (:func:`_is_plan_refusal`)."""
+    core.py (stdlib-only), isolated."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -2281,36 +2278,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     def _attributed(gate_id: str, body: str) -> str:
         return f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}"
-
-    # Plan resolution REFUSES when two live plans declare the same `branch:`.
-    # Probed ONCE here, before a single gate runs, and answered by returning the
-    # harness block code.
-    #
-    # Three things force this shape. It must not escape to `main`, which renders
-    # every refusal as exit 1: this is a harness hook, `api-contract.md` § Error
-    # Model gives its row exactly two outcomes (0 clean, 2 block), and 1 is
-    # neither — so the session would end CLEAN with the reflection, coverage and
-    # PR gates never having fired, the fail-OPEN inverse of the refusal's whole
-    # purpose. It must be here rather than at the call sites, because the refusal
-    # is reachable from every one of them — the resolve below, its
-    # `_has_active_build_plan_file` fallback, and `_critic_session_satisfies_gate`
-    # each resolve independently, and guarding them one at a time simply moved
-    # which line raised. And it must precede the deferral, which returns 0: no
-    # amount of background work resolves two plans claiming one branch.
-    try:
-        _core().resolve_build_plan_path(prawduct_dir)
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- classified immediately; anything else re-raises untouched
-        if not _is_plan_refusal(exc):
-            raise
-        print("", file=sys.stderr)
-        print("BLOCKED — resolve before ending session:", file=sys.stderr)
-        print("", file=sys.stderr)
-        print(_attributed("critic",
-            f"BUILD PLAN (resolution refused): {exc}\n"
-            "  Every gate resolves a plan, so none of them ran this session — this\n"
-            "  is not a coverage verdict, and the next Stop does not clear it.\n"
-        ), file=sys.stderr)
-        return 2
 
     # v5: Compliance canary (informational)
     try:
@@ -4676,8 +4643,9 @@ def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
     pointer = _read_str_yaml_key(
         project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
     )
-    if pointer:
-        pointed_at = (project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")).resolve()
+    pointed_at = _core().pointer_plan_path(project_dir / ".prawduct")
+    if pointer and pointed_at is not None:
+        pointed_at = pointed_at.resolve()
         if pointed_at == Path(result["source"]).resolve():
             print(
                 "NOTE: active_build_plan still names the plan just archived "
@@ -6164,8 +6132,8 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     pointer = _read_str_yaml_key(
         project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
     )
-    if pointer:
-        pointed_at = project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")
+    pointed_at = _core().pointer_plan_path(project_dir / ".prawduct")
+    if pointer and pointed_at is not None:
         if not pointed_at.is_file():
             print(
                 f"NOTE: active_build_plan names {pointer}, which is not there. "
@@ -7136,43 +7104,17 @@ def _check_binary_skew(command: str, project_dir: Path) -> int:
 
 
 def main() -> int:
-    """Dispatch, converting a fail-closed plan-resolution refusal into a clean exit.
+    """Dispatch. ``_dispatch`` is where the command table lives.
 
-    ``_dispatch`` is where the command table lives. This wrapper exists for the
-    one error every command can hit before doing anything: two live build plans
-    declaring the same ``branch:``, which ``core.resolve_build_plan_path``
-    refuses to resolve rather than guess between. A traceback would be loud but
-    unreadable, and the refusal names its own remedy, so print it and exit
-    non-zero — a refused gate is a blocked gate, which is the intended posture.
-
-    Classification happens after the catch rather than in the ``except`` clause,
-    so the ordinary run never imports lib to get here and a *failed* lookup can
-    never displace the error it was meant to classify — see
-    :func:`_is_plan_refusal`. Anything that is not the refusal is re-raised
-    untouched, which keeps every other traceback exactly as it was.
+    Plain, and worth a line on why: this wrapper used to classify a fail-closed
+    plan-resolution refusal (two live plans declaring one ``branch:``) into a
+    clean exit. Nothing raises that any more — several plans on one branch is an
+    ordinary arrangement that ``core.resolve_branch_claim`` resolves and
+    attributes — so the classifier, and the ``cmd_stop`` probe that converted it
+    into the harness block code, went with it rather than staying as handling
+    for a condition no code can produce.
     """
-    try:
-        return _dispatch()
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- classified immediately; anything else re-raises untouched
-        if not _is_plan_refusal(exc):
-            raise
-        print(f"REFUSING: {exc}", file=sys.stderr)
-        return 1
-
-
-def _is_plan_refusal(exc: BaseException) -> bool:
-    """Whether ``exc`` is core's fail-closed plan-resolution refusal.
-
-    Asked by class rather than by name, but the lookup is GUARDED, because it
-    runs while another exception is already propagating: on an incomplete
-    install ``lib`` may be unimportable, and an ImportError raised here would
-    replace whatever actually went wrong with a confusing chain. ``False`` is
-    the safe answer in that case — if core cannot be imported, nothing in this
-    process raised core's exception."""
-    try:
-        return isinstance(exc, _core().AmbiguousPlanBranchError)
-    except Exception:  # prawduct:allow prawduct/broad-except -- an unimportable lib must not mask the error being classified
-        return False
+    return _dispatch()
 
 
 # --- Pre-dispatch argument shape --------------------------------------------

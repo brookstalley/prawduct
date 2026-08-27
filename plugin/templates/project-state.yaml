@@ -223,7 +223,9 @@ build_state:
 # tolerated). It is the FALLBACK, not the first answer: a plan that declares
 # `branch:` in its frontmatter claims the branch it names, and this scalar
 # answers for every branch no live plan claims (the build-plan template's
-# `branch:` comment states the order). Unset → `artifacts/build-plan.md`.
+# `branch:` comment points at the full rule). It also breaks a TIE among several
+# plans claiming one branch — that is its remaining job once branches carry their
+# own plans. Unset → `artifacts/build-plan.md`.
 # A pointer to a file that doesn't exist means governance sees no active plan
 # by this route — the session briefing warns when resolution actually took it.
 #

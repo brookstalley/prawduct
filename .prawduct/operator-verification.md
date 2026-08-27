@@ -981,3 +981,50 @@ is reached over a bind mount or network filesystem.
    produce one. Capture what command was running when it appeared.
 
 **Verified by:** _(operator, date)_
+
+## VRF-017 — Chunk 04 (branch-claim-multiplicity) — the develop track, live on a sibling repo
+
+**Status:** pending
+**Added:** 2026-08-27 (branch-claim-multiplicity Chunk 04, PR #658)
+
+**Why a human check:** the acceptance criterion is that a sibling repo is *actually running* the
+develop track and its briefing reports the prerelease version. That cannot be met from this branch
+and never could: the recipe installs from `{source: github, ref: develop}`, so a sibling fetches
+develop from GitHub and the work has to be merged and pushed there before any install can see it.
+Verifying it by installing from a local path would confirm a different recipe than the documented
+one, so the chunk was left unticked rather than quietly satisfied (plan amendment, 2026-08-13).
+
+**Read this first — the format changed under the chunk.** The recipe originally bumped `develop` to
+an **rc** (`3.4.0-rc.1`). While this branch sat, `develop` shipped a narrower rule: `-dev` / `-dev.N`
+is the ONLY permitted prerelease, and `test_version_tuple_refuses_an_unpermitted_prerelease` requires
+an rc to NOT parse. The base sync resolved every version file in develop's favour and the recipe and
+runbook were restated in `-dev.N` terms (owner decision, 2026-08-27). Verify the `-dev` recipe; an rc
+anywhere in these steps is a stale instruction, not a variant to try.
+
+**Where to verify:** a sibling prawduct-governed repo on this machine — not this one, and not a repo
+anyone else works in (the marketplace entry is per-machine, so a collaborator would silently run a
+different governance version).
+
+**Steps:**
+
+1. After this PR merges to `develop` and is pushed, add the `prawduct-dev` block from
+   `documentation/release-process.md` § *Dogfooding the develop track* to the sibling's
+   `.claude/settings.local.json` (per-machine and gitignored — confirm it does not land in the
+   repo's committed install reference).
+2. Start a session there. **The briefing must report the prerelease version** (`3.4.1-dev.2` or
+   whatever `develop` then carries), not the released string. Reporting the released version means
+   the cache resolved the released entry and you are dogfooding nothing — the exact failure the
+   prerelease exists to prevent.
+3. Confirm the version-as-cache-key assumption end to end: bump `develop` to the next `-dev.N`,
+   push, restart the sibling's session, and confirm the briefing follows. A briefing that does not
+   move means the cache key is not the version and the recipe loses a step.
+   **That bump is FOUR files, not three** — the three version files *and* the open
+   `## vX.Y.Z-dev.N` heading in `plugin/CHANGELOG.md`, in one commit.
+   `test_changelog_has_current_version_entry` keys on the exact manifest string, so a three-file
+   bump reddens `develop` and you will be debugging the suite instead of the thing you came to
+   verify.
+4. Confirm `main` is untouched throughout, and that no other repo on this machine changed track.
+5. Walk the documented way back off: delete the `prawduct-dev` block, re-enable `prawduct@prawduct`,
+   restart, and confirm the briefing reports the released version again.
+
+**Verified by:** _(operator, date)_

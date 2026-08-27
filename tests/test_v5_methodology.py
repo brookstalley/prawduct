@@ -521,7 +521,14 @@ LAST_MEASURED_TOKENS = {
     # step 7", which a step inserted into that flow turned into "Clean up evidence
     # file". Replaced with the step's NAME, which costs tokens and cannot rot --
     # a durable pointer must not ride on a position that renumbers.
-    "methodology/planning.md": 4860,
+    # +200 on 2026-08-27 (branch-claim-multiplicity, at the base sync): the
+    # multi-claim precedence — sole claimant, then chunks left, then
+    # `active_build_plan`, then path order — is written here and nowhere else,
+    # and every other surface points at it, so it cannot be a pointer itself.
+    # Paid down first rather than recorded whole: the pointer-clear rule kept its
+    # RULE here and handed its WHY to `/prawduct:pr`'s Merge Flow step, which
+    # states it at length, saving ~58 of the ~258 the merge brought in.
+    "methodology/planning.md": 5060,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

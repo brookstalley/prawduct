@@ -79,6 +79,15 @@ def _repo(tmp_path: Path) -> Path:
 
 class TestBundledData:
     def test_changelog_has_current_version_entry(self, banner):
+        """The shipped version's headline must exist, keyed by the EXACT manifest
+        string — a prerelease included.
+
+        Not the release it is a prerelease of. `develop` runs on `X.Y.Z-dev.N` and
+        accumulates that cycle's notes under `## vX.Y.Z-dev.N`, which the cut renames
+        to `## vX.Y.Z`. Stripping the suffix here would look for a section describing
+        a release that has not happened, and would pass on a file carrying no notes
+        for the build actually running.
+        """
         pairs = dict(banner.parse_changelog(ROOT))
         assert PLUGIN_VERSION in pairs, f"CHANGELOG.md must carry the current version {PLUGIN_VERSION}"
         assert pairs[PLUGIN_VERSION], "the current version's changelog headline must be non-empty"

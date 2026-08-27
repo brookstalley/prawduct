@@ -70,9 +70,76 @@ def _plan(prawduct: Path, rel: str, body: str) -> Path:
 class TestBranchScopedPlanBriefing:
     """What the briefing says about `branch:`-declaring plans.
 
-    All three are advice — the briefing must still be produced. The refusal that
-    stops the GATES is reported here rather than met later as a failed command.
+    All of it is advice — the briefing must still be produced whatever it finds.
     """
+
+    def test_a_failed_resolution_is_attributed_not_swallowed(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Advice fails soft; it does not fail silent.
+
+        The contested-claim line is the ONLY surface that ever says a branch is
+        contested, and the fail-closed route that used to backstop it is gone by
+        design. It is emitted from inside a broad `except`, so without this test
+        a refactor back to a bare `pass` restores the silence and nothing
+        notices — which is the defect a previous review found here.
+        """
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+
+        def _boom(_prawduct_dir):
+            raise OSError("the plan directory could not be read")
+
+        monkeypatch.setattr(briefing, "resolve_branch_claim", _boom)
+        text = briefing.assemble_session_briefing(tmp_path, [])
+        assert "== SESSION BRIEFING ==" in text, "the briefing must still be produced"
+        assert "could not be reported" in text
+        assert "OSError" in text, "the reader is owed what actually failed"
+
+    def test_a_retained_plan_with_its_pointer_cleared_says_nothing(self, tmp_path: Path):
+        """The gitflow retention window, after a branch-declaring plan merges.
+
+        Its branch is deleted, so the claim resolves for nobody; with the pointer
+        cleared, nothing resolves the finished plan and the briefing is silent.
+        Leaving the pointer aimed at it is what produced an "archive the plan"
+        advisory during the one window the PR skill says to retain it — an
+        advisory whose only correct action was to ignore it.
+        """
+        _init_git_repo(tmp_path, branch="develop")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")  # pointer cleared
+        _plan(
+            prawduct,
+            "build-plan-shipped.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: shipped\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert not any("archive the plan" in f for f in findings), findings
+        assert "== SESSION BRIEFING ==" in briefing.assemble_session_briefing(
+            tmp_path, findings
+        )
+
+    def test_the_same_plan_still_nags_when_the_pointer_names_it(self, tmp_path: Path):
+        """The control, and the pointer-resolved case the rule keeps.
+
+        Without it the assertion above passes on any repo where the advisory is
+        broken rather than on one where the pointer was cleared.
+        """
+        _init_git_repo(tmp_path, branch="develop")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-shipped.md\n"
+        )
+        _plan(
+            prawduct,
+            "build-plan-shipped.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: shipped\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert any("archive the plan" in f for f in findings), findings
 
     def test_a_plan_claiming_a_missing_branch_is_reported(self, tmp_path: Path):
         _init_git_repo(tmp_path, branch="work")
@@ -145,25 +212,31 @@ class TestBranchScopedPlanBriefing:
         findings = briefing.staleness_scan(tmp_path)
         assert not any("not a branch in this repo" in f for f in findings), findings
 
-    def test_two_claimants_are_reported_and_the_briefing_survives(self, tmp_path: Path):
+    def test_two_claimants_resolve_and_the_briefing_names_both(self, tmp_path: Path):
+        # Two plans on one branch is an ordinary arrangement, so the briefing's
+        # job is attribution, not alarm: it must name the plan that governs, why
+        # it won, and the one it passed over. A session that learns which plan
+        # governed by watching a gate grade the wrong one was told too late.
         _init_git_repo(tmp_path, branch="work")
         prawduct = _prawduct(tmp_path)
         (prawduct / "project-state.yaml").write_text("")
-        for name in ("a", "b"):
+        for name, boxes in (("a", "- [x] Chunk 01: shipped"), ("b", "- [ ] Chunk 01: open")):
             _plan(
                 prawduct,
                 f"build-plan-{name}.md",
                 "---\nartifact: build-plan\nbranch: work\n---\n\n"
-                "## Status\n\n- [ ] Chunk 01: a chunk\n",
+                f"## Status\n\n{boxes}\n",
             )
         findings = briefing.staleness_scan(tmp_path)
-        assert any("live build plans declare" in f for f in findings), findings
-        # And the briefing itself is still produced, carrying the refusal — a
-        # session that only learns of this by watching a gate fail has been
-        # told too late.
         text = briefing.assemble_session_briefing(tmp_path, findings)
         assert "== SESSION BRIEFING ==" in text
-        assert "build-plan resolution REFUSES" in text
+        assert "2 live plans declare `branch: work`" in text
+        assert "build-plan-b.md" in text          # the one with chunks left
+        assert "build-plan-a.md" in text          # named as passed over
+        assert "chunks left" in text              # and why
+        # Attribution belongs in ONE place: repeating it as a staleness finding
+        # teaches the reader to skip both copies.
+        assert not any("live plans declare" in f for f in findings), findings
 
     def test_the_dangling_pointer_warning_defers_to_a_branch_claim(self, tmp_path: Path):
         # A plan claiming this branch outranks the scalar, so a stale pointer

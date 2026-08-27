@@ -47,6 +47,35 @@ dropped part of your suite, and nothing in the counts separates that from a clea
 `test-evidence record --degraded "<what did not report>"` says so, and the gates read it as stale
 rather than as a pass.
 
+**A build plan can declare the branch it governs.** Add `branch: <name>` to a build plan's
+frontmatter and every governance surface resolves that plan while that branch is checked out, ahead
+of `active_build_plan`. Two concurrent branches stop fighting over one line in `project-state.yaml`,
+and archiving the plan (or deleting the merged branch) ends the claim with nothing to un-point.
+
+**Several plans may declare one branch** — a release branch carrying two workstreams is ordinary.
+Governance picks the sole claimant, else the one with chunks left, else the plan `active_build_plan`
+names, else path order; the session briefing tells you which it chose, why, and what else claimed
+the branch. The scalar keeps a job: it is how you break that tie. **Nothing migrates and nothing is
+required** — a plan that declares no `branch:` resolves exactly as it did before, and a `branch:`
+field written as documentation simply becomes meaningful, inert wherever its value is not a real
+branch name.
+
+**One new advisory, and how to make it stop.** Every branch writes its change-log entry at the top
+of the same file, so merging an advanced base conflicts there every time while the two sides never
+actually disagree. A session-start advisory now recommends one line:
+
+```
+.prawduct/change-log.md merge=union
+```
+
+It recommends and never writes — `.gitattributes` is your committed configuration, not the
+plugin's. Add the line and commit it; the advisory resolves itself on the next sync. Declining is a
+legitimate answer and `/prawduct:doctor` will not grade your repo degraded for it. The trade is
+stated because it is real: union never conflicts, so a genuine two-sided edit to one entry's tag
+line survives as both versions. A twice-landed entry is *not* duplicated. Entry parsing now counts
+tag lines that end up past an entry's prose — where a union merge puts the second version — and
+warns that nothing reads them, so a merged-away `release=` cannot disappear quietly.
+
 ## v3.4.0
 
 **Less waiting on the gates, fewer rounds in review.** Gate checks stop timing out, syncing your base no longer buys a re-review, and a finding tells you whether the defect is only where it pointed.
