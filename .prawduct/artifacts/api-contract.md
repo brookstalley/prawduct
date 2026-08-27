@@ -211,6 +211,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   shape this command was written to end.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
   `verify-operator-verification` (both mutating).
+- **Plugin activation** — `check-plugin-active [--path P] [--context onboard|doctor] [--json]`
+  (read-only). Answers whether the harness will actually LOAD the plugin for a repo, which
+  project-scope enablement in `.claude/settings.json` does not settle on its own. **Three-way by
+  construction**: `active` exit 0, `inactive` exit 1, `unknown` exit **3** — the third-outcome
+  shape below, for the reason given there. `--context` selects the WORDING, not the verdict: the
+  same `inactive` means "this repo loads nothing" to an onboarding session and "the manifest
+  record does not name this path" to a doctor run, which by construction executes inside a
+  session where the plugin did load. `--json` carries `status` for a caller that must branch.
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
 - **Backlog service** — `backlog <op>`: a subcommand *group*, not a single command. The op set is
   `_ALL_OPS` in `lib/backlog/cli.py` — the same tuple the CLI builds its unknown-op message from, so
@@ -385,7 +393,13 @@ raised as stack traces across the boundary.** The intended scheme:
 `ok` | `failed` | `unverifiable`. Registered here because the `--json` emitters are enumerated in
 this section, and a payload documented only by its exit code is a shape a caller has to reverse-engineer.
 
-**One gate carries a third outcome, added 2026-08-04.** `check-released` exits **3** for
+**Two gates carry a third outcome, for one shared reason: both foldings of "could not run" are
+wrong, and each command's own environment says why.** `check-plugin-active` (2026-08-27) exits **3**
+for *unknown* — folded into 1 it reports a broken install because a harness-internal file would not
+parse, sending an operator to reinstall something that works; folded into 0 it reports a clean bill
+off a check that never ran, which is the class the command exists to close.
+
+`check-released` (2026-08-04) exits **3** for
 *unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a
 shallow checkout, or a declared `toml` version file on a pre-3.11 interpreter (no `tomllib`).
 It is a distinct code rather than folded into 0 or 1 because both foldings are
@@ -399,7 +413,10 @@ CI binds to the exit code, so any non-zero is red without special-casing.
 Fail-direction is deliberate and per-purpose:
 
 - **Unevaluable *advisory* gate** (an optional lib path failed to import) → **fail-open, exit 0**: an
-  ungradeable gate must never false-block (`classify-diff-risk`, `check-operator-verification`).
+  ungradeable gate must never false-block (`classify-diff-risk`, `check-operator-verification`,
+  `check-plugin-active`). Scope check, because it is easy to over-read: this covers the **plugin's
+  own lib** failing to import, where prawduct itself is broken and blocking the caller helps nobody.
+  A command whose *subject* could not be read is a different case and takes the third outcome below.
 - **Unevaluable *writer*** (a state-mutating command whose lib failed to import) → **fail-closed,
   exit 1**: never report a false success. (`regen-views` used to be the worked example, escalating
   to **2** for validation/IO errors; it writes nothing at all now, so the rule's subjects are the

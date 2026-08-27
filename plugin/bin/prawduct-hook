@@ -4830,6 +4830,99 @@ def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
     return telemetry.review_stats(project_dir, argv)
 
 
+def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
+    """Is the prawduct plugin actually LOADED for a repo? Thin wrapper — body
+    lives in ``lib.plugin_activation``.
+
+    ``--path P`` names the repo to ask about, defaulting to the current project.
+    The flag is what makes this useful: the failure it detects makes the target
+    repo unable to run any prawduct command at all, so the only session that can
+    ask the question is one running somewhere else — the onboarding session.
+
+    **Exit codes: 0 active, 1 inactive, 3 unknown** — the same three-outcome
+    shape, and for the same stated reason, as ``check-released``'s *unverified*
+    3. Both foldings of "could not run" are wrong here. Folded into 1 it reports
+    a broken install because a harness file was unreadable, sending an operator
+    to reinstall something that works. Folded into 0 it reports a clean bill off
+    a check that never ran — which is the entire class this command exists to
+    close, so spending it on the command's own error path would be the joke
+    writing itself.
+
+    The ratified *fail-open, exit 0* rule for an unevaluable advisory is a
+    different case and is honoured below: it covers the **plugin's own lib**
+    failing to import, where prawduct is broken and must not block the caller.
+    A subject that could not be read is not that.
+
+    ``--context doctor`` selects the wording for a caller running INSIDE a
+    session the plugin loaded, where ``inactive`` cannot mean "ungoverned".
+    """
+    flags = {"--json"}
+    rest = []
+    target = None
+    context = "onboard"
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--path", "--context"):
+            if i + 1 >= len(argv):
+                print(
+                    f"check-plugin-active: {arg} needs a value",
+                    file=sys.stderr,
+                )
+                return 2
+            if arg == "--path":
+                target = argv[i + 1]
+            else:
+                if argv[i + 1] not in ("onboard", "doctor"):
+                    print(
+                        f"check-plugin-active: unknown --context "
+                        f"{argv[i + 1]!r} (expected 'onboard' or 'doctor')",
+                        file=sys.stderr,
+                    )
+                    return 2
+                context = argv[i + 1]
+            i += 2
+            continue
+        rest.append(arg)
+        i += 1
+    rejected = _reject_unknown_args("check-plugin-active", rest, flags)
+    if rejected is not None:
+        return rejected
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import plugin_activation  # noqa: PLC0415 — lazy import
+    except ImportError:
+        # Fail OPEN, and say what was not established. An advisory that cannot
+        # run must not read as a pass — the whole point of the check.
+        print(
+            "NOTE: check-plugin-active could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; whether the plugin is installed for this "
+            "project was NOT established.",
+            file=sys.stderr,
+        )
+        return 0
+
+    result = plugin_activation.plugin_activation_status(
+        target if target is not None else project_dir
+    )
+    if "--json" in rest:
+        print(json.dumps(result, indent=2))
+    else:
+        text = "\n".join(
+            plugin_activation.report_lines(result, context=context)
+        )
+        stream = sys.stdout if result["status"] == plugin_activation.ACTIVE else sys.stderr
+        print(text, file=stream)
+    if result["status"] == plugin_activation.INACTIVE:
+        return 1
+    if result["status"] == plugin_activation.UNKNOWN:
+        return 3
+    return 0
+
+
 def cmd_cost_of_commit(project_dir: Path, argv: list[str]) -> int:
     """Price a commit BEFORE it is made: does committing these paths buy a
     review round? Thin wrapper — body lives in ``lib.coverage.cost_of_commit``.
@@ -6264,6 +6357,7 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
+    "check-plugin-active [--path P] [--context onboard|doctor] [--json]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
@@ -6611,6 +6705,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "check-change-log-entry",
     "check-cumulative-critic",
     "check-operator-verification",
+    "check-plugin-active",
     "check-pr-doc-only",
     "check-releasability",
     "check-released",
@@ -7169,6 +7264,8 @@ def _dispatch() -> int:
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "cost-of-commit":
         return cmd_cost_of_commit(project_dir, sys.argv[2:])
+    elif command == "check-plugin-active":
+        return cmd_check_plugin_active(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":

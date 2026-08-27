@@ -22,7 +22,17 @@ governed_by:
       - "the plugin writes nothing into a governed repo except its own state → conforms;
          chunk 01 only READS the harness's `installed_plugins.json` and never writes it"
       - "every fact has one home → conforms; chunk 03 adds no new carrier, it checks a set
-         prawduct already computes"
+         prawduct already computes. Chunk 01's operator wording is homed in
+         `plugin_activation.report_lines` rather than in the two skills that relay it, for the
+         same reason"
+      - "an independent reviewer never mutates the session it reviews → inapplicable; no chunk
+         here touches the reviewer's write set"
+      - "local-first: no network, no daemon → conforms; every check added reads local files.
+         Chunk 01 reads one it does not own, which is why it fails soft"
+      - "prawduct guides and reviews; it never implements → conforms; chunk 01 REPORTS an
+         install defect and prints the command, and deliberately does not run it. The repair is
+         the operator's, which is also why doctor previews rather than reconciles"
+      - "goals and verification bind; prescribed method is advice → conforms"
   - artifact: data-model
     dispositions:
       - "facts are keyed by git TREE SHA, not by branch or commit → LOAD-BEARING IN CHUNK 04.
@@ -36,19 +46,48 @@ governed_by:
          fact from the reviewer's prose (the issue's option 1) would mint a resolution whose
          judgment was inferred rather than made. Option 2 — refuse — is the only route that
          does not violate this"
-      - "derived views are disposable and never authoritative → conforms"
+      - "derived views are disposable and never authoritative → conforms; no chunk makes a gate
+         read a view"
+      - "governance verdicts are computed from the append-only fact ledger, never from mutable
+         model-written state → LOAD-BEARING IN CHUNK 03, which is the whole shape of the fix: the
+         check compares a set the ledger already yields against what the pass named, rather than
+         trusting the reviewer's prose narration of it"
+      - "facts are immutable and append-only; a state change is a new fact → conforms; chunk 03
+         adds no edit-in-place, it refuses earlier"
+      - "a governance document reaches a terminal state; it is never deleted → conforms, and
+         chunk 05 defends it: the duplicate-heading refusal exists because `--apply` could
+         otherwise orphan an entry in a corpus whose invariant is never-delete"
+      - "a fact written by a newer schema than the reader is a loud block, never silently
+         dropped → conforms; chunk 04 changes a cache KEY, not a fact schema, so a stale entry
+         becomes a miss rather than a misread"
+      - "two stores, two lifetimes → conforms; chunk 04's cache stays per-clone and gitignored"
+      - "`backlog_service_repo` selects the authoritative backlog store → inapplicable; no chunk
+         reads the backlog"
+      - "every backlog issue conforms to the title rules → inapplicable"
   - artifact: api-contract
     dispositions:
-      - "exit codes are the contract; additive-first evolution, `--json` keys never
-         repurposed → conforms; chunks 01 and 02 ADD exit codes and result keys and repurpose
-         none. The ratified unevaluability split is honoured: `check-operator-verification` is
-         an authority gate, so unevaluable fails CLOSED; `check-plugin-active` is advisory at
-         onboarding, so an unreadable harness file exits 0 carrying `unknown`"
+      - "exit codes are the contract, on a documented and consistent scheme → LOAD-BEARING, and
+         it moved chunk 01 after review. `check-plugin-active` first shipped `unknown` as exit 0
+         on the ratified fail-open-advisory reading. The Critic found that rule's scope is the
+         PLUGIN'S OWN LIB failing to import, not a subject that could not be read — and that
+         `check-released` already carries exit 3 for exactly this case, two paragraphs away in
+         the same section, arguing that folding could-not-run into 0 reports success. Corrected
+         to exit 3, and the artifact now documents two third-outcome gates sharing one reason
+         rather than one gate and an unexplained divergence"
+      - "additive-first evolution; `--json` keys never repurposed → conforms; chunks 01 and 02
+         ADD subcommands, flags and result keys and repurpose none"
+      - "whole-surface semver; the CLI subcommand surface is internal → conforms;
+         `check-plugin-active` joins an internal surface with no per-subcommand version"
   - artifact: observability-strategy
     dispositions:
       - "stdout is agent-facing, stderr is user-and-diagnostics, with stable prefixes →
          conforms; the new signals use the existing prefix vocabulary and land on the channel
-         matching their audience"
+         matching their audience — chunk 01 puts `active` on stdout and both problem states on
+         stderr, pinned by test"
+      - "the governance ledger has a single writer → inapplicable; no chunk writes the ledger"
+      - "text emitted into a governed product names no prawduct-internal identifier →
+         conforms; chunk 01's operator text names a harness file and a `claude` command, both
+         of which are the operator's own vocabulary, and no review id or internal token"
 partition: >-
   serial — the six chunks touch six disjoint modules and would parallelise cleanly, but the
   operator directed this session to run without delegation. Recorded as the operator's call,
@@ -102,12 +141,37 @@ retirement cannot orphan a duplicate; and two operator-facing signals stop being
 
 ## Status
 
-- [ ] Chunk 01: An onboarded repo proves governance is live, or says it could not tell (#710)
+- [x] Chunk 01: An onboarded repo proves governance is live, or says it could not tell (#710)
 - [ ] Chunk 02: An input that could not be read or recognised says so (#681, #664)
 - [ ] Chunk 03: A verify pass records every blocking finding it discharges (#711)
 - [ ] Chunk 04: The verdict cache keys on the code that computed the verdict (#668)
 - [ ] Chunk 05: The learnings pair is graded, and a duplicate heading refuses (#717)
 - [ ] Chunk 06: The version-delta headline renders as one sentence (#703)
+
+Context: Plan written 2026-08-27 on `fix/silent-clear-checks`, cut from a clean `develop` at
+`d47381bd` (immediately after #722 merged via PR #725). Baseline suite green.
+
+Chunk 01 closed 2026-08-27 after three rounds (`chunk` -> two `verify-resolutions`), ending
+0 blocking / 0 warning / 0 note. Suite green; evidence recorded against the reviewed tree.
+
+What the reviews changed, worth carrying — both were the same mistake in different clothes, and
+both were mine: **claiming more than the execution context supports.** Round 1 found doctor's call
+site relaying "this repo will start a session with NO governance" for an `inactive` — from inside a
+session where the plugin demonstrably loaded, because `/prawduct:doctor` IS a plugin skill. That is
+the false-accusation direction the module's own docstring makes load-bearing, reintroduced one layer
+up at the caller. Fixed by giving the wording a `--context`, so the two consequences stay in one
+home rather than being paraphrased per skill. Round 1 also found `unknown` folded into exit 0 on a
+fail-open reading, two paragraphs from `check-released`'s exit 3 arguing in the same section that
+this exact folding reports success; the ratified fail-open rule turned out to scope the plugin's own
+lib failing to import, not a subject that could not be read. Corrected to exit 3, and the
+api-contract now documents two third-outcome gates under one shared reason instead of one gate and
+an unexplained divergence.
+
+Carried into chunk 02's commit (a deferral, not a drop — it rides a commit being made anyway rather
+than buying a round): add a `("check-plugin-active", ["--context", "onboard"])` row to the
+`documented` list in `tests/test_hook_argument_shape.py`. Round 3 demoted it — the parser treats
+both values identically and `test_plugin_activation.py` already pins the validation — so this is
+list symmetry with the documented surface, not coverage.
 
 ---
 
@@ -115,9 +179,10 @@ retirement cannot orphan a duplicate; and two operator-facing signals stop being
 
 - **Description:** Close #710. A repo can carry a correct `.claude/settings.json` install
   reference and still have the plugin never load, because *project-scope enablement is not
-  installation*: `~/.claude/plugins/installed_plugins.json` must also hold a
-  `prawduct@prawduct` record whose `projectPath` is that repo. Nothing in the plugin reads
-  that file (`grep -rn installed_plugins plugin/` → no hits), so nothing can notice.
+  installation*: the harness's own installed-plugins manifest (an
+  `installed_plugins.json` under the Claude config dir — read, never written by prawduct)
+  must also hold a `prawduct@prawduct` record whose `projectPath` is that repo. Nothing in the plugin reads
+  that manifest (`grep -rn installed_plugins plugin/` → no hits), so nothing can notice.
 
   **The detector cannot live in `/prawduct:doctor` for the failing repo, and this is the
   design point.** `doctor` *is* a plugin skill — if the plugin never loaded, the operator
@@ -129,17 +194,23 @@ retirement cannot orphan a duplicate; and two operator-facing signals stop being
 - **Artifacts consumed:** `architecture.md` (the plugin writes nothing into a governed repo
   except its own state — this chunk only *reads* the harness file)
 - **Deliverables:** new `plugin/lib/plugin_activation.py` (fail-soft reader returning
-  `active` / `inactive` / `unknown`); a `prawduct-hook check-plugin-active [--path P]`
+  `active` / `inactive` / `unknown`); a
+  `prawduct-hook check-plugin-active [--path P] [--context onboard|doctor] [--json]`
   subcommand; a final verification step in `plugin/skills/onboard/SKILL.md` that runs it
   against the target and prints the exact remediation command on `inactive`; a doctor health
-  check for hook liveness
+  check for the install record and hook liveness
 - **Tests:** unit — an entry matching the target path → `active`; entries for other paths only
   → `inactive`; a user-scope entry → `active`; missing file, undecodable JSON, unexpected
-  schema, and a non-list value each → `unknown` **and never `inactive`**; the CLI maps
-  `unknown` to a distinct exit code from `inactive`
+  schema, and a non-list value each → `unknown` **and never `inactive`**, asserted per path and
+  once as a whole-set invariant so a newly added degradation cannot regress silently. CLI —
+  the three-way exit mapping (0 / 1 / **3**), `--json`, `--path` and its missing-value usage
+  error, stdout-vs-stderr routing, and that `--context doctor` does NOT relay the
+  ungoverned-repo consequence. Plus a remediation command whose path contains a space, since
+  `tmp_path` never does
 - **Acceptance criteria:** onboarding a repo whose plugin is not installed for that path ends
   with a named, actionable failure instead of a success message; every read error reports
-  "could not verify", never "not installed"
+  "could not verify", never "not installed"; and no caller relays a consequence its own
+  execution context disproves
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved

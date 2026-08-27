@@ -3,6 +3,47 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-27: onboarding proves the plugin will load, or says it could not tell
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+A repo could be onboarded perfectly and still run **completely ungoverned**. Writing the install
+reference into `.claude/settings.json` enables the plugin; it does not install it. The harness also
+needs a `prawduct@prawduct` record whose `projectPath` is that repo, and without one the target
+starts every session with no banner, no `/prawduct:*` skills and no Stop-hook gates — while its
+`CLAUDE.md` states that enforcement is structural. The agent reads that stanza, believes it, and
+builds ungoverned. This is the failure prawduct exists to prevent, happening to prawduct.
+
+**The detector could not go where every other health check lives, and that is the design.** Probes
+and `/prawduct:doctor` both run inside the repo's own session, and both are delivered *by* the
+plugin that did not load — in the failing repo the probe never fires and the skill cannot be
+invoked. So the check runs from **outside**: `/prawduct:onboard` now ends by asking
+`prawduct-hook check-plugin-active --path <target>` about the repo it just set up, and does not
+report success until the answer is `active`. `/prawduct:doctor` gets the residue it *can* see — a
+stale install, and a SessionStart hook that never completed in this clone — and says plainly which
+case it cannot reach.
+
+**Three answers, not two, and the third gets its own exit code.** `installed_plugins.json` is a
+harness-internal file prawduct is not entitled to rely on, so every read or shape failure yields
+`unknown` — "could not verify" — and never `inactive`. Telling an operator their plugin is not
+installed because a file would not parse sends them to reinstall something that was never broken.
+`unknown` exits **3**, joining `check-released`'s *unverified* under one shared reason: both
+foldings of "could not run" are wrong. Folded into 1 it reports a broken install off an unreadable
+harness file; folded into 0 it reports a clean bill off a check that never ran — which is the
+class this command exists to close, so spending it on the command's own error path would be the
+joke writing itself. (The ratified *fail-open, exit 0* rule is a different case and still holds
+where it applies: the plugin's own lib failing to import.) The manifest is read structurally rather
+than by its `version`, so a harness release that bumps the number keeps working and one that
+changes the shape declines to guess.
+
+**The same status does not mean the same thing to both callers, so `--context` selects the
+wording.** From onboarding, `inactive` means the repo will load nothing. From `/prawduct:doctor` it
+cannot mean that — doctor IS a plugin skill, so the plugin demonstrably loaded, and the only
+reading left is that the manifest names some other path: a worktree, or a moved, renamed or
+symlinked checkout. Relaying the onboard consequence there would send an operator to reinstall a
+working install, which is the false accusation the rest of the module refuses to make. Two
+consequences, two messages, one home.
+
 ## 2026-08-26: a dispatch refusal names the tree it graded and the work it excluded
 
 <!-- prawduct: type=fix | scope=verify-resolutions-exit3 -->
