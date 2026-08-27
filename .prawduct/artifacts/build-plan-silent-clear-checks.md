@@ -145,7 +145,7 @@ retirement cannot orphan a duplicate; and two operator-facing signals stop being
 - [x] Chunk 01: An onboarded repo proves governance is live, or says it could not tell (#710)
 - [x] Chunk 02: An input that could not be read or recognised says so (#681, #664)
 - [x] Chunk 03: A verify pass records every blocking finding it discharges (#711)
-- [ ] Chunk 04: The verdict cache keys on the code that computed the verdict (#668)
+- [x] Chunk 04: The verdict cache keys on the code that computed the verdict (#668)
 - [ ] Chunk 05: The learnings pair is graded, and a duplicate heading refuses (#717)
 - [ ] Chunk 06: The version-delta headline renders as one sentence (#703)
 
@@ -201,6 +201,33 @@ was silenced whenever the pass had one of its own — with the interpolation `TH
 {blocking} blocking` as the tell, since it could only ever render 0. And it caught the chunk's
 second declared deliverable (the dispatch directive) simply not shipping: the consolidation check
 acts after `resolutions` is written, so it can stop a false claim but cannot prevent one.
+
+Chunk 04 closed 2026-08-27 after two rounds (`chunk` -> `verify-resolutions`), ending
+0 blocking / 0 warning / 0 note. Suite green; evidence recorded against the reviewed tree.
+
+What the review changed, worth carrying — and the two findings were causally linked, which is the
+part to remember. The fix probed `git rev-parse HEAD^{tree}` with `cwd=plugin_dir`, believing that
+scoped it; `HEAD^{tree}` resolves to the commit's ROOT tree regardless of cwd. So the key moved on
+any commit touching `tests/` or `documentation/` — the exact churn tree-keying exists to prevent —
+and an installed copy nested inside a dotfiles repo would key on that unrelated repo's tree.
+`HEAD:./` scopes correctly AND exits 128 for an untracked directory, so nested-installed degrades
+to `""` as the acceptance criterion requires.
+
+**It shipped green because every fixture put the plugin directory AT the checkout root**, making
+root tree and plugin tree the same object, so no test could observe scoping at all. That is the
+third test-shaped finding in this plan (chunk 03 had two): a fixture whose input cannot trigger the
+guard. The rule that keeps earning itself — when a test defends a distinction, check that the
+fixture can express both sides of it.
+
+Carried into chunk 05's commit (a deferral, not a drop — a prose trim in a judgeable file, so doing
+it after chunk 04's verify pass would buy a round for one clause): the new `_checkout` docstring in
+`tests/test_verdict_cache.py` narrates its own history ("an earlier version of these fixtures got
+it wrong... the suite was green throughout"). History's home is commits and the change-log. Keep
+the load-bearing half — do not flatten the plugin back to the repo root — and drop the narration.
+
+Process note for the remaining chunks: pass `--chunk` on dispatch. Chunk 04's record-lint came back
+`unchecked` because the chunk was inferred from build-plan Status and may name the next chunk
+rather than the reviewed one.
 
 Carried into chunk 04's commit (deferrals, not drops — both are one-line comment corrections in
 judgeable files, so fixing them after chunk 03's verify pass would have bought a round for two

@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 from . import coverage_algebra, evidence
@@ -64,6 +65,96 @@ def cache_path(project_dir: Path) -> "Path | None":
     return None if store is None else store.parent / CACHE_BASENAME
 
 
+#: Memoised per process. The docstring above advertises a 0.01 s warm cost, and
+#: :func:`_key` runs once per gate call — a `git rev-parse` per lookup would
+#: spend the saving this module exists to create.
+#: ``None`` until computed. The computed value may legitimately be ``""`` (not
+#: a checkout, or git could not answer), which is why the sentinel is ``None``
+#: and not falsiness — otherwise the degraded case would re-probe git on every
+#: single lookup, which is the cost this memo exists to avoid.
+_CODE_IDENTITY: "str | None" = None
+
+
+def _code_identity() -> str:
+    """What identifies the CODE that computed a verdict, beyond its version.
+
+    :func:`_key` folds in the plugin version because the cache outlives the
+    plugin and the verdict depends on ``coverage_algebra.is_judgeable_path``.
+    That is sufficient for an installed copy, where the version string moves
+    whenever the code does. It is **not** sufficient when prawduct runs from a
+    git checkout — developing prawduct itself — because the bundled ``VERSION``
+    does not change between pushes to ``develop``. Two different develop states
+    then produce the same key by construction, and a verdict computed under the
+    older one is served as current. That is exactly what ``_key``'s own
+    docstring says the key must prevent: it covers "every input the verdict is a
+    function of — including the CODE that computed it."
+
+    **Tree, not commit.** ``data-model.md``'s Direction is that facts are keyed
+    by git *tree* SHA, and it is load-bearing here rather than stylistic: two
+    develop commits that produce an identical plugin tree ARE the same code, and
+    commit-keying would miss the cache on every no-op commit — a rebase, a
+    merge, an empty commit, or any commit touching only files outside the plugin
+    directory. Tree-keying invalidates when the code changes and only then.
+
+    A dirty checkout adds a fingerprint of what is uncommitted, because an
+    edited working tree is a third state that neither the version nor the
+    committed tree can distinguish.
+
+    Degrades to the empty string when this is not a checkout, or when git cannot
+    answer. That is the correct direction and is safe for the same reason the
+    module docstring gives for git-side degradation generally: a constant
+    component makes the key *coarser*, so entries collide and are replayed — and
+    replay can only ever reproduce a verdict the store's own fingerprint already
+    vouches for. It cannot manufacture a pass.
+    """
+    global _CODE_IDENTITY
+    if _CODE_IDENTITY is None:
+        _CODE_IDENTITY = probe_code_identity(Path(__file__).resolve().parent.parent)
+    return _CODE_IDENTITY
+
+
+def probe_code_identity(plugin_dir: Path) -> str:
+    """The uncached probe :func:`_code_identity` memoises.
+
+    Split out so the behaviour can be exercised against real git repositories
+    rather than by monkeypatching a module global — the memo would otherwise
+    make every test after the first one assert against a cached answer, which
+    is the shape that passes while measuring nothing.
+    """
+    parts: list[str] = []
+    try:
+        # `HEAD:./` — the tree of THIS directory, not `HEAD^{tree}`, which
+        # resolves to the commit's ROOT tree no matter what cwd is. Both halves
+        # of this function's contract depend on the difference:
+        #
+        # - Scoping. With the root tree, a commit touching only `tests/`,
+        #   `documentation/` or `.prawduct/` moves the key and invalidates every
+        #   cached verdict, which is the churn tree-keying exists to avoid.
+        # - Degradation. An installed copy can sit INSIDE an unrelated checkout
+        #   (a `~/.claude` tracked in a dotfiles repo). `HEAD^{tree}` succeeds
+        #   there and returns that repo's tree, so those users would get a key
+        #   churning on every unrelated commit. `HEAD:./` exits 128 for a
+        #   directory the repo does not track, so the identity degrades to `""`
+        #   and they key exactly as they did before this existed.
+        tree = subprocess.run(
+            ["git", "rev-parse", "HEAD:./"],
+            cwd=plugin_dir, capture_output=True, text=True, timeout=10,
+        )
+        if tree.returncode == 0 and tree.stdout.strip():
+            parts.append(tree.stdout.strip())
+            dirty = subprocess.run(
+                ["git", "status", "--porcelain", "--", str(plugin_dir)],
+                cwd=plugin_dir, capture_output=True, text=True, timeout=10,
+            )
+            if dirty.returncode == 0 and dirty.stdout.strip():
+                parts.append(
+                    hashlib.sha256(dirty.stdout.encode()).hexdigest()[:16]
+                )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return "\0".join(parts)
+
+
 def _key(base_tree: str, target_tree: str, fingerprint: str) -> str:
     """The memo key covers every input the verdict is a function of — including
     the CODE that computed it.
@@ -81,6 +172,10 @@ def _key(base_tree: str, target_tree: str, fingerprint: str) -> str:
         "\0".join((
             str(CACHE_SCHEMA),
             evidence._plugin_version() or "unversioned",
+            # The version alone is constant across develop pushes on a git
+            # checkout, so it cannot identify the code there. See
+            # `_code_identity`.
+            _code_identity(),
             base_tree,
             target_tree,
             fingerprint,

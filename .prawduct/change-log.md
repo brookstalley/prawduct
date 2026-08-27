@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-27: the verdict cache keys on the code that computed the verdict
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+`verdict_cache._key` folded in the plugin version because the cache outlives the plugin and the
+verdict depends on `coverage_algebra.is_judgeable_path`. That is enough for an installed copy,
+where the version string moves whenever the code does. It is not enough when prawduct runs from a
+**git checkout** — developing prawduct itself — because the bundled `VERSION` does not change
+between pushes to `develop`. Two different develop states therefore produced the same key *by
+construction*, and a verdict computed under the older one was served as current. `_key`'s own
+docstring already stated the invariant it was breaking: the key covers "every input the verdict is
+a function of — including the CODE that computed it."
+
+The key now folds in the checkout's plugin **tree** SHA, plus a fingerprint of any uncommitted edits
+under that directory.
+
+**Tree, not commit, and this was corrected at plan time rather than in review.** The first draft
+keyed on the commit SHA; `data-model.md`'s tree-keying Direction says facts key by tree, and here
+that is load-bearing rather than stylistic — two develop commits producing an identical plugin tree
+*are* the same code, so commit-keying would miss the cache on every rebase, merge, empty commit, or
+commit touching only files outside the plugin. Tree-keying invalidates when the code changes and
+only then, which is the whole point.
+
+**Degradation is toward coarser, never toward a false pass.** Not a checkout, or git cannot answer,
+contributes the empty string — so an installed copy keys exactly as before and no user sees a mass
+cache miss on upgrade. A coarser key makes entries collide and be replayed, and a replay can only
+reproduce a verdict the store's own content fingerprint already vouches for. The probe is memoised
+per process on a `None` sentinel rather than on falsiness, because `""` is a legitimate answer and
+sentinel-on-falsiness would re-probe git on every lookup for exactly the users who gain nothing
+from it — spending the saving this module exists to create.
+
 ## 2026-08-27: a verify pass cannot report the review over while a blocker it inherited stands
 
 <!-- prawduct: type=fix | scope=silent-clear-checks -->

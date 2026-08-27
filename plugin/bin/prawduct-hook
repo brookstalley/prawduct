@@ -1865,8 +1865,10 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     # narrowing comes first; then the roll-call of ids that must be accounted
     # for; and the resolution warning stays LAST, adjacent to the claim it
     # governs — the only one of the three that can weaken a gate, and therefore
-    # the one the reader must still be holding. Pinned by
-    # `TestResolutionDirectiveDelivery`.
+    # the one the reader must still be holding. Both halves of the order are
+    # pinned: `TestResolutionDirectiveDelivery` for the claim directive's last
+    # place, `TestCarriedBlockersReachTheirReaders` for the roll-call's slot
+    # between the other two.
     if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
         print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
         # The roll-call sets the AGENDA — which finding ids must come back with

@@ -614,7 +614,7 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
     )
 
 
-#: Delivered at `verify-resolutions` DISPATCH, immediately before
+#: Delivered at `verify-resolutions` DISPATCH, before
 #: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` — same reader, same moment, and the
 #: other half of what makes a re-review terminate. That one governs the
 #: `resolutions` array; this one governs `findings`.
