@@ -13,7 +13,9 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
+import textwrap
 from datetime import date
 from pathlib import Path
 
@@ -189,6 +191,85 @@ def _seed_learnings(product_dir: Path, content: str) -> Path:
     learnings = prawduct / "learnings.md"
     learnings.write_text(content)
     return learnings
+
+
+#: A verbatim restoration of the default this fix deleted, kept as the specimen
+#: the guard is tested against. Source text, not a live function: it must never
+#: be importable or callable, only parsed.
+_REINSTATED_DEFAULT_FOR_TESTING = '''
+def run_sentinel(product_dir, sentinel, *, timeout=120):
+    """Run pytest against the sentinel."""
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", sentinel, "-q"],
+        cwd=str(product_dir),
+        capture_output=True,
+    )
+    return result.returncode == 0, ""
+'''
+
+
+def _hardcoded_runner_violations(*functions, from_source: bool = False) -> list[str]:
+    """Names of test runners or interpreters wired into a subprocess invocation.
+
+    **Structural, not textual**, and that is the whole point. The question is
+    not "does the word pytest appear" — it appears twice in
+    ``resolve_sentinel_command``, explaining the deleted default and showing an
+    operator what to declare, and both must stay. The question is whether a
+    runner reaches the *invocation*: a string literal inside the argv handed to
+    ``subprocess``, or a reference to this interpreter. Prose cannot trip it and
+    an argv literal cannot hide from it, which is the pair the earlier
+    token-stripping version got backwards.
+    """
+    import ast
+    import inspect
+
+    sources = (
+        functions if from_source else [inspect.getsource(f) for f in functions]
+    )
+    violations: list[str] = []
+    for source in sources:
+        tree = ast.parse(textwrap.dedent(source))
+        for node in ast.walk(tree):
+            # `sys.executable` anywhere is this runtime's interpreter leaking in.
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr == "executable"
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "sys"
+            ):
+                violations.append("sys.executable")
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            is_subprocess = (
+                isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "subprocess"
+            )
+            if not is_subprocess or not node.args:
+                continue
+            # A built argv arrives as a Name; a hardcoded one as a list literal.
+            for element in ast.walk(node.args[0]):
+                if isinstance(element, ast.Constant) and isinstance(
+                    element.value, str
+                ):
+                    violations.append(f"literal {element.value!r} in argv")
+    return violations
+
+
+def _declare_sentinel_command(product_dir: Path, command: str) -> Path:
+    """Give a synthetic product a `sentinel_command:`.
+
+    Needed by every test that expects a real verdict: without a declaration the
+    runner reports `ungraded` by design, so a fixture that forgets this is
+    asserting the undeclared path while looking like it tests the declared one.
+    """
+    prawduct = product_dir / ".prawduct"
+    prawduct.mkdir(parents=True, exist_ok=True)
+    state = prawduct / "project-state.yaml"
+    prior = state.read_text() if state.is_file() else ""
+    state.write_text(f"{prior}sentinel_command: {command}\n")
+    return state
 
 
 class TestAuditLearnings:
@@ -518,6 +599,7 @@ class TestRunSentinel:
         (tmp_path / "tests" / "test_synthetic.py").write_text(
             "def test_passes():\n    assert True\n"
         )
+        _declare_sentinel_command(tmp_path, f"{sys.executable} -m pytest {{sentinel}} -q")
         passed, excerpt = run_sentinel(
             tmp_path, "tests/test_synthetic.py::test_passes"
         )
@@ -529,20 +611,145 @@ class TestRunSentinel:
         (tmp_path / "tests" / "test_synthetic.py").write_text(
             "def test_fails():\n    assert False\n"
         )
+        _declare_sentinel_command(tmp_path, f"{sys.executable} -m pytest {{sentinel}} -q")
         passed, excerpt = run_sentinel(
             tmp_path, "tests/test_synthetic.py::test_fails"
         )
         assert passed is False
         assert excerpt  # some diagnostic text returned
 
-    def test_nonexistent_sentinel_returns_false(self, tmp_path: Path):
-        """pytest exits non-zero when the requested node ID can't be
-        collected. The audit must surface this as a failure, not raise."""
+    def test_missing_node_in_an_existing_file_returns_false(self, tmp_path: Path):
+        """The file exists but names no such case: the runner ran and judged, so
+        this is a real FAILED verdict. Contrast the ungraded cases below, where
+        the *file* is gone and no runner ever spoke about the rule."""
         (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_synthetic.py").write_text(
+            "def test_passes():\n    assert True\n"
+        )
+        _declare_sentinel_command(tmp_path, f"{sys.executable} -m pytest {{sentinel}} -q")
         passed, excerpt = run_sentinel(
-            tmp_path, "tests/does_not_exist.py::nope"
+            tmp_path, "tests/test_synthetic.py::no_such_case"
         )
         assert passed is False
+
+
+class TestSentinelWithoutAVerdictIsUngradedNotFailed:
+    """The three-valued contract, and the reason it exists.
+
+    `run_sentinel` used to hardcode `sys.executable -m pytest`, so in a product
+    that does not use pytest every sentinel came back FAILED with "No module
+    named pytest" — against tests that were green. That is worse than silence:
+    the audit decides which learnings are structurally enforced, so a
+    false-failing sentinel argues for retiring a rule that is still enforced.
+
+    Each case below returns `None`, never `False`. A caller testing truthiness
+    cannot tell them apart, which is why the runner's docstring forbids it.
+    """
+
+    def test_no_declaration_is_ungraded_and_names_the_knob(self, tmp_path: Path):
+        (tmp_path / ".prawduct").mkdir()
+        passed, reason = run_sentinel(tmp_path, "tests/test_x.py")
+        assert passed is None, "undeclared must be ungraded, never failed"
+        assert "sentinel_command" in reason
+        assert "{sentinel}" in reason, "the reason must show the placeholder"
+
+    def test_declaration_without_placeholder_is_refused(self, tmp_path: Path):
+        """A command naming no file would run the whole suite and report its
+        verdict as this one rule's — the defect that rules out reusing
+        `test_command:` for this, so it must not be reachable by hand either."""
+        _declare_sentinel_command(tmp_path, "npx vitest run")
+        passed, reason = run_sentinel(tmp_path, "tests/test_x.py")
+        assert passed is None
+        assert "{sentinel}" in reason
+
+    def test_unlaunchable_command_is_ungraded_not_failed(self, tmp_path: Path):
+        _declare_sentinel_command(tmp_path, "definitely-not-a-real-binary {sentinel}")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("")
+        passed, reason = run_sentinel(tmp_path, "tests/test_x.py")
+        assert passed is None, "a launch failure is an environment fault, not a verdict"
+        assert "could not launch" in reason
+
+    def test_missing_sentinel_target_is_ungraded_not_failed(self, tmp_path: Path):
+        """A test that is GONE returned no verdict about the rule.
+
+        Runners disagree here — many exit non-zero on an uncollectable target,
+        which renders "deleted" as "failing" and accuses a test that no longer
+        exists. Live in this repo when the fix landed: a learning pointed at
+        `tests/test_prawduct_sync.py`, deleted long before, and the audit
+        reported its rule as failing.
+        """
+        _declare_sentinel_command(tmp_path, f"{sys.executable} -m pytest {{sentinel}} -q")
+        passed, reason = run_sentinel(tmp_path, "tests/gone.py::test_x")
+        assert passed is None, "a deleted test is ungraded, never failed"
+        assert "does not exist" in reason
+
+    def test_ungraded_entry_raises_no_error_and_is_retained(self, tmp_path: Path):
+        """The two safety properties of the ungraded path, asserted rather than
+        merely exercised.
+
+        Both are one edit from silently regressing — `is False` written as
+        `not` restores the false accusation, and dropping the retain branch
+        would retire a rule on a verdict nobody took. A test that only walks
+        the path stays green through either.
+        """
+        learnings = _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n## Enforced rule\n"
+            "<!-- prawduct-learning: sentinel=bridge/auth.test.js -->\n\nBody.\n",
+        )
+        result = audit_learnings(tmp_path, apply=True)
+
+        assert result["errors"] == [], "an ungraded sentinel accuses nothing"
+        assert len(result["retirements"]) == 1
+        record = result["retirements"][0]
+        assert record["passed"] is None
+        assert record["applied"] is False, "--apply must not retire an ungraded rule"
+        assert record["unevaluated_reason"]
+        # The excerpt slot means "what the test printed"; on the ungraded route
+        # nothing printed, and the reason lives in its own field. Empty iff
+        # `unevaluated_reason` is set is the invariant that keeps a reader from
+        # mistaking a prawduct diagnostic for runner output.
+        assert record["output_excerpt"] == ""
+        assert "Enforced rule" in learnings.read_text(), "the rule stays active"
+
+    def test_opaque_runner_id_is_not_claimed_to_be_missing(self, tmp_path: Path):
+        """A sentinel that is not path-shaped must reach the runner.
+
+        The missing-target check is a filesystem question, and a runner id need
+        not be a filename: JUnit's `com.acme.BarTest#testX`, Go's `./pkg -run X`.
+        Reporting "does not exist — update the learning" about one of those is a
+        confident diagnostic naming the wrong fault, which is the defect shape
+        fixed one function over for the unreadable state file.
+        """
+        seen = {}
+
+        def fake_run(cmd, **kwargs):
+            seen["cmd"] = cmd
+            return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+        _declare_sentinel_command(tmp_path, "gradle test --tests {sentinel}")
+        monkeypatch_run = pytest.MonkeyPatch()
+        monkeypatch_run.setattr(_mod.subprocess, "run", fake_run)
+        try:
+            passed, _detail = run_sentinel(tmp_path, "com.acme.BarTest#testX")
+        finally:
+            monkeypatch_run.undo()
+
+        assert passed is True, "an opaque id must be handed to the declared runner"
+        assert seen["cmd"] == ["gradle", "test", "--tests", "com.acme.BarTest#testX"]
+
+    def test_timeout_is_ungraded_not_failed(self, tmp_path: Path, monkeypatch):
+        _declare_sentinel_command(tmp_path, "sleep {sentinel}")
+        (tmp_path / "9999").write_text("")
+
+        def fake_run(cmd, **kwargs):
+            raise subprocess.TimeoutExpired(cmd, 120)
+
+        monkeypatch.setattr(_mod.subprocess, "run", fake_run)
+        passed, reason = run_sentinel(tmp_path, "9999")
+        assert passed is None, "a command that never finished returned no verdict"
+        assert "timed out" in reason
 
 
 # =============================================================================
@@ -1212,9 +1419,77 @@ class TestAuditLearningsHumanOutputPerRoute:
             "## Enforced rule\n"
             "<!-- prawduct-learning: sentinel=tests/nope.py::test_missing -->\n\nBody.\n",
         )
+        _declare_sentinel_command(tmp_path, f"{sys.executable} -m pytest {{sentinel}} -q")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "nope.py").write_text("")
         res = self._run(tmp_path)
         assert res.returncode == 0, res.stderr
         assert "retire[blocked]: Enforced rule (sentinel=tests/nope.py::test_missing)" in res.stdout
+
+    def test_ungraded_notice_reaches_stderr_on_both_renderers(self, tmp_path: Path):
+        """The machine half of the ungraded signal, pinned on the path that needs it.
+
+        `--json` writes a payload to stdout, so a notice printed there would
+        either corrupt it or be omitted — as shipped, it was omitted, leaving
+        `doctor` (the only `--json` consumer) with no signal where the pre-fix
+        code at least printed something loud and wrong. Routing it to stderr is
+        what carries R-1's fix to that path, and three durable records now assert
+        it as fact — including the `api-contract.md` Ruling whose in-bounds
+        argument for the norm departure rests on this notice existing.
+
+        Nothing pinned it: the human CLI test reads stdout only and the `--json`
+        test ignored stderr, so deleting the branch left the suite green and the
+        defect restored.
+        """
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n## Enforced rule\n"
+            "<!-- prawduct-learning: sentinel=bridge/auth.test.js -->\n\nBody.\n",
+        )
+        for args in (["--json"], []):
+            res = self._run(tmp_path, *args)
+            assert res.returncode == 0, res.stderr
+            assert "notice:" in res.stderr, (
+                f"the ungraded notice must reach stderr with args={args!r}"
+            )
+            assert "sentinel_command" in res.stderr, "it must name the remedy"
+        # ...and the payload it rides beside stays parseable.
+        payload = json.loads(self._run(tmp_path, "--json").stdout)
+        assert payload["retirements"][0]["passed"] is None
+
+    def test_no_notice_when_every_sentinel_was_graded(self, tmp_path: Path):
+        """The notice must not cry wolf — otherwise it stops being read."""
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n## Superseded rule\n"
+            "<!-- prawduct-learning: superseded-by=General rule -->\n\nBody.\n\n"
+            "## General rule\n\nBody.\n",
+        )
+        res = self._run(tmp_path)
+        assert res.returncode == 0, res.stderr
+        assert "notice:" not in res.stderr
+
+    def test_undeclared_sentinel_renders_ungraded_not_blocked(self, tmp_path: Path):
+        """The operator-facing half of the fix.
+
+        With no `sentinel_command:` the old code ran pytest anyway, so a
+        non-Python repo saw `retire[blocked]` — reported as a failing test
+        against one that was green, or in this case one that does not exist.
+        `blocked` claims a verdict; `ungraded` reports that none was taken, and
+        the reason line says what to declare.
+        """
+        _seed_learnings(
+            tmp_path,
+            "# Learnings\n\n"
+            "## Enforced rule\n"
+            "<!-- prawduct-learning: sentinel=bridge/auth.test.js -->\n\nBody.\n",
+        )
+        res = self._run(tmp_path)
+        assert res.returncode == 0, res.stderr
+        assert "retire[ungraded]: Enforced rule (sentinel=bridge/auth.test.js)" in res.stdout
+        assert "blocked" not in res.stdout, "an ungraded sentinel accuses nothing"
+        assert "not graded:" in res.stdout
+        assert "sentinel_command" in res.stdout, "the remedy must name the knob"
 
 
 class TestLifecycleMetadataLivesWhereItsReaderLooks:
@@ -1484,31 +1759,208 @@ class TestDescentObligationReachesTheReader:
 # =============================================================================
 
 
-class TestSentinelRunsTheRunningInterpreter:
-    """The sentinel subprocess must be `sys.executable`, not a bare `python3`.
+class TestThisRepoDeclaresWhatItAsksOthersFor:
+    """Prawduct's own state, pinned — it is the first consumer of this contract.
 
-    A bare `python3` resolves through the product's PATH, which under any
-    virtualenv is a *different* interpreter from the one running the audit —
-    typically one without pytest, or without the product installed. Every
-    sentinel then reports failing, and the audit's whole job is deciding which
-    learnings are structurally enforced, so a false-failing sentinel argues for
-    retiring a rule that is in fact still enforced.
+    Both properties below fail SOFT and SILENTLY in production: an absent
+    `sentinel_command:` ungrades every sentinel, and a sentinel pointing at a
+    deleted file is ungraded too. Neither raises, neither reddens a suite, and
+    both leave the audit reporting less than it did while looking healthy — so
+    if nothing asserts them here, nothing ever will.
     """
 
-    def test_argv_uses_sys_executable(self, tmp_path, monkeypatch):
+    _STATE = _REPO_ROOT.parent / ".prawduct" / "project-state.yaml"
+    _LEARNINGS = _REPO_ROOT.parent / ".prawduct" / "learnings.md"
+
+    def test_repo_declares_a_usable_sentinel_command(self):
+        declared = [
+            line for line in self._STATE.read_text().splitlines()
+            if line.startswith("sentinel_command:")
+        ]
+        assert len(declared) == 1, (
+            "prawduct governs its own repo; without this key its every sentinel "
+            "is ungraded and the mechanism is silently off here"
+        )
+        assert "{sentinel}" in declared[0], (
+            "a command with no {sentinel} names no file and would grade every "
+            "rule by the whole suite's verdict"
+        )
+
+    def test_every_declared_sentinel_target_exists(self):
+        """A sentinel naming a deleted test grades ungraded — permanently, and
+        without complaint. One had been dead since the plugin migration.
+
+        **Vacuous today, and deliberately kept.** Retiring that dead key left
+        this repo with zero sentinels, so there is currently nothing to check.
+        It is a FORWARD guard: it binds the moment a sentinel is declared again,
+        which is exactly when the mistake it catches becomes possible. Said out
+        loud because a reader counting green tests would otherwise credit it
+        with checking something it cannot yet reach.
+        """
+        missing = []
+        for match in re.finditer(
+            r"prawduct-learning:[^>]*?sentinel=([^\s;]+)", self._LEARNINGS.read_text()
+        ):
+            target = match.group(1).split("::", 1)[0]
+            if not (_REPO_ROOT.parent / target).exists():
+                missing.append(target)
+        assert not missing, (
+            f"learnings.md declares sentinel(s) whose target is gone: {missing}. "
+            "Repoint each at the test's new home, or drop the `sentinel=` key if "
+            "the rule is no longer structurally enforced."
+        )
+
+
+class TestSentinelRunsTheDeclaredCommand:
+    """The product declares the invocation; prawduct never picks one.
+
+    This replaced a `sys.executable -m pytest` default. That default was
+    correct about one thing worth keeping — a bare `python3` resolves through
+    the product's PATH, which under a virtualenv is a different interpreter —
+    but it answered that by assuming every governed product is Python, which
+    `architecture.md` § Direction forbids. The interpreter question is now the
+    product's to answer in its own declaration, the same posture `test_command:`
+    already takes.
+    """
+
+    def test_argv_comes_from_the_declaration(self, tmp_path, monkeypatch):
         seen = {}
 
         def fake_run(cmd, **kwargs):
             seen["cmd"] = cmd
             return subprocess.CompletedProcess(cmd, 0, stdout="1 passed", stderr="")
 
+        _declare_sentinel_command(tmp_path, "npx vitest run {sentinel} --reporter=dot")
+        (tmp_path / "bridge").mkdir()
+        (tmp_path / "bridge" / "auth.test.js").write_text("")
         monkeypatch.setattr(_mod.subprocess, "run", fake_run)
-        passed, _excerpt = run_sentinel(tmp_path, "tests/test_x.py")
+        passed, _excerpt = run_sentinel(tmp_path, "bridge/auth.test.js")
 
         assert passed is True
-        assert seen["cmd"][0] == sys.executable, (
-            "the sentinel must run the interpreter running the audit; a bare "
-            "'python3' is whatever the product's PATH resolves to"
-        )
-        assert seen["cmd"][1:] == ["-m", "pytest", "tests/test_x.py", "-q"]
+        assert seen["cmd"] == [
+            "npx", "vitest", "run", "bridge/auth.test.js", "--reporter=dot"
+        ], "the declared command, shlex-split, with {sentinel} substituted in place"
         assert isinstance(seen["cmd"], list), "list-form args, never shell=True"
+
+    def test_no_python_specific_literal_survives_in_the_sentinel_path(self):
+        """The norm this fix discharges, pinned against reintroduction.
+
+        A future edit adding a pytest fallback would restore the exact defect —
+        so the source of the two functions that build and run the invocation
+        must name no test runner and no interpreter at all.
+        """
+        violations = _hardcoded_runner_violations(
+            _mod.resolve_sentinel_command, _mod.run_sentinel
+        )
+        assert not violations, (
+            f"the sentinel invocation path hardcodes a runner: {violations}. "
+            "Prawduct must state the requirement and let the product declare it."
+        )
+
+    def test_the_guard_catches_a_verbatim_reinstatement(self):
+        """The guard above, guarded — because its first version caught nothing.
+
+        That version scanned text with every string token stripped, so an argv
+        literal `"pytest"` was invisible, and it space-joined tokens, so
+        `sys.executable` became `sys . executable` and matched no needle. A
+        verbatim restoration of the deleted code passed it — while
+        `architecture.md`'s LNG-5W8R discharge cited it as the pin against
+        exactly that.
+
+        Text matching cannot separate `["-m", "pytest"]` (the defect) from an
+        example inside an operator message (the remedy, and worth keeping), so
+        the check is now structural: a literal handed to a subprocess call is a
+        hardcoded runner wherever it appears; the same word in prose is not.
+
+        A guard nobody has watched fail is a guess. This one is run against the
+        real regression and required to catch it.
+        """
+        violations = _hardcoded_runner_violations(
+            _REINSTATED_DEFAULT_FOR_TESTING, from_source=True
+        )
+        assert violations, (
+            "the guard must flag a verbatim restoration of the deleted default"
+        )
+
+    def test_the_guard_still_lets_the_history_be_explained(self):
+        """...and does not force the docstrings to be gutted to stay green.
+
+        Why this code has no default is the most useful thing about it, and a
+        scanner that also flagged prose would push the next author to delete the
+        explanation rather than keep the property. `resolve_sentinel_command`
+        names a runner twice on purpose — once explaining the deleted default,
+        once as the example command in the message telling an operator what to
+        declare — and both must survive the guard that is green above.
+        """
+        import inspect
+
+        source = inspect.getsource(_mod.resolve_sentinel_command)
+        assert "pytest" in source, "the history must still be explainable"
+        # The example is asserted on the RENDERED message, not the source text:
+        # the diagnostic interpolates `SENTINEL_PLACEHOLDER` rather than repeating
+        # the literal, so that a rename cannot leave the docs teaching a spelling
+        # the parser rejects. A source-text match would forbid exactly that fix.
+        assert "npx vitest run" in source, (
+            "the operator-facing example must still be showable"
+        )
+
+
+class TestTheDocumentedExampleActuallyWorks:
+    """The key and its placeholder have five homes and nothing compares them.
+
+    `sentinel_command:` / `{sentinel}` appear in the module docstring, the
+    runner's own diagnostics, `templates/project-state.yaml`, this repo's own
+    state file, and `skills/doctor/SKILL.md`. A rename or a typo in the template
+    ships a knob nobody reads — and the failure is silent by this bundle's own
+    design: every sentinel simply reports `ungraded`. That is the exact class
+    this branch exists to close, reappearing in its own documentation.
+
+    Pinned by running the TEMPLATE'S OWN commented example through the real
+    parser, so the docs and the code cannot drift apart without a red test.
+    """
+
+    _TEMPLATE = _REPO_ROOT / "templates" / "project-state.yaml"
+
+    def _example_from_template(self) -> str:
+        for line in self._TEMPLATE.read_text().splitlines():
+            stripped = line.lstrip("# ").strip()
+            if stripped.startswith("sentinel_command:"):
+                return stripped
+        raise AssertionError(
+            "templates/project-state.yaml documents no `sentinel_command:` example — "
+            "the knob is undiscoverable to every product being onboarded"
+        )
+
+    def test_template_example_parses_and_substitutes(self, tmp_path: Path):
+        example = self._example_from_template()
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(example + "\n")
+
+        argv, reason = _mod.resolve_sentinel_command(tmp_path)
+        assert argv is not None, (
+            f"the template's own example is rejected by the parser: {reason}"
+        )
+        assert _mod.SENTINEL_PLACEHOLDER in " ".join(argv), (
+            "the documented example carries no placeholder, so it would grade "
+            "every rule by the whole suite's verdict"
+        )
+        substituted = [
+            tok.replace(_mod.SENTINEL_PLACEHOLDER, "a/b.test.js") for tok in argv
+        ]
+        assert "a/b.test.js" in substituted
+
+    def test_this_repo_state_matches_the_placeholder_constant(self):
+        """The constant is the authority; the repo's own declaration must use it."""
+        state = (_REPO_ROOT.parent / ".prawduct" / "project-state.yaml").read_text()
+        declared = [
+            l for l in state.splitlines() if l.startswith("sentinel_command:")
+        ][0]
+        assert _mod.SENTINEL_PLACEHOLDER in declared
+
+    def test_the_diagnostic_quotes_the_constant_not_a_copy(self, tmp_path: Path):
+        """The undeclared-knob message tells an operator what to type. If it
+        drifts from the constant it teaches a spelling the parser rejects."""
+        (tmp_path / ".prawduct").mkdir()
+        _argv, reason = _mod.resolve_sentinel_command(tmp_path)
+        assert _mod.SENTINEL_PLACEHOLDER in reason

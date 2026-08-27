@@ -730,10 +730,27 @@ class TestJanitorSkillPluginEra:
         )
 
     def test_template_currency_targets_plugin_root(self):
+        """Template Currency compares against the templates the PLUGIN ships, and it
+        must name them by a path the agent can actually open.
+
+        The proposition is unchanged since this test was written; the spelling that
+        satisfies it is not. `${CLAUDE_PLUGIN_ROOT}` substitutes into hook commands
+        from `hooks.json`, and *only* there — it does not expand in skill prose and is
+        absent from the Bash tool environment, so a prose read through it hands the
+        agent an unresolvable path and the check silently degrades to whatever the
+        skill's own inline prose implies. `${CLAUDE_SKILL_DIR}` does expand at skill
+        load, and the plugin root is one directory pair above it, which is why that is
+        the form a skill reads the plugin through."""
         src = (ROOT / self.SKILL).read_text(encoding="utf-8")
-        assert "${CLAUDE_PLUGIN_ROOT}/templates/" in src, (
-            f"{self.SKILL} must resolve framework templates from "
-            "`${CLAUDE_PLUGIN_ROOT}/templates/` (the plugin ships them read-only)."
+        assert "${CLAUDE_SKILL_DIR}/../../templates/" in src, (
+            f"{self.SKILL} must resolve framework templates out of the plugin, by the "
+            "skill-dir-relative form that expands in prose "
+            "(`${CLAUDE_SKILL_DIR}/../../templates/`; the plugin ships them read-only)."
+        )
+        assert "${CLAUDE_PLUGIN_ROOT}" not in src, (
+            f"{self.SKILL} reads through `${{CLAUDE_PLUGIN_ROOT}}`, which does not "
+            "expand in skill prose — the read resolves to a literal path that does "
+            "not exist. Use `${CLAUDE_SKILL_DIR}/../../…`."
         )
 
 
@@ -827,6 +844,44 @@ class TestValidateEvidenceSchema:
         # The violation names the offending field and the bool type it got.
         assert "passed" in result.stderr
         assert "bool" in result.stderr
+
+    def test_a_degraded_record_is_schema_valid_and_the_output_says_so(self, tmp_path):
+        """Schema-valid is not gate-passing, and `degraded` is where the two
+        part company hardest: a well-formed record of a run that did not cover
+        what its counts imply. It must validate — this command is a schema
+        check, and a CI hook that rejected it would be answering a question it
+        was not asked — while its output must not let a caller read the record
+        as healthy.
+        """
+        evidence = dict(self._COMPLETE, degraded="a shard never reported")
+        repo = self._write_evidence(tmp_path, evidence)
+        result = _run_in(repo, "validate-evidence")
+        assert result.returncode == 0, result.stderr
+        assert "DEGRADED" in result.stdout
+        assert "a shard never reported" in result.stdout
+
+    def test_degraded_with_a_blank_reason_is_rejected(self, tmp_path):
+        """Presence is the flag, so the reason cannot be optional in practice:
+        a blank one is a record asserting its run was degraded and unable to say
+        how. Rejected rather than ignored — a reader that skipped a blank flag
+        would read the run as clean, the exact outcome the field prevents.
+        """
+        evidence = dict(self._COMPLETE, degraded="   ")
+        repo = self._write_evidence(tmp_path, evidence)
+        result = _run_in(repo, "validate-evidence")
+        assert result.returncode == 1, result.stdout
+        assert "degraded" in result.stderr and "non-empty reason" in result.stderr
+
+    def test_degraded_as_a_bool_is_rejected(self, tmp_path):
+        """The shape a writer reaches for by habit — `"degraded": true` — is
+        exactly the shape that cannot carry a reason, so it is writer drift
+        rather than a flag. Refused with the type named.
+        """
+        evidence = dict(self._COMPLETE, degraded=True)
+        repo = self._write_evidence(tmp_path, evidence)
+        result = _run_in(repo, "validate-evidence")
+        assert result.returncode == 1, result.stdout
+        assert "degraded" in result.stderr and "bool" in result.stderr
 
 
 class TestWriteIsolationInvariant:
@@ -1809,11 +1864,25 @@ class TestNoRerunRestamp:
         assert (after["passed"], after["failed"], after["skipped"]) == (7, 0, 0)
         assert _run_in(repo, "validate-evidence").returncode == 0
 
-    def test_refreshes_changes_referenced_against_current_tree(self, tmp_path):
-        # The feature's stated purpose: restamp re-derives the F4a coverage half
-        # against the CURRENT tree. Seed on a clean tree (nothing changed vs
-        # main), then modify a referenced source file and restamp — the changed
-        # file must now appear in changes_referenced, with no suite run.
+    def test_refreshes_changes_referenced_on_an_uncheckable_record(self, tmp_path):
+        """Renamed 2026-08-19: this seeds via `--from-counts`, which records no
+        `evidence_tree` by design, so the restamp guard cannot check the
+        operator's assertion and warns rather than refusing. That is the branch
+        this exercises.
+
+        The old name — "against current tree" — claimed the feature's stated
+        purpose, and after the guard landed it no longer covers that purpose for
+        a record from a REAL run: there, a judgeable change refuses (see
+        `test_restamp_refuses_when_judgeable_content_moved_since_the_run`). The
+        coverage-refresh case is withdrawn for real-run records, deliberately
+        and on the record; leaving this name would have let the suite read as
+        though it were still guarded.
+        """
+        # Restamp re-derives the F4a coverage half against the CURRENT tree.
+        # Seed on a clean tree (nothing changed vs main), then modify a
+        # referenced source file and restamp — the changed file must now appear
+        # in changes_referenced, with no suite run. Reachable here only because
+        # `--from-counts` leaves the record uncheckable; see the docstring.
         repo = tmp_path / "nr2"
         repo.mkdir()
         (repo / ".prawduct").mkdir()
@@ -1833,6 +1902,90 @@ class TestNoRerunRestamp:
         assert _run_in(repo, "test-evidence", "record", "--no-rerun").returncode == 0
         after = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert "mod.py" in after["changes_referenced"]
+
+    def test_restamp_refuses_when_judgeable_content_moved_since_the_run(self, tmp_path):
+        """The reproduction. A restamp asserts test-relevant content is unchanged;
+        nothing checked it, so one taken after tests were added reused the older
+        run's counts and printed them as `recorded: N passed`.
+
+        **Why refuse rather than warn.** A restamp also rewrites `evidence_tree`
+        to the CURRENT tree, so a permitted one makes stale counts vouch for a
+        tree they never ran against — the laundering, not just a misleading
+        line. The downstream freshness gate cannot catch it afterwards, because
+        the restamp is what made it look fresh.
+
+        Seeded with `--from-junit` deliberately: `--from-counts` records no
+        `evidence_tree` by design (hand-typed counts carry no machine tie to the
+        tree), so it exercises the uncheckable branch instead of this one.
+        """
+        repo = self._repo(tmp_path)
+        junit = repo / "r.xml"
+        junit.write_text(
+            '<?xml version="1.0"?><testsuites><testsuite name="s" tests="1" '
+            'failures="0" errors="0" skipped="0" time="1.0">'
+            '<testcase classname="t" name="test_a" time="1.0"/>'
+            "</testsuite></testsuites>"
+        )
+        assert _run_in(repo, "test-evidence", "record", "--from-junit", str(junit)).returncode == 0
+        seeded = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" in seeded, (
+            "fixture must seed a record WITH an evidence_tree or this grades the "
+            "uncheckable branch and proves nothing about the guard"
+        )
+
+        tests_dir = repo / "tests"
+        tests_dir.mkdir(exist_ok=True)
+        (tests_dir / "test_new.py").write_text("def test_new():\n    assert True\n")
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 2, (
+            f"restamp was allowed after a test file was added; stderr={res.stderr}"
+        )
+        assert "test_new.py" in res.stderr, (
+            "the refusal does not name what moved, so the operator cannot tell "
+            "whether their assertion was wrong or the check is over-eager"
+        )
+        # And it did NOT rewrite the record — a refusal that still wrote would
+        # be the defect with an error message attached.
+        after = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert after["timestamp"] == seeded["timestamp"], (
+            "the refused restamp still updated the record"
+        )
+
+    def test_restamp_announces_that_nothing_was_run(self, tmp_path):
+        """The output line was the defect surface: `recorded: N passed` for a
+        reused count is indistinguishable from a fresh measurement, which is how
+        a stale figure passed as one for a whole session.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=7", "failed=0").returncode == 0
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        assert "restamped:" in out, (
+            "a restamp still prints `recorded:`, which reads as a measurement"
+        )
+        assert "REUSED" in out and "nothing was run" in out, (
+            "the line does not say the counts were reused rather than measured"
+        )
+
+    def test_restamp_warns_when_it_cannot_check_the_assertion(self, tmp_path):
+        """`--from-counts` records no `evidence_tree` by design, so the guard has
+        nothing to compare. It must say so rather than pass silently — an
+        unchecked assertion presented as a checked one is the same defect one
+        level down.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=4", "failed=0").returncode == 0
+        seeded = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "evidence_tree" not in seeded, "fixture assumption broke"
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 0, res.stderr
+        assert "asserted, not measured" in res.stderr, (
+            "the uncheckable case passes without saying the assertion could "
+            "not be checked"
+        )
 
     def test_restamp_flips_stale_record_to_current(self, tmp_path):
         # The freshness-refresh reason to restamp: a record from before this
@@ -1936,6 +2089,178 @@ class TestNoRerunRestamp:
         assert _run_in(repo, "test-evidence", "record", "--no-rerun").returncode == 0
         ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert ev["passed"] == 4
+
+
+class TestDegradedEvidence:
+    """A record can say the run did NOT cover what its counts imply.
+
+    The hole: a suite whose workers die under contention typically neither
+    re-queues their tests nor fails the run. The process exits 0 and reports a
+    plausible total, so `.test-evidence.json` records a green for a run that
+    silently dropped part of the suite, and every gate downstream believes it.
+
+    The framework cannot derive this — a JUnit report carries a *reported*
+    count and has no notion of what was *collected*, and reading a runner's
+    summary text would need per-runner knowledge prawduct deliberately does not
+    hold. So the record carries the observation (`--degraded "<reason>"`) and
+    the coordinator, which can see the box, supplies it; the gates then read a
+    degraded record as stale rather than as a pass.
+    """
+
+    REASON = "two workers died under three concurrent suites; ~40% never reported"
+
+    def _repo(self, tmp_path, body: str = "def test_ok():\n    assert True\n") -> Path:
+        repo = tmp_path / "dg"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_sample.py").write_text(body)
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-120)
+        return repo
+
+    def _record(self, repo: Path) -> dict:
+        return json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+
+    def test_an_ordinary_record_is_untouched_and_stays_current(self, tmp_path):
+        """The regression that matters. This field sits on the path every
+        governed repo's Stop hook runs, and the overwhelming majority of records
+        will never carry it — so the ordinary shape must be byte-for-byte what
+        it was.
+
+        `not in` rather than a falsy check, deliberately: a record writing
+        `"degraded": false` would pass a truthiness assertion while changing the
+        shape every pre-existing reader sees.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0
+        assert "degraded" not in self._record(repo)
+        assert _run_in(repo, "test-status").returncode == 0
+
+    def test_a_degraded_record_does_not_satisfy_the_freshness_gate(self, tmp_path):
+        """The whole point. This record is session-fresh, has zero failures and
+        a real `evidence_tree` — every existing reason to call it current holds.
+        Only the flag makes it stale, so the assertion cannot be satisfied by
+        any of the other clauses.
+        """
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--degraded", self.REASON)
+        assert res.returncode == 0, res.stderr
+        record = self._record(repo)
+        assert record["degraded"] == self.REASON
+        assert record["failed"] == 0 and record["passed"] == 1
+        status = _run_in(repo, "test-status")
+        assert status.returncode == 1, status.stdout
+        # The reason reaches the builder — a bare "stale" would send them
+        # looking for a timestamp problem that isn't there.
+        assert "degraded" in status.stdout and self.REASON in status.stdout
+
+    def test_the_summary_line_announces_the_degradation(self, tmp_path):
+        """The counts print identically whether or not the run covered the
+        suite, which is the surface the flag exists to correct. A record whose
+        output is typographically indistinguishable from a clean one is how a
+        stale figure passed as a measurement once already (the `--no-rerun`
+        provenance marker exists for the same reason).
+        """
+        repo = self._repo(tmp_path)
+        res = _run_in(repo, "test-evidence", "record", "--degraded", self.REASON)
+        assert "DEGRADED" in res.stdout and self.REASON in res.stdout
+        # And the remedy, because a builder who reads this needs to know the
+        # gates will now refuse the record.
+        assert "stale" in res.stdout
+
+    @pytest.mark.parametrize(
+        "argv, case",
+        [
+            (["--degraded"], "no reason at all"),
+            (["--degraded", ""], "an empty reason"),
+            (["--degraded", "   "], "a whitespace-only reason"),
+            (["--degraded", "--from-junit", "r.xml"],
+             "the next flag swallowed as the reason"),
+        ],
+    )
+    def test_degraded_without_a_reason_is_refused(self, tmp_path, argv, case):
+        """The reason IS the flag: presence means degraded, so a blank one
+        would be a record that says the run did not cover what it claims and
+        cannot say how — no more honest than the green it replaces.
+
+        The last case is why the check is not merely `if not reason`, and it
+        has to name a flag parsed AFTER this one to test anything: `--no-rerun`
+        is stripped from the argv before the reason is read, so it lands in the
+        empty-reason branch and proves nothing about the flag-shaped guard.
+        `--from-junit` is still there — without the guard it becomes the stated
+        cause of the degradation while its own report path falls through to the
+        runner as a stray argument.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0
+        before = self._record(repo)
+        res = _run_in(repo, "test-evidence", "record", *argv)
+        assert res.returncode == 2, f"{case} was accepted: {res.stdout}"
+        assert "--degraded requires a reason" in res.stderr
+        # Refused means nothing was written — a partial record here would be
+        # worse than either outcome it sits between.
+        assert self._record(repo) == before
+
+    def test_a_repeated_flag_is_refused_rather_than_reaching_the_runner(self, tmp_path):
+        """Only the first `--degraded` is parsed, so a second would survive into
+        the extra-args slot and be handed to the test runner — where it dies as
+        an unrecognized option, and the operator reads a runner usage error for
+        a prawduct flag they typed twice. Refused here, in prawduct's own words.
+        """
+        repo = self._repo(tmp_path)
+        res = _run_in(
+            repo, "test-evidence", "record",
+            "--degraded", "a worker died", "--degraded", "and a shard timed out",
+        )
+        assert res.returncode == 2, res.stdout
+        assert "--degraded may be given once" in res.stderr
+
+    def test_a_restamp_cannot_launder_a_degraded_record(self, tmp_path):
+        """`--no-rerun` reuses the prior run's COUNTS, so it inherits whatever
+        those counts failed to cover. If the flag dropped here, one command
+        that runs nothing would turn a degraded record into a clean-looking
+        one — a laundry, and the cheapest possible way around the gate.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(
+            repo, "test-evidence", "record", "--degraded", self.REASON
+        ).returncode == 0
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 0, res.stderr
+        assert self._record(repo)["degraded"] == self.REASON
+        assert _run_in(repo, "test-status").returncode == 1
+
+    def test_a_real_run_clears_the_flag(self, tmp_path):
+        """The escape has to exist, or the field is a trap: a repo that once
+        recorded a degraded run would be permanently stale, and the only way
+        out would be hand-editing the record the gates trust.
+        """
+        repo = self._repo(tmp_path)
+        assert _run_in(
+            repo, "test-evidence", "record", "--degraded", self.REASON
+        ).returncode == 0
+        assert _run_in(repo, "test-evidence", "record").returncode == 0
+        assert "degraded" not in self._record(repo)
+        assert _run_in(repo, "test-status").returncode == 0
+
+    def test_the_flag_annotates_a_source_rather_than_being_one(self, tmp_path):
+        """Contention is observed on whatever on-ramp the run used, so the flag
+        composes with each rather than joining the mutually-exclusive count
+        sources. `--from-counts` is the sharpest case: it consumes every
+        remaining token after its own flag, so a `--degraded` parsed after it
+        would be swallowed into the counts and rejected as a malformed pair.
+        """
+        repo = self._repo(tmp_path)
+        res = _run_in(
+            repo, "test-evidence", "record", "--degraded", self.REASON,
+            "--from-counts", "passed=5", "failed=0",
+        )
+        assert res.returncode == 0, res.stderr
+        record = self._record(repo)
+        assert record["passed"] == 5 and record["degraded"] == self.REASON
+
 
 
 class TestTreeValidatedFreshness:

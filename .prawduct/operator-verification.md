@@ -945,3 +945,81 @@ a person would act on. Skills are prose a model executes, and the failure this w
    unstaged --repo <scope>` (no `--json`) ends with a `cache:` line naming the age.
 
 **Verified by:** _(operator, date)_
+
+## VRF-016 — Chunk 01 — Tree capture on a bind-mounted working tree
+
+**Status:** pending
+**Added:** 2026-08-19 (critic-reliability Chunk 01, #675)
+
+**Why a human check:** the defect only manifests where a file read costs a mount round trip.
+This repo has no bind mount, so the acceptance criteria measure the MECHANISM — re-hash volume
+and elapsed capture time on a local disk, where the same change is worth roughly 3x. The
+reported symptom (capture exceeds its budget, `critic-begin` fails, the PR gate becomes
+unsatisfiable) can only be confirmed where it was reported.
+
+**Where to verify:** the reporter's environment — a prawduct-governed repo whose working tree
+is reached over a bind mount or network filesystem.
+
+**Steps:**
+
+1. Run `/prawduct:critic` (any mode). `critic-begin` must complete and write
+   `.prawduct/.critic-partials/manifest.json` with a `head_tree`.
+2. **Confirm the fix actually engaged before doing anything else.** Read `seed` in that
+   manifest (the capture also says so on stderr): `index-copy` means the fast seed ran, and
+   only that reading verifies this fix. `read-tree` means the capture silently fell back and
+   is slow for the original reason — do NOT mark this entry verified on a `read-tree` capture,
+   however fast it completed. (`empty` is an unborn HEAD, where nothing is re-hashed and the
+   question does not arise.)
+3. If it still times out, re-run with `PRAWDUCT_GIT_TIMEOUT=<seconds>` raised. The timeout
+   message itself names this remedy — confirm it does, verbatim, rather than reporting a bare
+   git failure. **Raising the budget is a workaround, not a pass:** a capture that only
+   succeeds this way, or that reports `seed: read-tree`, leaves #675 open — record which.
+4. Confirm no `prawduct-idx-*.lock` files accumulate in the temp directory across repeated
+   captures, including ones that time out.
+5. **Separately**: if a stale `.git/index.lock` still appears, that is NOT this fix and needs
+   its own report — `capture_tree` runs every git call under `GIT_INDEX_FILE`, so it cannot
+   produce one. Capture what command was running when it appeared.
+
+**Verified by:** _(operator, date)_
+
+## VRF-017 — Chunk 04 (branch-claim-multiplicity) — the develop track, live on a sibling repo
+
+**Status:** pending
+**Added:** 2026-08-27 (branch-claim-multiplicity Chunk 04, PR #658)
+
+**Why a human check:** the acceptance criterion is that a sibling repo is *actually running* the
+develop track and its briefing reports the prerelease version. That cannot be met from this branch
+and never could: the recipe installs from `{source: github, ref: develop}`, so a sibling fetches
+develop from GitHub and the work has to be merged and pushed there before any install can see it.
+Verifying it by installing from a local path would confirm a different recipe than the documented
+one, so the chunk was left unticked rather than quietly satisfied (plan amendment, 2026-08-13).
+
+**Read this first — the format changed under the chunk.** The recipe originally bumped `develop` to
+an **rc** (`3.4.0-rc.1`). While this branch sat, `develop` shipped a narrower rule: `-dev` / `-dev.N`
+is the ONLY permitted prerelease, and `test_version_tuple_refuses_an_unpermitted_prerelease` requires
+an rc to NOT parse. The base sync resolved every version file in develop's favour and the recipe and
+runbook were restated in `-dev.N` terms (owner decision, 2026-08-27). Verify the `-dev` recipe; an rc
+anywhere in these steps is a stale instruction, not a variant to try.
+
+**Where to verify:** a sibling prawduct-governed repo on this machine — not this one, and not a repo
+anyone else works in (the marketplace entry is per-machine, so a collaborator would silently run a
+different governance version).
+
+**Steps:**
+
+1. After this PR merges to `develop` and is pushed, add the `prawduct-dev` block from
+   `documentation/release-process.md` § *Dogfooding the develop track* to the sibling's
+   `.claude/settings.local.json` (per-machine and gitignored — confirm it does not land in the
+   repo's committed install reference).
+2. Start a session there. **The briefing must report the prerelease version** (`3.4.1-dev.2` or
+   whatever `develop` then carries), not the released string. Reporting the released version means
+   the cache resolved the released entry and you are dogfooding nothing — the exact failure the
+   prerelease exists to prevent.
+3. Confirm the version-as-cache-key assumption end to end: bump `develop`'s three version files to
+   the next `-dev.N`, push, restart the sibling's session, and confirm the briefing follows. A
+   briefing that does not move means the cache key is not the version and the recipe loses a step.
+4. Confirm `main` is untouched throughout, and that no other repo on this machine changed track.
+5. Walk the documented way back off: delete the `prawduct-dev` block, re-enable `prawduct@prawduct`,
+   restart, and confirm the briefing reports the released version again.
+
+**Verified by:** _(operator, date)_

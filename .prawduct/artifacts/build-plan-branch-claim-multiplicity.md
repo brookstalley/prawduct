@@ -247,6 +247,25 @@ sibling repo at the develop track and opening a session there.
        recipe than the one documented. The doc half (CHANGELOG, README, version bump, the recipe and
        the way back off it) is complete; the chunk stays UNTICKED until a sibling repo has actually
        run a session on the track. -->
+- **DESCOPED 2026-08-27 — the prerelease half was superseded on `develop`, owner decision at the
+  base sync.** While this branch sat unmerged (251 commits of drift), `develop` shipped its own
+  develop track with a deliberately NARROWER rule: `-dev` / `-dev.N` is the only permitted
+  prerelease form, asserted by `test_version_tuple_refuses_an_unpermitted_prerelease`, which
+  requires `3.4.0-rc.1` to NOT parse so that the banner and the manifest guard keep answering the
+  same question about what a legal version is. This chunk's general-semver parser and its
+  `3.4.0-rc.1` bump are the thing that test refuses. Adopting them would have meant deleting a test
+  written on purpose, so the base sync resolved every version-carrying file — `plugin/VERSION`,
+  `plugin.json`, `pyproject.toml`, `banner.version_tuple`, and both version test files — in
+  `develop`'s favour, and this chunk's In-build discovery below is superseded rather than shipped.
+  What survived and is DONE: the release notes (the `branch:` opt-in and the union-merge advisory,
+  written into the OPEN `## v3.4.1-dev.2` section, not the shipped `## v3.4.0`, because this work
+  is still release-pending) and the dogfooding recipe, both restated in `-dev.N` terms — the recipe
+  had been instructing maintainers to set a version the merged code now rejects, and the runbook's
+  changelog note had been asserting the open section is written under the final number when
+  `develop`'s step 10 opens it under the prerelease heading and renames it at the cut.
+  **A release-candidate stage now does not exist in any form**; wanting one is a fresh item designed
+  against the `-dev` rule rather than against it, not a resurrection of this chunk.
+
 - **In-build discovery — the repo's own tooling rejected the prerelease.** The version-as-cache-key
   assumption held, and its consequence did not: `plugin.json`'s semver check demanded exactly three
   numeric parts, the changelog check demanded a section named for the exact running version, and

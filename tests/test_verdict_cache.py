@@ -28,6 +28,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 sys.path.insert(0, str(ROOT))
 from lib import coverage_algebra, evidence, gates, verdict_cache  # noqa: E402
+from lib import verdict_cache as vc  # noqa: E402 — alias used by the keying tests
 
 _ids = itertools.count(1)
 
@@ -351,3 +352,191 @@ class TestBounds:
         assert cache.flush() is True
         entries = json.loads(path.read_text())["entries"]
         assert len(entries) == verdict_cache.MAX_ENTRIES
+
+
+# ---------------------------------------------------------------------------
+# The key must identify the CODE that computed the verdict.
+#
+# `_key` folded in the plugin version, which moves whenever an INSTALLED copy
+# changes. On a git checkout — developing prawduct itself — the bundled VERSION
+# does not move between pushes to `develop`, so two different develop states
+# produced the same key by construction and a verdict computed under the older
+# one was served as current. `_key`'s own docstring already said the key covers
+# "every input the verdict is a function of — including the CODE that computed
+# it"; on a checkout it did not.
+#
+# TREE, not commit: `data-model.md`'s tree-keying Direction, and load-bearing
+# rather than stylistic — two commits producing an identical plugin tree ARE the
+# same code, and commit-keying would miss on every no-op commit.
+# ---------------------------------------------------------------------------
+
+def _checkout(tmp_path, name, content="a = 1\n"):
+    """A checkout whose plugin directory is a SUBDIRECTORY, not the root.
+
+    The shape is load-bearing: with the plugin directory at the repo root, root
+    tree and plugin tree are the same object, and no test here can observe
+    whether the probe scopes to the plugin at all. Do not flatten it.
+
+    Returns (plugin_dir, repo_root).
+    """
+    repo = tmp_path / name
+    plugin = repo / "plugin"
+    plugin.mkdir(parents=True)
+    _git(repo, "init", "-q")
+    (plugin / "mod.py").write_text(content)
+    (repo / "outside.txt").write_text("not part of the plugin\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "init")
+    return plugin, repo
+
+
+def test_two_checkout_states_key_differently(tmp_path):
+    """The reported bug: a develop pull must invalidate cached verdicts."""
+    plugin, repo = _checkout(tmp_path, "a")
+    before = vc.probe_code_identity(plugin)
+
+    (plugin / "mod.py").write_text("a = 2\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "second")
+    after = vc.probe_code_identity(plugin)
+
+    assert before and after
+    assert before != after
+
+
+def test_a_no_op_commit_does_not_change_the_identity(tmp_path):
+    """Tree-keying, not commit-keying.
+
+    A commit that produces an identical tree IS the same code. Commit-keying
+    would miss the cache on every rebase, merge, or empty commit — invalidating
+    constantly while measuring nothing.
+    """
+    plugin, repo = _checkout(tmp_path, "b")
+    before = vc.probe_code_identity(plugin)
+
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "no-op")
+
+    assert vc.probe_code_identity(plugin) == before
+
+
+def test_a_dirty_checkout_keys_apart_from_the_same_tree_clean(tmp_path):
+    """An edited working tree is a third state neither other component sees."""
+    plugin, _ = _checkout(tmp_path, "c")
+    clean = vc.probe_code_identity(plugin)
+
+    (plugin / "mod.py").write_text("a = 999  # uncommitted\n")
+    dirty = vc.probe_code_identity(plugin)
+
+    assert clean != dirty
+    assert dirty.startswith(clean), "the committed tree stays the leading component"
+
+
+def test_reverting_a_dirty_edit_restores_the_identity(tmp_path):
+    """Not merely 'different' — the same code must key the same, or the cache
+    never hits during ordinary editing."""
+    plugin, _ = _checkout(tmp_path, "d")
+    clean = vc.probe_code_identity(plugin)
+    (plugin / "mod.py").write_text("a = 999\n")
+    assert vc.probe_code_identity(plugin) != clean
+
+    (plugin / "mod.py").write_text("a = 1\n")
+
+    assert vc.probe_code_identity(plugin) == clean
+
+
+def test_a_non_checkout_contributes_nothing(tmp_path):
+    """An installed copy keys exactly as before — no mass invalidation on upgrade."""
+    plain = tmp_path / "installed"
+    plain.mkdir()
+
+    assert vc.probe_code_identity(plain) == ""
+
+
+def test_a_git_failure_degrades_rather_than_raising(tmp_path, monkeypatch):
+    """Coarser is the safe direction: colliding entries are replayed, and a
+    replay can only reproduce a verdict the store's fingerprint already vouches
+    for. It can never manufacture a pass."""
+    def boom(*a, **k):
+        raise OSError("git is gone")
+    monkeypatch.setattr(vc.subprocess, "run", boom)
+
+    assert vc.probe_code_identity(tmp_path) == ""
+
+
+def test_the_identity_is_probed_once_per_process(monkeypatch):
+    """The module advertises a 0.01 s warm cost; `_key` runs once per gate call,
+    so a git probe per lookup would spend the saving this module exists for."""
+    monkeypatch.setattr(vc, "_CODE_IDENTITY", None)
+    calls = []
+    monkeypatch.setattr(vc, "probe_code_identity",
+                        lambda d: calls.append(d) or "identity")
+
+    for _ in range(5):
+        vc._code_identity()
+
+    assert len(calls) == 1
+
+
+def test_the_identity_participates_in_the_key(monkeypatch):
+    """The wiring: a probe that never reaches `_key` fixes nothing."""
+    monkeypatch.setattr(vc, "_CODE_IDENTITY", "state-one")
+    one = vc._key("t1", "t2", "fp")
+    monkeypatch.setattr(vc, "_CODE_IDENTITY", "state-two")
+    two = vc._key("t1", "t2", "fp")
+
+    assert one != two
+
+
+def test_an_empty_identity_is_memoised_not_re_probed(monkeypatch):
+    """`""` is a legitimate answer (not a checkout). Sentinel-on-falsiness would
+    re-probe git on every lookup for exactly the users who get no benefit."""
+    monkeypatch.setattr(vc, "_CODE_IDENTITY", None)
+    calls = []
+    monkeypatch.setattr(vc, "probe_code_identity", lambda d: calls.append(d) or "")
+
+    vc._code_identity()
+    vc._code_identity()
+
+    assert len(calls) == 1
+
+
+def test_a_commit_outside_the_plugin_directory_does_not_change_the_identity(tmp_path):
+    """The scoping property, and the one the original fixtures could not see.
+
+    `HEAD^{tree}` ignores cwd and returns the commit's ROOT tree, so this test
+    fails against it: a commit touching only files outside the plugin moves the
+    root tree and would invalidate every cached verdict. That is the churn
+    tree-keying exists to avoid, and it shipped green because every fixture put
+    the plugin directory at the checkout root.
+    """
+    plugin, repo = _checkout(tmp_path, "scoped")
+    before = vc.probe_code_identity(plugin)
+
+    (repo / "outside.txt").write_text("changed, and irrelevant to the plugin\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "outside only")
+
+    assert vc.probe_code_identity(plugin) == before
+
+
+def test_an_installed_copy_nested_in_an_unrelated_repo_contributes_nothing(tmp_path):
+    """The real shape of an installed copy, which a bare directory is not.
+
+    `~/.claude` tracked in a dotfiles repo puts the plugin INSIDE a checkout it
+    is not part of. `HEAD^{tree}` succeeds there and hands back that repo's
+    tree, so those users would get a key churning on every unrelated commit —
+    the opposite of the acceptance criterion. `HEAD:./` exits 128 for an
+    untracked directory, so the identity degrades to "" and they key exactly as
+    they did before this existed.
+    """
+    repo = tmp_path / "dotfiles"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "README").write_text("unrelated\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "init")
+    installed = repo / ".claude" / "plugins" / "prawduct"
+    installed.mkdir(parents=True)
+    (installed / "mod.py").write_text("a = 1\n")
+
+    assert vc.probe_code_identity(installed) == ""

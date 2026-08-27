@@ -98,7 +98,7 @@ Prawduct enforces governance at four levels:
 - **Session reflection** — A session hook blocks completion if no reflection was captured (skipped for doc-only changes)
 - **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
 
-Everything else is governed by 26 principles and four methodology guides that stay in context via CLAUDE.md.
+Everything else is governed by a set of principles, always in context via the session digest, and methodology guides read on demand.
 
 ### Independent Critic review
 
@@ -271,7 +271,7 @@ against the repo root.
 
 Three layers:
 
-1. **26 Principles** — Always in context via CLAUDE.md. Grouped into Quality, Product, Process, Learning, Judgment, and Evolution. They govern how work gets done but don't enforce process interruptions.
+1. **Principles** — Always in context via the session digest, which carries the roster grouped. They govern how work gets done but don't enforce process interruptions.
 
 2. **Methodology guides** — Narrative essays read when entering each activity (discovery, planning, building, reflection). They teach the approach rather than prescribing rigid steps. Governance depth scales with work size and type.
 
@@ -283,20 +283,16 @@ See [`docs/principles.md`](plugin/docs/principles.md) for the full principles wi
 
 Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.4** line is what has been built on top of them:
 
-### 3.4 — Reviews you did not choose to buy
-- **Syncing your base no longer voids your review** — when your own diff is byte-identical and the advance touched none of your files, coverage transfers instead of buying a fresh cumulative. Byte equality across contexts, never content equivalence within one, with a current suite run as the third condition; measured as roughly half the review rounds on the busiest repo observed
-- **The coverage gate answers in about a second** (20.0 s → 0.35 s), memoized on a content hash of every input including the plugin version, so an upgrade can never replay a verdict computed under older judgeability rules
-- **Findings you already answered stay answered** — dispatches carry prior dispositions, and one defect found by three reviewers is presented once with three attributions
-- **Prose is priced honestly** — wording, counts and phrasing are NOTE unless something reads them; stale prose gets deleted, made relational, or pinned with a test, never renarrated, and review ids never ship in comments
-- **A build plan can declare the branch it governs** (`branch:` in frontmatter), so two concurrent branches stop conflicting on one line of `project-state.yaml`. Several plans may claim one branch — the briefing says which one governs and why. Entirely opt-in: a plan without it resolves exactly as before
-
-### 3.1–3.3 — Governance that reports its own state
+### 3.1–3.4 — Governance that reports its own state
+- **Less waiting on the gates, fewer rounds in review** — the *check* for whether a review is needed stops timing out (20 s → 0.35 s), because the coverage verdict is memoized instead of rescanning every tree the evidence store mentions; syncing your base no longer buys a re-review, because coverage **transfers** when the branch's judgeable files are byte-identical across the two spans. The review itself costs what it always did
+- **A finding says whether it found an instance or a class** — and an unbounded class closes only by a *construction*, not by fixing the sites it happened to name; a turn-closing block whose second line answers *whose move is it* (`RUNNING` / `YOUR TURN` / `COMPLETE`) rather than naming a topic; and one session digest for every repo, framework or product
 - **Norms bind, descriptions track** — `## Direction` statements in governing artifacts carry normative authority, with an owner-ratification flow and time-domain health sweeps; enforcement is scoped to adoption, so a repo with no ratified norms gets NOTEs and is never blocked
 - **Review depth is a risk question, not a file count** — the Critic's three-reviewer coordinator fires on a declared **risk surface** or 12+ judgeable files; `risk_surfaces:` in `project-state.yaml` is how you say where your risk actually lives. Fast `chunk`/`verify-resolutions` reviews got ~83% cheaper, and coordinator reviews now genuinely run in parallel rather than riding an ambient default
 - **The review loop has an exit condition** — `.critic-findings.json` carries a code-computed `next_action` that says, in the file the builder opens by contract, *zero blocking: the review is over*. Findings are **dispositioned** — fixed, accepted with a reason, or filed — rather than filed by default
-- **Learnings fire where the mistake gets made** — rules that used to wait in a file to be read now print at the command that runs at the moment they apply, in any language rather than only Python; and every agent turn closes with a fixed `STATE` / `NEXT` / `CLEAR` block
+- **Learnings fire where the mistake gets made** — rules that used to wait in a file to be read now print at the command that runs at the moment they apply, in any language rather than only Python; and every agent turn closes with a fixed three-line block — state, whose move it is, clear-verdict
 - **The GitHub-Issues backlog service, now live** — opt-in behind a single `backlog_service_repo` key; unset means the markdown backend, byte-for-byte. Prawduct migrated its own backlog through it: 371 items, 0 stranded, 0 collisions. The governance surfaces that went dark at the cutover — the Critic's reconciliation walk and hygiene checks, the PR reviewer's R-1/R-2, the janitor's Backlog Health block — read it again through a **local cache** that syncs incrementally and queries offline, and can now answer which backlog items touch the files a branch actually changed
 - **Build-plan checkboxes mean what they say** — `views_enabled` and the derived-view machinery are retired, so a plan's `## Status` block is the plan's own content and nothing overwrites a tick. Finished plans get an `archive/` with a recorded end of life (*completed* or *superseded*) instead of accumulating in the live directory, and two preview-first `/prawduct:doctor` repairs converge an existing repo in one confirmation
+- **A build plan can declare the branch it governs** (`branch:` in frontmatter), so two concurrent branches stop conflicting on one line of `project-state.yaml`. Several plans may claim one branch — the briefing says which one governs and why. Entirely opt-in: a plan without it resolves exactly as before
 - **Release integrity** — a Phase 0 `check-releasability` gate that fails closed unless every release-pending scope is classified, `check-released` to verify a published release from the *consumer's* side, `release_version_files:` so a product declares which files carry its version, and CI on every push across a 3.10-and-3.14 matrix (CI verifies a release; it never publishes one)
 - **The plugin installs from a curated root** — 109 files, 1.7 MB, holding only what you actually run; a `"source": "./"` had been shipping prawduct's own backlog, learnings, and build plans into every consumer's plugin cache
 - **Session boundaries stopped destroying session evidence** — `--resume`, `--fork-session`, and compaction now run *orientation*, not a boundary reset, and `.prawduct/.handoff-notes.md` is a forward channel the machine never overwrites

@@ -28,7 +28,13 @@ governed_by:
       - "every issue written to the backlog store conforms to the issue standard's §1 title rules on every write path → conforms; enforced rather than asserted: all backlog writes here go through `/prawduct:backlog`, whose adapter refused a 95-char title on the #654 filing and rewrote it before writing"
       - "`backlog_service_repo` selects the authoritative backlog store; once set, `.prawduct/backlog.md` is frozen history → conforms: every backlog touch in this plan (#565, #283, and the items filed from review findings) routes through the skill, which reads the scalar; nothing in this plan reads or writes the markdown file"
 last_validated: 2026-08-13
+lifecycle: completed
+archived: 2026-08-20
+released_in: v3.4.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

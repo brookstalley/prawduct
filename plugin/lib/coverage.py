@@ -842,16 +842,26 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
 def check_change_log_entry(project_dir: Path) -> int:
     """PR-boundary probe: a code-changing branch must add a change-log entry.
 
-    A branch whose ``merge-base...HEAD`` diff touches any non-``.md`` file is
-    code-changing work that the release flow can only ship if a change-log
-    entry exists for it — historically nothing checked this, so a branch could
-    merge with NO entry and the gap surfaced only at release reconstruction
-    (REL-6C3W — CRT-7B4M/#82, found at the v2.0.16 release). The
-    `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs on failure.
+    A branch whose ``merge-base...HEAD`` diff contains **judgeable** work — as
+    :func:`coverage_algebra.is_judgeable_path` defines it, the same predicate
+    ``check-pr-doc-only`` and the coverage gates ask — can only be shipped by the
+    release flow if a change-log entry exists for it. Historically nothing
+    checked this, so a branch could merge with NO entry and the gap surfaced only
+    at release reconstruction (REL-6C3W — CRT-7B4M/#82, found at the v2.0.16
+    release). The `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs
+    on failure.
+
+    **Judgeability is not "is it ``.md``", and this docstring used to say it
+    was.** Session metadata under ``.prawduct/`` is not ``.md`` and is *not*
+    judgeable; governance-protected prose (``skills/``, ``methodology/``,
+    ``templates/``, root ``CLAUDE.md``) *is* ``.md`` and *is* judgeable, because
+    skill prose is behavioral logic. Cite the predicate rather than restating its
+    rule here — a prose copy is the fourth classifier this function shipped once
+    already.
 
     Exit 0 when:
-      * the diff is empty or all-``.md`` (doc-only work needs no entry), or
-      * a non-``.md`` diff includes ``.prawduct/change-log.md`` AND that diff
+      * the diff is empty, or holds no judgeable file, or
+      * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
         existing entry's text does not vouch for new work.
 
@@ -881,17 +891,36 @@ def check_change_log_entry(project_dir: Path) -> int:
         return 1
 
     files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    non_md = [f for f in files if not f.endswith(".md")]
+    # THE predicate, shared with `check-pr-doc-only` (CRT-5D8Q). This used to be
+    # an inline `not f.endswith(".md")`, which is a FOURTH classifier that the
+    # CRT-5D8Q consolidation never folded in — so the two gates at the same PR
+    # boundary answered oppositely about the same file. `.prawduct/` session
+    # metadata (`corpus-state.json`, evidence, findings) is not `.md`, so this
+    # gate called it code while `check-pr-doc-only` correctly called it
+    # non-judgeable and skipped the review gates entirely.
+    #
+    # Reported from a consuming repo, and worse than a spurious block: the
+    # remedy text is executable advice, and it was wrong advice. The
+    # `.prawduct/corpus-state.json` that triggered it was another session's
+    # corpus refresh riding along on a cherry-pick, so following the gate would
+    # have written a change-log entry describing someone else's work as the
+    # author's own — a gate demanding a false provenance record.
+    from . import coverage_algebra  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    judgeable = coverage_algebra.judgeable_files(files)
     if not files:
         print(f"empty-diff: no files changed in {base}...HEAD — no entry required.")
         return 0
-    if not non_md:
-        print(f"doc-only: all {len(files)} changed file(s) are .md — no entry required.")
+    if not judgeable:
+        print(
+            f"doc-only: none of the {len(files)} changed file(s) are judgeable "
+            "(docs and session metadata only) — no entry required."
+        )
         return 0
 
     if CHANGE_LOG_REL_PATH not in files:
-        sample = ", ".join(non_md[:3])
-        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
+        sample = ", ".join(judgeable[:3])
+        more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         print(
             f"no-entry: branch changes code ({sample}{more}) but "
             f"{CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "

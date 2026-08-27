@@ -10,41 +10,164 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.4.0
+## v3.4.1-dev.2
 
-**Reviews stop being re-bought by things that changed nothing.** A branch that merges an advanced base, a gate that took two minutes to answer, three reviewers filing one defect, and comment-wording findings that gate nothing — measured across four governed repos, those four accounted for most of the review rounds nobody chose. This release removes them, and adds one thing you may want to opt into: a build plan can now declare the branch it governs.
+**Prerelease under test — this build is the develop branch ahead of the next release.** The version
+says so wherever it appears, so a repo pinned to the develop ref can tell what it is running, and a
+cached review verdict from the released plugin is not replayed against this one. Rolling release
+notes accumulate here, and this section is renamed to the release number at the cut.
 
-### What you will notice first
+**Delegation has a guide, a default, and a place to record what your project decided.**
+`/prawduct:methodology delegation` opens it: when to delegate and when to stay serial, what
+a delegate verifies (what proves its own change, and nothing beyond it) while you keep integration
+and all governance, and the anti-patterns each with the tell that fires at the moment of the error.
+The partition question now arrives where you already stop — when chunk boundaries are drawn, and at
+a chunk close — and the answer is recorded in the plan either way, because "serial, because X" is an
+answer and silence is not.
 
-**Syncing your base no longer voids your review.** When the only thing that moved is the base branch — your own diff byte-identical, none of your files touched by the advance — the coverage gate transfers the review you already have instead of demanding a fresh one, and prints that it did. It is byte equality across two contexts, never content equivalence within one: any edit at all to one of your files, comments included, denies the transfer. A current test run is the third condition, because the suite (not the transferred review) is what vouches for your code meeting the advanced base. The Stop gate transfers on the same terms.
+**Your project can state its own delegation policy**, in its own words, in
+`project-preferences.md`: how much to fan out, what a delegate may run to prove its own change, and
+whether delegating is pre-approved. `off` is a complete answer and is honoured without ceremony.
+`/prawduct:doctor` proposes a starting point from what your repo already encodes — quoting your
+names, citing the file each came from, and proposing nothing where it finds nothing. It never grades
+you on this.
 
-**The gate answers in about a second.** Composing the coverage verdict was taking 29–120 seconds on a busy repo and hitting the 2-minute shell ceiling; it is memoized on a content hash of every input, including the plugin version, so an upgrade can never replay a verdict computed under older rules. Measured 20.0 s → 0.35 s.
+**A learnings sentinel is graded by your project's own test runner, or not graded at all.**
+Prawduct used to run every `sentinel=` learning under `python -m pytest`. In a project that does not
+use pytest that reported **failing** — against tests that were green — and the audit then argued to
+retire rules that were still enforced. There is now no default: declare `sentinel_command:` in
+`.prawduct/project-state.yaml` with a `{sentinel}` placeholder for the file to grade
+(`sentinel_command: npx vitest run {sentinel}`). **If you have `sentinel=` learnings and do not
+declare it, those sentinels report `ungraded` from this version on** — a verdict nobody took retires
+nothing, where the old default retired rules on a verdict it invented. `/prawduct:doctor` names the
+key when it sees the gap.
 
-**Reviews stop re-litigating answers you already gave.** A dispatch now carries the findings you accepted or filed for the work in hand, and the protocols tell reviewers not to raise one again absent material change. Three reviewers describing one defect are grouped and presented as one defect with three attributions, so you dispose of it once.
+**A verification record can say it was degraded.** A contended run can exit 0 having silently
+dropped part of your suite, and nothing in the counts separates that from a clean pass.
+`test-evidence record --degraded "<what did not report>"` says so, and the gates read it as stale
+rather than as a pass.
 
-**Prose findings are priced honestly.** Comment, docstring and doc wording, counts and phrasing are NOTE unless something reads them or a reviewer can name the wrong action a maintainer takes. For stale prose there are three permitted remedies — delete the claim, make it relational, or pin it with a test — and never "reword the narration." Review ids, chunk numbers and review history never belong in a shipped comment; one narrating history is a deletion finding.
+**A build plan can declare the branch it governs.** Add `branch: <name>` to a build plan's
+frontmatter and every governance surface resolves that plan while that branch is checked out, ahead
+of `active_build_plan`. Two concurrent branches stop fighting over one line in `project-state.yaml`,
+and archiving the plan (or deleting the merged branch) ends the claim with nothing to un-point.
 
-**The fix-verify loop states its own golden path** where you act on it: fix everything in the working tree, do not commit between fixes, run one `verify-resolutions`, commit the verified tree verbatim. Verify-mode observations arrive pre-priced — accepting is the default, and fixing one costs a round.
+**Several plans may declare one branch** — a release branch carrying two workstreams is ordinary.
+Governance picks the sole claimant, else the one with chunks left, else the plan `active_build_plan`
+names, else path order; the session briefing tells you which it chose, why, and what else claimed
+the branch. The scalar keeps a job: it is how you break that tie. **Nothing migrates and nothing is
+required** — a plan that declares no `branch:` resolves exactly as it did before, and a `branch:`
+field written as documentation simply becomes meaningful, inert wherever its value is not a real
+branch name.
 
-### Opt in if you want it: a plan can declare its branch
-
-Add `branch: <name>` to a build plan's frontmatter and every governance surface resolves that plan while that branch is checked out, ahead of `active_build_plan`. Two concurrent branches stop fighting over one line in `project-state.yaml`, and archiving the plan (or deleting the merged branch) ends the claim with nothing to un-point.
-
-**Several plans may declare one branch** — a release branch carrying two workstreams is ordinary. Governance picks the sole claimant, else the one with chunks left, else the plan `active_build_plan` names, else path order; the session briefing tells you which it chose, why, and what else claimed the branch. The scalar keeps a job: it is how you break that tie.
-
-**Nothing migrates and nothing is required.** A plan that declares no `branch:` resolves exactly as it did before. If your plans already carry a `branch:` field written as documentation, it becomes meaningful — inert wherever its value is not a real branch name, and never a reason to refuse.
-
-### One new advisory, and how to make it stop
-
-Every branch writes its change-log entry at the top of the same file, so merging an advanced base conflicts there every time while the two sides never actually disagree. A session-start advisory now recommends one line:
+**One new advisory, and how to make it stop.** Every branch writes its change-log entry at the top
+of the same file, so merging an advanced base conflicts there every time while the two sides never
+actually disagree. A session-start advisory now recommends one line:
 
 ```
 .prawduct/change-log.md merge=union
 ```
 
-It recommends and never writes — `.gitattributes` is your committed configuration, not the plugin's. Add the line and commit it; the advisory resolves itself on the next sync. Declining is a legitimate answer and `/prawduct:doctor` will not grade your repo degraded for it.
+It recommends and never writes — `.gitattributes` is your committed configuration, not the
+plugin's. Add the line and commit it; the advisory resolves itself on the next sync. Declining is a
+legitimate answer and `/prawduct:doctor` will not grade your repo degraded for it. The trade is
+stated because it is real: union never conflicts, so a genuine two-sided edit to one entry's tag
+line survives as both versions. A twice-landed entry is *not* duplicated. Entry parsing now counts
+tag lines that end up past an entry's prose — where a union merge puts the second version — and
+warns that nothing reads them, so a merged-away `release=` cannot disappear quietly.
 
-The trade is stated because it is real: union never conflicts, so a genuine two-sided edit to one entry's tag line survives as both versions. A twice-landed entry is *not* duplicated. Entry parsing now counts tag lines that end up past an entry's prose — where a union merge puts the second version — and warns that nothing reads them, so a merged-away `release=` cannot disappear quietly.
+## v3.4.0
+
+**Less waiting on the gates, fewer rounds in review.** Gate checks stop timing out, syncing your base no longer buys a re-review, and a finding tells you whether the defect is only where it pointed.
+
+- **Gate checks stop timing out**, because the coverage verdict is memoized instead of rescanning every tree in the evidence store (20 s → 0.35 s). *This is the check for whether a review is needed — not the review, which costs what it always did.*
+- **Syncing your base no longer buys a re-review**, because coverage transfers when the branch's judgeable files are byte-identical across the two spans.
+- **One fix round instead of two**, because a finding now says whether the defect is only where it pointed or everywhere that pattern appears.
+
+### The gate check got 57× faster — the review itself is unchanged
+
+**Asking whether a review was needed cost 29–120 s per call** in a live consumer session — nine calls in one session, two of them killed by the 2-minute Bash ceiling, and the agent resorted to `timeout 200`. It is now 0.35 s.
+
+Profiled before anything was built: reading the evidence store is 0.06 s and merge-base resolution 0.07 s, while composing the coverage verdict was **17.4 s cold** — the free-edge search keys every tree the store mentions, one `git ls-tree` each (701 trees on this repo, and an append-only store only grows). Every session on the old build paid more of that than the last.
+
+`verdict_cache.VerdictCache` memoizes the composed verdict, keyed on a content hash of every input it is a function of: both endpoint trees and a SHA-256 of the whole evidence store. The three call sites needing a composed verdict — the span itself, the fix-churn diagnosis, the base-advance transfer — share one cache, bounded at 64 entries, living beside the evidence store in the per-clone `.git/prawduct/` area. Miss, unreadable cache, corrupt entry, foreign schema or unreadable store all recompute.
+
+**A cached verdict cannot be a false PASS.** Git objects are immutable and content-addressed, so they are not in the key and do not need to be; a missing object makes the tree key `None`, which denies a free edge and can never manufacture one. Git-side degradation moves the verdict only toward denial. The residual, stated rather than implied: an `uncovered` computed while an object was transiently unreadable is replayed until the store's next append.
+
+### Syncing your base no longer buys a re-review
+
+**A base advance moved the PR span's start node, so a branch whose own diff had not moved a byte read `uncovered` and bought a full re-review.** Measured in the busiest consumer repo (which merges its base ~20×/day): two of three cumulative rounds on one branch existed only for this reason, and the round after a sync re-raised six of the previous round's findings verbatim — roughly half of a 6-fix branch's review time was base tax.
+
+Both gates — the PR gate and the session-end Stop gate — now attempt a computed **transfer** before reporting `uncovered`. A covered span transfers to the required one when the two spans' judgeable changed-file sets are identical, every one of those files is byte-identical on both ends, and a saved suite run has met the resulting tree. Computed, never stored. Any condition that cannot be verified denies the transfer and today's remedy stands.
+
+The soundness boundary is **byte equality across contexts**, not content equivalence within one: any edit at all to a branch file, comments included, denies it. Candidates are selected by content rather than commit ancestry, which is what makes the rebase case work — rebasing rewrites the commits a branch's facts anchor to while leaving the trees they vouch for identical. A transfer denied *only* by stale test evidence says so, naming a suite run rather than a review round. Granted transfers append a `guard-refusal` fact under guard `base-advance-transfer`, so the rounds this saves are auditable rather than asserted (`prawduct-hook evidence list --kind guard-refusal`).
+
+### Also on cost
+
+**The change log recommends its own merge driver.** On both forced base syncs measured on a consumer repo, 100% of the merge conflicts were prawduct's own record files. **The plan declares its own branch**, so two concurrent branches no longer fight over one product-level `active_build_plan:` scalar. And review prose is priced honestly: comment and doc wording was 42% of finding volume, and the ceiling that produced it is fixed.
+
+**Known gap, stated rather than discovered later:** the verdict cache keys on the version **string**, which is fixed across a development cycle — so it separates a prerelease build from a release, not one `develop` push from the next. Irrelevant to `main`-pinned installs, which is the documented install reference.
+
+**A Critic finding now says whether it found an instance or a class — and fixing the sites it named is no longer a resolution.** The most expensive review failure is the cheap-looking one: a finding names two files, you fix those two, and the same defect is still in four more. It costs a full extra round every time, and the reviewer usually knew.
+
+### The tell is mechanical, not a judgement call
+
+Say why it broke in one sentence. **If that sentence does not name the site you found, it is a class** — and the sentence itself tells you what to search for. *"The `"--flag" in argv` idiom reads an unknown token as absent"* names an idiom, not a command, so every command using that idiom is a member, and most of them are outside the diff you are looking at.
+
+Findings now carry a `**Scope:** instance | class` line, so what reaches you is a bounded class instead of a list of addresses.
+
+### An enumeration is not a fix
+
+The other half, and the one with teeth: an **instance** closes by fixing it, but an **unbounded class** closes only by a *construction* — one owner every member passes through, or a check derived from the source of truth. A longer list of names is not a resolution, because the next member to be written is not on it.
+
+At `verify-resolutions`, a reviewer grading your fix is now told to re-run the finding's own reason as a search before writing `fixed`. A class finding closed at the sites it happened to name stays blocking.
+
+### Why this ships as review prose
+
+Every one of the Critic's seven goals is already prose, and the observed defect was that *this* prose was absent — not that prose does not work. The escalation trigger is written down rather than left to judgement: if a review after this produces a site-naming finding that does not answer instance-or-class, the answer becomes machine-checkable.
+
+**Known gap, stated rather than discovered later:** `chunk`-mode reviews do not carry the rule yet — their instruction payload is at its size ceiling. `final`, `cumulative` and `verify-resolutions` all have it, and a `chunk`-mode finding meets the rule one round later when its fix is graded.
+
+### Also in this release
+
+**The Critic's escape hatch stops telling you to delete the review it is blocking on.** When a
+review cannot finish and the session-end gate keeps firing, the block prints a way out. It used to
+print `rm -rf .prawduct/.critic-partials` — and the states that reach it are the ones holding
+reviewer output. In the worst of them every reviewer has already reported and the review
+is one deterministic step from being recorded, which is the step the gate itself would have run. The
+hatch now names `prawduct-hook critic-discard`, which reaches the same place and **archives** rather
+than deletes, printing the `critic-restore <id>` that brings the review back as itself. This
+release is the one that taught the marker to protect a finished-but-unrecorded review, so shipping
+the guard and the contradicting recipe together would have been worse than shipping neither.
+
+In the same pass, `critic-discard` stopped reporting a clean no-op on the one path where it does
+destroy something: if archiving fails part-way it falls back to deleting, and it used to say
+"nothing to discard" — that now says the partials were deleted and there is nothing to restore. It
+also tells you the restore window, because an undo with an unstated expiry is one you find out about
+too late.
+
+**The learnings corpus stopped burying its own general rule.** Seventeen rules across three families became three sharp ones — the fix has relatives, your search under-reports, and bound a class by its property rather than its container. All seventeen were saying versions of the same thing in different vocabularies, and none of them fired.
+
+**Two crashes and a silent failure, all found by the rule above.** A plan numbering a sub-chunk (`Chunk 0.1`) tracebacked instead of returning a diagnostic — leading-zero trimming read the id as one token. And the session-end report of an unparseable plan heading was wired to a prose substring, so rewording the message would have silently switched off the only surface that tells you which line to fix.
+
+**The turn-closing block now answers whose move it is.** `NEXT` and `CLEAR` named a *topic*, so the coloured token your eye landed on told you which question was being answered rather than what the answer was — and you still had to read the sentence, which is the cost the colour was spent to avoid. The second line is now one of `RUNNING`, `YOUR TURN` or `COMPLETE`, chosen on a single axis: **what produces the next turn.** A machine event will, so you can walk away; only a human utterance will, so the session is inert until you speak; or nothing needs to. Two rules make this more than a rename. *Precedence:* a turn that needs you is `YOUR TURN` even when work is also in flight, with the copy naming what runs. *No prediction:* a turn where something runs and a decision may be needed **once it lands** is `RUNNING`, because the job may return an answer that needs no decision — this line reports what **is**, never what might be.
+
+There is no `BLOCKED` label. Obstruction is a *reason*, and this block's own rule is that the label is the verdict and the copy is the reason; it now rides as one of three shades of `YOUR TURN` — *just go*, *decide*, *unblock* — which the copy distinguishes by leading with the ask and its cost. The third line is still `SAFE TO CLEAR` or `DO NOT CLEAR`, with the reason as the copy, and it gains one rule: **a turn whose product is findings is not safe to clear until those findings are on disk.** A verdict citing the message the reader is currently looking at is the defect said out loud. `STATE` gives up its "done / blocked / waiting" vocabulary and carries only evidence (what changed, committed or not, suite green or not), both to stop the block stuttering and because splitting evidence from claim is what keeps `COMPLETE` earned rather than asserted.
+
+**One session digest now serves every repo.** The slim variant is retired: `session-digest-slim.md` is gone, and with it the repo-shape classifier that chose between the two. Every repo — framework or product — is injected with the same digest, and where a repo's own `CLAUDE.md` overlapped it, that `CLAUDE.md` was trimmed instead. One carrier per fact, one shipped digest, and a token budget that can see a **new** injected file where the old per-file ceilings could not.
+
+### Four defects an external fleet report found, and the shape they share
+
+A survey of ~840 reflection and learning entries across ten governed repos (issue #661) returned four still-live defects. **Three are the same defect in different clothes: a check that could not run reads as a check that passed.**
+
+**A repo where prawduct was never set up now says so — loudly.** Enabling the plugin starts the hooks, and the hooks fill `.prawduct/` with runtime state, so a never-onboarded repo shows a version banner, a populated directory and firing advisories — and reads as installed. A live repo sat that way for weeks while three advisories fired and not one of them contained the word "onboard": prawduct reported three consequences and never the cause. There is now an **urgent** `PRAWDUCT IS NOT SET UP` advisory that fires only when *every* install marker is absent, so a repo that merely drifted still gets told to repair rather than reinstall.
+
+**`prawduct-hook` no longer ignores an argument it cannot read.** `update-gitignore` took no argv at all, so `--dry-run` was not rejected — there was no parsing, and the reconcile ran. Typing `--help` mutated your `.gitignore`. The guard is at the dispatch site rather than per command, because a per-command fix misses whichever command nobody thought of, and the test derives the command set from the dispatch chain's own source rather than a hand-kept list. `update-gitignore` also gained the real `--dry-run` its siblings taught you to expect. Five commands deliberately still accept free arguments, and `api-contract.md` names them and the nine not yet audited — rather than absorbing them into a confident allowlist.
+
+**A build plan with an unparseable chunk heading was answering with another chunk's contents.** `Chunk 1.2` and checkbox-prefixed headings did not match, and an unmatched heading also fails to *close* the section before it — so a lookup returned 10 body lines instead of 3, verified a different chunk's files, and passed. A silent wrong answer outranks a silent empty one. The signal now scans the whole plan and names the offending line numbers.
+
+**Archived reflections carry provenance.** Each block is stamped with the plugin version and date that produced it, so the corpus can be grouped by release.
+
 
 ## v3.3.4
 

@@ -523,9 +523,16 @@ class TestCliWiring:
         proc = self._run(self._project(tmp_path))  # no --release
         assert "no --release given" in proc.stderr
         assert "v3.1.0" in proc.stderr, "the NOTE must name the version it fell back to"
-        assert "PREVIOUS release" in proc.stderr, (
-            "naming the fallback without saying it is the wrong release is the "
-            "silent-misgrade this NOTE exists to prevent"
+        # The PROPERTY, not the old spelling. This asserted "PREVIOUS release"
+        # until Phase 3 falsified it: develop now carries a `-dev` marker all
+        # cycle, so the fallback names something that is not any release rather
+        # than the previous one. Pinning the sentence would have kept a test
+        # green on a message that had become false — the failure this whole
+        # branch's review kept finding. What must survive is that the NOTE says
+        # the fallback is NOT the release being graded.
+        assert "not a release" in proc.stderr.lower() or "previous release" in proc.stderr.lower(), (
+            "naming the fallback without saying it is the wrong thing to grade "
+            "is the silent-misgrade this NOTE exists to prevent"
         )
 
     @pytest.mark.parametrize("form", ["--release=v3.2.0", "--release v3.2.0"])

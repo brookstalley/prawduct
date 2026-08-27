@@ -81,6 +81,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials/",
     ".prawduct/.critic-partials-archive/",
+    ".prawduct/.delegate-brief.md",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
@@ -235,7 +236,14 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """
     try:
         content = state_path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # A file that is not decodable text is *unreadable*, which is what this
+        # promises to fail soft on. `UnicodeDecodeError` is a `ValueError`, so
+        # catching only `OSError` let it escape — and every caller reads this
+        # through a guard shaped for None, so the raise surfaced far from here.
+        # `already_migrated` is the sharp case: it calls this first, so an
+        # undecodable state file aborted the cutover before any of the later
+        # steps could reach their own decode guards.
         return None
     needle = f"{key}:"
     for raw in content.splitlines():
@@ -290,7 +298,10 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
         return False
     try:
         content = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # Same hole as `read_str_yaml_key`: undecodable is unreadable, and this
+        # promises to fail soft on unreadable. Fixed in both, because the two
+        # are documented as siblings sharing one idiom.
         return False
     needle = f"{key}:"
     for raw in content.splitlines():
@@ -608,14 +619,20 @@ def gitignore_contract_drift(target: Path) -> dict:
     return _contract_diff(existing_lines)
 
 
-def update_gitignore(target: Path) -> dict:
+def update_gitignore(target: Path, dry_run: bool = False) -> dict:
     """Add prawduct entries to .gitignore and remove incorrect ones.
 
     Managed files (MANAGED_FILES) should be committed, not gitignored.
     Session files (GITIGNORE_ENTRIES) should be gitignored.
-    Returns dict with 'modified' bool and 'unignored' list of paths
-    that were removed from .gitignore (caller should advise user to
-    git-add these).
+    Returns dict with 'modified' bool, 'unignored' list of paths that were
+    removed from .gitignore (caller should advise user to git-add these), and
+    'missing' list of session entries that were added.
+
+    ``dry_run=True`` computes the same three answers and skips the write, so a
+    caller can PREVIEW the reconcile. The whole point is that the preview and
+    the repair share one body: a separate "what would change" implementation is
+    free to drift from the fixer, and a preview that disagrees with the fix is
+    worse than no preview.
     """
     gitignore = target / ".gitignore"
 
@@ -660,7 +677,7 @@ def update_gitignore(target: Path) -> dict:
         content += "".join(parts)
         modified = True
 
-    if modified:
+    if modified and not dry_run:
         gitignore.write_text(content)
 
-    return {"modified": modified, "unignored": unignored}
+    return {"modified": modified, "unignored": unignored, "missing": list(missing)}

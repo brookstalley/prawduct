@@ -19,6 +19,7 @@ The load-bearing guarantees under test:
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
@@ -339,16 +340,257 @@ def test_settings_preserves_other_marketplaces_and_plugins(repo: Path):
     assert data["enabledPlugins"]["prawduct@prawduct"] is True
 
 
-def test_distribution_recorded_state_preserved(repo: Path):
-    original = (repo / ".prawduct" / "project-state.yaml").read_text()
+def test_distribution_recorded_and_product_keys_preserved(repo: Path):
+    """Preserve-verbatim protects what the PRODUCT authored — not framework residue.
+
+    This test used to assert ``updated.startswith(original)`` and call
+    ``views_enabled`` a "pre-existing product key". It is not one: it is a
+    retired *framework* key, written by the derived-view model, and removing it
+    is the entire reason ``lib/lifecycle_repair.py`` exists. The old assertion
+    pinned a misclassification, so the cutover — the one act that already deletes
+    every other framework file — was obliged to carry framework residue forward.
+    That is how these keys reached the plugin era in ten products.
+
+    The contract is now stated on the axis that actually matters: product keys
+    survive byte-for-byte, retired framework keys go, and the marker is appended.
+    """
     run_migrate(repo, "--apply")
     updated = (repo / ".prawduct" / "project-state.yaml").read_text()
-    # Original content preserved verbatim as a prefix; only the marker appended.
-    assert updated.startswith(original)
+
     assert "distribution: plugin" in updated
-    # The pre-existing product keys are untouched.
+    # What the product authored is untouched.
+    assert "# Project State" in updated
     assert "backlog_format_version: 2" in updated
-    assert "views_enabled: true" in updated
+    # What a retired framework mechanism wrote is not.
+    assert "views_enabled" not in updated
+
+
+def test_cutover_strips_the_retired_test_tracking_block(repo: Path):
+    """The cutover is the last moment this residue is cheap to remove.
+
+    After it, the repo is a plugin consumer and the only route left is the
+    operator running `/prawduct:doctor` — which ten products never did, because
+    nothing told them there was anything to converge.
+    """
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_text(
+        state.read_text()
+        + "\nbuild_state:\n"
+        '  source_root: "src/"\n'
+        "  test_tracking:\n"
+        "    test_count: 1724\n"
+        "    test_files: 118\n"
+        "    history:\n"
+        "      - tests_added: 24\n"
+        "        date: 2026-08-14\n"
+        "  spec_compliance: partial\n",
+        encoding="utf-8",
+    )
+    result = run_migrate(repo, "--apply")
+    updated = state.read_text()
+
+    for gone in ("test_tracking", "test_count", "test_files", "tests_added"):
+        assert gone not in updated, f"{gone} survived the cutover"
+    assert 'source_root: "src/"' in updated, "took a sibling with it"
+    assert "spec_compliance: partial" in updated
+    assert "build_state.test_tracking" in result["state_keys_removed"]
+
+
+def test_dry_run_names_the_state_keys_and_writes_nothing(repo: Path):
+    """The operator's single confirmation has to name the blast radius, so the
+    removal must appear in the plan — not only in the result of doing it."""
+    state = repo / ".prawduct" / "project-state.yaml"
+    before = state.read_text()
+
+    result = run_migrate(repo)  # no --apply
+
+    assert "views_enabled" in result["state_keys_removed"]
+    assert ".prawduct/project-state.yaml" in result["edited"]
+    assert state.read_text() == before, "dry run wrote to the state file"
+
+
+def test_a_state_file_with_no_retired_keys_is_left_alone(tmp_path: Path):
+    """No retired key means the only state edit is the appended marker."""
+    root = make_filesync_repo(tmp_path)
+    state = root / ".prawduct" / "project-state.yaml"
+    state.write_text("# Project State\nbacklog_format_version: 2\n", encoding="utf-8")
+    original = state.read_text()
+
+    result = run_migrate(root, "--apply")
+
+    assert result["state_keys_removed"] == []
+    assert state.read_text().startswith(original), "rewrote a file it had nothing to fix"
+
+
+def test_the_preview_lists_exactly_what_the_apply_removes(repo: Path):
+    """The dry run and the write compute the key list separately.
+
+    `lifecycle_repair`'s own docstring names the hazard: a preview that
+    re-derives what the write path derives is where drift hides, because it
+    reports clean while the write does something else. The two are kept honest
+    here by assertion rather than by structure — the operator's single
+    confirmation is given against the preview, so a preview that under-reports
+    is a confirmation obtained for the wrong act.
+    """
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_text(
+        state.read_text()
+        + "\nbuild_state:\n"
+        '  source_root: "src/"\n'
+        "  test_tracking:\n"
+        "    test_count: 1724\n",
+        encoding="utf-8",
+    )
+
+    previewed = run_migrate(repo)["state_keys_removed"]
+    applied = run_migrate(repo, "--apply")["state_keys_removed"]
+
+    assert previewed == applied, "the preview and the write disagree"
+    assert "build_state.test_tracking" in applied
+    assert "views_enabled" in applied
+
+
+def test_the_cutover_preserves_crlf_line_endings(tmp_path: Path):
+    """A surgical edit must not land as a whole-file reformat.
+
+    `strip_state_file` preserves endings, and `record_distribution` runs
+    immediately after it on the same file — so a `read_text`/`write_text` pair
+    there flattened every line the removal had just preserved, burying the real
+    change inside a diff that touches the whole document.
+    """
+    root = make_filesync_repo(tmp_path)
+    state = root / ".prawduct" / "project-state.yaml"
+    state.write_bytes(
+        b"# Project State\r\n"
+        b"backlog_format_version: 2\r\n"
+        b"views_enabled: true\r\n"
+        b"build_state:\r\n"
+        b'  source_root: "src/"\r\n'
+        b"  test_tracking:\r\n"
+        b"    test_count: 1724\r\n"
+    )
+
+    run_migrate(root, "--apply")
+    raw = state.read_bytes()
+
+    assert b"test_tracking" not in raw
+    assert b"distribution: plugin" in raw
+    assert b'source_root: "src/"' in raw
+    assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF file"
+
+
+def test_an_undecodable_state_file_does_not_abort_the_cutover(tmp_path: Path):
+    """The decode guards were unreachable, and a recorded disposition said they
+    were not.
+
+    `already_migrated` reads the state file first, through a helper documented
+    to fail soft on an unreadable file. `UnicodeDecodeError` is a `ValueError`,
+    so a bytes-invalid file escaped its `OSError`-only catch and the cutover
+    died before any later step could reach its own guard.
+    """
+    root = make_filesync_repo(tmp_path)
+    state = root / ".prawduct" / "project-state.yaml"
+    state.write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+
+    result = run_migrate(root, "--apply")
+
+    assert result["state_keys_removed"] == []
+    # The cutover completes: framework files still go, and the run does not die.
+    assert result["removed"], "the cutover aborted on an unreadable state file"
+    # And it SAYS so. Three steps fail soft on this file independently, so
+    # without a note their sum reads as "nothing needed" and the repo looks cut
+    # over while carrying no `distribution: plugin` marker.
+    assert any("not decodable" in n for n in result["notes"]), (
+        "skipped the state file silently"
+    )
+    assert state.read_bytes() == b"\xff\xfe not valid utf-8 \x80\x81", "wrote over it"
+    # And the PREVIEW says the same thing, rather than promising an edit the
+    # apply declines — the confirmation is given against the preview.
+    preview = run_migrate(root)
+    assert ".prawduct/project-state.yaml" not in preview["edited"]
+    assert any("not decodable" in n for n in preview["notes"])
+
+
+def test_an_unreadable_state_file_is_reported_not_only_an_undecodable_one(
+    tmp_path: Path,
+):
+    """The guard first covered only the decode error.
+
+    That reproduced, one level up, the very defect it was written to report — a
+    catch narrowed to the interesting exception class while the other one goes
+    silent. A permission-locked state file yields the same half-cutover: no
+    marker, no removal, and nothing said.
+    """
+    root = make_filesync_repo(tmp_path)
+    state = root / ".prawduct" / "project-state.yaml"
+    state.chmod(0o000)
+    try:
+        result = run_migrate(root, "--apply")
+    finally:
+        state.chmod(0o644)
+
+    assert result["state_keys_removed"] == []
+    assert any(
+        "could not be read" in n for n in result["notes"]
+    ), f"a locked state file went unreported: {result['notes']}"
+
+
+def test_a_repo_with_no_state_file_does_not_error(tmp_path: Path):
+    """Carried from Chunk 01's Critic review (R-4), closing AC9's second half.
+
+    The path is already safe twice over — both `strip_state_file` and
+    `retired_state_keys` check `is_file()` *and* catch `OSError` — so this pins a
+    guard rather than fixing a defect. It rides this chunk's commit because a
+    deferral to a later review round costs a round, and riding a commit already
+    being made costs none.
+    """
+    root = make_filesync_repo(tmp_path)
+    (root / ".prawduct" / "project-state.yaml").unlink()
+
+    result = run_migrate(root, "--apply")
+
+    assert result["state_keys_removed"] == []
+    # `record_distribution` creates the file, so the cutover still completes.
+    assert (root / ".prawduct" / "project-state.yaml").is_file()
+
+
+def test_the_cutover_owns_no_copy_of_what_a_retired_key_is(repo: Path):
+    """One home for the fact, checked mechanically rather than by convention.
+
+    ``lifecycle-repair`` converges repos that cut over before this removal
+    existed; the cutover removes the same keys on the way through. Two callers,
+    one definition — a second copy here would drift the moment either changed.
+    """
+    tree = ast.parse((ROOT / "lib" / "migrate_plugin.py").read_text())
+
+    # Docstrings are exempt: prose naming what gets removed helps a reader and
+    # cannot drift into behaviour. What must not exist is a *literal the code
+    # acts on* — that is the copy that goes stale silently.
+    docstrings = {
+        node.body[0].value
+        for node in ast.walk(tree)
+        if isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        )
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+    live_strings = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node not in docstrings
+    ]
+
+    for key_name in ("views_enabled", "scope_rollups", "test_tracking"):
+        offenders = [s for s in live_strings if key_name in s]
+        assert not offenders, (
+            f"migrate_plugin has a live string naming {key_name!r} ({offenders!r}) "
+            "— the key set belongs to lifecycle_repair, which both entry points call"
+        )
 
 
 def test_marker_gitignored(repo: Path):

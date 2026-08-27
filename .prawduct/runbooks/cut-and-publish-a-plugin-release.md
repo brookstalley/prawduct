@@ -2,8 +2,10 @@
 runbook: cut-and-publish-a-plugin-release
 tier: 3
 owner: prawduct maintainer
-last_verified: 2026-08-11   # executed end-to-end for the v3.3.4 cut; every step matched
-verified_by: brookstalley
+last_verified: null         # steps 0-21 matched the v3.3.4 cut (2026-08-11, brookstalley); Phase 3,
+                            # step 10's rename and the rewritten `Done when` were added AFTER that
+                            # run and have never been executed — re-verify at the next cut
+verified_by: null
 ---
 
 # Cut and publish a Prawduct plugin release
@@ -391,22 +393,31 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > *Adjudicated, not derived: the file's own comment asks for this bump;
    > `documentation/release-process.md` step 2 didn't name it until v3.1.1.*
 
-10. In `plugin/CHANGELOG.md`, **check whether a `## vX.Y.Z` section already exists** — then add one
-    directly above the previous release only if it does not, with the consumer-facing headline as
-    the first non-empty line under it. If it exists, bring it up to date instead.
+10. In `plugin/CHANGELOG.md`, **rename the open `## vX.Y.Z-dev` section to `## vX.Y.Z`** — the
+    prerelease section step 22 opened at the last cut, which the cycle's work has been
+    accumulating under. Confirm its first non-empty line is the consumer-facing headline for
+    this release, and replace the seeded placeholder if it is still there. Only when no
+    prerelease section exists (the first cut after this runbook changed) do you add a fresh
+    `## vX.Y.Z` section above the previous release.
 
-    > *Why check first: `develop` runs on a prerelease of the version it is heading for, and its
-    > section is written under the FINAL number, not the rc — so on any release that was dogfooded,
-    > the section is already there and adding one blindly yields two sections for one version. The
+    > *Why check first: `develop` runs on a prerelease of the version it is heading for and
+    > accumulates its notes under `## vX.Y.Z-dev.N`, so on any release that was dogfooded the
+    > section already exists under the prerelease heading. Renaming it is what makes it this
+    > release's section; adding a fresh one instead yields two sections for one version, and the
     > banner reads the first it finds.*
 
     > *Why a headline at all: the version-delta banner shows exactly that first line to every repo
     > crossing this version.*
 
+    > **Rename, do not add a second section.** Adding one leaves the `-dev` section in place
+    > permanently, so the public digest carries a "Prerelease under test" heading forever and a
+    > consumer crossing 3.3.4 → 3.4.0 gets two highlights for one release. The `-dev` heading is
+    > the *same* release's notes under a working name, not a separate entry.
+
     **On a minor or major bump — not a patch — also refresh `README.md`'s `## Recent
     Changes`** so the current line is represented there. Check it the same way: a release that
-    was dogfooded on `develop` already has its section, written under the final number, so bring
-    that one up to date rather than adding a second. Rewrite the section; do not append a
+    was dogfooded on `develop` already has its section under the prerelease heading, so rename and
+    bring that one up to date rather than adding a second. Rewrite the section; do not append a
     per-release bullet. A patch has nothing to say on that surface, so skipping it is the correct
     outcome and not an omission.
 
@@ -422,7 +433,7 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 11. **Clear the pointer if one is still set, then archive the plans this release shipped.**
     On gitflow the closing PR deliberately RETAINS each plan — the work is not released yet
     — so this is where that retention ends. The pointer may already be unset: a plan that
-    declares `branch:` has it cleared at its own merge (`/prawduct:pr` merge-flow step 7),
+    declares `branch:` has it cleared at its own merge (`/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step),
     because its branch is gone and the declaration resolves for nobody; only a
     pointer-resolved plan still has one to clear here. Archiving is what ends retention in
     both cases. Skip it and the live artifacts directory re-accumulates the pile the
@@ -702,13 +713,63 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     (`documentation/release-process.md` § Dogfooding the develop track).
 
     - **Nothing is queued for the next release yet:** leave it. There is genuinely nothing
-      unreleased to dogfood, and the first work merged into `develop` re-opens the rc.
+      unreleased to dogfood, and the first work merged into `develop` re-opens the prerelease.
     - **A sibling repo is pointed at the track and you want it live now:** bump the three version
-      files on `develop` to `X.Y.(Z+1)-rc.1` — the same three as step 7-9, in one commit.
+      files on `develop` to `X.Y.(Z+1)-dev` — the same three as step 7-9, in one commit. `-dev` /
+      `-dev.N` is the only suffix the version checks accept; bump the `.N` on later promotions.
 
-    **Expected:** either a commit on `develop` bumping to an rc, or a line in your handoff saying
+    **Expected:** either a commit on `develop` bumping to a `-dev` prerelease, or a line in your handoff saying
     the track is parked until the next merge. What is not acceptable is neither, with someone still
     on the track.
+
+---
+
+## Phase 3 — Reopen `develop`
+
+22. On `develop`, bump the three version files (`plugin/VERSION`,
+    `plugin/.claude-plugin/plugin.json`, `pyproject.toml`) to the next **patch** plus a
+    `-dev` suffix — after cutting `v3.4.0`, write `3.4.1-dev` — **and in the same commit
+    open a `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md`** with a non-empty
+    first line, plus a `.prawduct/change-log.md` entry.
+
+    > **Guess LOW, and it is not a style preference — a high guess breaks the banner for
+    > the audience this whole step exists to serve.** Version ordering puts a prerelease
+    > just below its own release, so `3.4.1-dev` precedes both `3.4.1` and `3.5.0`: from a
+    > low guess, *every* possible next cut is a forward move. From a high one it is not —
+    > a develop consumer sitting on `3.5.0-dev` that meets a patch cut `3.4.1` moves
+    > **backwards**, and `highlights_in_range` and `new_gates_in_range` are both empty on a
+    > downgrade, so they get a version move with no release notes and no gate announcement.
+    > This also *is* the ratified conservative-versioning norm (`operational-spec.md`
+    > § Direction: a minor bump is a recorded decision, not a reflex) — a procedure that
+    > defaults to a minor writes the reflex into the runbook. If the next release is
+    > already decided to be a minor or major, that decision is what licenses the higher
+    > number; record it, don't assume it.
+
+    > **The CHANGELOG section is not bookkeeping — omit it and `develop` goes red.**
+    > `test_changelog_has_current_version_entry` requires a `## v<plugin.json version>`
+    > section with a non-empty headline, so the three version files and the public digest
+    > move together or the suite fails on the next push. "A change-log entry" reads as
+    > `.prawduct/change-log.md` alone, which is why this step now names both files.
+    > Seed it with one line — the rolling notes accumulate under it as work lands.
+
+    > *Why develop never reads as the released version: the verdict cache keys on the
+    > plugin version (`verdict_cache._key`), so a prerelease codebase reporting the
+    > released number can replay `covered` verdicts across a judgeability change; and a
+    > test consumer pinned to the `develop` ref can only tell which plugin it is running
+    > if the banner says so. `-dev` and `-dev.N` are the only suffixes
+    > `test_version_is_semver` permits.*
+
+    > **What keeps the suffix out of a cut is step 7, and nothing else.** Step 7 overwrites all
+    > three files with the bare release number; that is the only *preventive* control.
+    > `check_version_files` runs `git show <tag>:…`, i.e. against a tag that already exists, so
+    > it is a post-publish detector — it tells you a `-dev` suffix shipped, it cannot stop it.
+    > Nothing on the pre-tag path reads the version files at all (`check-releasability` never
+    > opens `plugin/VERSION`). Treat step 7 as load-bearing rather than as one of two belts.
+
+    If the number guessed here turns out wrong at the next cut, **steps 7–9** overwrite all
+    three files — the suffix is identity, not a commitment. That covers the *files*; it does
+    not un-tell a consumer that already crossed onto the marker, which is the other reason
+    the guess goes low rather than high.
 
 ---
 
@@ -718,8 +779,19 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
 own `Done when`: the content-identity check below can never pass there, and if it did pass it would
 mean the withheld work shipped.*
 
-- After `git fetch origin`, `git diff --stat origin/main origin/develop` prints
-  nothing.
+- After `git fetch origin`, `git diff --stat origin/main origin/develop` prints **only the
+  reopen commit's five files** — `plugin/VERSION`, `plugin/.claude-plugin/plugin.json`,
+  `pyproject.toml`, `plugin/CHANGELOG.md` and `.prawduct/change-log.md`.
+
+  > `plugin/CHANGELOG.md` is in the list because step 10 renames `## vX.Y.Z-dev` → `## vX.Y.Z`
+  > on the tree `main` is set from, and step 22 then opens `## vX.Y.Z+1-dev` above it on
+  > `develop` only — so the two branches' digests differ by exactly that new heading.
+
+  > **This bullet used to say "prints nothing", and Phase 3 is what changed it.** Content
+  > identity is the expected outcome of Phase 2, and step 22 deliberately advances `develop`
+  > past it one commit later. A check that can never pass on a correct release is worse than
+  > no check: the operator learns to expect the failure and stops reading it. If it prints
+  > anything *else*, Phase 2 did not finish. Run it before step 22 to get the strict form.
 - `git ls-remote --tags origin` shows a line ending `refs/tags/vX.Y.Z`.
 - `./plugin/bin/prawduct-hook check-released vX.Y.Z` prints `released: vX.Y.Z — 3 of 3 verified`
   and exits 0. It checks the three things this phase just did — version files agreeing

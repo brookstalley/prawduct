@@ -44,7 +44,7 @@ Before any non-trivial work cycle, answer three questions in one sentence each:
 2. **What does success look like?** "User can do X and see Y," not "it works."
 3. **What's out of scope?** What you're deliberately not doing.
 
-If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Surface unknowns early — never silently build on guesses. Apply for any chunk that touches behavior; skip for trivial (typo, config). For unclear or multi-file work, Plan Mode (read-only explore + interview) is the native clarify-before-build vehicle. Mirrors `methodology/discovery.md` "Calibrate Rigor" — same self-assessment, `[ASSUMPTION: …]` format, research triggers.
+If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Surface unknowns early — never silently build on guesses. Apply for any chunk that touches behavior; skip for trivial (typo, config). For unclear or multi-file work, Plan Mode is the native clarify-before-build vehicle. Same model as `discovery.md` "Calibrate Rigor".
 
 ### A Requirement Surfaced Mid-Build
 
@@ -55,14 +55,14 @@ The Confidence Check runs at a chunk's *start*; requirements also arrive *during
 The requirement tripwire has a sibling: "we should always X" is **norm birth** — stop and capture
 before code proceeds (a `project-preferences.md` row or a `## Direction` entry: statement + why +
 retroactivity). Departing from a norm that already governs your change is a recorded `[DECISION: …]`
-— never a silent divergence or a norm edited to bless your own code. Norms bind; descriptions track
-(`/prawduct:methodology norms`; `methodology/planning.md` "Governing Artifacts").
+— never a norm edited to bless your own code (`/prawduct:methodology norms`;
+`methodology/planning.md` "Governing Artifacts").
 
 ## The Build Cycle
 
 **Establish a clean baseline.** Before the first work cycle of a session:
 
-- *Tests*: Run the full suite. Every test must pass; fix any failures.
+- *Tests*: Run the full suite. Every test must pass; fix any failures. **A delegate skips this**, inheriting the main agent's baseline.
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.
 
@@ -82,9 +82,9 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
 
-**Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you, and never narrate history.** A comment, docstring, or long-lived spec must not anchor itself to a chunk number — plans get renumbered, and the sentence stays wrong while reading as fact. Review and finding ids never ship: history's one home is commits and the change-log, so a comment recounting it (`// Critic caught Y`) is a deletion, not a rewrite. Carry the present-tense reason inline instead: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`; `// callers kept passing null` states a live constraint and stays legal. Exception: bookkeeping that records the work (backlog `closed-by:`, reflections, commit/PR text) — there the id is the record (Principle 13).
+**Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you, and never narrate history.** A comment, docstring or long-lived spec must not anchor to a chunk number: plans get renumbered and the sentence stays wrong while reading as fact. Review and finding ids never ship — history's one home is commits and the change-log, so a comment recounting it (`// Critic caught Y`) is a deletion, not a rewrite. Carry the present-tense reason instead: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: bookkeeping that records the work (reflections, commit/PR text) — there the id is the record (Principle 13).
 
-**Same decay: a count nothing reads is not worth writing.** Ask what gets decided differently if it is wrong by two; if nothing, omit it, make it relational ("the table's rows"), or cite the command that regenerates it. Numbers something *relies* on stay exact.
+**Same decay: a count nothing reads is not worth writing.** Ask what gets decided differently if it is wrong by two; if nothing, omit it, make it relational ("the table's rows"), or cite the command that regenerates it. Numbers something *relies* on stay exact. **Suite totals keep coming back** — the evidence store holds pass/fail per tree, so say "suite green" and cite `test-status`; never copy a total into a record or add a field for one.
 
 **Verify.** Two layers:
 
@@ -99,7 +99,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve.
 
-**Resolve findings.** After a **coordinator** review (`final`/`cumulative` given a three-reviewer roster), run `prawduct-hook critic-consolidate` before reading `.critic-findings.json` — idempotent when the `SubagentStop` trigger already consolidated (single-pass reviews consolidate themselves). **Disposition them ALL in ONE pass — every fix in ONE commit, then ONE `/prawduct:critic verify-resolutions`** — fix-commit-verify per finding multiplies rounds (consolidate's own output says which writes stay free meanwhile). **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default; filing everything turns the backlog into a guilt pile. **Record it as a fact (`prawduct-hook disposition <review-id> <fid> --accept "<reason>"|--file <id>`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
+**Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds (consolidate's own output says which writes stay free meanwhile). **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default; filing everything turns the backlog into a guilt pile. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one.
 
@@ -111,27 +111,15 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 ## Session Scope Discipline
 
-Limit work cycles to 1-3 chunks for medium+ work — Critic quality degrades across a large diff, and long-session compaction can lose governance context. A multi-chunk plan spans sessions: per-chunk reviews accumulate, the final/cumulative lands with the last chunk, and session boundaries don't reset the plan.
+**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: per-chunk reviews accumulate, the final/cumulative lands with the last chunk, and session boundaries don't reset the plan.
 
-**Complete required governance at chunk boundaries, then signal — never *ask* whether to prepare a handoff; prepare it and say so.** When you've completed 2-3 chunks, or the user switches tasks, complete in order:
+**Complete required governance at chunk boundaries, then signal — never *ask* whether to prepare a handoff; prepare it and say so.** At a chunk boundary, or when the user switches tasks, complete in order:
 
 1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 7. **Handoff notes** — **read `.prawduct/.handoff-notes.md` before rewriting it**, then reconcile to what the *next* session needs: where you stopped, what you'd do next, what would bite them. Never blind-append.
 
-**Then close the turn with the standing block — last, after every other word. This exact shape, `---` rule included, three separate paragraphs, labels backticked so they render coloured:**
+**Then close the turn with the standing block — last, after every other word.** Say `SAFE TO CLEAR` only when steps 1-7 above are done **and nothing is outstanding, in flight included** — that binding is what this file owes the block. Its shape, trigger and failure modes are `methodology/reflection.md` "Work cycle boundary", and the session digest injects them into every session, so they reach you whether or not you opened this guide.
 
-```
----
-
-`STATE` — done / blocked / waiting; committed or not; suite green or not.
-
-`NEXT` — the ONE next action, and whose it is.
-
-`CLEAR` — Safe to `/clear`. — or — Not safe to `/clear` yet: [what has to happen first].
-```
-
-Omitting it, burying it, padding it, or collapsing it onto one line fail identically — people read the bottom of a long turn and nothing else. Same trigger on every surface: a turn ending a chunk or work cycle, or one you end with work outstanding. Say safe only when steps 1-7 are done **and nothing is outstanding, in flight included** (`methodology/reflection.md` "Work cycle boundary").
-
-**Two session files, two owners.** You own `.prawduct/.handoff-notes.md`; the `/clear` hook owns `.prawduct/.session-handoff.md`, regenerating it from your notes (first), build plan Status, reflection, Critic findings and changed files — never hand-edit the generated one. `prawduct-hook handoff preview` shows what the next session would get.
+The `/clear` hook regenerates `.prawduct/.session-handoff.md` — never hand-edit it — from your notes (first), build plan Status, reflection, Critic findings and changed files. `prawduct-hook handoff preview` shows what the next session would get.
 
 ## Investigated Changes
 
@@ -151,19 +139,19 @@ When you modify files that affect a contract surface:
 
 A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format is always lock-in, measured by reversal cost not LOC; enumerate the data's future consumer queries before designing fields), **pervasiveness** (many files), **structural impact** (shapes architecture), **external dependency** (long-term library/service reliance), or **volatility** (correctness rests on fast-moving / post-cutoff data — web-research it, don't recall; see `methodology/discovery.md` "Calibrate Rigor").
 
-Research scales to impact: **medium** (pervasive pattern, non-core dep) → quick in-context research; **high** (lock-in, structural, core dep) → a research subagent returns a concise recommendation on patterns and library health. Presentation scales to engagement: **low** → decide and state briefly; **medium** (default) → recommend and invite feedback; **high** → present options with trade-offs for the user to choose. Record major decisions in the most affected artifact: what, alternatives, rationale, trade-offs.
+Research scales to impact: **medium** (pervasive pattern, non-core dep) → quick in-context research; **high** (lock-in, structural, core dep) → a research subagent returns a concise recommendation on patterns and library health. Presentation scales to engagement: **low** → decide and state briefly; **medium** (default) → recommend and invite feedback; **high** → options with trade-offs for the user to choose. Record major decisions in the most affected artifact: what, alternatives, rationale, trade-offs.
 
-**The cheap-check gate** (Principle 24 — Retrieval Over Generation). Before any expensive or hard-to-reverse step — experiment spend, a deploy, a tuning campaign — one line: *what is the cheapest verification that could change this decision, and did I do it?* A free read or short search comes first. Tells you're generating, not retrieving: a confidence word with no citation; tuning a mechanism you haven't read; contradicting an artifact in hand; revising the same decision with no new fact (full detectors: `docs/principles.md` #24).
+**The cheap-check gate** (Principle 24 — Retrieval Over Generation). Before any expensive or hard-to-reverse step — experiment spend, a deploy, a tuning campaign — ask: *what is the cheapest verification that could change this decision, and did I do it?* A free read or short search comes first. Tells you're generating, not retrieving: a confidence word with no citation; tuning a mechanism you haven't read; contradicting an artifact in hand; revising the same decision with no new fact (full detectors: `docs/principles.md` #24).
 
 ## Delegating Work to Subagents
 
-**When the user asks you to work in a subagent, do it** (Principle 23) — also when chunks are independent and parallelizable, a well-scoped chunk benefits from a clean context, or the main context is large.
+**When the user asks you to work in a subagent, do it** (Principle 23). Otherwise the default is **delegate when the same work finishes in less wall clock and the delegates will not fight each other** — recorded as the plan's `partition:`, re-checked at each chunk close, and asked again of a tangent or anything you were about to backlog. **Read `/prawduct:methodology delegation` before fanning out** — it is the judgment; this section is the mechanics.
 
-**How:** give the subagent the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`"**, and to run the full suite before and after. Add **"then `.prawduct/.subagent-briefing.md` for conventions and learnings"** only for a *shared*-worktree agent: it is gitignored, so it never exists in an isolated one — inline what that agent needs.
+**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`"**, and **a verification ceiling** — the project's `Delegate verification` row where it has one, else the narrowest run covering its own change; never the full suite. A cost bound, not a rigor discount, and what it prevents fails *silently*: a contended run reports a green that skipped a part nobody can name. Add **"then `.prawduct/.subagent-briefing.md`"** only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it; inline what that agent needs.
 
-**Parallel chunks:** launch independent chunks as separate subagents, await results, run the combined suite, then Critic. Merge conflicts are the main agent's job. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts, including the plan you just amended, are invisible; commit first or pass the content in the prompt, say the prompt outranks any file, then tell it not to write `.prawduct/` (`prawduct-hook` refuses, but only on the harness's scratch branch — not one the agent creates). **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope the `git commit` after it — use `git commit -- <paths>`. Prefer `isolation: "worktree"` for truly independent chunks. The canary may fire O(agents × edits) — expected; note it in the reflection.
+**Parallel chunks:** launch independent chunks as separate subagents and await results. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts, the plan you just amended included, are invisible; commit first or inline it in the prompt, say the prompt outranks any file, then tell it not to write `.prawduct/` (`prawduct-hook` refuses only on the harness's scratch branch, not one the agent creates). **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope a later `git commit`; use `git commit -- <paths>`. Prefer isolation for truly independent chunks. The canary may fire O(agents × edits) — expected; note it in the reflection.
 
-**What stays in the main agent:** Critic, reflection, state updates. The subagent implements; the main agent governs.
+**What stays in the main agent:** the combined suite and all end-to-end verification, merge conflicts, Critic, reflection, state updates. The subagent implements; the main agent governs.
 
 ## Working With Specs
 
@@ -201,14 +189,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 ### Modes
 
-`Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes:
-
-- **`chunk`** — Goals 1-3 against the chunk's uncommitted diff.
-- **`final`** — all 7 goals + cross-checks + Framework-Specific Checks.
-- **`cumulative`** — all 7 goals against `merge-base...HEAD`. Feeds `/prawduct:pr create`'s gate.
-- **`verify-resolutions`** — Goals 1-3 over the delta since the prior review fact; the re-review after fixing findings, and the only mode recording resolution facts.
-
-If the mode is missing, unrecognized, or inference cannot make a confident call, run `final` (canonical rule and per-mode table: `skills/critic/review-cycle.md`).
+`Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the fail-safe that a missing, unrecognized or unconfidently-inferred mode runs `final` — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
 **The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings.
 
@@ -226,12 +207,7 @@ If the mode is missing, unrecognized, or inference cannot make a confident call,
 
 ## Exception Handling
 
-Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) hide bugs. When a broad catch is genuinely necessary (system boundaries, event loops, top-level supervisors), mark it with an intentional-waiver pragma:
-
-- Python: `except Exception as e:  # prawduct:allow prawduct/broad-except -- reason`
-- JS/TS: `catch (e) { // prawduct:allow prawduct/broad-except -- reason`
-
-`prawduct:allow <scope>/<rule-id> -- reason` is the general waiver mechanism (`docs/waivers.md`). The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt." Broad catches that swallow errors without logging are always findings — no waiver can justify silencing errors.
+Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) hide bugs. When one is genuinely necessary — system boundaries, event loops, top-level supervisors — mark it with `prawduct:allow prawduct/broad-except -- reason` in a comment on the `except`/`catch` line itself. The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt." Broad catches that swallow errors without logging are always findings — no waiver can justify silencing errors.
 
 ## Common Traps
 

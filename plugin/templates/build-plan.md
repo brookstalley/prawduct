@@ -44,6 +44,13 @@ governed_by:
     dispositions:
       - "all timestamps UTC ISO-8601 → conforms"
       - "money as integer minor units → inapplicable because this plan touches no money fields"
+# partition: who builds each chunk, recorded either way — one line, and
+# "serial, because X" is an answer. Drawn when the chunk boundaries are drawn
+# (methodology/planning.md "Partition: Serial or Delegated"), because that is
+# the last moment the whole partition is visible before any brief exists. What
+# the field catches is not serial work but UNEXAMINED work: independent chunks
+# and no line here is the `serial by default` anti-pattern.
+partition: serial — each chunk builds on the last, and 03 extends 02's routes
 last_validated: 2026-07-03
 # END OF LIFE — written by `prawduct-hook archive-plan`, not by hand. A plan is
 # never deleted: when its work is done, or has stopped, been descoped, or been

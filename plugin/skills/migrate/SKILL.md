@@ -30,10 +30,21 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
   to the plugin plus the few hardest rules; the full methodology now lives in the plugin),
   `.claude/settings.json` (prawduct hook wiring + the framework banner removed; the plugin
   install reference added — your own keys/hooks/marketplaces are preserved), and
-  `.prawduct/project-state.yaml` (a single `distribution: plugin` line appended).
-- **NEVER TOUCHED**: everything else under `.prawduct/` (`project-state.yaml` content,
+  `.prawduct/project-state.yaml` (a `distribution: plugin` line appended, and **retired
+  framework keys removed** — see below).
+- **RETIRED FRAMEWORK KEYS** in `.prawduct/project-state.yaml`: `views_enabled` and
+  `scope_rollups` (the retired derived-view model) and `build_state.test_tracking` (a
+  hand-maintained test count, plus whatever `assertion_count` / `test_files` / `history`
+  bookkeeping sits beside it — the block goes whole). These are framework residue, not product
+  content: nothing in the runtime reads them, no template scaffolds them, and the fact
+  `test_tracking` copies has a real home in the test evidence store (`prawduct-hook
+  test-evidence record`). The dry run names every key it would remove, so your one confirmation
+  covers it. A repo that **already** cut over converges the same keys with
+  `/prawduct:doctor` — the detection is shared, so the two never disagree about what a retired
+  key is.
+- **NEVER TOUCHED**: everything else under `.prawduct/` — the rest of `project-state.yaml`,
   `learnings.md`, `learnings-detail.md`, `backlog.md`, `change-log.md`, `artifacts/`,
-  `.critic-findings.json`, reflections) and **all** non-framework files — the product's own
+  `.critic-findings.json`, reflections — and **all** non-framework files: the product's own
   skills, `src/`, `tests/`, MCP server, configs.
 
 ## Flow
@@ -45,10 +56,14 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
 2. **Dry run.** Run `prawduct-hook migrate-plugin --json` (no `--apply`). Parse the JSON:
    - If `already_migrated` is true, report "This repo is already on the plugin
      (`distribution: plugin`)." and stop — nothing to do.
-   - Otherwise present the plan: the `removed` files, `removed_dirs`, `edited` files, and the
-     `gitignored` marker. Surface that this is destructive but reversible.
+   - Otherwise present the plan: the `removed` files, `removed_dirs`, `edited` files, the
+     `state_keys_removed` keys, and the `gitignored` marker. Surface that this is destructive
+     but reversible.
 
-3. **Confirm intent** with the user before mutating anything.
+3. **Confirm intent** with the user before mutating anything. **Name `state_keys_removed` in
+   the confirmation** when it is non-empty — it is the one part of the blast radius that lands
+   inside a file the product hand-authored, so it is the part an operator would want to have
+   been told about rather than to discover in the diff.
 
 4. **Apply.** Run `prawduct-hook migrate-plugin --apply --json`. Relay the result.
 

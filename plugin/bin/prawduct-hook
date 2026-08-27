@@ -271,6 +271,76 @@ def _critic_consolidate():
     return critic_consolidate
 
 
+def _keep_verdict(prawduct_dir) -> tuple[bool, str]:
+    """The keep-or-discard verdict for an operator notice, degrading safely.
+
+    Four notices append this clause, and each one used to carry its own copy of
+    the guard AND of the degraded wording — in the change whose thesis is that a
+    verdict has one home. A clause copied four times is four places to drift.
+
+    The degraded form errs toward preserve (``True``) because the alternative is
+    telling someone nothing is attached when reviewer output may be sitting
+    there, and it names its CAUSE and an inspection command: an operator told
+    only "could not tell" has nothing to do next, while the sibling degradations
+    in this file all point at `evidence status`.
+    """
+    try:
+        return _critic_consolidate().anything_worth_keeping(prawduct_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        # Flattened: an exception message can carry newlines, and this clause is
+        # spliced into a 2-space-indented block where a raw one would break the
+        # shape an operator is reading.
+        reason = " ".join(f"{type(exc).__name__}: {exc}".split())
+        return True, (
+            f"  Could not tell whether reviewer output is attached ({reason})\n"
+            "  — inspect before discarding anything:\n"
+            "    prawduct-hook evidence status\n"
+        )
+
+
+#: What this side says when it could not even ask. Kept beside its predicate so
+#: a notice can tell "here is a review id" from "here is a sentence about not
+#: having one" — the distinction that decides whether a `critic-restore <id>`
+#: line is runnable.
+_ID_UNASKABLE = "(id unavailable — the review id could not be read here)"
+
+
+def _review_id_for_notice(prawduct_dir) -> str:
+    """The review id a boundary notice names, degrading to what it can know.
+
+    Wraps `critic_consolidate.manifest_review_id`, which owns the read and the
+    "no usable manifest" excuse. The wrapper's own excuse deliberately names NO
+    channel: this `except` spans the lazy import AND the classify call, so a
+    stat failure inside the latter would print a plugin-install story that did
+    not happen — the failure mode of a degradation clause written from the
+    error the author had in mind rather than the one the `except` catches.
+    """
+    try:
+        return _critic_consolidate().manifest_review_id(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        return _ID_UNASKABLE
+
+
+def _is_usable_review_id(review_id: str) -> bool:
+    """Can this be pasted after `critic-restore`, or is it a sentence?
+
+    A predicate over the two excuse constants rather than a string test at each
+    site: both surfaces that interpolate an id have to make the same call, and a
+    notice that renders `critic-restore (id unavailable — …)` hands an operator
+    a line that cannot run while the two handles that DO work — bare
+    `critic-restore`, which lists the archive, and the `unmanifested-<ts>` name
+    the next dispatch prints — go unmentioned. The partials then age out of the
+    archive ring unread, which is the harm the preservation clause exists to
+    prevent.
+    """
+    if review_id == _ID_UNASKABLE:
+        return False
+    try:
+        return review_id != _critic_consolidate().MANIFEST_ID_UNAVAILABLE
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        return False
+
+
 def _reject_unknown_args(
     command: str, argv: list[str], allowed_flags: set[str]
 ) -> int | None:
@@ -473,6 +543,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials",
     ".prawduct/.critic-partials-archive",
+    ".prawduct/.delegate-brief.md",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
@@ -591,6 +662,52 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
 # =============================================================================
 # clear command
 # =============================================================================
+
+
+# Each archived reflection carries the version that produced it, because nothing
+# else on disk can supply it later: `.prawduct/.prawduct-version` holds only the
+# most recently seen value, and `reflections.md` is gitignored, so it has no
+# history to mine. Grouping a corpus by release otherwise degrades to whatever
+# dates the prose happens to contain, which is a minority of entries.
+#
+# The line is this repo's existing machine-readable tag idiom — the same shape
+# `lib/change_log.py` parses — so "which release produced this reflection" is a
+# query rather than an act of archaeology. A prose line would carry the same
+# words and stay unparseable, repeating the gap at lower cost.
+def _reflection_provenance_header() -> str:
+    """The tag line written ahead of one archived reflection block.
+
+    The version comes from the plugin manifest — the same accessor `version`
+    publishes — rather than from `.prawduct/.prawduct-version`: the banner
+    rewrites that marker earlier in this same SessionStart, so it holds nothing
+    the manifest does not, and it is absent altogether in a repo whose banner
+    has never run.
+
+    Every failure resolves to `unknown` rather than to an omitted header or a
+    raise. An omitted header is indistinguishable from an unstamped block, and a
+    raise would escape the archive's `(UnicodeError, OSError)` handler below and
+    take the whole session boundary with it — making the stamp a new way to lose
+    a reflection, which is the one thing this write site must never become.
+    """
+    # Computed ABOVE the guard, because it cannot fail and the guard's job is to
+    # name what did. Inside, a manifest read that raises degraded the date too,
+    # so the tag said `archived=unknown` for a value nothing had asked the disk
+    # for — a field reading as unresolvable when it was merely adjacent to one.
+    archived = datetime.now(timezone.utc).date().isoformat()
+    try:
+        version = _plugin_manifest_version() or "unknown"
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- provenance is metadata; the reflection it labels must survive anything this line does
+        # Named, not swallowed. Every other degradation at this boundary prints
+        # `NOTE: … ({exc})`, and a stamp that quietly reads `unknown` forever is
+        # the failure this header exists to end — an entry nobody can attribute,
+        # with nothing on the record saying why.
+        print(
+            f"NOTE: could not resolve the prawduct version for this reflection ({exc}) "
+            "— archiving it stamped `unknown`.",
+            file=sys.stderr,
+        )
+        return f"<!-- prawduct: version=unknown | archived={archived} -->"
+    return f"<!-- prawduct: version={version} | archived={archived} -->"
 
 
 def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
@@ -714,8 +831,11 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
                 log = prawduct_dir / "reflections.md"
                 prior = log.read_text(encoding="utf-8").strip() if log.is_file() else ""
                 separator = "\n\n---\n\n" if prior else ""
+                # Inside the guard, so a stamp shares the archive's failure
+                # contract instead of standing outside it.
+                header = _reflection_provenance_header()
                 with open(log, "a", encoding="utf-8") as f:
-                    f.write(f"{separator}{content}\n")
+                    f.write(f"{separator}{header}\n\n{content}\n")
             reflection_preserved = True
         except (UnicodeError, OSError) as exc:
             # Consumption keys on PRESERVATION, not on "we tried" — the same rule
@@ -823,6 +943,309 @@ def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None
         )
 
 
+def _boundary_retained_marker_notice(prawduct_dir: Path, outcome: str) -> str:
+    """What to tell a new session about a marker the boundary kept.
+
+    The remedy is CONDITIONAL and getting it wrong is destructive, which is why
+    this asks the roster before advising. `critic-end` clears the marker only —
+    on a **complete** roster that discards the Stop hook's self-heal, which would
+    otherwise consolidate the review and append its fact. So a complete roster is
+    told to consolidate; an incomplete one is told what it is waiting on. This is
+    the same split `active_dispatch_refusal` already makes, applied at the other
+    surface that meets the marker.
+
+    The HEAD is keyed on the retention's actual ground, one head per token,
+    because the three rest on different evidence and a reader acts on the
+    difference. "No session event proves its reviewers died" is a statement
+    about *time* and is simply false once the TTL has released the marker —
+    printed at either expired retention it would tell someone a 40-minute-old
+    review might still be running. A complete roster is kept on the opposite
+    ground (the reviewers demonstrably finished, and what is protected is their
+    output); an unanswerable roster is kept on no evidence at all, which is
+    itself the thing to say. Defaulting any token to the liveness head is how
+    the third one inherited a claim its own state contradicts, so this branches
+    exhaustively and the set is what grows next.
+    """
+    marker = _critic_marker()
+    if outcome == marker.SWEEP_RETAINED_COMPLETE:
+        head = (
+            "PRAWDUCT: a Critic review outlived its liveness window with every reviewer "
+            "reported — kept, because the marker is the handle on those findings.\n"
+        )
+    elif outcome == marker.SWEEP_RETAINED_UNKNOWN:
+        # The cause, not a paraphrase of it. On the one path where the
+        # consolidation lib is genuinely broken, the exception is the only thing
+        # that says which way — and both `except` clauses on this path used to
+        # discard it, so "the lib failed to answer" reached the operator with no
+        # type and no message anywhere.
+        cause = marker.LAST_ROSTER_ERROR or "cause unrecorded"
+        head = (
+            "PRAWDUCT: a Critic review marker has expired but could not be assessed — "
+            f"kept, because keeping is the recoverable direction ({cause}).\n"
+        )
+    else:
+        head = "PRAWDUCT: a Critic review is still marked active — kept, because no session event proves its reviewers died.\n"
+    # The READING comes from `critic_consolidate.pending_roster_reading`, which
+    # is also what `active_dispatch_refusal` prints. Sharing it is the point:
+    # this surface is the one where a reader has just watched a session end, so
+    # a lone "if that session is gone" reads as already satisfied — and the
+    # command it would send them to archives partials that reviewers may still
+    # be writing. The remedy below stays local; the state does not.
+    try:
+        state, reading = _critic_consolidate().pending_roster_reading(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        # An exception means NO reading was taken, so this path must not claim
+        # one — and must not inherit the `unreadable` remedy either. That branch
+        # says "nothing here is worth keeping" and offers `critic-end`, a
+        # conclusion drawn from having successfully read an unusable manifest.
+        # Reaching it because the lib failed to import would advise discarding a
+        # review nobody looked at. Say what is actually known: nothing.
+        return head + (
+            "  Could not read the review's state (the consolidation lib failed to\n"
+            "  answer), so this cannot say whether it is finished or still running —\n"
+            "  and the safe remedies differ. Inspect before acting:\n"
+            "    prawduct-hook evidence status\n"
+            "  then `critic-consolidate` if every reviewer reported, `critic-end` only\n"
+            "  if the review is genuinely abandoned."
+        )
+    if state == "complete":
+        return head + reading + (
+            "  It needs consolidating, NOT clearing:\n"
+            "    prawduct-hook critic-consolidate\n"
+            "  (`critic-end` here would discard a finished review's findings.)"
+        )
+    if state == "incomplete":
+        return head + reading + (
+            "  Only if nothing lands: abandon the review explicitly, then re-dispatch:\n"
+            "    prawduct-hook critic-end"
+        )
+    # The tail hardcoded "Nothing here is worth keeping" directly beneath a
+    # reading that may say the partials ARE real reviewer output. The verdict
+    # comes from the same module the reading does, because a verdict authored
+    # beside a shared sentence is not shared by being adjacent to it.
+    _keep, verdict = _keep_verdict(prawduct_dir)
+    return head + reading + verdict + (
+        "  Clear the marker when you have decided:\n"
+        "    prawduct-hook critic-end"
+    )
+
+
+def _boundary_swept_marker_notice(prawduct_dir: Path) -> str:
+    """What the boundary just removed, on the branch that removes something.
+
+    Releasing a marker is SILENT in the way `lib/critic_marker` prices as
+    expensive: the marker is not merely a flag but the Stop hook's only handle
+    on an unfinished review, so once it is gone the abandoned-review blocker
+    cannot fire — the release does not just end a review, it ends every later
+    chance of being told about it. That makes this notice the whole signal, not
+    a courtesy on top of one.
+
+    Reached only for a roster that is NOT complete (`boundary_sweep` retains a
+    complete one at any age), so the readings below are the incomplete and
+    manifestless ones. It still asks rather than assumes: the reading is the
+    same shared one `active_dispatch_refusal` and the retention notice print,
+    and this surface must not invent a fourth account of what is on disk.
+
+    The review id is reported because after the sweep nothing else in the new
+    session knows which review it was, and the id is what makes `critic-restore`
+    addressable — the same reason `_forced_live_sweep_notice` carries it.
+    """
+    # The excuse has to cover every state that reaches it, and since #676 those
+    # are three, not one: absent, corrupt, and stale-schema (the shared reading
+    # now says which — `critic_consolidate.manifest_condition`). Deliberately
+    # says nothing about how OFTEN each shape carries an id: "a stale-schema
+    # manifest usually does" is false for the v2 shape #676 reports, which has
+    # no `id` at all, so this fallback is exactly what prints there. The one
+    # case reaching here is "the id could not be read", whatever the cause.
+    review_id = _review_id_for_notice(prawduct_dir)
+    state, reading = "unknown", ""
+    try:
+        state, reading = _critic_consolidate().pending_roster_reading(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        pass
+
+    head = (
+        "PRAWDUCT: swept a Critic review marker that outlived its "
+        f"{_critic_marker().CRITIC_ACTIVE_TTL_SECONDS // 60}-minute liveness window "
+        f"({review_id}).\n"
+    )
+    if state == "incomplete":
+        return head + reading + (
+            "  Not every reviewer reported, so there was nothing to consolidate and the\n"
+            "  marker was released. This notice is the ONLY report you get: the Stop\n"
+            "  hook's abandoned-review blocker keys on that marker, so it will not fire\n"
+            "  for this review again. Its partials are still on disk and the next\n"
+            "  `critic-begin` archives them; re-run the review when you are ready:\n"
+            "    /prawduct:critic\n"
+            + (
+                f"  To go back to this one instead: prawduct-hook critic-restore {review_id}\n"
+                if _is_usable_review_id(review_id) else
+                "  To go back to this one instead: `prawduct-hook critic-restore` with no\n"
+                "  argument lists the archived reviews by name — this one's is not readable\n"
+                "  from here.\n"
+            ) +
+            "  (after the next dispatch has consolidated — `critic-restore` refuses while\n"
+            "  partials or a marker are present)."
+        )
+    if state == "complete":
+        # Unreachable by construction — `boundary_sweep` keeps a complete roster
+        # — but reachable by RACE: a straggler partial landing between the
+        # release and this read completes the roster. The generic close below
+        # would then tell the operator nothing recoverable was attached while
+        # every reviewer had in fact reported, so the branch answers what it
+        # actually read.
+        return head + reading + (
+            "  That completed AFTER the marker was released, so the session-end backstop\n"
+            "  will not consolidate it — nothing keys on a marker that is gone. Run it:\n"
+            "    prawduct-hook critic-consolidate"
+        )
+    if state == "unknown":
+        return head + (
+            "  Could not read the review's state (the consolidation lib failed to\n"
+            "  answer), so this cannot say what the sweep left behind. The marker is\n"
+            "  gone either way, and with it the Stop hook's abandoned-review blocker.\n"
+            "  Inspect before acting:\n"
+            "    prawduct-hook evidence status"
+        )
+    _keep, verdict = _keep_verdict(prawduct_dir)
+    return head + reading + verdict + (
+        "  No gate will mention this review again — the marker is gone. Re-run it when\n"
+        "  you are ready:\n"
+        "    /prawduct:critic"
+    )
+
+
+def _forced_live_sweep_notice(prawduct_dir: Path, age_seconds: float | None) -> str:
+    """What `--force` just destroyed, when the marker it removed was still live.
+
+    The retention notice's mirror image — and being a mirror means asking the
+    same question, not merely facing the same way. A notice that calls itself
+    the mirror while asking nothing is wrong on a complete roster in both
+    directions: `begin_review` refuses on `roster_state == "complete"`
+    at any age, so the next dispatch does NOT archive those partials, and the
+    consequence it failed to name is the one that matters — the Stop hook's
+    self-heal keys on ``marker_present``, so sweeping the marker is what removes
+    the automatic consolidation a finished review was about to get.
+
+    **The recovery's timing is load-bearing.** ``restore_review`` refuses while
+    partials are present or a marker is active, and a dispatch makes both true,
+    so "restore after the next dispatch" named the one moment the command
+    cannot run — and the refusal it lands on offers ``critic-discard``, i.e.
+    discarding the review that is running right then. The archive notice at
+    ``cmd_critic_begin`` already had the correct phrasing; this now matches it.
+
+    Reports the review by id because after the marker is cleared nothing else in
+    the new session knows which review it was, and the id is what makes any
+    recovery addressable at all.
+    """
+    age = f"~{int(age_seconds // 60)}m ago" if age_seconds is not None else "recently"
+    # The id read is outside this `try` because it no longer needs one. Its
+    # ordering hazard here was LATENT, not live, and saying so is the point: it
+    # used to run first inside the same `try`, so a raise would have cost
+    # `state` — but `state` only selects the "complete" branch, which a valid
+    # manifest is a precondition for, so no disk could show it. Checked by
+    # mutation rather than assumed, and deliberately left unpinned: a test for
+    # an unreachable difference passes either way.
+    review_id = _review_id_for_notice(prawduct_dir)
+    state = "unknown"
+    try:
+        state, _reading = _critic_consolidate().pending_roster_reading(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        pass
+
+    head = (
+        "PRAWDUCT: --force swept a LIVE Critic review marker "
+        f"({review_id}, dispatched {age}).\n"
+    )
+    if state == "complete":
+        # Every reviewer reported, so nothing is going to archive these
+        # partials — but nothing is going to consolidate them either, which is
+        # what the sweep just cost.
+        return head + (
+            "  Every reviewer had reported. Those findings are still on disk, but the\n"
+            "  Stop hook's self-heal keys on the marker — so the automatic consolidation\n"
+            "  they were about to get no longer fires. Run it yourself:\n"
+            "    prawduct-hook critic-consolidate"
+        )
+    # The fourth `pending_roster_reading` call site, and the last surface still
+    # authoring its own preservation claim. It said "They are archived, not
+    # deleted" unconditionally — the over-claim shape: true when reviewer output
+    # exists, and a promise of an empty archive when it does not. Not the
+    # contradiction the retained-marker notice carried (this one only ever says
+    # preserve), but the same defect, so it comes from the same place.
+    _keep, verdict = _keep_verdict(prawduct_dir)
+    if not _keep:
+        return head + (
+            "  That review is no longer guarded: the next `critic-begin` will take the\n"
+            "  directory without refusing.\n"
+            + verdict
+        )
+    if _is_usable_review_id(review_id):
+        recovery = (
+            "  Recover that review once the next one has consolidated:\n"
+            f"    prawduct-hook critic-restore {review_id}\n"
+        )
+    else:
+        # The disk the keep=True branch admits without a usable manifest:
+        # partials present, nothing naming them. Interpolating the excuse here
+        # produced a command that cannot run, as the ONLY handle offered.
+        recovery = (
+            "  Recover it once the next one has consolidated. Its name is not readable\n"
+            "  from here — the dispatch that archives it prints the handle, and\n"
+            "  `prawduct-hook critic-restore` with no argument lists them:\n"
+            "    prawduct-hook critic-restore\n"
+        )
+    return head + (
+        "  That review is no longer guarded: the next `critic-begin` will archive its\n"
+        "  partials instead of refusing.\n"
+        + verdict + recovery +
+        "  (Not before: `critic-restore` refuses while partials or a marker are present,\n"
+        "  which a dispatch makes true.) If its reviewers had all reported, consolidate\n"
+        "  now instead: `prawduct-hook critic-consolidate`."
+    )
+
+
+def _release_or_keep_marker(prawduct_dir: Path) -> str | None:
+    """Decide a stale critic marker's fate and SAY which way it went.
+
+    Both surfaces that meet a marker without forcing — a session boundary and a
+    bare `clear` — call this, so the rule has one home and the announcement is
+    not something a caller can forget. Returns the `SWEEP_*` token for callers
+    that want it (`None` if the lib could not answer, in which case nothing was
+    decided and nothing was said); the reporting is already done.
+
+    The session reached here most needs the signal: `/clear` has discarded the
+    context in which the review was dispatched, so nothing else knows a review
+    is pending — and on the released path nothing ever will, because the marker
+    was the Stop hook's only handle on it. The remedy is CONDITIONAL on the
+    roster (telling someone to `critic-end` a complete roster destroys the
+    self-heal), so both notices ask the state before they advise.
+
+    The DECISION and the REPORTING are wrapped separately, for the reason the
+    `--force` branch spells out: one `except` around both lets a raise from the
+    notice suppress the act, or an act that already happened go unreported. The
+    module lookup is inside the guard too — an incomplete install must not turn
+    session start into a traceback, which is this whole check's standing posture.
+    """
+    try:
+        marker = _critic_marker()
+        outcome = marker.boundary_sweep(prawduct_dir)
+    except Exception:  # prawduct:allow prawduct/broad-except -- marker release must never block session start
+        # None, not a token: no decision was reached and nothing was reported,
+        # which is a different answer from "there was no marker". Naming it with
+        # a token would also put a second copy of that token's VALUE here, in
+        # the one branch where the module defining it could not be loaded.
+        return None
+    try:
+        if outcome == marker.SWEEP_SWEPT:
+            print(_boundary_swept_marker_notice(prawduct_dir))
+        elif outcome in marker.SWEEP_RETAINED:
+            print(_boundary_retained_marker_notice(prawduct_dir, outcome))
+    except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+        pass
+    return outcome
+
+
 def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     """Orient a session, and at a genuine boundary also reset it (plugin runtime: no sync).
 
@@ -838,25 +1261,29 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
        the pre-split behaviour gave it.
     2. *Boundary-dependent readers* — they destroy nothing but interpret session
        state as a **finished** session's: the critic-active marker sweep (it
-       deletes a marker on the theory that its writer's process is gone) and the
-       previous-session gate check. Both are boundary-only for that reason.
+       releases a marker on the theory that its writer's process is gone, and so
+       fires only once the TTL agrees — no session event proves that on its own)
+       and the previous-session gate check. Both are boundary-only for that reason.
     3. *Orientation* — the briefing, advisories, untracking committed session
        files, the size/preferences checks, the subagent briefing. Safe on every
        source.
 
     Only (3) runs on a continuation. Sorting purely on "does it destroy evidence"
-    puts (2) in the wrong column, which is what the first cut of this split did.
+    puts (2) in the wrong column.
 
     Flags (argv): ``--session-start`` marks the genuine SessionStart-hook
     invocation (as opposed to a reviewer subagent's bare ``clear``); it always
     proceeds. ``--brief-only`` runs orientation only and skips both (1) and (2);
     it is orthogonal to ``--session-start`` rather than replacing it, so the
     boundary is ``--session-start`` *without* ``--brief-only``. ``--force`` is
-    the operator override for a stale marker and sweeps it. A bare ``clear``
+    the operator override for a marker the TTL has **not** released — a stale one
+    needs no override, since every sweeping path already takes it — and it sweeps
+    unconditionally wherever a sweep is licensed at all (boundary or guarded),
+    never on a continuation. A bare ``clear``
     (what a reviewer subagent issued in CRT-3X9D) is the guarded path: it refuses
     while a Critic review is plausibly in progress so an independent reviewer
     cannot clobber the session it is reviewing. A continuation neither sweeps nor
-    refuses — it mutates nothing, so the guard has nothing to protect.
+    refuses — it mutates no session state, so the guard has nothing to protect.
 
     ``--brief-only`` exists because the SessionStart matcher is the only thing
     that knows whether this invocation ends a session or continues one, and
@@ -911,28 +1338,60 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Critic-active session-mutation guard (CRT-3X9D). cmd_clear is destructive
     # (it archives/deletes .session-reflected, rewrites .session-start, recaptures
     # the git baseline). An independent reviewer must never mutate the session it
-    # is reviewing. A genuine session BOUNDARY (--session-start without
-    # --brief-only) or an explicit --force sweeps any marker and proceeds; a bare
-    # clear refuses while a review is plausibly in progress. The check fails OPEN
-    # on a lib import error so an incomplete install never blocks session start (a
-    # broken lib also means the Critic can't run, so there is no review to protect).
+    # is reviewing. A bare clear refuses while a review is plausibly in progress;
+    # a genuine session BOUNDARY (--session-start without --brief-only) proceeds
+    # and sweeps the marker only once the TTL has released it; an explicit --force
+    # proceeds and sweeps unconditionally. The check fails OPEN on a lib import
+    # error so an incomplete install never blocks session start (a broken lib also
+    # means the Critic can't run, so there is no review to protect).
     #
-    # The sweep is BOUNDARY-only, not orientation (SCN-5B8Q review R-1/R-6). What
-    # licenses deleting someone else's marker is that an in-flight review dies with
-    # the process that dispatched it, so a marker outliving its session is stale by
-    # construction. That premise holds for a session that ENDED. It is false for
-    # `compact`, which fires mid-session *in-process*, and often false for `fork`,
-    # whose parent session is frequently still running — sweeping there would
-    # disarm this very guard, and the Stop hook's abandoned-review backstop (which
-    # keys on the marker's presence), while a reviewer is genuinely alive. The
-    # asymmetry decides it: sweeping a live marker is a silent governance failure,
-    # while not sweeping a dead one costs at most the 30-minute TTL, with `--force`
-    # and `rm` as loud, documented overrides.
-    if kind == "BOUNDARY" or (kind == "GUARDED" and force):
+    # Why the boundary sweep is gated rather than outright: `lib/critic_marker.py`'s
+    # module docstring. The one fact local to this call site is that a boundary
+    # here cannot tell `startup` from `clear` — `hooks.json` gives them one entry
+    # carrying no source — so the gate is on the marker, not on the source, and a
+    # finer matcher would buy nothing the TTL does not already decide.
+    #
+    # `--force` is orthogonal to the gate and stays UNCONDITIONAL wherever it is
+    # passed. It is the operator's documented escape from a marker the TTL has
+    # not released, so gating it would disable the one case it exists for — and
+    # an earlier cut of this split consulted it only on GUARDED, which silently
+    # made `--session-start --force` a no-op while three comments still promised
+    # otherwise, including the message below that recommends it.
+    if force and kind != "CONTINUATION":
+        # Unconditional, at BOTH kinds that can carry it. `--force` never
+        # promotes a continuation (that remains the failure mode, not an
+        # override of it), but where a sweep is licensed at all, forcing means
+        # forcing.
+        # ANNOUNCE what it destroyed, when the marker was still live. This is
+        # the only branch that removes a plausibly-live marker, and it was the
+        # only one that printed nothing — while its non-destructive sibling
+        # below prints four lines for merely RETAINING one. The design calls
+        # sweeping a live marker the *silent* governance failure; leaving the
+        # act itself silent is that failure spelled out. Read the state BEFORE
+        # clearing, or there is nothing left to report.
+        # The READ is wrapped separately from the SWEEP, and the ordering is the
+        # whole point: with both under one `except`, any raise from the read —
+        # or a PermissionError from `unlink` — leaves the marker in place and
+        # prints nothing, i.e. `--force` silently ignored. That is exactly the
+        # defect this branch already fixed once at this call site, arriving by a
+        # different route. `clear_marker` must always be reached; the reporting
+        # values degrade to "not live" rather than taking the sweep down.
+        was_live, age_s = False, None
+        try:
+            was_live, age_s = _critic_marker().review_active(prawduct_dir)
+        except Exception:  # prawduct:allow prawduct/broad-except -- a pre-sweep read must never block the sweep
+            pass
         try:
             _critic_marker().clear_marker(prawduct_dir)
         except Exception:  # prawduct:allow prawduct/broad-except -- marker sweep must never block session start
             pass
+        if was_live:
+            try:
+                print(_forced_live_sweep_notice(prawduct_dir, age_s))
+            except Exception:  # prawduct:allow prawduct/broad-except -- an advisory notice must never block session start
+                pass
+    elif kind == "BOUNDARY":
+        _release_or_keep_marker(prawduct_dir)
     elif kind == "CONTINUATION":
         # Mutates no session state, so there is nothing for the guard to protect —
         # it neither sweeps nor refuses, and --force does not change that.
@@ -942,6 +1401,18 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
             active, age_s = _critic_marker().review_active(prawduct_dir)
         except Exception:  # prawduct:allow prawduct/broad-except -- guard fails open: never block session start on a lib import error
             active, age_s = (False, None)
+        if not active:
+            # An expired marker met by a bare `clear` gets the SAME decision the
+            # boundary makes, through the same function — not a second copy of
+            # the rule. This branch used to reach it by side effect: it asked
+            # `review_active` whether to refuse, and the answer arrived with the
+            # marker already unlinked. That silently destroyed a completed
+            # review's self-heal, which is the defect the boundary had just been
+            # taught to avoid, at the one call site the guard exists for (a
+            # reviewer subagent running bare `clear`). Sharing the construction
+            # is the fix; a second branch here would only be the same rule
+            # written twice, waiting to diverge again.
+            _release_or_keep_marker(prawduct_dir)
         if active:
             age_min = int((age_s or 0) // 60)
             print(
@@ -952,20 +1423,29 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
                 # sentence that makes the message actionable.
                 "commands are blocked so an independent reviewer cannot clobber the session it is "
                 "reviewing.\n"
-                "  If the Critic has finished or crashed and this marker is stale, clear it:\n"
-                "    rm .prawduct/.critic-active        # then retry\n"
+                "  If the Critic has genuinely crashed, abandon the review by name:\n"
+                "    prawduct-hook critic-end           # then retry\n"
+                "  Check first whether its reviewers all reported — `critic-end` clears the\n"
+                "  marker and nothing else, so on a finished review it discards the findings\n"
+                "  the session-end backstop would have consolidated. That one wants:\n"
+                "    prawduct-hook critic-consolidate\n"
                 "  or override this one invocation:\n"
                 "    prawduct-hook clear --force\n"
-                "  (The marker also auto-expires after 30 min, or is swept at the next session "
-                "BOUNDARY — a fresh start or /clear. Resuming, forking or compacting this session "
-                "does NOT sweep it: a review may still be running in the session those continue.)",
+                f"  (The marker stops blocking after "
+                f"{_critic_marker().CRITIC_ACTIVE_TTL_SECONDS // 60} min. Expiring is not the "
+                "same as being released: a `clear` lets an expired marker go only when nothing "
+                "recoverable is attached to it, and a review whose reviewers have all reported "
+                "is kept at any age — consolidate that one (`prawduct-hook critic-consolidate`) "
+                "or discard it deliberately (`critic-discard`). No session event releases a "
+                "marker sooner: a review may still be running in a session that /clear, resume, "
+                "fork or compact leaves alive.)",
                 file=sys.stderr,
             )
             return 2
 
     # Check previous session's governance gates (warn, never block).
     #
-    # BOUNDARY-only (SCN-5B8Q review R-4). This reads `.session-reflected`,
+    # BOUNDARY-only. This reads `.session-reflected`,
     # `.gates-waived` and the session-change baseline and interprets them as a
     # *finished* session's record. On a continuation those files belong to the
     # session still running, so the check would nag "reflection not captured"
@@ -974,7 +1454,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # the same thing: the comment there notes `.gates-waived` is deleted right
     # after this runs, which is true only on the path that deletes it.
     #
-    # This is the second member of a category the first cut of the split missed:
+    # It belongs to a category that reads as orientation and is not:
     # statements that destroy nothing but *interpret* session state as belonging
     # to a previous session. They are not orientation, however read-only they look.
     if not brief_only:
@@ -1092,7 +1572,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         # uncommitted work AND skips the merge-base rescue (that rescue is gated on
         # base_source == 'marker'). The boundary path announces the same narrowing
         # when it fails to resolve HEAD^{tree}; the continuation path attempts no
-        # write, so without this there is no notice at all (review R-15). Reaching
+        # write, so without this there is no notice at all. Reaching
         # it is ordinary now — a mid-cycle worktree entry followed by resume/fork.
         print(
             "NOTE: no .prawduct/.session-base-tree and this is a continuation "
@@ -1125,8 +1605,8 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
 
 def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     """Dispatch one Critic review: derive + write the manifest (code, never a
-    model — kernel v3 D8) and set the critic-active marker so session-mutating
-    `clear` refuses to run.
+    model — kernel v3 D8) and set the critic-active marker so a session-mutating
+    bare `clear` — the form a reviewer subagent can issue — refuses to run.
 
     Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
            [--chosen-by <rationale>] [--chunk <id>] [--scope <s>] [--tier <t>]
@@ -1139,7 +1619,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     No-op (still exit 0) outside an onboarded repo — no session to protect,
     no store to dispatch against. Exit 2 = verify-resolutions scope widened
-    past the demotion threshold (the skill falls back to `final`); **exit 3 =
+    past the demotion threshold (the skill re-dispatches in the mode the
+    refusal names); **exit 3 =
     no review needed** — the interval holds no judgeable file and no finding
     this mode could resolve, so the coverage gate already composes it as a free
     edge (`--force` dispatches anyway; no session state is written and no marker
@@ -1217,18 +1698,63 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         # here needs a review", which is the whole point of asking it first.
         # Goes to STDOUT because it is a normal, correct outcome.
         free = result.get("free_files") or []
-        shown = ", ".join(free[:5]) + (f" (+{len(free) - 5} more)" if len(free) > 5 else "")
+        # Three answers, not two. A default of `[]` means an OLD result without
+        # the key reads as "nothing excluded" (true — it predates any anchor that
+        # could exclude), while an explicit `None` means the uncommitted diff
+        # could not be computed and nothing here may claim either way.
+        excluded = result.get("excluded_wip", [])
+        excluded_unknown = excluded is None
+        excluded = excluded or []
+        anchored = result.get("anchor", "the anchored tree")
         print(
             f"PRAWDUCT: no review needed — {result['reason']}.\n"
-            f"  free files: {shown}\n"
-            "  Nothing to do: the coverage gate already passes this interval.\n"
+            f"  free files: {consolidate.name_paths(free)}"
+        )
+        if not excluded and not excluded_unknown:
+            # Withheld when work sits outside the graded interval, and equally
+            # when nobody could tell: this line is an all-clear, and only a check
+            # that actually ran can issue one.
+            print("  Nothing to do: the coverage gate already passes this interval.")
+        print(
             "  To review anyway: `/prawduct:critic <mode> --force`. Prefer that over a "
             "raw `critic-begin --force` — a hand-run dispatch sets the critic-active "
             "marker with no reviewer behind it, and the next `/prawduct:critic` then "
             "refuses as if a review were live (clear it with `prawduct-hook critic-end`)."
         )
+        # LAST, deliberately. A reader of a multi-line block acts on the final
+        # imperative, and above it that imperative is `--force` — which reviews
+        # the same interval that already excluded these files and would change
+        # nothing. The correction has to be the last word.
+        if excluded:
+            print(
+                f"  NOT REVIEWED: {len(excluded)} judgeable uncommitted file(s) sit "
+                f"outside the graded interval — {consolidate.name_paths(excluded)}\n"
+                f"  This dispatch graded {anchored}, not your working tree, so those "
+                "files are still unreviewed and still uncovered. The refusal above "
+                "does NOT mean they are clean.\n"
+                "  Commit them, then run `/prawduct:critic verify-resolutions` again — "
+                "the delta that appears is the one this run could not see."
+            )
+        elif excluded_unknown:
+            print(
+                "  UNVERIFIED: the uncommitted diff could not be computed, so whether "
+                f"judgeable work sits outside this interval is UNKNOWN.\n"
+                f"  This dispatch graded {anchored}. If your working tree is dirty, "
+                "nothing here has vouched for it — commit and re-run rather than "
+                "reading the refusal above as an all-clear."
+            )
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         return 3
     if result["status"] != "ok":
+        # Notes first, then the reason: a failed dispatch still learned things
+        # about the tree, and the reason is what the reader acts on. Most error
+        # returns carry none — they fire before `notes` is populated — but
+        # `scope-widened` reaches here with the dirty-tree note in hand, and
+        # dropping it repeats the defect this change exists to fix one return
+        # statement over.
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
         return 2 if result.get("kind") == "scope-widened" else 1
 
@@ -1333,20 +1859,49 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     #
     # ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer
     # rates the delta BEFORE it judges the prior findings, so the severity
-    # narrowing comes first and the resolution warning stays adjacent to the
-    # claim it governs — the only one of the two that can weaken a gate.
+    # narrowing comes first; then the roll-call of ids that must be accounted
+    # for; and the resolution warning stays LAST, adjacent to the claim it
+    # governs — the only one of the three that can weaken a gate, and therefore
+    # the one the reader must still be holding. Both halves of the order are
+    # pinned: `TestResolutionDirectiveDelivery` for the claim directive's last
+    # place, `TestCarriedBlockersReachTheirReaders` for the roll-call's slot
+    # between the other two.
     if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
         print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
+        # The roll-call sets the AGENDA — which finding ids must come back with
+        # a verdict — and the claim directive below sets the STANDARD each
+        # verdict has to meet. The standard gets the last word, deliberately:
+        # it governs the only reviewer output that can WEAKEN a gate, and a
+        # roll-call read last would push toward naming every id on it, which is
+        # the over-claiming the standard exists to prevent. Empty when there is
+        # nothing to account for.
+        from lib import evidence as _ev  # noqa: PLC0415 — lazy, as elsewhere here
+
+        roll_call = consolidate.account_for_prior_blockers_directive(
+            consolidate.carried_blocking(
+                _ev.read_facts(project_dir).get("facts") or [],
+                manifest.get("base_tree"),
+                manifest.get("id"),
+            )
+        )
+        if roll_call:
+            print(roll_call)
         print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
     return 0
 
 
 def cmd_critic_end(project_dir: Path) -> int:
     """Clear the critic-active marker at the end of a review. Idempotent — exit 0
-    whether or not a marker was present (a crashed review's marker also expires
-    by TTL, and is swept at the next session BOUNDARY — `startup`/`clear` only,
-    never a resume/compact/fork, which may be continuing the session a reviewer
-    is still running in)."""
+    whether or not a marker was present.
+
+    Clears the marker and NOTHING else, which is what makes it the wrong command
+    for a review whose reviewers have all reported: that marker is the handle the
+    session-end backstop consolidates from, so removing it there discards
+    findings rather than tidying up after them (`critic-consolidate` is that
+    review's command). A crashed review's marker stops blocking at the TTL and is
+    released by a later `clear` — but only once expired AND with nothing
+    recoverable attached to it; `lib/critic_marker.boundary_sweep` owns that
+    decision."""
     prawduct_dir = get_prawduct_dir(project_dir)
     _critic_marker().clear_marker(prawduct_dir)
     return 0
@@ -1377,15 +1932,54 @@ def cmd_critic_discard(project_dir: Path) -> int:
         print("PRAWDUCT: not an onboarded repo — nothing to discard.")
         return 0
     consolidate = _critic_consolidate()
-    archived = consolidate._archive_leftovers(prawduct_dir)
+    # Read the pre-state FIRST: `_archive_leftovers` returns None for "nothing
+    # was there" and for "something was there and archiving it failed", and the
+    # abandoned-review escape hatch now sends operators here from states that
+    # hold reviewer output. Reporting the no-op wording on the failure path
+    # would promise their partials are safe on the one path where they are gone.
+    existed = consolidate.had_partials(prawduct_dir)
+    archived = consolidate._archive_leftovers(prawduct_dir, caller="critic-discard")
     consolidate.remove_partials(prawduct_dir)
+    # And the POST-state, because the two non-archiving failures cost opposite
+    # things and the return value cannot tell them apart: an unreadable dir
+    # leaves the partials intact (unreachable, but there), while a failed
+    # mkdir/rename degrades to delete and `remove_partials` completes it.
+    # Claiming either wording on the other path is a lie in one direction or
+    # the other, so this asks the disk instead of guessing.
+    survived = consolidate.had_partials(prawduct_dir)
     _critic_marker().clear_marker(prawduct_dir)
     if archived:
         print(
             f"PRAWDUCT: discarded the dispatched review — partials archived to "
             f"{archived} (not deleted). A fresh `/prawduct:critic` can now dispatch; "
             f"to change your mind, `prawduct-hook critic-restore {archived.name}` "
-            "brings that review back as itself."
+            "brings that review back as itself. The archive keeps the newest "
+            f"{consolidate._ARCHIVE_KEEP} reviews — restore before that window closes."
+        )
+    elif existed and survived:
+        # Unreadable directory: nothing archived AND nothing deleted. The marker
+        # is cleared regardless, so the operator is unwedged — but a dispatch
+        # will meet these partials again, so the remedy is a permission fix, not
+        # a re-run.
+        print(
+            "PRAWDUCT: critic-active marker cleared, but the reviewer partials "
+            "could NOT be read (cause on stderr above) — they were neither "
+            "archived nor deleted, and are still on disk. Fix the permissions on "
+            ".prawduct/.critic-partials/, then re-run `prawduct-hook "
+            "critic-discard` to archive them properly.",
+            file=sys.stderr,
+        )
+    elif existed:
+        # Degraded to delete: the archive's mkdir/rename failed and
+        # `remove_partials` finished the job. `_archive_leftovers` has already
+        # named the OSError on stderr; this says what it COST, which the
+        # diagnostic does not.
+        print(
+            "PRAWDUCT: discarded the dispatched review, but archiving FAILED "
+            "(cause on stderr above) — the reviewer partials were deleted, not "
+            "archived. There is nothing to restore. A fresh `/prawduct:critic` "
+            "can dispatch; the review it replaces is gone.",
+            file=sys.stderr,
         )
     else:
         print(
@@ -1837,15 +2431,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             chunk_type, type_error = _bpr._parse_build_plan_chunk_type(
                 prawduct_dir, current_chunk_id, gate_plan
             )
-            # v1.5.1 Chunk 04(a): surface typo'd Type values. Pre-fix, the
-            # parser's "unknown type: ..." message was discarded so the author
-            # never saw it. Surfacing in waiver_notes makes the typo visible
-            # at session-end and in the next stop-hook briefing without
-            # changing fail-closed semantics (chunk still runs as `code` per
-            # parser default). Restricted to "unknown type:" errors only —
-            # "chunk not found" / "missing build-plan" errors indicate a
-            # structural fixture issue, not actionable user feedback.
-            if type_error and type_error.startswith("unknown type:"):
+            # Surface a typo'd `Type:` value in waiver_notes, so the author meets
+            # it at session-end rather than never — fail-closed semantics are
+            # unchanged (the chunk still runs as `code`, the parser's default).
+            #
+            # Two error shapes are surfaced, and the second was added because the
+            # blanket "not actionable user feedback" reason stopped being true.
+            # `chunk not found` / `missing build-plan` still read as fixture
+            # noise, but a plan carrying a heading nothing can parse now reports
+            # the offending LINE — the most actionable message this parser
+            # produces, and precisely the one a silent drop would keep from the
+            # only person who can fix it.
+            if _bpr.is_reportable_type_error(type_error):
                 waiver_notes.append(f"chunk-type-parse-error: {type_error}")
             if chunk_type == "designer-handoff" and not doc_only:
                 designer_handoff_skip = True
@@ -1873,7 +2470,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # lingering marker is the out-of-fork signal, and it lives OUTSIDE the flow
     # that fails (so it catches a review that never reached its writeback). The
     # backstop now CONSOLIDATES-OR-BLOCKS as a pure function of the partials on
-    # disk (Chunk 02's pending_state / consolidate):
+    # disk (`critic_consolidate.pending_state` / `consolidate`):
     #   • complete partials → self-heal: run critic-consolidate (deterministic, no
     #     model re-run). Success clears the marker + appends the review fact, so
     #     the composition gate below judges the healed evidence like any other
@@ -1908,13 +2505,28 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  will run as they finish. (Deferred while background work is in flight.)\n"
             ))
         else:
+            # The escape hatch names `critic-discard`, never a bare `rm` of the
+            # partials. It is appended to three sites below, and on two of them
+            # reviewer output is on disk: a complete roster one deterministic
+            # consolidation from being recorded, or a partial set a re-dispatch
+            # can still use. (The third site serves both `none` and
+            # `unreadable`; under `none` there may be nothing to lose — which is
+            # an argument for one safe recipe everywhere, not for two.)
+            # `critic-discard` archives whatever is there and prints the
+            # `critic-restore <id>` that brings it back; `rm -rf` destroys it
+            # while saying nothing, which is the silence this guard exists to
+            # remove (lib/critic_marker, "Explicit override").
             _escape = (
                 "\n"
-                "  Escape hatch: if a review genuinely cannot complete this session, clear\n"
-                "  the marker and declare a waiver so this gate stops re-firing every turn:\n"
-                "    rm .prawduct/.critic-active\n"
-                "    rm -rf .prawduct/.critic-partials\n"
+                "  Escape hatch: if a review genuinely cannot complete this session,\n"
+                "  discard it and declare a waiver so this gate stops re-firing every turn:\n"
+                "    prawduct-hook critic-discard\n"
                 "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                "  critic-discard archives any reviewer partials rather than deleting\n"
+                "  them and names the `critic-restore <id>` that brings the review back\n"
+                "  as itself (the archive keeps the newest few — restore promptly).\n"
+                "  Do not `rm` the marker or .critic-partials by hand: most states that\n"
+                "  reach this message are holding reviewer output.\n"
                 "  Empty reasons are rejected; the file clears at the next session boundary\n"
                 "  (a fresh start or /clear), so it outlives a resume/compact/fork.\n"
             )
@@ -1957,15 +2569,98 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 ))
             else:  # "none" (marker, no manifest) or "unreadable"
                 abandoned_critic = True
-                if state == "unreadable":
+                # DERIVED, not re-stated (#676). This branch used to hand-write
+                # its own "unreadable or schema-invalid" while the refusal
+                # surface printed a flatly false "no readable dispatch manifest"
+                # for the same disk — two surfaces disagreeing about one fact,
+                # which `pending_roster_reading` explicitly forbids and which
+                # recurred because nobody had computed the distinction anywhere.
+                # `manifest_condition` computes it once; this reads it.
+                _cc = None
+                try:
+                    _cc = _critic_consolidate()
+                    condition, detail, _m = _cc.manifest_condition(prawduct_dir)
+                    stale, corrupt = _cc.MANIFEST_STALE_SCHEMA, _cc.MANIFEST_CORRUPT
+                except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                    # `getattr`, not the bare literal: when the import itself is
+                    # what failed there is no module to ask, but when the
+                    # CLASSIFY call raised there is — and taking the word from
+                    # the module wherever it can be reached is what makes
+                    # `MANIFEST_UNKNOWN` the owner rather than a duplicate that
+                    # a test merely keeps in step.
+                    condition, detail = getattr(_cc, "MANIFEST_UNKNOWN", "unknown"), ""
+                    stale = corrupt = None
+                # The preservation clause names the act that actually archives.
+                # `critic-end` does NOT: it clears the marker and nothing else
+                # (its own docstring says so), so pointing at it here would be
+                # the same defect this change repairs, one surface over. What
+                # archives is the next dispatch (`_archive_leftovers`, which
+                # prints the `critic-restore` handle) — and the remedy below is
+                # `/prawduct:critic`, which is that dispatch.
+                #
+                # DERIVED, not asserted. Stating flatly that "the partials
+                # beside it are NOT lost" is false for a stale-schema or corrupt
+                # manifest sitting ALONE with no reviewer output, which
+                # `pending_state` reaches identically — and a regression test
+                # that plants just `manifest.json` and pins that sentence
+                # asserts a claim false in the very disk it builds.
+                # Same helper as the three boundary notices: this branch used to
+                # drop the verdict clause entirely when the lib failed, which is
+                # the one disk where an operator most needs to be told to look.
+                _verdict = _keep_verdict(prawduct_dir)[1]
+                _kept = "  cannot be consolidated.\n" + _verdict
+                # SHORT form at both sites the finding named. The raw reason for
+                # a `missing 'rendezvous'` manifest — the shape #676 describes —
+                # is a ~700-char paragraph prescribing its own recovery
+                # ("/reload-plugins → critic-end → dispatch again"), which
+                # printed above this surface's "Re-run the review" is one disk
+                # with two recovery stories.
+                _short = _cc.short_detail(detail) if _cc is not None else detail
+                if condition == stale:
                     cause = (
-                        "  a coordinator manifest exists but is unreadable or schema-invalid,\n"
-                        "  so the pending review cannot be consolidated.\n"
+                        "  a coordinator manifest is present and parses, but was written by an\n"
+                        f"  OLDER PRAWDUCT and does not match this version's schema ({_short}), so it\n"
+                        + _kept
+                    )
+                elif condition == corrupt:
+                    cause = (
+                        f"  a coordinator manifest is present but is not valid JSON ({_short}), so it\n"
+                        + _kept
+                    )
+                elif condition == getattr(_cc, "MANIFEST_UNKNOWN", "unknown"):
+                    # Says what is known, which is nothing about the MANIFEST —
+                    # and deliberately names no cause for that, because the
+                    # `except` above spans the lazy import and the classify call
+                    # alike, so any channel named here would be a guess wearing
+                    # a fact's clothes. The word itself belongs to the module
+                    # (`MANIFEST_UNKNOWN`), not to this branch.
+                    #
+                    # The VERDICT is still known — it comes off the partials
+                    # directory, not the manifest — and this branch used to
+                    # discard it, telling the operator nothing about attached
+                    # reviewer output on the disk where they can least infer it.
+                    cause = (
+                        "  the coordinator manifest could not be classified at all, so the pending\n"
+                        "  review's state is genuinely unknown — inspect before discarding\n"
+                        "  anything:\n"
+                        "    prawduct-hook evidence status\n"
+                        + _verdict
                     )
                 else:
+                    # The fourth branch, and the one that asserted a CAUSE
+                    # where its siblings derive a verdict. A
+                    # manifest-less directory is not always a dispatch that
+                    # crashed before writing one — partials outlive their
+                    # manifest when a late reviewer re-creates the directory
+                    # after consolidation (`_archive_leftovers` documents that
+                    # disk), and `anything_worth_keeping` has a clause authored
+                    # for exactly it that nothing here consumed. So the cause is
+                    # hedged to what is known, and the verdict comes from the
+                    # same home as the other three.
                     cause = (
-                        "  no coordinator manifest is present, so a single-pass review or a\n"
-                        "  coordinator dispatch crashed before writing.\n"
+                        "  no coordinator manifest is present — a single-pass review, or a\n"
+                        "  coordinator dispatch that crashed before writing one.\n"
+                        + _verdict
                     )
                 blockers.append(_attributed("critic",
                     "CRITIC REVIEW (not completed): a review set the .critic-active marker\n"
@@ -2145,11 +2840,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
                 if has_pr:
                     # Symmetry with `/prawduct:pr create` Step 1b: when the PR diff
-                    # is doc-only (all .md), the cumulative-Critic and PR-reviewer
+                    # holds no JUDGEABLE file, the cumulative-Critic and PR-reviewer
                     # gates were legitimately skipped at create-time and no
                     # evidence file was written. Gate 3 would otherwise block
                     # session end with a misleading "no review evidence" error for
-                    # a PR that doesn't need one. If a later session adds a non-.md
+                    # a PR that doesn't need one. Judgeable is
+                    # `coverage_algebra.is_judgeable_path`, not "is it .md" — a
+                    # `skills/`-only PR is judgeable prose and is NOT doc-only. If a
+                    # later session adds a judgeable
                     # commit, the check returns False and the gate fires as
                     # intended — matching the create-flow contract. (The parallel
                     # `Type: trivial` fast-path was retired — fileset-eligibility
@@ -2463,8 +3161,26 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     here; that mechanism was removed pre-v1.4 for chronic false positives.
 
     Usage: ``prawduct-hook test-evidence record [--from-junit <report>]
-    [--from-counts passed=N failed=M skipped=K [duration=S]] [--no-rerun] [--
-    <extra pytest args>]``
+    [--from-counts passed=N failed=M skipped=K [duration=S]] [--no-rerun]
+    [--degraded "<reason>"] [-- <extra pytest args>]``
+
+    ``--degraded "<reason>"`` records that the run did NOT cover what its counts
+    imply, and why. A suite whose workers die under contention typically neither
+    re-queues their tests nor fails the run: the process exits 0 and reports a
+    plausible total, so nothing in the counts distinguishes it from a clean pass
+    and the record vouches for tests that never ran. The framework cannot
+    derive this — a JUnit report carries a *reported* count and has no notion of
+    what was *collected*, and reading a runner's summary text would need
+    per-runner knowledge prawduct deliberately does not hold — so the record
+    carries the observation and the coordinator, which can see the box, supplies
+    it. Both evidence readers in ``lib/gates.py`` then refuse the record, so a
+    degraded run reads as stale rather than as a pass.
+
+    It annotates whichever count source is in play rather than being one, so it
+    combines with every on-ramp, including ``--no-rerun`` — which also **carries
+    a prior record's flag forward**, because a restamp reuses the counts and so
+    inherits what they failed to cover. Nothing clears the flag but a real run
+    that earns a clean record.
 
     ``--from-junit <report>`` (TST-7M3K) ingests a JUnit XML the builder already
     produced instead of re-running the suite — the build cycle ran the suite once;
@@ -2491,14 +3207,31 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     ``--no-rerun`` (alias ``--restamp``) reuses the existing record's counts and
     refreshes only the ``timestamp`` + the F4a coverage half against the current
-    tree — the cheap refresh after a rename / force-add shifted
-    ``changes_referenced``, with no suite run and no re-supplied counts. The
-    original ``command`` is preserved. Trust posture matches ``--from-junit``: the
-    operator asserts the tree's test-relevant content is unchanged since the last
-    real run. Compatible with declared ``test_command:``/``test_commands:`` (it
-    introduces no new counts). Requires an existing ``.test-evidence.json``; rejects a second
-    source. (No tree/content hash verifies the assertion — that mechanism was
-    removed pre-v1.4 for chronic false positives and is deliberately not back.)
+    tree, with no suite run and no re-supplied counts. The original ``command``
+    is preserved. Trust posture matches ``--from-junit``: the operator asserts
+    the tree's test-relevant content is unchanged since the last real run.
+    Compatible with declared ``test_command:``/``test_commands:`` (it introduces
+    no new counts). Requires an existing ``.test-evidence.json``; rejects a
+    second source.
+
+    **The assertion is now CHECKED, and a restamp announces itself.** It was
+    unchecked, and a restamp taken after tests were added reused the older
+    run's counts while printing them as ``recorded: N passed`` — typographically
+    identical to a measurement, and a three-test gap on 2026-08-19. The check is
+    not a content hash (removed pre-v1.4 for chronic false positives, and
+    deliberately not back): it is the judgeable-path comparison the gates
+    already trust, run against the tree the prior record ran on. When judgeable
+    paths have moved, the restamp is **refused** — because a restamp also
+    rewrites ``evidence_tree`` to the current tree, so allowing it would make
+    stale counts vouch for a tree they never ran against. When the prior record
+    carries no ``evidence_tree`` (the ``--from-counts`` on-ramp records none by
+    design), nothing can be checked and it warns instead.
+
+    **Cost, stated rather than hidden:** the old "cheap refresh after a rename
+    or force-add shifted ``changes_referenced``" case is refused whenever the
+    prior record came from a real run, because a rename is a judgeable path
+    change. The escape is to run the suite or ingest a report — which is what
+    makes the evidence sound in the first place.
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
     written either way (a failing run records ``failed > 0``) — with ONE
@@ -2548,7 +3281,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             "usage: prawduct-hook test-evidence record "
             "[--from-junit <report>]... "
             "[--from-counts passed=N failed=M skipped=K [duration=S]] "
-            "[--no-rerun] [-- <pytest args>]",
+            "[--no-rerun] [--degraded \"<reason>\"] [-- <pytest args>]",
             file=sys.stderr,
         )
         return 2
@@ -2564,6 +3297,39 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         if _flag in rest:
             no_rerun = True
             rest = [t for t in rest if t != _flag]
+
+    # --degraded "<reason>": the run did not cover what its counts imply. NOT a
+    # count source — it annotates whichever source is in play — so it is parsed
+    # before every one of them and excluded from the mutual-exclusion check
+    # below. It must be parsed before --from-counts in particular, which
+    # consumes every remaining token after its own flag.
+    degraded_reason = None
+    if "--degraded" in rest:
+        k = rest.index("--degraded")
+        reason = rest[k + 1] if k + 1 < len(rest) else ""
+        if not reason.strip() or reason.startswith("--"):
+            print(
+                "error: --degraded requires a reason saying what the run did "
+                "not cover, e.g. --degraded \"two workers died under three "
+                "concurrent suites; ~40% of the suite never reported\". The "
+                "reason IS the flag — a degraded record that cannot say how is "
+                "no more honest than the green it replaces.",
+                file=sys.stderr,
+            )
+            return 2
+        degraded_reason = reason.strip()
+        del rest[k : k + 2]
+        if "--degraded" in rest:
+            # One record, one reason. A second would otherwise survive into the
+            # extra-args slot and be passed to the runner, where it dies as an
+            # unrecognized option — and the operator would be left reading a
+            # pytest usage error for a prawduct flag they typed twice.
+            print(
+                "error: --degraded may be given once; state the whole "
+                "observation in a single reason.",
+                file=sys.stderr,
+            )
+            return 2
 
     from_junits: list[str] = []
     while "--from-junit" in rest:
@@ -2771,8 +3537,56 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
+        # THE GUARD. A restamp is an operator ASSERTION that the tree's
+        # test-relevant content is unchanged since the last real run, and until
+        # now nothing checked it — so a restamp taken after tests were added
+        # reused the older run's counts and printed them as `recorded: N
+        # passed`, indistinguishable from a measurement. That shipped a
+        # three-test gap on 2026-08-19.
+        #
+        # The check is not a content hash (removed pre-v1.4 for chronic false
+        # positives, and deliberately not back). It is the judgeable-path
+        # comparison the gates already trust — `_test_evidence_tree_valid`,
+        # the same body `tests_are_current` uses — asked against the tree the
+        # prior record ran on. Refusing rather than warning because this record
+        # feeds a gate VERDICT, and authority fails closed.
+        #
+        # This does cost the documented cheap-refresh-after-a-rename case: a
+        # rename shows as a judgeable path change even though content is
+        # identical. Stated rather than hidden — the escape is to run the suite
+        # (or ingest a report), which is what makes the evidence sound anyway.
+        prior_tree = prior.get("evidence_tree")
+        if prior_tree:
+            ok, why = _gates()._test_evidence_tree_valid(project_dir, prior_tree)
+            if not ok:
+                print(
+                    "error: --no-rerun/--restamp asserts the tree's test-relevant "
+                    f"content is unchanged since the recorded run, and it is not — {why}.\n"
+                    "  Reusing those counts would print a stale figure as though it were "
+                    "measured. Run the suite, or ingest a report you already have:\n"
+                    "    prawduct-hook test-evidence record\n"
+                    "    prawduct-hook test-evidence record --from-junit <report.xml>",
+                    file=sys.stderr,
+                )
+                return 2
+        else:
+            print(
+                "warning: the prior record carries no evidence_tree, so nothing can "
+                "check the restamp's assertion that test-relevant content is "
+                "unchanged. Treat the counts below as asserted, not measured.",
+                file=sys.stderr,
+            )
         duration = prior.get("duration_seconds", 0)
         prior_command = prior.get("command", "(unknown)")
+        prior_timestamp = prior.get("timestamp", "(unknown)")
+        # A restamp reuses the prior run's COUNTS, so it inherits whatever those
+        # counts failed to cover. Letting the flag drop here would make
+        # `--no-rerun` a laundry: one command turning a degraded record into a
+        # clean-looking one without running anything. Nothing clears the flag
+        # except a real run that earns a clean record.
+        prior_degraded = prior.get("degraded")
+        if not degraded_reason and isinstance(prior_degraded, str) and prior_degraded.strip():
+            degraded_reason = prior_degraded.strip()
     elif from_counts is not None:
         # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
         # The F4a overlay below still recomputes the changed-file half against
@@ -3056,6 +3870,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # Omit (never null) when uncaptured, so a record without the field falls
         # through to timestamp-only freshness — the clause is additive.
         record["evidence_tree"] = evidence_tree
+    if degraded_reason:
+        # Presence is the flag; an ordinary run omits the key entirely rather
+        # than writing a false, so every record written before the field existed
+        # keeps exactly the behavior it had.
+        record["degraded"] = degraded_reason
     # Atomic write — the freshness gate must never observe a half-written file.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     tmp = evidence_path.with_name(evidence_path.name + ".tmp")
@@ -3108,9 +3927,28 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
 
+    # A restamp announces itself. The old line said `recorded: N passed` for
+    # both paths, so a reused count was typographically identical to a fresh
+    # measurement — which is the surface that let a stale figure pass as one.
+    verb = "restamped" if no_rerun else "recorded"
+    provenance = (
+        f" [REUSED from the run of {prior_timestamp} — nothing was run]"
+        if no_rerun
+        else ""
+    )
+    # The counts print the same whether or not the run covered the suite, which
+    # is the surface the flag exists to correct — so a degraded record says so
+    # on the line a coordinator actually reads, and says what to do about it.
+    degradation = (
+        f"\n  DEGRADED — {degraded_reason}\n"
+        "  These counts do not cover what they appear to; the gates will read "
+        "this record as stale until an uncontended run replaces it."
+        if degraded_reason
+        else ""
+    )
     print(
-        f"recorded: {passed} passed, {failed} failed, {skipped} skipped "
-        f"in {record['duration_seconds']}s ({record['timestamp']})"
+        f"{verb}: {passed} passed, {failed} failed, {skipped} skipped "
+        f"in {record['duration_seconds']}s ({record['timestamp']}){provenance}{degradation}"
         + (
             _GREEN_IS_EVIDENCE_DIRECTIVE
             if _evidence_changed_judged_code(evidence_path)
@@ -3165,8 +4003,8 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         chunk_id = os.environ.get("PRAWDUCT_VERIFY_CHUNK_ID")
     if chunk_id is None:
         # One canonical current-chunk resolution (shared with the stop hook and
-        # the Critic helper); handles both the "### Chunk NN:" and
-        # "## Chunk N (ID) — Name" Status-item forms.
+        # the Critic helper); it accepts every Status-item form the body-heading
+        # matcher accepts, which is the pairing `lib/buildplan_refs.py` keeps.
         # Announce a chunk that looks finished-but-unticked BEFORE grading on
         # the checkbox reading. Only on the inference path — an explicit
         # chunk_id does not consume that reading, so warning there would be
@@ -3186,9 +4024,14 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         # (the missing-ref lines below). Surfacing them differently stops a
         # can't-parse exit from being dismissed as noise and masking a real
         # missing-deliverable BLOCKING (the false-negative habituation BLD-5J8N).
+        # When the error names lines, they ARE the remedy and the generic hint
+        # below would only bury them; it stays for the case where nothing could
+        # be named, which is the plan-has-no-such-chunk reading.
         print(
             f"cannot-verify: {refs['error']}; Goal-2 deliverable check did not run "
-            "(is the chunk heading a recognized '### Chunk NN:' / '## Chunk N (ID) — Name' form?)",
+            "(recognized heading forms: '### Chunk NN: Name', "
+            "'## Chunk N (ID) — Name', '### **Chunk N** — Name', a dotted id "
+            "'### Chunk 1.2:', and a leading '[ ]' checkbox)",
             file=sys.stderr,
         )
         return 1
@@ -3454,6 +4297,21 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
     result = ov.run_check_operator_verification(project_dir)
     if not result["required"]:
         return 0
+    # Order matters: an unreadable queue reports `pending: 0` because nothing
+    # was parsed, so testing pending first would let the exact failure this
+    # branch exists for fall through as a pass.
+    #
+    # Exit **3**, not 1. Both block — 3 is non-zero, so `/prawduct:pr` Step 2b stops
+    # either way and the gate still fails closed. What 3 buys is that the
+    # blocking REASON is readable from the code: 1 has always meant "there are
+    # pending entries, here is the first ID, drain or override it", and both of
+    # those remedies are inapplicable to a queue nobody could parse. Reusing 1
+    # would be a new meaning wearing an old number, and it would send an agent
+    # to the two remedies that cannot work — ending at the queue file, which is
+    # the one move this refusal exists to prevent.
+    if result.get("queue_status") == ov.QUEUE_UNREADABLE:
+        print(result["message"], file=sys.stderr)
+        return 3
     if result["pending"] == 0:
         print(result["message"])
         return 0
@@ -3540,6 +4398,21 @@ def cmd_verify_operator_verification(
             "`prawduct-hook verify-operator-verification <VRF-NNN>`. Complete "
             "the entry's human-verification step first; this flips its status "
             "to verified in operator-verification.md.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # A flag reaching a positional slot is data by accident. Left alone it is
+    # looked up as a VRF id, and the failure that follows names a missing entry
+    # rather than the mistyped flag that caused it. The dispatcher refuses this
+    # too; the check is repeated here because the function is callable on its
+    # own and the argument it validates is its own.
+    if vrf_id.strip().startswith("-"):
+        print(
+            f"error: verify-operator-verification got {vrf_id.strip()!r}, which "
+            "looks like a flag — this argument is a VRF id "
+            "(`prawduct-hook verify-operator-verification <VRF-NNN>`). Nothing "
+            "was changed.",
             file=sys.stderr,
         )
         return 1
@@ -3962,6 +4835,99 @@ def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
     return telemetry.review_stats(project_dir, argv)
 
 
+def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
+    """Is the prawduct plugin actually LOADED for a repo? Thin wrapper — body
+    lives in ``lib.plugin_activation``.
+
+    ``--path P`` names the repo to ask about, defaulting to the current project.
+    The flag is what makes this useful: the failure it detects makes the target
+    repo unable to run any prawduct command at all, so the only session that can
+    ask the question is one running somewhere else — the onboarding session.
+
+    **Exit codes: 0 active, 1 inactive, 3 unknown** — the same three-outcome
+    shape, and for the same stated reason, as ``check-released``'s *unverified*
+    3. Both foldings of "could not run" are wrong here. Folded into 1 it reports
+    a broken install because a harness file was unreadable, sending an operator
+    to reinstall something that works. Folded into 0 it reports a clean bill off
+    a check that never ran — which is the entire class this command exists to
+    close, so spending it on the command's own error path would be the joke
+    writing itself.
+
+    The ratified *fail-open, exit 0* rule for an unevaluable advisory is a
+    different case and is honoured below: it covers the **plugin's own lib**
+    failing to import, where prawduct is broken and must not block the caller.
+    A subject that could not be read is not that.
+
+    ``--context doctor`` selects the wording for a caller running INSIDE a
+    session the plugin loaded, where ``inactive`` cannot mean "ungoverned".
+    """
+    flags = {"--json"}
+    rest = []
+    target = None
+    context = "onboard"
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--path", "--context"):
+            if i + 1 >= len(argv):
+                print(
+                    f"check-plugin-active: {arg} needs a value",
+                    file=sys.stderr,
+                )
+                return 2
+            if arg == "--path":
+                target = argv[i + 1]
+            else:
+                if argv[i + 1] not in ("onboard", "doctor"):
+                    print(
+                        f"check-plugin-active: unknown --context "
+                        f"{argv[i + 1]!r} (expected 'onboard' or 'doctor')",
+                        file=sys.stderr,
+                    )
+                    return 2
+                context = argv[i + 1]
+            i += 2
+            continue
+        rest.append(arg)
+        i += 1
+    rejected = _reject_unknown_args("check-plugin-active", rest, flags)
+    if rejected is not None:
+        return rejected
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import plugin_activation  # noqa: PLC0415 — lazy import
+    except ImportError:
+        # Fail OPEN, and say what was not established. An advisory that cannot
+        # run must not read as a pass — the whole point of the check.
+        print(
+            "NOTE: check-plugin-active could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; whether the plugin is installed for this "
+            "project was NOT established.",
+            file=sys.stderr,
+        )
+        return 0
+
+    result = plugin_activation.plugin_activation_status(
+        target if target is not None else project_dir
+    )
+    if "--json" in rest:
+        print(json.dumps(result, indent=2))
+    else:
+        text = "\n".join(
+            plugin_activation.report_lines(result, context=context)
+        )
+        stream = sys.stdout if result["status"] == plugin_activation.ACTIVE else sys.stderr
+        print(text, file=stream)
+    if result["status"] == plugin_activation.INACTIVE:
+        return 1
+    if result["status"] == plugin_activation.UNKNOWN:
+        return 3
+    return 0
+
+
 def cmd_cost_of_commit(project_dir: Path, argv: list[str]) -> int:
     """Price a commit BEFORE it is made: does committing these paths buy a
     review round? Thin wrapper — body lives in ``lib.coverage.cost_of_commit``.
@@ -4164,6 +5130,12 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
     Read-only and informational — always exits 0. A broken plugin import or a
     faulty sub-check degrades to a NOTE / "unknown", never a crash (a health
     *report* must not fail the operator's shell)."""
+    # Read-only, so a swallowed token cannot mutate here — but it can still make
+    # the report answer a question nobody asked, which is the same class the
+    # pre-dispatch guard closes for the commands that take no argv at all.
+    rejected = _reject_unknown_args("coverage-status", argv, {"--json"})
+    if rejected is not None:
+        return rejected
     want_json = "--json" in argv
     lib_root = _plugin_root()
     if lib_root not in sys.path:
@@ -4311,6 +5283,16 @@ def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
     Exit 0 on dry run or successful ``--apply``; exit 1 if the plugin ``lib/`` is
     not importable (a state-mutating command must not claim success on a broken
     install — mirrors ``accept-operator-verification``)."""
+    # This command MUTATES under `--apply`, and the flag-only idiom below reads a
+    # token it does not recognise as absent. So `--apply --dry-run` wrote the
+    # stubs while the caller believed they had asked for a preview — the same
+    # surprise `update-gitignore` served, in the command held up as its
+    # well-behaved sibling. `--dry-run` is not accepted here because the bare
+    # invocation already IS the dry run; the point is that it is refused rather
+    # than ignored.
+    rejected = _reject_unknown_args("coverage-scaffold", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
     apply = "--apply" in argv
     want_json = "--json" in argv
     lib_root = _plugin_root()
@@ -4600,6 +5582,9 @@ def cmd_migrate_plugin(project_dir: Path, argv: list[str]) -> int:
     Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
     install), print a clear message and return 1 rather than crashing.
     """
+    rejected = _reject_unknown_args("migrate-plugin", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -4643,7 +5628,7 @@ def cmd_init_product(argv: list[str]) -> int:
     return init_product.run(argv)
 
 
-def cmd_update_gitignore(project_dir: Path) -> int:
+def cmd_update_gitignore(project_dir: Path, argv: list[str]) -> int:
     """Reconcile ``.gitignore`` with the framework's session-file contract
     (``/prawduct:doctor`` repair step — gate-soundness ch.3).
 
@@ -4654,9 +5639,22 @@ def cmd_update_gitignore(project_dir: Path) -> int:
     how an existing repo picks up gitignore-contract changes. Prints each
     unignored path so the caller can advise ``git add``.
 
+    **Mutating by default, deliberately** — doctor calls it to REPAIR, so a
+    preview-by-default would silently stop fixing the repos that need fixing.
+    ``--dry-run`` is the opt-in preview: it reports the same three answers and
+    leaves ``.gitignore`` byte-identical. Its siblings on the doctor flow
+    (``coverage-scaffold``, ``lifecycle-repair``) are preview-by-default with
+    ``--apply``, and the asymmetry is what made a caller expect a preview here
+    and get a rewrite.
+
     Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
     install), print a clear message and return 1 rather than crashing.
     """
+    rejected = _reject_unknown_args("update-gitignore", argv, {"--dry-run"})
+    if rejected is not None:
+        return rejected
+    dry_run = "--dry-run" in argv
+
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -4669,7 +5667,20 @@ def cmd_update_gitignore(project_dir: Path) -> int:
             file=sys.stderr,
         )
         return 1
-    result = lib_core.update_gitignore(project_dir)
+    result = lib_core.update_gitignore(project_dir, dry_run=dry_run)
+    if dry_run:
+        # Past tense would be a lie on this branch, and the caller is here
+        # BECAUSE they wanted to know before anything moved.
+        for path in result.get("unignored", []):
+            print(f"would un-ignore: {path} — tracked-by-contract; `git add` it if present")
+        for entry in result.get("missing", []):
+            print(f"would ignore: {entry}")
+        print(
+            "would update .gitignore (re-run without --dry-run to apply)"
+            if result.get("modified")
+            else "no changes needed"
+        )
+        return 0
     if result.get("unignored"):
         for path in result["unignored"]:
             print(f"unignored: {path} — now tracked-by-contract; `git add` it if present")
@@ -4911,21 +5922,31 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
             # it as converged is the one wrong answer available.
             print("  no changes could be worked out, because some files could "
                   "not be read — this repo has NOT been checked")
-        # Grouped by kind so the reason is stated ONCE per group rather than
-        # repeated per file. On this repo the ungrouped form printed the same
-        # sentence fourteen times, which is how a blast radius meant to be read
-        # becomes a wall that is scrolled past — and the whole value of the
-        # preview is that the operator actually reads it before the one approval.
+        # Grouped so the reason is stated ONCE per group rather than repeated
+        # per file. On this repo the ungrouped form printed the same sentence
+        # fourteen times, which is how a blast radius meant to be read becomes a
+        # wall that is scrolled past — and the whole value of the preview is that
+        # the operator actually reads it before the one approval.
+        #
+        # Grouped by REASON within a kind, not by kind alone. `state-key` covers
+        # three retired keys with three different rationales, so keying on kind
+        # printed one of them above all three and silently attributed the others
+        # to a reason that is not theirs — worse than the repetition the grouping
+        # exists to prevent, because the operator cannot tell it happened.
         verb = "changed" if apply else "would change"
         for kind in ("state-key", "freeze-notes", "plan-comment"):
             group = [edit for edit in plan["edits"] if edit["kind"] == kind]
             if not group:
                 continue
+            by_reason: dict = {}
+            for edit in group:
+                by_reason.setdefault(edit["reason"], []).append(edit)
             # Every emitted line carries the plain-language reason and names no
             # internal identifier — `observability-strategy.md` § Direction.
-            print(f"  why: {group[0]['reason']}")
-            for edit in group:
-                print(f"    {verb} {edit['path']}: {edit['detail']}")
+            for reason, edits in by_reason.items():
+                print(f"  why: {reason}")
+                for edit in edits:
+                    print(f"    {verb} {edit['path']}: {edit['detail']}")
         if plan["edits"] and not apply:
             print("  Re-run with --apply to make these changes. One confirmation "
                   "covers all of them; they are ordinary file edits your version "
@@ -5136,6 +6157,47 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     return 1 if incomplete else 0
 
 
+def cmd_check_learnings_pairing(project_dir: Path, argv: list[str]) -> int:
+    """Grade `learnings.md` against `learnings-detail.md`. Read-only.
+
+    Exit 0 when there is nothing to report, 1 on a duplicate heading, **3** when
+    the pair could not be read — the standing third-outcome rule for a check
+    whose subject is unreadable (api-contract § Error Model). Reporting a clean
+    pair off a file that would not decode is the failure this whole scope is
+    about.
+    """
+    rejected = _reject_unknown_args("check-learnings-pairing", argv, {"--json"})
+    if rejected is not None:
+        return rejected
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import audit_learnings_cmd  # noqa: PLC0415 — lazy import
+    except ImportError:
+        print(
+            "NOTE: check-learnings-pairing could not import the plugin lib/; "
+            "the learnings pair was NOT graded.",
+            file=sys.stderr,
+        )
+        return 0
+
+    result = audit_learnings_cmd.check_learnings_pairing(project_dir)
+    if "--json" in argv:
+        print(json.dumps(result, indent=2))
+    elif result["status"] == "ok":
+        print(f"ok: {result['reason']}")
+    else:
+        print(f"{result['status']}: {result['reason']}", file=sys.stderr)
+        for finding in result["findings"]:
+            print(f"  - {finding['detail']}", file=sys.stderr)
+    if result["status"] == "findings":
+        return 1
+    if result["status"] == "unchecked":
+        return 3
+    return 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -5171,9 +6233,31 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
 
     result = run_audit_learnings(str(project_dir), apply=apply)
 
+    # The ungraded notice goes to STDERR, before either renderer, so it reaches
+    # BOTH. On the `--json` path stdout is a machine payload, so a notice
+    # printed there would either corrupt it or (as shipped) be omitted entirely
+    # — leaving the sole `--json` consumer, the doctor skill, with no signal at
+    # all where the pre-fix code at least printed something loud and wrong.
+    ungraded = [
+        r for r in result.get("retirements", []) if r.get("unevaluated_reason")
+    ]
+    if ungraded:
+        print(
+            f"notice: {len(ungraded)} sentinel(s) could not be graded and were "
+            "left active — no rule is retired on a verdict nobody took. "
+            f"First: {ungraded[0]['title']}: {ungraded[0]['unevaluated_reason']}",
+            file=sys.stderr,
+        )
+
     if as_json:
         print(json.dumps(result, indent=2))
-        return 1 if "error" in result else 0
+        # A refusal lands in `errors`, not `error`, and `applied: false` after a
+        # requested `--apply` means the writer refused and wrote nothing —
+        # api-contract gives a refusing writer exit 1. Reporting 0 there tells
+        # the caller the retirement happened.
+        if "error" in result:
+            return 1
+        return 1 if (apply and result.get("applied") is False) else 0
 
     if "error" in result:
         print(f"error: {result['error']}", file=sys.stderr)
@@ -5196,18 +6280,39 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
         # when its pointer resolved. Reading `passed` for both would report
         # every resolvable supersession as "blocked" (its `passed` is None by
         # construction) — a clean candidate rendered as a problem.
+        ungraded = False
         if r.get("reason") == "superseded-by":
             ready = r.get("resolved_to") is not None
             why = f"superseded-by={r.get('resolved_to') or r.get('superseded_by')}"
         else:
-            ready = bool(r.get("passed"))
+            # Three-valued, and `bool()` would flatten it: an UNGRADED sentinel
+            # (`passed is None`) is not a blocked one. Rendering it "blocked"
+            # tells the operator a test is failing when prawduct never ran one,
+            # which is the same false accusation in the report that the runner
+            # stopped making.
+            ready = r.get("passed") is True
+            ungraded = r.get("passed") is None
             why = f"sentinel={r['sentinel']}"
-        state = "retired" if r.get("applied") else ("ready" if ready else "blocked")
+        if r.get("applied"):
+            state = "retired"
+        elif ungraded:
+            state = "ungraded"
+        elif ready:
+            state = "ready"
+        else:
+            state = "blocked"
         print(f"  retire[{state}]: {r['title']} ({why})")
+        if r.get("unevaluated_reason"):
+            print(f"    not graded: {r['unevaluated_reason']}")
     for s in stale:
         print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
     for e in errors:
         print(f"  error: {e['title']}: {e['error']}")
+    # Same rule as the `--json` path above: a requested `--apply` that came back
+    # `applied: false` refused and wrote nothing, and a writer that refused
+    # exits 1.
+    if apply and result.get("applied") is False:
+        return 1
     return 0
 
 
@@ -5297,7 +6402,8 @@ _USAGE = (
     "stop|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
     "test-status|validate-evidence|"
-    "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] [-- pytest args]|"
+    "test-evidence record [--from-junit <r>|--from-counts passed=N failed=M skipped=K|--no-rerun] "
+    "[--degraded \"<reason>\"] [-- pytest args]|"
     "check-cumulative-critic|"
     "verify-chunk-refs [chunk_id]|"
     "verify-records [--base <t>] [--head <t>] [--chunk <id>] [--scope <s>] [--json]|verify-coverage|"
@@ -5308,6 +6414,8 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
+    "check-plugin-active [--path P] [--context onboard|doctor] [--json]|"
+    "check-learnings-pairing [--json]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
@@ -5320,7 +6428,7 @@ _USAGE = (
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
-    "update-gitignore|"
+    "update-gitignore [--dry-run]|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
     "norm-index-scaffold [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
@@ -5655,6 +6763,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "check-change-log-entry",
     "check-cumulative-critic",
     "check-operator-verification",
+    "check-learnings-pairing",
+    "check-plugin-active",
     "check-pr-doc-only",
     "check-releasability",
     "check-released",
@@ -5766,6 +6876,38 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
         return "--apply" in argv
 
     if command == "backlog":
+        # Printing usage is not writing, so a help request is never refused here —
+        # and classifying by the first positional would refuse `backlog import
+        # --help` on every backend and `backlog file --help` on a markdown one.
+        # That matters more than its narrowness suggests: the adapter's instruction
+        # surface bounds a model to "the ops in the usage table `backlog --help`
+        # prints", so a refusal puts the referent out of reach for exactly the
+        # agent most likely to need it — one running in a worktree it did not
+        # create.
+        #
+        # ASK the adapter, through the one predicate it publishes for the purpose.
+        # Whether a token is a help request depends on whether it sits in a value
+        # slot, and only the adapter knows which flags take values — so a rule
+        # re-spelled here can disagree with the runner about what the call IS, and
+        # the disagreement resolves the unsafe way: a write classified as a read and
+        # waved through in a tree that discards it.
+        lib_root = _plugin_root()
+        if lib_root not in sys.path:
+            sys.path.insert(0, lib_root)
+        try:
+            from lib.backlog import cli as _backlog_cli  # noqa: PLC0415 — lazy keeps top-level cheap
+        except ImportError as exc:
+            # Falling through to the positional rule is the fail-closed direction, so
+            # nothing unsafe happens — but it restores a false refusal of `backlog
+            # <op> --help`, which is a read. Say so rather than reverting in silence.
+            print(
+                f"NOTE: classifying `backlog` by op name only — the adapter is "
+                f"unreachable ({exc}); a `--help` on a write op may be refused here.",
+                file=sys.stderr,
+            )
+        else:
+            if _backlog_cli.is_help_request(argv):
+                return False
         op = _first_positional(argv)
         if op in _BACKLOG_LOCAL_WRITE_OPS:
             return True
@@ -5974,12 +7116,131 @@ def main() -> int:
     return _dispatch()
 
 
+# --- Pre-dispatch argument shape --------------------------------------------
+# What each subcommand can actually SEE. A command whose dispatch branch passes
+# no `argv` has nowhere to put an argument check — the token is dropped by the
+# dispatcher, so only the dispatcher can refuse it. That is not a hypothetical:
+# `update-gitignore` took no `argv` parameter, so `--dry-run` reached no parser
+# to be rejected by and the reconcile ran, rewriting a live `.gitignore` for a
+# caller who believed they had asked for a preview. Placed pre-dispatch for the
+# same reason `_check_binary_skew` and `_check_ephemeral_worktree` are: a
+# per-command fix misses whichever command nobody thought of.
+#
+# `tests/test_hook_argument_shape.py` derives these collections from the
+# `_dispatch` chain itself, so a new subcommand cannot quietly rejoin the hole.
+
+# Refuse: an argument here was silently discarded, and the caller believed it
+# did something.
+_NO_ARGUMENT_COMMANDS = frozenset({
+    "bug-inbox",
+    "check-change-log-entry",
+    "check-cumulative-critic",
+    "check-operator-verification",
+    "check-pr-doc-only",
+    "critic-consolidate",
+    "critic-discard",
+    "critic-end",
+    "print-install-reference",
+    "resolve-base",
+    "test-status",
+    "validate-evidence",
+    "verify-coverage",
+    "version",
+})
+
+# Say so, then proceed. These are the harness's own calls, never typed: every
+# `hooks.json` prawduct has ever shipped invokes them as a bare literal. A usage
+# error on a Stop hook does not protect a caller — it blocks the session and
+# feeds the refusal back as a turn, which is a worse failure than the silence it
+# would be closing. So the argument is named on stderr and the gate still runs.
+_NO_ARGUMENT_NOTE_ONLY_COMMANDS = frozenset({
+    "stop",
+    "subagent-stop",
+})
+
+# Say nothing. `stamp-merged` is retired-but-callable, and its deprecation
+# contract is exit 0 for ANY input so that a copied release script keeps
+# working. An inert command cannot act on an argument it ignored, so there is no
+# surprise to prevent — the harm this guard exists for is a command that DID
+# something other than what was asked.
+_NO_ARGUMENT_UNCHECKED_COMMANDS = frozenset({
+    "stamp-merged",
+})
+
+# One positional, read as `sys.argv[2]`, and everything after it dropped on the
+# floor. Both halves of that are reportable: an unquoted multi-word value is
+# silently truncated to its first word, and a flag-shaped token is recorded as
+# if it were the id or rationale the command wanted. No documented invocation
+# passes a value starting with a dash.
+_SINGLE_POSITIONAL_COMMANDS = frozenset({
+    "accept-operator-verification",
+    "verify-chunk-refs",
+    "verify-operator-verification",
+})
+
+
+def _check_argument_shape(command: str, argv: list[str]) -> int:
+    """0 to proceed; 2 when the invocation passed something the command cannot
+    read. 2 is the hook's usage-error convention (see `_reject_unknown_args`).
+
+    Runs before anything else in `_dispatch`, including project-dir resolution:
+    a malformed invocation should do nothing at all, and "nothing ran" is the
+    sentence the caller most needs to be able to trust.
+    """
+    if not argv:
+        return 0
+
+    if command in _NO_ARGUMENT_NOTE_ONLY_COMMANDS:
+        print(
+            f"NOTE: {command} takes no arguments; ignoring {argv[0]!r}.",
+            file=sys.stderr,
+        )
+        return 0
+
+    if command in _NO_ARGUMENT_COMMANDS:
+        print(
+            f"{command}: unknown argument {argv[0]!r} — this subcommand takes no "
+            f"arguments, so nothing ran. Re-invoke it as `prawduct-hook {command}`.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if command in _SINGLE_POSITIONAL_COMMANDS:
+        if argv[0].startswith("-"):
+            print(
+                f"{command}: {argv[0]!r} looks like a flag, but this subcommand "
+                "expects a positional value here and would have recorded the flag "
+                "as that value. Nothing ran. See `prawduct-hook` usage for what "
+                f"{command} accepts.",
+                file=sys.stderr,
+            )
+            return 2
+        if len(argv) > 1:
+            print(
+                f"{command}: unexpected extra argument {argv[1]!r} — this "
+                "subcommand reads one value and would have dropped the rest "
+                "silently. Nothing ran. Quote it if it is one value containing "
+                "spaces.",
+                file=sys.stderr,
+            )
+            return 2
+
+    return 0
+
+
 def _dispatch() -> int:
     if len(sys.argv) < 2:
         print(_USAGE, file=sys.stderr)
         return 1
 
     command = sys.argv[1]
+
+    # Before dispatch, and before anything else: a command that never receives
+    # `argv` cannot refuse an argument, so the dispatcher refuses on its behalf.
+    shape = _check_argument_shape(command, sys.argv[2:])
+    if shape != 0:
+        return shape
+
     project_dir = get_project_dir()
 
     # Before dispatch, so it covers every command — including `subagent-stop`,
@@ -6036,6 +7297,10 @@ def _dispatch() -> int:
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "cost-of-commit":
         return cmd_cost_of_commit(project_dir, sys.argv[2:])
+    elif command == "check-plugin-active":
+        return cmd_check_plugin_active(project_dir, sys.argv[2:])
+    elif command == "check-learnings-pairing":
+        return cmd_check_learnings_pairing(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":
@@ -6095,7 +7360,7 @@ def _dispatch() -> int:
     elif command == "init-product":
         return cmd_init_product(sys.argv[2:])
     elif command == "update-gitignore":
-        return cmd_update_gitignore(project_dir)
+        return cmd_update_gitignore(project_dir, sys.argv[2:])
     elif command == "audit-learnings":
         return cmd_audit_learnings(project_dir, sys.argv[2:])
     elif command == "norm-index-scaffold":

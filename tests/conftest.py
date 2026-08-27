@@ -55,3 +55,53 @@ def pytest_report_header(config):
             "NOTE: Running with pytest-xdist (parallel). Use '-n0' for sequential execution.",
         ]
     return []
+
+
+#: The v2 (pre-3.3.4, model-written) dispatch-manifest shape: parseable JSON
+#: carrying none of the v3 interval fields. Lives HERE because two test modules
+#: import it, pinning three distinct behaviours — the CRT-W2NV validation
+#: regression and the #676 message readings in `test_critic_consolidate.py`, and
+#: the Stop-hook backstop's version-skew cause in `test_stop_abandoned_critic.py`.
+#: Hoisting it into ONE of those modules and hand-inlining the copy into the
+#: other is how a "one definition" rationale ships with two definitions under it.
+V2_MANIFEST = {
+    "mode": "final-chunk-review", "mode_chosen_by": "rule-3",
+    "roster": ["correctness", "design", "sustainability"],
+    "commit_reviewed": "abc", "files_reviewed": ["x.py"],
+    "scope": "demo", "model": "opus",
+}
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _unpin_project_dir():
+    """Remove `CLAUDE_PROJECT_DIR` from the environment for the whole session.
+
+    **This closes a class that three hand-copied helpers could not.**
+    `gitstate.resolve_project_dir` returns that pin whenever cwd is not a git
+    work tree, and a pytest `tmp_path` never is — so any test spawning
+    `prawduct-hook` with an inherited environment targets whatever the harness
+    pinned instead of its fixture. Under a harness that sets the variable (Claude
+    Code does), `tests/test_lifecycle_cli.py` and `tests/test_plan_archive.py`
+    would run `lifecycle-repair` and `archive-plan` — both WRITERS — against the
+    real repository. They pass today only because the variable happens to be
+    unset here, which is the worst way for a hazard to be invisible.
+
+    The per-file remedy was a pinned-env helper copied into each file that
+    noticed. Three near-identical copies later, two write-command call sites
+    were still open, because a convention only protects the files whose author
+    knew about it. Deleting the variable once protects every test, including
+    ones not yet written — which is the difference between fixing instances and
+    closing a class.
+
+    A test that WANTS the pin still sets it explicitly (`env={...}` on the
+    subprocess, or `monkeypatch.setenv`); this only removes the ambient
+    inheritance that nobody asked for.
+    """
+    import os
+
+    saved = os.environ.pop("CLAUDE_PROJECT_DIR", None)
+    try:
+        yield
+    finally:
+        if saved is not None:
+            os.environ["CLAUDE_PROJECT_DIR"] = saved

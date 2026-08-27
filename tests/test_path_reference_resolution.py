@@ -159,6 +159,23 @@ _SOURCE_DIR_SEGMENTS = frozenset(
 )
 
 
+#: A skill reads the plugin through its own directory: `${CLAUDE_SKILL_DIR}` expands
+#: at skill load, and the plugin root is one directory pair above it. That form
+#: replaced `${CLAUDE_PLUGIN_ROOT}`, which does not expand in prose — and in doing so
+#: the reads fell out of BOTH checks that could see them: the packaging test matches
+#: the retired sigil, and `_PATH_SHAPED` rejects any token holding `$`, `{` or `}`.
+#: Five cross-plugin reads were therefore checked by nothing, and could be stranded
+#: by any relocation with the suite green — the third-recurrence class this file
+#: exists to mechanize. Normalizing the prefix hands them to the resolver that
+#: already owns path references, so present and future ones share one owner.
+_SKILL_DIR_PREFIX = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/(?:\.\./)+")
+
+
+def _normalize_skill_relative(token: str) -> str:
+    """Rewrite a skill-dir-relative read as the repo path it names."""
+    return _SKILL_DIR_PREFIX.sub("plugin/", token)
+
+
 def _is_repo_path(token: str) -> bool:
     """Path-shaped and plausibly naming something in this tree.
 
@@ -166,6 +183,7 @@ def _is_repo_path(token: str) -> bool:
     extensionless ``plugin/bin/prawduct-hook``. Together they exclude ``owner/repo`` arguments,
     which are path-shaped, appear in command position after ``--repo``, and name nothing on disk.
     """
+    token = _normalize_skill_relative(token)
     if not _PATH_SHAPED.match(token):
         return False
     return bool(_HAS_EXTENSION.search(_strip_ref(token))) or (
@@ -181,7 +199,7 @@ _ALLOWED_TOOLS = re.compile(r"^allowed-tools:(.*)$", re.M)
 
 def _strip_ref(raw: str) -> str:
     """Trim trailing prose punctuation, a line-number suffix, and an anchor."""
-    ref = raw.rstrip(".,;:)`").rstrip("/")
+    ref = _normalize_skill_relative(raw).rstrip(".,;:)`").rstrip("/")
     ref = ref.split("#", 1)[0]
     ref = re.sub(r":\d+(?:[,-]\d+)*$", "", ref)  # foo.py:182 and foo.md:58-60
     return ref
@@ -532,3 +550,95 @@ def test_relative_targets_resolve_against_the_containing_file():
     # The same target from a file one level up DOES resolve — proving the base is the containing
     # file rather than a constant.
     assert _resolves("plugin/principles.md", "../.prawduct/learnings.md", "md-link")
+
+
+# ---------------------------------------------------------------------------
+# Which interpolation a shipped instruction may use
+#
+# Claude Code substitutes ``${CLAUDE_PLUGIN_ROOT}`` into hook commands declared in
+# ``hooks/hooks.json``, and exports it into the environment of the process those
+# commands start. It does NOT substitute it into skill prose, and the Bash tool the
+# agent runs does not carry it either — so a prose instruction spelled that way
+# reaches the reader as the literal seven-token string and names nothing.
+# ``${CLAUDE_SKILL_DIR}`` *is* substituted when a skill loads, which makes
+# ``${CLAUDE_SKILL_DIR}/../../<path>`` the form that resolves from a skill to
+# anything else the plugin ships.
+#
+# The failure is silent and it is worse than a missing file: the reader that cannot
+# open the path does not stop. Doctor's install-reference check, told to read the
+# install contract out of the plugin, falls back to the illustrative list printed
+# beside the instruction — a list its own text forbids grading against, and one that
+# has already gone stale once. So the check reports a verdict, and the verdict is
+# whatever the stale list says.
+#
+# The trees below are the ones whose markdown is READ AS INSTRUCTIONS: skill prose,
+# the docs skills route readers into, the methodology guides, and the templates a
+# product copies. ``plugin/CHANGELOG.md`` sits outside them because it is a record —
+# it narrates the packaging change that curated the plugin root, and naming the
+# variable is the subject of the sentence rather than a path anyone follows.
+#: `plugin/agents/` is here for a reason worth stating: `critic-reviewer.md` ships in
+#: the plugin and is read verbatim as a subagent's system prompt, and it is the one
+#: tree where the remedy does NOT apply — `${CLAUDE_SKILL_DIR}` is not defined for an
+#: agent, so an agent file must name its paths in prose. It is clean today, which is
+#: exactly why omitting it was invisible: the next agent definition would reopen the
+#: defect with CI green, in the one instruction surface the guard could not see.
+_INSTRUCTION_TREES = (
+    "plugin/skills/", "plugin/docs/", "plugin/methodology/",
+    "plugin/templates/", "plugin/agents/",
+)
+
+#: The INTERPOLATION, not the name. Prose is free to discuss `CLAUDE_PLUGIN_ROOT`
+#: as a variable — that reads as documentation. `${...}` reads as a path to follow,
+#: and in these trees it is always a path that will not resolve. Keeping the rule on
+#: the sigil is what lets it stay absolute instead of growing an exemption list.
+_PLUGIN_ROOT_INTERPOLATION = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}")
+_SKILL_DIR_INTERPOLATION = re.compile(r"\$\{CLAUDE_SKILL_DIR\}")
+
+
+def _instruction_markdown() -> list[str]:
+    return [
+        p for p in _TRACKED
+        if p.endswith(".md") and p.startswith(_INSTRUCTION_TREES)
+    ]
+
+
+def test_no_shipped_instruction_interpolates_the_plugin_root():
+    """Skill prose and the docs it routes to must not spell a path they cannot resolve."""
+    offenders = []
+    for rel in _instruction_markdown():
+        for lineno, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):
+            if _PLUGIN_ROOT_INTERPOLATION.search(line):
+                offenders.append(f"{rel}:{lineno}")
+    assert not offenders, (
+        "${CLAUDE_PLUGIN_ROOT} does not expand outside a hooks.json command, so these "
+        "instructions hand their reader a literal that names nothing. Use "
+        "${CLAUDE_SKILL_DIR}/../../<path> from a skill; from a doc, which is read as "
+        "plain content and interpolates nothing at all, describe the location instead:"
+        "\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_the_resolving_interpolation_is_the_one_in_use():
+    """The rule above is assert-absent, and deleting every path would satisfy it.
+
+    This is the other half: skills really do have to reach across the plugin, and
+    they reach with the form that expands. If this goes quiet, the reads were not
+    repointed — they were removed, or the substitution contract changed under them.
+    """
+    users = {
+        rel for rel in _instruction_markdown()
+        if _SKILL_DIR_INTERPOLATION.search((REPO / rel).read_text(encoding="utf-8"))
+    }
+    assert len(users) >= 4, (
+        f"only {len(users)} shipped instruction files reach across the plugin with "
+        "${CLAUDE_SKILL_DIR} — either the cross-plugin reads are gone, or they are "
+        "being written some other way that this check no longer sees"
+    )
+
+
+def test_the_interpolation_sweep_has_subjects():
+    """An assert-absent check over an empty file list is green and worthless."""
+    assert len(_instruction_markdown()) > 20, (
+        f"only {len(_instruction_markdown())} instruction-bearing markdown files found "
+        f"under {_INSTRUCTION_TREES} — the trees moved and the sweep is dark"
+    )

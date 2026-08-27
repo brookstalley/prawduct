@@ -43,17 +43,24 @@ gitignored, so it never lands in the repo's committed install reference:
 out one directory per version (`~/.claude/plugins/cache/prawduct/prawduct/<version>/`), so a
 `develop` whose `version` still matches the released string resolves to the *released* cache entry
 and you dogfood nothing while believing otherwise. Keep `develop` on a prerelease of the version it
-is heading for — `3.4.0-rc.1` — bumping the rc as you promote work into it. The release then sets
+is heading for — `3.4.1-dev.2` — bumping the `.N` as you promote work into it. The release then sets
 the final version in the same three files (below), which is a new cache key again.
 
-**The rc must be re-opened at the release, or the track goes quietly dead.** Promotion sets the
-final `3.4.0` on `main` — and `develop`, having been promoted, now carries `3.4.0` too. That is the
-*same string* the released plugin uses, so every dogfooding repo silently resolves the released
+**`-dev` / `-dev.N` is the only prerelease form this project permits**, and that is enforced, not
+convention: `banner.version_tuple` parses exactly that shape and returns the malformed sentinel for
+anything else, and `test_version_is_semver` refuses a manifest carrying any other suffix. An `-rc.N`
+or `-alpha` would sort below every real version — no banner at all on the dogfooding repo, and the
+next real release replaying every headline in the changelog. Bump the `.N`; do not invent a track.
+
+**The prerelease must be re-opened at the release, or the track goes quietly dead.** Promotion sets
+the final `3.4.0` on `main` — and `develop`, having been promoted, now carries `3.4.0` too. That is
+the *same string* the released plugin uses, so every dogfooding repo silently resolves the released
 cache entry and runs `main`'s code while believing it is on develop: the exact failure the
 prerelease exists to prevent, arriving at the moment nobody is looking for it. **The first work
-merged into `develop` after a release re-opens the next rc** (`3.4.1-rc.1`, or `3.5.0-rc.1`) in the
-same three files. Until then there is nothing unreleased to dogfood, so the two being equal is
-honest — it is only a trap if you leave a repo pointed at develop expecting otherwise.
+merged into `develop` after a release re-opens the next prerelease** (`3.4.1-dev`, then `-dev.1`,
+`-dev.2` as work lands) in the same three files. Until then there is nothing unreleased to dogfood,
+so the two being equal is honest — it is only a trap if you leave a repo pointed at develop
+expecting otherwise.
 
 **Getting back off the track:** delete the `prawduct-dev` block from `settings.local.json` and
 re-enable `prawduct@prawduct`. Nothing else is touched — the repo's committed `.claude/settings.json`
@@ -112,6 +119,13 @@ not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `p
 ## Release checklist (`develop` → `main`)
 
 When `develop` is ready to release as `vX.Y.Z`:
+
+**The numbering below is the checklist's order, not the running order.** Every prep item in it —
+the version bump across the three files, the `release=` tags, the `active_build_plan` clear and
+the plan sweep, the `plugin/CHANGELOG.md` section rename — is committed on `develop` **before**
+the promotion, not edited onto `main` after it; the reason is in the ordering note that closes
+"Step 1 mechanics" below. `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 1 is the
+same set in executable running order, and is the document to work from when actually cutting.
 
 0. **Confirm it is fit to ship**, not merely that something is unreleased:
    `./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z`. Every release-pending scope
@@ -223,6 +237,28 @@ When `develop` is ready to release as `vX.Y.Z`:
 9. **Confirm the banner.** On the next session against the new `main`, the version-delta banner
    shows `v(old) → vX.Y.Z` plus the crossed releases' change-log highlights, and announces any
    gate newly active in the range.
+
+10. **Reopen `develop` at the next `-dev` version.** Bump the same three files from step 2 to the
+    next **patch** plus a `-dev` suffix (after cutting `v3.4.0`, write `3.4.1-dev`), open a
+    `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md` with a non-empty first line, and
+    add a `.prawduct/change-log.md` entry — all in one commit on `develop`.
+
+    > **Why `develop` must never report the released number:** the verdict cache keys on the
+    > plugin version, so a prerelease codebase reporting the released number replays `covered`
+    > verdicts across a judgeability change; and a consumer pinned to the `develop` ref can only
+    > tell which plugin it is running if the banner says so. `-dev` and `-dev.N` are the only
+    > suffixes `test_version_is_semver` permits. The CHANGELOG section is not optional —
+    > `test_changelog_has_current_version_entry` requires one for the current version, so the
+    > version files and the digest move together or `develop` goes red.
+
+    > **Guess low.** A prerelease sorts just below its own release, so from `3.4.1-dev` every
+    > possible next cut is a forward move; from a high guess like `3.5.0-dev` a patch cut is a
+    > *downgrade*, and the banner is empty on a downgrade — no notes, no gate announcement. It
+    > is also the ratified conservative-versioning norm: a minor bump is a recorded decision,
+    > not a reflex.
+
+    Full procedure, including what to do when the guessed number is wrong at the next cut:
+    `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 3.
 
 ### Two states, carried by the presence or absence of `release=`
 

@@ -79,21 +79,18 @@ def _repo(tmp_path: Path) -> Path:
 
 class TestBundledData:
     def test_changelog_has_current_version_entry(self, banner):
-        """The shipped version's headline must exist — and a PRERELEASE is
-        satisfied by the release it is a prerelease OF.
+        """The shipped version's headline must exist, keyed by the EXACT manifest
+        string — a prerelease included.
 
-        `develop` runs on `X.Y.Z-rc.N` so the version-keyed plugin cache
-        re-fetches as it advances. Its content is the upcoming release's, so
-        demanding a `## vX.Y.Z-rc.N` section would add a changelog edit to every
-        rc bump and leave the file carrying sections for versions nobody ever
-        released.
+        Not the release it is a prerelease of. `develop` runs on `X.Y.Z-dev.N` and
+        accumulates that cycle's notes under `## vX.Y.Z-dev.N`, which the cut renames
+        to `## vX.Y.Z`. Stripping the suffix here would look for a section describing
+        a release that has not happened, and would pass on a file carrying no notes
+        for the build actually running.
         """
         pairs = dict(banner.parse_changelog(ROOT))
-        base = PLUGIN_VERSION.partition("-")[0]
-        assert base in pairs, (
-            f"CHANGELOG.md must carry {base} (the version {PLUGIN_VERSION} ships as)"
-        )
-        assert pairs[base], "the current version's changelog headline must be non-empty"
+        assert PLUGIN_VERSION in pairs, f"CHANGELOG.md must carry the current version {PLUGIN_VERSION}"
+        assert pairs[PLUGIN_VERSION], "the current version's changelog headline must be non-empty"
 
     def test_gates_json_well_formed(self):
         data = json.loads(GATES_JSON.read_text())
@@ -120,29 +117,89 @@ class TestVersionMath:
         assert banner.version_tuple("1.8.1") < banner.version_tuple("2.0.0")
         assert banner.version_tuple("garbage") == (-1,)  # sorts below everything
 
-    def test_a_prerelease_sorts_below_its_own_release(self, banner):
-        """The develop track's ordering. A prerelease parsed as unorderable made
-        a dogfooding repo get no banner at all, and made the first real release
-        after it replay every headline in the file."""
-        vt = banner.version_tuple
-        assert vt("3.3.4") < vt("3.4.0-rc.1") < vt("3.4.0-rc.2") < vt("3.4.0")
-        assert vt("3.4.0") < vt("3.4.1-rc.1")
-        assert vt("3.4.0-rc.1") != (-1,), "a prerelease must PARSE, not fall back"
+    def test_version_tuple_orders_a_dev_prerelease(self, banner):
+        """`develop` carries `X.Y.Z-dev`; the cut promotes it to `X.Y.Z`.
 
-    def test_a_prerelease_shows_only_the_headlines_it_crossed(self, banner):
-        """The consequence the ordering exists for, and it is a *withholding*.
+        Asserted directly because nothing else does. The only incidental coverage
+        of this path is `test_changelog_has_current_version_entry`, and that
+        coverage **evaporates at every release cut** — the version is bare again,
+        so the released plugin ships this branch untested by construction. That
+        is exactly backwards from what the suffix is for.
 
-        Moving 3.3.4 → 3.4.0-rc.1 crosses **nothing**: 3.4.0's section describes
-        a release that has not happened, and an rc is below it. The dogfooder is
-        told about it when 3.4.0 actually ships. What the rc does cross is
-        everything genuinely released before it — a repo joining the track from
-        3.3.3 still gets 3.3.4's headline, which is the half that broke when a
-        prerelease parsed as older than everything.
+        Both directions, and the trailing sentinel is the reason both are needed:
+        before it, any prerelease collapsed to the malformed `(-1,)`, which sorts
+        below every real version, so a consumer moving onto `-dev` read as having
+        moved BACKWARDS — no update banner and an empty highlight range.
         """
-        log = [("3.4.0", "the new one"), ("3.3.4", "the old one"), ("3.3.3", "older")]
-        assert [v for v, _ in banner.highlights_in_range(log, "3.3.4", "3.4.0-rc.1")] == []
-        assert [v for v, _ in banner.highlights_in_range(log, "3.3.3", "3.4.0-rc.1")] == ["3.3.4"]
-        assert [v for v, _ in banner.highlights_in_range(log, "3.4.0-rc.1", "3.4.0")] == ["3.4.0"]
+        assert banner.version_tuple("3.4.0-dev") < banner.version_tuple("3.4.0")
+        assert banner.version_tuple("3.3.4") < banner.version_tuple("3.4.0-dev")
+        assert banner.version_tuple("3.4.0-dev") != (-1,), (
+            "a permitted prerelease collapsed to the malformed sentinel — it "
+            "would sort below every real version and suppress its own banner"
+        )
+
+    def test_version_tuple_ranks_successive_dev_pushes(self, banner):
+        """`-dev.N` is what makes a develop-pinned consumer see each push.
+
+        `version` is the update cache key, so a static `-dev` resolves once and
+        then freezes; `-dev.N` is the increment that unfreezes it. The ordering
+        has to be numeric, not lexical, or `-dev.10` sorts below `-dev.2` and the
+        tenth push reads as a downgrade.
+        """
+        assert banner.version_tuple("3.4.0-dev") < banner.version_tuple("3.4.0-dev.1")
+        assert banner.version_tuple("3.4.0-dev.2") < banner.version_tuple("3.4.0-dev.10")
+        assert banner.version_tuple("3.4.0-dev.10") < banner.version_tuple("3.4.0")
+
+    def test_version_tuple_refuses_an_unpermitted_prerelease(self, banner):
+        """`-dev`/`-dev.N` are the ONLY suffixes this project permits.
+
+        The discriminating half of the pair above: widening the parser to any
+        semver prerelease would silently admit `-rc.1` or `-alpha`, which
+        `test_version_is_semver` rejects, so the banner and the manifest guard
+        would disagree about what a legal version is. Refusing here keeps them
+        answering the same question.
+        """
+        for rejected in ("3.4.0-rc.1", "3.4.0-alpha", "3.4.0-devel", "3.4.0-dev.x"):
+            assert banner.version_tuple(rejected) == (-1,), (
+                f"{rejected!r} parsed as a version — the banner now admits a "
+                "suffix test_version_is_semver refuses"
+            )
+
+    def test_changelog_headings_keep_the_dev_suffix(self, banner):
+        """The section key must equal the manifest string exactly.
+
+        A pattern capturing only the numeric core files `## v3.4.0-dev` under
+        `3.4.0`, so the lookup for the RUNNING version misses its own entry and
+        the banner renders a version move with no highlights — the one case the
+        changelog exists to serve.
+
+        Driven against the pattern with synthetic headings so it keeps testing
+        the rule after this repo's own CHANGELOG stops carrying a prerelease.
+        """
+        for heading, expected in (
+            ("## v3.4.0-dev", "3.4.0-dev"),
+            ("## v3.4.0-dev.2", "3.4.0-dev.2"),
+            ("## v3.4.0", "3.4.0"),
+        ):
+            m = banner._SEMVER_HEADER.match(heading)
+            assert m, f"{heading!r} is no longer recognized as a version section"
+            assert m.group(1) == expected, (
+                f"{heading!r} keyed its section under {m.group(1)!r} — the "
+                "manifest string and the changelog key must be the same string"
+            )
+
+    def test_a_dev_consumer_gets_the_prerelease_highlight(self, banner):
+        """The whole point, end to end: crossing onto `-dev` shows its notes, and
+        crossing `-dev` → release shows that release ONCE rather than replaying.
+        """
+        cl = [("3.4.0-dev", "prerelease notes"), ("3.3.4", "last release")]
+        assert [v for v, _ in banner.highlights_in_range(cl, "3.3.4", "3.4.0-dev")] == [
+            "3.4.0-dev"
+        ]
+        cl_cut = [("3.4.0", "the release"), ("3.3.4", "last release")]
+        assert [v for v, _ in banner.highlights_in_range(cl_cut, "3.4.0-dev", "3.4.0")] == [
+            "3.4.0"
+        ]
 
     def test_highlights_select_open_lower_closed_upper(self, banner):
         cl = [("1.8.1", "patch"), ("1.8.0", "minor"), ("1.7.0", "old")]
@@ -578,3 +635,126 @@ class TestBannerIdentityLine:
         first = out.splitlines()[0]
         assert first.startswith("═══ Prawduct v9.9.9 (plugin · develop@")
         assert first.endswith(") ═══")
+
+
+class TestHeadlineEmphasisStripping:
+    """A bolded lead-in must not leave its closing marker mid-sentence.
+
+    `lstrip("-* ")` removed the leading bullet AND the opening `**` of a bolded
+    lead-in — they share a character — so the closing marker had nothing to pair
+    against and survived into every rendered headline:
+    `…fewer rounds in review.** Gate checks stop timing out…`. Cosmetic, but it
+    lands on the single most-read line prawduct emits, and it rendered that way
+    from at least v3.3.2.
+
+    The preservation tests are the load-bearing half. Emphasis the author put
+    mid-sentence is theirs and carries meaning, so a blanket `replace("**", "")`
+    would fix the symptom by flattening the feature.
+    """
+
+    def test_a_bolded_lead_in_leaves_no_marker(self, banner):
+        assert banner._strip_list_and_emphasis(
+            "**Less waiting on the gates.** Gate checks stop timing out."
+        ) == "Less waiting on the gates. Gate checks stop timing out."
+
+    def test_a_bulleted_bolded_lead_in_leaves_no_marker(self, banner):
+        assert banner._strip_list_and_emphasis(
+            "- **Lead-in.** The rest."
+        ) == "Lead-in. The rest."
+
+    @pytest.mark.parametrize("bullet", ["- ", "* ", "+ ", ""])
+    def test_every_bullet_form_is_removed(self, banner, bullet):
+        assert banner._strip_list_and_emphasis(f"{bullet}Plain sentence.") == "Plain sentence."
+
+    def test_a_star_bullet_is_not_confused_with_emphasis(self, banner):
+        """A bullet is a marker followed by WHITESPACE; anything else opening
+        with a marker is emphasis. Sharing a character is the whole reason the
+        original strip set was wrong, and testing only "is the next character
+        another star" fixed `**` while leaving single `*` broken."""
+        assert banner._strip_list_and_emphasis("* **Lead-in.** Rest.") == "Lead-in. Rest."
+
+    def test_mid_sentence_emphasis_is_preserved(self, banner):
+        """The author's markup, not punctuation to strip."""
+        line = "A sentence with **emphasis** in the middle."
+        assert banner._strip_list_and_emphasis(line) == line
+
+    def test_only_the_leading_pair_is_removed(self, banner):
+        assert banner._strip_list_and_emphasis(
+            "**Lead-in.** Rest with **more** emphasis."
+        ) == "Lead-in. Rest with **more** emphasis."
+
+    def test_an_unclosed_marker_is_left_alone(self, banner):
+        """Nothing to pair with, so nothing is a matched wrapper — guessing
+        here would delete a character the author typed."""
+        line = "**An unclosed lead-in with no partner"
+        assert banner._strip_list_and_emphasis(line) == line
+
+    def test_underscore_emphasis_is_handled_too(self, banner):
+        assert banner._strip_list_and_emphasis("__Lead-in.__ Rest.") == "Lead-in. Rest."
+
+    def test_a_plain_headline_is_unchanged(self, banner):
+        assert banner._strip_list_and_emphasis("Just a sentence.") == "Just a sentence."
+
+    def test_no_live_headline_begins_with_an_emphasis_marker(self, banner):
+        """The real artifact, and the property the function actually promises.
+
+        Two weaker guards were tried first and both were wrong, in the same
+        direction — they asserted a GLOBAL parity of markers across the whole
+        headline. Changelog prose is full of markers that are not emphasis: a
+        snake_case identifier (`unbuilt_at_archive`) makes the `_` count odd,
+        and a shell glob inside a code span (`~/.claude*/plugins/…`) makes the
+        `*` count odd. Both fired on healthy entries.
+
+        What the stripper guarantees is narrower and is exactly the reported
+        symptom's inverse: after stripping, a headline does not START with an
+        emphasis marker. A bolded lead-in has been unwrapped; anything left
+        leading is text. Markers deeper in the line are the author's and are
+        none of this function's business.
+        """
+        plugin_root = Path(__file__).resolve().parent.parent / "plugin"
+        rows = banner.parse_changelog(plugin_root)
+
+        assert rows, "the live CHANGELOG should parse"
+        for version, headline in rows:
+            assert not headline.startswith(("**", "__", "*", "_")), (
+                version, headline[:90],
+            )
+
+    def test_no_live_headline_opens_with_a_stray_closing_marker(self, banner):
+        """The reported symptom, stated as the shape a reader would notice.
+
+        The stray always landed at the END of the lead-in clause — before any
+        other marker — so the test is whether the FIRST `**` has a partner
+        after it. That is scoped to the first occurrence precisely so a later
+        legitimate pair cannot mask a leading orphan.
+        """
+        plugin_root = Path(__file__).resolve().parent.parent / "plugin"
+
+        for version, headline in banner.parse_changelog(plugin_root):
+            first = headline.find("**")
+            if first == -1:
+                continue
+            assert headline.find("**", first + 2) != -1, (
+                f"{version}: an opening marker with no partner — {headline[:90]}"
+            )
+
+    @pytest.mark.parametrize("line,expected", [
+        ("*Single.* Rest.", "Single. Rest."),
+        ("_Single._ Rest.", "Single. Rest."),
+        ("- *Single.* Rest.", "Single. Rest."),
+        ("* **Bold.** Rest.", "Bold. Rest."),
+    ])
+    def test_single_marker_emphasis_is_unwrapped_too(self, banner, line, expected):
+        """`**` was handled and `*` was not, so the reported symptom survived one
+        marker narrower — and the bullet test ate the opening `*` outright."""
+        assert banner._strip_list_and_emphasis(line) == expected
+
+    def test_a_bullet_needs_the_space_that_distinguishes_it_from_emphasis(self, banner):
+        """The discriminator, stated as the two cases it separates."""
+        assert banner._strip_list_and_emphasis("* item") == "item"
+        assert banner._strip_list_and_emphasis("*emphasis* rest") == "emphasis rest"
+
+    def test_a_bolded_lead_in_is_not_unwrapped_one_marker_at_a_time(self, banner):
+        """`**` must be tried before `*`, or the pair loop strips the inner
+        markers and strands their partners."""
+        assert banner._strip_list_and_emphasis("**Bold.** Rest.") == "Bold. Rest."

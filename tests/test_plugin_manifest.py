@@ -59,23 +59,24 @@ class TestPluginManifest:
         )
 
     def test_version_is_semver(self, manifest):
-        """major.minor.patch, optionally with a prerelease suffix.
-
-        The suffix is what the develop track runs on — `develop` carries a
-        prerelease of the version it is heading for so the plugin cache, which is
-        keyed by version string, actually re-fetches as develop advances
-        (`documentation/release-process.md`). A RELEASE still must not carry one;
-        that is the release checklist's job, not this test's, because this file
-        is read on every branch and `develop` is a branch.
-        """
-        base, _, pre = manifest["version"].partition("-")
+        # Bare major.minor.patch, or the one permitted prerelease form: a
+        # `-dev` / `-dev.N` suffix, which develop carries between releases so
+        # the verdict cache's version key and the session banner distinguish a
+        # prerelease plugin from the release it precedes. Releases stay bare
+        # because the runbook's step 7 overwrites all three version files with
+        # the bare number — that is the only PREVENTIVE control.
+        # `check_version_files` compares against `git show <tag>:…`, so it runs
+        # after the tag exists: it detects a `-dev` residue that shipped, it
+        # cannot stop one.
+        version = manifest["version"]
+        base, dash, prerelease = version.partition("-")
         parts = base.split(".")
         assert len(parts) == 3 and all(p.isdigit() for p in parts), (
-            f"version must be semver major.minor.patch, got {manifest['version']!r}"
+            f"version must be semver major.minor.patch, got {version!r}"
         )
-        if pre:
-            assert re.fullmatch(r"[0-9A-Za-z.]+", pre), (
-                f"prerelease suffix must be alphanumeric/dot, got {pre!r}"
+        if dash:
+            assert re.fullmatch(r"dev(\.\d+)?", prerelease), (
+                f"the only permitted prerelease suffix is -dev or -dev.N, got {version!r}"
             )
 
 

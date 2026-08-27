@@ -60,7 +60,7 @@ The build plan decomposes artifacts into buildable chunks — coherent units of 
 
 **Several plans may declare one branch, and that is ordinary** — a `release/2-0` carrying a telemetry plan and a documentation plan, or a fix branch that grew three. Governance resolves one of them and says which, in the session briefing. **This is the one place the precedence is written; every other surface points here.** In order: the sole claimant if there is one (ahead of everything, so a lone plan keeps governing after its last box is ticked — which happens during its own closing PR); else the one claimant still holding open chunks; else the plan `active_build_plan` names, *if* it is one of the candidates still in contention — its remaining job is breaking a tie within a branch, and it does not resurrect a finished plan over open ones; else path order, which is arbitrary and says so. Nothing is silent, because governing by the wrong plan looks exactly like governing correctly unless the surface names its choice. When several plans on a branch are all live work, point the scalar at whichever one you are building now.
 
-**Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. Archiving also ends a `branch:` claim, so for a branch-declaring plan the move is the whole retirement — nothing has to be un-pointed for the claim to stop resolving. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live until the release ships. A branch-declaring plan gets its pointer **cleared** at that merge — its branch is gone, so the declaration resolves for nobody and the plan reads live-but-inactive, which is what retention wants; a pointer left aimed at it puts it back in force on every branch with no plan of its own and produces an archive-it advisory you were told to ignore. A scalar-only plan keeps `active_build_plan` aimed at it and is repointed after the release (see `/prawduct:pr` merge-flow step 7). Build plans are tracked artifacts — commit them, archived ones included.
+**Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. Archiving also ends a `branch:` claim, so for a branch-declaring plan the move is the whole retirement — nothing has to be un-pointed for the claim to stop resolving. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live until the release ships. A branch-declaring plan gets its pointer **cleared** at that merge; a scalar-only plan keeps `active_build_plan` aimed at it and is repointed after the release. `/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split and says why each way. Build plans are tracked artifacts — commit them, archived ones included.
 
 ### Requirements Confidence
 
@@ -93,6 +93,29 @@ An assumption is a decision made on the user's behalf, surfaced for correction �
 **A persisted format is always a lock-in decision, regardless of implementation size.** Lock-in is measured by reversal cost, not LOC — a 30-line ledger writer locks a schema every future consumer depends on. A chunk introducing a persisted format must enumerate, in the plan and before designing fields, the questions the data must answer: its consumers' future queries are its requirements, elicited from those consumers, not inferred from the mechanism (see `methodology/building.md` "Decision Research").
 
 **Enumerate the surfaces when a chunk introduces a project-wide concept.** A new build-plan field, governance flag, or convention cascades across many files — product CLAUDE.md, the Critic and PR protocols, methodology guides, the template, their guarding tests. List the surfaces up front in the chunk description: the count makes the chunk's true size visible (split it if too large for one Critic pass), and several of those surfaces carry token-budget guardrail tests — anticipate the trim rather than discovering it at chunk-close.
+
+### Partition: Serial or Delegated
+
+Chunk boundaries are where the delegation decision is drawn: the last moment before any brief exists at which the whole partition is visible at once. Ask it of each chunk: **what would prove this chunk on its own?** A chunk you cannot answer that for is not scoped tightly enough to hand to anyone, which is a finding about the chunk rather than about delegation. Then apply the default (`/prawduct:methodology delegation`): delegate when the same work finishes in less wall clock and the delegates will not fight each other.
+
+**Record the decision either way**, in the plan's `partition:` frontmatter field, on one line. `serial — 02 and 03 both edit the store module` is an answer; `02-04 delegated, isolated worktrees` is an answer. Serial is very often right — *unexamined* is what the field catches, and a plan with independent chunks and no partition line is the guide's **serial by default** anti-pattern in its plan-time form.
+
+**Disclose it when the plan is presented.** A plan that will delegate says how many delegates, isolated worktrees or the shared one, what each touches, and what they will *not* do. Carry what varies between plans: a disclosure that could be copy-pasted from the last one is boilerplate, and boilerplate stops being read.
+
+**Ask for approval only on one of these four reasons.** The list is closed, because an agent resolving vagueness asks defensively every time — which is the round-trip this exists to avoid.
+
+1. This project has never delegated before, so the user has no precedent for what it looks like.
+2. The fan-out is materially wider than anything this project has done.
+3. Delegates will write in the shared worktree, so the user's own tree changes under them.
+4. Something irreversible or outward-facing sits inside a delegated chunk.
+
+Reasons 1 and 2 turn on history, so **read it rather than asserting it** — the `partition:` lines
+on this repo's plans, live and archived, and whether `project-preferences.md` carries a Delegation
+row. A precedent you did not look up is the defensive ask wearing a justification.
+
+Three standing negatives override all four — **do not ask** when the user has already approved this plan's delegation, when `project-preferences.md` records delegation as pre-approved, or when the user asked for the plan and its execution without further interruption. Absent a listed reason, disclose and proceed.
+
+**On a yes, offer to make it durable** — a `project-preferences.md` row — or the same question returns with every plan, which is the unnecessary asking wearing a seatbelt.
 
 ### Governing Artifacts
 

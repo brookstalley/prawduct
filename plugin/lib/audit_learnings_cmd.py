@@ -16,6 +16,12 @@ The HTML comment must be on the line immediately after the ``## Title`` line.
 A comment placed deeper in the entry body is ignored — the strict placement
 avoids parsing surprises when entries quote example metadata in their prose.
 
+**Grading a ``sentinel=`` needs the product to say how.** ``sentinel_command:``
+in ``project-state.yaml`` supplies the invocation, carrying a ``{sentinel}``
+placeholder for the file to run (``sentinel_command: npx vitest run {sentinel}``).
+Without it a sentinel is reported **ungraded**, never failed — prawduct governs
+products in every language and does not guess at one's test runner.
+
 **Two retirement reasons, never both on one entry.** ``sentinel=`` retires a
 rule because the failure mode it warned about is now structurally enforced by a
 passing test. ``superseded-by=`` retires it because a *broader rule replaced
@@ -36,8 +42,8 @@ lists). The runner does not raise on partial-result conditions — missing
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -259,9 +265,13 @@ def _historical_block(
     return "\n".join(parts)
 
 
-def _take_active_narrative(lines: list[str], title: str, limit: int) -> str:
+def _take_active_narrative(
+    lines: list[str], title: str, limit: int
+) -> tuple[str, "str | None"]:
     """Cut the ``## title`` block living ABOVE ``limit`` out of ``lines`` and
-    return its body. Mutates ``lines``. Returns ``""`` when there is none.
+    return ``(body, error)``. Mutates ``lines``. ``("", None)`` when there is
+    no such block; ``("", <reason>)`` when it refuses, and then ``lines`` is
+    untouched.
 
     ``limit`` is the historical section's index, so a heading already archived
     is never re-cut — otherwise a re-run would strip the note it wrote last
@@ -269,20 +279,48 @@ def _take_active_narrative(lines: list[str], title: str, limit: int) -> str:
     maintained everywhere else; a heading that has drifted out of exact match
     is left alone rather than guessed at, because cutting the wrong block
     silently destroys an unrelated narrative.
+
+    **A DUPLICATED title refuses, where a DRIFTED one is merely skipped.** The
+    docstring above warned about drift and this function guarded it; nothing
+    guarded duplication, and the two fail in opposite directions. A drifted
+    title matches nothing, so the worst case is a narrative left behind — a
+    no-op. A duplicated title matched twice and this took the FIRST: one block
+    was cut and archived while its twin was left in the active section with no
+    index entry pointing at it, orphaned, in a file whose stated invariant is
+    *never delete an entry here*. Scanning all matches and refusing on a second
+    is the only answer that cannot silently destroy prose: which of two
+    identically-titled blocks is the real one is not a question this function
+    can answer, and guessing is how the entry is lost.
+
+    The refusal names both line numbers because the resolution is the
+    operator's — retitle one, or merge them. It is deliberately NOT a
+    de-duplication: an automatic fix here would delete an entry to satisfy a
+    check, in the one file that says never to.
     """
-    start = None
-    for i in range(min(limit, len(lines))):
-        if lines[i].startswith("## ") and lines[i][3:].strip() == title:
-            start = i
-            break
+    matches = [
+        i for i in range(min(limit, len(lines)))
+        if lines[i].startswith("## ") and lines[i][3:].strip() == title
+    ]
+    if len(matches) > 1:
+        where = ", ".join(str(i + 1) for i in matches)
+        return "", (
+            f"learnings-detail.md carries {len(matches)} active blocks titled "
+            f"{title!r} (lines {where}). Retiring it would archive one and "
+            "orphan the rest — they would keep their prose and lose the index "
+            "entry that points at it, in a file whose invariant is that no "
+            "entry is ever deleted. Retitle the duplicates or merge them by "
+            "hand; this refuses rather than choosing one, because which block "
+            "is the real one is not something it can know."
+        )
+    start = matches[0] if matches else None
     if start is None:
-        return ""
+        return "", None
     end = start + 1
     while end < limit and not lines[end].startswith("## "):
         end += 1
     body = "\n".join(lines[start + 1 : end]).strip("\n")
     del lines[start:end]
-    return body
+    return body, None
 
 
 def resolve_supersession_target(
@@ -329,38 +367,161 @@ def resolve_supersession_target(
     return matches[0], None
 
 
+#: The token a declared ``sentinel_command`` must carry, marking where the one
+#: test file to grade belongs. Spelled to match ``test_command``'s established
+#: ``{junit_xml}``, so a product that has declared its suite already knows the
+#: convention rather than meeting a second one.
+SENTINEL_PLACEHOLDER = "{sentinel}"
+
+
+def resolve_sentinel_command(product_dir: Path) -> tuple[list[str] | None, str | None]:
+    """The product's declared sentinel invocation as an argv template.
+
+    Returns ``(argv, None)`` when ``sentinel_command:`` is declared and usable,
+    or ``(None, reason)`` when it is absent or malformed. The reason is written
+    for an operator, not a log: it names the knob and what to put in it.
+
+    **There is deliberately no default.** An earlier version ran
+    ``sys.executable -m pytest`` whenever nothing was declared, which made every
+    non-Python product's sentinels both inert *and* permanently failing — and a
+    false-failing sentinel is worse than an ungraded one, because the audit
+    decides which learnings are structurally enforced, so it argues for retiring
+    a rule that is still enforced. No default can be written here without
+    assuming the governed product shares this runtime's language, which
+    ``architecture.md`` § Direction forbids: prawduct states the requirement
+    ("grade this sentinel") and the product declares how to meet it.
+    """
+    # Read through the SAME reader as `test_command:`, deliberately: the two
+    # keys are documented side by side and the template tells authors they share
+    # a `#`-truncation caveat. Read by two different column-0 parsers that merely
+    # agree today, that promise is a coincidence rather than a property — and
+    # this one scalar would also pull the advisory subsystem into the audit's
+    # import DAG for nothing.
+    from . import core  # noqa: PLC0415 — lazy; only this path reads state
+
+    state_path = Path(product_dir) / ".prawduct" / "project-state.yaml"
+    declared = core.read_str_yaml_key(state_path, "sentinel_command")
+    declared = declared.strip() if isinstance(declared, str) else ""
+    if not declared:
+        # "absent OR unreadable": the reader fails soft to None on both, so
+        # naming only absence would tell a product that HAS declared the key to
+        # go and declare it — a confident diagnostic prescribing an edit already
+        # made. Cheaper to widen the sentence than to split the read.
+        return None, (
+            "no readable `sentinel_command:` in .prawduct/project-state.yaml "
+            "(absent, empty, or the file could not be read) — prawduct cannot "
+            "know how this product runs one test file, and will not guess. "
+            f"Declare it with a {SENTINEL_PLACEHOLDER} placeholder, e.g. "
+            f"`sentinel_command: npx vitest run {SENTINEL_PLACEHOLDER}`"
+        )
+    if SENTINEL_PLACEHOLDER not in declared:
+        return None, (
+            f"`sentinel_command: {declared}` carries no {SENTINEL_PLACEHOLDER} "
+            "placeholder, so it names no test file to grade — it would run the "
+            "whole suite and report its verdict as this one rule's. Put "
+            f"{SENTINEL_PLACEHOLDER} where the test path belongs"
+        )
+    try:
+        argv = shlex.split(declared)
+    except ValueError as exc:
+        return None, f"`sentinel_command:` is not a parseable command line: {exc}"
+    if not argv:
+        return None, "`sentinel_command:` is empty once parsed"
+    return argv, None
+
+
 def run_sentinel(
     product_dir: Path, sentinel: str, *, timeout: int = 120
-) -> tuple[bool, str]:
-    """Run ``<this interpreter> -m pytest <sentinel> -q`` from ``product_dir``.
+) -> tuple[bool | None, str]:
+    """Grade one sentinel by running the product's declared command against it.
 
-    Spawns :data:`sys.executable`, not a bare ``python3``. Under any virtualenv
-    the PATH ``python3`` is a different interpreter from the one running the
-    audit — usually one without pytest, or without the product importable — so
-    every sentinel reported failing. That matters more than a noisy diagnostic:
-    the audit decides which learnings are structurally enforced, and a
-    false-failing sentinel argues for retiring a rule that is still enforced.
+    Returns ``(passed, detail)`` on a **three-valued** verdict, and the third
+    value carries the point:
 
-    Returns ``(passed, excerpt)``. The excerpt is the trailing portion of
-    pytest's combined stdout/stderr (last ~20 lines) so callers can surface
-    actionable failure context without dumping the full transcript.
+    * ``True``  — the command exited 0; the rule is structurally enforced.
+    * ``False`` — the command ran and exited non-zero; a real failure.
+    * ``None``  — prawduct could not grade it at all. **Not a failure**: no
+      command is declared, the declaration is malformed, the sentinel's target
+      file is gone, or the command could not be launched or never finished.
 
-    Subprocess failures (timeout, missing pytest, OS errors) return
-    ``(False, "<diagnostic>")`` rather than raising — the audit must keep
-    walking through remaining entries even when one sentinel is misconfigured.
+    The line between ``False`` and ``None`` is *did a runner return a verdict
+    about this rule* — not *did prawduct manage to spawn something*. A deleted
+    target is on the ``None`` side even though a runner would happily exit
+    non-zero on it, because "the test is missing" and "the test failed" are
+    different facts and only one of them is about the rule.
+
+    **Three known limits of that line, all erring toward running the command.**
+    The missing-target check fires only for a *path-shaped* sentinel (one
+    carrying a separator): an opaque runner id such as ``com.acme.BarTest#testX``
+    is not resolvable here, and prawduct will not claim a file is gone when it
+    cannot tell "gone" from "not a path". **A bare filename is on the wrong side
+    of that line** — ``auth.test.js`` with no directory is indistinguishable from
+    an opaque id, so a deleted one still reaches the runner and can come back
+    ``False``, which is the pre-fix false accusation surviving in the one shape
+    the separator rule cannot catch. And a command that starts and then dies on a
+    broken environment — absent dependencies, an unbuilt workspace — also grades
+    ``False``, because no language-agnostic signal separates that from a real
+    failure (``brookstalley/prawduct#720`` covers both residuals).
+
+    Collapsing that third case into ``False`` is the whole defect this shape
+    exists to prevent — it accuses a green test and argues for retiring a live
+    rule. Callers must branch on ``is True`` / ``is False`` / ``is None`` and
+    never on truthiness, where ``None`` and ``False`` are indistinguishable.
+
+    A timeout and a launch failure both grade ``None`` rather than ``False``:
+    a command that never started, and one that never finished, each reported no
+    verdict, and "we do not know" is the honest reading of both.
+
+    ``detail`` is the command's trailing combined output (~20 lines) on a real
+    verdict, and the operator-facing reason on ``None``.
     """
+    argv_template, reason = resolve_sentinel_command(product_dir)
+    if argv_template is None:
+        return None, reason or "sentinel could not be graded"
+    # A sentinel naming a file that is GONE has no verdict either. Runners
+    # disagree about this — some exit non-zero on an uncollectable target, which
+    # would render "deleted" as "failing" and accuse a test that no longer
+    # exists of breaking. Checked here so the answer does not depend on which
+    # runner the product declared. Path only: the `::node` suffix names a case
+    # inside the file and only the file's existence is knowable without running
+    # anything.
+    #
+    # ONLY for a sentinel that is unambiguously a path, which here means it
+    # carries a separator. A runner's id need not be a filename at all — JUnit's
+    # `com.acme.BarTest#testX` and Go's `./pkg -run X` are ids this cannot
+    # resolve — and claiming "does not exist, update the learning" about one of
+    # those is a confident diagnostic naming the wrong fault, the exact shape of
+    # the unreadable-state-file defect fixed a few lines above. When the sentinel
+    # is not path-shaped prawduct cannot tell "gone" from "opaque id", so it
+    # declines to guess and lets the declared runner answer.
+    path_part = sentinel.split("::", 1)[0].strip()
+    looks_like_path = "/" in path_part or "\\" in path_part
+    if looks_like_path and not (Path(product_dir) / path_part).exists():
+        return None, (
+            f"sentinel target {path_part!r} does not exist — ungraded rather "
+            "than failed, because a test that is gone returned no verdict. "
+            "Update the learning's `sentinel=` to the test's new home, or drop "
+            "it if the rule is no longer enforced"
+        )
+    argv = [tok.replace(SENTINEL_PLACEHOLDER, sentinel) for tok in argv_template]
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", sentinel, "-q"],
+            argv,
             cwd=str(product_dir),
             capture_output=True,
             text=True,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return False, f"sentinel timed out after {timeout}s"
+        return None, (
+            f"sentinel command timed out after {timeout}s — ungraded rather than "
+            "failed, because a command that never finished returned no verdict"
+        )
     except (OSError, FileNotFoundError) as exc:
-        return False, f"could not invoke pytest: {exc}"
+        return None, (
+            f"could not launch {argv[0]!r}: {exc} — ungraded rather than failed, "
+            "because a launch failure is an environment fault, not a test result"
+        )
 
     combined = (result.stdout or "") + (result.stderr or "")
     tail = "\n".join(combined.splitlines()[-20:])
@@ -401,8 +562,17 @@ def audit_learnings(
         by ``reason`` (``"sentinel"`` | ``"superseded-by"``). Every record
         carries the same keys, so a reader branches on ``reason`` rather than
         probing for which are present: ``sentinel``/``passed``/
-        ``output_excerpt`` are meaningful on the sentinel route and ``None``/
-        ``""`` on the other, and ``superseded_by``/``resolved_to`` the reverse.
+        ``output_excerpt``/``unevaluated_reason`` are meaningful on the sentinel
+        route and ``None``/``""`` on the other, and
+        ``superseded_by``/``resolved_to`` the reverse.
+
+        ``passed`` is three-valued on the sentinel route and a reader must treat
+        it that way: ``True`` enforced, ``False`` genuinely failing, ``None``
+        **ungraded** — no command declared, or one that could not run.
+        ``unevaluated_reason`` is set only for that last case and says why, so
+        "not attempted" (the ``run_sentinels=False`` seam) stays distinguishable
+        from "attempted, no verdict". An ungraded sentinel raises no ``errors``
+        entry: there is nothing to accuse the test of.
         Both routes live in this one list on purpose — a consumer asking "what
         is being retired?" must see all of it, and a separate list would
         under-report to every existing reader while looking complete. Additive
@@ -505,6 +675,12 @@ def audit_learnings(
         superseded_by = meta.get("superseded-by")
         sentinel_passed: bool | None = None
         sentinel_excerpt = ""
+        # Distinct from `sentinel_passed is None`, which has two causes: the
+        # `run_sentinels=False` seam, and a sentinel prawduct genuinely could not
+        # grade. Only the second has something to tell the operator, so only the
+        # second sets this — a caller can then tell "not attempted" from "attempted,
+        # no verdict" without inferring it from an empty excerpt.
+        sentinel_unevaluated: str | None = None
         # `is not None`, NOT truthiness. `parse_learning_metadata` strips the
         # value, so a half-finished `superseded-by=` (or `superseded-by=   `)
         # arrives as `""` — falsy on every branch, so the entry fell through to
@@ -541,6 +717,7 @@ def audit_learnings(
                 "sentinel": None,
                 "passed": None,
                 "output_excerpt": "",
+                "unevaluated_reason": None,
                 "superseded_by": superseded_by,
                 "resolved_to": resolved,
                 "applied": False,
@@ -561,6 +738,14 @@ def audit_learnings(
                 sentinel_passed, sentinel_excerpt = run_sentinel(
                     product_dir, sentinel
                 )
+                if sentinel_passed is None:
+                    # The runner returns its reason in the excerpt slot; move it
+                    # to its own field so `output_excerpt` keeps meaning "what
+                    # the test printed" rather than sometimes meaning "why no
+                    # test ran". A reader scanning excerpts for failure context
+                    # would otherwise read a prawduct diagnostic as test output.
+                    sentinel_unevaluated = sentinel_excerpt
+                    sentinel_excerpt = ""
             retirement_record = {
                 "title": entry.title,
                 "reason": "sentinel",
@@ -569,6 +754,7 @@ def audit_learnings(
                 "sentinel": sentinel,
                 "passed": sentinel_passed,
                 "output_excerpt": sentinel_excerpt,
+                "unevaluated_reason": sentinel_unevaluated,
                 "applied": False,
             }
             if sentinel_passed is False:
@@ -594,8 +780,13 @@ def audit_learnings(
                     retained_entries.append(entry)
                 retirements.append(retirement_record)
             else:
-                # run_sentinels=False — record as candidate without
-                # actually trying to retire.
+                # No verdict, from either cause: the `run_sentinels=False` seam,
+                # or a sentinel prawduct could not grade (`unevaluated_reason`
+                # says which). Recorded as a candidate and RETAINED either way,
+                # and deliberately with no `errors[]` entry — an ungraded
+                # sentinel has nothing to accuse the test of, and the old
+                # "fix the test or update the learning" line was pointing at
+                # green tests in every non-Python product.
                 retirements.append(retirement_record)
                 retained_entries.append(entry)
         else:
@@ -632,14 +823,36 @@ def audit_learnings(
                         "confirmations": effective_confirmations,
                     })
 
+    applied = apply
     if apply and retired_with_notes:
-        _apply_retirements(
+        refusal = _apply_retirements(
             learnings_path, retained_entries, retired_with_notes, content,
         )
+        if refusal:
+            # Nothing was written, and EVERY field that says otherwise has to be
+            # walked back — not just the top-level one. `applied` reports what
+            # HAPPENED, not what was asked for, and a record claiming a
+            # retirement that never moved is this scope's own defect one field
+            # down: the renderer branches on the per-entry flag, so leaving it
+            # true prints `retire[retired]` for entries still sitting in the
+            # active file.
+            #
+            # `refusal` is already a `{"title", "error"}` pair — the shape every
+            # other member of this list has and the shape the renderer reads; a
+            # bare string here is a `TypeError` traceback across the CLI
+            # boundary, which api-contract forbids by name. It is built where
+            # the refusal happens so it names the entry that refused.
+            # `title` names the ENTRY, as every sibling error in this list
+            # does — the renderer prints `error: <title>: <message>`, and
+            # naming the file there repeats what the message already says.
+            errors.append(refusal)
+            applied = False
+            for record in retirements:
+                record["applied"] = False
 
     return {
         "product_dir": str(product_dir),
-        "applied": apply,
+        "applied": applied,
         "promotions": promotions,
         "retirements": retirements,
         "stale_flags": stale_flags,
@@ -652,7 +865,7 @@ def _apply_retirements(
     retained_entries: list[LearningEntry],
     retired_with_notes: list[tuple[LearningEntry, str]],
     original_content: str,
-) -> None:
+) -> "dict | None":
     """Rewrite ``learnings.md`` with retired entries removed, and append
     those entries to ``learnings-detail.md`` under the historical section.
 
@@ -688,7 +901,13 @@ def _apply_retirements(
     new_content = "\n".join(rebuilt_parts).rstrip("\n") + "\n"
 
     detail_path = learnings_path.parent / "learnings-detail.md"
-    detail_content = _detail_with_retirements(detail_path, retired_with_notes)
+    detail_content, error = _detail_with_retirements(detail_path, retired_with_notes)
+    if error:
+        # Refuse BEFORE the first write. Both files are still exactly as found,
+        # which is the whole reason composition happens ahead of I/O here — a
+        # retirement that half-happens is data loss in a corpus that must never
+        # lose an entry.
+        return error
 
     # BOTH files are composed before EITHER is written, and the ARCHIVE is
     # written before the active file. Retirement is a MOVE, and a move that can
@@ -727,8 +946,18 @@ def _find_historical_section(lines: list[str]) -> int | None:
 
 def _detail_with_retirements(
     detail_path: Path, retired_with_notes: list[tuple[LearningEntry, str]]
-) -> str:
-    """The full new text of ``learnings-detail.md``. Pure — writes nothing."""
+) -> tuple["str | None", "dict | None"]:
+    """The full new text of ``learnings-detail.md``, or a refusal.
+
+    Returns ``(text, None)`` normally and ``(None, {"title", "error"})`` when a
+    retiring entry's title is duplicated in the active section — see
+    :func:`_take_active_narrative`. The pair is carried rather than a bare
+    reason so the refusal stays attributed to the entry that produced it.
+
+    Pure — writes nothing either way, and the refusal returns BEFORE any cut is
+    composed, so a rejected run leaves both files exactly as it found them
+    rather than half-moved.
+    """
     if detail_path.is_file():
         detail_content = detail_path.read_text()
     else:
@@ -748,7 +977,15 @@ def _detail_with_retirements(
     for entry, _note in retired_with_notes:
         boundary = _find_historical_section(lines)
         limit = boundary if boundary is not None else len(lines)
-        narratives.append(_take_active_narrative(lines, entry.title, limit))
+        narrative, error = _take_active_narrative(lines, entry.title, limit)
+        if error:
+            # Attributed to the entry that actually refused, not to the first
+            # candidate. This loop runs over EVERY retiring entry and returns on
+            # the first duplicate it meets, so with a bulk `--apply` the two are
+            # different entries — and `errors[].title` is the field doctor
+            # relays, so a mismatch prints one line naming two entries.
+            return None, {"title": entry.title, "error": error}
+        narratives.append(narrative)
 
     appended_blocks = "\n".join(
         _historical_block(entry, note, narrative).rstrip("\n") + "\n"
@@ -768,7 +1005,7 @@ def _detail_with_retirements(
             "\n" + _HISTORICAL_SECTION_HEADER + "\n\n"
             + _HISTORICAL_SECTION_BLURB
             + "\n" + appended_blocks
-        )
+        ), None
 
     # The section EXISTS — insert at its end, not the file's. Appending to EOF
     # is the same place only while the section is last, and the docstring has
@@ -789,7 +1026,7 @@ def _detail_with_retirements(
     out = head + "\n\n" + appended_blocks
     if tail.strip():
         out = out.rstrip("\n") + "\n\n" + tail
-    return out
+    return out, None
 
 
 def run_audit_learnings(product_dir: str, *, apply: bool = False) -> dict:
@@ -823,3 +1060,155 @@ def run_audit_learnings(product_dir: str, *, apply: bool = False) -> dict:
         }
 
     return audit_learnings(product_path, apply=apply)
+
+
+# ---------------------------------------------------------------------------
+# Pairing check: `learnings.md` and `learnings-detail.md` mirror each other.
+# ---------------------------------------------------------------------------
+
+def _active_titles(content: str) -> list[str]:
+    """Level-2 headings above the historical section, in file order.
+
+    Above the boundary only, in both files: an archived entry is deliberately
+    absent from the active index, so counting it would report a missing
+    counterpart for every correctly retired entry.
+    """
+    lines = content.split("\n")
+    boundary = _find_historical_section(lines)
+    limit = boundary if boundary is not None else len(lines)
+    return [
+        lines[i][3:].strip()
+        for i in range(min(limit, len(lines)))
+        if lines[i].startswith("## ")
+    ]
+
+
+def check_learnings_pairing(product_dir: str | Path) -> dict:
+    """Grade `learnings.md` against `learnings-detail.md`.
+
+    **What is GRADED: duplicate active headings within either file.** That is
+    the dimension with teeth. A duplicated title is what
+    :func:`_take_active_narrative` refuses on, because a retirement would
+    archive one block and orphan its twin — prose kept, index entry lost, in a
+    file whose stated invariant is that no entry is ever deleted. The check and
+    the refusal guard one defect at two times: this one before a retirement is
+    attempted, the refusal at the moment it is.
+
+    **What is MEASURED but not graded: counterparts and relative order.** #717
+    asked for these as findings on the stated invariant that the two files
+    "mirror each other's headings in the same order". Measured against this
+    repo's own corpus before building to it, that invariant does not hold and
+    was never held: 270 active index entries against 179 active detail entries,
+    and the detail headings are a truncated PREFIX of the index heading rather
+    than an exact copy. Grading it would have emitted ~117 findings on a
+    corpus nobody considers broken — the misfiring probe `docs/norms.md` names
+    by its cost, which is that it trains its reader to ignore the one real
+    catch. So the counts ride the result for an operator who wants to work the
+    drift down, and no finding is raised on them.
+
+    That is a deliberate, recorded narrowing of the issue's ask, not a silent
+    drop: the pairing dimension needs a decision about what the convention
+    actually IS before anything can grade conformance to it.
+
+    Reports; never repairs. Every repair here edits an authored corpus that must
+    never lose an entry — de-duplicating picks a survivor, reordering rewrites
+    prose positions, synthesising a counterpart invents narrative. All three are
+    the operator's call, and an agent making them to satisfy a check is the
+    silent mutation this plan exists to close.
+
+    Returns ``{"status", "reason", "findings", "counts", "index_path",
+    "detail_path"}``. ``status`` is ``ok`` | ``findings`` | ``unchecked`` — the
+    third when a file could not be read, reported as ungraded and never as
+    clean, because a check that could not run is otherwise indistinguishable
+    from one that ran and found nothing.
+    """
+    prawduct_dir = Path(product_dir) / ".prawduct"
+    index_path = prawduct_dir / "learnings.md"
+    detail_path = prawduct_dir / "learnings-detail.md"
+    base = {
+        "index_path": str(index_path),
+        "detail_path": str(detail_path),
+        "findings": [],
+        "counts": {},
+    }
+
+    if not index_path.is_file():
+        # Deliberately `ok`, not `unchecked`. A missing `learnings.md` is doctor
+        # Check #5's finding (core state present), and Check #13 in the same
+        # file already rules that way for the same absence. Two checks reporting
+        # one absence differently is how an operator learns to trust neither.
+        # `unchecked` is reserved for a file that EXISTS and could not be read.
+        return {**base, "status": "ok",
+                "reason": f"no learnings.md at {index_path} — nothing to pair"}
+    if not detail_path.is_file():
+        # An unsplit corpus is an ordinary state, not drift between two files.
+        return {**base, "status": "ok",
+                "reason": "no learnings-detail.md — the corpus is not split"}
+    try:
+        index_titles = _active_titles(index_path.read_text(encoding="utf-8"))
+        detail_titles = _active_titles(detail_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
+        return {**base, "status": "unchecked",
+                "reason": f"could not read the pair ({exc.__class__.__name__})"}
+
+    findings: list[dict] = []
+    for label, titles in (("learnings.md", index_titles),
+                          ("learnings-detail.md", detail_titles)):
+        counts: dict[str, int] = {}
+        for title in titles:
+            counts[title] = counts.get(title, 0) + 1
+        for title, n in sorted(counts.items()):
+            if n > 1:
+                findings.append({
+                    "kind": "duplicate-heading",
+                    "file": label,
+                    "title": title,
+                    "detail": (
+                        f"{label} carries {n} active blocks titled {title!r}. A "
+                        "retirement archives one and orphans the rest — prose "
+                        "kept, index entry lost, in a file whose invariant is "
+                        "that no entry is ever deleted. Retitle or merge them "
+                        "by hand; this will not choose for you."
+                    ),
+                })
+
+    # Prefix, not equality: a detail heading is the opening clause of its index
+    # entry. Measured, never graded — see the docstring.
+    def _index_position(detail_title: str) -> "int | None":
+        for pos, title in enumerate(index_titles):
+            if title.startswith(detail_title):
+                return pos
+        return None
+
+    def _paired(detail_title: str) -> bool:
+        return _index_position(detail_title) is not None
+
+    # Order, actually measured rather than merely claimed. The prose said
+    # "relative order" was measured while `counts` carried no ordering metric at
+    # all — a record asserting a measurement nobody took, which is the shape
+    # this scope exists to close, committed in its own description.
+    positions = [
+        p for p in (_index_position(d) for d in detail_titles) if p is not None
+    ]
+    out_of_order = sum(
+        1 for a, b in zip(positions, positions[1:]) if b < a
+    )
+
+    return {
+        **base,
+        "status": "findings" if findings else "ok",
+        "findings": findings,
+        "counts": {
+            "index_active": len(index_titles),
+            "detail_active": len(detail_titles),
+            "detail_without_index_prefix_match": sum(
+                1 for d in detail_titles if not _paired(d)
+            ),
+            "paired_entries_out_of_order": out_of_order,
+        },
+        "reason": (
+            f"{len(findings)} duplicate-heading finding(s)" if findings
+            else f"no duplicate headings ({len(index_titles)} index, "
+                 f"{len(detail_titles)} detail active entries)"
+        ),
+    }
