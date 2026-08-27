@@ -71,7 +71,9 @@ red-verified. The norm departure is homed as case law
 
 Chunk 03 closed 2026-08-26 after a `cumulative` and two `verify-resolutions` rounds, ending
 0 blocking / 0 findings. Suite green at 5320, evidence recorded against the reviewed tree.
-**All three chunks complete — this plan is done and stays live until the branch merges.**
+**All three chunks complete — this plan is done. On a gitflow base it stays live past the
+`develop` merge and is archived by the `develop`→`main` release (`plan-backfill`) —
+`skills/pr/SKILL.md` Step 1d and Merge Flow; archiving at this merge is the mistake.**
 
 Both #642 routes now speak: the operator hears them at `critic-begin` (via
 `buildplan_refs.deliverable_check_gaps`, forwarded into `notes`), and `record_lint` carries the

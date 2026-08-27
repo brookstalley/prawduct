@@ -79,7 +79,9 @@ a clean `develop`. Baseline suite green (`test-status` exit 0, tree-valid).
 
 Chunk 01 closed 2026-08-26 after three rounds (`cumulative` → two `verify-resolutions`), ending
 0 blocking / 0 warning / 0 note. Suite green at 5340; evidence recorded against the reviewed tree.
-**The plan is complete and stays live until the branch merges.**
+**The plan is complete. On a gitflow base it stays live past the `develop` merge and is
+archived by the `develop`→`main` release (`plan-backfill`) — `skills/pr/SKILL.md` Step 1d and
+Merge Flow; archiving at this merge is the mistake.**
 
 What the reviews changed, worth carrying. Round 1 found the fix had shipped the sibling of the bug
 it was fixing: the anchor discriminator went out as a commit-SET test in two surfaces at once,
