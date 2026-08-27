@@ -72,7 +72,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import critic_marker, evidence, gitstate, ledger
+from . import coverage_algebra, critic_marker, evidence, gitstate, ledger
 from .core import atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -312,12 +312,70 @@ _RIDE_ALONG_ROUTE = (
 )
 
 
+def carried_blocking(facts: list[dict], base_tree: "str | None",
+                     this_review_id: "str | None") -> list[dict]:
+    """Blocking findings from the review this verify pass anchors to that the
+    pass did NOT resolve.
+
+    **The failure this exists for.** A verify pass can discharge one finding by
+    reference to another — "R-12 is implicitly closed by R-1's fix, same class"
+    — and write a resolution fact for R-1 only. Its own counts are then 0
+    blocking, so it reports THE REVIEW IS OVER, and the operator relays that.
+    The gate disagrees: R-12 has no resolution fact and still blocks. Worse, by
+    then R-12 sits on a superseded round that no later verify pass will name
+    again, so the only remaining route is a full ``cumulative`` — a whole review
+    round spent on bookkeeping for a defect that was fixed and confirmed fixed
+    two rounds earlier. Reported as #711, where it cost exactly that.
+
+    **Why this reads facts and not the reviewer's prose.** The tempting fix is
+    to parse "implicitly closed by" out of the summary and mint R-12's fact from
+    it. Two reasons not to. The phrasings are an open set, so a parser that
+    misses one fails silently in the same direction as the bug. And
+    ``data-model.md`` forbids the result outright: a resolution fact requires a
+    ``verify-resolutions`` origin and a pre-existing target finding — minting
+    one from narration would record a judgment nobody made. So nothing is
+    invented here; the pass simply stops being able to claim it finished while a
+    blocker it inherited is still outstanding.
+
+    **The anchor is structural, not a guess.** A verify pass reviews the delta
+    from the prior review, so its ``base_tree`` IS that review's ``head_tree``.
+    Matching on that link identifies the anchor without reading
+    ``.critic-findings.json``, which is a derived view no gate may read (D7),
+    and without trusting "most recent fact" — the store is shared by every
+    worktree of the clone, so a sibling's newer review would otherwise be picked
+    up as this branch's anchor.
+
+    Returns ``[]`` when there is no anchor to check against, which is the honest
+    answer rather than a defensive one: with no prior review linked to this
+    tree there is no inherited blocker to carry, so there is nothing to report.
+    """
+    if not base_tree:
+        return []
+    anchor = None
+    for fact in evidence.facts_of_kind({"facts": facts}, "review"):
+        if fact.get("id") == this_review_id:
+            continue
+        if (fact.get("body") or {}).get("head_tree") == base_tree:
+            anchor = fact
+    if anchor is None:
+        return []
+    resolved = coverage_algebra.resolution_index(facts)
+    out = []
+    for finding in coverage_algebra.unresolved_blocking(anchor, resolved):
+        entry = {"review_id": anchor.get("id")}
+        entry.update({k: finding.get(k) for k in ("fid", "title", "files")
+                      if k in finding})
+        out.append(entry)
+    return out
+
+
 def next_action_line(
     fact_id: "str | None",
     blocking: int,
     warning: int,
     note: int,
     price_sentence: "str | None" = None,
+    carried: "list[dict] | None" = None,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -359,6 +417,46 @@ def next_action_line(
     only in the arm the builder does not reach when something is blocking."""
     ref = fact_id or "<review-id>"
     price = f" {price_sentence}" if price_sentence else ""
+    if carried:
+        named = "; ".join(
+            f"{c['review_id']}/{c.get('fid', '?')}"
+            + (f" — {c['title']}" if c.get("title") else "")
+            for c in carried
+        )
+        # Ordered ABOVE the plain blocking arm on purpose. That arm says
+        # "nothing else here does", which is false the moment a blocker was
+        # inherited — and the builder who believes it fixes only this round's
+        # findings, re-verifies, and anchors the next pass on THIS review, whose
+        # findings do not include the inherited id. It is then orphaned onto a
+        # superseded round and clearable only by a spanning `cumulative`, which
+        # is #711 arriving one hop later by a different door.
+        own = (
+            f"{blocking} BLOCKING finding(s) of its own AND "
+            if blocking
+            else "no blocking findings of its own, but "
+        )
+        return (
+            f"NOT DONE. This review has {own}{len(carried)} BLOCKING finding(s)"
+            f" from the review it verifies are still unresolved: {named}."
+            " A verify pass records a resolution only for a finding it NAMES in"
+            " `resolutions`. One discharged in prose alone — \"implicitly closed"
+            " by\", \"same class as\", \"recorded via\" — got no fact, and the"
+            " gate reads facts, so it still blocks."
+            + (
+                " Fix this review's findings, then re-run"
+                if blocking
+                else " Re-run"
+            )
+            + " `/prawduct:critic verify-resolutions` and give EACH finding above"
+            " its own entry in `resolutions` (a fix verified by the same edit is"
+            " still its own entry), or leave it out deliberately because it is"
+            " genuinely still broken — in which case say so, and do not report"
+            " the review complete."
+            " Act now: once a newer review supersedes that round, no verify pass"
+            " will name these again and only a spanning `/prawduct:critic"
+            " cumulative` can clear them."
+        )
+
     if blocking:
         return (
             f"{blocking} BLOCKING finding(s) gate this work — nothing else here does."
@@ -466,7 +564,57 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
 )
 
 
-#: Delivered at `verify-resolutions` DISPATCH, immediately before
+def account_for_prior_blockers_directive(carried: list[dict]) -> str:
+    """The roll-call a verify dispatch hands its reviewer: every blocking
+    finding of the round being verified, by id, each of which must come back
+    with a verdict.
+
+    **Why the consolidation check is not enough on its own.** That check acts
+    AFTER the reviewer has written ``resolutions`` — it can refuse to let the
+    pass claim it finished, but by then the round is spent and the remedy is
+    another round. This acts BEFORE, at the only moment the advice can still
+    change what gets written. The two are the same rule at the two times it can
+    be applied, which is why the plan asked for both.
+
+    **And why the existing directive pushes the wrong way here.**
+    :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` tells the reviewer that a finding it
+    could not settle is LEFT OUT of ``resolutions`` — correct, and load-bearing,
+    because omission is the fail-closed answer and a resolution is the only
+    reviewer output that WEAKENS a gate. But read alone it frames omission as
+    always-safe, and it is not: omitting a finding you believe you FIXED is how
+    #711 happened. The distinction is between *could not settle* (omit, and the
+    gate keeps blocking, which is right) and *settled by another finding's fix*
+    (name it, or the record loses a judgment you actually made). This directive
+    supplies the roll-call that makes the difference actionable, and is printed
+    adjacent to the other so neither is read without the other.
+
+    Returns ``""`` when there is nothing to account for — a roll-call of nothing
+    is noise, and a directive that fires on every dispatch trains its reader to
+    skip the block it lives in.
+    """
+    if not carried:
+        return ""
+    lines = "\n".join(
+        f"  - {c['review_id']}/{c.get('fid', '?')}"
+        + (f" — {c['title']}" if c.get("title") else "")
+        for c in carried
+    )
+    return (
+        "PRAWDUCT: the round you are verifying left these BLOCKING finding(s)"
+        " unresolved. Every one of them must come back with a verdict:\n"
+        f"{lines}\n"
+        "For each: put it in `resolutions` if it is fixed — INCLUDING one fixed"
+        " by another finding's edit, which is still its own entry, because a"
+        " resolution is recorded per finding and prose saying \"implicitly closed"
+        " by\" or \"same class as\" writes no fact. Leave it OUT only if it is"
+        " genuinely still broken, and then say so in your findings. Silence on"
+        " one of these ids is the one outcome that is always wrong: it reads as"
+        " \"still broken\" to the gate and as \"handled\" to the operator, and"
+        " those cannot both be true."
+    )
+
+
+#: Delivered at `verify-resolutions` DISPATCH, before
 #: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` — same reader, same moment, and the
 #: other half of what makes a re-review terminate. That one governs the
 #: `resolutions` array; this one governs `findings`.
@@ -3013,7 +3161,11 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
     }
 
 
-def fact_to_cache_record(fact: dict, price_sentence: "str | None" = None) -> dict:
+def fact_to_cache_record(
+    fact: dict,
+    price_sentence: "str | None" = None,
+    carried: "list[dict] | None" = None,
+) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
     and briefings read it for content; no gate reads it). Carries the source
@@ -3066,7 +3218,8 @@ def fact_to_cache_record(fact: dict, price_sentence: "str | None" = None) -> dic
         # counts just read. See `next_action_line` for why the findings file is
         # the carrier that had a reader and no message.
         "next_action": next_action_line(
-            fact.get("id"), blocking, warning, note, price_sentence
+            fact.get("id"), blocking, warning, note, price_sentence,
+            carried=carried,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -3526,7 +3679,15 @@ def consolidate(project_dir: Path) -> int:
 
     price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
 
-    record = fact_to_cache_record(fact, price_sentence)
+    carried = (
+        carried_blocking(
+            store.get("facts") or [], manifest.get("base_tree"), review_id
+        )
+        if is_verify
+        else []
+    )
+
+    record = fact_to_cache_record(fact, price_sentence, carried)
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -3629,6 +3790,7 @@ def consolidate(project_dir: Path) -> int:
             counts.get("warning", 0),
             counts.get("note", 0),
             price_sentence,
+            carried=carried,
         )
     )
     return 0

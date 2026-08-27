@@ -1862,10 +1862,33 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     #
     # ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer
     # rates the delta BEFORE it judges the prior findings, so the severity
-    # narrowing comes first and the resolution warning stays adjacent to the
-    # claim it governs — the only one of the two that can weaken a gate.
+    # narrowing comes first; then the roll-call of ids that must be accounted
+    # for; and the resolution warning stays LAST, adjacent to the claim it
+    # governs — the only one of the three that can weaken a gate, and therefore
+    # the one the reader must still be holding. Both halves of the order are
+    # pinned: `TestResolutionDirectiveDelivery` for the claim directive's last
+    # place, `TestCarriedBlockersReachTheirReaders` for the roll-call's slot
+    # between the other two.
     if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
         print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
+        # The roll-call sets the AGENDA — which finding ids must come back with
+        # a verdict — and the claim directive below sets the STANDARD each
+        # verdict has to meet. The standard gets the last word, deliberately:
+        # it governs the only reviewer output that can WEAKEN a gate, and a
+        # roll-call read last would push toward naming every id on it, which is
+        # the over-claiming the standard exists to prevent. Empty when there is
+        # nothing to account for.
+        from lib import evidence as _ev  # noqa: PLC0415 — lazy, as elsewhere here
+
+        roll_call = consolidate.account_for_prior_blockers_directive(
+            consolidate.carried_blocking(
+                _ev.read_facts(project_dir).get("facts") or [],
+                manifest.get("base_tree"),
+                manifest.get("id"),
+            )
+        )
+        if roll_call:
+            print(roll_call)
         print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
     return 0
 
@@ -4307,6 +4330,21 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
     result = ov.run_check_operator_verification(project_dir)
     if not result["required"]:
         return 0
+    # Order matters: an unreadable queue reports `pending: 0` because nothing
+    # was parsed, so testing pending first would let the exact failure this
+    # branch exists for fall through as a pass.
+    #
+    # Exit **3**, not 1. Both block — 3 is non-zero, so `/prawduct:pr` Step 2b stops
+    # either way and the gate still fails closed. What 3 buys is that the
+    # blocking REASON is readable from the code: 1 has always meant "there are
+    # pending entries, here is the first ID, drain or override it", and both of
+    # those remedies are inapplicable to a queue nobody could parse. Reusing 1
+    # would be a new meaning wearing an old number, and it would send an agent
+    # to the two remedies that cannot work — ending at the queue file, which is
+    # the one move this refusal exists to prevent.
+    if result.get("queue_status") == ov.QUEUE_UNREADABLE:
+        print(result["message"], file=sys.stderr)
+        return 3
     if result["pending"] == 0:
         print(result["message"])
         return 0
@@ -4828,6 +4866,99 @@ def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
         return 1
 
     return telemetry.review_stats(project_dir, argv)
+
+
+def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
+    """Is the prawduct plugin actually LOADED for a repo? Thin wrapper — body
+    lives in ``lib.plugin_activation``.
+
+    ``--path P`` names the repo to ask about, defaulting to the current project.
+    The flag is what makes this useful: the failure it detects makes the target
+    repo unable to run any prawduct command at all, so the only session that can
+    ask the question is one running somewhere else — the onboarding session.
+
+    **Exit codes: 0 active, 1 inactive, 3 unknown** — the same three-outcome
+    shape, and for the same stated reason, as ``check-released``'s *unverified*
+    3. Both foldings of "could not run" are wrong here. Folded into 1 it reports
+    a broken install because a harness file was unreadable, sending an operator
+    to reinstall something that works. Folded into 0 it reports a clean bill off
+    a check that never ran — which is the entire class this command exists to
+    close, so spending it on the command's own error path would be the joke
+    writing itself.
+
+    The ratified *fail-open, exit 0* rule for an unevaluable advisory is a
+    different case and is honoured below: it covers the **plugin's own lib**
+    failing to import, where prawduct is broken and must not block the caller.
+    A subject that could not be read is not that.
+
+    ``--context doctor`` selects the wording for a caller running INSIDE a
+    session the plugin loaded, where ``inactive`` cannot mean "ungoverned".
+    """
+    flags = {"--json"}
+    rest = []
+    target = None
+    context = "onboard"
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--path", "--context"):
+            if i + 1 >= len(argv):
+                print(
+                    f"check-plugin-active: {arg} needs a value",
+                    file=sys.stderr,
+                )
+                return 2
+            if arg == "--path":
+                target = argv[i + 1]
+            else:
+                if argv[i + 1] not in ("onboard", "doctor"):
+                    print(
+                        f"check-plugin-active: unknown --context "
+                        f"{argv[i + 1]!r} (expected 'onboard' or 'doctor')",
+                        file=sys.stderr,
+                    )
+                    return 2
+                context = argv[i + 1]
+            i += 2
+            continue
+        rest.append(arg)
+        i += 1
+    rejected = _reject_unknown_args("check-plugin-active", rest, flags)
+    if rejected is not None:
+        return rejected
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import plugin_activation  # noqa: PLC0415 — lazy import
+    except ImportError:
+        # Fail OPEN, and say what was not established. An advisory that cannot
+        # run must not read as a pass — the whole point of the check.
+        print(
+            "NOTE: check-plugin-active could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; whether the plugin is installed for this "
+            "project was NOT established.",
+            file=sys.stderr,
+        )
+        return 0
+
+    result = plugin_activation.plugin_activation_status(
+        target if target is not None else project_dir
+    )
+    if "--json" in rest:
+        print(json.dumps(result, indent=2))
+    else:
+        text = "\n".join(
+            plugin_activation.report_lines(result, context=context)
+        )
+        stream = sys.stdout if result["status"] == plugin_activation.ACTIVE else sys.stderr
+        print(text, file=stream)
+    if result["status"] == plugin_activation.INACTIVE:
+        return 1
+    if result["status"] == plugin_activation.UNKNOWN:
+        return 3
+    return 0
 
 
 def cmd_cost_of_commit(project_dir: Path, argv: list[str]) -> int:
@@ -6059,6 +6190,47 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     return 1 if incomplete else 0
 
 
+def cmd_check_learnings_pairing(project_dir: Path, argv: list[str]) -> int:
+    """Grade `learnings.md` against `learnings-detail.md`. Read-only.
+
+    Exit 0 when there is nothing to report, 1 on a duplicate heading, **3** when
+    the pair could not be read — the standing third-outcome rule for a check
+    whose subject is unreadable (api-contract § Error Model). Reporting a clean
+    pair off a file that would not decode is the failure this whole scope is
+    about.
+    """
+    rejected = _reject_unknown_args("check-learnings-pairing", argv, {"--json"})
+    if rejected is not None:
+        return rejected
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import audit_learnings_cmd  # noqa: PLC0415 — lazy import
+    except ImportError:
+        print(
+            "NOTE: check-learnings-pairing could not import the plugin lib/; "
+            "the learnings pair was NOT graded.",
+            file=sys.stderr,
+        )
+        return 0
+
+    result = audit_learnings_cmd.check_learnings_pairing(project_dir)
+    if "--json" in argv:
+        print(json.dumps(result, indent=2))
+    elif result["status"] == "ok":
+        print(f"ok: {result['reason']}")
+    else:
+        print(f"{result['status']}: {result['reason']}", file=sys.stderr)
+        for finding in result["findings"]:
+            print(f"  - {finding['detail']}", file=sys.stderr)
+    if result["status"] == "findings":
+        return 1
+    if result["status"] == "unchecked":
+        return 3
+    return 0
+
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -6112,7 +6284,13 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
 
     if as_json:
         print(json.dumps(result, indent=2))
-        return 1 if "error" in result else 0
+        # A refusal lands in `errors`, not `error`, and `applied: false` after a
+        # requested `--apply` means the writer refused and wrote nothing —
+        # api-contract gives a refusing writer exit 1. Reporting 0 there tells
+        # the caller the retirement happened.
+        if "error" in result:
+            return 1
+        return 1 if (apply and result.get("applied") is False) else 0
 
     if "error" in result:
         print(f"error: {result['error']}", file=sys.stderr)
@@ -6163,6 +6341,11 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
         print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
     for e in errors:
         print(f"  error: {e['title']}: {e['error']}")
+    # Same rule as the `--json` path above: a requested `--apply` that came back
+    # `applied: false` refused and wrote nothing, and a writer that refused
+    # exits 1.
+    if apply and result.get("applied") is False:
+        return 1
     return 0
 
 
@@ -6264,6 +6447,8 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
+    "check-plugin-active [--path P] [--context onboard|doctor] [--json]|"
+    "check-learnings-pairing [--json]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
@@ -6611,6 +6796,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "check-change-log-entry",
     "check-cumulative-critic",
     "check-operator-verification",
+    "check-learnings-pairing",
+    "check-plugin-active",
     "check-pr-doc-only",
     "check-releasability",
     "check-released",
@@ -7169,6 +7356,10 @@ def _dispatch() -> int:
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "cost-of-commit":
         return cmd_cost_of_commit(project_dir, sys.argv[2:])
+    elif command == "check-plugin-active":
+        return cmd_check_plugin_active(project_dir, sys.argv[2:])
+    elif command == "check-learnings-pairing":
+        return cmd_check_learnings_pairing(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":

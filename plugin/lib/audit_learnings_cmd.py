@@ -265,9 +265,13 @@ def _historical_block(
     return "\n".join(parts)
 
 
-def _take_active_narrative(lines: list[str], title: str, limit: int) -> str:
+def _take_active_narrative(
+    lines: list[str], title: str, limit: int
+) -> tuple[str, "str | None"]:
     """Cut the ``## title`` block living ABOVE ``limit`` out of ``lines`` and
-    return its body. Mutates ``lines``. Returns ``""`` when there is none.
+    return ``(body, error)``. Mutates ``lines``. ``("", None)`` when there is
+    no such block; ``("", <reason>)`` when it refuses, and then ``lines`` is
+    untouched.
 
     ``limit`` is the historical section's index, so a heading already archived
     is never re-cut — otherwise a re-run would strip the note it wrote last
@@ -275,20 +279,48 @@ def _take_active_narrative(lines: list[str], title: str, limit: int) -> str:
     maintained everywhere else; a heading that has drifted out of exact match
     is left alone rather than guessed at, because cutting the wrong block
     silently destroys an unrelated narrative.
+
+    **A DUPLICATED title refuses, where a DRIFTED one is merely skipped.** The
+    docstring above warned about drift and this function guarded it; nothing
+    guarded duplication, and the two fail in opposite directions. A drifted
+    title matches nothing, so the worst case is a narrative left behind — a
+    no-op. A duplicated title matched twice and this took the FIRST: one block
+    was cut and archived while its twin was left in the active section with no
+    index entry pointing at it, orphaned, in a file whose stated invariant is
+    *never delete an entry here*. Scanning all matches and refusing on a second
+    is the only answer that cannot silently destroy prose: which of two
+    identically-titled blocks is the real one is not a question this function
+    can answer, and guessing is how the entry is lost.
+
+    The refusal names both line numbers because the resolution is the
+    operator's — retitle one, or merge them. It is deliberately NOT a
+    de-duplication: an automatic fix here would delete an entry to satisfy a
+    check, in the one file that says never to.
     """
-    start = None
-    for i in range(min(limit, len(lines))):
-        if lines[i].startswith("## ") and lines[i][3:].strip() == title:
-            start = i
-            break
+    matches = [
+        i for i in range(min(limit, len(lines)))
+        if lines[i].startswith("## ") and lines[i][3:].strip() == title
+    ]
+    if len(matches) > 1:
+        where = ", ".join(str(i + 1) for i in matches)
+        return "", (
+            f"learnings-detail.md carries {len(matches)} active blocks titled "
+            f"{title!r} (lines {where}). Retiring it would archive one and "
+            "orphan the rest — they would keep their prose and lose the index "
+            "entry that points at it, in a file whose invariant is that no "
+            "entry is ever deleted. Retitle the duplicates or merge them by "
+            "hand; this refuses rather than choosing one, because which block "
+            "is the real one is not something it can know."
+        )
+    start = matches[0] if matches else None
     if start is None:
-        return ""
+        return "", None
     end = start + 1
     while end < limit and not lines[end].startswith("## "):
         end += 1
     body = "\n".join(lines[start + 1 : end]).strip("\n")
     del lines[start:end]
-    return body
+    return body, None
 
 
 def resolve_supersession_target(
@@ -791,14 +823,36 @@ def audit_learnings(
                         "confirmations": effective_confirmations,
                     })
 
+    applied = apply
     if apply and retired_with_notes:
-        _apply_retirements(
+        refusal = _apply_retirements(
             learnings_path, retained_entries, retired_with_notes, content,
         )
+        if refusal:
+            # Nothing was written, and EVERY field that says otherwise has to be
+            # walked back — not just the top-level one. `applied` reports what
+            # HAPPENED, not what was asked for, and a record claiming a
+            # retirement that never moved is this scope's own defect one field
+            # down: the renderer branches on the per-entry flag, so leaving it
+            # true prints `retire[retired]` for entries still sitting in the
+            # active file.
+            #
+            # `refusal` is already a `{"title", "error"}` pair — the shape every
+            # other member of this list has and the shape the renderer reads; a
+            # bare string here is a `TypeError` traceback across the CLI
+            # boundary, which api-contract forbids by name. It is built where
+            # the refusal happens so it names the entry that refused.
+            # `title` names the ENTRY, as every sibling error in this list
+            # does — the renderer prints `error: <title>: <message>`, and
+            # naming the file there repeats what the message already says.
+            errors.append(refusal)
+            applied = False
+            for record in retirements:
+                record["applied"] = False
 
     return {
         "product_dir": str(product_dir),
-        "applied": apply,
+        "applied": applied,
         "promotions": promotions,
         "retirements": retirements,
         "stale_flags": stale_flags,
@@ -811,7 +865,7 @@ def _apply_retirements(
     retained_entries: list[LearningEntry],
     retired_with_notes: list[tuple[LearningEntry, str]],
     original_content: str,
-) -> None:
+) -> "dict | None":
     """Rewrite ``learnings.md`` with retired entries removed, and append
     those entries to ``learnings-detail.md`` under the historical section.
 
@@ -847,7 +901,13 @@ def _apply_retirements(
     new_content = "\n".join(rebuilt_parts).rstrip("\n") + "\n"
 
     detail_path = learnings_path.parent / "learnings-detail.md"
-    detail_content = _detail_with_retirements(detail_path, retired_with_notes)
+    detail_content, error = _detail_with_retirements(detail_path, retired_with_notes)
+    if error:
+        # Refuse BEFORE the first write. Both files are still exactly as found,
+        # which is the whole reason composition happens ahead of I/O here — a
+        # retirement that half-happens is data loss in a corpus that must never
+        # lose an entry.
+        return error
 
     # BOTH files are composed before EITHER is written, and the ARCHIVE is
     # written before the active file. Retirement is a MOVE, and a move that can
@@ -886,8 +946,18 @@ def _find_historical_section(lines: list[str]) -> int | None:
 
 def _detail_with_retirements(
     detail_path: Path, retired_with_notes: list[tuple[LearningEntry, str]]
-) -> str:
-    """The full new text of ``learnings-detail.md``. Pure — writes nothing."""
+) -> tuple["str | None", "dict | None"]:
+    """The full new text of ``learnings-detail.md``, or a refusal.
+
+    Returns ``(text, None)`` normally and ``(None, {"title", "error"})`` when a
+    retiring entry's title is duplicated in the active section — see
+    :func:`_take_active_narrative`. The pair is carried rather than a bare
+    reason so the refusal stays attributed to the entry that produced it.
+
+    Pure — writes nothing either way, and the refusal returns BEFORE any cut is
+    composed, so a rejected run leaves both files exactly as it found them
+    rather than half-moved.
+    """
     if detail_path.is_file():
         detail_content = detail_path.read_text()
     else:
@@ -907,7 +977,15 @@ def _detail_with_retirements(
     for entry, _note in retired_with_notes:
         boundary = _find_historical_section(lines)
         limit = boundary if boundary is not None else len(lines)
-        narratives.append(_take_active_narrative(lines, entry.title, limit))
+        narrative, error = _take_active_narrative(lines, entry.title, limit)
+        if error:
+            # Attributed to the entry that actually refused, not to the first
+            # candidate. This loop runs over EVERY retiring entry and returns on
+            # the first duplicate it meets, so with a bulk `--apply` the two are
+            # different entries — and `errors[].title` is the field doctor
+            # relays, so a mismatch prints one line naming two entries.
+            return None, {"title": entry.title, "error": error}
+        narratives.append(narrative)
 
     appended_blocks = "\n".join(
         _historical_block(entry, note, narrative).rstrip("\n") + "\n"
@@ -927,7 +1005,7 @@ def _detail_with_retirements(
             "\n" + _HISTORICAL_SECTION_HEADER + "\n\n"
             + _HISTORICAL_SECTION_BLURB
             + "\n" + appended_blocks
-        )
+        ), None
 
     # The section EXISTS — insert at its end, not the file's. Appending to EOF
     # is the same place only while the section is last, and the docstring has
@@ -948,7 +1026,7 @@ def _detail_with_retirements(
     out = head + "\n\n" + appended_blocks
     if tail.strip():
         out = out.rstrip("\n") + "\n\n" + tail
-    return out
+    return out, None
 
 
 def run_audit_learnings(product_dir: str, *, apply: bool = False) -> dict:
@@ -982,3 +1060,155 @@ def run_audit_learnings(product_dir: str, *, apply: bool = False) -> dict:
         }
 
     return audit_learnings(product_path, apply=apply)
+
+
+# ---------------------------------------------------------------------------
+# Pairing check: `learnings.md` and `learnings-detail.md` mirror each other.
+# ---------------------------------------------------------------------------
+
+def _active_titles(content: str) -> list[str]:
+    """Level-2 headings above the historical section, in file order.
+
+    Above the boundary only, in both files: an archived entry is deliberately
+    absent from the active index, so counting it would report a missing
+    counterpart for every correctly retired entry.
+    """
+    lines = content.split("\n")
+    boundary = _find_historical_section(lines)
+    limit = boundary if boundary is not None else len(lines)
+    return [
+        lines[i][3:].strip()
+        for i in range(min(limit, len(lines)))
+        if lines[i].startswith("## ")
+    ]
+
+
+def check_learnings_pairing(product_dir: str | Path) -> dict:
+    """Grade `learnings.md` against `learnings-detail.md`.
+
+    **What is GRADED: duplicate active headings within either file.** That is
+    the dimension with teeth. A duplicated title is what
+    :func:`_take_active_narrative` refuses on, because a retirement would
+    archive one block and orphan its twin — prose kept, index entry lost, in a
+    file whose stated invariant is that no entry is ever deleted. The check and
+    the refusal guard one defect at two times: this one before a retirement is
+    attempted, the refusal at the moment it is.
+
+    **What is MEASURED but not graded: counterparts and relative order.** #717
+    asked for these as findings on the stated invariant that the two files
+    "mirror each other's headings in the same order". Measured against this
+    repo's own corpus before building to it, that invariant does not hold and
+    was never held: 270 active index entries against 179 active detail entries,
+    and the detail headings are a truncated PREFIX of the index heading rather
+    than an exact copy. Grading it would have emitted ~117 findings on a
+    corpus nobody considers broken — the misfiring probe `docs/norms.md` names
+    by its cost, which is that it trains its reader to ignore the one real
+    catch. So the counts ride the result for an operator who wants to work the
+    drift down, and no finding is raised on them.
+
+    That is a deliberate, recorded narrowing of the issue's ask, not a silent
+    drop: the pairing dimension needs a decision about what the convention
+    actually IS before anything can grade conformance to it.
+
+    Reports; never repairs. Every repair here edits an authored corpus that must
+    never lose an entry — de-duplicating picks a survivor, reordering rewrites
+    prose positions, synthesising a counterpart invents narrative. All three are
+    the operator's call, and an agent making them to satisfy a check is the
+    silent mutation this plan exists to close.
+
+    Returns ``{"status", "reason", "findings", "counts", "index_path",
+    "detail_path"}``. ``status`` is ``ok`` | ``findings`` | ``unchecked`` — the
+    third when a file could not be read, reported as ungraded and never as
+    clean, because a check that could not run is otherwise indistinguishable
+    from one that ran and found nothing.
+    """
+    prawduct_dir = Path(product_dir) / ".prawduct"
+    index_path = prawduct_dir / "learnings.md"
+    detail_path = prawduct_dir / "learnings-detail.md"
+    base = {
+        "index_path": str(index_path),
+        "detail_path": str(detail_path),
+        "findings": [],
+        "counts": {},
+    }
+
+    if not index_path.is_file():
+        # Deliberately `ok`, not `unchecked`. A missing `learnings.md` is doctor
+        # Check #5's finding (core state present), and Check #13 in the same
+        # file already rules that way for the same absence. Two checks reporting
+        # one absence differently is how an operator learns to trust neither.
+        # `unchecked` is reserved for a file that EXISTS and could not be read.
+        return {**base, "status": "ok",
+                "reason": f"no learnings.md at {index_path} — nothing to pair"}
+    if not detail_path.is_file():
+        # An unsplit corpus is an ordinary state, not drift between two files.
+        return {**base, "status": "ok",
+                "reason": "no learnings-detail.md — the corpus is not split"}
+    try:
+        index_titles = _active_titles(index_path.read_text(encoding="utf-8"))
+        detail_titles = _active_titles(detail_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
+        return {**base, "status": "unchecked",
+                "reason": f"could not read the pair ({exc.__class__.__name__})"}
+
+    findings: list[dict] = []
+    for label, titles in (("learnings.md", index_titles),
+                          ("learnings-detail.md", detail_titles)):
+        counts: dict[str, int] = {}
+        for title in titles:
+            counts[title] = counts.get(title, 0) + 1
+        for title, n in sorted(counts.items()):
+            if n > 1:
+                findings.append({
+                    "kind": "duplicate-heading",
+                    "file": label,
+                    "title": title,
+                    "detail": (
+                        f"{label} carries {n} active blocks titled {title!r}. A "
+                        "retirement archives one and orphans the rest — prose "
+                        "kept, index entry lost, in a file whose invariant is "
+                        "that no entry is ever deleted. Retitle or merge them "
+                        "by hand; this will not choose for you."
+                    ),
+                })
+
+    # Prefix, not equality: a detail heading is the opening clause of its index
+    # entry. Measured, never graded — see the docstring.
+    def _index_position(detail_title: str) -> "int | None":
+        for pos, title in enumerate(index_titles):
+            if title.startswith(detail_title):
+                return pos
+        return None
+
+    def _paired(detail_title: str) -> bool:
+        return _index_position(detail_title) is not None
+
+    # Order, actually measured rather than merely claimed. The prose said
+    # "relative order" was measured while `counts` carried no ordering metric at
+    # all — a record asserting a measurement nobody took, which is the shape
+    # this scope exists to close, committed in its own description.
+    positions = [
+        p for p in (_index_position(d) for d in detail_titles) if p is not None
+    ]
+    out_of_order = sum(
+        1 for a, b in zip(positions, positions[1:]) if b < a
+    )
+
+    return {
+        **base,
+        "status": "findings" if findings else "ok",
+        "findings": findings,
+        "counts": {
+            "index_active": len(index_titles),
+            "detail_active": len(detail_titles),
+            "detail_without_index_prefix_match": sum(
+                1 for d in detail_titles if not _paired(d)
+            ),
+            "paired_entries_out_of_order": out_of_order,
+        },
+        "reason": (
+            f"{len(findings)} duplicate-heading finding(s)" if findings
+            else f"no duplicate headings ({len(index_titles)} index, "
+                 f"{len(detail_titles)} detail active entries)"
+        ),
+    }

@@ -610,6 +610,35 @@ class TestUnparsedHeadingReachesEveryCaller:
         assert read.mode == "chunk"
         assert read.unreadable is None
 
+    def test_critic_mode_reader_reports_a_value_it_did_not_recognise(
+        self, tmp_path: Path
+    ):
+        """The wiring, not just the wording.
+
+        A value the author typed and the reader discarded is a THIRD state: it
+        must not escalate the way `unreadable` does (a typo'd mode is no reason
+        to spend a heavier review) and must not stay silent the way an absent
+        field does (an absent field carries no intent to contradict). Without
+        this test the note function could be perfect and never reached.
+        """
+        prawduct, plan = self._plan(
+            tmp_path, PLAN.replace("**Critic mode:** chunk", "**Critic mode:** cumluative")
+        )
+        read = critic_mode._critic_mode_for_chunk(prawduct, "01", plan)
+        assert read.mode is None
+        assert read.unreadable is None, "a typo must not escalate to `final`"
+        assert read.unrecognized == "cumluative"
+
+    def test_critic_mode_reader_stays_silent_on_an_absent_field(
+        self, tmp_path: Path
+    ):
+        """Absent carries no intent, so it earns no note."""
+        prawduct, plan = self._plan(
+            tmp_path, PLAN.replace("- **Critic mode:** chunk\n", "")
+        )
+        read = critic_mode._critic_mode_for_chunk(prawduct, "01", plan)
+        assert read.unrecognized is None
+
 
 # ---------------------------------------------------------------------------
 # 2. Consolidation pins — the deleted mirrors must stay deleted

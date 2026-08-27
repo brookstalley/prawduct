@@ -3,6 +3,259 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-27: the version-delta headline renders as one sentence
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+Every version-delta headline carried a stray `**` mid-sentence — *"Less waiting on the gates, fewer
+rounds in review.`**` Gate checks stop timing out…"* — and had done since at least v3.3.2. It lands
+on the single most-read line prawduct emits: the one every upgrading repo sees.
+
+The cause is that a bullet and an emphasis marker share a character, so they cannot share a strip
+set. `lstrip("-* ")` consumed the OPENING `**` of a bolded lead-in as though it were bullet
+punctuation, leaving the closing marker with nothing to pair against. The discriminator is now the
+FOLLOWING WHITESPACE — `* ` opens a list item, `*text*` and `**text**` open emphasis — and only
+then is a matched leading pair unwrapped, longest marker first.
+
+**Mid-sentence emphasis is preserved, and that is why this is a function rather than a wider strip
+set.** A blanket `replace("**", "")` would have cleared the symptom by flattening the author's own
+markup.
+
+The acceptance criterion took two corrections during the build, both recorded. "No headline contains
+`**`" would have demanded exactly that flattening. "Every marker is PAIRED" replaced it and was also
+wrong — it is unachievable over this artifact, because changelog prose legitimately carries markers
+that are not emphasis: a snake_case identifier makes the `_` count odd, and a shell glob inside a
+code span (`~/.claude*/plugins/…`) makes the `*` count odd, and both fired on healthy entries. What
+the stripper actually promises is narrower and is the reported symptom's exact inverse: **a stripped
+headline does not begin with an emphasis marker.** That is what is asserted, against the live
+`CHANGELOG.md` rather than a fixture.
+
+Three items carried from the previous chunk ride this commit: two stale return annotations that
+still said `str | None` after the error slot became a `{"title", "error"}` dict, an over-long
+docstring line, and the last two subprocess tests inheriting `os.environ`. That last one did **not** close its class, and the
+claim that it did was wrong: a sweep for `env=dict(os.environ)` missed four more helpers passing a
+`cwd` and no `env` at all, two of which invoke WRITERS (`lifecycle-repair`, `archive-plan`) against
+the real repository whenever the harness sets the pin. They pass today only because the variable is
+unset here.
+
+**So the class is closed by a construction rather than a fourth copy of the fix.** A session-scoped
+autouse fixture removes `CLAUDE_PROJECT_DIR` from the environment for the whole test run, so no test
+can inherit it — including tests not yet written. Three files had each grown a near-identical
+pinned-env helper, and two write-command call sites were still open, because a convention protects
+only the files whose author happened to know about it. A test that genuinely wants the pin still
+sets it explicitly.
+
+## 2026-08-27: a duplicate learnings heading is reported, and refuses a retirement
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+`_take_active_narrative` resolved a heading by exact title and took the **first** match. Two
+same-titled blocks therefore meant a retirement cut one and archived it while its twin stayed in the
+active section with no index entry pointing at it — prose kept, index lost — in a file whose stated
+invariant is *never delete an entry here*. The function's own docstring warned about a *drifted*
+title and guarded exactly that; a *duplicated* one was unguarded, and the two fail in opposite
+directions: drift matches nothing and is a harmless no-op, duplication matches twice and loses an
+entry.
+
+It now scans every match and **refuses** on a second, naming both line numbers, and the refusal
+returns before any cut is composed — so a rejected run leaves both files exactly as it found them
+rather than half-moved. It deliberately does not de-duplicate: which of two identically-titled
+blocks is the real one is not something it can know, and an automatic fix would delete an entry to
+satisfy a check, in the one file that says never to.
+
+A new `check-learnings-pairing` grades the same defect earlier, before a retirement is attempted,
+and `/prawduct:doctor` reports it (Health Check #13a). Both exit **3** when the pair cannot be read,
+per the standing third-outcome rule, and `audit-learnings --apply` exits **1** when it refuses — a
+writer that wrote nothing.
+
+**Review found the refusal was right and its delivery was not**, which is the half worth recording.
+The refusal was appended to `errors` as a bare string where every other member of that list is a
+`{"title", "error"}` pair — so the CLI renderer that reads `e['title']` would raise a `TypeError`
+traceback across the boundary, which the api-contract forbids by name. The per-entry `applied` flag
+stayed `true` while the top-level one was correctly walked back, and the renderer branches on the
+per-entry one, so a refused run printed `retire[retired]` for entries still sitting in the active
+file. And the refused run exited **0**, telling its caller the retirement happened. Three defects,
+all on the delivery path, none of them reachable from a unit test of the cutter — which is why the
+tests now drive `audit-learnings --apply` end to end.
+
+**One half of the issue's ask was narrowed, deliberately and on evidence.** #717 also asked for
+counterpart and ordering findings, on the stated invariant that the two files "mirror each other's
+headings in the same order". Measured against this repo's own corpus *before* building to it, that
+invariant does not hold and never did: 270 active index entries against 179 in the detail file, and
+a detail heading is a truncated **prefix** of its index entry rather than a copy. Grading it would
+have emitted ~117 findings on a corpus nobody considers broken — the misfiring probe `docs/norms.md`
+names by its cost, which is that it teaches its reader to skip the one real catch. The counts ride
+the result for anyone working the drift down; no finding is raised on them. Naming what the pairing
+convention actually *is* has to come before anything can grade conformance to it.
+
+## 2026-08-27: the verdict cache keys on the code that computed the verdict
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+`verdict_cache._key` folded in the plugin version because the cache outlives the plugin and the
+verdict depends on `coverage_algebra.is_judgeable_path`. That is enough for an installed copy,
+where the version string moves whenever the code does. It is not enough when prawduct runs from a
+**git checkout** — developing prawduct itself — because the bundled `VERSION` does not change
+between pushes to `develop`. Two different develop states therefore produced the same key *by
+construction*, and a verdict computed under the older one was served as current. `_key`'s own
+docstring already stated the invariant it was breaking: the key covers "every input the verdict is
+a function of — including the CODE that computed it."
+
+The key now folds in the checkout's plugin **tree** SHA, plus a fingerprint of any uncommitted edits
+under that directory.
+
+**Tree, not commit, and this was corrected at plan time rather than in review.** The first draft
+keyed on the commit SHA; `data-model.md`'s tree-keying Direction says facts key by tree, and here
+that is load-bearing rather than stylistic — two develop commits producing an identical plugin tree
+*are* the same code, so commit-keying would miss the cache on every rebase, merge, empty commit, or
+commit touching only files outside the plugin. Tree-keying invalidates when the code changes and
+only then, which is the whole point.
+
+**Degradation is toward coarser, never toward a false pass.** Not a checkout, or git cannot answer,
+contributes the empty string — so an installed copy keys exactly as before and no user sees a mass
+cache miss on upgrade. A coarser key makes entries collide and be replayed, and a replay can only
+reproduce a verdict the store's own content fingerprint already vouches for. The probe is memoised
+per process on a `None` sentinel rather than on falsiness, because `""` is a legitimate answer and
+sentinel-on-falsiness would re-probe git on every lookup for exactly the users who gain nothing
+from it — spending the saving this module exists to create.
+
+## 2026-08-27: a verify pass cannot report the review over while a blocker it inherited stands
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+A `verify-resolutions` pass could discharge one finding by reference to another — *"R-12 is
+implicitly closed by R-1's fix, same class"* — and write a resolution fact for R-1 only. Its own
+counts were then 0 blocking, so it printed **THE REVIEW IS OVER**, and the operator relayed that.
+The gate disagreed: R-12 had no resolution fact, and the gate reads facts. Worse, by the time that
+surfaced R-12 sat on a superseded round no later verify pass would name, so the only remaining
+route was a full `cumulative` — a whole review round of bookkeeping for a defect that had been
+fixed and independently confirmed fixed two rounds earlier. That is what it cost when reported.
+
+**Nothing parses the reviewer's prose, and that is the point.** The tempting fix is to read
+"implicitly closed by" out of the summary and mint the missing fact from it. The phrasings are an
+open set, so a parser that misses one fails silently in the bug's own direction — and
+`data-model.md` forbids the result outright: a resolution fact requires a `verify-resolutions`
+origin and a pre-existing target finding, so minting one from narration would record a judgment
+nobody made. The pass instead loses the ability to *claim* it finished: consolidation now computes
+the blocking findings it inherited and did not name, and the one sentence both the builder and the
+reviewer read says the review is **not** over, names each finding, names the prose forms that
+produce this, and says the deadline — act before a newer round supersedes them. That sentence
+outranks the pass's own counts, including when it found blockers of its own: the ordinary blocking
+line says "nothing else here does", which is false the moment a blocker was inherited, and a
+builder who believes it fixes this round's findings and orphans the other onto a superseded round.
+
+**The same rule is applied a second time, earlier, where it can still change the outcome.** The
+consolidation check acts *after* `resolutions` is written — it can stop the pass claiming it
+finished, but the round is already spent. So a verify dispatch now hands the reviewer a roll-call
+of the exact finding ids the round it verifies left unresolved, each of which must come back with a
+verdict. It sits between the two existing directives rather than after them: the roll-call sets the
+agenda, and the standing "a resolution is a claim" warning keeps the last word, because it governs
+the only reviewer output that can weaken a gate and a roll-call read last would push toward naming
+every id on it. It is silent when there is nothing to account for — a directive that fires on every
+dispatch trains its reader to skip the block it lives in.
+
+Placing it also required moving `RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s ~45-line `#:` documentation
+block back against the constant it describes: the new function had been inserted between the two,
+leaving the block reading as that function's documentation. Nothing builds Sphinx here, so the cost
+was a maintainer editing a doc block about the wrong subject.
+
+**The anchor is structural rather than a guess.** A verify pass reviews the delta from the prior
+review, so its `base_tree` IS that review's `head_tree`. Matching on that link finds the anchor
+without reading `.critic-findings.json` (a derived view no gate may read) and without trusting
+"most recent review fact" — the evidence store is shared by every worktree of the clone, so that
+rule would let a sibling branch's review supply this branch's blockers.
+
+## 2026-08-27: an input that could not be read or recognised says so
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+Two instances of one rule — **a present input that yielded nothing must not read as absent.**
+
+**The operator-verification gate was latently inert.** An entry is recognised only as a
+`## VRF-<id>` heading; anything else parses as preamble, which is deliberate and is what lets a
+trailing `## Notes` section coexist with real entries. That leniency is unchanged. What was wrong
+sat downstream: the gate discarded the preamble and reported `pending: 0` for a file it had parsed
+**zero** entries out of. A repo holding 32 entries as bullets under one `## Pending` heading was
+told its queue was empty, and `/pr create` blocked on nothing while every entry sat unseen.
+
+The fix is at the frame that actually discards. The parser was never the problem — it returns the
+preamble intact and loses nothing; the gate was throwing that preamble away unread.
+
+**Scope, stated honestly:** the discriminator reads the preamble, which is everything before the
+first *recognised* entry. So a queue whose entries are ALL unrecognised is caught, which is the
+reported failure and the one that makes a gate inert. A queue holding one good entry plus several
+unrecognised ones is not — those land after the first entry, in the body of a block that did parse.
+That is the same leniency that lets a trailing `## Notes` section coexist with real entries, and it
+is deliberate: the alternative refuses files the format explicitly permits. A required gate that finds unrecognised content now
+refuses with a distinct `unreadable` status, names the expected shape, and exits **3** — the
+standing rule for a gate whose SUBJECT could not be read, now stated once in the api-contract
+rather than as a list of gates that carry it. It still blocks (3 is non-zero), but not as exit 1:
+that code already means "there are pending entries, drain or override the first one", and both
+remedies are inapplicable to a file that yielded no entries, so reusing it would send the caller to
+a fix that cannot work — ending at the queue file, which is the one move the refusal forbids.
+Scoping it to `operator_verification_required: true` is what makes it safe: only a repo that opted
+into the gate can be stopped by it, and there being stopped is correct.
+
+**The override inherits the refusal, because it inherits the door.**
+`accept-operator-verification` reads the same queue and would have reported the gate "already
+satisfied" with `accepted_ids: []` — a recorded bypass covering entries nobody read. It refuses on
+the same state, without touching the file it refused over. Fixing the check and leaving its sibling
+would have been the instance, not the class.
+
+**The refusal also forbids the obvious fix, because the obvious fix is worse than the bug.** An
+agent meeting this block will reach for the queue file and reformat it — a silent rewrite of an
+operator-authored record, performed to satisfy a gate, that nobody reviewed. The message says so in
+the imperative. A refusal in front of an agent is an auto-fix unless it says otherwise.
+
+**An unrecognised `Critic mode:` value now says so once.** Fail-open-to-inference is correct and
+did not change — a typo'd mode must not block a review, and nothing is skipped. The ignore simply
+stopped being silent, which had let an author believe a mode was pinned when it was not and file
+the resulting surprise as a defect. Absent and blank stay silent: they carry no intent to
+contradict. Where the value is a valid `Type:` — `cumulative-final` is the natural trap, since it
+reads like a mode and lives on an orthogonal axis — the line names the right field, tested against
+the real Type vocabulary rather than a copy of it.
+
+## 2026-08-27: onboarding proves the plugin will load, or says it could not tell
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+A repo could be onboarded perfectly and still run **completely ungoverned**. Writing the install
+reference into `.claude/settings.json` enables the plugin; it does not install it. The harness also
+needs a `prawduct@prawduct` record whose `projectPath` is that repo, and without one the target
+starts every session with no banner, no `/prawduct:*` skills and no Stop-hook gates — while its
+`CLAUDE.md` states that enforcement is structural. The agent reads that stanza, believes it, and
+builds ungoverned. This is the failure prawduct exists to prevent, happening to prawduct.
+
+**The detector could not go where every other health check lives, and that is the design.** Probes
+and `/prawduct:doctor` both run inside the repo's own session, and both are delivered *by* the
+plugin that did not load — in the failing repo the probe never fires and the skill cannot be
+invoked. So the check runs from **outside**: `/prawduct:onboard` now ends by asking
+`prawduct-hook check-plugin-active --path <target>` about the repo it just set up, and does not
+report success until the answer is `active`. `/prawduct:doctor` gets the residue it *can* see — a
+stale install, and a SessionStart hook that never completed in this clone — and says plainly which
+case it cannot reach.
+
+**Three answers, not two, and the third gets its own exit code.** `installed_plugins.json` is a
+harness-internal file prawduct is not entitled to rely on, so every read or shape failure yields
+`unknown` — "could not verify" — and never `inactive`. Telling an operator their plugin is not
+installed because a file would not parse sends them to reinstall something that was never broken.
+`unknown` exits **3**, joining `check-released`'s *unverified* under one shared reason: both
+foldings of "could not run" are wrong. Folded into 1 it reports a broken install off an unreadable
+harness file; folded into 0 it reports a clean bill off a check that never ran — which is the
+class this command exists to close, so spending it on the command's own error path would be the
+joke writing itself. (The ratified *fail-open, exit 0* rule is a different case and still holds
+where it applies: the plugin's own lib failing to import.) The manifest is read structurally rather
+than by its `version`, so a harness release that bumps the number keeps working and one that
+changes the shape declines to guess.
+
+**The same status does not mean the same thing to both callers, so `--context` selects the
+wording.** From onboarding, `inactive` means the repo will load nothing. From `/prawduct:doctor` it
+cannot mean that — doctor IS a plugin skill, so the plugin demonstrably loaded, and the only
+reading left is that the manifest names some other path: a worktree, or a moved, renamed or
+symlinked checkout. Relaying the onboard consequence there would send an operator to reinstall a
+working install, which is the false accusation the rest of the module refuses to make. Two
+consequences, two messages, one home.
+
 ## 2026-08-26: a dispatch refusal names the tree it graded and the work it excluded
 
 <!-- prawduct: type=fix | scope=verify-resolutions-exit3 -->

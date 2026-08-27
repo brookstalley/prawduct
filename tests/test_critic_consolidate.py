@@ -5383,3 +5383,151 @@ class TestPartialBelongsToItsReview:
             "an instruction surface spells a partial filename — the shape must "
             f"come from the manifest's `rendezvous` entry: {offenders}"
         )
+
+
+class TestCarriedBlockersReachTheirReaders:
+    """End-to-end: both new sentences must ARRIVE, not merely be constructible.
+
+    The chunk's acceptance criterion is met entirely by two sentences reaching a
+    reader, so unit tests on the formatters prove nothing about delivery. Three
+    one-line regressions passed the whole suite green before these existed:
+    deleting the `print(roll_call)` at the dispatch site, dropping `carried` at
+    the `fact_to_cache_record` call, and hoisting the `carried` computation
+    above the resolution-append loop — the last of which invents blockers on a
+    clean pass, which is worse than the bug being fixed.
+
+    The prior round asked for a wiring test and got a unit test one level up;
+    the roll-call then shipped with the same gap. These reach the real call
+    sites through `_run_begin` / `_run_consolidate`.
+    """
+
+    def _seed_two_blockers(self, repo: Path) -> tuple[str, str]:
+        """Prior review carrying TWO blocking findings at the real tree, then a
+        fix in the working tree. Returns (head, prior review id)."""
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-prior-0001",
+            head_tree=head_tree, head_commit=head,
+        )
+        _full_roster_partials(repo, head, findings_by_role={
+            "correctness": [
+                {"name": "First half", "goal": "Nothing Is Broken",
+                 "severity": "blocking", "recommendation": "fix",
+                 "files": ["src/app.py"]},
+                {"name": "Second half", "goal": "Nothing Is Broken",
+                 "severity": "blocking", "recommendation": "fix",
+                 "files": ["src/app.py"]},
+            ],
+        })
+        assert _run_consolidate(repo).returncode == 0
+        (repo / "src/app.py").write_text("x = 2  # fixed\n")
+        return head, "rev-prior-0001"
+
+    def test_dispatch_prints_the_roll_call_naming_every_inherited_blocker(
+        self, tmp_path
+    ):
+        """R-2's whole point: the reviewer must hold these ids BEFORE it writes
+        `resolutions`. Deleting the print at the dispatch site fails here."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _, prior_id = self._seed_two_blockers(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "must come back with a verdict" in result.stdout
+        assert f"{prior_id}/R-1" in result.stdout
+        assert f"{prior_id}/R-2" in result.stdout
+
+    def test_the_roll_call_precedes_the_claim_directive(self, tmp_path):
+        """Order is a deliverable. The claim directive governs the only output
+        that can WEAKEN a gate and must keep the last word; a roll-call read
+        last pushes toward naming every id on it."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_two_blockers(repo)
+
+        out = _run_begin(repo, "--mode", "verify-resolutions").stdout
+
+        assert out.index("must come back with a verdict") < out.index(
+            cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE.strip()[:60]
+        )
+
+    def test_a_pass_naming_only_one_of_two_cannot_report_the_review_over(
+        self, tmp_path
+    ):
+        """#711 exactly: two blockers, one fix, one resolution named.
+
+        Dropping `carried` at the `fact_to_cache_record` call fails here.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, prior_id = self._seed_two_blockers(repo)
+
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+            roster=["reviewer"],
+            base_tree=_store_facts(repo, "review")[0]["body"]["head_tree"],
+        )
+        _write_partial(repo, "reviewer", head, resolutions=[
+            {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+        ])
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        record = json.loads(
+            (repo / ".prawduct" / ".critic-findings.json").read_text()
+        )
+        assert "THE REVIEW IS OVER" not in record["next_action"]
+        assert f"{prior_id}/R-2" in record["next_action"]
+        # The one it DID name must not be reported as outstanding.
+        assert f"{prior_id}/R-1" not in record["next_action"]
+        assert "NOT DONE" in result.stdout
+
+    def test_a_pass_naming_both_reports_the_review_over(self, tmp_path):
+        """The negative that keeps the check honest.
+
+        Hoisting the `carried` computation above the resolution-append loop
+        fails HERE — it would count findings this very pass just resolved and
+        report blockers on a clean pass.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, prior_id = self._seed_two_blockers(repo)
+
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+            roster=["reviewer"],
+            base_tree=_store_facts(repo, "review")[0]["body"]["head_tree"],
+        )
+        _write_partial(repo, "reviewer", head, resolutions=[
+            {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"},
+            {"review_id": prior_id, "fid": "R-2", "disposition": "fixed"},
+        ])
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        record = json.loads(
+            (repo / ".prawduct" / ".critic-findings.json").read_text()
+        )
+        assert "THE REVIEW IS OVER" in record["next_action"]
+        assert "NOT DONE" not in result.stdout
+
+    def test_a_non_verify_consolidation_carries_nothing(self, tmp_path):
+        """The `is_verify` guard. A chunk review must not inherit blockers."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, _ = self._seed_two_blockers(repo)
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-chunk-0003")
+        _full_roster_partials(repo, head, findings_by_role={})
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT DONE" not in result.stdout
