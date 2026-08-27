@@ -144,7 +144,7 @@ retirement cannot orphan a duplicate; and two operator-facing signals stop being
 
 - [x] Chunk 01: An onboarded repo proves governance is live, or says it could not tell (#710)
 - [x] Chunk 02: An input that could not be read or recognised says so (#681, #664)
-- [ ] Chunk 03: A verify pass records every blocking finding it discharges (#711)
+- [x] Chunk 03: A verify pass records every blocking finding it discharges (#711)
 - [ ] Chunk 04: The verdict cache keys on the code that computed the verdict (#668)
 - [ ] Chunk 05: The learnings pair is graded, and a duplicate heading refuses (#717)
 - [ ] Chunk 06: The version-delta headline renders as one sentence (#703)
@@ -181,6 +181,37 @@ gates, stale twice in two chunks; it is now a standing rule with the gates as ex
 warning was the class-vs-instance test: `accept-operator-verification` reaches the same queue by a
 different door and would have recorded a bypass covering entries nobody read. Fixing only the check
 would have shipped the sibling of the bug.
+
+Chunk 03 closed 2026-08-27 after three rounds (`chunk` -> two `verify-resolutions`), ending
+0 blocking / 0 warning / 0 note. Suite green; evidence recorded against the reviewed tree.
+
+What the reviews changed, worth carrying — and the sharpest finding of this plan was about a TEST,
+not the code. Round 3 found that `test_carried_is_computed_after_resolution_facts_land` called
+itself an "Order-of-operations pin" on `consolidate()` in its own docstring and never invoked
+`consolidate()`; it asserted a property of two literal lists. So the regression it claimed to guard
+— hoisting the carried computation above the resolution append, which invents blockers on a clean
+pass — was entirely unpinned while the file said it was covered. That is this plan's own subject
+class, written by me, inside the chunk fixing it. The reviewer also noted it was a REPEAT: round 2
+raised the same gap about the `consolidate()` wiring, I answered with a unit test one level up, and
+then shipped the new dispatch call site with the identical hole. Answering a coverage finding one
+level above the call site is the tell.
+
+Round 2 also caught the carried arm ordered BELOW the plain blocking arm, so an inherited blocker
+was silenced whenever the pass had one of its own — with the interpolation `THIS review found
+{blocking} blocking` as the tell, since it could only ever render 0. And it caught the chunk's
+second declared deliverable (the dispatch directive) simply not shipping: the consolidation check
+acts after `resolutions` is written, so it can stop a false claim but cannot prevent one.
+
+Carried into chunk 04's commit (deferrals, not drops — both are one-line comment corrections in
+judgeable files, so fixing them after chunk 03's verify pass would have bought a round for two
+comments):
+1. `plugin/lib/critic_consolidate.py` — `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`'s `#:` block says it
+   is delivered "immediately before" the claim directive. The roll-call now prints between them
+   whenever anything is carried. Delete "immediately".
+2. `plugin/bin/prawduct-hook` — the directive-order comment cites `TestResolutionDirectiveDelivery`
+   as its pin, which now covers only part of the three-way order; the roll-call's slot is pinned by
+   `TestCarriedBlockersReachTheirReaders::test_the_roll_call_precedes_the_claim_directive`. Name
+   both, or make the citation relational.
 
 Carried into chunk 03's commit (a deferral, not a drop — it rides a commit being made anyway
 rather than buying a round): `run_check_operator_verification`'s docstring still describes the old
@@ -307,8 +338,11 @@ list symmetry with the documented surface, not coverage.
   parser that misses a phrasing fails silently in the same direction as the bug. Option (2) is
   a set comparison over data prawduct already has: `coverage_algebra.unresolved_blocking`
   already computes the prior round's blocking findings. At consolidate time, every one of them
-  must be **named** — resolved, or explicitly deferred. Any that is neither makes the pass
-  refuse rather than return 0 blocking. That is deterministic, closes the class rather than the
+  must be **named** — resolved, or explicitly deferred. Any that is neither takes the pass's
+  ability to CLAIM it finished: consolidation still exits 0 (the findings are real and belong in
+  the record), but the one sentence both the builder and the reviewer read says the review is not
+  over and names each outstanding id. The gate blocks either way; what changes is that the operator
+  learns it at the review instead of a round later. That is deterministic, closes the class rather than the
   instance, and surfaces at the review instead of at the gate one round later.
 
   **`data-model.md` settles it rather than merely favouring it:** a resolution fact *requires*

@@ -1862,10 +1862,31 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     #
     # ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer
     # rates the delta BEFORE it judges the prior findings, so the severity
-    # narrowing comes first and the resolution warning stays adjacent to the
-    # claim it governs — the only one of the two that can weaken a gate.
+    # narrowing comes first; then the roll-call of ids that must be accounted
+    # for; and the resolution warning stays LAST, adjacent to the claim it
+    # governs — the only one of the three that can weaken a gate, and therefore
+    # the one the reader must still be holding. Pinned by
+    # `TestResolutionDirectiveDelivery`.
     if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
         print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
+        # The roll-call sets the AGENDA — which finding ids must come back with
+        # a verdict — and the claim directive below sets the STANDARD each
+        # verdict has to meet. The standard gets the last word, deliberately:
+        # it governs the only reviewer output that can WEAKEN a gate, and a
+        # roll-call read last would push toward naming every id on it, which is
+        # the over-claiming the standard exists to prevent. Empty when there is
+        # nothing to account for.
+        from lib import evidence as _ev  # noqa: PLC0415 — lazy, as elsewhere here
+
+        roll_call = consolidate.account_for_prior_blockers_directive(
+            consolidate.carried_blocking(
+                _ev.read_facts(project_dir).get("facts") or [],
+                manifest.get("base_tree"),
+                manifest.get("id"),
+            )
+        )
+        if roll_call:
+            print(roll_call)
         print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
     return 0
 

@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-27: a verify pass cannot report the review over while a blocker it inherited stands
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+A `verify-resolutions` pass could discharge one finding by reference to another — *"R-12 is
+implicitly closed by R-1's fix, same class"* — and write a resolution fact for R-1 only. Its own
+counts were then 0 blocking, so it printed **THE REVIEW IS OVER**, and the operator relayed that.
+The gate disagreed: R-12 had no resolution fact, and the gate reads facts. Worse, by the time that
+surfaced R-12 sat on a superseded round no later verify pass would name, so the only remaining
+route was a full `cumulative` — a whole review round of bookkeeping for a defect that had been
+fixed and independently confirmed fixed two rounds earlier. That is what it cost when reported.
+
+**Nothing parses the reviewer's prose, and that is the point.** The tempting fix is to read
+"implicitly closed by" out of the summary and mint the missing fact from it. The phrasings are an
+open set, so a parser that misses one fails silently in the bug's own direction — and
+`data-model.md` forbids the result outright: a resolution fact requires a `verify-resolutions`
+origin and a pre-existing target finding, so minting one from narration would record a judgment
+nobody made. The pass instead loses the ability to *claim* it finished: consolidation now computes
+the blocking findings it inherited and did not name, and the one sentence both the builder and the
+reviewer read says the review is **not** over, names each finding, names the prose forms that
+produce this, and says the deadline — act before a newer round supersedes them. That sentence
+outranks the pass's own counts, including when it found blockers of its own: the ordinary blocking
+line says "nothing else here does", which is false the moment a blocker was inherited, and a
+builder who believes it fixes this round's findings and orphans the other onto a superseded round.
+
+**The same rule is applied a second time, earlier, where it can still change the outcome.** The
+consolidation check acts *after* `resolutions` is written — it can stop the pass claiming it
+finished, but the round is already spent. So a verify dispatch now hands the reviewer a roll-call
+of the exact finding ids the round it verifies left unresolved, each of which must come back with a
+verdict. It sits between the two existing directives rather than after them: the roll-call sets the
+agenda, and the standing "a resolution is a claim" warning keeps the last word, because it governs
+the only reviewer output that can weaken a gate and a roll-call read last would push toward naming
+every id on it. It is silent when there is nothing to account for — a directive that fires on every
+dispatch trains its reader to skip the block it lives in.
+
+Placing it also required moving `RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s ~45-line `#:` documentation
+block back against the constant it describes: the new function had been inserted between the two,
+leaving the block reading as that function's documentation. Nothing builds Sphinx here, so the cost
+was a maintainer editing a doc block about the wrong subject.
+
+**The anchor is structural rather than a guess.** A verify pass reviews the delta from the prior
+review, so its `base_tree` IS that review's `head_tree`. Matching on that link finds the anchor
+without reading `.critic-findings.json` (a derived view no gate may read) and without trusting
+"most recent review fact" — the evidence store is shared by every worktree of the clone, so that
+rule would let a sibling branch's review supply this branch's blockers.
+
 ## 2026-08-27: an input that could not be read or recognised says so
 
 <!-- prawduct: type=fix | scope=silent-clear-checks -->

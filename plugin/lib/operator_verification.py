@@ -320,10 +320,14 @@ def _write_queue(
 def run_check_operator_verification(product_dir: str | Path) -> dict:
     """Read-only gate check. Mirrors ``check-cumulative-critic`` semantics.
 
-    Returns ``{"required": bool, "pending": int, "queue_path": str,
-    "first_pending": str | None, "message": str}``. The caller decides what
-    exit code to map this to — the prawduct-hook wrapper uses 0 when the
-    gate is satisfied (not required OR no pending) and 1 otherwise.
+    Returns ``{"required", "pending", "queue_status", "unparsed_lines",
+    "queue_path", "first_pending", "message"}`` — the same keys on every branch,
+    so a caller never has to know which one produced its result.
+
+    The exit-code mapping is deliberately NOT restated here.
+    ``api-contract.md`` § Error Model owns it, and a second copy is exactly what
+    went stale: this sentence still described a two-outcome wrapper after the
+    check grew a third.
     """
     product_path = Path(product_dir).resolve()
     prawduct_dir = product_path / ".prawduct"
