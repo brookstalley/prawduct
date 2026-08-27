@@ -77,6 +77,17 @@ than a bookkeeping commit on `develop`; a release cut before then should say in 
 track is undogfooded — and if this repo wants the queue to bind, that is the
 `operator_verification_required` flag, which is an owner decision and was not flipped here.
 
+**Accepted consequence, and this is its durable home** (the PR body accepted it against
+`.prawduct/.handoff-notes.md`, which is gitignored and consumed by the next `/clear` — a note that
+would not survive to the session that meets the symptom). Once `fix/branch-claim-multiplicity` is
+merged and deleted, this plan is live, declares a `branch:` that no longer exists, and still has an
+unticked chunk — so `briefing.staleness_scan` §4b fires **every session on `develop`**, and both
+remedies it prints ("fix the frontmatter, or create the branch") are wrong here. The correct action
+is the one no advisory names: run VRF-017, then tick. This is the first live instance of the
+feature's own advisory misdirecting — confirmed against the six other branch-declaring plans on
+`develop`, all of which have zero unticked boxes and so cannot reach it. **Do not tick Chunk 04 to
+silence it**: that trades a noisy-but-true advisory for a false record.
+
 Chunk 01 landed 2026-08-13 (`9e66c88e` + `9f933285`; review `rev-20260814T033741Z-ba15c001`, 0
 blocking / 10 warnings / 13 notes, all ten warnings fixed in one batch and six notes accepted as
 facts). **Three reviewers independently found the same defect**, and it was in the one sentence that

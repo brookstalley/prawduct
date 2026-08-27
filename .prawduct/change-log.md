@@ -36,6 +36,8 @@ every branch with no plan of its own. Three cross-file references to "merge-flow
 to 8 on develop — were replaced with the step's NAME rather than a new number, so the next renumber
 does not strand them again.
 
+**Superseding one clause of this branch's own 2026-08-13 entry**, which ships in the same bundle and says "an rc bump does not owe a changelog entry for a version nobody ships": that reasoning belonged to the rc track and is now false in both halves — there are no rc bumps, and `test_changelog_has_current_version_entry` requires the section to be keyed by the EXACT manifest string, prerelease suffix included. The earlier entry is left standing as written (the log is append-only); this is the correction a reader needs.
+
 Chunk 04's live half stays outstanding and is now visible as VRF-017: the recipe installs from
 `ref: develop`, so no sibling repo can run the track until this merges and pushes.
 

@@ -56,12 +56,12 @@ next real release replaying every headline in the changelog. Bump the `.N`; do n
 the final `3.4.0` on `main` — and `develop`, having been promoted, now carries `3.4.0` too. That is
 the *same string* the released plugin uses, so every dogfooding repo silently resolves the released
 cache entry and runs `main`'s code while believing it is on develop: the exact failure the
-prerelease exists to prevent, arriving at the moment nobody is looking for it. **The first work
-release itself re-opens the next prerelease** (`3.4.1-dev`, then `-dev.1`, `-dev.2` as work
-lands) in the same three files — that is Phase 3 of the runbook, and it is unconditional. Do not
-read "nobody is on the track right now" as licence to skip it: Phase 2's own `Done when` requires
-the reopen commit, and leaving `develop` on the released string is what lets the verdict cache
-replay a `covered` verdict across a judgeability change.
+prerelease exists to prevent, arriving at the moment nobody is looking for it. **The release itself re-opens the next
+prerelease** (`3.4.1-dev`, then `-dev.1`, `-dev.2` as work lands) in the same three files — that is
+the runbook's Phase 3, and it is unconditional. Do not read "nobody is on the track right now" as
+licence to skip it: leaving `develop` on the released string is what lets the verdict cache replay
+a `covered` verdict across a judgeability change, and a repo joining the track later inherits the
+collision with nothing to signal it.
 
 **Getting back off the track:** delete the `prawduct-dev` block from `settings.local.json` and
 re-enable `prawduct@prawduct`. Nothing else is touched — the repo's committed `.claude/settings.json`
