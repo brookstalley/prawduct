@@ -46,6 +46,13 @@ and you dogfood nothing while believing otherwise. Keep `develop` on a prereleas
 is heading for — `3.4.1-dev.2` — bumping the `.N` as you promote work into it. The release then sets
 the final version in the same three files (below), which is a new cache key again.
 
+**An intra-cycle `.N` bump moves FOUR files, not three** — rename the open `## vX.Y.Z-dev.N`
+heading in `plugin/CHANGELOG.md` in the same commit. `test_changelog_has_current_version_entry`
+requires a section keyed by the **exact** manifest string, prerelease suffix included, so bumping
+the three version files alone turns `develop` red on the next push. This is the one version move
+the runbook does not cover: it has the cut (Phase 1 step 10) and the reopen (Phase 3 step 22), and
+the bump between them happens here.
+
 **`-dev` / `-dev.N` is the only prerelease form this project permits**, and that is enforced, not
 convention: `banner.version_tuple` parses exactly that shape and returns the malformed sentinel for
 anything else, and `test_version_is_semver` refuses a manifest carrying any other suffix. An `-rc.N`

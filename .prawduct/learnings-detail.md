@@ -46,8 +46,7 @@ cross-document pointer that had been converted in three files and missed in a fo
 pointer, the fix was applied to three files found by one grep and reported as complete; a fourth
 survived because the re-read sampled rather than enumerated. The durable close was not a longer
 list but a construction — a guardrail test asserting that no governance prose cites a flow step by
-number, paired with a non-vacuity floor asserting the named form is still in use. Related:
-[[a-docstring-written-in-the-same-keystroke]] and the enumerate-the-domain rule.
+number, paired with a non-vacuity floor asserting the named form is still in use. Related: [[A docstring written in the same keystroke as its code describes the design you INTEND, not the code you shipped]], which is the same failure at the scale of one sentence, and the enumerate-the-domain rule.
 
 ## A mutant that SURVIVES on code you just wrote is a claim about the CODE, not a gap in the test
 

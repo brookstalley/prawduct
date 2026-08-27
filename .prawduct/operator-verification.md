@@ -1015,9 +1015,14 @@ different governance version).
    whatever `develop` then carries), not the released string. Reporting the released version means
    the cache resolved the released entry and you are dogfooding nothing — the exact failure the
    prerelease exists to prevent.
-3. Confirm the version-as-cache-key assumption end to end: bump `develop`'s three version files to
-   the next `-dev.N`, push, restart the sibling's session, and confirm the briefing follows. A
-   briefing that does not move means the cache key is not the version and the recipe loses a step.
+3. Confirm the version-as-cache-key assumption end to end: bump `develop` to the next `-dev.N`,
+   push, restart the sibling's session, and confirm the briefing follows. A briefing that does not
+   move means the cache key is not the version and the recipe loses a step.
+   **That bump is FOUR files, not three** — the three version files *and* the open
+   `## vX.Y.Z-dev.N` heading in `plugin/CHANGELOG.md`, in one commit.
+   `test_changelog_has_current_version_entry` keys on the exact manifest string, so a three-file
+   bump reddens `develop` and you will be debugging the suite instead of the thing you came to
+   verify.
 4. Confirm `main` is untouched throughout, and that no other repo on this machine changed track.
 5. Walk the documented way back off: delete the `prawduct-dev` block, re-enable `prawduct@prawduct`,
    restart, and confirm the briefing reports the released version again.
