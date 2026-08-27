@@ -1760,6 +1760,9 @@ def begin_review(
                 "status": "error",
                 "kind": "scope-widened",
                 "fallback_mode": fallback,
+                # WITH the dirty note, unlike the refusal: this return prints a
+                # reason and nothing else, so there is no block to say it twice.
+                "notes": notes + ([dirty_note] if dirty_note else []),
                 "reason": (
                     f"scope-widened: {len(delta)} files changed since the prior "
                     f"review of {len(prior_files)} — a partial re-review would "

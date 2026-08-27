@@ -51,9 +51,10 @@ that moves the anchor.
 fix got that wrong in two of those sites, which is the same class of error one level up. The
 anchor moves when committed *content* differs from the tree the prior review saw; the commit that
 materializes a reviewed dirty tree verbatim changes no content and moves nothing, so "did I
-commit at all" is the wrong question. Each site now states it that way and cites `review-cycle.md`
-§ Verify-resolutions anchoring rather than restating the derivation;
-`tests/preferences/test_free_interval_prose.py` pins both halves. `begin_review`'s docstring
+commit at all" is the wrong question. The two sites that state the test — the `uncovered`
+remedy and `pr/SKILL.md` Step 2 — now say it that way and cite `review-cycle.md` rather than
+restating the derivation; `tests/preferences/test_free_interval_prose.py` pins both halves. The
+other three carry a different correct fact and need no citation. `begin_review`'s docstring
 described the pre-#395 working-tree-only anchor and now describes the intent-aware one.
 
 **Both budgeted files paid for their own correction.** `methodology/building.md` and
@@ -63,6 +64,11 @@ already injects, in the first; four restatements inside the exit-3 paragraph, in
 of which ("it names the free files") this change had just made wrong. `building.md`'s correction
 came out at exactly its recorded size. Its ordering rule is a POINTER to `review-cycle.md`, not a
 fifth restatement — which is the finding below, applied to itself.
+
+**The refusal path was not the only return that walked past its own notes.** Every `error` return
+did too, and `scope-widened` is the one that reaches its `return` with notes populated — it fires
+exactly when the tree has grown enough that what the dispatch noticed about it is worth having.
+The CLI now prints notes before the reason on that path as well.
 
 The five carriers were corrected but not collapsed; **#723** carries the construction that would
 make correcting this rule a one-file edit. Three reviewers independently landing on different

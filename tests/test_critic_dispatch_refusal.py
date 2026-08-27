@@ -1097,3 +1097,54 @@ class TestAnUncomputableWipDiffIsNotAnAllClear:
         assert out.index("UNVERIFIED") > out.rindex("--force"), (
             f"the caveat was buried above the --force route: {out!r}"
         )
+
+
+class TestAnErrorReturnKeepsItsNotes:
+    """The refusal path was not the only return that computed notes and then
+    left past them. `scope-widened` is the one error return that reaches its
+    `return` with `notes` populated — and it fires exactly when the tree has
+    grown enough that what the dispatch noticed about it is worth having.
+    """
+
+    @staticmethod
+    def _widen(repo: Path) -> None:
+        """A delta wide enough to trip `_scope_widened` (> 2x prior + 5), plus a
+        dirty tree so the committed anchor has something to note."""
+        _seed_prior_review(repo, findings=[])  # 3 files reviewed
+        for i in range(14):
+            _commit_file(repo, f"src/gen{i}.py", "x = 1\n", f"feat: gen{i}")
+        (repo / "src" / "dirty.py").write_text("y = 2\n")
+
+    def test_the_scope_widened_error_carries_the_notes(self, tmp_path):
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._widen(repo)
+
+        result = cc.begin_review(repo, "verify-resolutions")
+
+        assert result.get("kind") == "scope-widened", result
+        assert any("src/dirty.py" in n for n in result.get("notes") or []), (
+            "the dispatch noticed judgeable uncommitted work and then returned "
+            f"past it: {result.get('notes')}"
+        )
+
+    def test_the_cli_prints_notes_before_the_reason(self, tmp_path):
+        """Notes first, reason last: the reason is what the reader acts on, and
+        a reader of a multi-line block acts on the final line."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._widen(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 2, (
+            f"rc={result.returncode} out={result.stdout!r} err={result.stderr!r}"
+        )
+        assert "PRAWDUCT NOTE:" in result.stderr, (
+            f"the error path dropped the dispatch's notes: {result.stderr!r}"
+        )
+        assert result.stderr.index("PRAWDUCT NOTE:") < result.stderr.index(
+            "critic-begin: scope-widened"
+        ), f"the reason was buried above the notes: {result.stderr!r}"

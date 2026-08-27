@@ -1387,11 +1387,12 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
     standard = [
         "Fix ALL of them in the working tree first — do not commit between fixes.",
-        "Then run ONE /prawduct:critic verify-resolutions — it reads the dirty tree",
-        "BECAUSE you did not commit first; a commit of unreviewed content moves its",
-        "anchor to HEAD and leaves the fix outside its own pass —",
-        "and commit that verified tree verbatim: it records the resolution facts,",
-        "so this same evidence passes with no full re-review.",
+        "Then run ONE /prawduct:critic verify-resolutions (it reads the dirty tree",
+        "BECAUSE nothing was committed first), and commit that verified tree",
+        "verbatim: it records the resolution facts, so this same evidence passes",
+        "with no full re-review. Commit CONTENT the review has not seen and the",
+        "pass anchors HEAD instead, leaving any uncommitted fix outside it",
+        "(review-cycle.md § Verify-resolutions anchoring and demotion).",
     ]
     n = sum(1 for e in entries if e.get("superseded"))
     if not n:
@@ -1744,7 +1745,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         "HEAD and never saw those uncommitted files, so committing them now opens a "
         "NEW delta that needs its own verify-resolutions pass; a dispatch that "
         "refuses over such an interval (exit 3) names the files it left out. Full "
-        "derivation: `review-cycle.md` § Verify-resolutions anchoring.",
+        "derivation: `review-cycle.md` § Verify-resolutions anchoring and demotion.",
         file=sys.stderr,
     )
     return 1

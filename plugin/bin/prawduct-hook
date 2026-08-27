@@ -1750,6 +1750,14 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         return 3
     if result["status"] != "ok":
+        # Notes first, then the reason: a failed dispatch still learned things
+        # about the tree, and the reason is what the reader acts on. Most error
+        # returns carry none — they fire before `notes` is populated — but
+        # `scope-widened` reaches here with the dirty-tree note in hand, and
+        # dropping it repeats the defect this change exists to fix one return
+        # statement over.
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
         return 2 if result.get("kind") == "scope-widened" else 1
 

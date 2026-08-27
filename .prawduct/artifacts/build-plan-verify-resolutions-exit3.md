@@ -72,10 +72,29 @@ answerable. The three prose sites state the condition under which
 
 ## Status
 
-- [ ] Chunk 01: A refusal names the tree it graded and the judgeable work it excluded
+- [x] Chunk 01: A refusal names the tree it graded and the judgeable work it excluded
 
 Context: Plan written 2026-08-26 on `fix/verify-resolutions-exit3-excluded-wip`, cut from
 a clean `develop`. Baseline suite green (`test-status` exit 0, tree-valid).
+
+Chunk 01 closed 2026-08-26 after three rounds (`cumulative` → two `verify-resolutions`), ending
+0 blocking / 0 warning / 0 note. Suite green at 5340; evidence recorded against the reviewed tree.
+**The plan is complete and stays live until the branch merges.**
+
+What the reviews changed, worth carrying. Round 1 found the fix had shipped the sibling of the bug
+it was fixing: the anchor discriminator went out as a commit-SET test in two surfaces at once,
+where the code compares TREES — so the corrected prose told a builder on the golden path that they
+owed the round this branch exists to remove. The canonical statement existed in `review-cycle.md`
+and was never opened. Homed as `learnings.md` "When operator prose restates a PREDICATE, diff your
+sentence against the rule's canonical prose statement". Round 1 also found `or []` on a function
+documented to return `None` for "could not compute" — inherited from the four lines this change
+refactored, and tolerable feeding a boolean but not an all-clear. Three reviewers independently hit
+three different carriers of one rule across five files; the round corrected all five and filed #723
+for the construction that would collapse them.
+
+Two demoted observations in round 3 were false statements in this plan and the change-log,
+corrected here rather than accepted: both records live under `.prawduct/`, which composes as a free
+edge, so the correction cost no further round.
 
 ---
 
@@ -101,11 +120,13 @@ a clean `develop`. Baseline suite green (`test-status` exit 0, tree-valid).
 5. The guard-refusal evidence fact records the excluded set alongside `free_files`, and
    `evidence list --kind guard-refusal` — the query that ruling names as the guard's yield
    check — renders it, `excluded=?` included.
-6. Every surface that tells a builder what a verify pass anchored states the test as
-   committed **content** the prior review never saw, and cites `review-cycle.md` rather
-   than restating the derivation: `gates.py`'s uncovered remedy and its blocking remedy,
-   `skills/pr/SKILL.md` Step 2, `skills/critic/SKILL.md`'s exit-3 rule, and
-   `methodology/building.md`'s fix-ordering line.
+6. No surface still teaches the falsified promise. The two that state the anchor *test*
+   — `gates.py`'s uncovered remedy and `skills/pr/SKILL.md` Step 2 — state it as committed
+   **content** the prior review never saw, and cite `review-cycle.md` rather than
+   restating the derivation. The other three carry their own correct fact and need no such
+   citation: `gates.py`'s blocking remedy conditions its dirty-tree read on the no-commit
+   line above it, `skills/critic/SKILL.md`'s exit-3 rule keys on the refusal block, and
+   `methodology/building.md` states the fix ordering and points.
 7. `begin_review`'s docstring describes the intent-aware verify-resolutions anchor
    instead of the pre-#395 working-tree-only one.
 8. Regression tests: the repro from the issue exits 3 **and** names the excluded
@@ -113,6 +134,12 @@ a clean `develop`. Baseline suite green (`test-status` exit 0, tree-valid).
    with no dirty tree still says "Nothing to do"; an injected `tree_diff` failure reports
    UNKNOWN rather than clean; the guard-refusal fact carries the excluded set; and the
    corrected prose is pinned in `tests/preferences/test_free_interval_prose.py`.
+9. No dispatch return drops notes a reader could act on. The refusal path forwards all but
+   the dirty-tree note, whose content its own block delivers; `scope-widened` — the one
+   error return reached with notes populated by a mode branch — carries them, and the CLI
+   prints whatever any non-ok result carries. The remaining error returns fire before the
+   mode branches, so what they hold is a deliverable-gap note with no bearing on an
+   anchor failure. Round 2's R-13 named this half.
 
 **Done when:** acceptance criteria pass, suite green, `/prawduct:critic` run and blocking
 findings resolved.
