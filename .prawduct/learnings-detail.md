@@ -4495,3 +4495,44 @@ closing keywords only for merges into the repository's *default* branch, so on a
 inert. And this arrangement has no detector: `documentation/backlog-service-requirements.md` **GV3**
 replaces ship-atomicity with traceability plus a reconciliation sweep, and the sweep is prescribed
 but unbuilt, so the step running is the whole guarantee.
+
+
+## When operator prose restates a PREDICATE, diff against the canonical statement
+
+**Where it bit.** `fix/verify-resolutions-exit3-excluded-wip` (#722), 2026-08-26, caught as a
+BLOCKING finding by the cumulative's R-1 — not by the suite, and not by the prose test the same
+change added.
+
+**The predicate.** `critic_consolidate.begin_review` decides where a `verify-resolutions` pass
+anchors with `committed_differs = capture["head_tree"] != base_tree and not anchor_is_ahead`. Two
+prose surfaces — `gates.py`'s `uncovered` remedy and `skills/pr/SKILL.md` Step 2 — needed to tell
+an operator what that means for their next commit. Both shipped it as *"whether anything was
+committed between the review it verified and the pass itself."*
+
+**Why that is wrong, and why it looks right.** The expression is a TREE comparison. A commit-set
+reading agrees with it in three of four cases and disagrees in the one that is the happy path: the
+commit that vouches for a reviewed dirty tree materializes that tree *verbatim*, so the commit set
+is non-empty while the trees are identical, and the anchor does not move. The commit-set phrasing
+therefore tells a builder on the golden path that they owe another `verify-resolutions` — which is
+the wasted round #722 exists to remove, reintroduced by #722's own fix, in the same commit.
+
+**The failure was not misreading the code.** The code was read, understood, and cited in the same
+session's comments. What went wrong is one layer up: the *operator-facing sentence* was composed
+from a mental summary of the expression rather than checked against anything. And there was
+something to check against — `review-cycle.md` § Verify-resolutions anchoring and demotion already
+carried the correct statement, in prose, including the vouching-commit exclusion by name. It was
+not opened. Principle 24 (Retrieval Over Generation) failing at the cheapest possible check.
+
+**Why the duplication made it worse.** The rule had five prose carriers (`gates.py` ×2,
+`pr/SKILL.md`, `critic/SKILL.md`, `building.md`). Editing two of them in one pass from one mental
+model is how a single bad paraphrase became two shipped defects rather than one. Filed as #723:
+the fix is a construction with one authoring home, not a longer list of pinned phrasings.
+
+**What now stops it.** `tests/preferences/test_free_interval_prose.py` pins both halves — that each
+stating surface phrases the test as committed *content*, and that each cites `review-cycle.md`
+rather than restating the derivation. The pin is a floor, not the fix: it catches this sentence
+regressing, not the next predicate paraphrased the same way.
+
+**The tell, restated.** You can state the rule but cannot point at the sentence you got it from.
+If the only source you can name is "the code", you are generating, not retrieving — go find whether
+a canonical prose statement exists first, and diff against that.

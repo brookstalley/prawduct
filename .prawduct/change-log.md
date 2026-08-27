@@ -3,6 +3,79 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-26: a dispatch refusal names the tree it graded and the work it excluded
+
+<!-- prawduct: type=fix | scope=verify-resolutions-exit3 -->
+
+`verify-resolutions` anchors at committed HEAD once a commit lands that the prior review never
+saw — the PR gate's target, and the fix for the inverse anchoring bug. Judgeable files still
+sitting uncommitted are outside that interval by construction. When the interval then held no
+judgeable file, dispatch returned exit 3 with `no judgeable file in <a>..<b>` and named nothing
+else: a statement about the *interval* that every operator read as a statement about the *repo*.
+The observed cost was two dispatches for one review — commit, discover the delta existed after
+all, dispatch again.
+
+**The refusal was right; its report was not.** Reviewing that interval would not have covered
+those files either, so the predicate is untouched and exit 3 still means exactly what it meant.
+What changed is that a refusal now names the tree it graded (`anchor`) and the judgeable
+uncommitted files that tree does not contain (`excluded_wip`), on the result, on the CLI, and on
+the guard-refusal fact — where `free_files` alone could not tell a refusal that left work outside
+the interval apart from one over a clean tree.
+
+**A check that could not run is not a clean bill.** `evidence.tree_diff` returns `None` when the
+diff cannot be computed and never guesses; collapsing that into `[]` would have made the one
+report written to catch work falling outside an interval answer "nothing fell outside" on the
+strength of a check that never ran. `None` propagates instead — through the note, the result, the
+fact and the yield query, which renders `excluded=?`.
+
+**Ordering is behaviour here.** A reader of a multi-line block acts on the final imperative, and
+above the exclusion notice that imperative is `--force` — which reviews the very interval that
+already excluded these files. The notice prints last, and the "Nothing to do" line is withheld
+whenever it would be an unearned all-clear. The refusal path also stopped discarding the
+dispatch's own `notes`, which it wrote and then returned past — all but the dirty-tree note,
+whose content the refusal block already delivers, so the fact reaches the operator exactly once.
+
+`cumulative` gets the same treatment from the same helper: it has always anchored committed HEAD
+and always noted a dirty tree without naming anything in it.
+
+**Five prose sites promised working-tree coverage without the condition that makes the promise
+true.** The `check-cumulative-critic` uncovered remedy and `skills/pr/SKILL.md` Step 2 both said
+"commit that tree verbatim and no further pass is owed", which holds only when the pass anchored
+the working tree. The same gate's *blocking* remedy promised a verify pass "reads the dirty tree"
+unconditionally. `skills/critic/SKILL.md` told the reader a `cumulative`/`verify-resolutions`
+exit 3 means the gate is satisfied — true of the PR gate, false of the Stop-hook gate in exactly
+the excluded-WIP case. And `methodology/building.md` prescribed commit-then-verify, the ordering
+that moves the anchor.
+
+**The discriminator is a tree comparison, not a commit-set one** — and the first draft of this
+fix got that wrong in two of those sites, which is the same class of error one level up. The
+anchor moves when committed *content* differs from the tree the prior review saw; the commit that
+materializes a reviewed dirty tree verbatim changes no content and moves nothing, so "did I
+commit at all" is the wrong question. The two sites that state the test — the `uncovered`
+remedy and `pr/SKILL.md` Step 2 — now say it that way and cite `review-cycle.md` rather than
+restating the derivation; `tests/preferences/test_free_interval_prose.py` pins both halves. The
+other three carry a different correct fact and need no citation. `begin_review`'s docstring
+described the pre-#395 working-tree-only anchor and now describes the intent-aware one.
+
+**Both budgeted files paid for their own correction.** `methodology/building.md` and
+`skills/critic/SKILL.md` each grew past its ceiling and each came back under it by trimming rather
+than bumping — a `prawduct-hook disposition` signature and a consolidate rule the session digest
+already injects, in the first; four restatements inside the exit-3 paragraph, in the second, one
+of which ("it names the free files") this change had just made wrong. `building.md`'s correction
+came out at exactly its recorded size. Its ordering rule is a POINTER to `review-cycle.md`, not a
+fifth restatement — which is the finding below, applied to itself.
+
+**The refusal path was not the only return that walked past its own notes.** Every `error` return
+did too, and `scope-widened` is the one that reaches its `return` with notes populated — it fires
+exactly when the tree has grown enough that what the dispatch noticed about it is worth having.
+The CLI now prints notes before the reason on that path as well.
+
+The five carriers were corrected but not collapsed; **#723** carries the construction that would
+make correcting this rule a one-file edit. Three reviewers independently landing on different
+carriers of one rule is what says it is a class.
+
+Upstream report: #722.
+
 ## 2026-08-26: a plan the deliverable check cannot grade says so at dispatch
 
 <!-- prawduct: type=fix | scope=silent-governance-failures -->

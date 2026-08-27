@@ -1373,6 +1373,76 @@ def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | No
     return None, f"prior review fact {fact_id!r} not found in the evidence store"
 
 
+#: How many excluded/free paths a message names before it summarises the rest.
+#: Enough to recognise your own working tree, short enough to stay one line.
+_NAMED_PATHS = 5
+
+
+def name_paths(paths: "list[str]") -> str:
+    """``a, b, c (+2 more)`` — the shared spelling for a path list in a message."""
+    shown = ", ".join(paths[:_NAMED_PATHS])
+    extra = len(paths) - _NAMED_PATHS
+    return shown + (f" (+{extra} more)" if extra > 0 else "")
+
+
+def _judgeable_wip(project_dir: Path, capture: dict) -> "list[str] | None":
+    """The judgeable uncommitted files a COMMITTED-tree anchor leaves unreviewed,
+    or ``None`` when the uncommitted diff cannot be computed.
+
+    Both committed anchors — ``cumulative`` always, ``verify-resolutions`` once a
+    committed delta exists — grade a tree the builder's dirty files are not in.
+    Naming that set is what separates "nothing needs reviewing" from "your work
+    is not in the interval I chose", which are the same sentence today and have
+    opposite consequences: the second leaves judgeable work uncovered while the
+    operator reads a clean exit.
+
+    Same predicate the coverage gate grades with, so this can never name a file
+    the gate would wave through, nor omit one it would demand.
+
+    ``None`` propagates rather than collapsing to ``[]`` because the two answers
+    drive opposite messages here. ``[]`` licenses the affirmative "no reviewable
+    work is excluded"; a diff that could not be computed licenses nothing, and
+    folding it into the empty list turns a failed check into a clean bill —
+    fail-open, in the one report written to catch work falling outside an
+    interval. :func:`evidence.tree_diff` distinguishes them for exactly this
+    reason, and its callers in this module already return ``error`` on ``None``.
+    """
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    wip = evidence.tree_diff(project_dir, capture["head_tree"], capture["tree"])
+    if wip is None:
+        return None
+    return coverage_algebra.judgeable_files(wip)
+
+
+def _dirty_anchor_note(mode_label: str, excluded: "list[str] | None") -> str:
+    """The note a committed-tree anchor owes a dirty working tree.
+
+    Names the files rather than asserting that some exist: an operator who can
+    read the list can tell in one glance whether the excluded work is the fix
+    they just wrote or a stray editor buffer, and only the first needs action.
+    ``None`` gets its own sentence rather than borrowing the empty one — see
+    :func:`_judgeable_wip`.
+    """
+    if excluded is None:
+        return (
+            f"working tree dirty at {mode_label} dispatch — anchored to committed "
+            "HEAD, and the uncommitted diff could NOT be computed, so whether "
+            "judgeable work sits outside the reviewed scope is UNKNOWN. Treat this "
+            "dispatch as covering the committed tree only"
+        )
+    if excluded:
+        return (
+            f"working tree dirty at {mode_label} dispatch — anchored to committed "
+            f"HEAD; {len(excluded)} judgeable uncommitted file(s) are NOT in the "
+            f"reviewed scope: {name_paths(excluded)}"
+        )
+    return (
+        f"working tree dirty at {mode_label} dispatch — anchored to committed HEAD; "
+        "every uncommitted change is non-judgeable, so no reviewable work is excluded"
+    )
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -1392,9 +1462,15 @@ def begin_review(
     judgeable file and no finding this mode could resolve — the CLI exits 3.
     That is a NO-OP, not a failure: the coverage gate already composes such an
     interval as a free edge, so the review would record a fact nothing needs.
-    ``force=True`` dispatches anyway. A ``scope-widened`` result also carries
-    ``fallback_mode`` — the full-review mode that covers the widened delta,
-    named in ``reason`` so the re-dispatch does not have to guess it.
+    ``force=True`` dispatches anyway. A refusal also carries ``anchor`` (the tree
+    it graded, in words) and ``excluded_wip`` (judgeable uncommitted files that
+    tree does not contain) — without them "no judgeable file" is true of the
+    interval and silent about the repo, which reads as "nothing to do" when it
+    means "your work is not in the interval I chose".
+
+    A ``scope-widened`` result also carries ``fallback_mode`` — the full-review
+    mode that covers the widened delta, named in ``reason`` so the re-dispatch
+    does not have to guess it.
 
     Per-mode interval (design D8, chunk-03 refinements):
 
@@ -1402,9 +1478,15 @@ def begin_review(
       the captured working tree (D3 temp-index capture; non-mutating).
     - ``cumulative`` — base = merge-base(resolve-base, HEAD), head = ``HEAD``
       (the committed bundle; a dirty working tree is noted, not reviewed).
-    - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``,
-      head = the captured working tree. Tree keying makes a dirty-tree
-      verify sound (the v2 "commit first, then verify" rule dissolves).
+    - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
+      head is **intent-aware**, because this mode serves two gate targets that
+      diverge once the tree is dirty. When content was committed that the prior
+      review never saw, head = committed HEAD (the PR gate's target) and any
+      uncommitted work is noted-and-excluded; otherwise head = the captured
+      working tree (the Stop-hook gate's target), which is what makes a
+      fix-in-progress verify sound and dissolves the v2 "commit first, then
+      verify" rule. The reasoning, and the two readings of tree inequality that
+      decide it, are at the branch itself.
 
     ``files_changed`` is uniformly ``git diff --name-only <base_tree>
     <head_tree>``, so the recorded snapshot and the D6 edge-validity check
@@ -1492,6 +1574,22 @@ def begin_review(
         }
 
     notes: list[str] = []
+    # Judgeable work the chosen interval EXCLUDES, and the tree it chose, both
+    # carried structurally so a REFUSAL can name them. A committed-tree anchor
+    # over a dirty working tree grades a tree the builder's files are not in;
+    # the free-interval refusal below then says "no judgeable file in a..b",
+    # which is true of the interval and says nothing about the repo. Prose in a
+    # `notes` entry could not fix that, because the refusal path returns before
+    # `notes` reaches any channel.
+    excluded_wip: "list[str] | None" = []
+    head_anchor = "the working tree"
+    # The dirty-tree note is held APART from `notes` because its two delivery
+    # paths want different things from it. On a dispatch it is the only carrier
+    # of the exclusion and rides `notes` to stderr. On a refusal the stdout block
+    # names the same files already, and forwarding it there prints one fact twice
+    # in one invocation — which is what "printed LAST, deliberately" was quietly
+    # not true of.
+    dirty_note: "str | None" = None
     # A plan the deliverable check cannot grade, said HERE rather than at
     # release. Advisory by construction — it rides `notes`, changes no exit code
     # and blocks no dispatch — because the review is still worth running; what
@@ -1530,11 +1628,10 @@ def begin_review(
         head_commit = dispatch_commit
         head_tree = capture["head_tree"]  # the committed state, not the dirty tree
         base_reviewed = base_commit
+        head_anchor = "committed HEAD"
         if not capture["clean"]:
-            notes.append(
-                "working tree dirty at cumulative dispatch — uncommitted "
-                "changes are NOT in the reviewed scope"
-            )
+            excluded_wip = _judgeable_wip(project_dir, capture)
+            dirty_note = _dirty_anchor_note("cumulative", excluded_wip)
     else:  # verify-resolutions
         prior, reason = _prior_review_fact(project_dir, prawduct_dir)
         if prior is None:
@@ -1605,22 +1702,35 @@ def begin_review(
         if committed_differs:
             head_tree = capture["head_tree"]  # committed HEAD — the PR-gate target
             head_commit = dispatch_commit
+            head_anchor = "committed HEAD"
             if not capture["clean"]:
-                notes.append(
-                    "working tree dirty at verify-resolutions dispatch — anchored "
-                    "to committed HEAD (a committed delta exists since the prior "
-                    "review); uncommitted changes are NOT in the reviewed scope"
+                excluded_wip = _judgeable_wip(project_dir, capture)
+                dirty_note = (
+                    _dirty_anchor_note("verify-resolutions", excluded_wip)
+                    + " (a committed delta exists since the prior review, so this "
+                    "pass composes to the PR gate rather than the Stop-hook gate)"
                 )
         else:
             head_tree = capture["tree"]  # working tree — the Stop-hook target
             head_commit = dispatch_commit if capture["clean"] else None
             if not capture["clean"]:
-                from . import coverage_algebra  # noqa: PLC0415 — lazy
-                wip = (
-                    evidence.tree_diff(project_dir, capture["head_tree"], capture["tree"])
-                    or []
-                )
-                if coverage_algebra.judgeable_files(wip):
+                # In scope here, not excluded — this anchor IS the working tree.
+                # Computed all the same: whether any of the dirty files is
+                # judgeable is what decides whether the PR-gate warning below
+                # is worth printing.
+                wip = _judgeable_wip(project_dir, capture)
+                if wip is None:
+                    # Unknown is not "no". The warning below asserts judgeable
+                    # WIP exists, which an uncomputable diff cannot support —
+                    # so say what is actually known instead of guessing either way.
+                    notes.append(
+                        "working tree dirty at verify-resolutions dispatch and the "
+                        "uncommitted diff could NOT be computed — whether judgeable "
+                        "work is in it is UNKNOWN. This fact vouches for the WORKING "
+                        "tree; let the cumulative/PR gate's own verdict tell you "
+                        "whether committed HEAD is covered"
+                    )
+                elif wip:
                     notes.append(
                         "working tree dirty with judgeable uncommitted files and no "
                         "committed delta since the prior review — this fact vouches "
@@ -1650,6 +1760,9 @@ def begin_review(
                 "status": "error",
                 "kind": "scope-widened",
                 "fallback_mode": fallback,
+                # WITH the dirty note, unlike the refusal: this return prints a
+                # reason and nothing else, so there is no block to say it twice.
+                "notes": notes + ([dirty_note] if dirty_note else []),
                 "reason": (
                     f"scope-widened: {len(delta)} files changed since the prior "
                     f"review of {len(prior_files)} — a partial re-review would "
@@ -1668,13 +1781,12 @@ def begin_review(
             # "nothing changed". The message says which tree it read anyway,
             # because the previous wording was true of the anchor and false of
             # the repo, and nothing in it let a builder tell the difference.
-            anchored = "committed HEAD" if committed_differs else "the working tree"
             return {
                 "status": "error",
                 "reason": (
                     "nothing to verify: the prior review has no blocking/warning "
-                    f"findings, and {anchored} ({head_tree[:12]}) is the same tree "
-                    f"it reviewed ({base_tree[:12]})"
+                    f"findings, and {head_anchor} ({head_tree[:12]}) is the same "
+                    f"tree it reviewed ({base_tree[:12]})"
                 ),
             }
         files_reviewed = list(prior_files)
@@ -1748,6 +1860,15 @@ def begin_review(
                 "interval": {"base_tree": base_tree, "head_tree": head_tree},
                 "mode": mode_token,
                 "free_files": list(files_changed),
+                # What the refusal did NOT wave through, on the same record. The
+                # yield question this guard exists to answer ("did it ever refuse
+                # a round that turned out to be needed?") is unanswerable from
+                # `free_files` alone once an anchor can exclude work: a refusal
+                # over a free interval that left judgeable files outside it is a
+                # different event from one over a clean tree.
+                "excluded_wip": (
+                    None if excluded_wip is None else list(excluded_wip)
+                ),
                 "scope": scope,
                 "chunk": chunk,
                 "branch": gitstate.current_branch(project_dir),
@@ -1765,11 +1886,29 @@ def begin_review(
         return {
             "status": "no-review-needed",
             "reason": (
-                f"no judgeable file in {base_tree[:12]}..{head_tree[:12]} — the "
-                "coverage gate already composes this interval as a free edge, so "
-                "a review would record a fact nothing needs"
+                f"no judgeable file in {base_tree[:12]}..{head_tree[:12]} "
+                f"({head_anchor}) — the coverage gate already composes this "
+                "interval as a free edge, so a review would record a fact "
+                "nothing needs"
             ),
             "free_files": list(files_changed),
+            # The refusal stays correct with work outside the interval — a
+            # review of THIS interval would not have covered those files either.
+            # What was wrong was reporting it as "nothing to do". Both keys ride
+            # the result so the CLI can say which tree was graded and what it
+            # left out; `notes` rides it because this path returned before the
+            # dispatch's own notes reached any channel, so the dirty-tree note
+            # was written and then discarded.
+            "anchor": head_anchor,
+            # `None` — not `[]` — when the uncommitted diff could not be
+            # computed, so no consumer can render "nothing excluded" off a
+            # check that never ran.
+            "excluded_wip": None if excluded_wip is None else list(excluded_wip),
+            # WITHOUT `dirty_note`: the block the CLI prints for this result
+            # already names the excluded files, and the note would repeat them
+            # on a second channel in the same invocation. Every other note still
+            # rides — this path used to drop the lot.
+            "notes": notes,
             "recorded": recorded.get("status") == "appended",
         }
 
@@ -1884,7 +2023,8 @@ def begin_review(
         "id": review_id,
         "roster": roster,
         "path": str(manifest_path(prawduct_dir)),
-        "notes": notes,
+        # The dispatch path IS the dirty note's only carrier — it rides here.
+        "notes": notes + ([dirty_note] if dirty_note else []),
         "cleared_leftovers": cleared,
         "archived_leftovers": str(archived) if archived else None,
         "superseded_findings": superseded,
