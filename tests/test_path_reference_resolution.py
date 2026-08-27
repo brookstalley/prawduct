@@ -642,3 +642,77 @@ def test_the_interpolation_sweep_has_subjects():
         f"only {len(_instruction_markdown())} instruction-bearing markdown files found "
         f"under {_INSTRUCTION_TREES} — the trees moved and the sweep is dark"
     )
+
+
+# ---------------------------------------------------------------------------
+# Cross-document flow citations: cite the step by NAME, never by position
+# ---------------------------------------------------------------------------
+
+_NUMBERED_FLOW_CITATION = re.compile(
+    r"\b(?:merge|create)[- ]flow\s+step\s+\d+\b", re.IGNORECASE
+)
+# The form that replaces it: the step's own title, quoted. Matching on the
+# distinctive title rather than on "Merge Flow" alone keeps the floor honest —
+# a prose sweep that deleted every citation would otherwise still pass.
+_NAMED_FLOW_CITATION = re.compile(
+    r"Merge Flow\s+\*?\"Confirm the bookkeeping merged WITH the PR\"", re.IGNORECASE
+)
+
+
+def _governance_prose() -> list[str]:
+    """Tracked markdown that INSTRUCTS, excluding records and history.
+
+    Records are excluded for the usual reason: a change-log entry or an archived
+    plan is a statement about what was true when it was written, so a step number
+    inside one is correct history and renumbering does not falsify it.
+    """
+    return [
+        rel for rel in _TRACKED
+        if rel.endswith(".md") and not _is_record(rel)
+    ]
+
+
+def test_no_governance_prose_cites_a_flow_step_by_NUMBER():
+    """A durable pointer must not ride on a position that renumbers.
+
+    This rot has now been paid for three times. `planning.md` cited
+    "/prawduct:pr merge-flow step 7"; a step inserted into that flow turned it
+    into "Clean up evidence file", and it was replaced with the step's NAME on
+    2026-08-24 (recorded in `test_v5_methodology.py`'s budget comment). At the
+    2026-08-27 base sync the same citation came back in FOUR files, three were
+    converted by a re-read, and `documentation/release-process.md` survived —
+    caught by review, not by a check, because there was no check.
+
+    Assert-absent, so `test_the_named_flow_citation_is_the_one_in_use` below is
+    the half that notices if the citations were deleted rather than converted.
+    """
+    offenders = []
+    for rel in _governance_prose():
+        for lineno, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):
+            if _NUMBERED_FLOW_CITATION.search(line):
+                offenders.append(f"{rel}:{lineno}: {line.strip()[:110]}")
+    assert not offenders, (
+        "governance prose cites a /prawduct:pr flow step by its NUMBER. Inserting a step "
+        "into that flow silently repoints every one of these at the wrong step. Cite the "
+        "step by its title instead — e.g. `/prawduct:pr`'s Merge Flow \"Confirm the "
+        "bookkeeping merged WITH the PR\" step:\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_the_named_flow_citation_is_the_one_in_use():
+    """The discriminating half: the rule above is satisfied by having no citations at all.
+
+    Cross-document pointers into the merge flow are real and load-bearing — the
+    plan-retention split is stated in one place and pointed at from three. If this
+    goes quiet, the pointers were not converted to the durable form; they were
+    dropped, and each reader now has to rediscover the rule.
+    """
+    users = {
+        rel for rel in _governance_prose()
+        if _NAMED_FLOW_CITATION.search((REPO / rel).read_text(encoding="utf-8"))
+    }
+    assert len(users) >= 3, (
+        f"only {len(users)} governance documents cite the merge-flow bookkeeping step by "
+        "name — the durable pointers are gone, or are being written some other way this "
+        f"check no longer sees. Found in: {sorted(users)}"
+    )

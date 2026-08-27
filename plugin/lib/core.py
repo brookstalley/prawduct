@@ -318,12 +318,20 @@ def read_bool_yaml_key(path: Path, key: str) -> bool:
 def pointer_plan_path(prawduct_dir: Path) -> Path | None:
     """The ``active_build_plan:`` scalar as a path, or ``None`` when unset.
 
-    The one place the scalar becomes a PATH. Two spellings of the prefix rule
-    below would let the tie-break in :func:`resolve_branch_claim` and the
-    fallback in :func:`resolve_build_plan_path` resolve different files from one
-    line of YAML, and the briefing's dangling-pointer warning compares against a
-    third. (The raw string is still read directly wherever a message quotes what
-    the operator actually wrote — that is the value, not the path.)
+    The one place the scalar becomes a PATH, and that is now true by
+    construction rather than by convention: the resolution path (the tie-break
+    in :func:`resolve_branch_claim`, the fallback in
+    :func:`resolve_build_plan_path`), the release sweep's archive guard
+    (:func:`plan_backfill._active_plan_path`) and both operator notices in
+    ``prawduct-hook`` route through here. They previously spelled the prefix rule
+    themselves — four copies of one rule, so widening or tightening the accepted
+    spelling here would have left the sweep and the notices resolving a different
+    file from the same line of YAML. (The raw string is still read directly
+    wherever a message quotes what the operator actually wrote — that is the
+    value, not the path.)
+
+    Returns ``None`` for an unset pointer AND for one that is nothing but the
+    prefix, since stripping it leaves no path to name.
 
     The pointer is ``.prawduct/``-relative, but the natural repo-relative
     spelling (``.prawduct/artifacts/x-plan.md``) is accepted by stripping the

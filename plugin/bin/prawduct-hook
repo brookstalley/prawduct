@@ -4643,8 +4643,9 @@ def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
     pointer = _read_str_yaml_key(
         project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
     )
-    if pointer:
-        pointed_at = (project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")).resolve()
+    pointed_at = _core().pointer_plan_path(project_dir / ".prawduct")
+    if pointer and pointed_at is not None:
+        pointed_at = pointed_at.resolve()
         if pointed_at == Path(result["source"]).resolve():
             print(
                 "NOTE: active_build_plan still names the plan just archived "
@@ -6131,8 +6132,8 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     pointer = _read_str_yaml_key(
         project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
     )
-    if pointer:
-        pointed_at = project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")
+    pointed_at = _core().pointer_plan_path(project_dir / ".prawduct")
+    if pointer and pointed_at is not None:
         if not pointed_at.is_file():
             print(
                 f"NOTE: active_build_plan names {pointer}, which is not there. "

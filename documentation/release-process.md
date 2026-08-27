@@ -57,10 +57,11 @@ the final `3.4.0` on `main` — and `develop`, having been promoted, now carries
 the *same string* the released plugin uses, so every dogfooding repo silently resolves the released
 cache entry and runs `main`'s code while believing it is on develop: the exact failure the
 prerelease exists to prevent, arriving at the moment nobody is looking for it. **The first work
-merged into `develop` after a release re-opens the next prerelease** (`3.4.1-dev`, then `-dev.1`,
-`-dev.2` as work lands) in the same three files. Until then there is nothing unreleased to dogfood,
-so the two being equal is honest — it is only a trap if you leave a repo pointed at develop
-expecting otherwise.
+release itself re-opens the next prerelease** (`3.4.1-dev`, then `-dev.1`, `-dev.2` as work
+lands) in the same three files — that is Phase 3 of the runbook, and it is unconditional. Do not
+read "nobody is on the track right now" as licence to skip it: Phase 2's own `Done when` requires
+the reopen commit, and leaving `develop` on the released string is what lets the verdict cache
+replay a `covered` verdict across a judgeability change.
 
 **Getting back off the track:** delete the `prawduct-dev` block from `settings.local.json` and
 re-enable `prawduct@prawduct`. Nothing else is touched — the repo's committed `.claude/settings.json`
@@ -269,8 +270,8 @@ same set in executable running order, and is the document to work from when actu
   bookkeeping-only PR, so it was retired). `check-releasability` enumerates the entry's
   `scope=` as pending and advises when that scope resolves to no plan file — work shipping
   with nothing describing it. **The PLAN is retained until the release**; what happens to the
-  `active_build_plan` pointer depends on how the plan resolves, and `/prawduct:pr` merge-flow
-  step 7 owns that split — a plan declaring `branch:` has its pointer cleared at the merge
+  `active_build_plan` pointer depends on how the plan resolves, and `/prawduct:pr`’s Merge Flow
+  *"Confirm the bookkeeping merged WITH the PR"* step owns that split — a plan declaring `branch:` has its pointer cleared at the merge
   (its branch is gone, so it resolves for nobody and reads live-but-inactive), while a
   pointer-resolved plan keeps it, because clearing that one is what makes governance blind.
   The gate reads the plan by scope either way, which is why it does not depend on the

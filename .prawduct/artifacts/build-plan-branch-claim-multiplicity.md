@@ -63,6 +63,20 @@ data, not inferred: discodon's `.prawduct/artifacts/` carries five build plans t
 - [x] Chunk 03: Pin what union-merge does with a twice-landed entry
 - [ ] Chunk 04: Release notes and a develop-track dogfooding path for sibling repos
 
+**Chunk 04 stays UNTICKED, and this paragraph carries why** — not VRF-017 alone. The 2026-08-13
+amendment's decision is honoured rather than overridden: the box opens only when a sibling repo has
+actually run a session on the track. The queue entry exists (`operator-verification.md`), but this repo runs
+`operator_verification_required: false`, so `check-operator-verification` returns "not required"
+and no gate will ever raise it: a deferral queue whose enforcing gate is off is a write-only
+queue. The obligation is therefore stated here, where the briefing and the release checklist
+read it. **What is done:** the release notes (in the OPEN `## v3.4.1-dev.2` section) and the
+dogfooding recipe, both in `-dev.N` terms. **What is not:** nobody has run a session on the
+develop track, because the recipe installs from `ref: develop` and could not be exercised until
+this merged. Whoever runs VRF-017 ticks the box, folded into the next PR that touches the repo rather
+than a bookkeeping commit on `develop`; a release cut before then should say in its notes that the
+track is undogfooded — and if this repo wants the queue to bind, that is the
+`operator_verification_required` flag, which is an owner decision and was not flipped here.
+
 Chunk 01 landed 2026-08-13 (`9e66c88e` + `9f933285`; review `rev-20260814T033741Z-ba15c001`, 0
 blocking / 10 warnings / 13 notes, all ten warnings fixed in one batch and six notes accepted as
 facts). **Three reviewers independently found the same defect**, and it was in the one sentence that
@@ -160,7 +174,7 @@ sibling repo at the develop track and opening a session there.
   today's retention. Clear this repo's own pointer accordingly.
 - **Depends on:** Chunk 01 (same resolution story; sequencing avoids doc churn)
 - **Artifacts consumed:** `build-plan-tactical-efficiency.md` Chunk 06, `tactical-efficiency-analysis-2026-08-13.md` §F7
-- **Deliverables:** `plugin/skills/pr/SKILL.md` (Step 1d + merge-flow step 7 RETAIN bullets),
+- **Deliverables:** `plugin/skills/pr/SKILL.md` (Step 1d + the Merge Flow "Confirm the bookkeeping merged WITH the PR" RETAIN bullets),
   `plugin/methodology/planning.md` plan-lifecycle paragraph, `.prawduct/project-state.yaml`
   (clear the pointer — the tactical plan declares its branch)
 - **Tests:** the prose guards these files carry, updated only where the pinned sentence changed

@@ -126,13 +126,14 @@ def _active_plan_path(prawduct_dir: Path) -> Path | None:
     """
     from . import core  # noqa: PLC0415 — local, keeps this module's imports flat
 
-    pointer = core.read_str_yaml_key(
-        prawduct_dir / "project-state.yaml", "active_build_plan"
-    )
-    if not pointer:
+    try:
+        pointed_at = core.pointer_plan_path(prawduct_dir)
+    except OSError:
+        return None
+    if pointed_at is None:
         return None
     try:
-        return (prawduct_dir / pointer.removeprefix(".prawduct/")).resolve()
+        return pointed_at.resolve()
     except OSError:
         return None
 

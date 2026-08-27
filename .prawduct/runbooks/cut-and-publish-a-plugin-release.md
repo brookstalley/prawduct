@@ -706,21 +706,12 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > its Release**, so the push-triggered job cannot observe the absence it would go red on.
     > v3.2.4 won that race by ~9 seconds of typing speed; v3.2.5 could not have lost it.*
 
-22. **Re-open the next prerelease on `develop`, or decide not to — the develop track goes silent
-    either way and only one of the two is visible.** The promotion left `develop` carrying the
-    version you just released, which is the string `main` now uses too, so any repo dogfooding the
-    develop track resolves the *released* plugin from cache and runs it believing otherwise
-    (`documentation/release-process.md` § Dogfooding the develop track).
-
-    - **Nothing is queued for the next release yet:** leave it. There is genuinely nothing
-      unreleased to dogfood, and the first work merged into `develop` re-opens the prerelease.
-    - **A sibling repo is pointed at the track and you want it live now:** bump the three version
-      files on `develop` to `X.Y.(Z+1)-dev` — the same three as step 7-9, in one commit. `-dev` /
-      `-dev.N` is the only suffix the version checks accept; bump the `.N` on later promotions.
-
-    **Expected:** either a commit on `develop` bumping to a `-dev` prerelease, or a line in your handoff saying
-    the track is parked until the next merge. What is not acceptable is neither, with someone still
-    on the track.
+    > *Anyone dogfooding the develop track is, at this instant, running the released plugin
+    > without knowing it: the promotion left `develop` carrying the string `main` now uses,
+    > so the version-keyed cache resolves the released entry
+    > (`documentation/release-process.md` § Dogfooding the develop track). Phase 3 is what
+    > ends that window, which is why it is unconditional and immediately next — there is no
+    > "nobody is on the track today" branch to take.*
 
 ---
 

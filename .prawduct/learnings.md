@@ -26,6 +26,8 @@ never by dropping them.
 ## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
+## When a long-lived branch syncs a base that moved a lot, diff the TESTS on both sides before resolving any hunk — a test states the rule the code only instantiates, so two sides that re-implemented one mechanism disagree visibly there. Tell: a hunk where both sides are coherent implementations of the same named thing — [learnings-detail.md]
+
 ## When a review finds the SAME class twice, stop fixing instances and enumerate the domain — two spot fixes in two rounds is one missing act, not two mistakes. List every state the thing can be in and make each a case. Tell: your fix cites the reviewer's example — [learnings-detail.md]
 
 ## Hand-verifying at the terminal leaves nothing behind — the corpus you ran the grep against IS a fixture, so make it one in the same breath. A guard warning over every repo's real data shipped with only its positive case asserted. Tell: "I checked it against the real file" with no test naming it — [learnings-detail.md]

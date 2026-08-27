@@ -6,6 +6,49 @@ No size constraint on this file — it's the deep reference, consulted via `/lea
 
 ---
 
+## When a long-lived branch syncs a base that moved a lot, diff the TESTS on both sides before resolving any hunk — a test states the rule the code only instantiates, so two sides that re-implemented one mechanism disagree visibly there. Tell: a hunk where both sides are coherent implementations of the same named thing
+
+**What happened (2026-08-27, PR #658 `fix/branch-claim-multiplicity`).** The branch had sat 251
+commits behind `develop`. `git merge-tree` reported 15 conflicting files, and the job was sized
+from that list as tedious-but-mechanical. Two of the fifteen were not conflicts in any useful
+sense: while the branch waited, `develop` had independently shipped the *same feature* — a develop
+track keyed on a prerelease version — under a deliberately narrower rule. The branch permitted any
+semver prerelease so it could run an `-rc.N` track; develop permitted `-dev` / `-dev.N` only, and
+its `test_version_tuple_refuses_an_unpermitted_prerelease` asserts that `3.4.0-rc.1` must **not**
+parse, so that the banner and the manifest guard keep answering one question about what a legal
+version is.
+
+**Why the conflict list was the wrong instrument.** A conflict list measures *textual* overlap. It
+is structurally blind to the case where one side re-implemented the other's feature, because
+independent implementations of one idea often touch different lines — and there the danger is
+highest exactly where the merge is quietest. The two files that exposed the collision here
+(`test_plugin_version_banner.py`, `test_plugin_manifest.py`) conflicted by luck. The same
+collision in a file that auto-merged would have shipped: resolving "take one side" per hunk would
+have produced a tree that compiled and passed the hunks under inspection while either deleting a
+test written on purpose, or shipping a recipe telling maintainers to set a version the repo's own
+tests reject.
+
+**Why the TESTS are the right instrument.** The code is one instance of a rule; the test states
+the rule, and states it in prose that says *why*. Diffing `tests/` across the two sides surfaces
+"these two disagree about what is legal" in a way that diffing implementations does not. Here the
+decisive artifact was a single test name and its docstring — read before any hunk was resolved, it
+would have reframed the whole job from "merge" to "choose a design" in about a minute.
+
+**The follow-on, which is the same lesson at a smaller scale.** After resolving in develop's
+favour, the *suite* found two more places the decision had not reached: an rc-era test that had
+auto-merged **outside any conflict region**, and a token-budget reading. Both were consequences of
+the resolution itself. **A semantic resolution is not done when the markers are gone; it is done
+when the suite agrees with the decision.** The markers were clean two failures before the tree was
+correct. The Critic then found a third and fourth — a duplicated step number, and a rotted
+cross-document pointer that had been converted in three files and missed in a fourth.
+
+**The sampling failure inside the follow-on, worth naming separately.** Converting the rotted
+pointer, the fix was applied to three files found by one grep and reported as complete; a fourth
+survived because the re-read sampled rather than enumerated. The durable close was not a longer
+list but a construction — a guardrail test asserting that no governance prose cites a flow step by
+number, paired with a non-vacuity floor asserting the named form is still in use. Related:
+[[a-docstring-written-in-the-same-keystroke]] and the enumerate-the-domain rule.
+
 ## A mutant that SURVIVES on code you just wrote is a claim about the CODE, not a gap in the test
 
 Building the unintegrated-delegate advisory, I added an obvious-looking guard so the probe would
