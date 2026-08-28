@@ -31,9 +31,10 @@ not grading a plan:
 **Read the scope list, not the exit code.** Two outcomes matter — plus one that gives you no
 scope list to read at all:
 
-- **`bad-change-log-tag:` on stderr, exit 1, and NO scope list.** The gate refused a tag line before
-  it could compute the pending set, so there is nothing to read here yet. **Fix the tag and re-run**;
-  the reason-code table in Phase 0 step 0 says how. Do not read this as either outcome below — the
+- **A change-log refusal on stderr, exit 1, and NO scope list** — `bad-change-log-tag:` or
+  `unclassifiable-pending-entry:`. The gate refused the change log itself before the pending set
+  could be trusted, so there is nothing to read here yet. **Fix what it names and re-run**; the
+  reason-code table in Phase 0 step 0 says how. Do not read this as either outcome below — the
   absence of a scope list is the tell.
 
 - **It names one or more release-pending scopes** — change-log entries tagged
@@ -126,15 +127,23 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
    ```
 
-   **Expected:** `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld`,
-   followed by the two lists. **Note `K` — it selects the promotion shape at Phase 2.**
+   **Expected:** a `scanned:` line naming what the gate looked at — entries, tagged entries,
+   release-pending entries, the scopes they enumerate, and how many enumerate none — then
+   `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld` and the two lists.
+   **Note `K` — it selects the promotion shape at Phase 2.**
+
+   Read the `scanned:` line as the gate's denominator — a verdict is only as good as what it looked
+   at. Several entries per scope is ordinary, so the two counts differing is not a signal; the
+   number to read is the last one, and it is `0 unclassifiable` on every run that gets this far,
+   because a non-zero one refuses instead.
 
    **Also exit 0, but different:** `releasable: no release-pending scopes — nothing to classify`.
    This line names no version and yields **no `K`**; read it as `K = 0`. Reaching it *during* a
    release contradicts this runbook's own entry condition, so treat it as a symptom, not a pass:
-   either Phase 1 already ran (its step 3 stamps `release=`, which empties the pending set), or the
-   entries you expect carry no `scope=` key and are invisible to the gate. Check which before
-   continuing.
+   Phase 1 already ran (its step 3 stamps `release=`, which empties the pending set). That used to
+   have a second cause — entries carrying no `scope=` key, invisible to a gate that enumerates
+   scopes — and it no longer can: those refuse by name as `unclassifiable-pending-entry:` before
+   this line is reachable. An empty pending set here is an honestly empty one.
 
    **If not:** it stops, printing either a `not-releasable:` header plus one `ERROR:` line per
    problem, or — when an input it needs is missing outright — a single bare `<reason-code>:` line.
@@ -169,6 +178,13 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    - The gate cannot tell which backlog is live, so it cannot judge blocker liveness either.
      **Fix or restore `.prawduct/project-state.yaml`**, then re-run. (This is not the cutover case —
      the message says so precisely because the two need different remedies.)
+
+   `unclassifiable-pending-entry:`
+   - A release-pending change-log entry carrying no `scope=`. It is in no scope, so it reaches no
+     row of the classification table, so it can be neither shipped nor withheld — the gate would be
+     certifying a release over work it never enumerated. **This is not a gate defect — add a
+     `scope=` to each entry it names** (the message gives the title and the change-log line number),
+     matching the `scope:` of the build plan the work belongs to. Then re-run.
 
    `bad-change-log-tag:`
    - A change-log tag line the gate refuses to act on. **This is not a gate defect — fix the tag.**

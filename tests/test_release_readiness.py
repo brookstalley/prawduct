@@ -59,6 +59,15 @@ def _entry(title: str, scope: str, *, release: str | None = None) -> str:
     return f"## {title}\n\n{tag}\n\nBody.\n\n"
 
 
+def _scopeless_entry(title: str, *, release: str | None = None) -> str:
+    """A tagged entry carrying no ``scope=`` — the shape the gate could not see."""
+    tag = "<!-- prawduct: type=fix"
+    if release:
+        tag += f" | release={release} | status=shipped"
+    tag += " -->"
+    return f"## {title}\n\n{tag}\n\nBody.\n\n"
+
+
 def _open_item(item_id: str) -> str:
     return f"- **[{item_id}]** A blocker\n  `effort: M · impact: L · area: x · status: open`\n\n"
 
@@ -655,6 +664,184 @@ class TestChangeLogTagsAreRefusedHere:
         assert [e for e in entries if e.tags.get("release")], "no release tags parsed"
         errors, _warnings = change_log.validate_change_log_tags(entries)
         assert errors == [], errors
+
+
+class TestScopelessPendingEntryIsRefused:
+    """A release-pending entry with no ``scope=`` stops being invisible.
+
+    The gate enumerates *scopes*, and an entry carrying none contributes nothing
+    to enumerate: it reaches no row of the classification table, so it can be
+    neither shipped nor withheld, and Phase 0 certified `releasable` over work it
+    had never seen. The code already knew — the no-pending branch named this
+    blindness in a comment and returned 0 anyway. What is pinned here is that the
+    accounting now exists on BOTH branches and that the mismatch REFUSES: this is
+    a releasability verdict over unclassifiable work, and an authority gate fails
+    closed.
+    """
+
+    def test_a_scopeless_pending_entry_refuses_and_is_named(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha") + _scopeless_entry("An unscoped change"),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "unclassifiable-pending-entry" in err
+        # Named, because the remedy is mechanical only if the operator knows
+        # which entry to edit. A count alone sends them reading 364 entries.
+        assert "An unscoped change" in err
+        assert "change-log line" in err
+        assert "`scope=`" in err
+
+    def test_it_refuses_where_the_gate_would_otherwise_certify_a_pass(self, tmp_path, capsys):
+        """The blindness itself, not a variation on it.
+
+        When the scopeless entry is the ONLY release-pending work, the pending
+        set is empty, so the old code took the no-pending return and printed
+        `releasable: … nothing to classify` — a green verdict over unclassified
+        work, with no release plan ever opened. That is why the reconciliation
+        runs BEFORE that return and not after it.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.1.2")
+            + _scopeless_entry("The only unreleased work"),
+            classification=None,
+        )
+        assert release_readiness.check_releasability(project) == 1
+        captured = capsys.readouterr()
+        assert "nothing to classify" not in captured.out
+        assert "The only unreleased work" in captured.err
+
+    def test_the_refusal_uses_exit_1_not_3(self, tmp_path, capsys):
+        """3 means the gate's SUBJECT could not be read. Here it read fine.
+
+        The change log parsed, the entry parsed, its tag line parsed. What
+        cannot be evaluated is the WORK, which is what exit 1 already means
+        everywhere else in this gate — `no-release-plan` reaches it the same
+        way. A new code would split one meaning across two values.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_scopeless_entry("An unscoped change"),
+            classification=None,
+        )
+        assert release_readiness.check_releasability(project) == 1
+        capsys.readouterr()
+
+    def test_a_scoped_only_log_refuses_nothing(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha") + _entry("B", "beta"),
+            classification="| alpha | ships | |\n| beta | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert "unclassifiable-pending-entry" not in capsys.readouterr().err
+
+    def test_a_scopeless_entry_that_already_shipped_is_not_pending(self, tmp_path, capsys):
+        """`release=` settles it, scope or no scope.
+
+        Historical entries predating the `scope=` convention carry a release tag
+        and nothing else; this repo has dozens. Refusing on those would fail the
+        gate on every past release forever, which is the difference between a
+        control and an obstacle.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_scopeless_entry("Ancient history", release="v1.0.0")
+            + _entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0, capsys.readouterr().err
+
+    def test_an_untagged_entry_is_still_invisible(self, tmp_path, capsys):
+        """Predating the tag convention is not being tagged wrong.
+
+        The gate has never claimed authority over untagged history, and this
+        refusal must not quietly extend it there — an entry with no tag line is
+        not a release-pending entry missing its scope.
+        """
+        project = _make_project(
+            tmp_path,
+            entries="## Historical entry\n\nNo tag line at all.\n\n" + _entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0, capsys.readouterr().err
+
+    def test_the_pending_branch_reports_entries_AND_scopes(self, tmp_path, capsys):
+        """The accounting the branch never had: two entries, one scope.
+
+        Entry count and scope count differ for an ordinary reason — several
+        entries per scope — so the emission has to carry both or it cannot show
+        the gap the reconciliation exists to measure.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha") + _entry("B", "alpha") + _entry("C", "beta", release="v3.1.2"),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr().out
+        assert "3 change-log entries, 3 tagged, 2 release-pending across 1 scope(s), 0 unclassifiable" in out
+
+    def test_the_no_pending_branch_accounting_is_unchanged(self, tmp_path, capsys):
+        """The branch that always had the accounting keeps it verbatim.
+
+        This chunk adds an emission to the other branch; it does not renegotiate
+        this one. The re-run diagnosis that depends on it — `N scope(s) already
+        tagged` — is pinned separately in TestIdempotentAcrossItsOwnRunbook.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.1.2"),
+            classification=None,
+        )
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr().out
+        assert "releasable: no release-pending scopes — nothing to classify" in out
+        assert "1 change-log entries scanned, 1 tagged" in out
+
+
+class TestReconciliationAgainstTheRealChangeLog:
+    """One test reads this repo's real log, and it asserts the INVARIANT.
+
+    Six `TestAgainstTheReal*` guards died together at v3.3.0 because they pinned
+    the repo's current release PHASE — and a release is the event that ends that
+    phase, so they went red under exactly the pressure that makes relaxing them
+    tempting. So this states WHICH emptiness it rejects: a change log that
+    parsed to nothing. An empty *pending* set is not rejected — that is what a
+    just-tagged release looks like, and it is a pass.
+    """
+
+    def _entries(self):
+        from lib import change_log
+
+        log = Path(__file__).resolve().parents[1] / ".prawduct" / "change-log.md"
+        if not log.is_file():
+            pytest.skip("no .prawduct/change-log.md in this checkout")
+        return change_log.parse_change_log(log.read_text(encoding="utf-8"))
+
+    def test_entries_and_scopes_reconcile(self):
+        entries = self._entries()
+        assert entries, "the change log parsed to zero entries — the parser, not the log"
+        assert any(e.tag_line_count > 0 for e in entries), "no tagged entries parsed"
+
+        pending = release_readiness.release_pending_entries(entries)
+        scopes = release_readiness.release_pending_scopes(entries)
+        unclassifiable = release_readiness.unclassifiable_pending_entries(entries)
+
+        # Entries >= scopes always: several entries share one scope, and never
+        # the reverse. A scope count that outran the entries would mean the two
+        # collectors disagree about what release-pending means.
+        assert len(pending) >= len(scopes)
+
+        unclassifiable_ids = {id(e) for e in unclassifiable}
+        classified = [e for e in pending if id(e) not in unclassifiable_ids]
+        assert len(classified) + len(unclassifiable) == len(pending)
+        assert {e.tags["scope"] for e in classified} == set(scopes), (
+            "every classified pending entry's scope must be one the gate enumerates"
+        )
 
 
 class TestPlanCoverageIsReportedNotFatal:

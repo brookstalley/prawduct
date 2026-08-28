@@ -287,6 +287,15 @@ same set in executable running order, and is the document to work from when actu
 - **Shipped** — `release=vX.Y.Z` present. Step 3 adds it, and adding it is the whole
   transition.
 
+**A tagged entry carrying neither key is not a third state — it is a refusal.** `scope=` is what
+makes release-pending work classifiable, so an entry whose `prawduct:` tag line sets neither
+`scope=` nor `release=` enumerates as no scope, reaches no row of the release plan's classification
+table, and can be neither shipped nor withheld. (An entry with **no tag line at all** is untagged
+history, not a malformed entry, and the gate has never claimed authority over it.) `check-releasability` refuses it — exit 1 with an `unclassifiable-pending-entry:` line
+naming each offending entry and its change-log line number — rather than certify a release over
+work it never enumerated. The remedy is one `scope=` per entry, matching the `scope:` of the build
+plan the work belongs to.
+
 **A legacy `status=` tag is inert.** Older logs carry `status=merged` and `status=shipped`
 from the retired derived-views mechanism. Nothing reads them, no value of them means
 anything, and they are neither rewritten nor removed — rewriting 21 repos' history is churn

@@ -67,14 +67,15 @@ Confirmed this session, by reading and running rather than by recall:
 
 **Open assumptions / unknowns:**
 
-- [ASSUMPTION: Chunk 01 REFUSES (exit 1) rather than reporting | HIGH impact | user can veto]
-  The item left refuse-vs-report open and asked for confirmation before implementing. Refusing is
-  what *authority fails closed* requires — this is a releasability verdict over work that cannot be
-  classified — the remedy is a one-line change-log edit, and it costs this repo nothing today (0
-  scopeless entries, measured). The cost lands on a consumer repo carrying a legacy scopeless
-  entry, whose release would newly refuse. Mitigated by naming every offending entry so the fix is
-  mechanical, never by softening the verdict. **Veto route:** make it a WARNING in Chunk 01 and the
-  rest of the plan is unchanged.
+- [DECISION 2026-08-27: Chunk 01 REFUSES (exit 1) rather than reporting — owner ruling, taken
+  before Chunk 01 was built] The item left refuse-vs-report open and asked for confirmation. The
+  owner confirmed refuse. Rationale as put to them: refusing is what *authority fails closed*
+  requires — this is a releasability verdict over work that cannot be classified — the remedy is a
+  one-line change-log edit, and it costs this repo nothing today (0 scopeless entries, measured).
+  The accepted cost lands on a consumer repo carrying a legacy scopeless entry, whose release newly
+  refuses; it is mitigated by naming every offending entry so the fix is mechanical, never by
+  softening the verdict. **The veto route, if it is ever re-taken:** make it a WARNING in Chunk 01,
+  and the rest of the plan is unchanged.
 - [ASSUMPTION: Chunk 03's green-suite refusal belongs at Phase 0 alongside the other checks, not at
   a new Phase 2 gate | MED impact | user can correct]
   The item asks release-prep to "refuse to bump or tag on a non-green suite." There is no
@@ -87,8 +88,8 @@ Confirmed this session, by reading and running rather than by recall:
   `test_changelog_has_current_version_entry` this cycle. If a product keys its digest differently,
   the check must degrade to a note rather than a refusal — it is a *coverage* check, not authority.
 
-**What would raise confidence:** an owner ruling on the first assumption. It is the only one that
-changes a chunk's exit-code behaviour, and it is cheap to answer.
+**What would raise confidence:** the owner ruling on the first assumption — taken 2026-08-27, and
+recorded above as a decision. The two that remain are MED and change no exit code.
 
 ## Status
 

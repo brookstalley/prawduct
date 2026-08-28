@@ -3,6 +3,48 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-27: the release-pending entry that enumerated as nothing, and the branch that never counted
+
+<!-- prawduct: type=fix | scope=release-gate-blindness -->
+
+`check-releasability` enumerates *scopes*. A release-pending change-log entry carrying no `scope=`
+contributes none, so it reached no row of the release plan's classification table, could be neither
+shipped nor withheld, and Phase 0 certified `releasable` over work it had never seen. The code
+already knew: the `if not pending:` branch named this blindness in a comment — "entries that carry
+no `scope=` key at all and are therefore invisible to this gate" — and returned 0 anyway.
+
+**The accounting existed in the branch where nothing was pending and was absent from the branch
+where something was, and that asymmetry was the whole bug in one place.** The no-pending branch
+printed its denominator (`N entries scanned, M tagged`) precisely because "0 pending" has several
+causes and only some are a pass. The branch that did have pending work printed a verdict and never
+said what it had looked at, so nothing it missed could be noticed. Both branches now account.
+
+`release_pending_entries` holds the release-pending set as *entries*; `release_pending_scopes` is
+that same set collapsed to its `scope=` values and now consumes it rather than re-deriving it, so
+the two cannot drift apart — the gap between them is exactly what the reconciliation measures.
+`unclassifiable_pending_entries` is that gap.
+
+**It refuses, and the refusal runs before the no-pending return.** Refusing is what an authority
+gate owes a releasability verdict over work that cannot be classified; the remedy is one `scope=`
+per entry, and every offending entry is named with its title and change-log line so the fix is
+mechanical. The placement is not cosmetic: when the scopeless entry is the only unreleased work,
+the pending set is empty, so a check placed after that return would run on the one shape it exists
+to catch and find nothing. Exit **1**, the value every other refusal here uses — not 3, which means
+the gate's *subject* could not be read, and here the log parsed fine; it is the work that is
+unclassifiable.
+
+**Measured before landing: 364 entries, 343 tagged, 31 release-pending across 13 scopes, 0
+unclassifiable** — so this repo's gate output is unchanged but for the new `scanned:` line. Thirty-nine
+historical entries do carry no `scope=`, all of them stamped `release=`, and a release tag settles
+the question scope-or-no-scope; refusing on those would fail every past release forever. The cost
+falls on a consumer repo holding a legacy scopeless *pending* entry, whose release newly refuses —
+accepted deliberately, with the veto route recorded in the build plan's open assumptions.
+
+The one test that reads the real change log asserts the **invariant** (entries ≥ scopes; every
+classified pending entry's scope is one the gate enumerates) and says which emptiness it rejects — a
+log that parsed to nothing, never an empty pending set, which is what a just-tagged release looks
+like. Six `TestAgainstTheReal*` guards died together at v3.3.0 for want of that distinction.
+
 ## 2026-08-27: the rc track that develop had already replaced, resolved rather than re-merged
 
 <!-- prawduct: type=fix | scope=branch-claim-multiplicity -->

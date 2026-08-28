@@ -69,6 +69,43 @@ def scopes_tagged_for(entries: list, version: str) -> set[str]:
     return tagged
 
 
+def release_pending_entries(entries: list) -> list:
+    """Release-pending change-log entries, counted as **entries**.
+
+    Tagged (a ``prawduct:`` tag line heads it) and carrying no ``release=``.
+    :func:`release_pending_scopes` is this same set collapsed to its ``scope=``
+    values, and that collapse is lossy in one direction only: an entry carrying
+    no ``scope=`` contributes nothing to collapse, so it leaves the set without
+    leaving a trace. Holding the entries is what makes the loss countable — see
+    :func:`unclassifiable_pending_entries`.
+
+    An entry with **no tag line at all** is not release-pending. Predating the
+    tag convention is not the same as being tagged wrong, and this gate has
+    never claimed authority over untagged history.
+    """
+    return [
+        entry
+        for entry in entries
+        if entry.tag_line_count > 0 and not entry.tags.get("release")
+    ]
+
+
+def unclassifiable_pending_entries(entries: list) -> list:
+    """Release-pending entries carrying no ``scope=`` — work no gate can see.
+
+    The classification table is keyed by scope, so an entry contributing no
+    scope reaches no row in it: it can be neither shipped nor withheld, and
+    Phase 0 certifies ``releasable`` over work it never enumerated. That is the
+    unrecallable-publish shape this module exists to prevent, entered through
+    the one door the scope collapse leaves open.
+    """
+    return [
+        entry
+        for entry in release_pending_entries(entries)
+        if not (isinstance(entry.tags.get("scope"), str) and entry.tags.get("scope"))
+    ]
+
+
 def release_pending_scopes(entries: list) -> list[str]:
     """Scopes with at least one tagged change-log entry carrying no ``release=``.
 
@@ -79,14 +116,14 @@ def release_pending_scopes(entries: list) -> list[str]:
     stamp — is bookkeeping that could lag reality, where a ``release=`` tag names
     the release that actually carried the code. So this was always the right
     question for *releasability*, and it is no longer the narrower of two.
+
+    Which entries are release-pending is :func:`release_pending_entries`' one
+    answer, consumed here rather than re-derived: the two must agree, because
+    the gap between them is precisely what the reconciliation measures.
     """
     seen: set[str] = set()
     ordered: list[str] = []
-    for entry in entries:
-        if entry.tag_line_count <= 0:
-            continue
-        if entry.tags.get("release"):
-            continue
+    for entry in release_pending_entries(entries):
         scope = entry.tags.get("scope")
         if isinstance(scope, str) and scope and scope not in seen:
             seen.add(scope)
@@ -346,6 +383,37 @@ def _plan_coverage_warnings(project_dir: Path, pending: list[str]) -> list[str]:
     return warnings
 
 
+def _tagged_count(entries: list) -> int:
+    """How many entries a ``prawduct:`` tag line heads.
+
+    The denominator both accounting lines are built on, so it is derived once:
+    a repo whose two branches disagreed about how many entries the gate can even
+    see would be reporting the confusion rather than the count.
+    """
+    return sum(1 for entry in entries if entry.tag_line_count > 0)
+
+
+def _scan_accounting(
+    entries: list,
+    pending_entries: list,
+    scopes: list[str],
+    unclassifiable: list,
+) -> str:
+    """The gate's denominator, as one phrase.
+
+    A verdict that does not say what it looked at cannot be audited, and cannot
+    be *retired* either: the only honest argument for dropping a check later is
+    a run of it finding nothing, which requires it to have counted out loud.
+    Entries scanned, entries release-pending, the scopes they enumerate, and the
+    ones that enumerate none — the last is the reconciliation's whole yield.
+    """
+    return (
+        f"{len(entries)} change-log entries, {_tagged_count(entries)} tagged, "
+        f"{len(pending_entries)} release-pending across {len(scopes)} scope(s), "
+        f"{len(unclassifiable)} unclassifiable"
+    )
+
+
 def check_releasability(project_dir: Path, release: str | None = None) -> int:
     """Phase 0 gate. Exit 0 when every release-pending scope is classified.
 
@@ -388,23 +456,67 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     for warning in _duplicate_scope_warnings(project_dir):
         print(f"WARNING: {warning}", file=sys.stderr)
 
+    # Reconcile release-pending ENTRIES against the scopes they collapse to, and
+    # do it BEFORE the no-pending return — because the entry this catches is
+    # exactly the one that can empty `pending` while release-pending work still
+    # exists. An entry carrying no `scope=` is in no scope, so it reaches no row
+    # of the classification table, so it can be neither shipped nor withheld,
+    # and the gate certifies `releasable` over work it never enumerated.
+    #
+    # It REFUSES rather than reports: this is a releasability verdict over work
+    # that cannot be classified, and an authority gate fails closed on state it
+    # cannot evaluate. The remedy is one `scope=` per named entry, which is why
+    # every offending entry is named — a refusal whose fix is mechanical costs
+    # an operator a minute; the publish it prevents is unrecallable.
+    #
+    # Exit 1, the value every other refusal here uses. Not 3: the change log
+    # READ fine, so this is not the unreadable-subject case — it is the work
+    # that is unclassifiable.
+    pending_entries = release_pending_entries(entries)
     pending = release_pending_scopes(entries)
+    unclassifiable = unclassifiable_pending_entries(entries)
+    accounting = _scan_accounting(entries, pending_entries, pending, unclassifiable)
+    if unclassifiable:
+        noun = "entry" if len(unclassifiable) == 1 else "entries"
+        print(
+            f"unclassifiable-pending-entry: {len(unclassifiable)} release-pending "
+            f"change-log {noun} with no `scope=` — in no scope, so in no "
+            "classification table, so neither shipped nor withheld. Add a "
+            "`scope=` naming the work, then re-run:",
+            file=sys.stderr,
+        )
+        for entry in unclassifiable:
+            print(f"  - {entry.title!r} (change-log line {entry.line_number})", file=sys.stderr)
+        print(f"  scanned: {accounting}.", file=sys.stderr)
+        return 1
+
     if not pending:
         # Name the denominator: "0 pending" from a change log the parser could
         # not read looks identical to "0 pending" because everything shipped,
         # and only one of those is a pass. Split it further, because `tagged`
-        # alone cannot separate the three causes either: everything already
-        # carries `release=` (normal, or Phase 1 step 3 just ran and emptied the
-        # set out from under a re-run), versus entries that carry no `scope=`
-        # key at all and are therefore invisible to this gate.
-        tagged = sum(1 for e in entries if e.tag_line_count > 0)
-        detail = f"{len(entries)} change-log entries scanned, {tagged} tagged"
+        # alone cannot separate everything already carrying `release=` (normal,
+        # or Phase 1 step 3 just ran and emptied the set out from under a
+        # re-run) from a log that parsed to nothing.
+        #
+        # A third cause used to reach here and no longer can: release-pending
+        # entries carrying no `scope=` key, invisible to a gate that enumerates
+        # scopes. The reconciliation above refuses on those by name, so an empty
+        # `pending` here is now an honestly empty one.
+        detail = f"{len(entries)} change-log entries scanned, {_tagged_count(entries)} tagged"
         if release:
             asked = normalize_version(release)
             stamped = len(scopes_tagged_for(entries, asked))
             detail += f", {stamped} scope(s) already tagged release={asked}"
         print(f"releasable: no release-pending scopes — nothing to classify ({detail}).")
         return 0
+
+    # The accounting the no-pending branch has always printed, now printed on
+    # the branch where something IS pending too. Its absence here was the bug's
+    # other half: the gate reported a verdict without ever saying what it had
+    # looked at, so nothing it missed could be noticed. The `unclassifiable`
+    # count is 0 by construction at this point, and that is the emission worth
+    # having — it is the evidence on which this check could later be retired.
+    print(f"scanned: {accounting}.")
 
     for warning in _plan_coverage_warnings(project_dir, pending):
         print(f"WARNING: {warning}", file=sys.stderr)
