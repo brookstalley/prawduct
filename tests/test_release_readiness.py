@@ -13,6 +13,7 @@ indistinguishable from no gate, which is the state this replaces.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -714,13 +715,38 @@ class TestScopelessPendingEntryIsRefused:
         assert "nothing to classify" not in captured.out
         assert "The only unreleased work" in captured.err
 
+    def test_every_offending_entry_is_named_not_just_the_first(self, tmp_path, capsys):
+        """'Refuse and name them' is worth nothing if it names one of three.
+
+        The remedy is per-entry, so a message that stops at the first sends the
+        operator through as many re-runs as there are entries — and each re-run
+        looks like a fresh failure.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_scopeless_entry("First unscoped")
+            + _entry("A", "alpha")
+            + _scopeless_entry("Second unscoped")
+            + _scopeless_entry("Third unscoped"),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "First unscoped" in err
+        assert "Second unscoped" in err
+        assert "Third unscoped" in err
+        assert "3 release-pending change-log entries" in err
+        assert "4 change-log entries, 4 tagged, 4 release-pending across 1 scope(s), 3 unclassifiable" in err
+
     def test_the_refusal_uses_exit_1_not_3(self, tmp_path, capsys):
         """3 means the gate's SUBJECT could not be read. Here it read fine.
 
-        The change log parsed, the entry parsed, its tag line parsed. What
-        cannot be evaluated is the WORK, which is what exit 1 already means
-        everywhere else in this gate — `no-release-plan` reaches it the same
-        way. A new code would split one meaning across two values.
+        The change log parsed, the entry parsed, its tag line parsed — which is
+        what the message *demonstrates* by naming the entry and its line number,
+        and what makes 3 the wrong code. What cannot be evaluated is the WORK,
+        and that is what exit 1 already means everywhere else in this gate;
+        `no-release-plan` reaches it the same way. A new code would split one
+        meaning across two values.
         """
         project = _make_project(
             tmp_path,
@@ -728,7 +754,14 @@ class TestScopelessPendingEntryIsRefused:
             classification=None,
         )
         assert release_readiness.check_releasability(project) == 1
-        capsys.readouterr()
+        err = capsys.readouterr().err
+        # The subject read fine, and this is the evidence: the gate could only
+        # print a title and a line number by having parsed the entry.
+        assert "An unscoped change" in err
+        # A real line number, not the dataclass default: an entry the parser
+        # never located would print 0 and read as parsed anyway.
+        assert re.search(r"change-log line [1-9]\d*\)", err)
+        assert "1 release-pending change-log entry with no `scope=`" in err
 
     def test_a_scoped_only_log_refuses_nothing(self, tmp_path, capsys):
         project = _make_project(

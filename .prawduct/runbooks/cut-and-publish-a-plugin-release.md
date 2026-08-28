@@ -288,6 +288,21 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > release-pending scopes it enumerated are the scopes to walk here. Use that
    > output; do not re-derive it from memory.
    >
+   > **Step 0 is what makes the scope-keyed part of this sweep complete.** A
+   > release-pending entry that carries a tag line but no `scope=` refuses there
+   > (`unclassifiable-pending-entry:`), so every *tagged* release-pending entry has
+   > a scope by the time you reach this step, and none of them can hide from a
+   > `scope=`-keyed grep. Before that refusal existed such an entry was invisible
+   > to the gate *and* to this pipeline, and nothing in the procedure would have
+   > said so.
+   >
+   > **It does not cover untagged history.** An entry with no tag line at all is
+   > not release-pending *to the gate* — deliberately, since the gate claims no
+   > authority over entries predating the tag convention — so it never reaches that
+   > refusal and never appears in a `scope=` grep at all. The per-candidate code
+   > test above is the only thing that separates those. Walk them; a clean Step 0
+   > is not permission to skip that walk.
+   >
    > Count them rather than recalling them — the number moves every time work
    > merges. This enumerates every scope with a statusless entry, **whole file,
    > no boundary restriction**:
