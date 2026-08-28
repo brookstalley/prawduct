@@ -93,7 +93,7 @@ recorded above as a decision. The two that remain are MED and change no exit cod
 
 ## Status
 
-- [ ] Chunk 01: A release-pending entry with no `scope=` stops being invisible
+- [x] Chunk 01: A release-pending entry with no `scope=` stops being invisible
 - [ ] Chunk 02: The digest is checked for the scopes the release is actually shipping
 - [ ] Chunk 03: The headline exists, and a red suite refuses the release
 
