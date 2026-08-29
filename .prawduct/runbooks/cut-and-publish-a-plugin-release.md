@@ -137,6 +137,12 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    number to read is the last one, and it is `0 unclassifiable` on every run that gets this far,
    because a non-zero one refuses instead.
 
+   Beneath it, `digest coverage: N of M release-pending scope(s) named in …` — how many pending
+   scopes this release's notes actually mention. It prints on every run that reads the digest —
+   including the ones that find nothing, so the check can later be retired on a record of finding
+   nothing rather than defended on principle. Where it is absent, the `NOTE:` below says why. `N < M` is not a stop; it is the list to walk before you write the
+   headline.
+
    **Also exit 0, but different:** `releasable: no release-pending scopes — nothing to classify`.
    This line names no version and yields **no `K`**; read it as `K = 0`. Reaching it *during* a
    release contradicts this runbook's own entry condition, so treat it as a symptom, not a pass:
@@ -196,10 +202,24 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      entry carrying several `prawduct:` tag lines that disagree — merge them and resolve the
      conflict. The message names the entry and its line number.
 
-   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=`
+   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=` · `WARNING: could not find
+   release-pending scope=… in the open plugin/CHANGELOG.md section`
    - **Advisory, not a stop.** The first says work is shipping with no plan describing it (worth a
      look, not worth blocking a release); the second says two plans declare one scope, so
-     scope→plan resolution is decided by sort order. Neither changes the exit code.
+     scope→plan resolution is decided by sort order. The third says this release's notes never
+     mention a scope that is shipping in it — the v3.4.0 cut shipped `tactical-efficiency` that
+     way, and the notes were written at cut time only because somebody noticed.
+     **Expect false positives on the third and do not act on it blind:** it matches the scope's
+     name, so work the notes describe in other words reads as absent, and a scope recording the
+     release mechanics itself will never have a consumer note. Open the section and look. None of
+     the three changes the exit code.
+
+   `NOTE: digest coverage not checked: …`
+   - The digest exists but could not be read, or holds no `## ` section, so **no scope was checked
+     for a note at all**. Not a refusal, and not a pass either — the coverage question simply went
+     unasked. Fix the file and re-run before you trust a clean Phase 0 on this point. (In a repo
+     that publishes no digest the check has no subject and says nothing; this line means yours
+     does and it could not be read.)
 
    `no-release-plan:` · `no-change-log:` · `no-version:` · `unreadable-release-plan:` · `no-backlog:`
    - An input the gate needs is missing or unreadable. **The message names the path** — create or
@@ -394,8 +414,11 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 
    The gate also prints **advisories** that do not change its exit code. Read
    them: *a release-pending scope with no build-plan file* means work is shipping
-   with nothing documenting it, and *two plans declaring one scope* means the
-   pairing this gate relies on is ambiguous. Neither blocks; both are worth
+   with nothing documenting it, *two plans declaring one scope* means the pairing
+   this gate relies on is ambiguous, and *could not find scope=… in the open
+   `plugin/CHANGELOG.md` section* means this release may ship that scope with
+   nothing written for consumers — the last one is the cheapest to fix now and
+   the most annoying to discover after the tag. None blocks; all are worth
    knowing before you tag.
 
 6. Confirm each shipping scope's build plan is actually closed out — every

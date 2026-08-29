@@ -187,7 +187,9 @@ state*, and that state is the thing a release changes. Three rules, all learned 
 - **Depends on:** Chunk 01 (shares the entry/scope accounting and the same emission style).
 - **Artifacts consumed:** `.prawduct/artifacts/nonfunctional-requirements.md` (a control names its
   expected yield and emits it observably).
-- **Deliverables:** `plugin/lib/release_readiness.py`, `tests/test_release_readiness.py`.
+- **Deliverables:** `plugin/lib/release_readiness.py`, `tests/test_release_readiness.py`,
+  `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` (Phase 0's advisory roster and Phase 1
+  step 5's — the operator meets every other advisory there, so an absent one reads as not existing).
 - **Tests:** a scope absent from the open section warns; a scope present does not; the warning
   never changes the exit code (asserted directly, in both the otherwise-passing and
   otherwise-failing cases); a missing or unparseable digest degrades to a note that **names its own

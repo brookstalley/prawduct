@@ -22,6 +22,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 sys.path.insert(0, str(ROOT))
 from lib import release_readiness  # noqa: E402
+from lib.release_readiness import _DIGEST_REL_PATH  # noqa: E402
 
 
 def _write(path: Path, content: str) -> None:
@@ -43,10 +44,10 @@ def _make_project(
     _write(project / ".prawduct" / "change-log.md", "# Change Log\n\n" + entries)
     _write(project / ".prawduct" / "backlog.md", "# Backlog\n\n## Open\n\n" + backlog)
     _write(project / "plugin" / "VERSION", version + "\n")
-    # Absent by default, because that is a product repo's real state: the digest
-    # ships inside the plugin and never lands downstream. Tests that care about
-    # digest coverage pass one; the rest exercise the unread-digest NOTE, which
-    # is what those repos actually see.
+    # Absent by default, so a fixture that passes none exercises the degraded
+    # NOTE. These projects write `plugin/VERSION`, which makes them
+    # prawduct-shaped: a repo publishing no digest at all is a different case
+    # with no subject to report on, and it is built by unlinking that file.
     if digest is not None:
         _write(project / "plugin" / "CHANGELOG.md", digest)
     if classification is not None:
@@ -1239,6 +1240,52 @@ class TestDigestCoverageIsAdvisory:
         )
         assert "digest coverage" not in out.err
         assert "digest coverage" not in out.out
+
+    def test_a_repo_that_publishes_no_digest_says_nothing_at_all(self, tmp_path, capsys):
+        """A product repo has no consumer digest to be *missing*.
+
+        Every `plugin/…` path this module prints names prawduct's own layout,
+        and the module ships inside `plugin/` to every product — so downstream
+        those paths cannot exist. Reporting one as unread would describe a file
+        the reader has no way to have, on every run, forever.
+
+        **Silence here is not the fail-silent this check otherwise refuses.**
+        That rule governs a check that ran and could not answer; this one has no
+        subject, and the two are different states. The degraded NOTE is still
+        mandatory wherever the digest is a thing this repo publishes, which is
+        what the neighbouring tests pin.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            version="1.0.0",
+            digest=None,
+        )
+        (project / "plugin" / "VERSION").unlink()
+        assert release_readiness.check_releasability(project, release="v1.0.0") == 0
+        out = capsys.readouterr()
+        assert "digest coverage" not in out.err + out.out
+        assert _DIGEST_REL_PATH not in out.err + out.out, (
+            "a product repo must never be shown prawduct's own layout"
+        )
+
+    def test_a_subsection_does_not_truncate_the_open_section(self, tmp_path, capsys):
+        """`### ` is not a section boundary — only `## ` is.
+
+        A digest that organises a release under subsections would otherwise end
+        its open section at the first one, and every scope described below that
+        point would read as absent. The boundary is loose about what follows
+        `## `, and strict about the marker itself.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("Opening prose.\n\n### Fixes\n\n**alpha** is described here."),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert _warned_scopes(capsys.readouterr().err) == set()
 
     def test_the_yield_is_reported_even_when_every_scope_is_covered(
         self, tmp_path, capsys

@@ -4586,3 +4586,38 @@ regressing, not the next predicate paraphrased the same way.
 **The tell, restated.** You can state the rule but cannot point at the sentence you got it from.
 If the only source you can name is "the code", you are generating, not retrieving — go find whether
 a canonical prose statement exists first, and diff against that.
+
+## Naming a prior fix as "the same family" IS the class finding
+
+**What happened.** Building the release-gate digest-coverage check, my pre-review scrub found that
+the new `plugin/CHANGELOG.md` path would be printed at product repos, where it cannot exist. I
+recorded it accurately, including the sentence *"same family as the no-version hint fixed in
+R-13/R-30 (naming prawduct's own layout at a product user)."* My proposed remedy was to **reword the
+message** — split the absent case from the unreadable case and drop the errno.
+
+The independent review took the same fact and classified it as the **second member of a class**,
+which changes the remedy in kind: one predicate deciding whether prawduct's own layout is this
+repo's subject, **suppressing the whole arm rather than rephrasing it**, consumed by the first
+member too, with the search bound stated as *every literal `plugin/` path this module prints*.
+
+**Why the smaller conclusion was available and wrong.** A recurrence is not a coincidence between
+two messages; it is evidence about the *first* fix — that it was scoped to an instance when the
+defect was structural. R-13/R-30 had guarded one hint with an inline `.exists()`. That guard was
+correct and insufficient, and nothing about it stopped the next `plugin/…` string from being
+written, because there was no shared question to answer. Rewording the second message would have
+left the third member equally free.
+
+**Root cause.** A self-scrub asks *"what did I get wrong in what I just wrote?"* — and it works;
+this one found the defect before any reviewer did. *"Has this been fixed here before?"* is a
+different query over a different corpus (findings history, not the diff), and nothing in the scrub
+pass runs it. The scrub found the instance because it was looking at the instance.
+
+**The tell, sharpened.** You wrote a prior finding id into your own note as precedent, and the fix
+you are proposing touches strictly fewer sites than that precedent did. Precedent that narrows your
+remedy is precedent you have inverted: it should widen it. When you can name the earlier fix, the
+next move is to re-run its stated reason as a search over the current tree — the review did exactly
+that here (`grep -n "plugin/"`) and it returned three members, not one.
+
+**Cheap and general.** Re-running a cited finding's own reason as a search costs one grep. It is the
+same shape as the Retrieval-Over-Generation cheap-check gate: the cheapest verification that could
+change the decision, done before committing to the decision.

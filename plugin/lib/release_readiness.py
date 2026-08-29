@@ -38,9 +38,9 @@ from . import plan_index
 
 _BACKLOG_REL_PATH = ".prawduct/backlog.md"
 _ARTIFACTS_REL_DIR = ".prawduct/artifacts"
-#: The consumer-facing digest. It ships *inside* the plugin and never lands
-#: in a consuming repo, so in a product repo this path is absent — which is
-#: why its absence is a NOTE about an unrun check and never a finding.
+#: The consumer-facing digest. It ships *inside* the plugin and never lands in
+#: a consuming repo, so downstream this path cannot exist and the check that
+#: reads it has no subject — see :func:`_ships_the_plugin_tree`.
 _DIGEST_REL_PATH = "plugin/CHANGELOG.md"
 
 #: Recognised dispositions in the classification table.
@@ -391,6 +391,33 @@ def _plan_coverage_warnings(project_dir: Path, pending: list[str]) -> list[str]:
     return warnings
 
 
+def _ships_the_plugin_tree(project_dir: Path) -> bool:
+    """Whether this repo IS prawduct's source, rather than a repo governed by it.
+
+    Every ``plugin/…`` path this module can print names prawduct's own layout.
+    The module ships *inside* ``plugin/`` to every product, so downstream those
+    paths cannot exist, and naming one at a product user describes a file they
+    have no way to have.
+
+    **One predicate, not one guard per message.** The ``no-version:`` hint got
+    this right in isolation and the digest check re-entered the same defect two
+    functions later — which is what makes it a class rather than a slip, and
+    what the next ``plugin/…`` string added here would have entered a third
+    time. The remedy is a question asked once.
+
+    **It suppresses the arm rather than rewording it.** A repo that publishes no
+    consumer digest has no digest to be *missing*: there is no degraded state to
+    report, only a subject that does not exist, and "advice fails soft is not
+    advice fails silent" governs a check that ran and could not answer — not one
+    that was never about this repo. Where the subject does exist, every degraded
+    path still says so.
+
+    ``plugin/VERSION`` is the evidence because it is prawduct's version source
+    and the file :func:`_resolve_version` already treats as the tell.
+    """
+    return (project_dir / "plugin" / "VERSION").exists()
+
+
 def _read_digest(project_dir: Path) -> tuple[list[str], str | None]:
     """The consumer digest's lines, or ``([], reason)`` when it cannot be read.
 
@@ -488,8 +515,10 @@ def _digest_coverage_warnings(
     just may ship under-described. A known false positive is live in this repo
     today, which is the argument settled rather than a defect outstanding.
 
-    Returns ``(warnings, note, summary)``. The note is non-``None`` exactly when
-    the digest could not be read or held no section, and it names the
+    Returns ``(warnings, note, summary)`` — all three ``None``-or-empty in a repo
+    that publishes no digest, where this check has no subject at all. The note is
+    non-``None`` exactly when a digest that should exist could not be read or
+    held no section, and it names the
     consequence rather than only the cause: **advice fails soft is not advice
     fails silent**, and a check that skips itself quietly is indistinguishable
     from one that passed.
@@ -500,6 +529,8 @@ def _digest_coverage_warnings(
     it finding nothing, and that argument needs the denominator it was measured
     against.
     """
+    if not _ships_the_plugin_tree(project_dir):
+        return [], None, None
     lines, reason = _read_digest(project_dir)
     section = None if reason is not None else _open_digest_section(lines)
     if section is None:
@@ -683,15 +714,15 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
 
     version = _resolve_version(project_dir, release)
     if version is None:
-        # The `plugin/VERSION` fallback is prawduct's own layout. This module
-        # ships inside `plugin/` to every product, so telling a product user to
-        # "make plugin/VERSION readable" names a path that cannot exist in their
-        # repo — an instruction they can only fail. Offer it only where the file
-        # is actually the repo's version source. (Generality beyond this message
-        # was declined with reasons in R-13/R-30; this is the misleading half.)
+        # Telling a product user to "make plugin/VERSION readable" names a path
+        # that cannot exist in their repo — an instruction they can only fail.
+        # The predicate is shared with the digest check rather than repeated
+        # here: this was the first member of that class, and one question asked
+        # once is what keeps the third member from being written. (Generality
+        # beyond these messages stays declined, with reasons, in R-13/R-30.)
         hint = (
             " or make plugin/VERSION readable"
-            if (project_dir / "plugin" / "VERSION").exists()
+            if _ships_the_plugin_tree(project_dir)
             else ""
         )
         print(f"no-version: pass --release vX.Y.Z{hint}.", file=sys.stderr)

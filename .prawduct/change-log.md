@@ -42,8 +42,14 @@ section below into the open one. That is a false pass produced by the strictness
 
 Where the digest cannot be read or holds no section, the check emits a NOTE naming what went
 unchecked **and what that costs** — *advice fails soft is not advice fails silent*, and a check that
-skips itself quietly is indistinguishable from one that passed. A product repo lives on that path
-permanently: the digest ships inside the plugin and never lands downstream. And a run that finds
+skips itself quietly is indistinguishable from one that passed.
+
+**That rule governs a check that ran and could not answer, not one that was never about this repo.**
+The digest ships inside the plugin and never lands downstream, so every `plugin/…` path this module
+prints names prawduct's own layout. A shared predicate now decides whether that layout is the repo's
+subject at all: downstream the whole arm is suppressed rather than reworded, because a repo that
+publishes no digest has none to be *missing*. The `no-version:` hint — the first member of that
+class, fixed alone in R-4/R-12 — consumes the same predicate, so the question is asked once. And a run that finds
 nothing still prints its denominator (`digest coverage: N of M`), because the only honest argument
 for retiring this later is a run of it finding nothing, which requires it to have counted out loud.
 
