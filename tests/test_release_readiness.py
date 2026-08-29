@@ -37,11 +37,18 @@ def _make_project(
     backlog: str = "",
     version: str = "3.2.0",
     plan_suffix: str = "",
+    digest: str | None = None,
 ) -> Path:
     project = tmp_path / "proj"
     _write(project / ".prawduct" / "change-log.md", "# Change Log\n\n" + entries)
     _write(project / ".prawduct" / "backlog.md", "# Backlog\n\n## Open\n\n" + backlog)
     _write(project / "plugin" / "VERSION", version + "\n")
+    # Absent by default, because that is a product repo's real state: the digest
+    # ships inside the plugin and never lands downstream. Tests that care about
+    # digest coverage pass one; the rest exercise the unread-digest NOTE, which
+    # is what those repos actually see.
+    if digest is not None:
+        _write(project / "plugin" / "CHANGELOG.md", digest)
     if classification is not None:
         name = f"release-plan-v{version}{plan_suffix}.md"
         _write(
@@ -967,6 +974,291 @@ class TestPlanCoverageIsReportedNotFatal:
         )
         assert release_readiness.check_releasability(project) == 0
         assert "no build-plan file" not in capsys.readouterr().err
+
+
+def _digest(section_body: str, *, heading: str = "## v9.9.9", older: str = "") -> str:
+    """A consumer digest whose OPEN section is the topmost one."""
+    return (
+        "# Digest\n\nPreamble prose that belongs to no section.\n\n"
+        f"{heading}\n\n{section_body}\n" + older
+    )
+
+
+def _warned_scopes(err: str) -> set[str]:
+    """Scopes named by a digest-coverage warning.
+
+    Reads the machine-stable part of the message — ``scope='name'`` — rather
+    than the sentence around it, so rewording the advice does not silently turn
+    these assertions green against a check that stopped working.
+    """
+    return set(re.findall(r"could not find release-pending scope='([^']+)'", err))
+
+
+class TestDigestCoverageIsAdvisory:
+    """A release-pending scope can reach the tag with no consumer-facing note.
+
+    It happened at the v3.4.0 cut: `scope=tactical-efficiency` carried nine
+    `release=v3.4.0` entries and no mention in the digest. The failure is
+    asymmetric — a section full of good notes reads as finished, so the missing
+    scope is invisible exactly when the digest looks healthiest.
+
+    Everything here is a fixture. The claim under test is about *this check*,
+    and pinning it against this repo's live digest would pin the repo's current
+    release phase as an invariant — the way six `TestAgainstTheReal*` guards
+    died at v3.3.0.
+    """
+
+    def test_a_scope_absent_from_the_open_section_warns(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("Notes about something else entirely."),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert _warned_scopes(capsys.readouterr().err) == {"alpha"}
+
+    def test_a_scope_named_in_the_open_section_does_not_warn(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("**alpha now does the thing.** Consumers can rely on it."),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert _warned_scopes(capsys.readouterr().err) == set()
+
+    def test_writing_the_note_is_what_stops_the_warning(self, tmp_path, capsys):
+        """**The advisory's EFFECT, not that it fires.**
+
+        This recommendation ships to every consumer's repo, so the promise it
+        makes — *write a note and this stops* — has to be known to work rather
+        than known to print. The un-written case is kept as the control in the
+        same test, because a treatment observed without one proves only that
+        the fixture differs somehow.
+        """
+        control = _make_project(
+            tmp_path / "control",
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("Nothing about the shipped work."),
+        )
+        assert release_readiness.check_releasability(control) == 0
+        assert "alpha" in _warned_scopes(capsys.readouterr().err), (
+            "the control must warn, or the treatment below proves nothing"
+        )
+
+        treatment = _make_project(
+            tmp_path / "treatment",
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("**alpha ships.** Here is what it means for you."),
+        )
+        assert release_readiness.check_releasability(treatment) == 0
+        assert _warned_scopes(capsys.readouterr().err) == set()
+
+    def test_the_advisory_never_changes_a_passing_verdict(self, tmp_path, capsys):
+        """Asserted as a DIFFERENCE, not as `== 0`.
+
+        `== 0` on an uncovered fixture would still pass if the check one day
+        started refusing on a *covered* one. Running the same project under both
+        digests and comparing the two exit codes is the claim itself: whatever
+        the verdict is, this check is not part of it.
+        """
+        covered = _make_project(
+            tmp_path / "covered",
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("**alpha ships.**"),
+        )
+        uncovered = _make_project(
+            tmp_path / "uncovered",
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("Unrelated."),
+        )
+        assert release_readiness.check_releasability(covered) == 0
+        assert release_readiness.check_releasability(uncovered) == 0
+        assert "alpha" in _warned_scopes(capsys.readouterr().err), (
+            "the uncovered run must actually warn, or the equality is vacuous"
+        )
+
+    def test_the_advisory_never_changes_a_failing_verdict(self, tmp_path, capsys):
+        """The same difference on the branch where the gate refuses.
+
+        A warning that quietly upgraded a refusal's *reason* would be invisible
+        to the passing-case test above, and this gate's exit code is a contract
+        that skills bind to.
+        """
+        entries = _entry("A", "alpha") + _entry("B", "beta")
+        covered = _make_project(
+            tmp_path / "covered",
+            entries=entries,
+            classification="| alpha | ships | |\n",
+            digest=_digest("**alpha** and **beta** both explained."),
+        )
+        uncovered = _make_project(
+            tmp_path / "uncovered",
+            entries=entries,
+            classification="| alpha | ships | |\n",
+            digest=_digest("Unrelated."),
+        )
+        assert release_readiness.check_releasability(covered) == 1
+        assert release_readiness.check_releasability(uncovered) == 1
+        err = capsys.readouterr().err
+        assert _warned_scopes(err) == {"alpha", "beta"}
+        assert "unclassified scope(s)" in err, (
+            "the refusal must be the pre-existing one, not something this check caused"
+        )
+
+    def test_an_unreadable_digest_names_its_own_consequence(self, tmp_path, capsys):
+        """**Advice fails soft is not advice fails silent.**
+
+        A skipped check that says nothing is indistinguishable from one that
+        passed, so the degraded path states what went unchecked and what that
+        costs — otherwise it manufactures the false all-clear it exists to
+        prevent. A product repo lives on this path permanently: the digest
+        ships inside the plugin and never lands downstream.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=None,
+        )
+        assert release_readiness.check_releasability(project) == 0
+        err = capsys.readouterr().err
+        assert "digest coverage not checked" in err
+        assert "would not be reported here" in err, (
+            "the note must name the consequence, not only the cause"
+        )
+        assert _warned_scopes(err) == set()
+
+    def test_a_digest_with_no_section_names_its_own_consequence(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest="# Digest\n\nProse, but no version section anywhere.\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+        err = capsys.readouterr().err
+        assert "digest coverage not checked" in err
+        assert "would not be reported here" in err
+        assert _warned_scopes(err) == set()
+
+    def test_only_the_open_section_counts_as_coverage(self, tmp_path, capsys):
+        """A note in a SHIPPED section is not a note for this release.
+
+        The digest accumulates every past release, so a whole-file search would
+        report a scope as covered on the strength of prose written for a version
+        that shipped months ago — a false all-clear on exactly the scope most
+        likely to be a repeat area of work.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest(
+                "This release's notes, silent on the shipped work.",
+                older="\n## v1.0.0\n\n**alpha** was described here, one release ago.\n",
+            ),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert _warned_scopes(capsys.readouterr().err) == {"alpha"}
+
+    def test_a_heading_that_is_not_a_version_still_delimits(self, tmp_path, capsys):
+        """The section boundary is `## `, deliberately looser than a version match.
+
+        A stricter pattern would let a heading it cannot parse fail to *delimit*:
+        the section below would merge into the open one and its prose would read
+        as this release's coverage. That is a false pass produced by the
+        strictness itself, in a check whose whole job is noticing absence.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest(
+                "This release's notes, silent on the shipped work.",
+                older="\n## Unreleased (not a version)\n\n**alpha** lives down here.\n",
+            ),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert _warned_scopes(capsys.readouterr().err) == {"alpha"}
+
+    def test_a_composed_slug_does_not_cover_its_shorter_sibling(self, tmp_path, capsys):
+        """`adhoc-delegation` is not a note about `delegation`.
+
+        Slugs compose, and both halves ship different work. A word-boundary
+        match breaks on the hyphen and would mark the shorter scope covered on
+        the strength of the longer one's note — the silent pass, one character
+        narrower than the substring bug it replaced.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "delegation") + _entry("B", "adhoc-delegation"),
+            classification="| delegation | ships | |\n| adhoc-delegation | ships | |\n",
+            digest=_digest("**adhoc-delegation** is explained at length here."),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert _warned_scopes(capsys.readouterr().err) == {"delegation"}
+
+    def test_prose_spelling_the_slug_as_words_counts_as_coverage(self, tmp_path, capsys):
+        """Consumer prose says "manifest state diagnosis", never the slug.
+
+        Matching the slug alone would report nearly every scope as uncovered,
+        which is how a fuzzy advisory becomes noise nobody reads.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "manifest-state-diagnosis"),
+            classification="| manifest-state-diagnosis | ships | |\n",
+            digest=_digest("**Manifest state diagnosis** now tells you what it found."),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert _warned_scopes(capsys.readouterr().err) == set()
+
+    def test_nothing_release_pending_reads_no_digest(self, tmp_path, capsys):
+        """"A pending scope has no note" has nothing to say about an empty set.
+
+        Scoped to the pending set the way the missing-build-plan half is, and
+        for the same reason: on an empty one it must stay quiet rather than
+        reach for a denominator it does not have.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0"),
+            classification=None,
+            digest=None,
+        )
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr()
+        assert "no release-pending scopes" in out.out, (
+            "the fixture must exercise the no-pending path, or this tests nothing"
+        )
+        assert "digest coverage" not in out.err
+        assert "digest coverage" not in out.out
+
+    def test_the_yield_is_reported_even_when_every_scope_is_covered(
+        self, tmp_path, capsys
+    ):
+        """A control heard from only when it fires can never be retired.
+
+        The one honest argument for dropping this check later is a run of it
+        finding nothing — which requires it to have counted out loud, against a
+        denominator, on the runs where it found nothing.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha") + _entry("B", "beta"),
+            classification="| alpha | ships | |\n| beta | ships | |\n",
+            digest=_digest("**alpha** and **beta** are both described."),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr()
+        assert _warned_scopes(out.err) == set()
+        assert "digest coverage: 2 of 2" in out.out
 
 
 class TestReleasePlanSurvivesArchival:

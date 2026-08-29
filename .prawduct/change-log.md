@@ -3,6 +3,58 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-08-29: the release-pending scope that reaches the tag with nothing written about it
+
+<!-- prawduct: type=feat | scope=release-gate-blindness -->
+
+A release-pending scope could reach the tag with **zero** consumer-facing notes in
+`plugin/CHANGELOG.md`, and no gate asked. It happened at the v3.4.0 cut:
+`scope=tactical-efficiency` carried nine `release=v3.4.0` entries and no mention in the digest, and
+the notes were hand-written at cut time because somebody happened to notice. **The failure is
+asymmetric — a section full of good notes reads as finished, so the missing scope is invisible
+exactly when the digest looks healthiest.**
+
+Phase 0 now tests each release-pending scope against the open digest section and emits one WARNING
+per scope it could not find, beside the existing `has no build-plan file` advisory. Both ask whether
+the pending set is described somewhere a reader will look, and neither is a releasability verdict.
+
+**It never touches the exit code, and that is a classification rather than a caution.** The subject
+is prose and the instrument is a name match, so it is advice by construction; the authority gate
+beside it refuses on state it cannot *evaluate*, and an unmentioned scope is not that — the release
+stays perfectly evaluable, it may just ship under-described. The wording follows: *"could not find …
+check the section"*, never *"is missing"*. An advisory that overstates its own certainty is how a
+fuzzy check gets promoted to a blocking one, and promotion is what changes the price of its false
+positives.
+
+**Matching is bounded on both ends, and the hyphen is part of a name rather than a boundary.** A
+plain substring test passes a short slug on any longer word containing it, and a plain word boundary
+breaks on the hyphen — either way `adhoc-delegation`'s note would mark `delegation` covered. Both
+errors run the wrong way: they report a scope as *covered* that the digest never mentioned, which is
+the silent pass this check exists to prevent. A false alarm costs a reader ten seconds. The slug's
+words count too (`manifest state diagnosis` covers `manifest-state-diagnosis`), because consumer
+prose spells slugs out and a slug-only test would report nearly every scope as uncovered.
+
+Coverage is read from the **topmost** section only — the digest states that convention itself, and a
+whole-file search would let prose written for a version that shipped months ago read as this
+release's coverage. The section boundary is `## ` plus any non-space, looser than a version match on
+purpose: a stricter pattern would let a heading it cannot parse fail to *delimit*, merging the
+section below into the open one. That is a false pass produced by the strictness itself.
+
+Where the digest cannot be read or holds no section, the check emits a NOTE naming what went
+unchecked **and what that costs** — *advice fails soft is not advice fails silent*, and a check that
+skips itself quietly is indistinguishable from one that passed. A product repo lives on that path
+permanently: the digest ships inside the plugin and never lands downstream. And a run that finds
+nothing still prints its denominator (`digest coverage: N of M`), because the only honest argument
+for retiring this later is a run of it finding nothing, which requires it to have counted out loud.
+
+**Measured on this repo: 13 of 14 release-pending scopes carry no note in the open
+`## v3.4.1-dev.2` section.** Hand-checking all 13 found eleven genuine gaps and two false positives
+— `branch-claim-multiplicity`, covered in prose under different words, which the plan predicted; and
+`release-v3.4.0`, a release-mechanics scope that records the cut itself and will never have a
+consumer note. That second one is a class, not an instance, and it is left visible rather than
+suppressed: a suppression list is the sophistication this check deliberately does not have, and the
+advisory posture is what makes carrying a ~15% false-positive rate the right trade.
+
 ## 2026-08-27: the release-pending entry that enumerated as nothing, and the branch that never counted
 
 <!-- prawduct: type=fix | scope=release-gate-blindness -->

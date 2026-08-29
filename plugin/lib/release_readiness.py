@@ -38,6 +38,10 @@ from . import plan_index
 
 _BACKLOG_REL_PATH = ".prawduct/backlog.md"
 _ARTIFACTS_REL_DIR = ".prawduct/artifacts"
+#: The consumer-facing digest. It ships *inside* the plugin and never lands
+#: in a consuming repo, so in a product repo this path is absent — which is
+#: why its absence is a NOTE about an unrun check and never a finding.
+_DIGEST_REL_PATH = "plugin/CHANGELOG.md"
 
 #: Recognised dispositions in the classification table.
 SHIPS = "ships"
@@ -47,6 +51,10 @@ _HEADING_RE = re.compile(r"^##\s+Release classification\s*$", re.IGNORECASE)
 _NEXT_HEADING_RE = re.compile(r"^#{1,6}\s+")
 #: A backlog id: 2-4 uppercase letters, hyphen, 4 alphanumerics (PFX-XXXX).
 _ITEM_ID_RE = re.compile(r"\b([A-Z]{2,4}-[A-Z0-9]{4})\b")
+#: A digest version section header. Loose on purpose — see
+#: :func:`_open_digest_section` for why a stricter match would let an
+#: unparseable heading fail to delimit.
+_DIGEST_SECTION_RE = re.compile(r"^##\s+\S")
 
 
 def scopes_tagged_for(entries: list, version: str) -> set[str]:
@@ -383,6 +391,142 @@ def _plan_coverage_warnings(project_dir: Path, pending: list[str]) -> list[str]:
     return warnings
 
 
+def _read_digest(project_dir: Path) -> tuple[list[str], str | None]:
+    """The consumer digest's lines, or ``([], reason)`` when it cannot be read.
+
+    Split from its caller so Chunk-scope growth does not turn one function into
+    the place where reading, sectioning and judging all live. The reason is a
+    phrase, not a verdict: every caller here reports rather than refuses, so the
+    only thing a failed read must produce is a sentence saying what went unread.
+    """
+    try:
+        return (project_dir / _DIGEST_REL_PATH).read_text(encoding="utf-8").splitlines(), None
+    except OSError as exc:
+        return [], f"cannot read {_DIGEST_REL_PATH}: {exc}"
+
+
+def _open_digest_section(lines: list[str]) -> tuple[str, list[str]] | None:
+    """The topmost ``## `` section as ``(heading, body)``; ``None`` if there is none.
+
+    **The open section is identified by position, not by version.** The digest
+    states its own convention — rolling notes accumulate under the top heading
+    and it is renamed to the release number at the cut — so "topmost" is what
+    "the section this release is being written into" means, and it stays true
+    across the rename that a version match would have to be taught about.
+
+    The heading pattern is correspondingly loose (``## `` plus any non-space).
+    A stricter semver match would let a heading it cannot parse fail to
+    *delimit*, silently merging the section below into this one and reporting
+    the previous release's notes as coverage for this one — a false pass, from a
+    check whose whole job is to notice absence.
+    """
+    start: int | None = None
+    for i, line in enumerate(lines):
+        if not _DIGEST_SECTION_RE.match(line):
+            continue
+        if start is None:
+            start = i
+            continue
+        return lines[start].strip(), lines[start + 1 : i]
+    if start is None:
+        return None
+    return lines[start].strip(), lines[start + 1 :]
+
+
+def _digest_mentions(section_text: str, scope: str) -> bool:
+    """Whether the open section names a scope — as its slug, or as its words.
+
+    Prose spells a slug out: the work tagged ``scope=branch-claim-multiplicity``
+    is described in the digest as "a build plan can declare the branch it
+    governs", carrying neither the slug nor its words. Testing the slug alone
+    would therefore report nearly every scope as uncovered; testing both forms
+    narrows that without pretending to read prose.
+
+    **Bounded, not substring.** A bare ``in`` test passes a short slug on any
+    longer word containing it, and that error runs the wrong way: it reports a
+    scope as COVERED that the digest never mentioned, which is the silent pass
+    this whole check exists to prevent. A false alarm costs a reader ten
+    seconds; a false all-clear is how the v3.4.0 cut shipped a scope with no
+    notes. So the match is bounded on both ends.
+
+    **The hyphen counts as part of a name, not as a boundary.** Slugs compose —
+    ``delegation`` and ``adhoc-delegation`` are two scopes shipping different
+    work — and a plain word boundary breaks on the hyphen, so a digest naming
+    only the longer one would mark the shorter one covered. That is the same
+    false all-clear one character narrower, so the boundary excludes ``-`` as
+    well as word characters.
+
+    **What it still cannot see is the point of the WARNING's wording.** A scope
+    described in words its slug does not contain reads as absent here, so the
+    message asks the reader to look rather than asserting the note is missing —
+    an advisory that overstates its own certainty is how a fuzzy check gets
+    promoted to a blocking one.
+    """
+    lowered = scope.lower()
+    return any(
+        re.search(rf"(?<![\w-]){re.escape(form)}(?![\w-])", section_text)
+        for form in (lowered, lowered.replace("-", " "))
+    )
+
+
+def _digest_coverage_warnings(
+    project_dir: Path, pending: list[str]
+) -> tuple[list[str], str | None, str | None]:
+    """Release-pending scopes the open digest section does not mention.
+
+    A scope can reach the tag with zero consumer-facing notes and nothing asks.
+    It happened at the v3.4.0 cut: ``scope=tactical-efficiency`` carried nine
+    ``release=v3.4.0`` entries and no mention in the digest, and the notes were
+    hand-written at cut time because somebody happened to notice. The failure is
+    asymmetric — a section full of good notes reads as finished, so the missing
+    scope is invisible exactly when the digest looks healthiest.
+
+    **Reported, and it never touches the exit code.** Its subject is prose and
+    its instrument is a name match, so it is advice by construction; the
+    authority gate beside it refuses on state it cannot evaluate, and an
+    unmentioned scope is not that — the release stays perfectly evaluable, it
+    just may ship under-described. A known false positive is live in this repo
+    today, which is the argument settled rather than a defect outstanding.
+
+    Returns ``(warnings, note, summary)``. The note is non-``None`` exactly when
+    the digest could not be read or held no section, and it names the
+    consequence rather than only the cause: **advice fails soft is not advice
+    fails silent**, and a check that skips itself quietly is indistinguishable
+    from one that passed.
+
+    The summary is the control's yield, emitted whether or not it found
+    anything, because a control heard from only when it fires cannot be retired
+    on evidence — the only honest argument for dropping this later is a run of
+    it finding nothing, and that argument needs the denominator it was measured
+    against.
+    """
+    lines, reason = _read_digest(project_dir)
+    section = None if reason is not None else _open_digest_section(lines)
+    if section is None:
+        reason = reason or f"{_DIGEST_REL_PATH} has no `## ` section to read"
+        return [], (
+            f"digest coverage not checked: {reason}. No release-pending scope "
+            f"was tested for a consumer-facing note, so one shipping with "
+            f"nothing written about it would not be reported here."
+        ), None
+
+    heading, body = section
+    section_text = "\n".join(body).lower()
+    warnings = [
+        f"could not find release-pending scope={scope!r} in the open "
+        f"{_DIGEST_REL_PATH} section ({heading}) — if it ships in this release, "
+        f"consumers get no note about it. The match is on the scope name, so "
+        f"work described in other words reads as absent: check the section."
+        for scope in pending
+        if not _digest_mentions(section_text, scope)
+    ]
+    summary = (
+        f"digest coverage: {len(pending) - len(warnings)} of {len(pending)} "
+        f"release-pending scope(s) named in {heading} of {_DIGEST_REL_PATH}"
+    )
+    return warnings, None, summary
+
+
 def _tagged_count(entries: list) -> int:
     """How many entries a ``prawduct:`` tag line heads.
 
@@ -520,6 +664,22 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
 
     for warning in _plan_coverage_warnings(project_dir, pending):
         print(f"WARNING: {warning}", file=sys.stderr)
+
+    # Coverage of the consumer digest, beside the coverage of build plans: both
+    # ask whether the pending set is described somewhere a reader will look, and
+    # neither is a releasability verdict. Emitted BEFORE the version resolves,
+    # so a repo whose release plan does not exist yet — the state this one is in
+    # while the notes are still being written — still gets the advice while it
+    # is still actionable.
+    digest_warnings, digest_note, digest_summary = _digest_coverage_warnings(
+        project_dir, pending
+    )
+    for warning in digest_warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    if digest_note:
+        print(f"NOTE: {digest_note}", file=sys.stderr)
+    if digest_summary:
+        print(f"  {digest_summary}.")
 
     version = _resolve_version(project_dir, release)
     if version is None:
