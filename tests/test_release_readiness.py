@@ -1202,6 +1202,46 @@ class TestDigestCoverageIsAdvisory:
         )
         assert _warned_scopes(err) == set()
 
+    def test_a_mis_encoded_digest_reports_rather_than_crashing(self, tmp_path, capsys):
+        """A bad byte must reach the NOTE, not the operator's terminal.
+
+        `read_text` raises `UnicodeDecodeError` — a `ValueError`, not an
+        `OSError` — so a reader catching only the latter turns the one arm that
+        must fail soft into a traceback, and takes the authority gate beside it
+        down on the way. The refusing reads in this module share the widened
+        catch for the mirror reason: they promise a named reason on every
+        failure path.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest="# Digest\n\n## v9.9.9\n\n**alpha** ships.\n",
+        )
+        (project / _DIGEST_REL_PATH).write_bytes(b"# Digest\n\n## v9.9.9\n\n\xff\xfe not utf-8\n")
+        assert release_readiness.check_releasability(project) == 0
+        err = capsys.readouterr().err
+        assert "digest coverage not checked" in err
+        assert "cannot read" in err
+
+    def test_a_mis_encoded_change_log_refuses_with_its_named_reason(
+        self, tmp_path, capsys
+    ):
+        """The refusing half of the same class.
+
+        `check_releasability` promises every failure path returns 1 with a named
+        reason; a traceback is neither.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("**alpha** ships."),
+        )
+        (project / ".prawduct" / "change-log.md").write_bytes(b"# Change Log\n\n\xff\xfe\n")
+        assert release_readiness.check_releasability(project) == 1
+        assert "no-change-log:" in capsys.readouterr().err
+
     def test_only_the_open_section_counts_as_coverage(self, tmp_path, capsys):
         """A note in a SHIPPED section is not a note for this release.
 
@@ -1695,6 +1735,21 @@ class TestTheSuiteMustBeProvenGreen:
         out = capsys.readouterr()
         assert "no release-pending scopes" in out.out
         assert "unproven-suite" not in out.err
+
+    def test_no_path_returns_0_while_the_suite_is_red(self, tmp_path, capsys):
+        """The property the report-here/return-there split rests on.
+
+        Everything else about this fixture passes — the scope is classified, the
+        digest names it, the headline is real — so the ONLY thing between the
+        verdict and a 0 is the return at the bottom. That is what makes this a
+        pin rather than a duplicate: a `return 0` added anywhere between where
+        `suite_ok` is computed and where it is consumed would drop a fail-closed
+        verdict silently, and this is the test that would notice.
+        """
+        project = self._project(tmp_path, evidence=_evidence(failed=2))
+        assert release_readiness.check_releasability(project, release="v3.2.0") == 1, (
+            "a red suite must not reach a 0 by any route"
+        )
 
     def test_the_v2_1_6_scenario_is_refused(self, tmp_path, capsys):
         """Version bumped, no headline — and the release stops.

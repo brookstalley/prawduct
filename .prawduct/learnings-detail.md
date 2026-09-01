@@ -4587,6 +4587,33 @@ regressing, not the next predicate paraphrased the same way.
 If the only source you can name is "the code", you are generating, not retrieving — go find whether
 a canonical prose statement exists first, and diff against that.
 
+## Prose about what a new guard BUYS must state its predicate, not its purpose
+
+**What happened (2026-08-28, `fix/release-gate-blindness`).** The gate had just been taught to
+refuse a release-pending change-log entry carrying no `scope=`. Writing the runbook paragraph
+explaining what the operator gains, I concluded: *"nothing can hide from a `scope=`-keyed grep."*
+
+**Why it was false, and the falsifier sat in the file I had just edited.**
+`test_an_untagged_entry_is_still_invisible` pins that an entry with **no tag line at all** is
+deliberately outside the gate's set — the gate claims no authority over entries predating the tag
+convention. So the paragraph told the operator they could skip the untagged walk, which is the one
+walk the new refusal does not cover. A document teaching a procedure shipped a new instance of the
+blindness the code change was fixing.
+
+**The mechanism.** "Scopeless entries can no longer hide" (motivation, true) and "nothing can hide"
+(extension, false) are one word apart in English and a whole set apart in code. Prose about a guard
+drifts toward its *purpose*, because purpose is what the author has in mind; the predicate is what
+the reader will act on.
+
+**Why the exclusion tests are the right instrument.** They are written precisely to pin what the
+guard does NOT cover, so each states a boundary in one assertion — cheaper to read than the
+implementation, and they fail loudly if the boundary later moves. Read them before writing the
+sentence, not after a review returns it.
+
+**Sharpest tell.** The claim turns on a term defined in BOTH the code and the operator prose with
+different extensions — here, "release-pending". The sentence reaches for the document's definition
+while its warrant is a function's.
+
 ## Naming a prior fix as "the same family" IS the class finding
 
 **What happened.** Building the release-gate digest-coverage check, my pre-review scrub found that

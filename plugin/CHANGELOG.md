@@ -17,6 +17,26 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+**Your release now refuses to proceed on a suite nothing has said passes.**
+`check-releasability` — the Phase 0 gate — reads your saved test evidence and stops with
+`unproven-suite:` when there is none, when the saved run reports failures, when it predates the
+session and can no longer be matched to the tree, or when it reported itself degraded. Run the
+suite and record it, then re-run. It asks the same question `test-status` asks, so a repo cannot
+be green for the builder and stale for the release; and it is a check on the tree you have *now*,
+not on the tree you will tag. This exists because a prawduct release once shipped on a red suite:
+nothing on the release path read a test result, so the redness was visible only to whoever
+happened to run the tests.
+
+**A release-pending change-log entry with no `scope=` now stops the release instead of
+disappearing.** Such an entry belongs to no scope, so it reaches no row of a release
+classification table and can be neither shipped nor withheld — the gate was certifying releases
+over work it had never enumerated. It now refuses with `unclassifiable-pending-entry:` and names
+every offending entry with its line number, so the fix is one `scope=` per entry. **If you carry
+legacy untagged entries, your next release will newly refuse**; that is the intended cost, and
+naming each entry is how it stays a minute's work rather than a hunt. The gate also now says what
+it looked at on every run — entries scanned, how many are release-pending, the scopes they
+enumerate — so a verdict can be audited against its own denominator.
+
 **Delegation has a guide, a default, and a place to record what your project decided.**
 `/prawduct:methodology delegation` opens it: when to delegate and when to stay serial, what
 a delegate verifies (what proves its own change, and nothing beyond it) while you keep integration

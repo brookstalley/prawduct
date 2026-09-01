@@ -67,6 +67,16 @@ _DIGEST_SECTION_RE = re.compile(r"^##\s+\S")
 #: retire the check.
 _SEEDED_HEADLINE = "prerelease under test"
 
+#: What "this file cannot be read" means, for every read in this module.
+#: ``read_text`` raises ``UnicodeDecodeError`` — a ``ValueError``, not an
+#: ``OSError`` — on a mis-encoded file, so catching only the latter lets a bad
+#: byte past the reason line and out as a traceback. That is wrong twice over
+#: here: the refusing reads promise "every failure path returns 1 with a named
+#: reason", and the advisory read promises to fail soft. Named once because the
+#: five reads have to agree about it; five hand-written tuples are how four of
+#: them get widened and the fifth does not.
+_UNREADABLE = (OSError, UnicodeDecodeError)
+
 
 def scopes_tagged_for(entries: list, version: str) -> set[str]:
     """Scopes already tagged ``release=<version>``.
@@ -310,7 +320,7 @@ def _resolve_version(project_dir: Path, release: str | None) -> str | None:
     version_file = project_dir / "plugin" / "VERSION"
     try:
         raw = version_file.read_text(encoding="utf-8").strip()
-    except OSError:
+    except _UNREADABLE:
         return None
     if not raw:
         return None
@@ -410,11 +420,10 @@ def _ships_the_plugin_tree(project_dir: Path) -> bool:
     paths cannot exist, and naming one at a product user describes a file they
     have no way to have.
 
-    **One predicate, not one guard per message.** The ``no-version:`` hint got
-    this right in isolation and the digest check re-entered the same defect two
-    functions later — which is what makes it a class rather than a slip, and
-    what the next ``plugin/…`` string added here would have entered a third
-    time. The remedy is a question asked once.
+    **One predicate, not one guard per message.** Asked once, so every message
+    naming a ``plugin/…`` path is suppressed by the same answer. A guard per
+    message is the shape that lets the next such message be written without
+    one, which is how this became a class rather than a slip.
 
     **It suppresses the arm rather than rewording it.** A repo that publishes no
     consumer digest has no digest to be *missing*: there is no degraded state to
@@ -432,14 +441,14 @@ def _ships_the_plugin_tree(project_dir: Path) -> bool:
 def _read_digest(project_dir: Path) -> tuple[list[str], str | None]:
     """The consumer digest's lines, or ``([], reason)`` when it cannot be read.
 
-    Split from its caller so Chunk-scope growth does not turn one function into
-    the place where reading, sectioning and judging all live. The reason is a
+    Reading is kept apart from sectioning and judging so no one function
+    becomes the place where all three live. The reason is a
     phrase, not a verdict: every caller here reports rather than refuses, so the
     only thing a failed read must produce is a sentence saying what went unread.
     """
     try:
         return (project_dir / _DIGEST_REL_PATH).read_text(encoding="utf-8").splitlines(), None
-    except OSError as exc:
+    except _UNREADABLE as exc:
         return [], f"cannot read {_DIGEST_REL_PATH}: {exc}"
 
 
@@ -628,6 +637,19 @@ def _digest_advisories(
     be read or held no section, and it names the consequence rather than only
     the cause: **advice fails soft is not advice fails silent**, and a check
     that skips itself quietly is indistinguishable from one that passed.
+
+    **Why both questions stay prawduct-only, rather than taking a declared path
+    the way the version files do.** A product forgets its release notes exactly
+    the way this repo did, so the appetite is real and the declaration precedent
+    exists. What is missing is not a path but a *convention*: these checks ask
+    about the section this release is being written into, and "the topmost
+    ``## ``, renamed to the release number at the cut" is prawduct's own release
+    procedure rather than a property of changelogs. A declaration carrying only
+    a path would silently impose that procedure on every product that set it,
+    and the failure would be a false all-clear — the shape both checks exist to
+    prevent. Generalizing therefore means designing the keying rule as a stated
+    requirement, which is a piece of work rather than a parameter, and it is
+    filed as one instead of guessed at here.
     """
     if not _ships_the_plugin_tree(project_dir):
         return [], None, []
@@ -724,7 +746,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     change_log = project_dir / change_log_mod.CHANGE_LOG_REL_PATH
     try:
         change_log_content = change_log.read_text(encoding="utf-8")
-    except OSError as exc:
+    except _UNREADABLE as exc:
         print(f"no-change-log: cannot read {change_log_mod.CHANGE_LOG_REL_PATH}: {exc}", file=sys.stderr)
         return 1
 
@@ -867,10 +889,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     if version is None:
         # Telling a product user to "make plugin/VERSION readable" names a path
         # that cannot exist in their repo — an instruction they can only fail.
-        # The predicate is shared with the digest check rather than repeated
-        # here: this was the first member of that class, and one question asked
-        # once is what keeps the third member from being written. (Generality
-        # beyond these messages stays declined, with reasons, in R-13/R-30.)
+        # The predicate is shared with the digest checks rather than repeated
+        # here, so one answer suppresses every message that would otherwise
+        # name prawduct's own layout.
         hint = (
             " or make plugin/VERSION readable"
             if _ships_the_plugin_tree(project_dir)
@@ -891,7 +912,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
 
     try:
         plan_content = plan_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except _UNREADABLE as exc:
         print(f"unreadable-release-plan: {plan_path}: {exc}", file=sys.stderr)
         return 1
 
@@ -915,7 +936,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     if withheld_scopes and liveness_unverifiable is None:
         try:
             backlog_content = (project_dir / _BACKLOG_REL_PATH).read_text(encoding="utf-8")
-        except OSError as exc:
+        except _UNREADABLE as exc:
             print(f"no-backlog: cannot read {_BACKLOG_REL_PATH}: {exc}", file=sys.stderr)
             return 1
         open_ids = _open_item_ids(backlog_content)

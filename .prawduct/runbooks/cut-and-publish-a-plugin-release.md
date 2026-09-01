@@ -446,14 +446,12 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    `vMAJOR.MINOR.PATCH` fails closed, because an unevaluable release state must
    never read as "fine".
 
-   The gate also prints **advisories** that do not change its exit code. Read
-   them: *a release-pending scope with no build-plan file* means work is shipping
-   with nothing documenting it, *two plans declaring one scope* means the pairing
-   this gate relies on is ambiguous, and *could not find scope=… in the open
-   `plugin/CHANGELOG.md` section* means this release may ship that scope with
-   nothing written for consumers — the last one is the cheapest to fix now and
-   the most annoying to discover after the tag. None blocks; all are worth
-   knowing before you tag.
+   The gate also prints **advisories** that do not change its exit code. None
+   blocks and all are worth knowing before you tag — the digest ones most of all,
+   since they are the cheapest to fix now and the most annoying to discover after
+   it. **Phase 0 step 0 above is where each one is named and answered**; read them
+   there rather than from a second list here, because a copy of that list goes
+   stale the next time an advisory is added, and it already has.
 
 6. Confirm each shipping scope's build plan is actually closed out — every
    `## Status` box ticked for the chunks this release carries.
