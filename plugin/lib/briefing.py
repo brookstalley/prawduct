@@ -936,6 +936,9 @@ def _backlog_pending_line(
 
     **Pre-cutover** (key absent): parse the markdown backlog exactly as before.
     ``popen``/``now`` are injectable for tests.
+
+    The pending count carries an ``(N untriaged)`` qualifier by exception — see
+    :func:`_untriaged_qualifier`.
     """
     scope = read_str_yaml_key(prawduct_dir / "project-state.yaml", "backlog_service_repo")
     if scope:
@@ -960,8 +963,8 @@ def _backlog_pending_line(
             if pending:
                 age = _humanize_age(snap.get("age_seconds"))
                 line = (
-                    f"Backlog: {pending} pending on {scope} "
-                    f"(snapshot {age}; /prawduct:backlog to triage)"
+                    f"Backlog: {pending} pending{_untriaged_qualifier(snap['counts'])} "
+                    f"on {scope} (snapshot {age}; /prawduct:backlog to triage)"
                 )
         elif warmed:
             # Degrade visibly, never silently (G3): the count is not available
@@ -988,6 +991,26 @@ def _backlog_pending_line(
     # One count line, not a 5-item dump every session. /prawduct:backlog is the
     # triage path; dumping arbitrary items here was tax.
     return f"Backlog: {len(pending_items)} pending (/prawduct:backlog to triage)"
+
+
+def _untriaged_qualifier(counts: dict) -> str:
+    """`` (N untriaged)`` when the snapshot reports a non-zero untriaged count.
+
+    Untriaged issues are a strict **subset** of the pending tally, not an addend
+    (``query.counts``), so this qualifies the count rather than adding to it. It
+    is surfaced **by exception** — the same posture ``counts`` and
+    ``/prawduct:backlog`` use — because an item invisible to the tooling must be
+    louder than a triaged one, and absorbing it into an undifferentiated total is
+    the quietest possible treatment.
+
+    **Tolerant reader**: a snapshot written before the key existed, or one whose
+    value is not a positive integer, renders exactly as it does today. A briefing
+    line is not the place to refuse an old cache.
+    """
+    untriaged = counts.get("untriaged")
+    if isinstance(untriaged, bool) or not isinstance(untriaged, int) or untriaged <= 0:
+        return ""
+    return f" ({untriaged} untriaged)"
 
 
 def _spawn_snapshot_warm(project_dir: Path, scope: str, *, popen=None) -> bool:

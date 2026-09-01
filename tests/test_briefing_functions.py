@@ -1121,6 +1121,9 @@ def _warm_argv(recorder: _PopenRecorder, op: str) -> list[str]:
     raise AssertionError(f"no detached warm fired for `backlog {op}`")
 
 
+_ABSENT = object()  # "the snapshot has no `untriaged` key at all" — the pre-#532 shape
+
+
 class TestBacklogPendingLine:
     def _state(self, prawduct_dir: Path, scope: str | None):
         text = "product_name: t\n"
@@ -1128,12 +1131,14 @@ class TestBacklogPendingLine:
             text += f"backlog_service_repo: {scope}\n"
         (prawduct_dir / "project-state.yaml").write_text(text, encoding="utf-8")
 
-    def _snapshot(self, project_dir: Path, scope: str, by_status: dict):
+    def _snapshot(self, project_dir: Path, scope: str, by_status: dict, untriaged=_ABSENT):
         from lib.backlog import snapshot
 
         path = snapshot.snapshot_path(project_dir)
         assert path is not None
         counts = {"total": sum(by_status.values()), "by_status": by_status, "by_stage": {}}
+        if untriaged is not _ABSENT:
+            counts["untriaged"] = untriaged
         snapshot.write(path, scope, counts)
 
     def test_pre_cutover_reads_markdown(self, tmp_path):
@@ -1189,6 +1194,56 @@ class TestBacklogPendingLine:
         line = briefing._backlog_pending_line(prawduct, tmp_path, popen=recorder)
         assert line is None
         assert _warmed_ops(recorder) == {"refresh-counts", "sync"}
+
+    def test_untriaged_is_surfaced_by_exception_when_non_zero(self, tmp_path):
+        # #532's thesis: an untriaged item is invisible to the tooling, so it must
+        # be LOUDER than a triaged one. The briefing is the most-read governance
+        # line in the product; absorbing untriaged into an undifferentiated
+        # "N pending" is the quietest possible treatment.
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        self._snapshot(tmp_path, "octo/backlog", {"open": 5}, untriaged=2)
+        line = briefing._backlog_pending_line(prawduct, tmp_path, popen=_PopenRecorder())
+        assert line == (
+            "Backlog: 5 pending (2 untriaged) on octo/backlog "
+            "(snapshot just now; /prawduct:backlog to triage)"
+        )
+
+    def test_zero_untriaged_adds_nothing_to_the_line(self, tmp_path):
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        self._snapshot(tmp_path, "octo/backlog", {"open": 5}, untriaged=0)
+        line = briefing._backlog_pending_line(prawduct, tmp_path, popen=_PopenRecorder())
+        assert line == (
+            "Backlog: 5 pending on octo/backlog (snapshot just now; /prawduct:backlog to triage)"
+        )
+
+    def test_snapshot_predating_the_untriaged_key_renders_unchanged(self, tmp_path):
+        # Tolerant reader: the snapshot on disk was written by whatever version
+        # last ran `refresh-counts`, which may predate the key entirely. A
+        # briefing line is not the place to refuse an old cache.
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        self._snapshot(tmp_path, "octo/backlog", {"open": 5})  # no `untriaged` key
+        line = briefing._backlog_pending_line(prawduct, tmp_path, popen=_PopenRecorder())
+        assert line == (
+            "Backlog: 5 pending on octo/backlog (snapshot just now; /prawduct:backlog to triage)"
+        )
+
+    def test_untriaged_of_a_junk_type_is_ignored_not_rendered(self, tmp_path):
+        # A hand-edited or half-written snapshot must not put `(None untriaged)`
+        # or `(True untriaged)` on the most-read line in the product.
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        for junk in (None, True, "3", -1, 1.5):
+            self._snapshot(tmp_path, "octo/backlog", {"open": 5}, untriaged=junk)
+            line = briefing._backlog_pending_line(prawduct, tmp_path, popen=_PopenRecorder())
+            assert line is not None
+            assert "untriaged" not in line, junk
 
     def test_never_blocks_even_with_a_hanging_backend(self, tmp_path):
         # The G2 real-slowness contract: the briefing path touches no network
