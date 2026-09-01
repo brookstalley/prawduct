@@ -174,6 +174,36 @@ def suite_coupled_files(paths: "list[str] | None") -> list[str]:
     return [p for p in (paths or []) if affects_test_outcome(p)]
 
 
+def is_executable_path(path: str) -> bool:
+    """True if a test could execute this path — the coverage floor's
+    jurisdiction (COV-8R2K).
+
+    The third question over the same boundary, and the narrowest of the three:
+    :func:`is_judgeable_path` asks whether a change needs a reviewer,
+    :func:`affects_test_outcome` whether it can change what the suite says, and
+    this asks whether a test can *run* it — which is what the symbol-grep
+    coverage floor is actually measuring when it demands a reference.
+
+    One clause on top of the judgeability answer, deliberately not a second
+    suffix table: **no ``.md`` is executable**, protected or not. Governance
+    protection makes fork-skill prose review-worthy, which is a different claim
+    from testable — demanding an executing test for ``methodology/building.md``
+    buys a token reference-test and nothing else. Re-landing an independent
+    ``{.md,.yaml,.json,.toml,…}`` frozenset here is the exact divergence
+    CRT-5D8Q was created to kill, so the exemption is expressed against the one
+    predicate instead.
+
+    **The residual.** A product-owned non-code config outside the metadata
+    boundary (``config/app.yaml``, ``settings.toml``) is still executable by
+    this reading and still gates. That is the conservative direction — a config
+    file genuinely can be the subject of a test — and closing it properly needs
+    the ``coverage_exempt_paths:`` knob COV-6T3P asks for, which is a question
+    for the owner (binary vs path-scoped, and how it interacts with the
+    doc-only fast path) rather than a default anyone should pick here.
+    """
+    return is_judgeable_path(path) and not path.endswith(".md")
+
+
 # ---------------------------------------------------------------------------
 # Findings / resolutions join (D5)
 # ---------------------------------------------------------------------------

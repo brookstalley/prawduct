@@ -200,6 +200,45 @@ class TestSuiteCoupledState:
         assert verdict["status"] == "covered"
 
 
+class TestExecutablePath:
+    """COV-8R2K — the coverage floor's jurisdiction, the narrowest of the three
+    readings of one boundary.
+
+    `is_judgeable_path` asks whether a change needs a reviewer,
+    `affects_test_outcome` whether it can change what the suite says, and
+    `is_executable_path` whether a test can RUN it — which is what a
+    symbol-grep floor is measuring when it demands a reference.
+    """
+
+    def test_code_is_executable(self):
+        for path in ("lib/gates.py", "bin/prawduct-hook", "src/app.ts",
+                     "config.json", "config/app.yaml"):
+            assert ca.is_executable_path(path), path
+
+    def test_no_md_is_executable_protected_or_not(self):
+        """The one clause on top of judgeability, and the case a second suffix
+        table would have had to get right by hand: protection makes fork-skill
+        prose review-worthy, not testable."""
+        for path in ("skills/critic/SKILL.md", "methodology/building.md",
+                     "templates/build-plan.md", "CLAUDE.md",
+                     "docs/notes.md", "README.md"):
+            assert not ca.is_executable_path(path), path
+
+    def test_framework_state_is_not_executable(self):
+        for path in (".prawduct/project-state.yaml",
+                     ".prawduct/.critic-findings.json",
+                     ".claude/settings.json"):
+            assert not ca.is_executable_path(path), path
+
+    def test_executable_is_a_subset_of_judgeable(self):
+        """Direction matters: the floor may exempt what review still demands,
+        never the reverse — an exemption that outran judgeability would let an
+        unreviewed file out of both gates."""
+        for path in TestJudgeablePath.JUDGEABLE + TestJudgeablePath.NON_JUDGEABLE:
+            if ca.is_executable_path(path):
+                assert ca.is_judgeable_path(path), path
+
+
 # ---------------------------------------------------------------------------
 # Composition verdicts
 # ---------------------------------------------------------------------------

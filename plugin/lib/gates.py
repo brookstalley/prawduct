@@ -1869,9 +1869,20 @@ def verify_coverage(project_dir: Path) -> int:
         f for f in changed
         if f in unjudged or not (project_dir / f).is_file()
     ]
+    # Nothing can execute a prose file, so demanding an executing test for one
+    # buys a token reference-test and nothing else (COV-8R2K). Reported like
+    # `skipped` rather than gated, and asked of
+    # `coverage_algebra.is_executable_path` — the one predicate — so this stays
+    # a reading of the CRT-5D8Q boundary rather than a second file-type table
+    # beside it. `skipped` keeps precedence: a file the verifier disclaimed is
+    # out of jurisdiction whatever its suffix.
+    nonexecutable = [
+        f for f in changed
+        if f not in skipped and not coverage_algebra.is_executable_path(f)
+    ]
     missing = [
         f for f in changed
-        if f not in referenced and f not in skipped
+        if f not in referenced and f not in skipped and f not in nonexecutable
     ]
     if skipped:
         print(
@@ -1879,10 +1890,18 @@ def verify_coverage(project_dir: Path) -> int:
             f"judgment (changes_unjudged / deleted) — reported, not gated "
             f"(level: {coverage_level})."
         )
+    if nonexecutable:
+        preview = ", ".join(nonexecutable[:3]) + (
+            "…" if len(nonexecutable) > 3 else ""
+        )
+        print(
+            f"note: {len(nonexecutable)} changed file(s) no test can execute "
+            f"(prose / framework state) — reported, not gated ({preview})."
+        )
     if not missing:
         print(
-            f"ok: {len(changed) - len(skipped)} judged changed file(s) covered "
-            f"(level: {coverage_level})"
+            f"ok: {len(changed) - len(skipped) - len(nonexecutable)} judged "
+            f"changed file(s) covered (level: {coverage_level})"
         )
         return 0
 
