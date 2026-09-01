@@ -303,15 +303,32 @@ def _count_build_plan_chunks(
 
     Resolves this repo's active build plan (``core.resolve_build_plan_path``,
     which owns what "active" means), so scope-named plans are counted too —
-    unless ``plan_path`` names one, which the gate paths pass so that
-    "is there governed work" and "what does it declare" read one file.
+    unless ``plan_path`` names one. **A caller that has already resolved which
+    plan is in scope must pass it**, so that "is there governed work" and "what
+    does it declare" read one file; resolving again here can answer about a
+    different plan than the caller is holding.
+
     Returns ``(total, complete)``; ``(0, 0)`` if the plan or its Status section
-    is missing or unreadable. The single canonical implementation — both callers
-    are in ``lib.gates`` (the end-of-cycle synthesis gate and its sibling); they
-    and ``lib.critic_mode`` carried near-duplicate copies until STH-2K8R/BLD-6Q1N.
-    ``critic_mode`` no longer calls this at all: it asks
-    :func:`resolve_chunk_progress`, which is the one place the checkbox and
-    git-derived readings are reconciled.
+    is missing or unreadable.
+
+    The single canonical implementation. ``lib.gates`` and ``lib.critic_mode``
+    carried near-duplicate copies until STH-2K8R/BLD-6Q1N; ``critic_mode`` no
+    longer calls this at all, asking :func:`resolve_chunk_progress` instead,
+    which is the one place the checkbox and git-derived readings are reconciled.
+
+    **Three callers, and the enumeration is pinned rather than narrated** —
+    ``tests/test_buildplan_walkers.py::TestCountChunksCallerEnumeration`` fails
+    when this list and the tree disagree, because it silently went stale twice
+    (a third caller appeared in ``lib.record_lint`` and this sentence still said
+    "both callers are in ``lib.gates``"):
+
+    - ``lib.gates._has_active_build_plan_file`` — passes ``plan_path``.
+    - ``lib.record_lint._check_chunk_refs`` — passes ``plan.path``.
+    - ``lib.gates._critic_session_satisfies_gate`` — **does not**, and that is
+      #541's open leg: it resolves its own plan while its sibling one screen up
+      passes the branch-resolved one, so on a branch whose scope names a plan
+      the two gates can disagree about how many chunks exist. The fix is one
+      argument at that call site.
     """
     if plan_path is None:
         plan_path = resolve_build_plan_path(prawduct_dir)
