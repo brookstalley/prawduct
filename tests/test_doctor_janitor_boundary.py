@@ -82,3 +82,30 @@ class TestGitignoreCrossReference:
             f"{JANITOR}'s Version Control Hygiene theme must route the prawduct gitignore "
             "contract to /prawduct:doctor Health-Check #8"
         )
+
+    def test_the_health_check_grades_on_the_dry_run(self):
+        """A read-only report must not be graded by a command that writes (#666).
+
+        ``update-gitignore`` is mutating by default — deliberately, because its
+        other callers want the repair applied — so a health check that runs it
+        bare reconciles the file it was asked to inspect. The operator then
+        cannot tell which findings were true before the check ran. The step must
+        name ``--dry-run`` as what it grades on, and the grant must be able to
+        pass the flag: ``Bash(prawduct-hook update-gitignore)`` is an exact
+        match that cannot.
+        """
+        src = _read(DOCTOR)
+        assert "update-gitignore --dry-run" in src, (
+            f"{DOCTOR}'s gitignore check must grade on `update-gitignore --dry-run`; "
+            "the bare command writes, and a health check that repairs silently "
+            "destroys the evidence for its own report"
+        )
+        grant = next(
+            line for line in src.splitlines() if line.startswith("allowed-tools:")
+        )
+        assert "Bash(prawduct-hook update-gitignore*)" in grant, (
+            f"{DOCTOR} must grant `Bash(prawduct-hook update-gitignore*)` — the "
+            "house grant form (star attached, no space). A bare grant is an exact "
+            "match that cannot pass `--dry-run`, and a spaced star cannot run the "
+            "repair form; only the attached star covers both."
+        )
