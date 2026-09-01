@@ -1765,6 +1765,139 @@ class TestVerifyChunkRefsGitRefs:
         assert [e["ref"] for e in refs["file_paths"]] == ["release/notes.v2.md"]
 
 
+class TestGitAnswersTheBranchQuestion:
+    """#537: the repo classifies its own branch names; the allowlist is history.
+
+    `_GIT_REF_PREFIXES` was a guess about other teams' branch naming, extended
+    once already (#333) and still missing `epic/`, `spike/`, `deps/` and
+    `PROJ-123/` — every one of which is a real convention, and every one of
+    which drew a BLOCKING `missing-ref:` for a branch named in plan prose. An
+    allowlist of naming conventions cannot finish, because the conventions
+    belong to the consuming team.
+
+    So the primary question goes to git. The allowlist stays for the one thing
+    git cannot answer — a branch that has since been deleted, which is every
+    archived plan naming the branch it shipped on — and a NEGATIVE from git is
+    deliberately not evidence, or the whole archive would redden.
+    """
+
+    def _repo_with_branch(self, tmp_path: Path, branch: str, body: str):
+        project, prawduct = _project_with_chunk(tmp_path, body)
+        _git(project, "init", "-q", "-b", "main")
+        _git(project, "config", "user.email", "t@example.com")
+        _git(project, "config", "user.name", "T")
+        _git(project, "add", "-A")
+        _git(project, "commit", "-qm", "seed")
+        _git(project, "branch", branch)
+        return project, prawduct
+
+    @pytest.mark.parametrize(
+        "branch",
+        ["epic/observability", "spike/cache-shape", "deps/bump-ruff", "PROJ-123/adapter"],
+    )
+    def test_a_live_branch_outside_the_allowlist_is_a_ref(self, tmp_path: Path, branch: str):
+        # None of these prefixes is in `_GIT_REF_PREFIXES`, and none should have
+        # to be. Before #537 each drew a BLOCKING missing-ref against a plan
+        # that was simply naming the branch it was built on.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, branch, f"- **Deliverables:** landed on `{branch}`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_a_deleted_branch_still_falls_back_to_the_allowlist(self, tmp_path: Path):
+        # The reason the allowlist is kept rather than narrowed. This repo has a
+        # git checkout that answers fine — it simply has never heard of the
+        # branch, which is the permanent state of every archived plan.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, "epic/live", "- **Deliverables:** built on `feature/long-since-merged`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_a_negative_from_git_does_not_reclassify_an_unknown_prefix(self, tmp_path: Path):
+        # The corollary, and the one that decides whether this change is safe to
+        # ship: git saying "not a ref" must leave the verdict exactly where the
+        # shape rule puts it. `epic/gone` has no allowlisted prefix and no
+        # extension, so it stays a path and stays reported — the pre-#537
+        # verdict, unchanged. Narrowing on a negative is what would redden the
+        # archive.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, "epic/live", "- **Deliverables:** `epic/gone`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["epic/gone"]
+        assert [m["ref"] for m in _bpr._verify_chunk_refs(project, refs)] == ["epic/gone"]
+
+    def test_a_real_file_shadowed_by_a_branch_name_is_still_checked(self, tmp_path: Path):
+        # The risk the git arm introduces: a branch and a path can collide. The
+        # extension guard is what keeps the collision from blinding the verifier
+        # — a real path keeps its suffix, and `epic/thing.py` is checked even
+        # while a branch literally named `epic/thing.py` exists.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, "epic/live", "- **Deliverables:** `plugin/lib/absent.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [m["ref"] for m in _bpr._verify_chunk_refs(project, refs)] == [
+            "plugin/lib/absent.py"
+        ]
+
+    def test_both_ref_spellings_answer_the_same(self, tmp_path: Path):
+        # `refs/heads/epic/x` and `epic/x` are one object written two ways. A
+        # classifier that knew only the short form would answer differently
+        # about the same ref depending on how the plan wrote it.
+        project, prawduct = self._repo_with_branch(tmp_path, "epic/x", "- x\n")
+        names = _bpr._git_ref_names(project)
+        assert names is not None
+        assert {"epic/x", "refs/heads/epic/x"} <= names
+
+    def test_a_non_checkout_falls_back_rather_than_reclassifying(self, tmp_path: Path):
+        # `None` means COULD NOT ASK, and every caller must read it that way.
+        # Reading it as "there are no refs" would make an unavailable git
+        # silently turn every branch name in every plan into a missing file.
+        not_a_repo = tmp_path / "bare"
+        not_a_repo.mkdir()
+        assert _bpr._git_ref_names(not_a_repo) is None
+        assert not _bpr._names_a_live_git_ref("feature/x", not_a_repo)
+        # …and the shape rule still carries the verdict it always did.
+        assert not _bpr._looks_like_file_path("feature/x", not_a_repo)
+        assert _bpr._looks_like_file_path("feature/x.py", not_a_repo)
+
+    def test_the_predicate_still_works_with_no_repo_at_all(self):
+        # `lib.risk` shares this predicate to classify tokens in a diff, where
+        # there is no plan and no repo question to ask. Omitting `project_dir`
+        # must be the pre-#537 behaviour exactly, or #537 breaks a second caller.
+        assert not _bpr._looks_like_file_path("feature/backlog-relayout")
+        assert _bpr._looks_like_file_path("plugin/lib/gates.py")
+        assert not _bpr._looks_like_file_path("epic/observability") is False
+
+    def test_git_is_asked_once_per_repo_not_once_per_token(self, tmp_path: Path, monkeypatch):
+        # A gate reads every backticked token of every chunk of every plan. One
+        # `git rev-parse` per token turns one gate into hundreds of process
+        # spawns, which is why the whole ref namespace is fetched once.
+        project, prawduct = self._repo_with_branch(
+            tmp_path,
+            "epic/live",
+            "- **Deliverables:** `epic/live`, `epic/live`, `feature/a`, `plugin/lib/x.py`\n"
+            "- **Tests:** `epic/live` and `refs/heads/epic/live`\n",
+        )
+        _bpr._GIT_REF_NAMES_CACHE.clear()
+        calls = []
+        real = _bpr.subprocess.run
+
+        def counting(cmd, *a, **kw):
+            if isinstance(cmd, list) and "for-each-ref" in cmd:
+                calls.append(cmd)
+            return real(cmd, *a, **kw)
+
+        monkeypatch.setattr(_bpr.subprocess, "run", counting)
+        _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert len(calls) == 1, f"{len(calls)} for-each-ref calls for one chunk"
+
+
 class TestVerifyChunkRefsNonPathTokens:
     """BLD-4K7P: backticked tokens that aren't literal on-disk paths must not
     produce false `missing-ref` positives — angle-bracket write-target templates

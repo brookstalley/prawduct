@@ -1245,7 +1245,19 @@ _BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
 # entirely — but it also stops verifying real extensionless paths, and this
 # repo's single most-cited path is one: `plugin/bin/prawduct-hook`. Trading a
 # spurious-finding class for a missed-finding class on the most-referenced file
-# in the tree is the wrong direction, so the allowlist stays and grows.
+# in the tree is the wrong direction, so the allowlist stays.
+#
+# **#537: it stays but stops growing.** Every entry above was a guess about
+# another team's branch naming, and the set can never finish — `epic/`, `spike/`,
+# `deps/`, `PROJ-123/` are all real conventions and none is here. So the primary
+# question is now put to the repo instead (`_names_a_live_git_ref`), and a token
+# git confirms as a ref is skipped whatever its prefix. This set is kept for the
+# one case git cannot answer: a branch that has since been DELETED, which is
+# every archived plan naming the branch it shipped on. That is also why a
+# NEGATIVE from git is not evidence and does not narrow this set — treating
+# "git has never heard of it" as "it must be a file" would redden the whole
+# archive. Do not add prefixes here for a live convention; the repo answers that
+# now. The remaining entries are load-bearing only for history.
 _GIT_REF_PREFIXES = frozenset(
     {
         # git-flow
@@ -1286,7 +1298,82 @@ def _has_file_extension(segment: str) -> bool:
     return bool(dot) and bool(stem) and bool(_FILE_EXTENSION_RE.match(suffix))
 
 
-def _looks_like_file_path(token: str) -> bool:
+#: Per-repo cache of ``git for-each-ref``. **One subprocess per repo, not one
+#: per token** — the classifier below is called for every backticked token in
+#: every chunk of every plan a gate reads, and a `git rev-parse` per token would
+#: turn one gate into hundreds of process spawns. Asking once for the whole ref
+#: namespace and answering from a set is the same trade `_TRACKED_SET` makes in
+#: the path-resolution test.
+#:
+#: Keyed by the repo path as a string, because :class:`Path` hashes by value and
+#: two callers can hold different spellings of one checkout.
+#:
+#: Never invalidated, and that is correct for its consumers: `prawduct-hook` is a
+#: short-lived CLI process, so the ref namespace cannot meaningfully change under
+#: one run. A long-lived embedding that creates branches mid-process would want
+#: to clear it — the tests do, which is also what makes the one-call-per-repo
+#: property assertable.
+_GIT_REF_NAMES_CACHE: "dict[str, frozenset[str] | None]" = {}
+
+
+def _git_ref_names(project_dir: Path) -> "frozenset[str] | None":
+    """Every ref name in ``project_dir``, in both spellings, or ``None``.
+
+    ``None`` means **could not ask** — not a git checkout, git missing, or the
+    call failed — and every caller must read it as "fall back to the shape
+    rule", never as "there are no refs". The two are opposite verdicts about a
+    token that looks like a branch, and collapsing them would make an
+    unavailable git silently reclassify every branch name in every plan as a
+    missing file. An empty repo genuinely with no refs returns an empty set,
+    which is a real answer.
+
+    Both ``%(refname)`` and ``%(refname:short)`` are collected because a plan
+    backticks either: ``refs/tags/v3.2.1`` and ``origin/develop`` are the same
+    ref written two ways, and a classifier that knew only one spelling would
+    answer differently about one object.
+    """
+    key = str(project_dir)
+    if key in _GIT_REF_NAMES_CACHE:
+        return _GIT_REF_NAMES_CACHE[key]
+    names: "frozenset[str] | None"
+    try:
+        proc = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname)%09%(refname:short)"],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        names = (
+            frozenset(
+                field
+                for line in proc.stdout.splitlines()
+                for field in line.split("\t")
+                if field
+            )
+            if proc.returncode == 0
+            else None
+        )
+    except (OSError, subprocess.SubprocessError):
+        names = None
+    _GIT_REF_NAMES_CACHE[key] = names
+    return names
+
+
+def _names_a_live_git_ref(token: str, project_dir: "Path | None") -> bool:
+    """Does git say ``token`` names a ref that exists in this checkout?
+
+    ``False`` whenever the question could not be asked — no ``project_dir``, no
+    git, not a checkout — so the shape rule below stays the sole authority on
+    those paths rather than a git outage changing verdicts.
+    """
+    if project_dir is None:
+        return False
+    names = _git_ref_names(project_dir)
+    return names is not None and token in names
+
+
+def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool:
     """A backticked token is a precise file-path reference only when it
     contains ``/`` — i.e. the chunk author wrote a specific relative path.
     Bare filenames in prose (e.g. ``backlog.md``, ``SKILL.md``) are usually
@@ -1321,13 +1408,35 @@ def _looks_like_file_path(token: str) -> bool:
 
     Git branch/ref names (e.g. ``feature/backlog-service-relayout``,
     ``origin/develop``, ``release/v3.2.0``) also contain ``/`` but name a branch,
-    not a file — a build/release plan legitimately backticks them in prose. A
-    token whose first segment is a git-flow branch prefix (``_GIT_REF_PREFIXES``)
-    and whose final segment carries no extension-shaped suffix
-    (:func:`_has_file_extension`) is a ref to skip; a real path keeps its
-    extension (``feature/foo.py`` stays checked), so this does not blind the
-    verifier to genuine missing files. Version-numbered branches are the case a
-    dot-presence test gets wrong — see the note on ``_FILE_EXTENSION_RE``."""
+    not a file — a build/release plan legitimately backticks them in prose.
+
+    **Two answers, asked in that order (#537).** First the repo itself: when
+    ``project_dir`` is given, a token that ``git for-each-ref`` reports as a
+    live ref is a ref, whatever its prefix. That is the authoritative answer and
+    it costs one subprocess per repo (:func:`_git_ref_names`). It is what makes
+    ``epic/…``, ``spike/…``, ``deps/…`` and ``PROJ-123/…`` stop drawing a
+    BLOCKING ``missing-ref:`` — none of them is in the allowlist, and no
+    allowlist ever finishes, because branch-naming conventions are a property of
+    the consuming team rather than of prawduct.
+
+    Then the shape rule, as the **deleted-branch fallback**: a token whose first
+    segment is in :data:`_GIT_REF_PREFIXES` and whose final segment carries no
+    extension-shaped suffix (:func:`_has_file_extension`) is a ref to skip. It
+    has to stay, and not only for repos with no git: an archived plan names the
+    branch it was built on, that branch was merged and deleted years ago, and
+    git will never confirm it again. Asking git first and *narrowing* the
+    allowlist on a negative answer would therefore redden every historical plan
+    in the tree — so a negative from git is not evidence, and the fallback runs
+    unchanged.
+
+    A real path keeps its extension (``feature/foo.py`` stays checked), so
+    neither arm blinds the verifier to genuine missing files. Version-numbered
+    branches are the case a dot-presence test gets wrong — see the note on
+    ``_FILE_EXTENSION_RE``.
+
+    ``project_dir`` is optional because :mod:`lib.risk` shares this predicate to
+    classify tokens in a diff, where there is no plan and no repo question to
+    ask; omitting it is the pre-#537 behaviour exactly."""
     if "/" not in token:
         return False
     if token.startswith("/") and "/" not in token[1:] and "." not in token:
@@ -1339,6 +1448,8 @@ def _looks_like_file_path(token: str) -> bool:
     if "://" in token:
         return False
     if "#" in token:
+        return False
+    if _names_a_live_git_ref(token, project_dir):
         return False
     first, _, rest = token.partition("/")
     if first in _GIT_REF_PREFIXES and not _has_file_extension(rest.rsplit("/", 1)[-1]):
@@ -2143,6 +2254,12 @@ def _parse_build_plan_chunk_refs(
         result["error"] = f"unreadable build-plan: {exc}"
         return result
 
+    # The repo the plan lives in, for the git-ref classifier (#537). Derived
+    # rather than passed: every caller already hands this function the
+    # `.prawduct` dir, and threading a second, redundant argument through three
+    # call sites to say the same thing twice is how the two get to disagree.
+    project_dir = prawduct_dir.parent
+
     section = _chunk_section_lines(content, chunk_id)
     gap = chunk_section_gap(chunk_id, section)
     if gap:
@@ -2227,7 +2344,7 @@ def _parse_build_plan_chunk_refs(
                 for match in _BUILD_PLAN_PATH_RE.finditer(line)
             ]
         for path_part in candidates:
-            if not _looks_like_file_path(path_part):
+            if not _looks_like_file_path(path_part, project_dir):
                 continue
             if path_part in forward_refs or path_part in gone_refs:
                 continue
