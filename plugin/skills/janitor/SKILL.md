@@ -26,7 +26,7 @@ user-invocable: true
 # Without `review-stats`, the Step 1 context read loses the review-cost history and
 # the survey grades maintenance signals it never saw.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Bash(prawduct-hook archive-plan *), Bash(python3 plugin/bin/prawduct-hook archive-plan *), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.

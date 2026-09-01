@@ -3,7 +3,7 @@ description: Disable the Prawduct plugin for THIS repo — write a per-repo enab
 argument-hint: "[local|committed]"
 user-invocable: true
 disable-model-invocation: true
-allowed-tools: Bash(prawduct-hook repo-disable *), Read
+allowed-tools: Bash(prawduct-hook repo-disable*), Read
 ---
 
 You are turning Prawduct **off in the current repo only**. Prawduct installs at the

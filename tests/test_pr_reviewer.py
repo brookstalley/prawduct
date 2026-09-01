@@ -686,7 +686,10 @@ class TestPrReviewerScoping:
         content = self.skill
         assert "ledger-append --event review.pr" in content
         frontmatter = content.split("---", 2)[1]
-        assert "Bash(prawduct-hook ledger-append *)" in frontmatter, (
+        # The house grant form: star attached, no space — a spaced star does not
+        # cover a bare call, and one line covers both shapes
+        # (`tests/test_skill_command_grants.py` defines the form).
+        assert "Bash(prawduct-hook ledger-append*)" in frontmatter, (
             "skills/pr/SKILL.md allowed-tools is missing ledger-append — "
             "the skill cannot append the review.pr event."
         )
