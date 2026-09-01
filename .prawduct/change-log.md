@@ -3,6 +3,55 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-01: four stalled transitions get a bounded exception instead of a silent one
+
+<!-- prawduct: type=fix | scope=norm-lifecycle-stopgaps -->
+
+`#732`. Four `Status: in-transition` norm entries sat past the 30-day stall window, so
+`test_no_norm_lifecycle_advisory_fires_here_today` was red. `docs/norms.md` § Transitions makes a
+stall a forcing event with exactly three arms — accelerate, record a stopgap, or improvise a third
+system silently — and the first was not available: each tracking item's *first* acceptance criterion
+is a full enumeration sweep, a multi-chunk plan per item rather than a fix.
+
+So the interim rules stand as recorded **bounded exceptions expiring 2026-12-01**, in a new
+`Stopgap:` field carrying the owner-vetoable `[DECISION: …]` block and a rationale that engages each
+norm's own why rather than the local convenience.
+
+**Five entries, not four.** The advisory keys on `(artifact, tracking-id)`, and `architecture.md`
+holds two distinct entries both tracking LNG-5W8R — the Python-agnosticism norm and the
+guides-never-implements corollary. Editing the four rows the advisory printed would have left one
+entry governing new work with no exception recorded.
+
+**Why `Stopgap:` and not the existing `Live exception:` spelling.** `_FIELD_OR_ITEM_RE` admits a
+single-word field name only, so `Live exception:` is not a field marker at all — it soft-wraps into
+the logical line above it. That is harmless where it sits today (a `Decision:` line, which no probe
+scans) but would be actively wrong after a `Status:` line, where `_extract_ids` would read the
+exception's own citations as *additional tracking items* and manufacture advisory rows. `Stopgap:`
+matches the marker regex, stands as its own logical unit, and is the noun the norms spec already
+uses. Verified against `_direction_lines`/`_extract_ids` directly: every `Status:` line still cites
+only its tracking id.
+
+**The clock is a comment on each tracking item, and that is deliberate.** `docs/norms.md` puts an
+exception's clock on a backlog item, but the Issues backend has no write path for `revisit:` —
+`update` strips a caller-pasted `prawduct:` block and re-appends the existing one, and no op takes
+the flag (`#564`). `probe_revisit_due` reads *dated* values off the frozen markdown model and is
+dark post-cutover regardless. So the walker is the janitor's Norm Health sweep, exactly as it is for
+the `#13`/`#13a` exception that set this precedent.
+
+**Honest about why the advisory actually cleared.** The probe's contract claims a stopgap clears it;
+no such code exists — `stopgap` appears in `norm_probes.py` only in comments and message strings.
+The advisory cleared because recording the clock on each item moved `updated_at`, which is the
+*touched* arm. A team that records a stopgap in the norm entry alone would watch the advisory keep
+firing and be pushed toward touching the item to silence it, which is the silent departure the
+Authority Rule forbids wearing compliance's clothes. Filed as `#737` rather than fixed here, to
+keep this cycle prose-scoped.
+
+Also filed, as `#738`: the target test passes **vacuously in CI**. The `backlog-cache-unreadable` exemption is
+right for a fresh clone, but the cache is gitignored, so in CI the probe cannot reach the tracking
+items at all and the assertion evaluates no norm — local and CI disagreed on the same commit. The
+rule that generalises it is already in `learnings.md`: an exemption filter exempts *environments*,
+not just conditions, and the exempted set here is exactly "every CI run".
+
 ## 2026-09-01: the headline nobody wrote, and the red suite nothing refused
 
 <!-- prawduct: type=feat | scope=release-gate-blindness -->

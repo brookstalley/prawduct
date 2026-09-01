@@ -4648,3 +4648,57 @@ that here (`grep -n "plugin/"`) and it returned three members, not one.
 **Cheap and general.** Re-running a cited finding's own reason as a search costs one grep. It is the
 same shape as the Retrieval-Over-Generation cheap-check gate: the cheapest verification that could
 change the decision, done before committing to the decision.
+
+## An exemption filter exempts environments, not just conditions
+
+Found while merging PR #734 (`release-gate-blindness`), 2026-09-01.
+
+The local suite was red on
+`tests/test_norm_probes.py::TestSilentAgainstThisRepo::test_no_norm_lifecycle_advisory_fires_here_today`
+— four `Status: in-transition` norms had crossed the 30-day stall window, so the probe emitted
+`stalled-transition`. I told the user CI would "almost certainly" go red too. All four jobs passed.
+
+The counts are what make it legible. Local: 5553 passed, 1 failed, 17 skipped. CI (3.14): 5554
+passed, 0 failed, 17 skipped. **Same 5571 total** — so the test did not skip in CI, it *passed*.
+
+The mechanism is one line of the test:
+
+```python
+fired = sorted(
+    c.type
+    for c in run_all_probes(state, codebase)
+    if c.feature == "norm-lifecycle" and c.type != "backlog-cache-unreadable"
+)
+```
+
+The `backlog-cache-unreadable` exclusion is well-reasoned, and the test says so in a comment: that
+candidate is "true about this machine and nothing about the norms — asserting on it here would make
+a clean clone's first test run red for a correct reason."
+
+That reasoning is right about a clean clone and silently wrong about CI. Resolving "has this
+tracking item been unchanged >30d" requires the backlog cache. The cache is gitignored. So in CI the
+probe cannot reach the tracking items at all, emits `backlog-cache-unreadable`, and the filter drops
+it — leaving `fired == []` and a green assertion that never evaluated a single norm.
+
+**The generalisation.** An exemption filter is written thinking about a *condition* ("the cache is
+missing on a fresh clone"). It actually quantifies over *environments*: every environment where the
+subject is unreachable is now permanently exempt. When the unreachable resource is gitignored, that
+set is exactly "every CI run" — which is to say, the only environment anybody watches
+automatically. The test inverts: it is honest on the developer machine that can see the subject, and
+vacuous on the machine whose green light gates merges.
+
+**The fix shape** is not to remove the exclusion — it would make clean clones red for a correct
+reason, which is why it exists. It is to add a reachability assertion beside it: assert the probe
+*did* evaluate the tracking items (non-empty candidate set, or an explicit
+`assert 'backlog-cache-unreadable' not in types` guarded by a cache-present precondition), so
+"unreachable" fails loudly as an infrastructure gap rather than passing as a clean bill of health.
+
+**Two adjacent entries this is NOT.** The `TestAgainstTheReal*` phase entry is about *time* — a
+release ends the phase a self-referential test pinned. The set-emptiness entry is about a check whose
+subject is a set that can legitimately be empty. This one is about *portability*: the same test, the
+same commit, two environments, opposite verdicts, and the one that is wrong is the one that is
+automated.
+
+**My own error underneath it** was predicting one environment's result from another's rather than
+asking the cheap question — could the assertion even reach its subject over there? Retrieval over
+generation applies to predictions about tooling, not only to design decisions.
