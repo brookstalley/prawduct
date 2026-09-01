@@ -79,6 +79,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
@@ -111,6 +112,38 @@ _VALID_ARG_MODES = frozenset({
 _BUILD_PLAN_CRITIC_MODE_RE = re.compile(
     r"^[\s\-\*]*\*\*Critic mode:\*\*\s*([A-Za-z][\w\-]*)"
 )
+
+
+def _unrecognized_mode_note(token: str) -> str:
+    """The one line an ignored ``Critic mode:`` value earns.
+
+    Fail-open-to-inference is correct and is NOT changing: a typo'd mode must
+    not block a review, and nothing is skipped — inference runs and a mode is
+    chosen. What was missing is that the ignore never said so. Absent and blank
+    stay silent because they carry no intent to contradict; a value someone
+    typed does, and swallowing it let an author believe a mode was pinned when
+    it was not, discover otherwise from surprising behaviour, and file that as a
+    defect against prawduct.
+
+    The ``Type:`` hint is the specific trap worth naming: ``cumulative-final``
+    is a valid ``Type:`` and reads like a mode, so an author reaching for
+    "cumulative, and it's the final one" reaches for the field that takes
+    ``cumulative``. Naming the right field lands the correction where the
+    confusion actually is. The membership test reads
+    ``buildplan_refs._BUILD_PLAN_ALLOWED_TYPES`` rather than a copy, so a Type
+    added later keeps routing authors correctly.
+    """
+    note = (
+        f"NOTE: chunk's `Critic mode:` is {token!r}, which is not one of "
+        f"{', '.join(sorted(_VALID_ARG_MODES))}. Ignoring it and inferring the "
+        "mode instead — nothing was skipped."
+    )
+    if token in buildplan_refs._BUILD_PLAN_ALLOWED_TYPES:
+        note += (
+            f" {token!r} IS a valid `Type:` value — if that was the intent it "
+            "belongs in that field, which is an orthogonal axis."
+        )
+    return note
 
 
 def infer_mode(
@@ -189,6 +222,12 @@ def infer_mode(
     # reporting a confident `chunk`.
     if plan_read.unreadable:
         return "final", f"rule-0 final (plan unreadable): {plan_read.unreadable}"
+
+    # A value was typed into `Critic mode:` and matched nothing. Inference
+    # proceeds — documented, correct, and not changing — but the ignore says so
+    # once. Unlike its escalating sibling above, this changes no verdict.
+    if plan_read.unrecognized:
+        print(_unrecognized_mode_note(plan_read.unrecognized), file=sys.stderr)
 
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
         return "verify-resolutions", (
@@ -703,6 +742,13 @@ class ChunkModeRead(NamedTuple):
 
     mode: str | None
     unreadable: str | None
+    #: The token found where a mode was expected, when it matched none of them.
+    #: A THIRD state, for the same reason ``unreadable`` is a second: absent and
+    #: blank carry no intent to contradict, but a value someone typed does. It
+    #: must not escalate the way ``unreadable`` does — a typo'd mode is no
+    #: reason to spend a heavier review, and inference proceeding is correct —
+    #: so it changes no verdict and earns only a line saying it was ignored.
+    unrecognized: str | None = None
 
 
 def _critic_mode_for_chunk(
@@ -780,5 +826,7 @@ def _critic_mode_for_chunk(
         m = _BUILD_PLAN_CRITIC_MODE_RE.match(line)
         if m:
             token = m.group(1)
-            return ChunkModeRead(token if token in _VALID_ARG_MODES else None, None)
+            if token in _VALID_ARG_MODES:
+                return ChunkModeRead(token, None)
+            return ChunkModeRead(None, None, token)
     return ChunkModeRead(None, None)

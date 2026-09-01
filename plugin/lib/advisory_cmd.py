@@ -203,6 +203,11 @@ def _print_show(result: dict, advisory_id: str) -> int:
         print(f"trigger:           {advisory.get('trigger_summary')}")
     if advisory.get("recommended_action"):
         print(f"recommended:       {advisory.get('recommended_action')}")
+    # The drill-down is where alternatives belong: the briefing is capped at one
+    # action per advisory by design, so without this line every probe's
+    # `alternative_actions` reached no reader at all.
+    for alternative in advisory.get("alternative_actions") or []:
+        print(f"alternative:       {alternative}")
     evidence = advisory.get("evidence") or []
     if evidence:
         suffix = " (reconstructed by re-running the probe)" if result.get("evidence_reconstructed") else ""

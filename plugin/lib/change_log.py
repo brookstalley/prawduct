@@ -73,6 +73,15 @@ class ChangeLogEntry:
     # one tag line (`parse_tag_line_with_conflicts`) and a repeat ACROSS two
     # (`_merge_tag_line`). They were not always both caught; see the former.
     tag_conflicts: list[str] = field(default_factory=list)
+    # Tag lines found in the entry's body, PAST the block that heads it — so
+    # they were parsed by nobody and their pairs are in no `tags` dict. This is
+    # what a union merge of a two-sided tag-line edit actually produces: the
+    # driver concatenates whole hunks, so the second version lands after the
+    # first version's prose rather than beside it, and the head-of-body loop
+    # stops at the first prose line. Counted rather than merged: merging would
+    # change which value wins on a shape nobody authored deliberately, while the
+    # failure worth preventing is that it is read by NOTHING and says so.
+    unconsumed_tag_lines: int = 0
 
     # A `shipped_chunks` property stood here, composing `status=shipped` with
     # `chunks=` to answer "which chunks did this entry ship". Both keys are
@@ -181,8 +190,16 @@ def parse_change_log(content: str) -> list[ChangeLogEntry]:
     shipped a second line's ``chunks=`` unflipped at v2.1.0. Multiple lines are
     unioned per :func:`_merge_tag_line`, ``tag_line_count`` records how many were
     seen, and :func:`validate_change_log_tags` warns on >1 and errors when they
-    disagree. A tag line after intervening prose is still later body content,
-    never entry metadata.
+    disagree.
+
+    **A tag line after intervening prose is still body content, never entry
+    metadata — and it is now COUNTED rather than passed over in silence**
+    (``unconsumed_tag_lines``). That shape is not a typo somebody makes; it is
+    what ``merge=union`` produces from a two-sided edit to one entry's tag line,
+    because the driver concatenates whole hunks and the second version therefore
+    lands after the first version's prose. Parsing it as metadata would let a
+    merge decide which ``release=`` wins; not noticing it at all let a merge
+    delete one silently.
     """
     entries: list[ChangeLogEntry] = []
     lines = content.splitlines()
@@ -213,9 +230,40 @@ def parse_change_log(content: str) -> list[ChangeLogEntry]:
             else:
                 _merge_tag_line(entry, new_tags)
             j += 1
+        # ...and then the rest of the entry, for tag lines nothing consumed.
+        # Scanned to the next header rather than stopping at the block above,
+        # because that block's terminator — the first prose line — is exactly
+        # what a union merge inserts between the two versions of an edited tag
+        # line. Without this the second version is invisible to every reader,
+        # which is the silent half of the trade the merge attribute makes.
+        k = j
+        while k < len(lines) and not H2_RE.match(lines[k]):
+            if _is_standalone_tag_line(lines[k]):
+                entry.unconsumed_tag_lines += 1
+            k += 1
         entries.append(entry)
         i += 1
     return entries
+
+
+def _is_standalone_tag_line(line: str) -> bool:
+    """Whether ``line`` IS a tag line, rather than prose that mentions one.
+
+    Two conditions, and both are load-bearing against the corpus this runs on:
+    the line must *begin* with the comment (a sentence quoting a tag line
+    mid-prose is documentation, and this change log contains one), and it must
+    carry at least one real ``key=value`` (``<!-- prawduct: … -->`` written as an
+    illustration parses to nothing). ``TAG_LINE_RE`` alone matches both of those
+    and would report the file that documents the format as malformed.
+    """
+    stripped = line.strip()
+    if not stripped.startswith("<!--"):
+        return False
+    match = TAG_LINE_RE.search(stripped)
+    if not match:
+        return False
+    tags, _conflicts = parse_tag_line_with_conflicts(match.group(1))
+    return bool(tags)
 
 
 RELEASE_VALUE_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
@@ -299,5 +347,16 @@ def validate_change_log_tags(
                 f"{where} has {entry.tag_line_count} prawduct tag lines — the "
                 f"canonical format is one per entry; the pairs were unioned "
                 f"across them. Merge them into a single tag line."
+            )
+
+        if entry.unconsumed_tag_lines:
+            warnings.append(
+                f"{where} has {entry.unconsumed_tag_lines} prawduct tag line(s) "
+                f"further down its body, past the prose — READ BY NOTHING, so "
+                f"any `release=` or `scope=` they set is invisible to this gate. "
+                f"This is what a `merge=union` merge makes of a two-sided edit "
+                f"to one entry's tag line: both versions survive, and only the "
+                f"first is metadata. Fold the values you meant to keep into the "
+                f"tag line under the header and delete the stray."
             )
     return errors, warnings

@@ -3,6 +3,1341 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-01: the headline nobody wrote, and the red suite nothing refused
+
+<!-- prawduct: type=feat | scope=release-gate-blindness -->
+
+Two failures met at one moment. The consumer-facing headline is a hand step and it gets forgotten:
+**v2.1.6 was tagged and version-bumped with no digest section at all**, which left `develop` red on
+`test_changelog_has_current_version_entry` from that release onward — so v2.1.6 shipped on a red
+suite, and the redness was the only complaint anything made. It recurred at v3.0.4 and was
+backfilled out of band. **v3.4.0 had its section and still led with the seed the previous cut
+wrote**, so every upgrading repo was shown "Prerelease under test" as the news, after eight weeks of
+good notes had accumulated underneath it. And nothing anywhere on the release path read a test
+result.
+
+Phase 0 now answers both. It prints the open section's first non-empty line back verbatim — that is
+the line the version-delta banner shows every repo crossing this version, and the whole failure mode
+is a line nobody looked at — and warns when there is none or when it is still the seed. It also
+asks whether the saved suite run is green and current, and **refuses when it is not**.
+
+**The two halves fail in opposite directions, and that is the architecture rather than a
+preference.** The headline check is *coverage*: its subject is prose, and Phase 0 runs before the
+step that writes the headline, so on a correct release it fires exactly once and is then fixed. A
+refusal there would block a release for a condition the release is on its way to fixing. The suite
+check is a *verdict* about whether the release may proceed at all, so it fails closed, on the
+channel's existing blocking value — the same exit 1 every other refusal here uses, not a new code.
+
+**What the suite check does NOT claim is written into its message and into the runbook.** It reuses
+`gates.tests_are_current`, so the builder's `test-status`, the Stop hook and the release gate read
+one record through one reader and a repo cannot be green for one and stale for another. That
+predicate's first disjunct is session-freshness — it asks *when* a run happened, not which tree it
+met. That is the honest bound at this phase rather than a weakness worked around: Phase 1 rewrites
+four files after Phase 0, so **nothing checkable here can vouch for the tree the tag will carry**. A
+green-suite check at the tagging moment would be a different control at Phase 2.
+
+Four states reach the one refusal and the message names which: no evidence on disk, a run reporting
+failures, a run predating the session that can no longer be matched to the tree, and a run that
+reported itself `degraded`. The last is the one worth stating — a contended run exits 0 and reports
+a plausible total, so nothing in the counts distinguishes it from a clean pass; a release has to
+read it as "no run", never as "a green run".
+
+**The verdict is reported at the top and returned at the bottom.** This repo's ordinary Phase 0 run
+exits at `no-release-plan:` — the documented, expected first result — so a refusal wired only into
+the final return would never be seen by the operator it is for. Printing it early also keeps the
+property this gate holds elsewhere: every other check still runs, so one command reports every
+problem instead of one per round trip.
+
+Both digest questions now come from **one read of one section**. Reading the file twice would let
+them answer about different states of it, and would double the degraded NOTE into two sentences
+saying the same thing happened; that NOTE now names both consequences, because advice failing soft
+is not advice failing silent. And both stay behind `_ships_the_plugin_tree`: the headline message
+would have been the third `plugin/…` path printed at a repo that cannot have one.
+
+## 2026-08-29: the release-pending scope that reaches the tag with nothing written about it
+
+<!-- prawduct: type=feat | scope=release-gate-blindness -->
+
+A release-pending scope could reach the tag with **zero** consumer-facing notes in
+`plugin/CHANGELOG.md`, and no gate asked. It happened at the v3.4.0 cut:
+`scope=tactical-efficiency` carried nine `release=v3.4.0` entries and no mention in the digest, and
+the notes were hand-written at cut time because somebody happened to notice. **The failure is
+asymmetric — a section full of good notes reads as finished, so the missing scope is invisible
+exactly when the digest looks healthiest.**
+
+Phase 0 now tests each release-pending scope against the open digest section and emits one WARNING
+per scope it could not find, beside the existing `has no build-plan file` advisory. Both ask whether
+the pending set is described somewhere a reader will look, and neither is a releasability verdict.
+
+**It never touches the exit code, and that is a classification rather than a caution.** The subject
+is prose and the instrument is a name match, so it is advice by construction; the authority gate
+beside it refuses on state it cannot *evaluate*, and an unmentioned scope is not that — the release
+stays perfectly evaluable, it may just ship under-described. The wording follows: *"could not find …
+check the section"*, never *"is missing"*. An advisory that overstates its own certainty is how a
+fuzzy check gets promoted to a blocking one, and promotion is what changes the price of its false
+positives.
+
+**Matching is bounded on both ends, and the hyphen is part of a name rather than a boundary.** A
+plain substring test passes a short slug on any longer word containing it, and a plain word boundary
+breaks on the hyphen — either way `adhoc-delegation`'s note would mark `delegation` covered. Both
+errors run the wrong way: they report a scope as *covered* that the digest never mentioned, which is
+the silent pass this check exists to prevent. A false alarm costs a reader ten seconds. The slug's
+words count too (`manifest state diagnosis` covers `manifest-state-diagnosis`), because consumer
+prose spells slugs out and a slug-only test would report nearly every scope as uncovered.
+
+Coverage is read from the **topmost** section only — the digest states that convention itself, and a
+whole-file search would let prose written for a version that shipped months ago read as this
+release's coverage. The section boundary is `## ` plus any non-space, looser than a version match on
+purpose: a stricter pattern would let a heading it cannot parse fail to *delimit*, merging the
+section below into the open one. That is a false pass produced by the strictness itself.
+
+Where the digest cannot be read or holds no section, the check emits a NOTE naming what went
+unchecked **and what that costs** — *advice fails soft is not advice fails silent*, and a check that
+skips itself quietly is indistinguishable from one that passed.
+
+**That rule governs a check that ran and could not answer, not one that was never about this repo.**
+The digest ships inside the plugin and never lands downstream, so every `plugin/…` path this module
+prints names prawduct's own layout. A shared predicate now decides whether that layout is the repo's
+subject at all: downstream the whole arm is suppressed rather than reworded, because a repo that
+publishes no digest has none to be *missing*. The `no-version:` hint — the first member of that
+class, fixed alone in R-4/R-12 — consumes the same predicate, so the question is asked once. And a run that finds
+nothing still prints its denominator (`digest coverage: N of M`), because the only honest argument
+for retiring this later is a run of it finding nothing, which requires it to have counted out loud.
+
+**Measured on this repo: 13 of 14 release-pending scopes carry no note in the open
+`## v3.4.1-dev.2` section.** Hand-checking all 13 found eleven genuine gaps and two false positives
+— `branch-claim-multiplicity`, covered in prose under different words, which the plan predicted; and
+`release-v3.4.0`, a release-mechanics scope that records the cut itself and will never have a
+consumer note. That second one is a class, not an instance, and it is left visible rather than
+suppressed: a suppression list is the sophistication this check deliberately does not have, and the
+advisory posture is what makes carrying a ~15% false-positive rate the right trade.
+
+## 2026-08-27: the release-pending entry that enumerated as nothing, and the branch that never counted
+
+<!-- prawduct: type=fix | scope=release-gate-blindness -->
+
+`check-releasability` enumerates *scopes*. A release-pending change-log entry carrying no `scope=`
+contributes none, so it reached no row of the release plan's classification table, could be neither
+shipped nor withheld, and Phase 0 certified `releasable` over work it had never seen. The code
+already knew: the `if not pending:` branch named this blindness in a comment — "entries that carry
+no `scope=` key at all and are therefore invisible to this gate" — and returned 0 anyway.
+
+**The accounting existed in the branch where nothing was pending and was absent from the branch
+where something was, and that asymmetry was the whole bug in one place.** The no-pending branch
+printed its denominator (`N entries scanned, M tagged`) precisely because "0 pending" has several
+causes and only some are a pass. The branch that did have pending work printed a verdict and never
+said what it had looked at, so nothing it missed could be noticed. Both branches now account.
+
+`release_pending_entries` holds the release-pending set as *entries*; `release_pending_scopes` is
+that same set collapsed to its `scope=` values and now consumes it rather than re-deriving it, so
+the two cannot drift apart — the gap between them is exactly what the reconciliation measures.
+`unclassifiable_pending_entries` is that gap.
+
+**It refuses, and the refusal runs before the no-pending return.** Refusing is what an authority
+gate owes a releasability verdict over work that cannot be classified; the remedy is one `scope=`
+per entry, and every offending entry is named with its title and change-log line so the fix is
+mechanical. The placement is not cosmetic: when the scopeless entry is the only unreleased work,
+the pending set is empty, so a check placed after that return would run on the one shape it exists
+to catch and find nothing. Exit **1**, the value every other refusal here uses — not 3, which means
+the gate's *subject* could not be read, and here the log parsed fine; it is the work that is
+unclassifiable.
+
+**Measured before landing: 364 entries, 343 tagged, 31 release-pending across 13 scopes, 0
+unclassifiable** — so this repo's gate output is unchanged but for the new `scanned:` line. Thirty-nine
+historical entries do carry no `scope=`, all of them stamped `release=`, and a release tag settles
+the question scope-or-no-scope; refusing on those would fail every past release forever. The cost
+falls on a consumer repo holding a legacy scopeless *pending* entry, whose release newly refuses —
+accepted deliberately, with the veto route recorded in the build plan's open assumptions.
+
+The one test that reads the real change log asserts the **invariant** (entries ≥ scopes; every
+classified pending entry's scope is one the gate enumerates) and says which emptiness it rejects — a
+log that parsed to nothing, never an empty pending set, which is what a just-tagged release looks
+like. Six `TestAgainstTheReal*` guards died together at v3.3.0 for want of that distinction.
+
+## 2026-08-27: the rc track that develop had already replaced, resolved rather than re-merged
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+The branch sat 251 commits behind `develop`, and the sync was not a textual merge. Half of Chunk 04
+— a develop track keyed on an **rc** prerelease — had been independently superseded: `develop`
+shipped its own track on a deliberately narrower rule, `-dev` / `-dev.N` as the ONLY permitted
+suffix, with `test_version_tuple_refuses_an_unpermitted_prerelease` asserting that `3.4.0-rc.1` must
+**not** parse so the banner and the manifest guard keep answering one question about what a legal
+version is. Taking this branch's general-semver parser would have meant deleting that test.
+
+**Resolved in develop's favour, and the descope is recorded rather than inferred.** Every
+version-carrying file — `plugin/VERSION`, `plugin.json`, `pyproject.toml`, `banner.version_tuple`
+and both version test files — took develop's side; Chunk 04 carries a DESCOPED note naming what was
+superseded and what survived. A release-candidate stage now exists in no form, which is a fresh item
+designed against the `-dev` rule, not a resurrection of this chunk.
+
+**The prose had to move with the code, and two places were actively wrong once it did.** The
+dogfooding recipe still instructed maintainers to set `3.4.0-rc.1` — a version this tree's own tests
+reject — and the runbook asserted the open changelog section is written under the FINAL number while
+develop's step 10 opens it under the prerelease heading and renames it at the cut. Both restated in
+`-dev.N` terms. Consumer notes for the `branch:` opt-in and the union-merge advisory went into the
+OPEN `## v3.4.1-dev.2` section, not the shipped `## v3.4.0`, because this work is still
+release-pending; the README bullet joined develop's combined 3.1–3.4 section rather than re-splitting
+a 3.4 heading develop had already folded in.
+
+**Where the two designs genuinely disagreed about `active_build_plan`, the branch's rule won**,
+because it is the one its own code makes true: `core.resolve_branch_claim` falls back to the scalar,
+so a pointer left aimed at a merged branch-declaring plan puts that finished plan back in force on
+every branch with no plan of its own. Three cross-file references to "merge-flow step 7" — renumbered
+to 8 on develop — were replaced with the step's NAME rather than a new number, so the next renumber
+does not strand them again.
+
+**Superseding one clause of this branch's own 2026-08-13 entry**, which ships in the same bundle and says "an rc bump does not owe a changelog entry for a version nobody ships": that reasoning belonged to the rc track and is now false in both halves — there are no rc bumps, and `test_changelog_has_current_version_entry` requires the section to be keyed by the EXACT manifest string, prerelease suffix included. The earlier entry is left standing as written (the log is append-only); this is the correction a reader needs.
+
+Chunk 04's live half stays outstanding and is now visible as VRF-017: the recipe installs from
+`ref: develop`, so no sibling repo can run the track until this merges and pushes.
+
+## 2026-08-14: the derived-sentence defect, found twice, closed by enumeration
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+The branch's cumulative review found the *same class* its predecessor did, surviving in a state the
+first fix did not reach — and that recurrence is the finding, not the sentence.
+
+Precedence step 3 reads "the pointer, when it names a claimant" in prose and `pointed in pool` in
+code, and those differ exactly when the scalar names a claimant whose boxes are all ticked while
+others are open. The code is right — live evidence outranks a stale scalar, and the pointer must not
+resurrect a finished plan — but the `order` sentence then told an operator "`active_build_plan` names
+none of them" about a repo whose scalar named one. The docstring now states the narrowing and why
+it exists; the sentence derives its pointer clause the way it already derived its open-work count.
+
+**The fix is enumeration rather than another correction.** Every state the `order` basis can be
+reached in — pointer unset, pointer naming a non-claimant, pointer naming a ticked claimant, no
+claimant open — is now a case in one test, so a fifth state cannot be added without a failing
+assertion. Two spot fixes in two rounds is the signal that the states were never listed.
+
+**Two guards this bundle added were themselves unpinned**, in the same round that fixed unpinned
+prose. `_is_standalone_tag_line` feeds a release-gate warning over every governed repo's real change
+log and only its positive case was asserted — both conditions now carry the corpus case that forces
+them, and the repo's own 306-entry log is a fixture. The briefing's attributed swallow, which *was*
+the fix for a prior review's silent `except: pass`, had nothing asserting it, so a refactor back to
+`pass` would have restored the silence invisibly.
+
+**The develop track gained the lifecycle it was missing.** Promotion sets the final version on
+`main` — and on `develop`, which was promoted — so the two match and every dogfooding repo silently
+resolves the released cache entry while believing it is on develop. The first work merged after a
+release re-opens the next rc; until then there is nothing unreleased to dogfood, and the equality is
+honest rather than a trap.
+
+Also: the retention rule Chunk 02 reversed was still stated in the release process and its runbook,
+one of them citing as authority the bullet that had changed; `planning.md` contradicted itself on
+whether a branch-declaring plan has a pointer at all; the PR skill pointed at a command that does
+not print the resolved plan in the modes that fire at PR close (`verify-records` does, in every
+mode); and the precedence was restated in four places, two of them already partial — it now lives in
+one, with the others pointing.
+
+## 2026-08-13: develop becomes a track you can actually run on
+
+<!-- prawduct: type=feature | scope=branch-claim-multiplicity -->
+
+`develop` reaches consumers through nothing, which is correct and made it impossible to run
+unreleased governance against real work before promoting it. It is now a track one repo of yours can
+opt onto: a second marketplace entry (`prawduct-dev`, same repo, `ref: develop`) in that repo's
+per-machine `.claude/settings.local.json`. Nothing is pushed to `main`, the repo's committed install
+reference never changes, and the way back off is deleting the block.
+
+**The version is the cache key, and that is what makes this work at all.** The plugin cache is one
+directory per version (`~/.claude/plugins/cache/prawduct/prawduct/<version>/`), so a `develop` whose
+version still matched the released string resolved to the *released* cache entry — you would
+dogfood nothing while believing otherwise. `develop` now carries a prerelease of the version it is
+heading for (`3.4.0-rc.1`), bumped as work lands.
+
+**Which the repo's own tooling then rejected, in three places.** The manifest check demanded exactly
+three numeric parts; the changelog check demanded a section named for the exact running version; and
+`banner.version_tuple` parsed any suffix as "older than everything", so a dogfooding repo would have
+seen no banner and the next real release would have replayed every headline in the file. All three
+understand a prerelease now: it sorts below its own release, and it is satisfied by that release's
+changelog section — an rc bump does not owe a changelog entry for a version nobody ships.
+
+The consumer-facing narrative for the pass ships in `plugin/CHANGELOG.md` under `v3.4.0` — the two
+surfaces a consumer actually meets are the new change-log union-merge advisory (what it is, that it
+is advice, how to make it stop) and the `branch:` opt-in (what it buys, that nothing migrates, and
+that several plans may claim one branch). `.prawduct/release-notes.md` was NOT touched: it is a
+frozen archive of a retired derived view, and writing there would revive it.
+
+## 2026-08-13: a merged-away change-log tag stops disappearing quietly
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+The union-merge advisory told operators that a two-sided edit to one entry's tag line "is surfaced
+downstream rather than silently believed," naming the release gate's tag validator as the catch.
+Writing the test that was supposed to pin that claim disproved it.
+
+`merge=union` concatenates whole **hunks**, so the second version of an edited tag line lands
+*after* the first version's prose — not beside it. Entry parsing ends its tag block at the first
+prose line, by design, so that second tag line was metadata to nobody: its pairs reached no `tags`
+dict and no validator ever saw them. A `release=` stamped on one side while the other side edited
+the same line could vanish in a merge, under a caveat asserting it would be caught.
+
+Parsing now counts tag lines past the prose (`ChangeLogEntry.unconsumed_tag_lines`) and
+`validate_change_log_tags` warns that they are read by nothing. Counted rather than merged,
+deliberately: merging would let a merge driver decide which `release=` wins, and the failure worth
+preventing is not that the value is wrong but that nothing says it is there.
+
+The detector needs both of its conditions, and the corpus proves it — a tag line must *begin* its
+line and parse to at least one real `key=value`. `TAG_LINE_RE` alone also matches a sentence
+quoting the format, and this change log contains one, so the looser rule reports the file that
+documents the format as malformed. Zero of 306 existing entries trip the strict form.
+
+**The finding this chunk was written for did not exist.** The claim under review was that union
+keeps duplicate whole entries; constructing the merge showed identical hunks are not conflicting, so
+a twice-landed entry is kept once. The chunk was rescoped from fixing prose to pinning it — and the
+pin is what found the real defect one layer down. Both shapes are now fixtures, alongside the
+existing no-attribute conflict control.
+
+## 2026-08-13: a branch-declaring plan retires by archiving alone
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+`planning.md` and `/prawduct:pr` both promised that a merged branch-declaring plan "reads
+live-but-inactive with no advisory to ignore." It did not, and this repo's own `develop` was the
+counter-example: the gitflow RETAIN rule says to keep `active_build_plan` aimed at a merged plan, so
+resolution fell through to the scalar and the archive-the-plan advisory fired exactly as before —
+against a plan the same rule says to retain until the release. An advisory with no correct action.
+
+The RETAIN bullet now splits on how the plan resolves. A plan that declares `branch:` gets its
+pointer **cleared** at the closing merge: its branch is gone, so the declaration resolves for
+nobody, the plan reads live-but-inactive, and the release still archives it by scope. A
+pointer-resolved plan keeps the pointer, because clearing it is what makes governance blind. This
+repo's own scalar is now unset, and the absence is annotated as the state rather than left to read
+as an oversight.
+
+## 2026-08-13: several plans may claim one branch
+
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+
+Branch-scoped plan resolution shipped with a fail-closed refusal: a second live plan declaring the
+same `branch:` stopped resolution entirely, on the reasoning that governing by the wrong plan looks
+exactly like governing correctly. The reasoning was right and the proposition it guarded was false.
+**A branch can legitimately carry several plans** — a `release/2-0` with a telemetry plan and a
+documentation plan; a consumer repo carries three on one fix branch today. Refusing is the correct
+posture when a control cannot know the answer, and the wrong one when the answer is "all of them,
+and here is the one being worked."
+
+Resolution now picks among the claimants by a stated precedence — sole claimant, then the one with
+chunks left, then the plan `active_build_plan` names, then path order — and **names its choice and
+what it passed over** in the session briefing. That is what answers the original concern: a choice
+stops looking like the only possibility the moment the surface says what else claimed the branch.
+The scalar gains a job rather than losing one — it is now the operator's tie-break *within* a
+branch, instead of one product-wide singleton.
+
+The sole-claimant step sits ahead of the chunks-left step deliberately: the unfinished signal goes
+false the moment the last box is ticked, which happens *during* the closing PR, and a plan that
+stopped governing between its final review and its merge would take the gates with it.
+
+**Found by reading the feature against a consumer, not against its own tests.** That repo's plans
+already carried `branch:` in frontmatter as human documentation, written months before the key had
+meaning — three of them naming one branch, one of them holding prose (`feature/x (off develop)`)
+that is not a branch name at all. The key was declared collision-free on a grep of *this* repo and
+the shipped templates; the population it ships to was never asked. Its shapes are now a test.
+
+**The attribution sentence is derived, because it is the whole replacement for the deleted
+control.** Three reviewers independently found the same defect in it: the `order` basis is reached
+from two opposite states — several claimants still holding open work (the shipped headline case: a
+release branch with two live workstreams and no pointer set) and none of them holding any — and one
+sentence covering both told half its readers their open plans were finished. The clause now counts
+the claimants still holding open work, and ends with the act that decides it: point the scalar. Each
+rendered reason is pinned by a test, including a three-claimant render; before, none of the three
+wordings was asserted anywhere and any of them could have been falsified with the suite green.
+
+**Attribution has one home: the session briefing.** The gates already name the plan they graded
+(`record-lint`'s `plan_graded`), so what is missing at a gate is not the choice but the context for
+it — which is session-scoped, arrives before any gate runs, and would be a fourth copy of one
+sentence if every gate repeated it.
+
+`AmbiguousPlanBranchError`, the hook's `main()` classifier and the `cmd_stop` probe that rendered
+the refusal as the harness block code are **deleted** rather than left as handling for a condition
+nothing can produce (Principle 25). Their tests are redirected, not dropped: each now pins that a
+contested branch reaches the same gates an uncontested one does. `_scope_of_branch_claiming_plan`
+stopped declining on the second claimant too — it asks the same resolver, so a dispatch's ledger
+scope names the plan the gates actually graded.
+
+**Two ripples the review caught, both outside the files the change was "about".** Three skill files
+(`pr/SKILL.md`, `backlog/SKILL.md`, `backlog/adapter-mode.md`) still spelled a one-claimant
+resolution rule in the same commit that declared multiplicity ordinary — and the PR one feeds
+`archive-plan`, so an agent picking by eye on a contested branch could retire a sibling plan that is
+still live work. They now point at the resolver rather than restating a rule with four steps. And
+the briefing's contested-claim line sat inside a broad `except: … pass`, which — with the
+fail-closed route deliberately gone — meant the only surface that ever says a branch is contested
+could vanish with no output at all. It is attributed now: advice fails soft, not silent.
+## 2026-08-27: the version-delta headline renders as one sentence
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+Every version-delta headline carried a stray `**` mid-sentence — *"Less waiting on the gates, fewer
+rounds in review.`**` Gate checks stop timing out…"* — and had done since at least v3.3.2. It lands
+on the single most-read line prawduct emits: the one every upgrading repo sees.
+
+The cause is that a bullet and an emphasis marker share a character, so they cannot share a strip
+set. `lstrip("-* ")` consumed the OPENING `**` of a bolded lead-in as though it were bullet
+punctuation, leaving the closing marker with nothing to pair against. The discriminator is now the
+FOLLOWING WHITESPACE — `* ` opens a list item, `*text*` and `**text**` open emphasis — and only
+then is a matched leading pair unwrapped, longest marker first.
+
+**Mid-sentence emphasis is preserved, and that is why this is a function rather than a wider strip
+set.** A blanket `replace("**", "")` would have cleared the symptom by flattening the author's own
+markup.
+
+The acceptance criterion took two corrections during the build, both recorded. "No headline contains
+`**`" would have demanded exactly that flattening. "Every marker is PAIRED" replaced it and was also
+wrong — it is unachievable over this artifact, because changelog prose legitimately carries markers
+that are not emphasis: a snake_case identifier makes the `_` count odd, and a shell glob inside a
+code span (`~/.claude*/plugins/…`) makes the `*` count odd, and both fired on healthy entries. What
+the stripper actually promises is narrower and is the reported symptom's exact inverse: **a stripped
+headline does not begin with an emphasis marker.** That is what is asserted, against the live
+`CHANGELOG.md` rather than a fixture.
+
+Three items carried from the previous chunk ride this commit: two stale return annotations that
+still said `str | None` after the error slot became a `{"title", "error"}` dict, an over-long
+docstring line, and the last two subprocess tests inheriting `os.environ`. That last one did **not** close its class, and the
+claim that it did was wrong: a sweep for `env=dict(os.environ)` missed four more helpers passing a
+`cwd` and no `env` at all, two of which invoke WRITERS (`lifecycle-repair`, `archive-plan`) against
+the real repository whenever the harness sets the pin. They pass today only because the variable is
+unset here.
+
+**So the class is closed by a construction rather than a fourth copy of the fix.** A session-scoped
+autouse fixture removes `CLAUDE_PROJECT_DIR` from the environment for the whole test run, so no test
+can inherit it — including tests not yet written. Three files had each grown a near-identical
+pinned-env helper, and two write-command call sites were still open, because a convention protects
+only the files whose author happened to know about it. A test that genuinely wants the pin still
+sets it explicitly.
+
+## 2026-08-27: a duplicate learnings heading is reported, and refuses a retirement
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+`_take_active_narrative` resolved a heading by exact title and took the **first** match. Two
+same-titled blocks therefore meant a retirement cut one and archived it while its twin stayed in the
+active section with no index entry pointing at it — prose kept, index lost — in a file whose stated
+invariant is *never delete an entry here*. The function's own docstring warned about a *drifted*
+title and guarded exactly that; a *duplicated* one was unguarded, and the two fail in opposite
+directions: drift matches nothing and is a harmless no-op, duplication matches twice and loses an
+entry.
+
+It now scans every match and **refuses** on a second, naming both line numbers, and the refusal
+returns before any cut is composed — so a rejected run leaves both files exactly as it found them
+rather than half-moved. It deliberately does not de-duplicate: which of two identically-titled
+blocks is the real one is not something it can know, and an automatic fix would delete an entry to
+satisfy a check, in the one file that says never to.
+
+A new `check-learnings-pairing` grades the same defect earlier, before a retirement is attempted,
+and `/prawduct:doctor` reports it (Health Check #13a). Both exit **3** when the pair cannot be read,
+per the standing third-outcome rule, and `audit-learnings --apply` exits **1** when it refuses — a
+writer that wrote nothing.
+
+**Review found the refusal was right and its delivery was not**, which is the half worth recording.
+The refusal was appended to `errors` as a bare string where every other member of that list is a
+`{"title", "error"}` pair — so the CLI renderer that reads `e['title']` would raise a `TypeError`
+traceback across the boundary, which the api-contract forbids by name. The per-entry `applied` flag
+stayed `true` while the top-level one was correctly walked back, and the renderer branches on the
+per-entry one, so a refused run printed `retire[retired]` for entries still sitting in the active
+file. And the refused run exited **0**, telling its caller the retirement happened. Three defects,
+all on the delivery path, none of them reachable from a unit test of the cutter — which is why the
+tests now drive `audit-learnings --apply` end to end.
+
+**One half of the issue's ask was narrowed, deliberately and on evidence.** #717 also asked for
+counterpart and ordering findings, on the stated invariant that the two files "mirror each other's
+headings in the same order". Measured against this repo's own corpus *before* building to it, that
+invariant does not hold and never did: 270 active index entries against 179 in the detail file, and
+a detail heading is a truncated **prefix** of its index entry rather than a copy. Grading it would
+have emitted ~117 findings on a corpus nobody considers broken — the misfiring probe `docs/norms.md`
+names by its cost, which is that it teaches its reader to skip the one real catch. The counts ride
+the result for anyone working the drift down; no finding is raised on them. Naming what the pairing
+convention actually *is* has to come before anything can grade conformance to it.
+
+## 2026-08-27: the verdict cache keys on the code that computed the verdict
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+`verdict_cache._key` folded in the plugin version because the cache outlives the plugin and the
+verdict depends on `coverage_algebra.is_judgeable_path`. That is enough for an installed copy,
+where the version string moves whenever the code does. It is not enough when prawduct runs from a
+**git checkout** — developing prawduct itself — because the bundled `VERSION` does not change
+between pushes to `develop`. Two different develop states therefore produced the same key *by
+construction*, and a verdict computed under the older one was served as current. `_key`'s own
+docstring already stated the invariant it was breaking: the key covers "every input the verdict is
+a function of — including the CODE that computed it."
+
+The key now folds in the checkout's plugin **tree** SHA, plus a fingerprint of any uncommitted edits
+under that directory.
+
+**Tree, not commit, and this was corrected at plan time rather than in review.** The first draft
+keyed on the commit SHA; `data-model.md`'s tree-keying Direction says facts key by tree, and here
+that is load-bearing rather than stylistic — two develop commits producing an identical plugin tree
+*are* the same code, so commit-keying would miss the cache on every rebase, merge, empty commit, or
+commit touching only files outside the plugin. Tree-keying invalidates when the code changes and
+only then, which is the whole point.
+
+**Degradation is toward coarser, never toward a false pass.** Not a checkout, or git cannot answer,
+contributes the empty string — so an installed copy keys exactly as before and no user sees a mass
+cache miss on upgrade. A coarser key makes entries collide and be replayed, and a replay can only
+reproduce a verdict the store's own content fingerprint already vouches for. The probe is memoised
+per process on a `None` sentinel rather than on falsiness, because `""` is a legitimate answer and
+sentinel-on-falsiness would re-probe git on every lookup for exactly the users who gain nothing
+from it — spending the saving this module exists to create.
+
+## 2026-08-27: a verify pass cannot report the review over while a blocker it inherited stands
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+A `verify-resolutions` pass could discharge one finding by reference to another — *"R-12 is
+implicitly closed by R-1's fix, same class"* — and write a resolution fact for R-1 only. Its own
+counts were then 0 blocking, so it printed **THE REVIEW IS OVER**, and the operator relayed that.
+The gate disagreed: R-12 had no resolution fact, and the gate reads facts. Worse, by the time that
+surfaced R-12 sat on a superseded round no later verify pass would name, so the only remaining
+route was a full `cumulative` — a whole review round of bookkeeping for a defect that had been
+fixed and independently confirmed fixed two rounds earlier. That is what it cost when reported.
+
+**Nothing parses the reviewer's prose, and that is the point.** The tempting fix is to read
+"implicitly closed by" out of the summary and mint the missing fact from it. The phrasings are an
+open set, so a parser that misses one fails silently in the bug's own direction — and
+`data-model.md` forbids the result outright: a resolution fact requires a `verify-resolutions`
+origin and a pre-existing target finding, so minting one from narration would record a judgment
+nobody made. The pass instead loses the ability to *claim* it finished: consolidation now computes
+the blocking findings it inherited and did not name, and the one sentence both the builder and the
+reviewer read says the review is **not** over, names each finding, names the prose forms that
+produce this, and says the deadline — act before a newer round supersedes them. That sentence
+outranks the pass's own counts, including when it found blockers of its own: the ordinary blocking
+line says "nothing else here does", which is false the moment a blocker was inherited, and a
+builder who believes it fixes this round's findings and orphans the other onto a superseded round.
+
+**The same rule is applied a second time, earlier, where it can still change the outcome.** The
+consolidation check acts *after* `resolutions` is written — it can stop the pass claiming it
+finished, but the round is already spent. So a verify dispatch now hands the reviewer a roll-call
+of the exact finding ids the round it verifies left unresolved, each of which must come back with a
+verdict. It sits between the two existing directives rather than after them: the roll-call sets the
+agenda, and the standing "a resolution is a claim" warning keeps the last word, because it governs
+the only reviewer output that can weaken a gate and a roll-call read last would push toward naming
+every id on it. It is silent when there is nothing to account for — a directive that fires on every
+dispatch trains its reader to skip the block it lives in.
+
+Placing it also required moving `RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s ~45-line `#:` documentation
+block back against the constant it describes: the new function had been inserted between the two,
+leaving the block reading as that function's documentation. Nothing builds Sphinx here, so the cost
+was a maintainer editing a doc block about the wrong subject.
+
+**The anchor is structural rather than a guess.** A verify pass reviews the delta from the prior
+review, so its `base_tree` IS that review's `head_tree`. Matching on that link finds the anchor
+without reading `.critic-findings.json` (a derived view no gate may read) and without trusting
+"most recent review fact" — the evidence store is shared by every worktree of the clone, so that
+rule would let a sibling branch's review supply this branch's blockers.
+
+## 2026-08-27: an input that could not be read or recognised says so
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+Two instances of one rule — **a present input that yielded nothing must not read as absent.**
+
+**The operator-verification gate was latently inert.** An entry is recognised only as a
+`## VRF-<id>` heading; anything else parses as preamble, which is deliberate and is what lets a
+trailing `## Notes` section coexist with real entries. That leniency is unchanged. What was wrong
+sat downstream: the gate discarded the preamble and reported `pending: 0` for a file it had parsed
+**zero** entries out of. A repo holding 32 entries as bullets under one `## Pending` heading was
+told its queue was empty, and `/pr create` blocked on nothing while every entry sat unseen.
+
+The fix is at the frame that actually discards. The parser was never the problem — it returns the
+preamble intact and loses nothing; the gate was throwing that preamble away unread.
+
+**Scope, stated honestly:** the discriminator reads the preamble, which is everything before the
+first *recognised* entry. So a queue whose entries are ALL unrecognised is caught, which is the
+reported failure and the one that makes a gate inert. A queue holding one good entry plus several
+unrecognised ones is not — those land after the first entry, in the body of a block that did parse.
+That is the same leniency that lets a trailing `## Notes` section coexist with real entries, and it
+is deliberate: the alternative refuses files the format explicitly permits. A required gate that finds unrecognised content now
+refuses with a distinct `unreadable` status, names the expected shape, and exits **3** — the
+standing rule for a gate whose SUBJECT could not be read, now stated once in the api-contract
+rather than as a list of gates that carry it. It still blocks (3 is non-zero), but not as exit 1:
+that code already means "there are pending entries, drain or override the first one", and both
+remedies are inapplicable to a file that yielded no entries, so reusing it would send the caller to
+a fix that cannot work — ending at the queue file, which is the one move the refusal forbids.
+Scoping it to `operator_verification_required: true` is what makes it safe: only a repo that opted
+into the gate can be stopped by it, and there being stopped is correct.
+
+**The override inherits the refusal, because it inherits the door.**
+`accept-operator-verification` reads the same queue and would have reported the gate "already
+satisfied" with `accepted_ids: []` — a recorded bypass covering entries nobody read. It refuses on
+the same state, without touching the file it refused over. Fixing the check and leaving its sibling
+would have been the instance, not the class.
+
+**The refusal also forbids the obvious fix, because the obvious fix is worse than the bug.** An
+agent meeting this block will reach for the queue file and reformat it — a silent rewrite of an
+operator-authored record, performed to satisfy a gate, that nobody reviewed. The message says so in
+the imperative. A refusal in front of an agent is an auto-fix unless it says otherwise.
+
+**An unrecognised `Critic mode:` value now says so once.** Fail-open-to-inference is correct and
+did not change — a typo'd mode must not block a review, and nothing is skipped. The ignore simply
+stopped being silent, which had let an author believe a mode was pinned when it was not and file
+the resulting surprise as a defect. Absent and blank stay silent: they carry no intent to
+contradict. Where the value is a valid `Type:` — `cumulative-final` is the natural trap, since it
+reads like a mode and lives on an orthogonal axis — the line names the right field, tested against
+the real Type vocabulary rather than a copy of it.
+
+## 2026-08-27: onboarding proves the plugin will load, or says it could not tell
+
+<!-- prawduct: type=fix | scope=silent-clear-checks -->
+
+A repo could be onboarded perfectly and still run **completely ungoverned**. Writing the install
+reference into `.claude/settings.json` enables the plugin; it does not install it. The harness also
+needs a `prawduct@prawduct` record whose `projectPath` is that repo, and without one the target
+starts every session with no banner, no `/prawduct:*` skills and no Stop-hook gates — while its
+`CLAUDE.md` states that enforcement is structural. The agent reads that stanza, believes it, and
+builds ungoverned. This is the failure prawduct exists to prevent, happening to prawduct.
+
+**The detector could not go where every other health check lives, and that is the design.** Probes
+and `/prawduct:doctor` both run inside the repo's own session, and both are delivered *by* the
+plugin that did not load — in the failing repo the probe never fires and the skill cannot be
+invoked. So the check runs from **outside**: `/prawduct:onboard` now ends by asking
+`prawduct-hook check-plugin-active --path <target>` about the repo it just set up, and does not
+report success until the answer is `active`. `/prawduct:doctor` gets the residue it *can* see — a
+stale install, and a SessionStart hook that never completed in this clone — and says plainly which
+case it cannot reach.
+
+**Three answers, not two, and the third gets its own exit code.** `installed_plugins.json` is a
+harness-internal file prawduct is not entitled to rely on, so every read or shape failure yields
+`unknown` — "could not verify" — and never `inactive`. Telling an operator their plugin is not
+installed because a file would not parse sends them to reinstall something that was never broken.
+`unknown` exits **3**, joining `check-released`'s *unverified* under one shared reason: both
+foldings of "could not run" are wrong. Folded into 1 it reports a broken install off an unreadable
+harness file; folded into 0 it reports a clean bill off a check that never ran — which is the
+class this command exists to close, so spending it on the command's own error path would be the
+joke writing itself. (The ratified *fail-open, exit 0* rule is a different case and still holds
+where it applies: the plugin's own lib failing to import.) The manifest is read structurally rather
+than by its `version`, so a harness release that bumps the number keeps working and one that
+changes the shape declines to guess.
+
+**The same status does not mean the same thing to both callers, so `--context` selects the
+wording.** From onboarding, `inactive` means the repo will load nothing. From `/prawduct:doctor` it
+cannot mean that — doctor IS a plugin skill, so the plugin demonstrably loaded, and the only
+reading left is that the manifest names some other path: a worktree, or a moved, renamed or
+symlinked checkout. Relaying the onboard consequence there would send an operator to reinstall a
+working install, which is the false accusation the rest of the module refuses to make. Two
+consequences, two messages, one home.
+
+## 2026-08-26: a dispatch refusal names the tree it graded and the work it excluded
+
+<!-- prawduct: type=fix | scope=verify-resolutions-exit3 -->
+
+`verify-resolutions` anchors at committed HEAD once a commit lands that the prior review never
+saw — the PR gate's target, and the fix for the inverse anchoring bug. Judgeable files still
+sitting uncommitted are outside that interval by construction. When the interval then held no
+judgeable file, dispatch returned exit 3 with `no judgeable file in <a>..<b>` and named nothing
+else: a statement about the *interval* that every operator read as a statement about the *repo*.
+The observed cost was two dispatches for one review — commit, discover the delta existed after
+all, dispatch again.
+
+**The refusal was right; its report was not.** Reviewing that interval would not have covered
+those files either, so the predicate is untouched and exit 3 still means exactly what it meant.
+What changed is that a refusal now names the tree it graded (`anchor`) and the judgeable
+uncommitted files that tree does not contain (`excluded_wip`), on the result, on the CLI, and on
+the guard-refusal fact — where `free_files` alone could not tell a refusal that left work outside
+the interval apart from one over a clean tree.
+
+**A check that could not run is not a clean bill.** `evidence.tree_diff` returns `None` when the
+diff cannot be computed and never guesses; collapsing that into `[]` would have made the one
+report written to catch work falling outside an interval answer "nothing fell outside" on the
+strength of a check that never ran. `None` propagates instead — through the note, the result, the
+fact and the yield query, which renders `excluded=?`.
+
+**Ordering is behaviour here.** A reader of a multi-line block acts on the final imperative, and
+above the exclusion notice that imperative is `--force` — which reviews the very interval that
+already excluded these files. The notice prints last, and the "Nothing to do" line is withheld
+whenever it would be an unearned all-clear. The refusal path also stopped discarding the
+dispatch's own `notes`, which it wrote and then returned past — all but the dirty-tree note,
+whose content the refusal block already delivers, so the fact reaches the operator exactly once.
+
+`cumulative` gets the same treatment from the same helper: it has always anchored committed HEAD
+and always noted a dirty tree without naming anything in it.
+
+**Five prose sites promised working-tree coverage without the condition that makes the promise
+true.** The `check-cumulative-critic` uncovered remedy and `skills/pr/SKILL.md` Step 2 both said
+"commit that tree verbatim and no further pass is owed", which holds only when the pass anchored
+the working tree. The same gate's *blocking* remedy promised a verify pass "reads the dirty tree"
+unconditionally. `skills/critic/SKILL.md` told the reader a `cumulative`/`verify-resolutions`
+exit 3 means the gate is satisfied — true of the PR gate, false of the Stop-hook gate in exactly
+the excluded-WIP case. And `methodology/building.md` prescribed commit-then-verify, the ordering
+that moves the anchor.
+
+**The discriminator is a tree comparison, not a commit-set one** — and the first draft of this
+fix got that wrong in two of those sites, which is the same class of error one level up. The
+anchor moves when committed *content* differs from the tree the prior review saw; the commit that
+materializes a reviewed dirty tree verbatim changes no content and moves nothing, so "did I
+commit at all" is the wrong question. The two sites that state the test — the `uncovered`
+remedy and `pr/SKILL.md` Step 2 — now say it that way and cite `review-cycle.md` rather than
+restating the derivation; `tests/preferences/test_free_interval_prose.py` pins both halves. The
+other three carry a different correct fact and need no citation. `begin_review`'s docstring
+described the pre-#395 working-tree-only anchor and now describes the intent-aware one.
+
+**Both budgeted files paid for their own correction.** `methodology/building.md` and
+`skills/critic/SKILL.md` each grew past its ceiling and each came back under it by trimming rather
+than bumping — a `prawduct-hook disposition` signature and a consolidate rule the session digest
+already injects, in the first; four restatements inside the exit-3 paragraph, in the second, one
+of which ("it names the free files") this change had just made wrong. `building.md`'s correction
+came out at exactly its recorded size. Its ordering rule is a POINTER to `review-cycle.md`, not a
+fifth restatement — which is the finding below, applied to itself.
+
+**The refusal path was not the only return that walked past its own notes.** Every `error` return
+did too, and `scope-widened` is the one that reaches its `return` with notes populated — it fires
+exactly when the tree has grown enough that what the dispatch noticed about it is worth having.
+The CLI now prints notes before the reason on that path as well.
+
+The five carriers were corrected but not collapsed; **#723** carries the construction that would
+make correcting this rule a one-file edit. Three reviewers independently landing on different
+carriers of one rule is what says it is a class.
+
+Upstream report: #722.
+
+## 2026-08-26: a plan the deliverable check cannot grade says so at dispatch
+
+<!-- prawduct: type=fix | scope=silent-governance-failures -->
+
+Two plan shapes disabled the chunk deliverable check for a plan's whole life, and neither said
+so where it happened. A plan declaring no frontmatter `scope:` reported
+`chunk-ref-missing unchecked — …` into the dispatch manifest, which is real but reads as a pass
+to anyone who does not also read the caveat line. A plan whose chunks are list items under a
+`## Chunks` heading matched no heading pattern at all, so `_chunk_ref_findings` returned an empty
+gap and the check reported **nothing** — not even `unchecked`.
+
+Either cause is sufficient alone, which is why an earlier fix closing the heading-shape half left
+the item open. Both are now named by `critic-begin`, on the existing `PRAWDUCT NOTE:` channel, at
+the moment the remedy is three lines of plan frontmatter — rather than by `check-releasability` at
+release, long after the blind reviews have run.
+
+**Advisory, deliberately.** It rides `notes`, changes no exit code and refuses no dispatch: the
+review is still worth running. What is not worth having is a review that silently grades nothing
+while reporting cleanly.
+
+**The check scans when nothing resolves, and that is the main path.** Asking the resolver for the
+plan and grading only its answer misses the defect entirely — a plan declaring neither `scope:` nor
+`branch:` does not resolve *because of* the gap being reported, so the resolver returns nothing and
+the signal goes quiet exactly where it is needed. That was caught by running a real dispatch against
+a real unparseable plan and seeing no note, not by reasoning about it. Discovery goes through
+`plan_index`, which owns the recursive, archive-pruning rule — and through `iter_live_plan_files`
+rather than `iter_scoped_plan_candidates`, since the latter yields plans that *declare* a scope,
+which is precisely what a plan missing one cannot do. Plans are named by `display_path`, not
+`Path.name`: recursion is what makes `build-plan.md` collisions across `plans/<id>/` reachable, so
+the fix created the condition that helper exists for. An **unreadable** plan is reported here too —
+`unreadable_candidates` covers it for the doctor, its only caller, and nothing on the dispatch path
+calls that, so an undecodable plan under `artifacts/` had been reported to the operator by no one.
+
+**Two readers, two channels.** The dispatch note tells the operator; `record_lint` carries the same
+fact into the review, where the `chunk_id is None` branch had returned a null count that read like a
+healthy plan. It now reports the gap — but only when the plan has neither a Status roster nor a
+chunk heading. Every box ticked also yields "no current chunk", and that is grading being over
+rather than disabled; a first draft keyed only on the missing heading and reported the healthy case
+too.
+
+## 2026-08-26: a sentinel is graded by the product's own runner, or not at all
+
+<!-- prawduct: type=fix | scope=silent-governance-failures -->
+
+`run_sentinel` hardcoded `sys.executable -m pytest`. In a product that does not use pytest,
+every learnings sentinel came back **failing** with "No module named pytest" — against tests
+that were green. That is worse than an inert mechanism. The audit's job is deciding which
+learnings are structurally enforced, so a false-failing sentinel argues for retiring a rule
+that is still enforced, on evidence it never gathered.
+
+It was an uninventoried instance of the ratified "never be specific to Python" norm, whose
+fail-visible clause it also inverted: the norm says an ungraded language is reported
+*unchecked*, never silently passed, and this reported *failed*.
+
+**The remedy is declaration, on the `release_version_files:` precedent.** A product declares
+`sentinel_command:` with a `{sentinel}` placeholder for the file to grade —
+`sentinel_command: npx vitest run {sentinel}`. It cannot reuse `test_command:`, which names
+the whole suite and would grade every rule by the suite's verdict.
+
+**No default survives.** A pytest fallback would be the same violation wearing a default's
+clothes, so an undeclared sentinel is reported `ungraded` with a reason naming the knob, and
+no rule is retired on a verdict nobody took. `passed` is now three-valued and callers must
+branch on identity: `True` enforced, `False` genuinely failing, `None` ungraded. A launch
+failure, a timeout, and a **path-shaped sentinel whose target file is gone** all grade `None` —
+a command that never started, one that never finished, and a test that no longer exists each
+returned no verdict about the rule. The last of those was live in this repo: a learning had
+pointed at a suite deleted in the plugin migration, and the audit reported its rule as failing.
+The path-shaped qualifier is load-bearing: a runner id that is not a filename
+(`com.acme.BarTest#testX`) cannot be resolved, and prawduct will not claim a file is gone when it
+cannot tell "gone" from "not a path".
+
+**A third state is only real once its consumer can name it.** `doctor` is the sole reader of
+`audit-learnings --json`, and it knew two sentinel verdicts — so an ungraded one, which raises
+no `errors[]` entry by design, would have been relayed as *passing*: worse than the loud-false
+error it replaced. Its relay now carries the third rendering, and the ungraded `notice:` goes
+to **stderr**, where it reaches the `--json` path that a stdout line cannot.
+
+That withdraws working behaviour rather than adding to it, which the additive-first norm
+normally defers to a major. In-bounds here because the withdrawal fails *closed*: an ungraded
+sentinel withholds a retirement and destroys nothing, where the norm's purpose is protecting
+callers from breakage. Signalled rather than silent, per the same clause — the reason line
+names the knob. Keeping a pytest default alive through a retention window would have preserved
+exactly the Python-specificity the architecture norm forbids, so the two norms are answered
+together rather than traded against each other.
+
+## 2026-08-24: the evidence file can say which commit it read
+
+<!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit -->
+
+The Update Flow's substantive-delta test says to diff from "the reviewed commit" — and nothing in a
+PR-review evidence file recorded which commit that was. The caller had `timestamp` and
+`commits_reviewed` to work from, and reconstructing a SHA from those is right exactly until a commit
+lands *during* the review, which is the one case the test exists to catch. PR #709's evidence was
+written at 12:05 claiming 16 commits while its 17th landed at 12:02, inside the reviewer's own
+420-second window; the file looked complete and the branch was one judgeable commit past it.
+
+**The fix is a field the reviewer captures, not one the caller computes.** `commit_reviewed` is
+`git rev-parse HEAD` at the moment the reviewer resolves its diff — the only actor who knows what was
+read. A caller stamping it before dispatch would record a commit the review may never have seen, and
+a caller stamping it after would record commits that landed mid-run: both directions launder
+unreviewed code into the reviewed set, which is why the protocol now says the field is never
+rewritten and `pr_number` is the only field backfilled after the fact.
+
+**Absent means substantive.** Evidence from an older reviewer has no field, and the honest reading of
+that is "unknown", not "unchanged" — so the Update Flow re-runs rather than reconstructing. Create
+Step 4 also checks the SHA is an ancestor of HEAD, which is what catches a rebase or amend having
+moved the tree out from under a review that still looks valid.
+
+This retires `@{u}..HEAD` as the stand-in. It answered a different question — what changed since the
+last *push* — and the two diverge precisely when a mid-review commit is pushed before the caller
+looks. A test pins that it does not come back.
+
+## 2026-08-24: an issue close has no branch to ride
+
+<!-- prawduct: type=fix | scope=pr-issues-backend-close -->
+
+`/prawduct:pr` Step 1d opens by promising that every release tag, archive and Status tick "rides IN
+this branch, atomic with the merge", and then lists the backlog archive among them. That atomicity is
+a property of *being a commit*. On the markdown backlog backend the archive is a file edit and the
+promise holds exactly as written. On the Issues backend closing an item is an API call with no branch
+to ride, and the skill said nothing about the difference — so the step read as satisfied by a PR body
+that said `Closes #676`, and the item was still open after the merge.
+
+**`Closes #N` does not fire on a gitflow base.** GitHub honours closing keywords only for PRs merged
+into the repository's *default* branch. This repo defaults to `main` and PRs base on `develop`, so
+the keyword is inert here and always has been. It is still worth writing — it links the PR to the
+issue, and it does fire on a trunk repo — but it closes nothing on the path this project actually
+uses. What makes it costly is that it *looks* like bookkeeping: an independent PR reviewer read the
+keyword and signed the item off as closed-by-the-merge, so the gap survived the review whose job was
+to catch it.
+
+**Deferring the close to merge is the deliberate answer, not the lazy one.** An API close made at
+Step 1d lands immediately, so an abandoned PR leaves an item wrongly closed — invisible, because
+nothing sweeps for items closed too early. The Merge Flow's *Close the backlog items this PR
+resolves* step owns it, firing seconds after the merge
+succeeds, and Step 1d says why it is the one item that waits. No commit is involved, so the standing
+"never push a bookkeeping commit to the integration branch" rule is untouched.
+
+The guard is written against the keyword family rather than the sentence that got it wrong: any live
+instruction surface naming `Closes`/`Fixes`/`Resolves #N` must name the default-branch condition in
+the same paragraph. Pinning the one sentence would have closed the instance and left the class open —
+the failure mode `test_backlog_instruction_surface.py` was hardened against. The surface set is bounded
+by the property (prose that instructs an agent) rather than by the `plugin/` container, so
+`documentation/` runbooks are in scope and append-only records are not.
+
+**The timing rule now has one owner, which is what the review round changed.** The first cut fixed
+`/prawduct:pr` and left `skills/backlog/SKILL.md` — the rule Step 1d cites *by name* as its authority —
+still asserting the falsified guarantee unconditionally, so an agent following the citation landed in
+the unfixed twin and did the early close the fix exists to prevent. Two reviewers found it
+independently under different goals, which is the tell that the fact had been distributed rather than
+shared. `skills/backlog/SKILL.md` "When to mark shipped" now owns *when* the call runs and states the
+split; `/prawduct:pr` Step 1d and the Critic's reconciliation template (`review-cycle.md`) route to it
+instead of restating it. A guard closes the class rather than the sentence: no live instruction surface may
+state WHEN the archive happens except the owner's own rule paragraph. That exemption took two
+narrowings, each from a real miss — it started file-wide, which hid a live member three sections
+below the rule in the owner's own file, and then keyed on the section NAME, which re-exempted that
+member the moment it routed to the owner by name. It now keys on the rule's opening clause, which
+only the rule carries. A guard whose exemption is broader than its subject is not a guard; it is a
+list of what it happens to catch.
+
+**The close moved ahead of the deletions.** It was numbered after the branch and evidence-file
+cleanup while its own text said "before anything else" — and those deletions destroy the only local
+artifacts recording that a close was owed. It is now the step immediately after the merge, and
+references to it are by name rather than by number, because a durable pointer must not ride on a
+position that renumbers. The renumber broke two cross-references outside the skill —
+`plugin/methodology/planning.md` and `documentation/release-process.md` both cited "merge-flow
+step 7", which the insert turned into *Clean up evidence file* — and the first cut of this entry
+claimed the by-name sweep was complete when it had only been done inside `skills/pr/SKILL.md`.
+Both now cite the step by name. That is the rule failing on the very commit that states it: a
+pointer that rides a position rots the moment the position moves, and the sweep has to be
+repo-wide or it is not a sweep.
+
+**What this does not fix, stated rather than implied.** The close step is its own only detector: merge
+through the GitHub UI, or end the session at the merge, and nothing notices it never fired. The
+reconciliation sweep that would catch it is already prescribed by
+`documentation/backlog-service-requirements.md` **GV3** — "merged work whose item is still open… this
+is the price of leaving git; pay it explicitly" — and is unbuilt. The skill says so at the step rather
+than implying coverage it does not have. Likewise the prohibition on advancing `commit_reviewed` is
+prose: `git merge-base --is-ancestor` passes for every commit on the branch, so it cannot see a
+laundered field. The Update Flow now cross-checks the evidence file against the `review.pr` ledger
+event, whose `review` payload is an independent verbatim copy — a second witness, not enforcement.
+
+## 2026-08-23: a nested checkout is not a misplaced test
+
+<!-- prawduct: type=fix | scope=test-location-nested-checkout -->
+
+`git worktree add ./devchk` inside the primary checkout turned the test-location preference red for
+every session in the clone. The walk found `devchk/tests/**/test_*.py`, correctly observed they were
+outside `tests/`, and reported them as silently-skipped tests. They are not this checkout's tests at
+all, and `testpaths` skipping them is right — but the only way to get a green suite was to delete
+another session's worktree, which is exactly what a session must not do.
+
+**The exclusion list already had this bug once and was fixed by naming the path.** `.claude/` is on
+it because a worktree-isolated workflow leaves a full duplicate `tests/` tree under
+`.claude/worktrees/wf_*/` (TST-9K4W). That fix held until a worktree appeared under a different name,
+which is the standing failure mode of a by-name exclusion: it closes the instance and leaves the
+class open. The predicate is *does this directory carry its own `.git`* — a FILE for a linked
+worktree, a directory for a clone or submodule, both meaning the tests below it belong to another
+checkout. It now prunes all of them, including the ones nobody has thought of.
+
+**The risk in this kind of fix is making the check blind, so that is what the new tests aim at.**
+Three cases: a linked worktree at an arbitrary path, a nested clone or submodule, and — the one that
+matters — a genuinely misplaced `test_oops.py` in an ordinary subdirectory, which must still be
+caught. Pruning that keyed on depth or on "has a `tests/` child" would have passed the first two and
+quietly disarmed the module.
+
+## 2026-08-23: a wedged manifest says which kind of wedged it is
+
+<!-- prawduct: type=fix | scope=manifest-state-diagnosis -->
+
+An operator who met a dispatch manifest written by an older prawduct was told, by the surface that
+refuses `critic-begin`: *"no readable dispatch manifest — a review set the marker but never recorded
+what it was reviewing. Nothing here is worth keeping."* Every clause of that is false for the case
+that produces it. The manifest is readable JSON. It **did** record what it was reviewing — in the
+schema of the version that wrote it, `commit_reviewed` and all. And the partials beside it are real
+reviewer output that `_archive_leftovers` deliberately archives rather than deletes, naming
+`critic-restore` as it goes. The message told an operator to throw away exactly what the mechanism
+one function over was carefully preserving.
+
+**The interesting part is why it recurred.** `pending_roster_reading` exists precisely to stop this:
+its docstring says two surfaces "must not differ in what they say the on-disk state IS. They did:
+only one of them was taught the fact, and the untaught one sits at the more dangerous surface." That
+had already been fixed once. It came back because the thing being shared was the **reading**, and a
+reading cannot be shared for a distinction nobody had computed — so the Stop hook's backstop
+computed "unreadable or schema-invalid" for itself, `restore_refusal` computed "no readable dispatch
+manifest", and the dispatch refusal computed the false paragraph. Three surfaces, three answers, one
+disk. The fix is therefore a **classifier**, not a fourth message: `manifest_condition` returns
+`absent` / `corrupt` / `stale-schema` / `valid` plus the validation reason and the parsed record,
+and all three surfaces read it.
+
+**`pending_state`'s `"unreadable"` collapse deliberately stays.** For *deciding* — can this be
+consolidated? — corrupt and stale-schema are one answer, and four callers branch on it. Widening
+that vocabulary to fix a message would have made every one of them handle a case that changes none
+of their decisions. The distinction is real only when *telling someone*, so it lives with the
+telling. Pinned both ways: a test asserts the collapse holds, and a test asserts the three readings
+are mutually distinguishable.
+
+**The keep-or-discard verdict is a SECOND home, and finding that out took a second round.** The
+first repair routed the *reading* through one place and left two of five surfaces authoring their
+own tail — so a stale-schema manifest still printed "any partials beside it are real reviewer
+output" and then, four lines later, "Nothing here is worth keeping". The swept-marker variant was
+the worse of the two: the marker is gone, so that notice is the only report the operator ever gets,
+and one told nothing was attached will not run `critic-restore` before the archive ring evicts the
+partials. A verdict authored beside a shared sentence is not shared by being adjacent to it.
+
+So `anything_worth_keeping` owns it, and the readings now describe **the manifest and nothing else**.
+That separation is load-bearing rather than tidy: the manifest's condition and whether reviewer
+output exists are two independent facts, and any sentence answering both from one of them is wrong
+whenever they disagree — an orphaned partial set with no manifest is exactly that disk, and so is a
+stale manifest sitting alone. The first cut of the *repair* reintroduced the contradiction one layer
+in, and the test written to catch it did.
+
+**The pin took two goes to become falsifiable, which is the part worth recording.** The first
+version asserted "no message says both things at once" and composed three *library* surfaces —
+neither of the two hook boundary notices the finding was actually about. Worse, once the readings
+stopped making keep/discard claims, "says both" became *unreachable* at those notices: reverting one
+to its hardcoded "Nothing recoverable was attached" passed the contradiction test cleanly. A pin
+that cannot fail is decoration, and one that names a class while covering a disjoint set is worse
+than none, because it reads as coverage.
+
+The property with teeth is not internal consistency but **agreement with the disk**: every
+verdict-bearing surface must carry the exact clause `anything_worth_keeping` returns for the disk it
+is describing, and must not carry the one it would return for the opposite disk. Both notices are
+loaded in-process and composed under absent/corrupt/stale-schema × {0, 2 partials}; both mutations
+that restore the old tails now go red.
+
+**#676's other two acceptance criteria were already discharged and are recorded as such rather than
+re-fixed.** A branch in an agent worktree has had a route to a recorded review since #648 —
+`is_ephemeral_worktree` classifies by branch identity, so a named-branch agent worktree is a peer
+checkout you review in place (pinned in `test_ephemeral_worktree.py`). Two agents already hold
+reviews concurrently across worktrees: `.critic-active` lives in each worktree's own `.prawduct/`,
+and the shared evidence store takes concurrent appends through a single `O_APPEND` write. What is
+**not** covered, and is deliberately left alone, is several agents sharing one checkout with no
+worktrees — per-actor governance state is a large change to serve a configuration a worktree already
+solves.
+
+**The report's headline claim was tested rather than believed, and did not hold.** A stale-schema
+manifest with no marker does not wedge dispatch: `begin_review`'s in-flight guard fires on a live
+marker or a complete roster, and this is neither, so it archives the leftovers under a recoverable
+`unmanifested-<ts>` name and proceeds. Reproduced end to end before any code was written; a test now
+pins it, because if that ever goes red the defect is a real wedge and a message fix is the wrong
+repair. What the reporter experienced as a wedge was the marker, which expires on its own TTL.
+
+**Round 6 found the widening one surface short of the defect it was named for.** R-7 widened
+`json.JSONDecodeError` to `ValueError` inside `manifest_condition` so an undecodable manifest is
+classified rather than thrown — and `active_dispatch_refusal`, the surface #676 was actually filed
+against, was still hand-reading the file under the narrow clause to get its `id`. A binary or
+truncated manifest under a live marker therefore tracebacked out of `critic-begin` instead of
+printing the refusal. The regression test for the widening composed three surfaces on that disk and
+not this one, which is how a construction stops one site short of its own class and its pin agrees.
+The refusal now takes the classifier's already-parsed record, not a `valid` verdict.
+
+The same shape twice more, both taken rather than dispositioned because the file's whole thesis is
+that a verdict has one home: the guarded `anything_worth_keeping` call was copy-pasted at four
+notices (now `_keep_verdict`, and its degraded form names the exception and an inspection command
+instead of an unactionable "could not tell"), and `MANIFEST_UNKNOWN` had no production reader while
+`cmd_stop` spelled the literal under a comment claiming the opposite. Plus `short_detail`'s hard cap
+— the property the function exists for — was executed by every stale-schema test and asserted by
+none, so deleting the branch shipped green.
+
+A fourth of the same shape, from the same round: `cmd_stop`'s absent-manifest branch was the one of
+four that asserted a CAUSE ("a dispatch crashed before writing") instead of deriving a verdict —
+false on the disk `_archive_leftovers` documents, where a late reviewer re-creates the partials
+directory after consolidation and the partials are all there is. The cause is now hedged to what is
+known and the branch takes the shared clause. Third recurrence of this concern in this subsystem,
+so it finally gets a row in `cross-cutting-concerns.md`: what keeps being shared is the PROSE, and
+the fact behind it stays distributed.
+
+**The verify round refused to mark one warning resolved, and it was right.** R-5 was scoped CLASS —
+a shared read for the manifest's `id` — and the fix had closed only the site that hurt, leaving two
+hand-reads standing; the review checked rather than took the claim. `manifest_review_id` is now that
+read, with `MANIFEST_ID_UNAVAILABLE` as the single excuse, and the hook's wrapper adds one sentence
+only for the case the lib itself cannot be loaded — a different fact, not a second copy. The
+ordering hazard the review flagged alongside it turned out to be **latent**: at
+`_forced_live_sweep_notice` the id read ran first inside the same `try`, but `state` there only
+selects a branch that a valid manifest is a precondition for, so no disk could show the difference.
+Established by mutation, recorded in the comment, and deliberately left unpinned — a test for an
+unreachable difference passes either way, which is the standard this bundle keeps applying to
+itself.
+
+**And the round after that found the class still had two members, both worse than the one it was
+named for.** Enumerating the sites R-5 listed is not closing a class; re-running its search is.
+`_archive_leftovers` read the manifest raw for the archive directory's name — under the narrow
+`except`, on the disk that is the only reason the sweep runs at all — so `critic-begin` and
+`critic-discard` tracebacked on an undecodable manifest: #676's headline failure, alive one
+function over from where three rounds had been fixing it. `consolidate` had the same tuple on a
+path the SubagentStop hook drives, turning an exit-1 refusal into a hook crash. Both now share the
+classifier's parse, and both are pinned — the totality test composes them on the planted binary
+disk instead of trusting a site list, which is what let this survive two rounds.
+
+**The round after THAT found a fourth, and it ends the site-by-site repair.** `restore_review`
+matched no `manifest_path(` search because it builds its path from the archive root — and the file
+it reads is the very binary manifest the previous fix taught the sweep to preserve, reached through
+`critic-restore`, the undo both `critic-begin` and `critic-discard` print by name. It tracebacked
+*after* the all-or-nothing copy completed, so the files were back with no verdict and the retry met
+the "another review is in the way" refusal. The repair is the construction the reviewer asked for
+three rounds ago: `classify_manifest_file` takes a PATH, `manifest_condition` is its
+`prawduct_dir` form, and a caller holding a path now has somewhere to bring it instead of opening
+the file. One read is deliberately left outside it — `consolidate` needs the raw record to tell its
+two exit-1 refusals apart — so this is one CLASSIFIER, not literally one `json.loads`.
+The two look-alike reads in the same file (findings cache, partials) were widened with it — not
+because the byte sequence can arise there, but because leaving the narrow shape in place is what
+re-seeded this class three times.
+
+**The spanning review closed the class and found the notice one layer out.** Three reviewers landed
+independently on the same site: `_forced_live_sweep_notice` derived its preservation clause from
+the shared verdict but still interpolated the id into `prawduct-hook critic-restore <id>`
+unconditionally — so on the disk that clause newly admits (partials present, nothing naming them)
+the only recovery handle offered was the words "id unavailable". An operator copying it gets a
+refusal, the two handles that DO work go unmentioned, and the partials the sentence above promises
+are preserved age out of the archive ring unread. A predicate over the two excuse constants now
+gates that line at both notices that interpolate an id — the second one is unreachable today, and
+took the gate anyway because it reads the id from a different read than the state it relies on.
+The unusable branch names the bare listing instead. The wrapper's own excuse
+stopped naming a channel too: its `except` spans the lazy import AND the classify call, so blaming
+the plugin install was a guess wearing a fact's clothes.
+
+**And the round-by-round provenance came out of the shipped comments.** `review-protocol.md` makes
+a comment narrating review ids or round numbers a deletion finding — a bare `R-6` is a dangling
+pointer, since every review has one — and this branch had taken the count from 3 to ~12 while
+fixing the very defects it was narrating. The reasons stay; the ids and the "first cut / first
+repair" framing go wherever this branch put them, tests included. Lines that predate the branch
+still carry the shape — in files this diff touches as well as in ones it does not — and sweeping
+those is not this branch's job; the entry says so rather than implying a clean repo-wide grep.
+Also: a manifest holding non-object JSON was being diagnosed as "written by an OLDER PRAWDUCT",
+which is a provenance claim about a file no prawduct ever wrote; it classifies CORRUPT now.
+
+## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
+
+<!-- prawduct: type=fix | scope=instruction-surface-truth -->
+
+A batch of backlog items selected under one lens rather than by area: **a surface that tells a
+reader something false or unresolvable about this system**. Skill frontmatter, skill prose, adapter
+docs, a process doc, a contract artifact, test comments. The lens is the point — each defect is
+individually trivial and the class is not, because every one of these surfaces is read by an agent
+as licence to act, and a wrong instruction is obeyed rather than noticed.
+
+**The largest was a bound with no referent.** `adapter-mode.md` told the model "you never invent a
+mutation path — the adapter exposes exactly the ops in the usage table", and no reachable usage
+table existed: a per-op table lived in the CLI but only on an error path, printed to stderr, while
+`--help` itself exited 2 as an unknown flag. That fails in the worst direction. A model that cannot
+find the table does not stop; it falls back to its own notion of the op set. `--help` now prints
+usage on stdout at exit 0 for every op, answered before dispatch and before flag parsing, and the
+sentence cites something that resolves. The same surface gained a retry budget whose numbers are
+traceable to the transport rather than chosen — the 5+ minutes a forked skill once spent retrying a
+run of 503s was never the adapter's doing, it was prose that failed to bound the caller.
+
+**Prose that reads a variable it cannot expand.** `${CLAUDE_PLUGIN_ROOT}` substitutes into hook
+commands and only there. Eleven skill-prose reads through it handed the agent a path that does not
+resolve — worst in doctor's install-reference check, which either declines or silently grades
+against the inline list its own text forbids using. A test asserted the broken spelling, so it
+pinned the defect rather than the contract; its proposition is unchanged and now checked against a
+form that works.
+
+**Two sentences that disagreed with each other.** The `pr` skill told a doc-only PR to skip four
+steps and then to jump past a fifth, so whether a STOP gate ran depended on which half the model
+read. And `adapter-mode.md` claimed a close records `closed_by` when the op parses only two flags,
+dropping the scope in silence while the code's own docstring recorded the deferral honestly.
+
+**Claims that decayed because a set grew under them.** The API contract artifact never mentioned a
+surface its own build plan declares Exposed, so the question "what does prawduct expose, and under
+what promise?" got a confidently incomplete answer. The critic skill body — payload every review
+mode loads — carried no growth ceiling, and two test comments asserted that no unbudgeted payload
+file remained. Both were false, both had been corrected once before and re-asserted, and a third
+ceiling would have made the sentence true only until a sixth file appeared. They now state the
+mechanism that survives the set growing rather than a census of it.
+
+**Three results this batch owes as reports rather than as code.**
+
+*The stale-step-reference closure.* The broad query returns 32 hits and cannot reach empty. The
+exempt paths, named rather than skipped: `.prawduct/backlog.md` (the frozen migration snapshot,
+banner-marked as deliberately allowed to diverge), `.prawduct/artifacts/archive/`,
+`migration-restructure-plan.json` (whose hits are verbatim quotations of filed issues — rewriting
+them would falsify the quotes), and the rest of `change-log.md`. All are bookkeeping that records
+past work. Excluding them, the query returns **six hits across two files**, both under
+`documentation/issues/622-*.md` — the unit is hits, as it is above, and reporting a file count there
+was the same slip this batch exists to correct. Both files describe steps issue #622 would *create*
+— forward specs against an open `stage:design` item, not citations of current state. Named rather
+than left implied, because **both** predict `6b/6c/6d` (`622-design.md` in its file table,
+`622-requirements.md` in prose), which is exactly the lettered-sub-step shape the item warns about: it is a requirements record for unbuilt work, describing an intended runbook rather than pointing at the current one, and it is exempt on that ground. If #622 ships without those letters, the record is wrong about its own outcome and is corrected there, not here. Every live citation is name-anchored.
+
+*The Exposed-API sweep.* Four `**Exposed API:**` declarations across live and archived build plans.
+One — the backlog CLI — was missing from the contract artifact and is added. One names
+`backlog file-upstream`, whose chunk never shipped (its Status box is unticked and the op is absent
+from the CLI), so documenting it as exposed would be the mirror defect. Two are already covered.
+No live build plan carries a declaration. The item's hypothesis is confirmed: nothing links the
+declaration to the artifact — the Goal-2 check verifies only that the two recorded decisions exist,
+never that the artifact describes the named surface. That gap is filed, not fixed here.
+
+*The norm-index roster.* Closed as a **roster row per unrostered pin**, never as a restatement of
+the rule — a rule with two homes is a rule with one wrong one. The count in the report was low:
+three pins were enforced in CI without the index knowing, not one. The closure condition is now the
+set difference between `tests/preferences/test_*.py` and the paths the Enforcement table cites
+being empty, which is checkable, rather than a number, which is true of any prefix of the real set.
+
+**The batch's own lesson, earned twice.** Every one of the eleven items was partly stale and two
+were wholly stale — line numbers drifted, counts undercounted, a cited precedent had been deleted,
+and the runbook whose stale step references were the subject renumbered *again* during the work.
+Fixes were made against the tree, never against the report; where an item turned out already
+shipped it is recorded as such rather than claimed. The stale-reference item is closed by a query
+whose exempt paths are named, not by a count — a count is unfalsifiable, being true of any prefix
+of the real set.
+
+## 2026-08-22: an abandoned delegate worktree is not silent
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+A delegated tangent hands back a branch plus an integration debt, and the agent that incurred the
+debt is — by the very reason it delegated, a full context — not the one who will pay it. A debt
+held only in a coordinator's context evaporates at the next `/clear`, leaving an unmerged branch
+and a worktree nobody remembers creating. A session-start advisory now names that state:
+`[delegation] delegate branch X is unintegrated`, with what it owes and how to settle it.
+
+**The dispatch record is the trigger, so nothing new had to be invented.** The brief already had
+to exist, and it is written into the delegate's own worktree at `.prawduct/.delegate-brief.md`
+(gitignored, so it can only be there because a dispatch actually happened). Its presence plus an
+unmerged tip is the whole signal — no registry, no schema, no lease, no slot accounting. It also
+makes the probe **inert by absence**: a repo that has never delegated sees nothing, and so does one
+whose worktrees are ordinary feature checkouts.
+
+**Both of R12's resolutions are the same observable state that triggered it.** Merge the branch and
+its tip becomes reachable from HEAD — or from the integration base, which is what keeps a
+long-shipped delegate quiet after the coordinator has moved on. Remove the worktree and the brief
+goes with it. Either way the next sync flips the advisory to `resolved`. The third path, abandoning
+it deliberately, is a dismissal carrying its reason, kept per-clone and indefinitely — which is
+also the answer to the proportionality norm's emission arm: the store records that this control
+fired and which way the decision went, so it can be retired on evidence rather than defended on
+principle.
+
+**Two things it deliberately does not do.** It never reads the brief — presence is the entire
+signal, and the worktree it points at belongs to another session. And it does not consolidate:
+one advisory per worktree, keyed on the branch, because two abandoned delegates are two decisions
+and dismissing the first must not silence the second.
+
+**One change reaches every governed product, not just this feature:
+`prawduct-hook advisory show` now prints an advisory's `alternative_actions`.** The field had been
+set by five probes and rendered by nothing — the briefing prints one action per advisory by design,
+and the drill-down did not print them at all. `show` is where an alternative belongs, so the field
+is now live everywhere rather than being deleted from the probes that set it. One cosmetic
+consequence: the norm-health advisory's Health Check #14 route was moved into its `trigger_summary`
+back when the field was inert, so `show` prints that route twice until one copy goes.
+
+## 2026-08-22: the backlog instinct gets a third option
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+The delegation question has two moments. The first is a tangent arriving mid-chunk, which the
+always-injected digest now names. The second is quieter and much more common: an agent has decided
+some work is not this cycle's and reaches for the backlog. `/prawduct:backlog add` is the one
+stopping point that already fires at exactly that instant, so it is where the question goes —
+**delegate it, do it now, or backlog it**, said out loud, with the delegate's cost attached (a
+branch plus an integration debt, and how many ad-hoc branches are already awaiting integration).
+Filing becomes the third answer instead of the default. The judgment stays in
+`methodology/delegation.md`; the skill carries the trigger and a pointer.
+
+**The bound is the feature.** The prompt fires only when the item describes work **in this repo
+that is ready to build** — the same bar the digest's mid-chunk trigger uses, deliberately, so the
+two prompts state one rule rather than two. Everything earlier files silently and unchanged: a
+one-line idea, a research question, anything at an earlier `stage:`, and anything with no `stage:`
+at all. So does work you cannot open a worktree on, and any non-interactive machine call — the
+Critic files findings, it does not dispatch. This is not caution about scope creep; it is the
+feature's own discovery naming defensive asking as its live risk. A prompt that fires on every
+`add` is a prompt people route around, and a routed-around prompt is worse than no prompt, because
+it also teaches the reader to skim the ones that matter. `Delegation: off` in
+`project-preferences.md` silences it entirely, named inline rather than left behind the pointer:
+this step instructs, and a skill that never reads the guide would otherwise propose delegation in a
+repo that had declined it.
+
+**A gap found by reading the surface as its own reader.** The prompt needs to know whether an item
+is ready to build, and `add` could not tell it: `stage:` was a canonical field that `import`
+inferred and triage backfilled, while the one path that *creates* items never set it and did not
+even accept `--stage=`. Every item `add` filed was therefore born not-ready — including one the
+agent had just judged ready enough to offer delegating, which `pick` would then refuse to present
+as buildable. The adapter's `file` op had taken `--stage` all along; only this prose omitted it.
+`add` now accepts the flag and stamps the field the way `import` already infers it, leaving it
+unset when genuinely unclear.
+
+**One prompt, two `add` procedures — the half the first draft missed.** `SKILL.md`'s `### add` is
+the markdown-backend path; once `backlog_service_repo` is set, `adapter-mode.md` carries its own
+end-to-end `### add` that *replaces* it rather than adding to it — it re-states the dedup step for
+itself, which is the tell. So the offer as first written was silent on the backend this repo
+actually runs, which is precisely where the acceptance criterion pointed. There is still exactly one
+statement of it: `SKILL.md` now declares step 2 backend-independent (the question is about the work,
+not about where the item lands) and the adapter path routes to it, translating only the two halves
+that are spelled differently there — `--stage`, and an in-flight mark that is
+`status --to in-progress` plus `--working-branch` rather than `accepted-by:`.
+
+Guarded by eight cases pinned beside the doctrine's own, not in a backlog module — the shared bar is
+a fact *between* carriers, and a guard reading one of them cannot see them drift apart. They assert
+placement rather than wording: the offer sits after the dedup and before the append, because before
+the dedup it proposes delegating work already tracked, and after the append the item exists and the
+reflex has already won. Each was mutated red against the real files before being believed — one
+passed its first mutation and was tightened: `ready to build` appeared twice in the region it read,
+so stripping the bar out of the offer left the assertion satisfied by a neighbouring sentence.
+
+## 2026-08-21: the clear verdict accounts for a delegate
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+An ad-hoc delegate dies with the session that dispatched it. Its branch is unfinished, its report
+unread, and nothing regenerates it but re-running the work — so the standing block's clear verdict
+had to account for it, and the always-injected digest said the opposite: an unread background agent
+was `RUNNING`, never `COMPLETE`, and nothing at all about whether you could clear beside it.
+
+**The rule is stated on the test, not as a blanket.** `RUNNING` alongside `SAFE TO CLEAR` is
+legitimate, and for work a clear leaves alone it is correct — the earlier draft of this rule
+over-blocked by making every in-flight thing `DO NOT CLEAR`, which would forbid clearing beside any
+regenerable background job. What both cases actually answer is **recovery cost: does a clear leave
+the work alone?** A background job it does; a delegate it does not. So an unreaped delegate is
+`DO NOT CLEAR`, a reaped one is `SAFE TO CLEAR` the moment its integration debt is recorded, and
+the record — not the reaping — is what buys the clear. `reflection.md` now names the general test
+rather than only the live-review special case it used to carry, which is the gap that let this repo
+get the verdict wrong twice in one session, in opposite directions.
+
+**Reaping is a boundary step, and that placement is the rule.** It joins the work-cycle close as
+its first item, ahead of persisting decisions, because the debt is one of the things that then gets
+persisted. It is deliberately not an interrupt: a mechanism that exists to protect focus must not
+become the thing that breaks it.
+
+**The digest budget, measured rather than assumed.** The plan required the trim to run first and
+report what it recovered. It recovered **17 words / 22 tokens**, against 42 words / 55 tokens of
+additions, for a measured net of **+33** on both injected shapes — so the shortfall is a
+**declared raise**, +22 on the framework ceiling and +25 on the product one, the first this table
+has taken.
+
+What the trim cut was a class, not a rewrap (a word-count estimator returns nothing for rewrapping):
+prohibitions restating what the same bullet already requires positively. "Burying, padding or
+collapsing it fail alike" forbade three things the bullet had already required — "last, after every
+other word" *is* the anti-burying rule and "three separate paragraphs" *is* the anti-collapsing one
+— so only padding and the reason survived, folded into the opener. That is an in-place dedup, the
+only kind that is honest on this surface: funding a digest cut against an on-demand guide is a
+deletion for the reader who never opens one, and that reader is why the digest exists.
+
+Of the additions, +12 was mandatory at any budget (the digest's own rule contradicted the feature)
+and was found as a rewording — the delegate joins the findings-only clause, which already said
+"not `SAFE TO CLEAR` until it is on disk", rather than opening a second one. The +43 is the
+decision: a mid-chunk tangent trigger, the one moment nothing else in this plan reaches, since the
+backlog prompt only fires when the instinct was already to file something. Its ready-to-build
+qualifier is the guard against becoming the prompt people route around, and it is the same bar the
+backlog prompt will fire on, so the two state one rule. The counter-case is recorded at the
+ceiling: 43 tokens are paid by every session of every governed repo forever, and reverting is a
+three-line cut that lands back under the old ceilings.
+
+**The token ceiling was never the binding budget, and finding that out is the durable part.** The
+digest is emitted as SessionStart `additionalContext`, which Claude Code spills to a file above
+**10,000 characters** — a hard harness threshold, not a policy ratchet, and raisable by nobody. It
+had 216 characters free at this branch point; this change wanted 228, and the first draft went 12
+over while every assertion in the token-budget module was green. The two budgets lived in separate
+test modules with no reference between them, so a careful accounting against one could not see the
+wall it was walking into. The additions were shaved to fit and the token-budget table now says so
+at the top, because the next editor will do this arithmetic against the same blind spot. Real
+headroom after this chunk is 12 characters and, by the ratchet, zero tokens.
+
+**One test was fixed rather than satisfied.** A pure rewrap — no word added, removed or reordered —
+split `never ask / whether to prepare` across two lines and turned its pin red. The pin was matching
+raw substrings, which makes the fill width part of the contract; two sibling pins in the same class
+already normalize whitespace for exactly this reason. Normalized, with the reason at the assertion.
+
+## 2026-08-21: the delegation question, for work no plan anticipated
+
+<!-- prawduct: type=feature | scope=adhoc-delegation -->
+
+The delegation guide answered one trigger: a partition drawn while a build plan is being written.
+The other one is an interrupt — a tangent the user raises mid-chunk, or work you were about to
+propose backlogging — and it arrives when no plan exists to partition. `/prawduct:methodology
+delegation` now carries both.
+
+**The reframe that makes it more than a spawn mechanism.** Under the rule that the coordinator owns
+integration, a delegated tangent is never *done*: what comes back is a branch plus an integration
+debt, and the reason you delegated — this context is full, or nearly — guarantees the agent that
+incurred the debt is not the one who will pay it. So coordination has to be a role recorded on
+disk rather than an agent held in memory. A debt living only in the dispatching agent's context
+evaporates at the next `/clear`, leaving an unmerged branch and a worktree nobody remembers
+creating.
+
+What the section states: the decision is three-way and made once, out loud — do it now, delegate
+it, or backlog it, sorted by *would you integrate this today if it came back green?* Delegation is
+offered first, and that default is a policy setting, so `project-preferences.md`'s `Delegation` row
+still governs and `off` means the proposal is never made. Requirements come first absolutely, by
+exactly four paths and no fifth, and a delegate's own drafted requirements come back marked
+**proposed** — a branch's existence is not ratification. The brief is written into the delegate's
+worktree, which makes the artifact that had to exist anyway the dispatch record, with no registry,
+schema or lease added. And nothing is dispatched that this session cannot reap.
+
+**`building.md`'s delegation section got smaller while gaining the trigger.** What funded it was
+the pointer's own table of contents: it enumerated the headings of a file the same sentence tells
+you to open. What replaced it is the discriminator a reader actually needs — the guide is the
+judgment, that section is the mechanics.
+
+## 2026-08-21: a `closed-by` handle names the work, not its slot in a plan
+
+<!-- prawduct: type=fix | scope=backlog-metadata -->
+
+`closed-by: Chunk 04` names no plan and means nothing to a reader a year out; `closed-by:
+eval-system-rebuild` still says what shipped the item. Principle 13 already stated the governing
+test — *will this reference still resolve, and mean the right thing, once the thing it names has
+moved?* — and licensed a form that fails it one sentence apart. The bare chunk id is now
+non-conforming across all four surfaces that carried it: the norm's home in `docs/principles.md`,
+the backlog skill's metadata-bar spec and its `update` rule, and the ship-in-the-closing-PR
+instruction. `building.md`'s mutable-id exemption list loses `closed-by:` entirely — once the
+handle has to name the work, there is nothing left to exempt.
+
+**Consumers who already wrote `closed-by: Chunk NN` handles have non-conforming ones.** Nothing
+rewrites them and no gate rejects them; they are stale references that will not resolve, and the
+repair is to re-point each at the work (a feature scope, a branch name, a release) the next time
+its item is touched.
+
 ## 2026-08-21: one place knows what a finding's title is called
 
 <!-- prawduct: type=fix | scope=delegation -->
@@ -9762,8 +11097,8 @@ beside the rest of the Status parsing, and `_parse_build_plan_status` now applie
 consumer, gate and report alike, is correct by construction instead of by a fourth local patch.
 A test pins that only `buildplan_refs` walks the Status section.
 
-`_parse_build_plan_status`, `_current_chunk_id_from_status`, `_has_active_build_plan_file` and
-`_get_active_work` now take the **project dir**, not `.prawduct/`. The wider signature is the
+`_parse_build_plan_status`, `_current_chunk_id_from_status`, `_get_active_work` and
+`_get_work_in_progress` now take the **project dir**, not `.prawduct/`. The wider signature is the
 point: resolving "current" reads git, and every call site should say so. A `.parent` derivation
 would have worked and kept the sweep invisible — which is how a local fix escaped notice twice.
 

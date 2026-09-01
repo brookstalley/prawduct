@@ -485,6 +485,43 @@ class TestBoundaryDependentInterpretation:
             "one moment `critic-restore` is guaranteed to refuse"
         )
 
+    def test_a_sweep_with_no_readable_id_offers_a_handle_that_exists(self, tmp_path):
+        """The disk where the id is not a name but a sentence: partials on disk
+        with no manifest describing them. The notice promises preservation
+        (correctly — that output is real) and then used to render
+        `prawduct-hook critic-restore (id unavailable — …)` as the ONLY handle.
+        An operator who copies it gets `no archived review named '(id…'`, and
+        the two handles that work — the bare listing, and the
+        `unmanifested-<ts>` name the archiving dispatch prints — are never
+        mentioned. The partials then age out of the archive ring unread, which
+        is exactly the harm the preservation clause exists to prevent.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": now}))
+        from lib.critic_consolidate import manifest_path  # noqa: PLC0415
+        partials = manifest_path(prawduct).parent
+        partials.mkdir(parents=True, exist_ok=True)
+        (partials / "correctness.rev-orphan.json").write_text("{}")
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        assert not marker.is_file(), "--force must still sweep; this pins the notice"
+        assert "reviewer partial(s)" in out, (
+            "fixture guard: this disk must reach the preservation branch, or the "
+            "recovery line under test is never rendered"
+        )
+        assert "critic-restore (id unavailable" not in out, (
+            "the notice offered a command whose argument is a sentence about not "
+            "having an argument"
+        )
+        assert "prawduct-hook critic-restore\n" in out, (
+            "the runnable handle — bare `critic-restore` lists the archive — must "
+            "be the one offered when the id cannot be read"
+        )
+
     def test_forcing_a_sweep_of_a_complete_roster_names_the_lost_self_heal(self, tmp_path):
         """A COMPLETE roster: nothing will archive those partials — and nothing
         will consolidate them either, which is what the sweep actually cost.

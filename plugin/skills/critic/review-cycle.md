@@ -355,7 +355,7 @@ reconciliation unavailable — [the command's reason]; run `prawduct-hook backlo
 
 For each open item, check whether this session's changes resolve it — directly or incidentally.
 `affecting` is the cheap first pass: the items whose `affected:` paths cover the changed files — the
-intersection this walk used to infer by reading every body. For each resolved item, emit a **NOTE**: "Backlog item appears resolved: [item text]. Verify and archive it now, on this branch — `/prawduct:backlog update <id> status=shipped closed-by=<scope>` — so it ships in this PR." Do not change status yourself — the framework never infers status; the builder makes the explicit call.
+intersection this walk used to infer by reading every body. For each resolved item, emit a **NOTE**: "Backlog item appears resolved: [item text]. Verify it, then call `/prawduct:backlog update <id> status=shipped closed-by=<scope>` **when** the backlog skill's "When to mark shipped" rule says." Do not change status yourself — the framework never infers status; the builder makes the explicit call.
 
 **Backlog hygiene checks (C-B1–C-B4 — all NOTE-level, never BLOCKING)** — four soft signals (`/prawduct:backlog` is the fix path for each), each with the yield it is kept for:
 - **C-B1 — missing metadata:** an item `created-since` the interval's base with no metadata bar → NOTE the structured format. Post-cutover a new item is an Issue, never in the diff. *Yield: items unfindable by `list`/`pick`.*

@@ -37,7 +37,7 @@ backlog_service_repo: brookstalley/prawduct
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-08-19
+backlog_last_groomed_at: 2026-08-27
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -58,6 +58,13 @@ base_branch: develop
 # record on-ramp prescribes — the interpreter fallback is deprecated-by-nudge).
 # Stdlib-only repo: the hook's python3 IS the project environment.
 test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q
+
+# How this repo runs ONE test file, for `audit-learnings` sentinel grading.
+# Separate from `test_command:` because that one names `tests/` and would grade
+# every sentinel by the whole suite's verdict. Declared here rather than assumed:
+# an undeclared sentinel is reported ungraded, and this repo being the framework's
+# own is exactly why it must not rely on a Python-shaped default.
+sentinel_command: python3 -m pytest {sentinel} -q
 
 # Files carrying the release version, read by `check-released` FROM THE TAG'S
 # TREE — which files carried a release's version is a fact about that release,
@@ -508,13 +515,21 @@ build_state:
 # (rev-20260813T042938Z-81decaea): plan-backfill refuses names already in archive/.
 #
 # DEMOTED TO SECOND 2026-08-13 (tactical-efficiency Chunk 06). A build plan may
-# now declare `branch: <name>` in its frontmatter, and resolution takes the live
+# now declare `branch: <name>` in its frontmatter, and resolution takes a live
 # plan claiming the checked-out branch BEFORE this scalar, falling back to
-# artifacts/build-plan.md after it. The plan below declares this branch and is
-# the repo's first opt-in, so on feat/tactical-efficiency-pass it is resolved by
-# its own frontmatter and this line is not consulted. The scalar is deliberately
-# kept and kept current: it is the answer on every other branch, and retiring it
-# is out of that pass's scope.
+# artifacts/build-plan.md after it. Several plans may claim one branch; the
+# scalar's remaining job is to break that tie, which is why it is kept.
+#
+# CLEARED 2026-08-13, and the null is the state rather than an oversight. It
+# named build-plan-tactical-efficiency.md, which declares its own (now merged
+# and deleted) branch. Keeping it aimed there put a finished plan back in force
+# on every branch with no plan of its own — including develop — where governance
+# then advised archiving a plan the gitflow RETAIN rule says to keep until the
+# release. That advisory had no correct action, which is the state a
+# branch-declaring plan exists to avoid; the /prawduct:pr Merge Flow's "Confirm
+# the bookkeeping merged WITH the PR" step now says to clear the pointer for
+# this case. The plan is untouched: still live, still findable, archived by
+# scope at the release.
 active_build_plan: null
 
 # =============================================================================

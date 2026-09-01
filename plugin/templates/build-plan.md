@@ -22,6 +22,12 @@ scope: pantry-v1
 # branches stop fighting over one line, and archiving the plan (or deleting the
 # merged branch) ends the claim with nothing to un-point. Leave it out and the
 # scalar keeps working exactly as before.
+#
+# Several plans MAY declare one branch — a release branch carrying two workstreams
+# is ordinary, not an error. Governance picks one by a stated precedence and the
+# session briefing says which it chose, why, and what else claimed the branch.
+# The precedence itself lives in ONE place: methodology/planning.md, "Which plan
+# is active is branch state".
 # branch: feature/pantry-v1
 depends_on:
   - artifact: product-brief

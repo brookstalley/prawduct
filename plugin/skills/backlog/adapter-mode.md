@@ -20,6 +20,10 @@ prawduct-hook backlog <op> --repo <owner/repo> --json [op flags]
   rather than the on-PATH `prawduct-hook` — identical contract, just the local build.
 - The adapter is **non-interactive** — it never prompts. Any confirm-before-write step is yours to
   run in conversation *before* the call; never expect the adapter to ask.
+- **The op surface describes itself.** `prawduct-hook backlog --help` prints the whole usage
+  table — every op the adapter exposes — and `prawduct-hook backlog <op> --help` prints one op's
+  flags. Both go to **stdout at exit 0**, so they are safe to run before any call. That output is
+  the op set: read it rather than inferring an op or a flag from this file.
 
 ## Reading the result — envelope + exit code
 
@@ -66,6 +70,35 @@ On exit **5 (auth)** or **6 (unavailable)** the backend could not be reached. Su
 `.prawduct/backlog.md` as a substitute: it is frozen pre-cutover history, and presenting it as the
 live backlog is exactly the stale-as-live failure this mode exists to prevent. (Advice degrades to a
 note; it never silently substitutes stale data.)
+
+### The retry budget — bounded, or it is not a budget
+
+**The adapter never retries a call for you.** It runs `gh` once per op, classifies the failure and
+returns — there is no loop and no backoff anywhere on the single-op path, and a hung `gh` is cut at
+30s. The one exception is `import`, which pauses and retries a *rate-limited record* inside its own
+run and then ends resumably; never wrap that op in a retry of your own.
+
+So every retry is yours, and `retryable: true` is a hint that re-attempting **can** work — never a
+licence to loop until it does. The budget for one operation:
+
+- **Retry only a `retryable: true` error.** `unavailable`, `rate_limited` and `conflict` are the
+  retryable codes. `validation`, `not_found`, `ambiguous_id`, `alias_collision`, `auth` and
+  `unsupported` are permanent — re-running one is a defect, not a recovery. Fix the call or stop.
+- **Max attempts: 3** — the first call plus at most **2** retries.
+- **Pause 2s, then 4s** between them. On `rate_limited`, use `error.details.retry_after` instead
+  when the server sent one, capped at 60s; if that pause would outlast the deadline, give up now.
+- **Deadline: 120s** from the first attempt — whichever bound trips first ends it. A healthy op
+  answers in under 2s, so the deadline is a runaway ceiling, not an allowance to spend.
+- **`conflict` (exit 4) is a re-read, not a retry.** Re-fetch with `get`, re-apply on top of what
+  you read, send once. Re-sending the same `--if-updated-at` conflicts forever.
+- **Before replaying a `file` or a `comment`, check whether it landed** (`cache-query search`, or
+  `list`): neither carries an idempotency key, so a call that failed *after* the write reached
+  GitHub duplicates on replay. `status`, `update`, `link`/`unlink` and `merge` converge on re-run,
+  so replaying those is safe.
+- **Give up rule.** On the third failed attempt, or when the deadline passes, **stop**. Report the
+  last `error.code` and `message` and how many attempts you made, exactly as the discipline above
+  says. Do not re-plan into a different op, do not retarget another repo, and do not read the
+  frozen markdown. An unbounded retry loop is the *opposite* of never-block.
 
 ## Read operations
 
@@ -116,7 +149,8 @@ Same envelope + exit discipline as reads. Render by the **operation you invoked*
 one you ran) — never sniff the envelope for "which key is present," which is how a shared-key result
 type shadows another. Two write-specific notes: a write can return exit **5 (auth)** when withheld
 under an untrusted CI trigger (SEC-5) — surface it plainly, don't retry-loop; and **you never invent a
-mutation path** — the adapter exposes exactly the ops in the usage table, each with its own crash-safety
+mutation path** — the adapter exposes exactly the ops in the usage table `prawduct-hook backlog --help`
+prints, each with its own crash-safety
 contract (idempotent/resumable `import`, redirect-before-close `merge`). No generic preview-or-apply flag
 sits over those mutations: the only preview-before-write is `restructure-preview` (the deterministic
 before/after a bulk `import` would produce, approved in aggregate), and the upstream filing op adds its
@@ -148,24 +182,45 @@ read-your-writes, so an item filed seconds ago is invisible to it, which is exac
 check is asked. If the cache exits 6, say the dedup check could not run; do **not** report "no
 duplicates found".
 
-**A ```` ```prawduct ```` block inside `--body` is merged, not dropped** (since 2026-08-19).
-Composition parses any block already in the body, folds its fields under the ones the command itself
-sets, and emits exactly one — so an edge like `related:` written at filing time now lands. On a key
-collision the command's own fields win, because `automated`/`worker` are attribution stamps a body
-must not be able to overwrite.
+**Then run `SKILL.md`'s `add` step 2 before filing — the three-way offer.** It is the one step of
+that procedure this section does not replace, because the question is about the work rather than
+about where the item lands: when the item describes work in this repo that is **ready to build**,
+say the three options out loud — *delegate it, do it now, or backlog it* — with the delegate's cost
+attached. Read it there; it is not restated here. What this backend has to translate is the
+in-flight mark: on *delegate it*, `status <id> --to in-progress` (the bridge above) plus
+`update <id> --working-branch owner/repo@branch` once that branch is pushed — there is no
+`accepted-by:` here.
 
-Until that fix the two blocks were *appended* and the reader took the **last**, so hand-written
-fields were silently discarded — surfacing only as a `WARNING:` line that reads like housekeeping
-(`issue body carries N prawduct blocks; using the last and ignoring the earlier one(s)`). Items
-#690, #691 and #692 lost their `related:` edges that way. **Prefer the documented flags and `link`
-regardless**: they are checked, they are what the cache indexes, and a hand-written block is still
-free-text you can typo. The merge means a mistake there costs you a wrong field rather than a
-missing one.
+**Always pass `--stage`** when you can infer it (a clearly-scoped bug or cleanup → `ready`; a vague
+one-liner → `idea`), and omit it only when genuinely unclear. It is also what the offer above reads
+— `ready` is that bar, and this is the only place it is recorded. An item filed stageless is one
+`ready-work` and `pick` will never present as buildable, and it leaves that offer with nothing to
+read.
+
+**The ```` ```prawduct ```` block is adapter-owned — do not hand-write one.** It is a serialization
+the adapter composes, stamps and emits, exactly one per issue; the flags and `link` are how you set
+what goes in it. They are checked, they are what the cache indexes, and a hand-written block is
+free-text you can typo into a field nothing reads. This is a prohibition, not a preference: a body
+you author carries prose, never a block.
+
+**If one reaches `--body` anyway it is merged, not dropped.** Composition folds any block already in
+the body under the fields the command itself sets and emits a single block, so an edge like
+`related:` written at filing time still lands. Two fields are the exception in **both** directions:
+`automated` and `worker` are attribution stamps — who filed this — and are stripped from an embedded
+block whether or not the command sets them, so a body cannot launder a background sweep into looking
+human. The merge is a safety net for a mistake, and it is why the mistake now costs you a wrong
+field rather than a missing one; it is not permission to write the block.
 
 ### update `<id>`
 Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
-  no-op); a close records `closed_by` natively.
+  no-op). **It does not record `closed_by`**: the op takes only `--to` and `--repo`, so a
+  `closed-by=<scope>` argument has nowhere to go and is dropped. GitHub's own timeline holds *who*
+  closed the issue (and the closing PR or commit when the close rides a merge), but the adapter
+  neither stamps nor surfaces it, and the *scope* is not recoverable from it. Until `status` accepts
+  a `--closed-by` flag, record the scope where it stays visible on the item —
+  `comment <id> --body 'closed-by: <scope>'` — and say plainly that it is a comment rather than a
+  queryable field. Never hand-write it into a `prawduct:` block: that block is adapter-owned.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
   wins — correct for the interactive single-actor case). **`--title` is gated**: a new title failing
   §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
@@ -204,7 +259,8 @@ whole `update` op, not to any one field above.
 `prawduct-hook backlog pick --repo <r> [--limit N] [--include-working]` → the adapter returns
 ranked ready-work (blocker-aware; items carrying a `working-branch` are excluded). Render 1–3
 candidates + a one-line *why*. Keep the skill's framing on top: **build-plan overlap** (resolve the
-active plan as the skill says — `branch:` claim first, `active_build_plan` second — and surface
+active plan as the skill says — `branch:` claim first, `active_build_plan` second, and it is the
+skill that states which claim wins when several name one branch — and surface
 overlapping candidates first) and **stage-aware routing** (don't
 present an early-stage item as buildable). `--include-working` adds back the items someone is on,
 each naming its branch, for when you deliberately want to see contested work.

@@ -109,6 +109,37 @@ in `docs/governance-telemetry.md`.
   Case law: [[deprecation-requires-an-inert-retention-window]]. The rule this makes fully written is
   what unblocks #644's conformance leg from `stage: requirements`.
 
+  **Ruled 2026-08-26 (v3.4.1-dev) — a default that violates a higher norm is withdrawn outright, not
+  retained inertly.** `audit-learnings`' sentinel runner hardcoded `sys.executable -m pytest`, an
+  uninventoried instance of `architecture.md`'s **"never be specific to Python"** norm. Products now
+  declare `sentinel_command:`, and the pytest fallback was **deleted rather than deprecated** —
+  withdrawing working behaviour, which this clause normally defers to a major.
+  Owner decision, stated directly on a direct question about this fix: *"NEVER python specific, never
+  requiring a specific implementation of testing or anything else. We provide absolute business
+  requirements, consuming repos decide the best way to implement for their project."*
+  `[DECISION: withdraw the implicit pytest runner immediately rather than holding it through an
+  inert-retention window | the clause's Why is protecting callers from breakage, and this withdrawal
+  fails CLOSED — an ungraded sentinel withholds a retirement and destroys nothing, where the
+  harness-only case it is modelled on broke every session at startup; and the retention window's own
+  remedy is unavailable here, because what would be retained IS the violation | user can veto/override]`
+  **Why this does not follow [[deprecation-requires-an-inert-retention-window]]**, which is live and
+  governs the neighbouring case: that ruling's bargain is that inert retention is *cheap* — "an inert
+  subcommand is a `return 0` and a docstring" — and costs nothing to hold. Here the thing to hold is
+  a Python-specific default, so every day of the window is a day the architecture norm is still
+  violated. The two norms cannot both be satisfied by waiting, and the retention window is the one
+  whose cost changed. Signalled rather than silent, per this clause's own requirement: an ungraded
+  sentinel prints a `notice:` to stderr naming the knob, and reports `ungraded` rather than the
+  pre-fix loud-and-false `failed`.
+  **Scope of the exception, kept narrow:** immediate withdrawal is in-bounds only where the retained
+  behaviour would itself perpetuate a ratified norm violation AND its removal fails closed. A default
+  that is merely *unfashionable*, or whose removal fails open, still takes the window.
+  Category-level: **an inert-retention window is a courtesy the deprecating norm extends, not one it
+  can extend on another norm's behalf** — when two norms collide the question is not which is senior,
+  but which one's stated *warrant* has stopped holding.
+  Case law: [[inert-retention-cannot-be-extended-across-norms]]. Qualifies, and does not retire,
+  [[deprecation-requires-an-inert-retention-window]] — that ruling still governs every retirement
+  whose retained behaviour is inert rather than itself non-conforming.
+
 ## Operations
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.
@@ -179,8 +210,47 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   plan could be reported converged — the "path that cannot answer, reporting as one that answered"
   shape this command was written to end.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
-  `verify-operator-verification` (both mutating).
+  `verify-operator-verification` (both mutating). The check is three-way: 0 satisfied, 1 pending
+  entries, **3** the queue could not be parsed (see the third-outcome rule under § Error Model).
+  `accept-operator-verification` refuses on that same unparsed queue rather than recording a bypass
+  that covers no entries — an override reached by a different door must not inherit the defect the
+  check just closed.
+- **Plugin activation** — `check-plugin-active [--path P] [--context onboard|doctor] [--json]`
+  (read-only). Answers whether the harness will actually LOAD the plugin for a repo, which
+  project-scope enablement in `.claude/settings.json` does not settle on its own. **Three-way by
+  construction**: `active` exit 0, `inactive` exit 1, `unknown` exit **3** — the third-outcome
+  shape below, for the reason given there. `--context` selects the WORDING, not the verdict: the
+  same `inactive` means "this repo loads nothing" to an onboarding session and "the manifest
+  record does not name this path" to a doctor run, which by construction executes inside a
+  session where the plugin did load. `--json` carries `status` for a caller that must branch.
+- **Learnings pairing** — `check-learnings-pairing [--json]` (read-only). Grades `learnings.md`
+  against `learnings-detail.md`. Exit 0 clean, 1 a duplicate active heading, **3** the pair could
+  not be read — the third-outcome rule below. Only duplicates are graded; counterpart and ordering
+  drift ride `counts` as measurements, because the two files pair by PREFIX rather than exact title
+  and the mirror-exactly invariant does not hold in practice (270 index vs 179 detail active
+  entries on this repo). `audit-learnings --apply` refuses on the same duplicate state and exits
+  **1** — a writer that refused and wrote nothing, per the fail-direction rules below.
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
+- **Backlog service** — `backlog <op>`: a subcommand *group*, not a single command. The op set is
+  `_ALL_OPS` in `lib/backlog/cli.py` — the same tuple the CLI builds its unknown-op message from, so
+  the enumeration cannot drift from what dispatches — and `_WRITE_OPS` inside it is the
+  provider-mutating half; the rest read, some writing only the local cache (`sync`).
+  **This artifact deliberately restates none of the ops, the `--json` envelope, or the error
+  vocabulary.** `documentation/backlog-service-api-contract.md` is the operational contract for all
+  three (§ 2 the operations, § 3 inputs and outputs, § 4 the error model), and
+  `skills/backlog/adapter-mode.md` is the form an agent binds to. A copy here would be a second
+  thing to drift. What this entry owes instead is the **promise**, which neither of those documents
+  can settle for the product: a surface described in detail elsewhere and unnamed here still leaves
+  the reader who asks "what does prawduct expose, and under what promise?" a confidently incomplete
+  answer, and that silence is the drift nobody can see.
+  **The promise is the one this artifact already makes for the rest of the CLI.** `backlog` is
+  internal/unstable (§ Surface Inventory), carried at the plugin version like its skill callers, and
+  outside the two-member stable tier § Direction's 2026-08-02 ruling enumerates. Adopter agents do
+  call it — a real dependency, and still not a promise: a request to bind a third party to its
+  `--json` envelope is exactly the second of the two conditions that ruling names as its next
+  revisit trigger, and it has not been made. Where the feature-local contract's own stability
+  language is more generous than that, **this artifact governs the tier and that document governs
+  the operational detail.** Exit classes: § Error Model.
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
   `jurisdiction`, `cost-of-commit [--json] [<paths>...]` (does committing these paths — the
   working tree by default — buy a review round? Asks the gates' own `is_judgeable_path`, so it
@@ -334,7 +404,26 @@ raised as stack traces across the boundary.** The intended scheme:
 `ok` | `failed` | `unverifiable`. Registered here because the `--json` emitters are enumerated in
 this section, and a payload documented only by its exit code is a shape a caller has to reverse-engineer.
 
-**One gate carries a third outcome, added 2026-08-04.** `check-released` exits **3** for
+**A gate whose SUBJECT could not be read takes a third outcome — exit 3 — rather than folding into
+0 or 1.** This is a standing rule, not a list to maintain: 0 would report a clean bill off a check
+that never ran, and 1 would put a new meaning on a number that already carries a specific remedy,
+sending the caller to a fix that cannot apply. Each command below states what its own two foldings
+would have said, because the argument is only convincing in the concrete.
+
+- `check-plugin-active` (2026-08-27), *unknown* — folded into 1 it reports a broken install
+  because a harness-internal file would not parse, sending an operator to reinstall something that
+  works; folded into 0 it reports a clean bill off a check that never ran.
+- `check-operator-verification` (2026-08-27), *unreadable queue* — folded into 0 it reports a
+  drained queue on a queue nobody parsed, which is the defect it was written to close; folded into
+  1 it inherits "there are pending entries, drain or override the first one", and both remedies are
+  inapplicable to a file that yielded no entries, leaving the caller at the queue file — the one
+  move the refusal forbids. It still BLOCKS: 3 is non-zero, so the gate fails closed.
+- `check-learnings-pairing` (2026-08-27), *unreadable pair* — folded into 0 it reports a clean
+  pairing off a corpus it could not decode, which is this scope's own subject; folded into 1 it
+  claims a duplicate heading it never saw, sending an operator to hand-edit a file that is fine.
+- `check-released` (2026-08-04), *unverified* — see below.
+
+`check-released` (2026-08-04) exits **3** for
 *unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a
 shallow checkout, or a declared `toml` version file on a pre-3.11 interpreter (no `tomllib`).
 It is a distinct code rather than folded into 0 or 1 because both foldings are
@@ -348,7 +437,10 @@ CI binds to the exit code, so any non-zero is red without special-casing.
 Fail-direction is deliberate and per-purpose:
 
 - **Unevaluable *advisory* gate** (an optional lib path failed to import) → **fail-open, exit 0**: an
-  ungradeable gate must never false-block (`classify-diff-risk`, `check-operator-verification`).
+  ungradeable gate must never false-block (`classify-diff-risk`, `check-operator-verification`,
+  `check-plugin-active`). Scope check, because it is easy to over-read: this covers the **plugin's
+  own lib** failing to import, where prawduct itself is broken and blocking the caller helps nobody.
+  A command whose *subject* could not be read is a different case and takes the third outcome below.
 - **Unevaluable *writer*** (a state-mutating command whose lib failed to import) → **fail-closed,
   exit 1**: never report a false success. (`regen-views` used to be the worked example, escalating
   to **2** for validation/IO errors; it writes nothing at all now, so the rule's subjects are the
@@ -359,8 +451,7 @@ Fail-direction is deliberate and per-purpose:
   appears per check as the `unchecked` list rather than a silently absent result.
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `critic-begin` **3** = no review needed (added 2026-08-06);
-  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
-  `backlog verify-migration` **4** = completeness failure (a source item with no target issue).
+  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
   unconditionally, so those two meanings were removed rather than given new ones. Retiring a
   meaning is what the additive-first norm permits; the thing it forbids is a new meaning wearing
@@ -379,6 +470,18 @@ Fail-direction is deliberate and per-purpose:
   not a silent no-op, though: since 2026-08-06 a 3 appends exactly one `guard-refusal` fact to the
   clone-shared evidence store, which is what makes the guard's own yield falsifiable. That fact is
   inert by construction (no gate reads a non-`review` kind), so it changes no verdict.
+
+**The `backlog` group carries its own exit-class set — a documented scheme, not an exception to the
+table above.** `lib/backlog/cli.py`'s `_EXIT_CLASS` maps every error `code` the group can return onto
+a fixed class: **2** validation, **3** not-found, **4** conflict, **5** auth, **6** unavailable, with
+**0** for success and **1** reserved for a code that reaches the map unlisted. The discipline is this
+section's — exit codes are the contract, the failure is attributed inside the envelope, no stack
+trace crosses the boundary — and the wider vocabulary is what a caller needs in order to branch on
+*why* a write failed, which 0/1/2 cannot carry. `backlog verify-migration`'s **4** is that ordinary
+`conflict` class applied to a completeness disagreement (a source item with no target issue), not a
+sentinel meaning of its own, which is why the class set belongs here rather than one member of it.
+Which `code` maps to which class, and the envelope the code rides in, are
+`documentation/backlog-service-api-contract.md` § 4.
 
 **Message vocabulary:** `CRITICAL:` / `WARNING:` / `NOTE:` / `PRAWDUCT:` / `BLOCKED —…`, with a
 channel split — **stdout is agent-facing** (composed into model context), **stderr is
@@ -481,6 +584,10 @@ Evolution rules we want to hold, so new versions stay rare:
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`.
+  **`backlog <op>` sits in this tier on different grounds:** its callers are the
+  `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
+  ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
+  § Operations, "Backlog service", is the entry, and it names what would move it.
 - **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). Four
   members in two sub-shapes, split by **who calls them** — which decides whether they announce
   themselves:
