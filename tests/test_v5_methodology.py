@@ -293,7 +293,26 @@ LAST_MEASURED_TOKENS = {
     # than you'd *drop* one", the digest's requirements bullet verbatim -- and
     # the digest already points AT this section for the tripwires, which are
     # what it does not carry and what stayed.
-    "methodology/building.md": 4751,
+    # -4 on 2026-09-01 (#284): the mid-build assumptions checkpoint -- re-check
+    # the plan's `[ASSUMPTION: ...]` entries as code reveals new facts. This was
+    # the last of the item's four sub-items still open; the emphasis-escalation
+    # half (CLAUDE.md's "STOP. Read this before writing ANY code" caps) and the
+    # Foreign-API compression were discharged by the 2026-07 prose diet.
+    # Assumptions were recorded at plan time by `planning.md` and never
+    # checkpointed by anything afterwards, which is the shape the item names:
+    # a decision taken on the user's behalf that, unrevisited, is never
+    # confirmed.
+    #
+    # Funded in place again, and this time out of THIS file's own redundancy
+    # rather than the digest's: (1) the opening sentence stated the work cycle
+    # six lines above the definition that states it in full -- and stated it
+    # INCOMPLETELY, stopping at verify where the real cycle runs through Critic
+    # and reflect, so the shorter form was also the wrong one; (2) two Common
+    # Traps restated the sections directly above them ("Uninvestigated
+    # decisions" is Decision Research, "Tuning a mechanism you haven't read" is
+    # the cheap-check gate), and both are prose-pinned by NAME, so what a trim
+    # can remove is the restated body and not the entry.
+    "methodology/building.md": 4747,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the

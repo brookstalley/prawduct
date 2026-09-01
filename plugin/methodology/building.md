@@ -1,6 +1,6 @@
 # Building: Turning Plans Into Working Software
 
-Every unit of work follows the same cycle: **understand → plan → build → verify.** What changes is the depth — determined by the work's size and type.
+How deep the governance goes is determined by the work's size and type.
 
 ## Sessions and Work Cycles
 
@@ -45,6 +45,8 @@ Before any non-trivial work cycle, answer three questions in one sentence each:
 3. **What's out of scope?** What you're deliberately not doing.
 
 If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Surface unknowns early — never silently build on guesses. Apply for any chunk that touches behavior; skip for trivial (typo, config). For unclear or multi-file work, Plan Mode is the native clarify-before-build vehicle. Same model as `discovery.md` "Calibrate Rigor".
+
+**Re-check the plan's `[ASSUMPTION: …]` entries as code reveals new facts.** They are recorded at plan time and, unchecked, stay recorded: an assumption nobody revisited is a decision taken on the user's behalf that nobody confirmed.
 
 ### A Requirement Surfaced Mid-Build
 
@@ -215,9 +217,9 @@ A broad catch is legitimate at system boundaries, event loops and top-level supe
 
 **Test-last**: Tests written to pass against existing implementation document behavior, including bugs.
 
-**Uninvestigated decisions**: Major technology or architectural choices without research — lock-in, pervasiveness, structural impact, and external dependencies warrant investigation.
+**Uninvestigated decisions**: a major choice made without the research above.
 
-**Tuning a mechanism you haven't read**: Optimizing configs, thresholds, or prompts of a system you can't explain from having read it — read it first; a ten-minute read routinely collapses a multi-day tuning campaign (Principle 24).
+**Tuning a mechanism you haven't read**: read it first — a ten-minute read routinely collapses a multi-day tuning campaign (Principle 24).
 
 **Boundary blindness**: Modifying a contract surface without checking consumers. The canary catches this at session end; checking proactively is cheaper.
 
