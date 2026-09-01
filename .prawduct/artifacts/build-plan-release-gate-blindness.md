@@ -95,9 +95,19 @@ recorded above as a decision. The two that remain are MED and change no exit cod
 
 - [x] Chunk 01: A release-pending entry with no `scope=` stops being invisible
 - [x] Chunk 02: The digest is checked for the scopes the release is actually shipping
-- [ ] Chunk 03: The headline exists, and a red suite refuses the release
+- [x] Chunk 03: The headline exists, and a red suite refuses the release
 
-Context: authored 2026-08-27 after merging #726 and #658. The three items — `#168`, `#702`, `#259`
+Context: **all three chunks closed 2026-09-01.** The single `cumulative` review that serves as
+Chunk 03's own (`Type: cumulative-final`) returned 1 blocking / 4 warnings / 5 notes; every one is
+fixed or dispositioned, and the follow-up pass returned zero. The blocking finding was the suite
+being red, which is **accepted on an owner ruling rather than fixed**: the failing test is
+`test_no_norm_lifecycle_advisory_fires_here_today`, red because four `Status: in-transition` norms
+crossed the 30-day stall window — calendar-driven, unreachable from this branch, and scheduled as
+stopgaps on their own branch (#732). **Consequence to carry: until #732 lands, this repo's next
+release refuses on Chunk 03's own `unproven-suite:` arm.** The control is working on a condition it
+did not create.
+
+Authored 2026-08-27 after merging #726 and #658. The three items — `#168`, `#702`, `#259`
 — were triaged as one class in the prior session's release-readiness pass: **the gate believes it
 saw everything it did not see.** They are planned together because all three land in
 `plugin/lib/release_readiness.py` and the same runbook phase; three separate branches would buy
