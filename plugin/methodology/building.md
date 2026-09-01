@@ -48,7 +48,7 @@ If any can't be answered, requirements aren't clear enough (Principle 6 — Requ
 
 ### A Requirement Surfaced Mid-Build
 
-The Confidence Check runs at a chunk's *start*; requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently **in chat** and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume.* Never silently *invent* a requirement any more than you'd *drop* one (Principle 6, mirror of #2).
+The Confidence Check runs at a chunk's *start*; requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently **in chat** and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume.*
 
 ### A Norm Surfaced Mid-Build
 
@@ -82,7 +82,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
 
-**Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you, and never narrate history.** A comment, docstring or long-lived spec must not anchor to a chunk number: plans get renumbered and the sentence stays wrong while reading as fact. Review and finding ids never ship — history's one home is commits and the change-log, so a comment recounting it (`// Critic caught Y`) is a deletion, not a rewrite. Carry the present-tense reason instead: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: bookkeeping that records the work (reflections, commit/PR text) — there the id is the record (Principle 13).
+**Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you, and never narrate history.** Review and finding ids never ship — history's one home is commits and the change-log, so a comment recounting it (`// Critic caught Y`) is a deletion, not a rewrite. Carry the present-tense reason instead: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`.
 
 **Same decay: a count nothing reads is not worth writing.** Ask what gets decided differently if it is wrong by two; if nothing, omit it, make it relational ("the table's rows"), or cite the command that regenerates it. Numbers something *relies* on stay exact. **Suite totals keep coming back** — the evidence store holds pass/fail per tree, so say "suite green" and cite `test-status`; never copy a total into a record or add a field for one.
 
@@ -107,7 +107,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Verify artifacts are current.** Confirm artifacts reflect the code — the Critic checks bidirectional freshness.
 
-**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section and update the Context block — the cross-session handoff. Ticking the LAST box disarms the Stop hook's gates — review first, tick after.
+**Update build plan Status.** Mark the chunk `[x]` and update the Context block — the cross-session handoff.
 
 ## Session Scope Discipline
 
@@ -154,6 +154,8 @@ Research scales to impact: **medium** (pervasive pattern, non-core dep) → quic
 **Parallel chunks:** launch independent chunks as separate subagents and await results. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts, the plan you just amended included, are invisible; commit first or inline it in the prompt, say the prompt outranks any file, then tell it not to write `.prawduct/` (`prawduct-hook` refuses only on the harness's scratch branch, not one the agent creates). **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope a later `git commit`; use `git commit -- <paths>`. Prefer isolation for truly independent chunks. The canary may fire O(agents × edits) — expected; note it in the reflection.
 
 **What stays in the main agent:** the combined suite and all end-to-end verification, merge conflicts, Critic, reflection, state updates. The subagent implements; the main agent governs.
+
+**A delegate's "Done" on a removal or a sweep is a claim — verify it by re-deriving it.** Removals and sweeps fail silently and in the direction of looking finished: a symbol left behind, an allowlist wider than the brief, an inventory count several percent short. Before accepting, run the derivation yourself — grep the removed symbol, recount from the source the brief named, diff the files it touched against the ones it owned.
 
 ## Working With Specs
 

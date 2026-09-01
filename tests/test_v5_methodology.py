@@ -276,7 +276,24 @@ LAST_MEASURED_TOKENS = {
     # not create PRs proactively; only use /prawduct:pr when the user explicitly
     # requests it" says the heading sentence twice), leaving the heading plus the
     # preference that overrides it.
-    "methodology/building.md": 4755,
+    # -4 on 2026-09-01 (#300): the dispatcher-side verification rule -- a
+    # delegate's "Done" on a REMOVAL or a SWEEP is a claim, re-derived before
+    # acceptance -- reached the Delegating section, and came in under what it
+    # cost. Weak-model failures cluster here (premature "Done", over-broad
+    # allowlists, 5-15% inventory undercounts, all already a learning in a
+    # consuming product), and the guide said nothing about verifying a
+    # subagent's report. Funded, again, by the digest-states-it-in-full class:
+    # (1) the durable-prose rule's chunk-number instance and its bookkeeping
+    # exception -- the digest carries both, so what stayed is the clause only
+    # this file owns (review and finding ids never ship, history lives in
+    # commits and the change-log) plus the worked example; (2) "ticking the LAST
+    # box disarms the Stop hook's gates -- review first, tick after", which is
+    # the digest's Status bullet word for word, leaving the Context block that
+    # nothing else states; (3) "never silently *invent* a requirement any more
+    # than you'd *drop* one", the digest's requirements bullet verbatim -- and
+    # the digest already points AT this section for the tripwires, which are
+    # what it does not carry and what stayed.
+    "methodology/building.md": 4751,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -674,7 +691,15 @@ LAST_MEASURED_TOKENS = {
     # with the worktree, because a brief left in a reused checkout raises a
     # delegate advisory about work nobody delegated. A READING, so the cost is
     # paid only by a session already about to delegate a tangent.
-    "methodology/delegation.md": 2698,
+    # +68 on 2026-09-01 (#300): the anti-pattern half of the same rule -- the
+    # Done taken on faith, with the tell that makes it fire (you accepted a
+    # completion report on a removal or a sweep without re-deriving it). Not
+    # funded by a cut here and deliberately so: this is the on-demand class, its
+    # cost is paid only by a session that opens it, and the paired statement in
+    # building.md WAS paid for in place against that file's ceiling. An
+    # anti-pattern list is the shape a dispatcher scans at dispatch time, which
+    # is the moment this rule has to fire.
+    "methodology/delegation.md": 2766,
 }
 
 
