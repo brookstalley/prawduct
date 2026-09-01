@@ -567,7 +567,20 @@ LAST_MEASURED_TOKENS = {
     # Paid down first rather than recorded whole: the pointer-clear rule kept its
     # RULE here and handed its WHY to `/prawduct:pr`'s Merge Flow step, which
     # states it at length, saving ~58 of the ~258 the merge brought in.
-    "methodology/planning.md": 5060,
+    # +303 on 2026-09-01 (#296): a `### Plan Shape` subsection -- one plan per
+    # scope tag, split when the change types differ, a plan that will not ship
+    # in ~3 sessions is a program (backlog items plus per-wave plans), and the
+    # planner pushes back on a monolithic-plan request. NOT funded by a cut, and
+    # the reason is the file rather than the size: `building.md`'s size ladder
+    # was reading as an instruction to build ONE big chunked plan, and the
+    # long-lived-plan frictions sat in `learnings.md` for weeks without ever
+    # reaching the guide that would have prevented the next one. This is the
+    # on-demand class -- planning.md carries a reading and no ceiling (#688), so
+    # its growth is declared rather than blocked, and the cost is paid only by a
+    # session that opens it. The pushback bullet is also #298's plan-creation
+    # advisory obligation in its plan-shape form: the obligation is stated where
+    # the decision is made, not in the digest's adjectives.
+    "methodology/planning.md": 5363,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

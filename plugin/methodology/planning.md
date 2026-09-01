@@ -62,6 +62,15 @@ The build plan decomposes artifacts into buildable chunks — coherent units of 
 
 **Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. Archiving also ends a `branch:` claim, so for a branch-declaring plan the move is the whole retirement — nothing has to be un-pointed for the claim to stop resolving. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live until the release ships. A branch-declaring plan gets its pointer **cleared** at that merge; a scalar-only plan keeps `active_build_plan` aimed at it and is repointed after the release. `/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split and says why each way. Build plans are tracked artifacts — commit them, archived ones included.
 
+### Plan Shape
+
+How many plans, and how big, is settled before chunking begins.
+
+- **One plan per scope tag.** A plan covers one coherent scope; work under a different tag gets its own plan even when the same session builds both. The `branch:` mechanism above exists precisely so several plans can share one branch — sharing a branch is not a reason to share a plan.
+- **Split when the change types differ.** A plan mixing a schema migration, a UI rewrite and a docs sweep reviews badly as one unit: the Critic selects its protocol per chunk `Type:`, and one blocking finding stalls chunks that have nothing to do with it. Heterogeneous `Type:` values across chunks are the signal.
+- **A plan that will not ship in about three sessions is a program, not a plan.** Express it as backlog items plus a per-wave plan drawn when that wave starts. A long-lived plan goes stale faster than it is built — its Status boxes stop describing anything, and its frictions accumulate in `learnings.md` instead of reaching the next plan.
+- **Push back on a request for one monolithic plan.** Name what it costs — review quality across a large diff, staleness, and the coupling that lets one finding block unrelated work — and propose the split with its wave boundaries. The user decides (Principle 23); they decide with the tradeoff stated.
+
 ### Requirements Confidence
 
 Every build plan opens with a **Requirements Confidence** level — an honest self-assessment of whether you understand what to build well enough to build it well (Principle 6):
