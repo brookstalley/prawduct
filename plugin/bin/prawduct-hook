@@ -458,8 +458,15 @@ def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestHookYamlListReaderParity
 def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     """Items of a top-level ``key:`` block sequence of strings, or None.
+
+    Inline mirror of ``lib.core.read_block_sequence`` narrowed to this call
+    site's ``list | None`` shape (parity-pinned by
+    ``TestHookYamlListReaderParity``). It sat here UNPINNED while its scalar
+    sibling above was pinned, which is how the four readers drifted (#590) — and
+    it is the copy that was RIGHT, so its contract is the one `lib` adopted.
 
     Parses only the shape the docstrings prescribe (``test_commands:`` — a
     column-0 ``key:`` line followed by indented ``- item`` lines); flow style
@@ -467,8 +474,9 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     lines, and an empty sequence ALL read as None — any in-block anomaly makes
     the WHOLE declaration unparseable, never a partial list (callers convert
     None-but-present to a loud refusal via ``_yaml_top_level_key_present``).
-    Comment stripping matches the scalar sibling (``_read_str_yaml_key``):
-    everything after ``#`` is dropped."""
+    Comments and blank lines are inert at ANY indent, column 0 included: breaking
+    on a column-0 comment silently truncates the list, so some environments would
+    never run while the record claimed full evidence."""
     try:
         content = state_path.read_text(encoding="utf-8")
     except OSError:
@@ -476,10 +484,6 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     items: list[str] = []
     in_block = False
     for raw in content.splitlines():
-        # Blank and comment-only lines are inert at ANY indent — including
-        # column 0 inside the block, where breaking instead would silently
-        # truncate the list (some environments would never run while the
-        # record claimed full evidence).
         stripped = raw.split("#", 1)[0].strip()
         if not stripped:
             continue
@@ -492,9 +496,6 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
         if raw[:1] not in (" ", "\t"):
             break  # next top-level key ends the block cleanly
         if not stripped.startswith("- "):
-            # Nested mapping, bare dash, or a wrapped command's continuation
-            # line: the whole declaration is unparseable — a partial list
-            # would silently skip environments while claiming full evidence.
             return None
         value = stripped[2:].strip().strip("\"'")
         if not value:

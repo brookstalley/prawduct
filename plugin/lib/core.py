@@ -259,6 +259,127 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+# =============================================================================
+# The one block-sequence reader (BKL-#590)
+# =============================================================================
+#
+# Four hand-rolled column-0 minimal-YAML readers had drifted, and two of them
+# returned SILENTLY WRONG answers on inputs the others handled. A column-0
+# comment inside a block truncated the list in two of them; flow style
+# (``key: [a, b]``) read as *declared empty* in two of them — and
+# ``risk_surfaces:`` honours declared-empty EXCLUSIVELY, so a real declaration
+# resolved to zero risk surfaces and a governance gate quietly relaxed.
+#
+# The parsing is one implementation now. What legitimately differs per key is
+# the POLICY on the third outcome — what "declared in a shape I cannot parse"
+# should cost — and that is a call-site decision, stated at each call site:
+#
+#   ``test_commands``          refuse loudly (running the deprecated fallback
+#                              against an operator's explicit declaration could
+#                              persist GREEN evidence for an invocation nobody
+#                              declared)
+#   ``risk_surfaces``          refuse loudly (the alternative is relaxing a
+#                              governance gate on a typo)
+#   ``release_version_files``  UNVERIFIABLE, naming the shape (a guess must
+#                              never be able to FAIL a release, so refusing is
+#                              too strong; passing over it is too weak)
+#
+# The three outcomes the readers agree on.
+
+#: No column-0 ``key:`` line exists — a fallback is legitimate.
+YAML_ABSENT = "absent"
+#: Parsed cleanly. The item list may be empty (``key: []``, or an empty block),
+#: which is a *deliberate* declaration and never the same fact as absence.
+YAML_DECLARED = "declared"
+#: The key is there, in a shape this reader does not parse. Never a partial
+#: answer: a half-read declaration is how an operator's statement gets silently
+#: dropped while the record claims full evidence.
+YAML_UNPARSEABLE = "unparseable"
+
+
+def read_yaml_block(text: str, key: str) -> tuple[str, tuple[str, ...]]:
+    """The significant lines under a column-0 ``key:`` block, and how it read.
+
+    Returns ``(status, lines)`` where ``status`` is :data:`YAML_ABSENT`,
+    :data:`YAML_DECLARED` or :data:`YAML_UNPARSEABLE`, and ``lines`` are the
+    block's indented lines with comments stripped and whitespace trimmed. Shape
+    interpretation is the caller's — this answers only "is the key there, does
+    the block terminate cleanly, and what is in it".
+
+    **Comments and blank lines are inert at ANY indent, column 0 included.**
+    Treating a column-0 comment as the end of the block is the truncation bug:
+    the declaration continues below it and everything after is silently dropped.
+
+    **An inline value other than ``[]`` is unparseable, not empty.** Flow style
+    (``key: [a, b]``) and a scalar under a list key are real declarations this
+    reader cannot read, and calling them "declared empty" inverts their meaning.
+    ``key: []`` alone is the deliberate empty declaration.
+
+    No PyYAML: the governance runtime is stdlib-only, and these files are read on
+    the session-start hot path.
+    """
+    lines = text.splitlines()
+    needle = f"{key}:"
+    for index, raw in enumerate(lines):
+        if raw[:1] in (" ", "\t"):
+            continue
+        if not raw.split("#", 1)[0].rstrip().startswith(needle):
+            continue
+        inline = raw.split("#", 1)[0].rstrip().split(":", 1)[1].strip()
+        if inline == "[]":
+            return YAML_DECLARED, ()
+        if inline:
+            return YAML_UNPARSEABLE, ()
+        body: list[str] = []
+        for follow in lines[index + 1:]:
+            stripped = follow.split("#", 1)[0].strip()
+            if not stripped:
+                continue  # blank or comment-only — inert at any indent
+            if follow[:1] not in (" ", "\t"):
+                break  # the next column-0 key ends the block cleanly
+            body.append(stripped)
+        return YAML_DECLARED, tuple(body)
+    return YAML_ABSENT, ()
+
+
+def read_block_sequence(text: str, key: str) -> tuple[str, tuple[str, ...]]:
+    """:func:`read_yaml_block` narrowed to a block sequence of plain strings.
+
+    Any in-block anomaly — a nested mapping, a bare dash, a wrapped continuation
+    line, an empty item — makes the WHOLE declaration
+    :data:`YAML_UNPARSEABLE`, never a partial list. A partial list is the
+    dangerous answer: it silently drops part of what an operator declared while
+    every downstream record claims the declaration was honoured.
+    """
+    status, body = read_yaml_block(text, key)
+    if status != YAML_DECLARED:
+        return status, ()
+    items: list[str] = []
+    for line in body:
+        if not line.startswith("- "):
+            return YAML_UNPARSEABLE, ()
+        value = line[2:].strip().strip("\"'")
+        if not value:
+            return YAML_UNPARSEABLE, ()
+        items.append(value)
+    return YAML_DECLARED, tuple(items)
+
+
+def yaml_top_level_key_present(text: str, key: str) -> bool:
+    """Whether a column-0 ``key:`` line exists at all — presence, not shape.
+
+    The companion that lets a caller tell "absent" (a fallback is legitimate)
+    from "declared in a shape the reader does not parse" (say so; silently
+    degrading past an operator's declaration is the failure mode). Redundant with
+    :data:`YAML_UNPARSEABLE` for callers that read the status, and kept for the
+    ones that only carry a ``list | None``.
+    """
+    return any(
+        raw[:1] not in (" ", "\t") and raw.split("#", 1)[0].rstrip().startswith(f"{key}:")
+        for raw in text.splitlines()
+    )
+
+
 #: Default size, in KB, above which a governance file earns a size nudge.
 #: ~10K tokens ≈ ~40KB, and every reader of these files pays it once per session.
 OVERSIZED_FILE_KB = 40
