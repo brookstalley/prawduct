@@ -1488,20 +1488,13 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
     # stderr is only visible to the user in the terminal, not to the agent.
 
-    # Warn if project-state.yaml is oversized
-    state_path = prawduct_dir / "project-state.yaml"
-    if state_path.is_file():
-        try:
-            size = state_path.stat().st_size
-            if size > 40000:  # ~10K tokens ≈ ~40KB
-                print(
-                    f"NOTE: .prawduct/project-state.yaml is {size // 1024}KB — recommend compacting.\n"
-                    f"  Completed build plan chunks: keep only id, name, status (remove deliverables/acceptance_criteria).\n"
-                    f"  Test history: keep only the current count, remove per-chunk history.\n"
-                    f"  Change log: keep the last ~10 entries, remove older ones (git has the history)."
-                )
-        except Exception:  # prawduct:allow prawduct/broad-except -- size check must not block session start
-            pass
+    # The oversized-governance-file note used to live here as a bare `print`. It
+    # is now `lib/oversized_state_probes`, raised through the advisory system by
+    # the probe step above, for three reasons the print could not meet: its
+    # bullets are gated on content actually present in the file it measured (it
+    # prescribed cuts to two files it never inspected), the file it names is the
+    # file to edit, and it can be DISMISSED — a repo that has correctly decided
+    # not to compact was otherwise nagged every session forever.
 
     # Check for missing or unfilled project-preferences.md
     prefs_path = prawduct_dir / "artifacts" / "project-preferences.md"

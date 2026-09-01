@@ -259,6 +259,45 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+#: Default size, in KB, above which a governance file earns a size nudge.
+#: ~10K tokens ≈ ~40KB, and every reader of these files pays it once per session.
+OVERSIZED_FILE_KB = 40
+
+#: ``project-state.yaml`` key overriding :data:`OVERSIZED_FILE_KB` for this repo.
+#:
+#: A bare constant penalises thorough decision recording: a product whose
+#: ``project-state.yaml`` is mostly ``technical_decisions`` is doing exactly what
+#: the Reasoned Decisions principle asks for, and a fixed ceiling tells it to stop
+#: — the more faithfully a repo records reasoning, the louder the framework
+#: complains. A repo that has weighed the trade can raise its own ceiling instead
+#: of living with a nag it has correctly decided not to act on.
+OVERSIZED_FILE_THRESHOLD_KEY = "oversized_file_threshold_kb"
+
+
+def oversized_file_threshold(prawduct_dir: Path) -> int:
+    """Bytes above which a governance file earns a size nudge, for this repo.
+
+    :data:`OVERSIZED_FILE_KB` unless ``project-state.yaml`` sets
+    :data:`OVERSIZED_FILE_THRESHOLD_KEY` to a positive integer. Fail-soft in both
+    directions — a missing file, an absent key, or a value that is not a positive
+    integer all fall back to the default, because a typo in a tuning knob must not
+    silence a nudge (0 or a negative would make everything oversized or nothing).
+
+    KB here is 1000 bytes, matching the constant this replaced (``40000``), so an
+    unconfigured repo sees the same threshold it always did.
+    """
+    raw = read_str_yaml_key(prawduct_dir / "project-state.yaml", OVERSIZED_FILE_THRESHOLD_KEY)
+    kilobytes = OVERSIZED_FILE_KB
+    if raw is not None:
+        try:
+            configured = int(raw)
+        except ValueError:
+            configured = 0
+        if configured > 0:
+            kilobytes = configured
+    return kilobytes * 1000
+
+
 #: Every boolean opt-in flag a product may set in ``project-state.yaml``.
 #:
 #: **This exists because "three declarations with nothing comparing them" is a
