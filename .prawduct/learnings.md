@@ -583,3 +583,7 @@ never by dropping them.
 ## A general policy sentence is NOT evidence that a specific procedure in the same document inherits what you are adding — read that procedure end to end and ask what it RE-STATES, because restating a step it would inherit means replacing, not supplementing. Tell: you answered "does B inherit from A?" from a sentence about the class — [learnings-detail.md]
 
 ## When one rule is carried by two surfaces on purpose, pin it in the module that reads BOTH — a bar reworded in one carrier is two bars for one decision, and no single-file guard sees that. Bound the assertion to the smallest region that must carry the phrase. Tell: a mutation stays green on a neighbouring sentence — [learnings-detail.md]
+
+## Prose about what a new guard BUYS must state its PREDICATE, not its purpose — read the guard's deliberate-exclusion tests first, the ones pinning what it does NOT cover: they are the cheapest falsifier. Motivation and extension are one word apart in English and a set apart in code. Tell: the claim turns on a term defined in BOTH code and prose, with different extensions — [learnings-detail.md]
+
+## Naming a prior fix as "the same family" IS the class finding, not a citation decorating an instance-level one — a recurrence says the FIRST fix was scoped too narrowly, so the remedy is the construction preventing both members, bounded by every site the shared predicate reaches. Tell: your note cites a prior finding as precedent and your fix touches fewer sites than it did — [learnings-detail.md]

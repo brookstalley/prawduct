@@ -3,6 +3,157 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-01: the headline nobody wrote, and the red suite nothing refused
+
+<!-- prawduct: type=feat | scope=release-gate-blindness -->
+
+Two failures met at one moment. The consumer-facing headline is a hand step and it gets forgotten:
+**v2.1.6 was tagged and version-bumped with no digest section at all**, which left `develop` red on
+`test_changelog_has_current_version_entry` from that release onward — so v2.1.6 shipped on a red
+suite, and the redness was the only complaint anything made. It recurred at v3.0.4 and was
+backfilled out of band. **v3.4.0 had its section and still led with the seed the previous cut
+wrote**, so every upgrading repo was shown "Prerelease under test" as the news, after eight weeks of
+good notes had accumulated underneath it. And nothing anywhere on the release path read a test
+result.
+
+Phase 0 now answers both. It prints the open section's first non-empty line back verbatim — that is
+the line the version-delta banner shows every repo crossing this version, and the whole failure mode
+is a line nobody looked at — and warns when there is none or when it is still the seed. It also
+asks whether the saved suite run is green and current, and **refuses when it is not**.
+
+**The two halves fail in opposite directions, and that is the architecture rather than a
+preference.** The headline check is *coverage*: its subject is prose, and Phase 0 runs before the
+step that writes the headline, so on a correct release it fires exactly once and is then fixed. A
+refusal there would block a release for a condition the release is on its way to fixing. The suite
+check is a *verdict* about whether the release may proceed at all, so it fails closed, on the
+channel's existing blocking value — the same exit 1 every other refusal here uses, not a new code.
+
+**What the suite check does NOT claim is written into its message and into the runbook.** It reuses
+`gates.tests_are_current`, so the builder's `test-status`, the Stop hook and the release gate read
+one record through one reader and a repo cannot be green for one and stale for another. That
+predicate's first disjunct is session-freshness — it asks *when* a run happened, not which tree it
+met. That is the honest bound at this phase rather than a weakness worked around: Phase 1 rewrites
+four files after Phase 0, so **nothing checkable here can vouch for the tree the tag will carry**. A
+green-suite check at the tagging moment would be a different control at Phase 2.
+
+Four states reach the one refusal and the message names which: no evidence on disk, a run reporting
+failures, a run predating the session that can no longer be matched to the tree, and a run that
+reported itself `degraded`. The last is the one worth stating — a contended run exits 0 and reports
+a plausible total, so nothing in the counts distinguishes it from a clean pass; a release has to
+read it as "no run", never as "a green run".
+
+**The verdict is reported at the top and returned at the bottom.** This repo's ordinary Phase 0 run
+exits at `no-release-plan:` — the documented, expected first result — so a refusal wired only into
+the final return would never be seen by the operator it is for. Printing it early also keeps the
+property this gate holds elsewhere: every other check still runs, so one command reports every
+problem instead of one per round trip.
+
+Both digest questions now come from **one read of one section**. Reading the file twice would let
+them answer about different states of it, and would double the degraded NOTE into two sentences
+saying the same thing happened; that NOTE now names both consequences, because advice failing soft
+is not advice failing silent. And both stay behind `_ships_the_plugin_tree`: the headline message
+would have been the third `plugin/…` path printed at a repo that cannot have one.
+
+## 2026-08-29: the release-pending scope that reaches the tag with nothing written about it
+
+<!-- prawduct: type=feat | scope=release-gate-blindness -->
+
+A release-pending scope could reach the tag with **zero** consumer-facing notes in
+`plugin/CHANGELOG.md`, and no gate asked. It happened at the v3.4.0 cut:
+`scope=tactical-efficiency` carried nine `release=v3.4.0` entries and no mention in the digest, and
+the notes were hand-written at cut time because somebody happened to notice. **The failure is
+asymmetric — a section full of good notes reads as finished, so the missing scope is invisible
+exactly when the digest looks healthiest.**
+
+Phase 0 now tests each release-pending scope against the open digest section and emits one WARNING
+per scope it could not find, beside the existing `has no build-plan file` advisory. Both ask whether
+the pending set is described somewhere a reader will look, and neither is a releasability verdict.
+
+**It never touches the exit code, and that is a classification rather than a caution.** The subject
+is prose and the instrument is a name match, so it is advice by construction; the authority gate
+beside it refuses on state it cannot *evaluate*, and an unmentioned scope is not that — the release
+stays perfectly evaluable, it may just ship under-described. The wording follows: *"could not find …
+check the section"*, never *"is missing"*. An advisory that overstates its own certainty is how a
+fuzzy check gets promoted to a blocking one, and promotion is what changes the price of its false
+positives.
+
+**Matching is bounded on both ends, and the hyphen is part of a name rather than a boundary.** A
+plain substring test passes a short slug on any longer word containing it, and a plain word boundary
+breaks on the hyphen — either way `adhoc-delegation`'s note would mark `delegation` covered. Both
+errors run the wrong way: they report a scope as *covered* that the digest never mentioned, which is
+the silent pass this check exists to prevent. A false alarm costs a reader ten seconds. The slug's
+words count too (`manifest state diagnosis` covers `manifest-state-diagnosis`), because consumer
+prose spells slugs out and a slug-only test would report nearly every scope as uncovered.
+
+Coverage is read from the **topmost** section only — the digest states that convention itself, and a
+whole-file search would let prose written for a version that shipped months ago read as this
+release's coverage. The section boundary is `## ` plus any non-space, looser than a version match on
+purpose: a stricter pattern would let a heading it cannot parse fail to *delimit*, merging the
+section below into the open one. That is a false pass produced by the strictness itself.
+
+Where the digest cannot be read or holds no section, the check emits a NOTE naming what went
+unchecked **and what that costs** — *advice fails soft is not advice fails silent*, and a check that
+skips itself quietly is indistinguishable from one that passed.
+
+**That rule governs a check that ran and could not answer, not one that was never about this repo.**
+The digest ships inside the plugin and never lands downstream, so every `plugin/…` path this module
+prints names prawduct's own layout. A shared predicate now decides whether that layout is the repo's
+subject at all: downstream the whole arm is suppressed rather than reworded, because a repo that
+publishes no digest has none to be *missing*. The `no-version:` hint — the first member of that
+class, fixed alone in R-4/R-12 — consumes the same predicate, so the question is asked once. And a run that finds
+nothing still prints its denominator (`digest coverage: N of M`), because the only honest argument
+for retiring this later is a run of it finding nothing, which requires it to have counted out loud.
+
+**Measured on this repo: 13 of 14 release-pending scopes carry no note in the open
+`## v3.4.1-dev.2` section.** Hand-checking all 13 found eleven genuine gaps and two false positives
+— `branch-claim-multiplicity`, covered in prose under different words, which the plan predicted; and
+`release-v3.4.0`, a release-mechanics scope that records the cut itself and will never have a
+consumer note. That second one is a class, not an instance, and it is left visible rather than
+suppressed: a suppression list is the sophistication this check deliberately does not have, and the
+advisory posture is what makes carrying a ~15% false-positive rate the right trade.
+
+## 2026-08-27: the release-pending entry that enumerated as nothing, and the branch that never counted
+
+<!-- prawduct: type=fix | scope=release-gate-blindness -->
+
+`check-releasability` enumerates *scopes*. A release-pending change-log entry carrying no `scope=`
+contributes none, so it reached no row of the release plan's classification table, could be neither
+shipped nor withheld, and Phase 0 certified `releasable` over work it had never seen. The code
+already knew: the `if not pending:` branch named this blindness in a comment — "entries that carry
+no `scope=` key at all and are therefore invisible to this gate" — and returned 0 anyway.
+
+**The accounting existed in the branch where nothing was pending and was absent from the branch
+where something was, and that asymmetry was the whole bug in one place.** The no-pending branch
+printed its denominator (`N entries scanned, M tagged`) precisely because "0 pending" has several
+causes and only some are a pass. The branch that did have pending work printed a verdict and never
+said what it had looked at, so nothing it missed could be noticed. Both branches now account.
+
+`release_pending_entries` holds the release-pending set as *entries*; `release_pending_scopes` is
+that same set collapsed to its `scope=` values and now consumes it rather than re-deriving it, so
+the two cannot drift apart — the gap between them is exactly what the reconciliation measures.
+`unclassifiable_pending_entries` is that gap.
+
+**It refuses, and the refusal runs before the no-pending return.** Refusing is what an authority
+gate owes a releasability verdict over work that cannot be classified; the remedy is one `scope=`
+per entry, and every offending entry is named with its title and change-log line so the fix is
+mechanical. The placement is not cosmetic: when the scopeless entry is the only unreleased work,
+the pending set is empty, so a check placed after that return would run on the one shape it exists
+to catch and find nothing. Exit **1**, the value every other refusal here uses — not 3, which means
+the gate's *subject* could not be read, and here the log parsed fine; it is the work that is
+unclassifiable.
+
+**Measured before landing: 364 entries, 343 tagged, 31 release-pending across 13 scopes, 0
+unclassifiable** — so this repo's gate output is unchanged but for the new `scanned:` line. Thirty-nine
+historical entries do carry no `scope=`, all of them stamped `release=`, and a release tag settles
+the question scope-or-no-scope; refusing on those would fail every past release forever. The cost
+falls on a consumer repo holding a legacy scopeless *pending* entry, whose release newly refuses —
+accepted deliberately, with the veto route recorded in the build plan's open assumptions.
+
+The one test that reads the real change log asserts the **invariant** (entries ≥ scopes; every
+classified pending entry's scope is one the gate enumerates) and says which emptiness it rejects — a
+log that parsed to nothing, never an empty pending set, which is what a just-tagged release looks
+like. Six `TestAgainstTheReal*` guards died together at v3.3.0 for want of that distinction.
+
 ## 2026-08-27: the rc track that develop had already replaced, resolved rather than re-merged
 
 <!-- prawduct: type=fix | scope=branch-claim-multiplicity -->

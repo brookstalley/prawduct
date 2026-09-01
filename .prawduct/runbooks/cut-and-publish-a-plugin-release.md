@@ -31,9 +31,10 @@ not grading a plan:
 **Read the scope list, not the exit code.** Two outcomes matter — plus one that gives you no
 scope list to read at all:
 
-- **`bad-change-log-tag:` on stderr, exit 1, and NO scope list.** The gate refused a tag line before
-  it could compute the pending set, so there is nothing to read here yet. **Fix the tag and re-run**;
-  the reason-code table in Phase 0 step 0 says how. Do not read this as either outcome below — the
+- **A change-log refusal on stderr, exit 1, and NO scope list** — `bad-change-log-tag:` or
+  `unclassifiable-pending-entry:`. The gate refused the change log itself before the pending set
+  could be trusted, so there is nothing to read here yet. **Fix what it names and re-run**; the
+  reason-code table in Phase 0 step 0 says how. Do not read this as either outcome below — the
   absence of a scope list is the tell.
 
 - **It names one or more release-pending scopes** — change-log entries tagged
@@ -126,15 +127,37 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
    ```
 
-   **Expected:** `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld`,
-   followed by the two lists. **Note `K` — it selects the promotion shape at Phase 2.**
+   **Expected:** a `scanned:` line naming what the gate looked at — entries, tagged entries,
+   release-pending entries, the scopes they enumerate, and how many enumerate none — then
+   `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld` and the two lists.
+   **Note `K` — it selects the promotion shape at Phase 2.**
+
+   Read the `scanned:` line as the gate's denominator — a verdict is only as good as what it looked
+   at. Several entries per scope is ordinary, so the two counts differing is not a signal; the
+   number to read is the last one, and it is `0 unclassifiable` on every run that gets this far,
+   because a non-zero one refuses instead.
+
+   Beneath it, `digest headline: '…' in ## vX.Y.Z-dev.N` — the section's first non-empty line,
+   printed back verbatim because that is the line the version-delta banner shows every repo
+   crossing this version, and the whole failure mode is a line nobody looked at. Then
+   `digest coverage: N of M release-pending scope(s) named in …` — how many pending
+   scopes this release's notes actually mention. Both print on every run that reads the digest —
+   including the ones that find nothing, so the checks can later be retired on a record of finding
+   nothing rather than defended on principle. Where they are absent, the `NOTE:` below says why. `N < M` is not a stop; it is the list to walk before you write the
+   headline.
+
+   Last, `suite: green — <which evidence vouched>`. Read what it actually claims: the saved run
+   is recorded green and current **as of now**. It is not a statement about the tree you will
+   tag — Phase 1 rewrites four files after this point, and nothing checkable at Phase 0 can
+   vouch for a tree that does not exist yet.
 
    **Also exit 0, but different:** `releasable: no release-pending scopes — nothing to classify`.
    This line names no version and yields **no `K`**; read it as `K = 0`. Reaching it *during* a
    release contradicts this runbook's own entry condition, so treat it as a symptom, not a pass:
-   either Phase 1 already ran (its step 3 stamps `release=`, which empties the pending set), or the
-   entries you expect carry no `scope=` key and are invisible to the gate. Check which before
-   continuing.
+   Phase 1 already ran (its step 3 stamps `release=`, which empties the pending set). That used to
+   have a second cause — entries carrying no `scope=` key, invisible to a gate that enumerates
+   scopes — and it no longer can: those refuse by name as `unclassifiable-pending-entry:` before
+   this line is reachable. An empty pending set here is an honestly empty one.
 
    **If not:** it stops, printing either a `not-releasable:` header plus one `ERROR:` line per
    problem, or — when an input it needs is missing outright — a single bare `<reason-code>:` line.
@@ -170,6 +193,13 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      **Fix or restore `.prawduct/project-state.yaml`**, then re-run. (This is not the cutover case —
      the message says so precisely because the two need different remedies.)
 
+   `unclassifiable-pending-entry:`
+   - A release-pending change-log entry carrying no `scope=`. It is in no scope, so it reaches no
+     row of the classification table, so it can be neither shipped nor withheld — the gate would be
+     certifying a release over work it never enumerated. **This is not a gate defect — add a
+     `scope=` to each entry it names** (the message gives the title and the change-log line number),
+     matching the `scope:` of the build plan the work belongs to. Then re-run.
+
    `bad-change-log-tag:`
    - A change-log tag line the gate refuses to act on. **This is not a gate defect — fix the tag.**
      The common case is a `release=` value that is not a version (`release=unreleased`,
@@ -180,10 +210,50 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      entry carrying several `prawduct:` tag lines that disagree — merge them and resolve the
      conflict. The message names the entry and its line number.
 
-   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=`
+   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=` · `WARNING: could not find
+   release-pending scope=… in the open plugin/CHANGELOG.md section`
    - **Advisory, not a stop.** The first says work is shipping with no plan describing it (worth a
      look, not worth blocking a release); the second says two plans declare one scope, so
-     scope→plan resolution is decided by sort order. Neither changes the exit code.
+     scope→plan resolution is decided by sort order. The third says this release's notes never
+     mention a scope that is shipping in it — the v3.4.0 cut shipped `tactical-efficiency` that
+     way, and the notes were written at cut time only because somebody noticed.
+     **Expect false positives on the third and do not act on it blind:** it matches the scope's
+     name, so work the notes describe in other words reads as absent, and a scope recording the
+     release mechanics itself will never have a consumer note. Open the section and look. None of
+     the three changes the exit code.
+
+   `WARNING: the open plugin/CHANGELOG.md section (…) has no headline` · `WARNING: … still leads
+   with the seeded placeholder`
+   - **Advisory, not a stop** — and it fires on a correct release, once. Step 22 of the last cut
+     opened this section with a seeded one-liner, and **step 10 below is where you replace it**;
+     this warning is that step arriving early, while you are still reading Phase 0 output and the
+     notes are cheap to write. It is not a refusal because Phase 0 runs *before* the step that
+     fixes it. Both shapes have shipped: v2.1.6 was tagged with no headline at all, and v3.4.0
+     went out still leading with the seed after eight weeks of good notes had accumulated
+     underneath it — a section full of good notes reads as a finished section.
+
+   `NOTE: digest coverage not checked: …`
+   - The digest exists but could not be read, or holds no `## ` section, so **no scope was checked
+     for a note at all**. Not a refusal, and not a pass either — the coverage question simply went
+     unasked. Fix the file and re-run before you trust a clean Phase 0 on this point. (In a repo
+     that publishes no digest the check has no subject and says nothing; this line means yours
+     does and it could not be read.)
+
+   `unproven-suite:`
+   - Nothing has said this code passes. Four states reach this one line and the message names
+     which: no `.test-evidence.json` at all, a saved run reporting failures, a run that predates
+     this session and can no longer be matched to the tree, and a run that reported itself
+     `degraded` (a contended run covers less than its counts imply, so a release must read it as
+     "no run" rather than "a green run"). **Run the suite and record it** —
+     `prawduct-hook test-evidence record` — then re-run. This is not a gate defect and there is no
+     variant of it to work around: v2.1.6 shipped on a red suite because the release path read no
+     test result at all.
+   - **Read the bound.** It asks the same question `prawduct-hook test-status` asks, so a repo
+     cannot be green for the builder and stale for the release. That question is *"is the saved
+     run green and current"*, **not** *"did a run meet the tree you are about to tag"* — Phase 1
+     rewrites `plugin/VERSION`, `plugin/.claude-plugin/plugin.json`, `pyproject.toml` and
+     `plugin/CHANGELOG.md` after this phase, so the tagged tree does not exist yet. If you want a
+     green-suite check at the tagging moment, that is a control at Phase 2, not this one.
 
    `no-release-plan:` · `no-change-log:` · `no-version:` · `unreadable-release-plan:` · `no-backlog:`
    - An input the gate needs is missing or unreadable. **The message names the path** — create or
@@ -271,6 +341,21 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > subset that looks complete. **Step 0 already printed the full list** — the
    > release-pending scopes it enumerated are the scopes to walk here. Use that
    > output; do not re-derive it from memory.
+   >
+   > **Step 0 is what makes the scope-keyed part of this sweep complete.** A
+   > release-pending entry that carries a tag line but no `scope=` refuses there
+   > (`unclassifiable-pending-entry:`), so every *tagged* release-pending entry has
+   > a scope by the time you reach this step, and none of them can hide from a
+   > `scope=`-keyed grep. Before that refusal existed such an entry was invisible
+   > to the gate *and* to this pipeline, and nothing in the procedure would have
+   > said so.
+   >
+   > **It does not cover untagged history.** An entry with no tag line at all is
+   > not release-pending *to the gate* — deliberately, since the gate claims no
+   > authority over entries predating the tag convention — so it never reaches that
+   > refusal and never appears in a `scope=` grep at all. The per-candidate code
+   > test above is the only thing that separates those. Walk them; a clean Step 0
+   > is not permission to skip that walk.
    >
    > Count them rather than recalling them — the number moves every time work
    > merges. This enumerates every scope with a statusless entry, **whole file,
@@ -361,11 +446,12 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    `vMAJOR.MINOR.PATCH` fails closed, because an unevaluable release state must
    never read as "fine".
 
-   The gate also prints **advisories** that do not change its exit code. Read
-   them: *a release-pending scope with no build-plan file* means work is shipping
-   with nothing documenting it, and *two plans declaring one scope* means the
-   pairing this gate relies on is ambiguous. Neither blocks; both are worth
-   knowing before you tag.
+   The gate also prints **advisories** that do not change its exit code. None
+   blocks and all are worth knowing before you tag — the digest ones most of all,
+   since they are the cheapest to fix now and the most annoying to discover after
+   it. **Phase 0 step 0 above is where each one is named and answered**; read them
+   there rather than from a second list here, because a copy of that list goes
+   stale the next time an advisory is added, and it already has.
 
 6. Confirm each shipping scope's build plan is actually closed out — every
    `## Status` box ticked for the chunks this release carries.
@@ -399,6 +485,10 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     this release, and replace the seeded placeholder if it is still there. Only when no
     prerelease section exists (the first cut after this runbook changed) do you add a fresh
     `## vX.Y.Z` section above the previous release.
+
+    > *Phase 0 already told you which of these you are in: it prints the section's first line
+    > back as `digest headline: '…'` and warns when that line is missing or still the seed. If
+    > you read a warning there, this is the step it was pointing at.*
 
     > *Why check first: `develop` runs on a prerelease of the version it is heading for and
     > accumulates its notes under `## vX.Y.Z-dev.N`, so on any release that was dogfooded the

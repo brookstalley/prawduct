@@ -138,7 +138,9 @@ same set in executable running order, and is the document to work from when actu
 0. **Confirm it is fit to ship**, not merely that something is unreleased:
    `./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z`. Every release-pending scope
    must be classified `ships`, or `withheld` behind a **named open** blocker, in the
-   `## Release classification` table of `.prawduct/artifacts/release-plan-vX.Y.Z.md`. The gate fails
+   `## Release classification` table of `.prawduct/artifacts/release-plan-vX.Y.Z.md` — **and the
+   saved suite run must be green and current**, since v2.1.6 shipped on a red suite for want of
+   anything on this path reading a test result. The gate fails
    closed; its withheld count also selects the promotion shape at step 1. Full branch-by-branch
    handling is Phase 0 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.
 1. **Merge `develop` → `main`.**
@@ -287,6 +289,15 @@ same set in executable running order, and is the document to work from when actu
 - **Shipped** — `release=vX.Y.Z` present. Step 3 adds it, and adding it is the whole
   transition.
 
+**A tagged entry carrying neither key is not a third state — it is a refusal.** `scope=` is what
+makes release-pending work classifiable, so an entry whose `prawduct:` tag line sets neither
+`scope=` nor `release=` enumerates as no scope, reaches no row of the release plan's classification
+table, and can be neither shipped nor withheld. (An entry with **no tag line at all** is untagged
+history, not a malformed entry, and the gate has never claimed authority over it.) `check-releasability` refuses it — exit 1 with an `unclassifiable-pending-entry:` line
+naming each offending entry and its change-log line number — rather than certify a release over
+work it never enumerated. The remedy is one `scope=` per entry, matching the `scope:` of the build
+plan the work belongs to.
+
 **A legacy `status=` tag is inert.** Older logs carry `status=merged` and `status=shipped`
 from the retired derived-views mechanism. Nothing reads them, no value of them means
 anything, and they are neither rewritten nor removed — rewriting 21 repos' history is churn
@@ -314,8 +325,11 @@ the derived-views regenerator, which a release did not run — which is why the 
 reached a release at all: the guard existed and nothing on the release path called it. Rehoming
 it onto the gate that acts on the field is the durable fix, and it is the reason this validator
 survived the retirement of the five around it. The gate also
-reports two **advisories** that do not change its exit code — a release-pending scope with no
-build-plan file (work shipping with nothing describing it), and two plans declaring one scope.
+reports **advisories** that do not change its exit code — work shipping with nothing describing
+it, and work shipping with nothing written *for consumers* about it. They are enumerated where a
+release operator meets them, in Phase 0 of
+`.prawduct/runbooks/cut-and-publish-a-plugin-release.md`; a count here goes stale every time one
+is added, and this sentence already had.
 
 Entries with multiple non-conflicting tag lines are unioned with a stderr WARNING
 (VWS-4D8J) — fix the format, but the reading is correct. Run `check-releasability` before
