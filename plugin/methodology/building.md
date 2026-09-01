@@ -34,7 +34,7 @@ There are no phases. The depth of governance scales with two dimensions:
 - **Debt paydown**: Scope discipline, architecture freshness.
 - **Emergency hotfix**: Minimal path — fix + test + verify. Artifacts can follow.
 
-Classification heuristic: 1-2 files = trivial/small; 5+ files or new dependency = medium; new directory structure or API surface = large.
+Classification heuristic: 1-2 files = trivial/small; 5+ files or new dependency = medium; new directory structure or API surface = large. **3-4 files is the dead zone: medium if the change crosses a contract surface, adds a dependency, or touches state outliving the process; small otherwise.**
 
 ## Before You Build: Confidence Check
 
@@ -64,7 +64,8 @@ retroactivity). Departing from a norm that already governs your change is a reco
 
 **Establish a clean baseline.** Before the first work cycle of a session:
 
-- *Tests*: Run the full suite. Every test must pass; fix any failures. **A delegate skips this**, inheriting the main agent's baseline.
+- *Tests*: Run the full suite. Every test must pass. **A delegate skips this**, inheriting the main agent's baseline.
+- *A red baseline is diagnosed before it is fixed*: re-run the failure on a clean checkout of the base commit. Red there too → not yours; record it (`test-evidence record --degraded`) and name it in the handoff rather than folding a fix into your diff. Green there → yours, and you fix it first.
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.
 
@@ -82,7 +83,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Update artifacts as you go.** When implementation changes something an artifact describes — API surface, data model, architecture — update that artifact as part of implementation, not at the end. Artifact drift is the #1 recurring quality issue at scale.
 
-**CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
+**CLAUDE.md is instructions, not documentation** — dev commands, test workflows, conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
 
 **Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you, and never narrate history.** Review and finding ids never ship — history's one home is commits and the change-log, so a comment recounting it (`// Critic caught Y`) is a deletion, not a rewrite. Carry the present-tense reason instead: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`.
 
@@ -101,7 +102,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve.
 
-**Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds (consolidate's own output says which writes stay free meanwhile). **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default; filing everything turns the backlog into a guilt pile. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
+**Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds. **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one.
 
@@ -113,7 +114,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 ## Session Scope Discipline
 
-**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: per-chunk reviews accumulate, the final/cumulative lands with the last chunk, and session boundaries don't reset the plan.
+**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: per-chunk reviews accumulate, and the final/cumulative lands with the last chunk.
 
 **Complete required governance at chunk boundaries, then signal — never *ask* whether to prepare a handoff; prepare it and say so.** At a chunk boundary, or when the user switches tasks, complete in order:
 
@@ -161,7 +162,7 @@ Research scales to impact: **medium** (pervasive pattern, non-core dep) → quic
 
 ## Working With Specs
 
-Specs are guides, not scripture. **If the spec is wrong**, flag it, propose the fix, update the spec to match reality. **If the spec is ambiguous**, pick the most likely interpretation, implement it, note the ambiguity. **If the spec is incomplete**, surface it — reasonable choices for minor gaps, escalate significant ones. **If you can't implement something**, say so explicitly. Never silently drop a requirement (Principle 2).
+Specs are guides, not scripture. **If the spec is wrong**, flag it, propose the fix, update the spec to match reality. **If the spec is ambiguous**, pick the most likely interpretation, implement it, note the ambiguity. **If the spec is incomplete**, surface it — reasonable choices for minor gaps, escalate significant ones.
 
 ## Test Discipline
 
@@ -171,9 +172,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Tests are independent.** No shared mutable state, no ordering dependency.
 
-**Tests never weaken.** Don't delete tests or relax assertions to make code pass. Consolidation is fine — name the reason in the change-log. Fix the code, never the test (Principle 1 — a bright line).
-
-**All tests pass, always.** Diagnose and fix every failure.
+**Tests never weaken.** Consolidation is fine — name the reason in the change-log (Principle 1 — a bright line).
 
 **Test coverage is proportionate.** Every product needs at least: happy path, error handling for likely failures, and edge cases for anything involving money, data, or safety.
 

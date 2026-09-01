@@ -312,7 +312,26 @@ LAST_MEASURED_TOKENS = {
     # decisions" is Decision Research, "Tuning a mechanism you haven't read" is
     # the cheap-check gate), and both are prose-pinned by NAME, so what a trim
     # can remove is the restated body and not the entry.
-    "methodology/building.md": 4747,
+    # +7 on 2026-09-01 (#299): two of the four weaker-model scaffolds, placed
+    # where the judgement is actually made. (a) The 3-4-FILE TIEBREAK -- the
+    # classification heuristic named 1-2 and 5+ and left the middle to taste,
+    # which is a judgement offload with nothing behind it; the tiebreak turns on
+    # blast radius (contract surface / dependency / state outliving the
+    # process), not on taste. (b) The RED-BASELINE PROTOCOL -- "every test must
+    # pass; fix any failures" told a builder what the state must be and nothing
+    # about the commonest way it is not, and the expensive error is folding
+    # someone else's failure into your own diff. It replaces the bare "All tests
+    # pass, always. Diagnose and fix every failure", which it makes specific.
+    #
+    # Nearly self-funded. What paid: the Tests-never-weaken restatement of the
+    # digest's contracts bullet; the guilt-pile argument, which
+    # `reflection.md`'s Earn-the-backlog-entry rule owns in full; "never
+    # silently drop a requirement", the digest again; a compression of the
+    # CLAUDE.md-is-instructions paragraph; and one clause of Session Scope
+    # Discipline that restated this file's own evidence-model section (nothing
+    # expires by session). The other two scaffolds went to `discovery.md` and
+    # `reflection.md`, which is where their judgements are made.
+    "methodology/building.md": 4754,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -551,7 +570,17 @@ LAST_MEASURED_TOKENS = {
     # Before-Building check. Unfunded by design -- the on-demand class carries a
     # reading and no ceiling (#688), and the always-injected surface (CLAUDE.md)
     # is where the same feature paid at a ceiling.
-    "methodology/discovery.md": 4839,
+    # +311 on 2026-09-01 (#299): the domain-concern checklist, SEEDED BY THE
+    # SIX STRUCTURAL CHARACTERISTICS. "Detect domain-specific concerns
+    # dynamically, no hardcoded lists" is a judgement offload with no floor
+    # under it -- on a weaker model, "dynamically" degrades to "from memory",
+    # and what a hardcoded list was badly doing was guaranteeing a floor. The
+    # seed table restores the floor without becoming the list: it is keyed to
+    # characteristics the product already recorded, and the paragraph after it
+    # says in terms that the table is the floor and the ceiling is the agent's.
+    # Unfunded, and it is the on-demand class -- growth here is declared, not
+    # blocked (#688), and paid only by a session that opens the guide.
+    "methodology/discovery.md": 5150,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -646,7 +675,16 @@ LAST_MEASURED_TOKENS = {
     # errors were reasoning from the special case because the principle was
     # never written down. A READING, no ceiling, per the decision block above
     # this dict — the cost is paid by a session that opens the guide.
-    "methodology/reflection.md": 4885,
+    # +209 on 2026-09-01 (#299): the ROOT-CAUSE STOPPING RULE. "Stop when you
+    # reach something you can change" is true and unusable under pressure --
+    # every link in a why-chain is something someone could change, so the rule
+    # licensed stopping at the first one. The replacement is three conditions
+    # that must ALL hold (changeable here, would have prevented this instance,
+    # would prevent instances that look different), plus the tell that the chain
+    # stopped early: a terminal that restates the failure ("we were in a hurry",
+    # "nobody reviewed it") rather than explaining it. Principle 16 is the norm;
+    # this is the procedure that makes it checkable.
+    "methodology/reflection.md": 5094,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
