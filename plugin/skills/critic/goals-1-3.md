@@ -1,7 +1,6 @@
 # Critic: Goals 1-3 (`chunk` and `verify-resolutions`)
 
-**Self-contained by design** — everything you need is here,
-so do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
+**Self-contained by design**: do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
 
 **Never run tests, builds, or executables**: review test quality and coverage by reading
 code. Both modes are **always single-pass** — no subagents, no coordinator. In `verify-resolutions`,
@@ -14,7 +13,7 @@ already-planned commit.
 
 1. Read `.prawduct/.critic-partials/manifest.json` — `files_changed`, `files_reviewed`, the review
    interval, `commit_reviewed`, `rendezvous` (where you write) and `record_lint` (below) are your
-   scope. Code-written and authoritative — derive no interval yourself.
+   scope. Authoritative — derive no interval yourself.
 2. Read `.prawduct/project-state.yaml`, then the changed files and `git diff` over the interval.
 3. Read the `.prawduct/artifacts/` a change touches — its build plan, and any artifact it cites.
 4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes.
@@ -40,19 +39,17 @@ reasons. Do not re-raise one absent material change in its cited files** — one
 = older answers dropped; `unavailable` = the join failed, so you know nothing.
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
-recount it: that is how a record defect buys a review round. Each entry carries its explanation —
-raise it, don't restate it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
+recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
 **WARNING** under Goal 2. `suite-total-claim` and `learnings-entry-shape` → **NOTE**.
 **`unchecked` is not a pass, and only one shape blocks.**
 `chunk-ref-missing unchecked — …` is
 **BLOCKING**: the check could not run — indistinguishable from passing. `chunk-ref-missing
-no-subject — …` is **NOTE**: the scope is real (the change-log declares it) but plan-less — nothing
-to grade. A typo'd scope still arrives `unchecked`.
+no-subject — …` is **NOTE**: the scope is real (the change-log declares it) but plan-less → nothing
+to grade.
 `chunk-ref-missing
 graded chunk … of <plan>: …` is an **assumption, not a failure** — it DID run (`chunk_graded`
-non-null), but half of "whose deliverables" was guessed: the chunk
-inferred from build-plan Status, or the plan from the `active_build_plan` pointer — the line names
-which → **NOTE**. Blocking either is a false blocker no `--chunk` can clear.
+non-null), but half of "whose deliverables" was guessed — the line names
+which → **NOTE**. Blocking it is a false blocker no `--chunk` can clear.
 Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_graded` name the subject.
 `null` there, or in any `counts` entry, means **no answer** — not a zero.
 
@@ -99,6 +96,7 @@ Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_grade
 - **BLOCKING** — must fix before proceeding.
 - **WARNING** — true *and* worth the builder's time. Name the consequence: *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
 - **NOTE** — genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly. That covers record-only text (change-log, learnings, plan text) and comment, docstring and doc wording, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
+- **A finding's subject is never another finding** — restating one, naming its consequence, or cross-checking it against learnings folds in or is dropped. Test on your own partial: is a finding its subject?
 - **Prose remedies** — stale prose gets one of three: delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
 **Never name the backlog as a finding's destination** — disposition is the builder's call.

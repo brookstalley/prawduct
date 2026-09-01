@@ -75,10 +75,17 @@ The role → goal mapping
    it binds every reviewer: a re-raised accepted finding costs the builder a disposition and buys a
    round, whichever goal noticed it. (`truncated` = older answers dropped; `unavailable` = the join
    failed, so you know nothing.)
-5. Read the changed files and inspect the diff (`git -C <project dir> …`). Do NOT run tests or
+5. **A finding's subject is never another finding.** An observation that restates one of your own
+   findings, names its consequence, or cross-checks it against learnings folds into that finding or
+   is dropped — never filed as a second one. This is here because it binds every reviewer and
+   because YOU are the only one who can apply it: consolidation merges partials it cannot read the
+   intent of, and the other two reviewers' findings are invisible to you, so the test is never
+   "does this duplicate R-13?" — it is "is a finding the subject of this one?". A count read as
+   review thoroughness is what the builder budgets remediation against.
+6. Read the changed files and inspect the diff (`git -C <project dir> …`). Do NOT run tests or
    builds — the Goal 1 `test-status` and `verify-coverage` probes report what a previous run
    recorded and are the only commands your goals ever ask you to issue.
-6. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
+7. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
    (definitions in `review-protocol.md`). A clean pass has zero findings — that is normal and
    correct; do not invent findings to fill space.
 
