@@ -4702,3 +4702,47 @@ automated.
 **My own error underneath it** was predicting one environment's result from another's rather than
 asking the cheap question — could the assertion even reach its subject over there? Retrieval over
 generation applies to predictions about tooling, not only to design decisions.
+
+## A documented clearing arm is not evidence it is implemented
+
+**Context.** `#732`, recording stopgaps for four stalled norm transitions. The advisory's own
+remedy text and `probe_stalled_transition`'s docstring both say a recorded stopgap clears it.
+
+**What was true.** Nothing in `plugin/lib/norm_probes.py` detects a stopgap. `_cited_stall_age`
+resolves the tracking item's `updated_at` post-cutover (`_item_floor_date` off `reviewed:`/`added:`
+before it), and the only other lever is `Status:` leaving `in-transition`. The word `stopgap`
+occurs in the module exclusively in comments and in the two strings shown to a reader.
+
+**Why it is more than a doc bug.** The failure is directional. Doing the documented thing —
+writing the stopgap into the norm entry — leaves the advisory firing, and the operator is then one
+step from the lever that does work: touch the item. That is precisely the "silent departure" the
+Authority Rule forbids, reached by following the instructions. A prose contract that names an
+unimplemented arm does not merely fail to help; it routes compliant people to the forbidden move.
+
+**What actually cleared it here.** `docs/norms.md` puts an exception's clock on a backlog item, so
+recording it meant commenting on #342/#341/#164 — which moved `updated_at`, the *touched* arm. The
+right outcome by the wrong mechanism. Filed as `#737`; the preferred remedy is teaching the probe
+to honour a `Stopgap:` field while its expiry is in the future, which also gives the expiry the
+mechanical firing path it currently lacks.
+
+**Generalises to.** Any gate, probe or linter whose docstring enumerates exemptions. Before
+building the fix the docs describe, grep for the mechanism. If it is absent, that is the finding.
+
+## A deduped summary undercounts the sites, and going quiet hides the miss
+
+**Context.** `#732`. The advisory named four stalled transitions: `architecture.md`→GOV-2R8K,
+`architecture.md`→GOV-4T9P, `architecture.md`→LNG-5W8R, `nonfunctional-requirements.md`→LNG-5W8R.
+
+**The trap.** `_scan_direction_citations` accumulates into `found[(path.name, cited)]` — a dict
+keyed by artifact and tracking id. `architecture.md` carries **two** in-transition entries citing
+LNG-5W8R (the Python-agnosticism norm at the per-suffix-dispatch rule, and the
+guides-never-implements corollary at the linter-duplication rule). They collapse to one row.
+
+**Why the miss would have survived.** Editing the four printed rows clears the advisory completely,
+because the key that was already satisfied stays satisfied. The fifth entry would have gone on
+governing new work with no recorded exception, and no signal would ever have pointed at it. A
+report going quiet is evidence about the report's key, not about the sites.
+
+**What to do.** Read the scan, not the summary — here, iterate `_direction_lines` and filter on
+`_IN_TRANSITION_RE` directly, which returns five. Where a report aggregates, its row count and your
+edit count are different quantities and should be reconciled explicitly.
