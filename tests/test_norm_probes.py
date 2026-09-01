@@ -385,6 +385,281 @@ class TestStalledTransitionProbe:
         assert _id(a) == _id(b)
 
 
+class TestStopgapClearsAndExpires:
+    """The third clearing arm `docs/norms.md` § Transitions always named (#737).
+
+    Until this landed, `Stopgap:` appeared in this module only in a docstring, a
+    comment and two operator-facing strings — the advisory told the reader to
+    record one and then could not read the one they recorded. So the ONLY thing
+    that bought silence was touching the tracking item, which is also what resets
+    the stall clock. That combination is why suppression alone is not the fix:
+    an entry could carry a lapsed bound and still never fire, because the touch
+    that silenced it moved the only clock being measured. Both directions are
+    pinned here, and a suppression test without its expiry sibling would re-open
+    exactly the hole #737 describes.
+    """
+
+    def _entry(self, stopgap: str) -> str:
+        return (
+            "- **X.**\n"
+            "  Status: in-transition — export tracked in OBS-4C1K\n"
+            f"  {stopgap}\n"
+        )
+
+    def test_silent_while_the_recorded_expiry_is_still_ahead(self, tmp_path):
+        # The stall itself is real (added: 120 days ago, no reviewed:) — the
+        # bounded exception is the only thing standing between it and a fire.
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                self._entry(
+                    f"Stopgap: recorded {_days_ago(1)}, expires {_days_ahead(90)}. "
+                    "`[DECISION: interim rule stands | the norm's why is served | "
+                    "user can veto/override]`"
+                )
+            ),
+        )
+        assert np.probe_stalled_transition(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_fires_once_the_expiry_has_passed(self, tmp_path):
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                self._entry(f"Stopgap: recorded {_days_ago(200)}, expires {_days_ago(1)}.")
+            ),
+        )
+        out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert "stopgap expired" in out[0].trigger_summary
+        assert "observability-strategy.md→OBS-4C1K" in out[0].trigger_summary
+
+    def test_lapsed_expiry_fires_even_when_the_tracking_item_is_fresh(self, tmp_path):
+        # THE regression this item is about. A fresh `reviewed:` clears the stall
+        # arm outright, so if the expiry were only ever read as a suppressor the
+        # advisory would be silent and the recorded bound would be a note with no
+        # clock behind it — the exact state commit ac6bbb8b left this repo in.
+        _write_backlog(
+            tmp_path,
+            _item("OBS-4C1K", status="open", extra=f"reviewed: {_days_ago(1)}"),
+        )
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                self._entry(f"Stopgap: recorded {_days_ago(200)}, expires {_days_ago(1)}.")
+            ),
+        )
+        out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1 and "stopgap expired" in out[0].trigger_summary
+
+    def test_expiry_today_is_still_in_force(self, tmp_path):
+        # Aligned with `revisit-due`, which fires on a date STRICTLY before today.
+        # Two dated clocks in one feature disagreeing about "expires today" is a
+        # bug report waiting to be filed.
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                self._entry(f"Stopgap: recorded {_days_ago(90)}, expires {_days_ago(0)}.")
+            ),
+        )
+        assert np.probe_stalled_transition(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_unbounded_stopgap_suppresses_nothing(self, tmp_path):
+        # An exception with no clock is not a bounded exception. Failing toward
+        # the advisory here is deliberate and is the opposite of this module's
+        # usual default: the signal was read fine and says there is no bound.
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                self._entry("Stopgap: recorded when we get to it; we will revisit eventually.")
+            ),
+        )
+        out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1 and "unchanged >" in out[0].trigger_summary
+
+    def test_stopgap_on_a_sibling_entry_does_not_cover_this_one(self, tmp_path):
+        # Entry-scoped, not file-scoped: `_direction_entries` exists so a stopgap
+        # covers the Status line it sits with and no other. A file-wide read
+        # would let one bounded exception silence every transition in the artifact.
+        _write_backlog(
+            tmp_path,
+            _item("OBS-4C1K", status="open") + _item("SEC-9Z8Y", status="open"),
+        )
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                self._entry(f"Stopgap: recorded {_days_ago(1)}, expires {_days_ahead(90)}."),
+                "- **Y.**\n  Status: in-transition — tracked in SEC-9Z8Y\n",
+            ),
+        )
+        out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert "SEC-9Z8Y" in out[0].trigger_summary
+        assert "OBS-4C1K" not in out[0].trigger_summary
+
+    def test_a_nested_bullet_does_not_split_an_entry(self, tmp_path):
+        # The reason `_direction_entries` groups on bullet INDENT rather than on
+        # "any bullet": a sub-list between the Status line and its Stopgap would
+        # otherwise start a new entry and lose the association silently.
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **X.**\n"
+                "  Status: in-transition — export tracked in OBS-4C1K\n"
+                "  - sub-point about the interim rule\n"
+                f"  Stopgap: recorded {_days_ago(1)}, expires {_days_ahead(90)}.\n"
+            ),
+        )
+        assert np.probe_stalled_transition(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_latest_expiry_wins_when_an_entry_carries_two(self, tmp_path):
+        # Successive recordings: covered while any bound still runs.
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **X.**\n"
+                "  Status: in-transition — export tracked in OBS-4C1K\n"
+                f"  Stopgap: recorded {_days_ago(200)}, expires {_days_ago(1)}.\n"
+                f"  Stopgap: recorded {_days_ago(1)}, expires {_days_ahead(90)}.\n"
+            ),
+        )
+        assert np.probe_stalled_transition(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_emphasised_stopgap_marker_is_read(self, tmp_path):
+        # Every sibling field marker tolerates markdown emphasis (the #569 line of
+        # defects); a new field that does not would be the same bug, one field over.
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                self._entry(f"**Stopgap:** recorded {_days_ago(1)}, expires {_days_ahead(90)}.")
+            ),
+        )
+        assert np.probe_stalled_transition(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_stopgap_is_not_itself_a_norm_entry(self):
+        # `_NORM_FIELDS` is what makes a bullet an ENTRY. A stopgap qualifies an
+        # entry a Status:/Why: line already established; admitting it would let a
+        # roadmap bullet with a stopgap certify as a ratified registry.
+        assert not np._has_direction_entry(
+            _direction_artifact("- **X.**\n  Stopgap: recorded 2026-01-01, expires 2026-06-01.\n")
+        )
+
+    def test_a_lapsed_stopgap_is_reported_even_when_the_backlog_cannot_answer(self, tmp_path):
+        # The expired arm reads only the artifact, so a store outage must not take
+        # it down with the arm that needs the store. Both are reported: hiding the
+        # departure would be worse, and hiding the outage would claim a clean scan.
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                self._entry(f"Stopgap: recorded {_days_ago(200)}, expires {_days_ago(1)}.")
+            ),
+        )
+        state = ProjectState({"backlog_service_repo": "acme/product"})
+        out = np.probe_stalled_transition(state, _cb(tmp_path))
+        types = sorted(c.type for c in out)
+        assert types == ["backlog-cache-unreadable", "stalled-transition"], types
+        stall = next(c for c in out if c.type == "stalled-transition")
+        assert "stopgap expired" in stall.trigger_summary
+
+    def test_advisory_id_is_stable_across_both_arms(self, tmp_path):
+        # Arm-independent evidence, the `norm-registry-unratified` shape: the id
+        # must not churn as the firing arm changes, or one nudge becomes two.
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact("- **X.**\n  Status: in-transition — tracked in OBS-4C1K\n"),
+        )
+        stall_only = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))[0]
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                self._entry(f"Stopgap: recorded {_days_ago(200)}, expires {_days_ago(1)}.")
+            ),
+        )
+        expired_only = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))[0]
+        assert "stopgap expired" in expired_only.trigger_summary
+        assert _id(stall_only) == _id(expired_only)
+
+    def test_direction_entries_flatten_to_direction_lines(self):
+        # The property dead-why depends on: grouping added a way to ask about an
+        # entry, it did not change which lines are seen or in what order.
+        text = _direction_artifact(
+            "Some section prose before the first bullet.\n",
+            "- **X.**\n  Status: in-transition — tracked in OBS-4C1K\n  - nested\n",
+            "- **Y.**\n  Why: because.\n",
+        )
+        flat = [line for entry in np._direction_entries(text) for line in entry]
+        assert flat == np._direction_lines(text)
+
+
+# =============================================================================
+# the five live stopgaps this repo recorded (ac6bbb8b) — the #737 fixture
+# =============================================================================
+
+
+class TestThisRepoRecordedStopgapsAreReadable:
+    """Repo-coupled: the entries commit `ac6bbb8b` wrote must be machine-visible.
+
+    #737 was filed because those five `Stopgap:` fields went into live artifacts
+    while nothing could read them. Asserting the parse against the real entries
+    rather than a synthetic fixture is the point: a synthetic one would have
+    passed against the pre-#737 code too, since the defect was never in the
+    regex — it was that no regex existed and nobody noticed, because the only
+    corpus anyone checked was the one written to match.
+
+    Deliberately NOT asserting that they are still in force: that clock belongs
+    to `TestSilentAgainstThisRepo`, which goes red when the advisory fires. Two
+    tests owning one date would make the expiry lapse twice.
+    """
+
+    def _artifacts(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        return sorted((repo_root / ".prawduct" / "artifacts").glob("*.md"))
+
+    def test_every_recorded_stopgap_names_a_parseable_bound(self):
+        marked = [
+            (path.name, line)
+            for path in self._artifacts()
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if np._STOPGAP_RE.match(line)
+        ]
+        assert marked, "expected this repo to carry recorded stopgaps (ac6bbb8b wrote five)"
+        unbounded = [name for name, line in marked if not np._STOPGAP_EXPIRES_RE.search(line)]
+        assert unbounded == [], f"recorded stopgaps with no `expires YYYY-MM-DD` bound: {unbounded}"
+
+    def test_each_recorded_stopgap_sits_in_an_in_transition_entry(self):
+        # A stopgap the parser can read but that is grouped away from its Status
+        # line suppresses nothing and expires against nothing — visible only by
+        # asking the entry walker, not the line scan.
+        orphaned = []
+        for path in self._artifacts():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for entry in np._direction_entries(text):
+                if not any(np._STOPGAP_RE.match(line) for line in entry):
+                    continue
+                if not any(np._IN_TRANSITION_RE.search(line) for line in entry):
+                    orphaned.append(path.name)
+        assert orphaned == [], f"stopgaps not grouped with an in-transition Status line: {orphaned}"
+
+
 # =============================================================================
 # norm-registry-unratified
 # =============================================================================

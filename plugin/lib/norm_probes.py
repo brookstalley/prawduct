@@ -58,18 +58,34 @@ not look* is the whole reason these two were made to announce themselves.
   summary names each ``artifact→id`` pair so the reader can re-affirm-and-cleanup
   or retire the norm.
 
-- **stalled-transition** — *Fires:* a ``## Direction`` entry contains the literal
-  ``Status: in-transition`` and its tracking backlog item (the id on that Status
-  line) is still live but unchanged for more than :data:`STALL_WINDOW_DAYS`.
-  "Unchanged" is the provider's ``updated_at`` post-cutover and the item's own
-  metadata-bar dates before it (see :func:`_item_floor_date`); no git shell-out
-  (no existing probe shells to git, and a probe must stay cheap). No date signal
-  on the item ⇒ no fire (fail toward
-  silence). A *dead* tracking item is dead-why's job, not this one. *Clears:* the
-  tracking item is touched, the
-  transition completes (Status leaves ``in-transition``), or a stopgap is
-  recorded. *Reader-action:* the summary names each ``artifact→id`` and its
-  staleness so the reader can accelerate the migration or record a stopgap.
+- **stalled-transition** — *Fires:* on either of two arms, under one
+  arm-independent evidence string. (a) *stalled* — a ``## Direction`` entry
+  contains the literal ``Status: in-transition`` and its tracking backlog item
+  (the id on that Status line) is still live but unchanged for more than
+  :data:`STALL_WINDOW_DAYS`. "Unchanged" is the provider's ``updated_at``
+  post-cutover and the item's own metadata-bar dates before it (see
+  :func:`_item_floor_date`); no git shell-out (no existing probe shells to git,
+  and a probe must stay cheap). No date signal on the item ⇒ no fire (fail
+  toward silence). A *dead* tracking item is dead-why's job, not this one.
+  (b) *expired stopgap* — the entry carries a ``Stopgap:`` field whose
+  ``expires <date>`` bound has passed, which fires whatever the stall clock
+  says, and needs no backlog read at all. *Clears:* the tracking item is
+  touched, the transition completes (Status leaves ``in-transition``), or a
+  stopgap with a FUTURE expiry is recorded — arm (a) is suppressed for the
+  duration of that bound and arm (b) takes over when it lapses.
+  *Reader-action:* the summary names each ``artifact→id`` with its staleness or
+  its lapsed expiry, so the reader can accelerate the migration, record a
+  stopgap, or renew one.
+
+  **The stopgap arm is what makes the bound real.** The field was documented as
+  a clearing path and read by nothing until #737, so recording one bought no
+  silence and *touching the tracking item* was the only thing that did — which
+  also means a recorded bound could lapse and never be noticed, because the
+  touch that silenced the advisory reset the clock the bound was measured
+  against. Suppression and expiry-firing are therefore one change, not two: the
+  first without the second would trade a nagging advisory for an unwatched one.
+  An unbounded ``Stopgap:`` (no parseable ``expires``) suppresses nothing — an
+  exception with no clock is exactly what this advisory exists to surface.
 
 - **norm-registry-unratified** — *Fires:* one-shot post-upgrade — a strategy-class
   artifact exists (:data:`STRATEGY_CLASS_ARTIFACTS`) AND the registry is
@@ -251,6 +267,34 @@ _STATUS_RE = re.compile(rf"^\s*{_EMPH}Status:")
 # anywhere between the marker and the token" rather than patched per-form.
 _IN_TRANSITION_RE = re.compile(rf"Status:{_EMPH}\s*{_EMPH}in-transition")
 
+# The ``Stopgap:`` field (docs/norms.md § Transitions): the third clearing arm
+# the stall advisory has always *named* and, until #737, could not read. A
+# stopgap is a BOUNDED exception, so the expiry is not decoration — it is the
+# whole field. Two regexes because they answer two questions: is this line the
+# field (marker, anchored, emphasis-tolerant like every sibling), and does it
+# name a bound (``expires YYYY-MM-DD`` anywhere in the field's prose, since the
+# recorded form leads with ``recorded <date>, expires <date>`` and continues
+# into a DECISION block).
+#
+# ``Stopgap`` rather than ``Live exception``: ``_FIELD_OR_ITEM_RE`` admits
+# single-word field labels only, so a two-word marker is not a line start and
+# soft-wraps into the line above — where no field matcher can see it, and where
+# its citations would be read as the previous field's. The spelling is load-
+# bearing, not stylistic (commit ac6bbb8b records the same finding).
+#
+# NOT added to :data:`_NORM_FIELDS`: that tuple defines what makes a bullet a
+# norm ENTRY, and a stopgap-only bullet is not one. It qualifies an entry that
+# a ``Status:``/``Why:`` line already established.
+_STOPGAP_RE = re.compile(rf"^\s*{_EMPH}Stopgap:")
+_STOPGAP_EXPIRES_RE = re.compile(r"\bexpires\s+(\d{4}-\d{2}-\d{2})\b")
+
+# A list item's opening bullet and its indentation — the unit :func:`_direction_entries`
+# groups on. Indentation is captured because a NESTED bullet belongs to the entry
+# above it rather than opening a new one; grouping on "any bullet" would let a
+# sub-list between a ``Status:`` line and its ``Stopgap:`` line split one entry
+# into two and lose the association the suppression depends on.
+_BULLET_RE = re.compile(r"^(\s*)[-*]\s")
+
 # A bare ISO date, matched in full — a partial/free-text ``revisit:`` trigger must
 # NOT parse as a date (it belongs to the janitor sweep, not this probe).
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -428,6 +472,115 @@ def _direction_lines(text: str) -> list[str]:
             out[-1] = out[-1].rstrip() + " " + line.strip()
         else:
             out.append(line)
+    return out
+
+
+def _direction_entries(text: str) -> list[list[str]]:
+    """:func:`_direction_lines`, grouped into one list per norm ENTRY.
+
+    Flattening this is the identity on :func:`_direction_lines` — every line is
+    yielded, once, in order — so a caller that does not care about entry
+    boundaries reads exactly what it always did. What the grouping adds is the
+    ability to ask a question *about an entry* rather than about a line, which
+    is what a ``Stopgap:`` needs: the field qualifies the ``Status:`` line in
+    the same entry, and there is no other way to know which.
+
+    An entry opens at a list bullet (:data:`_BULLET_RE`) whose indentation is at
+    most the open entry's. A MORE indented bullet is a nested list item and
+    stays with the entry above it — grouping on "any bullet" would let a
+    sub-list sitting between a ``Status:`` line and its ``Stopgap:`` line split
+    one entry in two and silently lose the association.
+
+    Content before the first bullet (a section's descriptive prose) becomes a
+    leading group carrying no bullet. It is not an entry and will never hold a
+    stopgap, but it is yielded so that the flatten-is-identity property holds
+    and a line-oriented caller loses nothing.
+    """
+    entries: list[list[str]] = []
+    open_indent: int | None = None
+    for line in _direction_lines(text):
+        bullet = _BULLET_RE.match(line)
+        if bullet is not None:
+            indent = len(bullet.group(1))
+            if open_indent is None or indent <= open_indent:
+                entries.append([line])
+                open_indent = indent
+                continue
+        if not entries:
+            entries.append([])  # prose ahead of the first bullet; not an entry
+        entries[-1].append(line)
+    return entries
+
+
+def _stopgap_expiry(entry: list[str], *, today: date) -> "tuple[date, bool] | None":
+    """The entry's bounded exception as ``(expiry, is_live)``, or ``None``.
+
+    ``None`` covers both "no ``Stopgap:`` field" and "a ``Stopgap:`` field that
+    names no expiry", and collapsing them is deliberate: ``docs/norms.md``
+    § Transitions defines a stopgap as a *bounded* exception, so an unbounded
+    one is not a stopgap and must not buy silence. Failing toward the advisory
+    here rather than toward silence is the opposite of this module's usual
+    default, and correctly so — the usual default protects against nagging on a
+    signal the probe could not read, whereas this signal was read fine and says
+    the exception has no clock. An exception with no clock is precisely what the
+    stall advisory exists to surface.
+
+    When several ``Stopgap:`` fields sit in one entry (successive recordings),
+    the LATEST expiry decides: the entry is covered while any bound is still
+    running and forcing once every one of them has lapsed.
+
+    ``is_live`` is ``expiry >= today`` — an exception recorded as expiring on a
+    date is still in force *on* that date and lapses the day after. That is the
+    same off-by-one convention ``revisit-due`` uses (it fires on a date strictly
+    before today), and the two are kept aligned on purpose: two dated clocks in
+    one feature disagreeing about what "expires today" means is a bug report
+    waiting to be filed.
+    """
+    expiries: list[date] = []
+    for line in entry:
+        if not _STOPGAP_RE.match(line):
+            continue
+        for found in _STOPGAP_EXPIRES_RE.findall(line):
+            try:
+                expiries.append(date.fromisoformat(found))
+            except ValueError:  # pragma: no cover - the regex already pins the shape
+                continue
+    if not expiries:
+        return None
+    latest = max(expiries)
+    return latest, latest >= today
+
+
+def _expired_stopgaps(codebase: Codebase, *, today: date) -> dict[tuple[str, str], date]:
+    """``(artifact, tracking-id) -> expiry`` for in-transition entries whose stopgap has lapsed.
+
+    The stall probe's second arm, and the reason recording a stopgap is now a
+    real clock rather than a note. Suppression alone would not have been enough:
+    the thing that silenced the advisory before #737 was the tracking item being
+    *touched*, which resets the stall floor — so an entry could carry a lapsed
+    exception and still never fire, which is the state commit ``ac6bbb8b`` left
+    the repo in. An expiry that has passed is therefore a forcing event on its
+    own, independent of when the tracking item last moved.
+
+    Deliberately **no backlog read**: every input is in the artifact, so this arm
+    keeps working when the backlog store cannot answer — the arm that needs the
+    store already announces its own outage, and taking a local signal down with a
+    remote one would be strictly worse.
+    """
+    out: dict[tuple[str, str], date] = {}
+    for path in _artifact_paths(codebase):
+        text = _read_text(path)
+        if not text:
+            continue
+        for entry in _direction_entries(text):
+            stopgap = _stopgap_expiry(entry, today=today)
+            if stopgap is None or stopgap[1]:
+                continue
+            for line in entry:
+                if not _IN_TRANSITION_RE.search(line):
+                    continue
+                for cited in _extract_ids(line):
+                    out[(path.name, cited)] = stopgap[0]
     return out
 
 
@@ -617,7 +770,9 @@ def _live_scope(state: ProjectState) -> str | None:
     return str(state.get("backlog_service_repo") or "") or None
 
 
-def _scan_direction_citations(codebase: Codebase, state: ProjectState, line_wanted, collect):
+def _scan_direction_citations(
+    codebase: Codebase, state: ProjectState, line_wanted, collect, *, entry_wanted=None
+):
     """Walk the ``## Direction`` lines the caller wants and hand it their citations.
 
     The two backlog-reading probes share four moves — select the backend, load the
@@ -631,6 +786,13 @@ def _scan_direction_citations(codebase: Codebase, state: ProjectState, line_want
     this probe's finding for a citation, or ``None``. Returns
     ``(findings_by_artifact_and_id, advisory)`` — at most one is non-empty, since a
     store that could not answer has no findings and findings mean it did.
+
+    ``entry_wanted(entry_lines)``, when given, drops a whole ``## Direction``
+    entry before any of its lines are offered — the granularity a ``Stopgap:``
+    needs, since the field qualifies its sibling ``Status:`` line and a
+    line-at-a-time filter cannot see across the two. Omitted, the walk is
+    line-for-line what it was: :func:`_direction_entries` flattens to
+    :func:`_direction_lines`, so dead-why sees an unchanged stream.
     """
     scope = _live_scope(state)
     index = {} if scope else _backlog_index(codebase)
@@ -642,13 +804,16 @@ def _scan_direction_citations(codebase: Codebase, state: ProjectState, line_want
             text = _read_text(path)
             if not text:
                 continue
-            for line in _direction_lines(text):
-                if not line_wanted(line):
+            for entry in _direction_entries(text):
+                if entry_wanted is not None and not entry_wanted(entry):
                     continue
-                for cited in _extract_ids(line):
-                    outcome = collect(scope, index, cited)
-                    if outcome is not None:
-                        found[(path.name, cited)] = outcome
+                for line in entry:
+                    if not line_wanted(line):
+                        continue
+                    for cited in _extract_ids(line):
+                        outcome = collect(scope, index, cited)
+                        if outcome is not None:
+                            found[(path.name, cited)] = outcome
     except _CacheUnanswerable as exc:
         return {}, _cache_advisory(exc, scope or "<backlog_service_repo>")
     return found, []
@@ -923,6 +1088,23 @@ def probe_stalled_transition(state: ProjectState, codebase: Codebase):
     forgotten. That trades a stored field nobody had a write path for against an
     observed one, which is the same trade the staleness nag made.
 
+    **Two arms, one advisory** (the shape ``norm-registry-unratified`` uses, and
+    for the same reason — arm-independent evidence keeps the advisory id stable
+    as the firing arm changes, with the live arms named in ``trigger_summary``):
+
+    1. *stalled* — the tracking item is live and unchanged past the window, as
+       above. An entry carrying a still-running ``Stopgap:`` is skipped: the
+       stopgap is the third clearing arm ``docs/norms.md`` § Transitions has
+       always offered, and this probe's own ``recommended_action`` has always
+       named. Until #737 it was documented and unread, so recording one bought
+       nothing and only touching the tracking item bought silence.
+    2. *expired stopgap* — a bounded exception whose expiry has passed, fired
+       regardless of the stall clock (:func:`_expired_stopgaps`). Suppression
+       alone would not have made the expiry a real clock: touching the tracking
+       item resets the stall floor, so a lapsed exception could sit silent
+       indefinitely. This arm needs no backlog read and so survives a store
+       outage.
+
     *Expected yield*: declared substrate migrations that quietly stopped moving —
     rare by construction, since a repo rarely has more than one or two in flight.
     A year with no fire means transitions here complete promptly and the check has
@@ -934,26 +1116,56 @@ def probe_stalled_transition(state: ProjectState, codebase: Codebase):
         age = _cited_stall_age(codebase, scope, index, cited, today=today)
         return age if age is not None and age > STALL_WINDOW_DAYS else None
 
+    def _not_covered(entry) -> bool:
+        stopgap = _stopgap_expiry(entry, today=today)
+        return stopgap is None or not stopgap[1]
+
+    expired = _expired_stopgaps(codebase, today=today)
     stalled, advisory = _scan_direction_citations(
-        codebase, state, lambda line: bool(_IN_TRANSITION_RE.search(line)), _stalled
+        codebase,
+        state,
+        lambda line: bool(_IN_TRANSITION_RE.search(line)),
+        _stalled,
+        entry_wanted=_not_covered,
     )
-    if advisory:
+    # An expired stopgap subsumes the stall reading of the same pair: both arms
+    # ask the reader for the same decision, and listing one pair twice under two
+    # headings reads as two problems.
+    stalled = {key: age for key, age in stalled.items() if key not in expired}
+    if not stalled and not expired:
         return advisory
-    if not stalled:
-        return []
-    listed = "; ".join(f"{name}→{cid} ({age}d)" for (name, cid), age in sorted(stalled.items()))
-    return [
+    parts = []
+    if stalled:
+        listed = "; ".join(f"{name}→{cid} ({age}d)" for (name, cid), age in sorted(stalled.items()))
+        parts.append(f"tracking item unchanged >{STALL_WINDOW_DAYS}d: {listed}")
+    if expired:
+        listed = "; ".join(
+            f"{name}→{cid} (stopgap expired {day.isoformat()})"
+            for (name, cid), day in sorted(expired.items())
+        )
+        parts.append(f"bounded exception lapsed: {listed}")
+    # `advisory` is the shared cache-unreadable nag, and it rides along rather
+    # than short-circuiting: the expired-stopgap arm answered from the artifacts
+    # alone, so there IS a finding to report, and the outage is still true and
+    # still worth saying. Returning only one of the two would either hide a live
+    # departure or hide the fact that the other arm could not run.
+    return advisory + [
         AdvisoryCandidate(
             type="stalled-transition",
-            evidence=("an in-transition norm's tracking backlog item is unchanged past the stall window",),
+            evidence=(
+                "an in-transition norm needs a decision: its tracking item is unchanged past the "
+                "stall window, or its recorded stopgap has expired",
+            ),
             trigger_summary=(
-                f"Stalled transition(s) — tracking item unchanged >{STALL_WINDOW_DAYS}d: {listed}. "
-                "Accelerate the migration or record a stopgap."
+                f"Stalled transition(s) — {'; also '.join(parts)}. "
+                "Accelerate the migration, or record a stopgap (renew a lapsed one)."
             ),
             recommended_action=(
                 "For each stalled transition: accelerate the tracked migration, or record a stopgap "
                 "(a bounded exception whose expiry ties to the tracking item) — never improvise a "
-                "parallel system (docs/norms.md § Transitions)."
+                "parallel system (docs/norms.md § Transitions). A stopgap whose expiry has passed "
+                "is renewed with a fresh bound and reason, or the transition is completed — letting "
+                "it stand unrenewed is the drift the bound exists to prevent."
             ),
             priority="info",
         )
