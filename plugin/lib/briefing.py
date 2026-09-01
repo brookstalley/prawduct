@@ -1876,8 +1876,19 @@ def handoff_cmd(project_dir: Path, argv: list[str]) -> int:
     Content goes to stdout so it can be piped; every diagnostic goes to stderr so
     it cannot be mistaken for content.
     """
-    if argv[:1] != ["preview"] or len(argv) > 1:
+    if argv[:1] != ["preview"]:
         print("Usage: prawduct-hook handoff preview", file=sys.stderr)
+        return 2
+    if len(argv) > 1:
+        # Name the token. The refusal was already correct, but a bare usage line
+        # over a mistyped flag leaves the operator re-reading their own command
+        # for the difference — and this is the one command in the audited nine
+        # that refused without saying what it refused (#667).
+        extra = ", ".join(repr(token) for token in argv[1:])
+        print(
+            f"handoff: unexpected argument {extra} — usage: prawduct-hook handoff preview",
+            file=sys.stderr,
+        )
         return 2
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
