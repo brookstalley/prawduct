@@ -543,6 +543,16 @@ def _cache_advisory(exc: "_CacheUnanswerable", scope: str) -> list[AdvisoryCandi
                 "to find. If the store is missing or behind, sync it; if it reports "
                 "an alias collision, the repair is on the items, not on the store."
             ),
+            # Nothing for the owner to decide: the two routes are mechanical and
+            # both are mine. What they own is the knowledge that the checks are
+            # reporting nothing because they could not look — silence here is not
+            # a clean bill of health, and only they can weigh that.
+            owner_action=(
+                "Nothing to decide — I will re-point the checks at a readable store. Worth "
+                "knowing while that is outstanding: these checks are answering \"nothing "
+                "found\" because they could not look, so treat their silence as unmeasured "
+                "rather than clean."
+            ),
             recommended_action=f"prawduct-hook backlog sync --repo {scope}   (or /prawduct:backlog for an alias collision)",
             priority="info",
         )
@@ -848,10 +858,16 @@ def probe_revisit_due(state: ProjectState, codebase: Codebase):
                 f"Exception clock expired — `revisit:` past due on: {listed}. "
                 "Renew (fresh `revisit:` date + reason) or schedule removal."
             ),
-            recommended_action=(
-                "Review each listed item: renew the exception with a fresh `revisit:` date and "
-                "reason, or schedule its removal (docs/norms.md § Exceptions expire)."
+            owner_action=(
+                "Decide, for each expired item, whether the exception still earns its keep: "
+                "renew it with a fresh date and a reason, or let it lapse and I will schedule "
+                "the cleanup. Only you can say whether the original reason still holds."
             ),
+            # `/prawduct:backlog` and not prose (docs/norms.md § Exceptions expire is the
+            # rule; the pointer belongs here, not in text an owner reads). Whichever way
+            # the owner decides, the change is a metadata edit on the item — renew the
+            # `revisit:` date, or close it out — and that is what this skill does.
+            recommended_action="/prawduct:backlog",
             priority="info",
         )
     ]
@@ -896,10 +912,17 @@ def probe_dead_why(state: ProjectState, codebase: Codebase):
                 f"Norm rationale references completed/abandoned work (decay): {listed}. "
                 "Re-affirm and schedule cleanup, or retire the norm."
             ),
-            recommended_action=(
-                "Review each norm whose cited work is shipped/archived: re-affirm it and file a "
-                "cleanup item, or retire it via a recorded amendment (docs/norms.md § Trajectory)."
+            owner_action=(
+                "Decide whether each of these standing rules still has a reason to exist, now "
+                "that the work it was written for is finished. Re-affirm it and I will file the "
+                "cleanup, or retire it and I will record the amendment."
             ),
+            # Empty, deliberately: there is no command to run. Either outcome is an edit
+            # to the artifact's own Direction section (plus, for the re-affirm route, a
+            # filed item), which the agent performs directly under the amendment rules
+            # in docs/norms.md § Trajectory. Filling this with the guide's path would
+            # label a document as though it were the action.
+            recommended_action="",
             priority="info",
         )
     ]
@@ -950,11 +973,17 @@ def probe_stalled_transition(state: ProjectState, codebase: Codebase):
                 f"Stalled transition(s) — tracking item unchanged >{STALL_WINDOW_DAYS}d: {listed}. "
                 "Accelerate the migration or record a stopgap."
             ),
-            recommended_action=(
-                "For each stalled transition: accelerate the tracked migration, or record a stopgap "
-                "(a bounded exception whose expiry ties to the tracking item) — never improvise a "
-                "parallel system (docs/norms.md § Transitions)."
+            owner_action=(
+                "Decide whether the migration these rules are waiting on is still happening. "
+                "Push it forward, or tell me to record a stopgap so the half-finished state "
+                "is a deliberate, dated one rather than a stalled one nobody owns."
             ),
+            # Empty for the same reason as dead-why: both routes are edits the agent makes
+            # directly (advance the tracked item, or write a bounded exception whose expiry
+            # ties to it — docs/norms.md § Transitions), not a command to invoke. What must
+            # never happen is improvising a parallel system, which is a rule for the agent
+            # and lives in that guide, not in a field the owner reads.
+            recommended_action="",
             priority="info",
         )
     ]
@@ -994,6 +1023,12 @@ def probe_norm_registry_unratified(state: ProjectState, codebase: Codebase):
             trigger_summary=(
                 f"Norm registry unratified: {'; '.join(arms)}. Ratify the direction the "
                 "owner already declared, or record that there are none to ratify."
+            ),
+            owner_action=(
+                "Say go and I will collect the standing rules this product already follows "
+                "and write them down where governance can see them, asking you wherever I "
+                "cannot tell a real rule from a passing habit. \"There are none worth "
+                "recording\" is a valid answer, and recording that answer stops this coming back."
             ),
             recommended_action="/prawduct:doctor",
             priority="info",
@@ -1052,6 +1087,11 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
                 "erosion and decay go unmeasured. If this repo has ratified nothing, the rows are "
                 "probably leftover template scaffold: run `/prawduct:doctor` Health Check #14 "
                 "(`norm-index-scaffold`) instead of a sweep."
+            ),
+            owner_action=(
+                "Say go and I will do the deep pass over the rules this product has recorded — "
+                "which are actually being followed, and which have quietly stopped applying. "
+                "It reads and reports; nothing is changed without you agreeing to it first."
             ),
             recommended_action="/prawduct:janitor",
             # A repo that is here because it still carries the TEMPLATE's
