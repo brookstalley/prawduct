@@ -1329,6 +1329,166 @@ def _looks_like_file_path(token: str) -> bool:
     return True
 
 
+# =============================================================================
+# Instruction-bearing reference FORMS (#552)
+# =============================================================================
+#
+# Extraction by SHAPE — every backticked token that looks like a path — cannot
+# tell a path a reader is told to *use* from one the prose is *talking about*.
+# The three forms below can, because each one unambiguously means "go read /
+# run / follow this":
+#
+#   1. ``allowed-tools:`` front-matter grants — a grant naming a path that does
+#      not exist is a permission that cannot cover the command it was written
+#      for, and it fails most silently of all: nothing executes front-matter.
+#   2. Command position — a backticked span, or a fenced line, whose first token
+#      is an executable. The path is an argument to something a reader runs.
+#   3. Markdown links — ``[text](path)``. An unambiguous pointer.
+#
+# **This lived only in `tests/test_path_reference_resolution.py` until #552.**
+# That module shipped the form vocabulary and measured it (form-based extraction
+# cut one corpus from 195 apparent failures to 6 real ones), while
+# `_parse_build_plan_chunk_refs` — the extractor wired to a BLOCKING gate — kept
+# reading by shape. Two extractors disagreeing about one tree, with the naive one
+# holding the veto. The definition is homed here, in the library, and the test
+# module imports it: the same "share the matcher AND the reader that feeds it"
+# rule the norm parser had to learn one module over.
+
+#: A skill reads the plugin through its own directory: ``${CLAUDE_SKILL_DIR}``
+#: expands at skill load and the plugin root is one directory pair above it.
+#: That form replaced ``${CLAUDE_PLUGIN_ROOT}``, which does not expand in prose,
+#: and in doing so the reads fell out of every check that could see them.
+#: Normalizing the prefix hands them to the resolver that owns path references.
+_SKILL_DIR_PREFIX_RE = re.compile(r"\$\{CLAUDE_SKILL_DIR\}/(?:\.\./)+")
+
+#: Executables whose arguments are paths a reader will run against this tree.
+_COMMAND_HEAD_RE = re.compile(
+    r"^(?:\$\s+)?(?:python3?|prawduct-hook|pytest|bash|sh|cat|less|grep|rg|ls|chmod)\b"
+)
+_REF_PATH_SHAPED_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+$")
+_REF_HAS_EXTENSION_RE = re.compile(r"\.(?:py|md|sh|json|yaml|yml|toml|jsonl)$")
+_BACKTICKED_SPAN_RE = re.compile(r"`([^`\n]{3,300})`")
+_MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+_FRONT_MATTER_RE = re.compile(r"\A---\n(.*?)\n---", re.S)
+_ALLOWED_TOOLS_RE = re.compile(r"^allowed-tools:(.*)$", re.M)
+
+#: Forms that INVOKE a path rather than name it. A reader executing a command
+#: runs it from a working directory, so the ``plugin/`` root fallback a *naming*
+#: reference is entitled to is denied to these — that fallback is what hides a
+#: ``bin/prawduct-hook`` relocation behind ``plugin/bin/prawduct-hook``.
+INVOCATION_FORMS = frozenset({"command", "allowed-tools"})
+
+#: Directory vocabulary of a prawduct-shaped source tree, INCLUDING directories
+#: that no longer exist (``tools/``, ``agents/``, a repo-root ``bin/``).
+#: Deliberately explicit rather than derived from the current tree: a derived set
+#: can only name directories that still exist, and the defect class this catches
+#: is a reference to one that was REMOVED. ``bin/prawduct-hook`` is
+#: extensionless and lives under a root ``bin/`` that is now ``plugin/bin/``, so
+#: neither the extension rule nor a derived-directory rule would see it.
+_SOURCE_DIR_SEGMENTS = frozenset(
+    {
+        "plugin", "bin", "lib", "tests", "docs", "skills", "methodology",
+        "templates", "hooks", "documentation", "tools", "agents",
+        ".prawduct", ".claude", ".claude-plugin",
+    }
+)
+
+
+def normalize_skill_relative(token: str) -> str:
+    """Rewrite a skill-dir-relative read as the repo path it names."""
+    return _SKILL_DIR_PREFIX_RE.sub("plugin/", token)
+
+
+def strip_reference(raw: str) -> str:
+    """Trim trailing prose punctuation, a line-number suffix, and an anchor."""
+    ref = normalize_skill_relative(raw).rstrip(".,;:)`").rstrip("/")
+    ref = ref.split("#", 1)[0]
+    return re.sub(r":\d+(?:[,-]\d+)*$", "", ref)  # foo.py:182 and foo.md:58-60
+
+
+def is_repo_path_token(token: str) -> bool:
+    """Path-shaped and plausibly naming something in a prawduct-shaped tree.
+
+    The extension branch catches ``tools/prawduct-sync.py``; the directory
+    branch catches extensionless ``plugin/bin/prawduct-hook``. Together they
+    exclude ``owner/repo`` arguments, which are path-shaped, appear in command
+    position after ``--repo``, and name nothing on disk.
+    """
+    token = normalize_skill_relative(token)
+    if not _REF_PATH_SHAPED_RE.match(token):
+        return False
+    return bool(_REF_HAS_EXTENSION_RE.search(strip_reference(token))) or (
+        token.split("/", 1)[0] in _SOURCE_DIR_SEGMENTS
+    )
+
+
+def _fenced_command_lines(text: str) -> list[str]:
+    """Lines inside fenced blocks that begin with a known executable.
+
+    A shell block is command position just as much as an inline span, and it is
+    where multi-line setup instructions live.
+    """
+    lines: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence and _COMMAND_HEAD_RE.match(line.strip()):
+            lines.append(line.strip())
+    return lines
+
+
+def _strip_code(text: str) -> str:
+    """Remove fenced blocks and inline code spans.
+
+    A markdown link *inside backticks* is being quoted, not offered — a plan
+    that quotes a broken ``[learnings file](../.prawduct/learnings.md)`` as
+    evidence would redden on the document specifying it. Same
+    citation-versus-reference rule as for bare paths, applied to the link form.
+    """
+    text = re.sub(r"```.*?```", " ", text, flags=re.S)
+    return re.sub(r"`[^`\n]*`", " ", text)
+
+
+def instruction_references(text: str) -> list[tuple[str, str]]:
+    """Every instruction-bearing path reference in ``text``, as ``(form, raw)``.
+
+    A bare backticked path inside a sentence is a *citation* and is deliberately
+    not returned. That omission is the whole point of the function: it is what
+    separates "the reader is told to use this" from "the prose is discussing
+    this", and no amount of allowlisting recovers the distinction after the fact.
+    """
+    found: list[tuple[str, str]] = []
+
+    front_matter = _FRONT_MATTER_RE.match(text)
+    if front_matter:
+        for grant_line in _ALLOWED_TOOLS_RE.findall(front_matter.group(1)):
+            for token in re.findall(r"[A-Za-z0-9_./-]+", grant_line):
+                # Same predicate as command position, and for the same reason
+                # `is_repo_path_token` was written: `owner/repo` arguments are
+                # path-shaped and name nothing on disk.
+                if is_repo_path_token(token):
+                    found.append(("allowed-tools", token))
+
+    for span in list(_BACKTICKED_SPAN_RE.findall(text)) + _fenced_command_lines(text):
+        span = span.strip()
+        if not _COMMAND_HEAD_RE.match(span):
+            continue
+        for token in span.split()[1:]:
+            if is_repo_path_token(token):
+                found.append(("command", token))
+
+    for target in _MD_LINK_RE.findall(_strip_code(text)):
+        if target.startswith(("http://", "https://", "#", "mailto:")):
+            continue
+        if not _REF_HAS_EXTENSION_RE.search(target.split("#", 1)[0]):
+            continue  # section links and bare anchors are not file references
+        found.append(("md-link", target))
+
+    return found
+
+
 def _ref_path_part(token: str) -> str:
     """Reduce a backticked ref token to the file path that gets existence-checked.
 
@@ -1693,6 +1853,151 @@ def _normalize_chunk_id(chunk_id: str) -> str:
     return ".".join(part.lstrip("0") or "0" for part in bare.split("."))
 
 
+#: A chunk field label: ``- **Deliverables:**``, ``**Description:**``,
+#: ``1. **Done when:**``. Bounded length so a bolded sentence in prose
+#: (``**This is the design point.**``) is not mistaken for one — a label is a
+#: short noun phrase, and the colon is what makes it a field rather than emphasis.
+_CHUNK_FIELD_LABEL_RE = re.compile(
+    r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*([^*:]{1,48}):\*\*|^\s*(?:[-*+]\s+|\d+[.)]\s+)?\*\*([^*:]{1,48})\*\*:"
+)
+
+#: Chunk fields whose body is narrative ABOUT the work — the citation positions.
+#:
+#: **This is the form-vs-shape switch (#552).** A chunk does not only DECLARE
+#: paths; it also DISCUSSES them, and to a backtick scan the two are identical.
+#: The reported case: a plan that enumerates broken paths *by name* as its
+#: adversarial evidence was reported as eight missing deliverables — against a
+#: record that is right precisely BECAUSE those paths are absent. The check is
+#: mapped BLOCKING, so the only exits were to launder the record or to record a
+#: deliberate departure, and a reviewer chose the second.
+#:
+#: A DENYLIST of prose labels rather than an allowlist of declaration labels,
+#: and the corpus is why: across this repo's 97 plans the declaration labels are
+#: open-ended (``Deliverables``, ``Tests``, ``Artifacts consumed``, ``Done
+#: when``, ``Acceptance criteria``, and a long tail — ``Surfaces this touches``,
+#: ``Delivers``, ``Deliverable files``, ``Scope — delete``), while the prose
+#: labels are a small closed set dominated by ``Description``. An allowlist
+#: would silently stop checking every ad-hoc declaration label an author
+#: invents, which is the failure mode that matters: over-firing is visible and
+#: annoying, under-firing is invisible and is what a gate exists to prevent.
+#:
+#: Deliberately NOT the narrower "scope extraction to Deliverables" rule an
+#: earlier reading proposed and ``_LIST_ITEM_RE`` already argues against: plans
+#: name load-bearing paths in Tests, Done-when, acceptance criteria and
+#: Artifacts-consumed as a matter of course, and all four stay checked.
+_PROSE_CHUNK_FIELDS = frozenset(
+    {
+        "description", "why", "context", "problem", "background", "rationale",
+        "notes", "note", "the defect", "evidence", "trivial because",
+        "what the user can do", "open assumptions", "risk",
+    }
+)
+
+
+def _chunk_field_label(line: str) -> "str | None":
+    """The field label this line OPENS, lowercased and de-punctuated, or ``None``."""
+    match = _CHUNK_FIELD_LABEL_RE.match(line)
+    if not match:
+        return None
+    return (match.group(1) or match.group(2)).strip().rstrip(".").lower()
+
+
+def _declaration_scope_lines(
+    section_lines: list[tuple[int, str]],
+) -> Iterator[tuple[int, str]]:
+    """A chunk's DECLARATION lines — where a backticked path names a deliverable.
+
+    Two exclusions, and each one is a class the corpus measures:
+
+    - **Narrative paragraphs**, i.e. anything outside a list item. This is the
+      same scope :func:`_qualifier_scope_lines` applies to the ``new``
+      qualifier, and for the same reason: a plan's running prose talks about
+      paths, its bullets declare them.
+    - **Prose-labelled fields** (:data:`_PROSE_CHUNK_FIELDS`), whose body is a
+      list item and so survives the first rule. ``- **Description:**`` is where
+      a chunk explains itself, quotes the defect it is fixing, and names the
+      grep that found it.
+
+    A field's scope runs from its label line to the next label line at the same
+    or shallower indent, or to the end of the item — so a ``Description``
+    bullet's wrapped continuations stay excluded and the ``Deliverables``
+    bullet after it comes back in.
+    """
+    in_item = False
+    prose_field = False
+    for line_num, line in section_lines:
+        if _LIST_ITEM_RE.match(line):
+            in_item = True
+            label = _chunk_field_label(line)
+            if label is not None:
+                prose_field = label in _PROSE_CHUNK_FIELDS
+        elif not line.strip() or _PLAN_FIELD_RE.match(line):
+            # A blank line, or a line starting in column 0 — either closes the
+            # item. Column-0 prose is a narrative paragraph, not a wrap.
+            in_item = False
+            prose_field = False
+        elif _chunk_field_label(line) is not None:
+            # An unbulleted `**Label:**` on a continuation line still opens a field.
+            prose_field = _chunk_field_label(line) in _PROSE_CHUNK_FIELDS
+        if in_item and not prose_field:
+            yield line_num, line
+
+
+def _command_position_refs(
+    section_lines: list[tuple[int, str]],
+) -> dict[int, list[str]]:
+    """``line -> paths`` the chunk names in COMMAND POSITION, wherever they sit.
+
+    :func:`_declaration_scope_lines` drops a chunk's prose, which is right for
+    the citations that motivated #552 and wrong for the one thing prose
+    legitimately instructs with: a command a reader is told to run.
+    ``- **Description:** confirm with `grep -rn installed_plugins plugin/lib/x.py``
+    names a real path in a real invocation, and a relocation that stranded it
+    would be a live defect the position rule alone would now miss.
+
+    So form GRANTS what position denies — the form-vs-shape switch, in the
+    direction that ADDS coverage rather than removing it.
+
+    This is also the only place chunk-ref extraction sees a *multi-token*
+    backticked span at all. ``_BUILD_PLAN_PATH_RE`` requires a whitespace-free
+    span, so every path that was ever an argument to a command was invisible to
+    the shape scan; making the grant a re-admission of what shape already found
+    would therefore have been inert. Line numbers come from this walk rather
+    than from :func:`instruction_references`, which returns none — a finding a
+    reader cannot locate is barely a finding.
+
+    Fenced blocks are walked here rather than delegated for the same reason:
+    fence state is a property of the line sequence, and the shared extractor
+    takes a text blob. The token predicate itself IS delegated
+    (:func:`is_repo_path_token`), so the two surfaces cannot disagree about what
+    counts as a path — which is the half of #552 that was actually load-bearing.
+
+    Markdown links are deliberately NOT admitted, though
+    :func:`instruction_references` yields them: every build plan under
+    ``.prawduct/artifacts/`` is already swept for broken md-links by
+    ``tests/test_path_reference_resolution.py``. A second owner for a covered
+    form buys nothing and gives the two a way to disagree.
+    """
+    out: dict[int, list[str]] = {}
+    in_fence = False
+    for line_num, line in section_lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        spans = [stripped] if in_fence else _BACKTICKED_SPAN_RE.findall(line)
+        for span in spans:
+            span = span.strip()
+            if not _COMMAND_HEAD_RE.match(span):
+                continue
+            for token in span.split()[1:]:
+                if is_repo_path_token(token):
+                    out.setdefault(line_num, []).append(
+                        _ref_path_part(strip_reference(token))
+                    )
+    return out
+
+
 def _qualifier_scope_lines(
     section_lines: list[tuple[int, str]],
 ) -> Iterator[tuple[int, str]]:
@@ -1750,8 +2055,36 @@ def _completed_chunk_ids(content: str) -> set[str] | None:
 def _parse_build_plan_chunk_refs(
     prawduct_dir: Path, chunk_id: str, plan_path: "Path | None" = None
 ) -> dict:
-    """Extract backticked file-path references from a single chunk's section
+    """Extract a chunk's DECLARED file-path references from its section
     in ``.prawduct/artifacts/build-plan.md``.
+
+    **Declared, not merely mentioned (#552).** A chunk does not only name the
+    paths it is responsible for; it also *discusses* paths — the defect it is
+    fixing, the grep that found it, a fixture string, a path that is broken and
+    whose brokenness is the point being recorded. To a backtick scan those are
+    indistinguishable, and this extractor used to treat them alike: one plan
+    that enumerated broken paths by name as its adversarial evidence drew eight
+    BLOCKING ``chunk-ref-missing`` findings against a record that was correct.
+    The only exits were to launder the record or to record a departure.
+
+    Position decides, and form overrides:
+
+    - :func:`_declaration_scope_lines` yields the declaration positions — list
+      items outside a prose-labelled field. A chunk's ``Deliverables``,
+      ``Tests``, ``Artifacts consumed``, ``Done when`` and ``Acceptance
+      criteria`` bullets all stay checked; its ``Description`` bullet and its
+      running paragraphs do not.
+    - :func:`_command_position_refs` admits anything the chunk puts in
+      *command position* wherever it sits, because that is prose instructing
+      rather than prose discussing. That arm ADDS coverage: a multi-token
+      backticked span was invisible to the shape scan, so a path passed as a
+      command argument had never been checked at all.
+
+    That switch is the same one ``tests/test_path_reference_resolution.py``
+    makes repo-wide, and the extractor it makes it with now lives in this
+    module (:func:`instruction_references`) rather than in that test — two
+    extractors disagreeing about one tree, with the naive one wired to the
+    BLOCKING gate, is what #552 reported.
 
     ``plan_path`` names the plan to read; it defaults to this repo's active
     build plan, which is right for ``verify-chunk-refs`` (a repo-level question)
@@ -1774,10 +2107,12 @@ def _parse_build_plan_chunk_refs(
     Symbol and backlog-ID verification remain deferred.
 
     A line carrying ``prawduct:allow prawduct/chunk-ref-missing -- <reason>``
-    (or the same pragma on the line above) contributes no refs: that is the
-    escape for prose which *discusses* a path rather than declaring it, where
-    the path's absence is the point being recorded. It needs a reason like every
-    other waiver, and the Critic checks that the reason is legitimate.
+    (or the same pragma on the line above) contributes no refs. It was the only
+    escape for prose that *discusses* a path rather than declaring it; the
+    position rule above now handles that case structurally, so the waiver is
+    left for the residue — a citation inside a declaration bullet, where no
+    positional rule can help and a human reason is the honest answer. It needs
+    that reason like every other waiver, and the Critic checks it is legitimate.
     """
     result: dict = {"file_paths": [], "error": None}
     if plan_path is None:
@@ -1835,6 +2170,12 @@ def _parse_build_plan_chunk_refs(
         for m in _BUILD_PLAN_GONE_QUALIFIER_RE.finditer(section_line)
     }
 
+    # The declaration positions, plus what command position grants back.
+    # `granted` is computed over the WHOLE section (prose included) because that
+    # is exactly the text position dropped and form is entitled to recover.
+    declaration_lines = {line_num for line_num, _ in _declaration_scope_lines(section_lines)}
+    granted = _command_position_refs(section_lines)
+
     seen: set[tuple[str, int]] = set()
     # Waiver lookup needs the line ABOVE as well as the line itself (both
     # placements are supported — `waivers.waives`), and a plan puts the pragma
@@ -1860,8 +2201,15 @@ def _parse_build_plan_chunk_refs(
         # narrowing the scan would stop checking them to silence prose.
         if waivers.waives(section_texts, index, "prawduct/chunk-ref-missing"):
             continue
-        for match in _BUILD_PLAN_PATH_RE.finditer(line):
-            path_part = _ref_path_part(match.group(1))
+        # Two admission routes, one dedupe. Shape locates a declaration; form
+        # locates an invocation. A path admitted by either is checked once.
+        candidates = list(granted.get(line_num, ()))
+        if line_num in declaration_lines:
+            candidates += [
+                _ref_path_part(match.group(1))
+                for match in _BUILD_PLAN_PATH_RE.finditer(line)
+            ]
+        for path_part in candidates:
             if not _looks_like_file_path(path_part):
                 continue
             if path_part in forward_refs or path_part in gone_refs:
