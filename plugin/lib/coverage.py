@@ -42,6 +42,12 @@ from .core import read_str_yaml_key
 _BASE_BRANCH_KEY = "base_branch"
 _DEFAULT_BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
 
+#: Branch names the historical candidate list already answers correctly.
+#: ``origin/HEAD`` is only *preferred* when it points somewhere else, which
+#: keeps the consultation strictly additive: a trunk repo resolves exactly the
+#: ref it resolved before, by the same first candidate.
+_MAIN_FAMILY = frozenset({"main", "master"})
+
 
 def _git_ref_exists(project_dir: Path, ref: str) -> bool:
     """True if ``git rev-parse --verify <ref>`` resolves in ``project_dir``."""
@@ -53,6 +59,31 @@ def _git_ref_exists(project_dir: Path, ref: str) -> bool:
         timeout=30,
     )
     return proc.returncode == 0
+
+
+def _origin_head_ref(project_dir: Path) -> "str | None":
+    """The remote's own default branch as ``origin/<b>``, or ``None``.
+
+    ``refs/remotes/origin/HEAD`` is what ``clone`` writes and what
+    ``git remote set-head`` repairs; it is the only place a clone records which
+    branch the REMOTE integrates onto. It is frequently absent (a repo created
+    by ``init`` + ``remote add``, a clone from an older git, a fetch-only
+    mirror), so every failure here is a plain ``None`` and the caller falls
+    through to the historical candidate list.
+    """
+    proc = subprocess.run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return None
+    ref = proc.stdout.strip()
+    if not ref.startswith("origin/") or ref == "origin/":
+        return None
+    return ref
 
 
 def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
@@ -67,8 +98,53 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
     branch becomes the base; ``origin/<b>`` is preferred over the bare ``<b>``
     for a stable remote-tracking merge-base. A configured-but-unresolvable base
     fails closed (returns None) so the misconfiguration surfaces rather than
-    silently diffing the wrong range. When the knob is unset, falls back to the
-    historical candidate list, so trunk repos are unaffected.
+    silently diffing the wrong range.
+
+    **Unconfigured, the remote is asked before the guess (#254).** The knob is
+    the authority when set, but an unset knob used to jump straight to a
+    ``main``-first guess — so a gitflow repo that never ran ``/prawduct:doctor``
+    got every gate anchored to ``merge-base(main, HEAD)``, the whole
+    ``develop..main`` promotion delta, silently. ``refs/remotes/origin/HEAD``
+    is the one place a clone records what the REMOTE integrates onto, so it is
+    consulted first and preferred when it names something outside the
+    ``main`` family. That last condition is what keeps this additive: where
+    ``origin/HEAD`` says ``main``, the historical list already resolves the
+    same ref, so a trunk repo's answer is byte-for-byte what it was. Everything
+    about the consultation degrades to ``None`` — an absent ``origin/HEAD`` (an
+    ``init`` + ``remote add`` repo, an older clone) simply falls through.
+
+    It is a fallback, not a fix for the missing knob: it cannot see a repo whose
+    remote default is ``main`` while its integration branch is ``develop``.
+    Onboarding still owes a written ``base_branch:``; this stops the silent
+    wrong answer in the meantime.
+
+    **``origin/<b>`` stays the base even when local ``<b>`` is ahead of it and
+    is an ancestor of HEAD — decided NO, #311.** The case for switching is real:
+    anchoring to the stale remote makes a feature built on unpushed integration
+    commits read as spanning the whole unshipped range, so a composition gate
+    can report ``uncovered`` over work whose every commit carries a clean review
+    fact (COV-7K4N). Preferring the nearer local ref would remove that at the
+    root. It is refused on two counts.
+
+    - *Fail-open.* The commits in ``origin/<b>..<b>`` are inside the audited
+      span today and would be outside it after the change. A commit made
+      straight onto local ``develop`` — no branch, no review fact — would stop
+      being audited by **every** gate that resolves a base. A gate may not
+      narrow what it audits on the strength of where an operator's unpushed
+      work happens to sit.
+    - *Stability.* ``origin/<b>`` is the same value in every clone and every
+      worktree of the clone; local ``<b>`` is not. Two agents on one branch
+      would resolve different bases and reach different verdicts, and
+      ``verdict_cache`` keys on the base tree, so a per-worktree base also
+      un-shares the memo the store is expensive enough to need.
+
+    What pays for the case instead is already shipped and is the cheaper half:
+    :func:`diagnose_stale_remote_base` names the condition and
+    ``stale_base_probes`` nudges before the gate is hit, both prescribing
+    ``git push origin <b>`` — a required release step anyway, which
+    fast-forwards the remote and re-anchors the merge-base to exactly the tree
+    the rejected change would have chosen. Nothing is lost, only deferred to an
+    action the release flow already demands.
 
     Returns ``(base, base)`` on success or ``(None, reason)`` on failure — the
     same contract the gate callers already destructure.
@@ -84,6 +160,11 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
             f"configured base_branch {configured!r} not found "
             f"(tried origin/{configured}, {configured})"
         )
+
+    origin_head = _origin_head_ref(project_dir)
+    if origin_head and origin_head[len("origin/"):] not in _MAIN_FAMILY:
+        if _git_ref_exists(project_dir, origin_head):
+            return origin_head, origin_head
 
     for candidate in _DEFAULT_BASE_CANDIDATES:
         if _git_ref_exists(project_dir, candidate):

@@ -1028,6 +1028,200 @@ class TestGitflowBaseResolution:
         assert "nonexistent-branch" in r.stderr
 
 
+class TestOriginHeadBaseResolution:
+    """#254 — an unset knob asks the remote before it guesses.
+
+    `_DEFAULT_BASE_CANDIDATES` is main-first, so a gitflow repo that never ran
+    `/prawduct:doctor` had every gate anchored to `merge-base(main, HEAD)` —
+    the whole `develop..main` promotion delta — with nothing saying so.
+    `refs/remotes/origin/HEAD` is the one place a clone records what the REMOTE
+    integrates onto, so it is consulted first.
+    """
+
+    def _repo(self, tmp_path, *, origin_head: "str | None", knob: str = "") -> Path:
+        """main + develop, with remote-tracking refs for both.
+
+        The remote refs are written with `update-ref` rather than by cloning: the
+        point under test is which ref base resolution PREFERS, and a real clone
+        would add a network-shaped fixture without changing that question.
+        """
+        repo = tmp_path / "oh"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        if knob:
+            (repo / ".prawduct" / "project-state.yaml").write_text(knob)
+        _git(repo, "init", "-b", "main")
+        (repo / "code.py").write_text("x = 0\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "M1")
+        _git(repo, "checkout", "-b", "develop")
+        (repo / "code.py").write_text("x = 1\n")
+        _git(repo, "commit", "-am", "D1")
+        _git(repo, "checkout", "-b", "feature/x")
+        (repo / "code.py").write_text("x = 2\n")
+        _git(repo, "commit", "-am", "F1")
+        for branch in ("main", "develop"):
+            sha = _git(repo, "rev-parse", branch).stdout.strip()
+            _git(repo, "update-ref", f"refs/remotes/origin/{branch}", sha)
+        if origin_head:
+            _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", origin_head)
+        return repo
+
+    def test_origin_head_naming_develop_beats_the_main_first_guess(self, tmp_path):
+        repo = self._repo(tmp_path, origin_head="refs/remotes/origin/develop")
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/develop", (
+            "the remote says it integrates onto develop; guessing main here is "
+            "the silent wrong range this fixes"
+        )
+
+    def test_a_trunk_origin_head_resolves_exactly_what_it_always_did(self, tmp_path):
+        """The consultation is additive. Where origin/HEAD says main the
+        historical list already answers the same ref, so it must not be
+        preferred — a trunk repo's base is byte-for-byte unchanged."""
+        repo = self._repo(tmp_path, origin_head="refs/remotes/origin/main")
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/main"
+
+    def test_an_absent_origin_head_falls_through_to_the_candidate_list(self, tmp_path):
+        """Frequently absent — an `init` + `remote add` repo, an older clone, a
+        fetch-only mirror. Every failure degrades to the previous behaviour."""
+        repo = self._repo(tmp_path, origin_head=None)
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/main"
+
+    def test_a_dangling_origin_head_falls_through(self, tmp_path):
+        """`symbolic-ref` reports a pointer without resolving it, so a stale
+        origin/HEAD left behind by a deleted branch reads as a name that names
+        nothing. Preferring it would fail every gate closed on a repo whose
+        candidate list still works."""
+        repo = self._repo(tmp_path, origin_head=None)
+        _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD",
+             "refs/remotes/origin/deleted-branch")
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/main"
+
+    def test_the_configured_knob_still_outranks_the_remote(self, tmp_path):
+        """origin/HEAD is a fallback for a MISSING knob, never an override of a
+        present one: the remote's default and the product's integration branch
+        are allowed to differ, and the knob is the one the owner wrote down."""
+        repo = self._repo(
+            tmp_path,
+            origin_head="refs/remotes/origin/develop",
+            knob="backlog_format_version: 2\nbase_branch: main\n",
+        )
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/main"
+
+
+class TestTheRemoteBaseStaysTheBaseWhenLocalIsAhead:
+    """#311, decided NO — base resolution keeps `origin/<b>` even when local
+    `<b>` is ahead of it AND an ancestor of HEAD.
+
+    The case is real: anchoring to the stale remote makes a feature built on
+    unpushed integration commits read as spanning the whole unshipped range, so
+    `check_cumulative_critic` can report `uncovered` over work whose every
+    commit carries a clean review fact (COV-7K4N). Returning local `<b>` would
+    remove that at the root. It is refused on two counts, and the tests below
+    pin the decision so a future reader sees a choice rather than an omission:
+
+    - **Fail-open.** The commits in `origin/<b>..<b>` are inside the span today
+      and out of it under the change. A commit made straight onto local develop
+      -- no branch, no review fact -- would stop being audited by every gate
+      that resolves a base. A gate may not narrow what it audits on the strength
+      of where an operator's unpushed work happens to sit.
+    - **Stability.** `origin/<b>` is the same value in every clone and every
+      worktree of the clone; local `<b>` is not. Two agents on one branch would
+      resolve different bases and get different verdicts, and the verdict cache
+      keys on the base tree, so a per-worktree base also un-shares the cache.
+
+    What pays for the case instead is already shipped and is the cheaper half:
+    `diagnose_stale_remote_base` names the condition and `stale_base_probes`
+    nudges before the gate is hit, both prescribing `push origin <b>` -- a
+    required release step anyway, which fast-forwards the remote and re-anchors
+    the merge-base without any gate learning a second rule.
+    """
+
+    def _repo(self, tmp_path) -> Path:
+        repo = tmp_path / "ahead"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "backlog_format_version: 2\nbase_branch: develop\n"
+        )
+        _git(repo, "init", "-b", "main")
+        (repo / "code.py").write_text("x = 0\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "M1")
+        _git(repo, "checkout", "-b", "develop")
+        (repo / "code.py").write_text("x = 1\n")
+        _git(repo, "commit", "-am", "D1")
+        # The remote is pinned HERE; develop then advances locally.
+        sha = _git(repo, "rev-parse", "develop").stdout.strip()
+        _git(repo, "update-ref", "refs/remotes/origin/develop", sha)
+        (repo / "code.py").write_text("x = 2\n")
+        _git(repo, "commit", "-am", "release-prep(v9.9.9): unpushed integration commit")
+        _git(repo, "checkout", "-b", "feature/x")
+        (repo / "code.py").write_text("x = 3\n")
+        _git(repo, "commit", "-am", "F1")
+        return repo
+
+    def _coverage(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import coverage  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+        return coverage
+
+    def test_the_base_stays_on_the_remote(self, tmp_path):
+        repo = self._repo(tmp_path)
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/develop", (
+            "#311 decided NO — a nearer local base would narrow what every gate "
+            "audits based on where unpushed work happens to sit"
+        )
+
+    def test_the_condition_the_decision_declines_is_really_present(self, tmp_path):
+        """Without this the case above proves nothing: it would pass just as
+        well on a repo where local develop was not ahead at all."""
+        coverage = self._coverage()
+        repo = self._repo(tmp_path)
+        diagnosis = coverage.diagnose_stale_remote_base(repo, "origin/develop")
+        assert diagnosis is not None
+        assert diagnosis["local"] == "develop"
+        assert diagnosis["commits_ahead"] == 1
+        assert diagnosis["ancestor_of_head"] is True, (
+            "ancestor-of-HEAD is the exact condition #311 proposed to switch on"
+        )
+
+    def test_the_declined_case_is_answered_by_a_remedy_instead(self, tmp_path):
+        """The decision is only defensible because the operator is told what to
+        do. The diagnosis names the unpushed release-prep the advisory keys on."""
+        coverage = self._coverage()
+        repo = self._repo(tmp_path)
+        diagnosis = coverage.diagnose_stale_remote_base(repo, "origin/develop")
+        assert diagnosis["release_prep_subject"].startswith("release-prep(")
+
+    def test_pushing_is_what_moves_the_base(self, tmp_path):
+        """The remedy's EFFECT, with the un-pushed state as the control: once
+        the remote is fast-forwarded, the merge-base is the nearer tree the
+        rejected change would have chosen — so nothing is lost, only deferred
+        to an action the release flow already requires."""
+        coverage = self._coverage()
+        repo = self._repo(tmp_path)
+        assert coverage.diagnose_stale_remote_base(repo, "origin/develop") is not None
+        sha = _git(repo, "rev-parse", "develop").stdout.strip()
+        _git(repo, "update-ref", "refs/remotes/origin/develop", sha)  # the push
+        assert coverage.diagnose_stale_remote_base(repo, "origin/develop") is None
+        merge_base = _git(repo, "merge-base", "origin/develop", "HEAD").stdout.strip()
+        assert merge_base == sha
+
+
 class TestDocOnlyAndSuiteCoupledState:
     """COV-4H7N — the doc-only fast path skips the Critic, the PR review AND
     the suite in one move, so it has to clear the suite's question too.
