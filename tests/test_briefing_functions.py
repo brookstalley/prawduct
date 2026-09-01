@@ -22,6 +22,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -910,6 +911,59 @@ class TestAssembleSessionBriefingSections:
         (pr / ".session-handoff.md").write_text("prior")
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "Previous session context available" in out
+
+    def test_handoff_pointer_on_a_continuation_leads_with_applicability(self, tmp_path):
+        # SCN-5B8Q Chunk 02: the pointer is boundary-scoped, the briefing carrying
+        # it is not. On resume/compact/fork the reader's transcript already covers
+        # the handoff, so the line must lead with THAT fact — source is the fact,
+        # age is only a proxy for it.
+        pr = self._state(tmp_path, "")
+        (pr / ".session-handoff.md").write_text("prior")
+        out = briefing.assemble_session_briefing(tmp_path, [], continuation=True)
+        pointer = next(ln for ln in out.splitlines() if ".session-handoff.md" in ln)
+        assert "predates THIS session" in pointer
+        assert "continuation" in pointer
+        # Applicability LEADS; age trails it rather than opening the line.
+        assert pointer.index("predates THIS session") < pointer.index("(just now)")
+        # ...and it is never withheld: advice fails soft, so the path is still named.
+        assert ".prawduct/.session-handoff.md" in pointer
+
+    def test_handoff_pointer_at_a_boundary_is_unchanged_but_dated(self, tmp_path):
+        pr = self._state(tmp_path, "")
+        (pr / ".session-handoff.md").write_text("prior")
+        out = briefing.assemble_session_briefing(tmp_path, [], continuation=False)
+        assert (
+            "Previous session context available: read .prawduct/.session-handoff.md (just now)"
+            in out
+        )
+        assert "predates THIS session" not in out
+
+    def test_handoff_pointer_defaults_to_the_boundary_reading(self, tmp_path):
+        # A caller that does not know its source must not be told a possibly-false
+        # thing about its own context.
+        pr = self._state(tmp_path, "")
+        (pr / ".session-handoff.md").write_text("prior")
+        assert "predates THIS session" not in briefing.assemble_session_briefing(tmp_path, [])
+
+    def test_handoff_pointer_reports_a_real_age(self, tmp_path):
+        pr = self._state(tmp_path, "")
+        handoff = pr / ".session-handoff.md"
+        handoff.write_text("prior")
+        old = time.time() - 3 * 86400
+        os.utime(handoff, (old, old))
+        for continuation in (False, True):
+            out = briefing.assemble_session_briefing(tmp_path, [], continuation=continuation)
+            assert "(3d old)" in out, continuation
+
+    def test_handoff_pointer_survives_an_unreadable_mtime(self, tmp_path):
+        # An unreadable stat is a reason to say LESS, never a reason to withhold
+        # the pointer — the handoff is advice, and advice fails soft.
+        gone = tmp_path / "nope" / ".session-handoff.md"  # stat() raises OSError
+        for continuation in (False, True):
+            pointer = briefing._handoff_pointer(gone, continuation=continuation)
+            assert ".prawduct/.session-handoff.md" in pointer
+            assert "old)" not in pointer and "just now" not in pointer
+        assert "predates THIS session" in briefing._handoff_pointer(gone, continuation=True)
 
     def test_learnings_and_backlog_counts(self, tmp_path):
         pr = self._state(tmp_path, "")

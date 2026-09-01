@@ -184,6 +184,22 @@ class TestBriefOnlyStillOrients:
             "repeated observation — a continuation must still receive it"
         )
 
+    def test_the_handoff_pointer_knows_it_is_speaking_to_a_continuation(self, tmp_path):
+        # Chunk 02 (SCN-5B8Q): `brief_only` is the continuation fact and cmd_clear
+        # must actually HAND it to the briefing. The unit test pins the wording;
+        # this pins the wiring, which is the half that was missing.
+        prawduct = _seed_session(tmp_path)
+        (prawduct / ".session-handoff.md").write_text("the previous boundary's note\n")
+        cont = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
+        assert "predates THIS session" in cont.stdout, cont.stdout
+
+    def test_the_handoff_pointer_at_a_boundary_still_reads_as_news(self, tmp_path):
+        prawduct = _seed_session(tmp_path)
+        (prawduct / ".session-handoff.md").write_text("the previous boundary's note\n")
+        boundary = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert "Previous session context available" in boundary.stdout, boundary.stdout
+        assert "predates THIS session" not in boundary.stdout
+
     def test_resume_refreshes_advisories(self, tmp_path):
         prawduct = _seed_session(tmp_path)
         res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")

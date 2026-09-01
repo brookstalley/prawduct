@@ -37,6 +37,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import NamedTuple
 
@@ -640,8 +641,73 @@ ADVISORY_RELAY_TEXT = (
 )
 
 
-def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
-    """Assemble session briefing text. Target: <400 tokens (excluding handoff pointer)."""
+def _handoff_age(handoff_path: Path) -> str | None:
+    """How old ``.session-handoff.md`` is, in ``_humanize_age`` words, or None.
+
+    Read from the file's mtime rather than from a stamp inside it: the pointer
+    must work for a hand-authored handoff too, and an unreadable stat is a
+    reason to say less, never a reason to withhold the pointer.
+    """
+    try:
+        seconds = time.time() - handoff_path.stat().st_mtime
+    except OSError:
+        return None
+    return _humanize_age(max(0, int(seconds)))
+
+
+def _handoff_pointer(handoff_path: Path, *, continuation: bool) -> str:
+    """The briefing's one-line pointer at the previous session's handoff.
+
+    **Applicability leads; age is secondary.** The handoff describes the boundary
+    *before* the session that is now reading it. At a boundary that is exactly
+    right — it is the only bridge across the gap. On a continuation
+    (``resume``/``compact``/``fork``) the transcript was restored, so the reader
+    already holds that context in full and the parent has since worked past it;
+    a ``fork``'s parent is often *still* running, so the drift is however long
+    that parent has worked, not one boundary. Source is the fact; age is only a
+    proxy for it, which is why the continuation line leads with the fact and
+    reports the age behind it.
+
+    **Never suppressed.** The handoff is advice, and the ratified norm is
+    "authority fails closed; advice fails soft" — a redundant or old handoff is
+    still offered, the line just stops implying it is news. Suppressing it would
+    turn a visible weak signal into an invisible absent one.
+
+    **Two-way, not three-way, and deliberately so.** ``--brief-only`` carries
+    continuation-vs-boundary and nothing finer, so ``resume``, ``compact`` and
+    ``fork`` are indistinguishable here. ``compact`` is the one continuation with
+    real context loss and would want a *different* artifact (a bridge describing
+    what THIS session has done since its boundary); telling it apart needs either
+    a matcher split or stdin payload parsing on the SessionStart hot path, and
+    building the thing it actually wants is a separate feature. The continuation
+    wording is therefore true of all three: the handoff predates the session
+    either way.
+    """
+    age = _handoff_age(handoff_path)
+    suffix = f" ({age})" if age else ""
+    if not continuation:
+        return f"Previous session context available: read .prawduct/.session-handoff.md{suffix}"
+    return (
+        "Previous session context: .prawduct/.session-handoff.md predates THIS session"
+        f"{suffix} — this is a continuation (resume/compact/fork), so your restored "
+        "transcript already covers it and work has happened since. Read it only if that "
+        "context is thin."
+    )
+
+
+def assemble_session_briefing(
+    project_dir: Path, staleness: list[str], *, continuation: bool = False
+) -> str:
+    """Assemble session briefing text. Target: <400 tokens (excluding handoff pointer).
+
+    ``continuation`` is the one session-source fact the briefing needs: True when
+    the transcript survived (``resume``/``compact``/``fork``, which reach
+    ``cmd_clear`` as ``--brief-only``), False at a genuine boundary
+    (``startup``/``clear``). Only the handoff pointer reads it — see
+    :func:`_handoff_pointer` for why. It defaults to the boundary reading so a
+    caller that does not know its source gets today's wording rather than a
+    claim about the reader's context that may be false.
+    """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     lines = ["== SESSION BRIEFING =="]
 
@@ -743,10 +809,10 @@ def assemble_session_briefing(project_dir: Path, staleness: list[str]) -> str:
             f"sessions; do not read or modify them."
         )
 
-    # Handoff from previous session
+    # Handoff from previous session — source-aware (SCN-5B8Q Chunk 02).
     handoff_path = prawduct_dir / ".session-handoff.md"
     if handoff_path.is_file():
-        lines.append("Previous session context available: read .prawduct/.session-handoff.md")
+        lines.append(_handoff_pointer(handoff_path, continuation=continuation))
 
     # Staleness warnings
     if staleness:

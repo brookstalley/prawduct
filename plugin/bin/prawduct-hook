@@ -1585,7 +1585,12 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # v5: Staleness scan + session briefing + subagent briefing
     try:
         staleness = _briefing().staleness_scan(project_dir)
-        briefing = _briefing().assemble_session_briefing(project_dir, staleness)
+        # `brief_only` IS the continuation fact (SCN-5B8Q): the handoff pointer
+        # is boundary-scoped, so a continuation must be told the handoff predates
+        # its own session rather than pointed at it as news.
+        briefing = _briefing().assemble_session_briefing(
+            project_dir, staleness, continuation=brief_only
+        )
         print(briefing)
     except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)
