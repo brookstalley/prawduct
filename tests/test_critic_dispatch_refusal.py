@@ -1148,3 +1148,68 @@ class TestAnErrorReturnKeepsItsNotes:
         assert result.stderr.index("PRAWDUCT NOTE:") < result.stderr.index(
             "critic-begin: scope-widened"
         ), f"the reason was buried above the notes: {result.stderr!r}"
+
+
+class TestDispatchAnchorsToTheWorktree:
+    """`critic-begin` measures the tree it was run in, not the primary checkout.
+
+    This is the property the reviewer's `git -C <dir> rev-parse HEAD` check
+    compares against (#147), so it is pinned rather than assumed: if dispatch
+    ever recorded the primary checkout's HEAD, the reviewer would abort on every
+    worktree review and the check would read as the defect.
+
+    A linked worktree is the sharpest available case - one repository, two
+    working trees, two branches, two HEADs, one shared object store - and it is
+    how this framework's own parallel work is done.
+    """
+
+    def _worktree_repo(self, tmp_path: Path) -> tuple[Path, Path, str, str]:
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        primary_head = _commit_file(repo, "src/a.py", "def a():\n    return 1\n", "feat: a")
+        wt = tmp_path / "wt"
+        _git(repo, "worktree", "add", "-b", "feature", str(wt))
+        (wt / ".prawduct").mkdir(exist_ok=True)
+        wt_head = _commit_file(wt, "src/b.py", "def b():\n    return 2\n", "feat: b")
+        return repo, wt, primary_head, wt_head
+
+    def test_the_two_trees_really_do_disagree(self):
+        """The control. Without this, every assertion below could pass on a
+        setup where both paths lead to the same commit anyway."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            repo, wt, primary_head, wt_head = self._worktree_repo(Path(td))
+            assert primary_head != wt_head
+            assert _git(repo, "rev-parse", "HEAD").stdout.strip() == primary_head
+            assert _git(wt, "rev-parse", "HEAD").stdout.strip() == wt_head
+
+    def test_manifest_records_the_worktree_not_the_primary_checkout(self, tmp_path):
+        repo, wt, primary_head, wt_head = self._worktree_repo(tmp_path)
+        (wt / "src" / "c.py").write_text("def c():\n    return 3\n")
+
+        result = _run_begin(wt, "--mode", "chunk", "--chosen-by", "test", "--tier", "standard")
+        assert result.returncode == 0, result.stderr
+
+        assert (wt / PARTIALS_REL / "manifest.json").is_file()
+        assert not (repo / PARTIALS_REL / "manifest.json").exists(), (
+            "dispatch wrote its manifest into the primary checkout - the review "
+            "state and the reviewed tree must be the same tree"
+        )
+        manifest = json.loads((wt / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["commit_reviewed"] == wt_head
+        assert manifest["commit_reviewed"] != primary_head
+        assert manifest["branch"] == "feature"
+
+    def test_manifest_carries_an_absolute_worktree_path_for_the_dispatch_prompt(self, tmp_path):
+        """The coordinator substitutes `[dir]` from this field, so it has to be
+        absolute at the source rather than absolute by the coordinator's care."""
+        repo, wt, _primary_head, _wt_head = self._worktree_repo(tmp_path)
+        (wt / "src" / "c.py").write_text("def c():\n    return 3\n")
+        assert _run_begin(wt, "--mode", "chunk", "--chosen-by", "test", "--tier", "standard").returncode == 0
+
+        manifest = json.loads((wt / PARTIALS_REL / "manifest.json").read_text())
+        recorded = manifest.get("worktree")
+        assert recorded, "the manifest must name the tree it measured"
+        assert Path(recorded).is_absolute()
+        assert Path(recorded).resolve() == wt.resolve()

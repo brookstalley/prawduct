@@ -5,13 +5,12 @@ The Critic reviews changes against principles and specifications as a **separate
 
 ## When You Are Activated
 
-1. Resolve mode (full procedure: SKILL step 1). `$ARGUMENTS` token (`chunk` / `final` / `cumulative` / `verify-resolutions`) wins; else `prawduct-hook infer-critic-mode`; non-zero exit → `final`.
-2. Read `.prawduct/project-state.yaml`.
-3. Assess change scope/nature (git diff or read changed files).
-4. Read relevant `.prawduct/artifacts/`.
-5. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
-6. Mode decides *which* goals (see **Modes**); the signals below tune depth.
-7. Follow the dispatch manifest's roster (see Review Execution).
+1. Read `.prawduct/project-state.yaml`.
+2. Assess change scope/nature (git diff or read changed files).
+3. Read relevant `.prawduct/artifacts/`.
+4. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
+5. Mode decides *which* goals (see **Modes**); the signals below tune depth.
+6. Follow the dispatch manifest's roster (see Review Execution).
 
 ## Modes
 
@@ -20,9 +19,7 @@ The Critic reviews changes against principles and specifications as a **separate
 - **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
 - **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`.
 
-**Default:** mode missing, unrecognized, or inference unconfident → `final` (canonical rule: `review-cycle.md`). Never silently downgrade.
-
-**Chunk type axis.** Chunks declare `Type:` (orthogonal to mode). `Type: designer-handoff` → output "Review skipped — Type: designer-handoff", exit clean (no findings file). Other types adjust per-goal protocol (`review-cycle.md` "Per-Chunk Type Protocol Selector"). Missing/unrecognized → `code`.
+**Chunk type axis.** Chunks declare `Type:` (orthogonal to mode); it adjusts per-goal protocol (`review-cycle.md` "Per-Chunk Type Protocol Selector"). Missing/unrecognized → `code`.
 
 ## Signals That Guide Your Review
 
@@ -135,14 +132,15 @@ The manifest is authoritative and you never re-derive it; the derivation rule (r
 
 ### Coordinator Pattern
 
-Persistence is **decoupled from the review**: reviewers write partials; `critic-consolidate` merges them against the code-written manifest into the evidence fact + `.critic-findings.json` + the ledger anchor — no model authors any file the data plane trusts.
+Persistence is **decoupled from the review**: reviewers write partials, `critic-consolidate` merges them against the code-written manifest, and no model authors a file the data plane trusts.
 
 1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`), run git diff, and determine signals (size, type, boundaries). The manifest's `tier` is telemetry only and selects no model.
 
-2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY the two files the manifest's `rendezvous` names for its role — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template — substitute `<ROLE>`/`<GOALS>`/`<SHA>`/`<ID>`/`<STARTED>`/`<PARTIAL>` from the manifest (`commit_reviewed`, `id`, and `rendezvous.<ROLE>`):
+2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY the two files the manifest's `rendezvous` names for its role — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template — substitute `<ROLE>`/`<GOALS>`/`<SHA>`/`<ID>`/`<STARTED>`/`<PARTIAL>` from the manifest (`commit_reviewed`, `id`, `rendezvous.<ROLE>`) and `[dir]` from its `worktree`:
 
-   > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `<STARTED>` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project: `[dir]`. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`. Review id: `<ID>` — record it verbatim as `dispatch_id`. NO tests/builds. Write ONLY your partial to `<PARTIAL>`; nothing else."
+   > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `<STARTED>` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project (absolute): `[dir]` — anchor every path and every `git -C` there, never your cwd. Changed files: [list]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`, and confirm `git -C [dir] rev-parse HEAD` equals it before reading anything. Review id: `<ID>` — record it verbatim as `dispatch_id`. NO tests/builds. Write ONLY your partial to `<PARTIAL>`; nothing else."
 
+   - **`[dir]` is the manifest's `worktree`** — already absolute, and the tree `critic-begin` measured. A subagent does not inherit your cwd, so a relative path resolves into the primary checkout: a different tree at a different commit, which reviews clean.
    - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3.
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
    - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Learnings Cross-Check and Backlog Reconciliation (as NOTE findings in its partial).

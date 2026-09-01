@@ -29,7 +29,18 @@ write** — your started marker and your partial. Those paths and the review id 
 `.prawduct/.critic-partials/manifest.json` as `rendezvous.<your role>` and `id`; read them there
 if your prompt omits them, and never compose the filenames yourself. **Both paths must be absolute
 when you write** — your `Write` tool requires it, and the manifest records them relative to the
-project directory, so join a relative one onto the project directory your prompt carries. The role → goal mapping
+project directory, so join a relative one onto the project directory your prompt carries.
+
+**That project directory is the review, and it is not necessarily your cwd.** A worktree
+session's project directory is the worktree's own root; the primary checkout is a different
+tree, usually on a different branch at a different commit, and it is what a bare path reaches
+when your process starts somewhere else. So anchor everything to the directory you were given:
+`git -C <project dir> …` on every git call, and absolute paths — that directory joined to the
+relative one — on every `Read`, `Glob` and `Grep`. A bare `git diff` or a relative
+`.prawduct/artifacts/…` answers for whichever tree the process happens to sit in, and a review
+of the wrong tree reads exactly like a clean one.
+
+The role → goal mapping
 (definitions in `review-protocol.md`, read it from your skill/critic directory):
 
 - **correctness** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended).
@@ -47,18 +58,27 @@ project directory, so join a relative one onto the project directory your prompt
    not carry it, reading the manifest for that path is part of this step, not a departure from
    it. The file's mtime is the signal — it lets a waiting session distinguish "reviewer at work"
    from "reviewer never started" for the minutes before your partial lands. Skipping it makes your whole run indistinguishable from a dead dispatch.
-2. Read the goal definitions for YOUR goals from `review-protocol.md` (in the Critic skill
+2. **Confirm you are looking at the tree you were sent to.** Run `git -C <project dir> rev-parse
+   HEAD` and compare it to the `commit_reviewed` SHA in your prompt. They differ when your paths
+   resolved somewhere other than the dispatched tree — the classic case is a worktree session
+   whose subagent anchored to the primary checkout — and every finding after that point is about
+   a tree nobody asked you to review. On a mismatch, **review nothing**: write your partial
+   carrying the manifest's `commit_reviewed` verbatim and exactly one BLOCKING finding named
+   `dispatch-mismatch`, whose recommendation states both SHAs and the directory you resolved,
+   then stop. That keeps the roster complete, so the review consolidates and the builder is told;
+   a silent abort just stalls until the marker's TTL.
+3. Read the goal definitions for YOUR goals from `review-protocol.md` (in the Critic skill
    directory). Review ONLY your assigned goals — the other reviewers cover the rest.
-3. Read the manifest's **`prior_dispositions`** — findings already accepted or filed for this work,
+4. Read the manifest's **`prior_dispositions`** — findings already accepted or filed for this work,
    with reasons. **Do not re-raise one absent material change in its cited files**; acknowledge it
    in one line under a `priors:` note instead. It is here rather than in a goal's section because
    it binds every reviewer: a re-raised accepted finding costs the builder a disposition and buys a
    round, whichever goal noticed it. (`truncated` = older answers dropped; `unavailable` = the join
    failed, so you know nothing.)
-4. Read the changed files and inspect the diff (read-only git). Do NOT run tests or builds —
-   the Goal 1 `test-status` and `verify-coverage` probes report what a previous run recorded and
-   are the only commands your goals ever ask you to issue.
-5. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
+5. Read the changed files and inspect the diff (`git -C <project dir> …`). Do NOT run tests or
+   builds — the Goal 1 `test-status` and `verify-coverage` probes report what a previous run
+   recorded and are the only commands your goals ever ask you to issue.
+6. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
    (definitions in `review-protocol.md`). A clean pass has zero findings — that is normal and
    correct; do not invent findings to fill space.
 
