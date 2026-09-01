@@ -66,7 +66,7 @@ retroactivity). Departing from a norm that already governs your change is a reco
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.
 
-There is no "pre-existing" exception — tests, broad exceptions, stale artifacts, anything: fix it, or flag it with a reason it can't be fixed now. Every session starts clean.
+There is no "pre-existing" exception: every session starts clean.
 
 **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Flag ambiguity before building; don't guess silently. Validate that referenced files and components still exist — plans go stale. Run `/prawduct:learnings [chunk focus]` for relevant rules before coding.
 
@@ -135,6 +135,8 @@ When you modify files that affect a contract surface:
 3. **Incorporate** findings — update consumers, add integration tests.
 4. **Record** what was investigated and found. The Critic verifies investigation occurred.
 
+**Both directions.** Steps 1-4 ask *did my change break downstream consumers?* When you write or change a **consumer**, ask the mirror: read the producer's actual emitted signal sequence — every event, terminal marker and error path, and in what order — not just the type or shape both sides agree on. A consumer that type-checks and still awaits a signal the producer never sends, or drops a terminal/error one it does, is a Critic Goal 1 **BLOCKING** finding.
+
 ### Decision Research (when choices constrain future options)
 
 A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format is always lock-in, measured by reversal cost not LOC; enumerate the data's future consumer queries before designing fields), **pervasiveness** (many files), **structural impact** (shapes architecture), **external dependency** (long-term library/service reliance), or **volatility** (correctness rests on fast-moving / post-cutoff data — web-research it, don't recall; see `methodology/discovery.md` "Calibrate Rigor").
@@ -191,15 +193,13 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 `Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the fail-safe that a missing, unrecognized or unconfidently-inferred mode runs `final` — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
-**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings.
-
-**Never write Critic findings yourself** — writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent is slow, wait; if it fails, tell the user and re-invoke.
+**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
 **Warnings and notes gate nothing** — every fix commit extends HEAD, which is how a passing review buys another round. Think before dismissing one anyway: the Critic catches blind spots the builder can't see.
 
 ## Creating Pull Requests
 
-**Default: wait for the user to ask.** Do not create PRs proactively; only use `/prawduct:pr` when the user explicitly requests it — unless `project-preferences.md` sets `PR creation: automatic`.
+**Default: wait for the user to ask** — unless `project-preferences.md` sets `PR creation: automatic`.
 
 `/prawduct:pr` handles the full lifecycle (it detects git state and routes to create, update, merge, or status) and invokes the PR reviewer agent for independent release-readiness assessment of the full changeset. Review criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
 
@@ -207,7 +207,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 ## Exception Handling
 
-Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) hide bugs. When one is genuinely necessary — system boundaries, event loops, top-level supervisors — mark it with `prawduct:allow prawduct/broad-except -- reason` in a comment on the `except`/`catch` line itself. The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt." Broad catches that swallow errors without logging are always findings — no waiver can justify silencing errors.
+A broad catch is legitimate at system boundaries, event loops and top-level supervisors — mark it with `prawduct:allow prawduct/broad-except -- reason` in a comment on the `except`/`catch` line *itself*. The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt."
 
 ## Common Traps
 

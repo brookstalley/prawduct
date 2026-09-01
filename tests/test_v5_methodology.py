@@ -254,6 +254,28 @@ LAST_MEASURED_TOKENS = {
     # and has not picked one yet. What made the clause removable here is that
     # this reader has already decided to delegate, so the enumeration answers a
     # question they are no longer asking.
+    # +/-0 on 2026-09-01 (#547): Boundary Investigation gained the INBOUND
+    # direction -- read the producer's emitted signal sequence when you write a
+    # consumer -- because Critic Goal 1 blocks on that mismatch in `chunk` mode
+    # and nothing guided the builder toward it. PAID FOR IN PLACE, at the
+    # ceiling rather than through it, and funded by the same class the delegation
+    # pointer used: rules the always-injected `session-digest.md` states in full,
+    # restated here beyond the part only this file owns. (1) the "pre-existing"
+    # exception's enumeration ("tests, broad exceptions, stale artifacts,
+    # anything: fix it, or flag it") -- the digest gives the list and the
+    # flag-why clause verbatim, so what stayed is the binding this file owns:
+    # every session starts clean; (2) "Never write Critic findings yourself" as
+    # its own paragraph, folded into the sentence above it -- the digest carries
+    # the rule AND its why ("the independence is the whole value"), and "if the
+    # agent is slow, wait" was the neighbouring "Don't poll" a second time; (3)
+    # Exception Handling's opening and closing sentences -- "catch specific
+    # exceptions", the two syntax examples, and "no waiver can justify silencing
+    # errors" are all the digest's bullet, so what stayed is when a broad catch
+    # is legitimate, that the comment goes on the catch line, and the
+    # canary/Critic behaviour; (4) the PR default's restatement of itself ("do
+    # not create PRs proactively; only use /prawduct:pr when the user explicitly
+    # requests it" says the heading sentence twice), leaving the heading plus the
+    # preference that overrides it.
     "methodology/building.md": 4755,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
