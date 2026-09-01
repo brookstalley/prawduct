@@ -536,6 +536,19 @@ def _yaml_top_level_key_present(state_path: Path, key: str) -> bool:
 # `__pycache__/` and a trailing slash on `.pr-reviews/` for its `.gitignore`
 # writer, while this list uses bare paths for `git ls-files` untracking. Keep the
 # shared session-file set in sync when adding entries.
+#
+# THE MIRROR IS TWO OF FOUR SITES, and saying only "keep the two in sync"
+# understates the fan-out to whoever finds this comment (#324). Adding one
+# session file touches:
+#   1. `core.GITIGNORE_ENTRIES`         — the canonical set
+#   2. this list                        — the untrack set
+#   3. this repo's own `.gitignore`     — nothing writes prawduct's copy for it
+#   4. `_boundary_close_session`        — deleted at the boundary, or a recorded
+#                                         reason it must outlive one
+# 1↔2 are pinned by `TestSessionGitignoreMirror`; 3 and 4 by
+# `tests/test_hook_session_file_registry.py`, which forces every new entry to
+# declare its boundary disposition rather than defaulting to "never deleted" —
+# the default that leaks state into the next session.
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestSessionGitignoreMirror
 _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
