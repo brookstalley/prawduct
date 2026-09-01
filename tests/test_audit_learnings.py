@@ -2171,3 +2171,114 @@ class TestRetirementReadinessHasOneHome:
         result = _mod.audit_learnings(tmp_path, apply=True, run_sentinels=False)
         for record in result["retirements"]:
             assert record["applied"] is record["ready"]
+
+
+class TestBrokenEnvironmentIsUngradedWhenDeclared:
+    """#720: a runner that dies on a broken environment is not a failing test.
+
+    A runner that starts and then exits non-zero because `node_modules` is
+    absent, or the workspace is unbuilt, is indistinguishable from a test that
+    ran and failed — from outside. Prawduct must not learn per-runner exit-code
+    tables, so the PRODUCT declares which codes mean "could not run", in the
+    same posture that gives `sentinel_command:` no default.
+
+    The stakes are the ones this whole tri-state exists for: a rule reported as
+    failing when nothing judged it argues for retiring a rule that is still
+    enforced.
+    """
+
+    def _declare(self, product_dir: Path, value: str) -> None:
+        prawduct = product_dir / ".prawduct"
+        prawduct.mkdir(parents=True, exist_ok=True)
+        state = prawduct / "project-state.yaml"
+        prior = state.read_text() if state.is_file() else ""
+        state.write_text(f"{prior}sentinel_ungraded_exit_codes: {value}\n")
+
+    def test_absent_declaration_leaves_every_nonzero_a_real_failure(self, tmp_path):
+        """The default is unchanged — this is additive to existing products."""
+        codes, error = _mod.resolve_ungraded_exit_codes(tmp_path)
+        assert codes == frozenset()
+        assert error is None
+
+    def test_a_declared_code_grades_ungraded_not_failed(self, tmp_path):
+        (tmp_path / "t.py").write_text("")
+        _declare_sentinel_command(
+            tmp_path, f"{sys.executable} -c \"import sys; sys.exit(3)\" {{sentinel}}"
+        )
+        self._declare(tmp_path, "3")
+        passed, detail = _mod.run_sentinel(tmp_path, "t.py")
+        assert passed is None, detail
+        assert "ungraded rather than failed" in detail
+        assert "sentinel_ungraded_exit_codes" in detail
+
+    def test_an_undeclared_nonzero_code_is_still_a_real_failure(self, tmp_path):
+        """The declaration widens the ungraded side; it must not swallow the
+        failures the retirement route depends on catching."""
+        (tmp_path / "t.py").write_text("")
+        _declare_sentinel_command(
+            tmp_path, f"{sys.executable} -c \"import sys; sys.exit(1)\" {{sentinel}}"
+        )
+        self._declare(tmp_path, "3")
+        passed, _detail = _mod.run_sentinel(tmp_path, "t.py")
+        assert passed is False
+
+    def test_a_declared_code_does_not_change_a_passing_sentinel(self, tmp_path):
+        (tmp_path / "t.py").write_text("")
+        _declare_sentinel_command(
+            tmp_path, f"{sys.executable} -c \"pass\" {{sentinel}}"
+        )
+        self._declare(tmp_path, "3 4")
+        passed, _detail = _mod.run_sentinel(tmp_path, "t.py")
+        assert passed is True
+
+    def test_zero_is_refused(self, tmp_path):
+        """Listing 0 would report every green sentinel as ungraded and disable
+        the retirement route entirely — a gate switched off by a declaration
+        that reads like configuration."""
+        self._declare(tmp_path, "0")
+        codes, error = _mod.resolve_ungraded_exit_codes(tmp_path)
+        assert codes == frozenset()
+        assert error is not None and "PASSED" in error
+
+    def test_a_malformed_declaration_is_reported_not_ignored(self, tmp_path):
+        """An operator who asked for the distinction and typo'd must not keep
+        getting the false accusation with the file reading as though they had
+        fixed it."""
+        self._declare(tmp_path, "three")
+        codes, error = _mod.resolve_ungraded_exit_codes(tmp_path)
+        assert codes == frozenset()
+        assert error is not None and "'three'" in error
+
+    def test_a_malformed_declaration_ungrades_rather_than_grades(self, tmp_path):
+        """And it reaches `run_sentinel` BEFORE the subprocess runs — spending a
+        test run to produce a number nobody can interpret is the wrong order."""
+        (tmp_path / "t.py").write_text("")
+        _declare_sentinel_command(
+            tmp_path, f"{sys.executable} -c \"import sys; sys.exit(1)\" {{sentinel}}"
+        )
+        self._declare(tmp_path, "not-a-code")
+        passed, detail = _mod.run_sentinel(tmp_path, "t.py")
+        assert passed is None
+        assert "sentinel_ungraded_exit_codes" in detail
+
+    def test_codes_parse_from_either_separator(self, tmp_path):
+        self._declare(tmp_path, "3, 4  5")
+        codes, error = _mod.resolve_ungraded_exit_codes(tmp_path)
+        assert error is None
+        assert codes == frozenset({3, 4, 5})
+
+    def test_the_boundary_is_documented_where_sentinel_is_defined(self):
+        """The acceptance criterion, asserted rather than assumed.
+
+        "Document the boundary" was the third option on #720 and is not an
+        alternative to fixing it — the module docstring is where a reader learns
+        what `sentinel=` means, so it is where ungraded-versus-failed belongs.
+        """
+        doc = _mod.__doc__ or ""
+        assert "Ungraded is not failed" in doc
+        assert _mod.UNGRADED_EXIT_CODES_KEY in doc
+
+    def test_no_runner_is_hardcoded_by_the_new_resolver(self):
+        """The language-agnostic acceptance criterion, structurally."""
+        assert _hardcoded_runner_violations(_mod.resolve_ungraded_exit_codes) == []
+        assert _hardcoded_runner_violations(_mod.run_sentinel) == []

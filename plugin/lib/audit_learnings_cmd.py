@@ -29,6 +29,30 @@ placeholder for the file to run (``sentinel_command: npx vitest run {sentinel}``
 Without it a sentinel is reported **ungraded**, never failed — prawduct governs
 products in every language and does not guess at one's test runner.
 
+**Ungraded is not failed, and the line between them is this.** A sentinel grades
+``False`` only when a runner *returned a verdict about this rule*. Everything
+else — no declared command, a malformed one, a path-shaped target that is gone,
+a command that could not launch, one that timed out, and one that exited with a
+code the product declared as "could not run" — is ``None``, ungraded, and raises
+no error against the test. The distinction matters because this audit decides
+which learnings are structurally enforced: a rule reported as failing when
+nothing judged it argues for retiring a rule that is still enforced, which is
+the one outcome this subsystem must never produce.
+
+Prawduct cannot tell a broken environment from a real failure on its own —
+exit codes are per-runner and prawduct must not learn them. So the product
+declares it, in the same posture ``sentinel_command:`` already establishes::
+
+    sentinel_command: npx vitest run {sentinel}
+    sentinel_ungraded_exit_codes: 1
+
+Any exit code listed there means *the runner could not judge this rule* and
+grades ungraded instead of failed. Absent, every non-zero exit is a real
+failure, which is the pre-existing behaviour and the right default for a runner
+that does not distinguish. ``0`` may not be listed: a command that exited
+successfully returned a verdict, and declaring it here would render every
+green sentinel ungraded (``brookstalley/prawduct#720``).
+
 **Two retirement reasons, never both on one entry.** ``sentinel=`` retires a
 rule because the failure mode it warned about is now structurally enforced by a
 passing test. ``superseded-by=`` retires it because a *broader rule replaced
@@ -529,6 +553,81 @@ def resolve_sentinel_command(product_dir: Path) -> tuple[list[str] | None, str |
     return argv, None
 
 
+#: The optional companion to ``sentinel_command``: exit codes that mean "this
+#: runner could not judge the rule", not "the rule's test failed".
+UNGRADED_EXIT_CODES_KEY = "sentinel_ungraded_exit_codes"
+
+
+def resolve_ungraded_exit_codes(
+    product_dir: Path,
+) -> tuple[frozenset[int], str | None]:
+    """Exit codes the product declares as *could not run*.
+
+    Returns ``(codes, None)`` — possibly empty — or ``(frozenset(), reason)``
+    when the declaration exists and is unusable.
+
+    **Why the product declares this and prawduct does not infer it.** A runner
+    that starts and then dies on a broken environment — absent `node_modules`,
+    an unbuilt workspace, a missing plugin — exits non-zero and is
+    indistinguishable, from outside, from a test that ran and failed. The three
+    options weighed on #720 were: sniff the output for a recognisable result
+    block; let the product declare the code; or leave it and document the
+    boundary. The first requires prawduct to learn each runner's output format,
+    which `architecture.md` § Direction forbids by the same rule that gives
+    `sentinel_command:` no default. The third leaves the false accusation
+    standing. The second is language-agnostic, costs a product nothing until it
+    wants the distinction, and puts the knowledge where it lives — pytest's
+    internal-error 3, vitest's 1-for-no-tests, whatever this product's runner
+    does. The boundary is documented either way, in this module's docstring and
+    in the state template, because "document it" was never the alternative to
+    fixing it.
+
+    **A malformed declaration is ungraded, not ignored.** Silently dropping it
+    would mean an operator who asked for the distinction, and typo'd, keeps
+    getting the false accusation they were trying to stop — with the file
+    reading as though they had fixed it. That is the same silence
+    `_KNOWN_METADATA_KEYS` validation closes one layer up, and
+    ``resolve_sentinel_command`` already takes this posture for a malformed
+    command.
+
+    **``0`` is refused.** A command that exited successfully returned a verdict;
+    listing it here would render every passing sentinel ungraded and quietly
+    disable the whole retirement route.
+    """
+    from . import core  # noqa: PLC0415 — lazy; only this path reads state
+
+    state_path = Path(product_dir) / ".prawduct" / "project-state.yaml"
+    declared = core.read_str_yaml_key(state_path, UNGRADED_EXIT_CODES_KEY)
+    declared = declared.strip() if isinstance(declared, str) else ""
+    if not declared:
+        # Absent is the DEFAULT, not an error: every non-zero exit is a real
+        # failure, which is what a runner that does not distinguish means.
+        return frozenset(), None
+
+    codes: set[int] = set()
+    for token in declared.replace(",", " ").split():
+        try:
+            code = int(token)
+        except ValueError:
+            return frozenset(), (
+                f"`{UNGRADED_EXIT_CODES_KEY}: {declared}` is not a list of exit "
+                f"codes ({token!r} is not an integer) — sentinels are reported "
+                "ungraded rather than graded against a declaration prawduct "
+                "could not read. Write it as space- or comma-separated "
+                f"integers, e.g. `{UNGRADED_EXIT_CODES_KEY}: 3, 4`"
+            )
+        if code == 0:
+            return frozenset(), (
+                f"`{UNGRADED_EXIT_CODES_KEY}` lists 0, which is the code a "
+                "runner returns when the test PASSED. Honouring it would report "
+                "every green sentinel as ungraded and disable the retirement "
+                "route entirely. List only the codes this runner uses for "
+                "\"could not run\""
+            )
+        codes.add(code)
+    return frozenset(codes), None
+
+
 def run_sentinel(
     product_dir: Path, sentinel: str, *, timeout: int = 120
 ) -> tuple[bool | None, str]:
@@ -549,18 +648,26 @@ def run_sentinel(
     non-zero on it, because "the test is missing" and "the test failed" are
     different facts and only one of them is about the rule.
 
-    **Three known limits of that line, all erring toward running the command.**
-    The missing-target check fires only for a *path-shaped* sentinel (one
-    carrying a separator): an opaque runner id such as ``com.acme.BarTest#testX``
-    is not resolvable here, and prawduct will not claim a file is gone when it
-    cannot tell "gone" from "not a path". **A bare filename is on the wrong side
-    of that line** — ``auth.test.js`` with no directory is indistinguishable from
+    **A broken environment is on the ungraded side WHEN THE PRODUCT SAYS SO.**
+    A runner that starts and then dies — absent dependencies, an unbuilt
+    workspace — exits non-zero and is indistinguishable from a real failure from
+    outside. No language-agnostic signal separates them, and prawduct must not
+    learn per-runner exit-code tables, so the product declares the codes:
+    ``sentinel_ungraded_exit_codes:`` in ``project-state.yaml``, read by
+    :func:`resolve_ungraded_exit_codes`. An exit code listed there grades
+    ``None`` with the declaration named in ``detail``. Undeclared, every
+    non-zero exit stays ``False`` — the right default for a runner that does not
+    distinguish, and the pre-existing behaviour for every product.
+
+    **One known limit remains, erring toward running the command.** The
+    missing-target check fires only for a *path-shaped* sentinel (one carrying a
+    separator): an opaque runner id such as ``com.acme.BarTest#testX`` is not
+    resolvable here, and prawduct will not claim a file is gone when it cannot
+    tell "gone" from "not a path". **A bare filename is on the wrong side of
+    that line** — ``auth.test.js`` with no directory is indistinguishable from
     an opaque id, so a deleted one still reaches the runner and can come back
     ``False``, which is the pre-fix false accusation surviving in the one shape
-    the separator rule cannot catch. And a command that starts and then dies on a
-    broken environment — absent dependencies, an unbuilt workspace — also grades
-    ``False``, because no language-agnostic signal separates that from a real
-    failure (``brookstalley/prawduct#720`` covers both residuals).
+    the separator rule cannot catch (``brookstalley/prawduct#720``).
 
     Collapsing that third case into ``False`` is the whole defect this shape
     exists to prevent — it accuses a green test and argues for retiring a live
@@ -577,6 +684,14 @@ def run_sentinel(
     argv_template, reason = resolve_sentinel_command(product_dir)
     if argv_template is None:
         return None, reason or "sentinel could not be graded"
+    # Resolved BEFORE the run, not after it. A declaration prawduct cannot read
+    # is a fault in the grading setup, and finding that out only once a verdict
+    # is in hand means spending the subprocess to produce a number nobody can
+    # interpret. Failing here reports the fault against every sentinel, which is
+    # what an unreadable grading rule actually affects.
+    ungraded_codes, codes_error = resolve_ungraded_exit_codes(product_dir)
+    if codes_error is not None:
+        return None, codes_error
     # A sentinel naming a file that is GONE has no verdict either. Runners
     # disagree about this — some exit non-zero on an uncollectable target, which
     # would render "deleted" as "failing" and accuse a test that no longer
@@ -624,6 +739,19 @@ def run_sentinel(
 
     combined = (result.stdout or "") + (result.stderr or "")
     tail = "\n".join(combined.splitlines()[-20:])
+    if result.returncode in ungraded_codes:
+        # The product declared this code as "the runner could not judge it".
+        # The command's output rides along in the reason, because the operator
+        # fixing a broken environment needs to see what it said — and it is a
+        # prawduct diagnostic now, not a test result, so it belongs in the
+        # ungraded slot rather than `output_excerpt`.
+        detail = (
+            f"sentinel command exited {result.returncode}, declared in "
+            f"`{UNGRADED_EXIT_CODES_KEY}` as \"could not run\" — ungraded rather "
+            "than failed, because a runner that could not judge the rule "
+            "returned no verdict about it"
+        )
+        return None, f"{detail}\n{tail}" if tail else detail
     return result.returncode == 0, tail
 
 
