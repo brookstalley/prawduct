@@ -1021,12 +1021,58 @@ class TestRegistration:
 # stays silent inside the window. Deliberately NOT hermetic: it must fail the
 # moment this repo's norm state drifts — the ratification ageing past the sweep
 # window with no janitor sweep, a dated `revisit:` expiring, a dead-why, an
-# in-transition stall — forcing a human to re-baseline (and, for the sweep case,
-# to actually run `/prawduct:janitor`).
+# in-transition stall, a recorded stopgap lapsing — forcing a human to
+# re-baseline (and, for the sweep case, to actually run `/prawduct:janitor`).
+#
+# A tripwire that cannot go off is not a tripwire. That is the whole content of
+# #738 and the reason the class below carries three guards and a skip rather
+# than one filtered assertion: on a machine with no backlog cache — which is
+# every CI runner, since the cache lives under `<git-common-dir>/prawduct/` and
+# is never committed — the old form removed the outage advisory from the fired
+# set and then asserted the remainder was empty, which it necessarily was.
 # =============================================================================
 
 
+#: The two norm-lifecycle probes that resolve citations against the LIVE backlog,
+#: and so cannot answer at all when the cache is missing. Named rather than
+#: inferred because the tripwire below has to say precisely which claims it did
+#: NOT make on a cache-less run — "some probes didn't run" is the shape of report
+#: that let #738 sit green for months.
+_CACHE_DEPENDENT_PROBES = frozenset({"dead-why", "stalled-transition"})
+
+
 class TestSilentAgainstThisRepo:
+    """This repo's committed norm state raises no advisory — and says so honestly.
+
+    The original form of this test filtered `backlog-cache-unreadable` out of the
+    fired set and asserted the remainder was empty. On a developer machine that
+    is a real assertion. In CI it is not: the cache lives under
+    `<git-common-dir>/prawduct/`, is uncommitted and is absent on a fresh
+    checkout, so both cache-dependent probes returned the outage advisory, the
+    filter removed it, and `fired == []` passed **without either probe having
+    resolved a single citation** (#738). A green that certifies nothing is worse
+    than a red: it is what let #737 — five recorded stopgaps no probe could read
+    — sit unnoticed through every CI run on the commit that introduced them.
+
+    Three guards replace the bare filter, and each answers a different way for
+    this to be vacuous:
+
+    1. **The corpus is real.** A repo with no Direction entries, or with none
+       citing a backlog item, gives the two scanning probes nothing to scan;
+       `fired == []` would then be true of an empty registry rather than of a
+       healthy one. Both are asserted, and both going false is genuine drift
+       worth a red.
+    2. **Everything the cache cannot excuse is asserted unconditionally**,
+       cache or no cache — including the *artifact-only* half of
+       `stalled-transition`, the expired-stopgap arm, which needs no backlog at
+       all. That arm is what puts the five recorded 2026-12-01 bounds under a
+       clock CI can actually fire.
+    3. **A cache-less run SKIPS rather than passes.** The claim about the two
+       cache-dependent probes is simply not made, and the skip says so by name.
+       Seed the cache (`prawduct-hook backlog sync --repo <repo>`) and the full
+       assertion runs.
+    """
+
     def test_no_norm_lifecycle_advisory_fires_here_today(self):
         # Steady state after ratifying prawduct's own registry (norm-lifecycle
         # Layer 2): `norm_registry_ratified` is recorded and the seven strategy
@@ -1037,27 +1083,144 @@ class TestSilentAgainstThisRepo:
         # probe is silent. This tripwire re-fires when the state drifts (the sweep
         # window lapses without a janitor run, a norm's rationale citing work that
         # shipped); that required re-baseline is the forcing function.
-        #
-        # `backlog-cache-unreadable` is excluded, and the exclusion is the point
-        # of the test rather than a hole in it: this asserts a property of the
-        # repo's COMMITTED norm state, and the backlog cache is per-clone,
-        # uncommitted and absent on a fresh checkout. Its absence says something
-        # true about this machine and nothing about the norms — asserting on it
-        # here would make a clean clone's first test run red for a correct
-        # reason. That the probes report it at all is asserted directly, against
-        # a store the test controls, in TestPostCutoverResolvesThroughTheCache.
         repo_root = Path(__file__).resolve().parents[1]
         state = load_project_state(repo_root)
         codebase = make_codebase(repo_root)
         np.register()
-        fired = sorted(
-            c.type
-            for c in run_all_probes(state, codebase)
-            if c.feature == "norm-lifecycle" and c.type != "backlog-cache-unreadable"
+
+        # Guard 1 — there is something here to be silent ABOUT.
+        assert np._any_direction_entry(codebase), (
+            "no `## Direction` entry in this repo's artifacts: every norm-lifecycle "
+            "assertion below would hold of an empty registry"
         )
+        cited = [
+            (path.name, ident)
+            for path in np._artifact_paths(codebase)
+            for line in np._direction_lines(np._read_text(path))
+            for ident in np._extract_ids(line)
+        ]
+        assert cited, (
+            "no `## Direction` line in this repo cites a backlog item: dead-why and "
+            "stalled-transition have nothing to resolve, so their silence is vacuous"
+        )
+
+        # Guard 2 — the expired-stopgap arm reads only the artifacts, so it is
+        # asserted whether or not the backlog can be reached. This is the clock
+        # behind the bounded exceptions recorded in `architecture.md` and
+        # `nonfunctional-requirements.md`; when one lapses unrenewed, CI says so.
+        lapsed = np._expired_stopgaps(codebase, today=datetime.now(timezone.utc).date())
+        assert lapsed == {}, (
+            "recorded stopgap(s) past their expiry — renew the bound with a fresh "
+            f"reason, or complete the transition: {sorted(lapsed)}"
+        )
+
+        cands = [c for c in run_all_probes(state, codebase) if c.feature == "norm-lifecycle"]
+        types = {c.type for c in cands}
+        cache_blind = "backlog-cache-unreadable" in types
+        fired = sorted(types - {"backlog-cache-unreadable"})
+
+        # Everything not excused by a missing cache must be silent, always.
+        unexcused = [t for t in fired if not (cache_blind and t in _CACHE_DEPENDENT_PROBES)]
+        assert unexcused == [], (
+            f"expected no norm-lifecycle advisory to fire here; got: {unexcused}"
+        )
+
+        # Guard 3 — do not bank a green for a claim that was never evaluated.
+        if cache_blind:
+            pytest.skip(
+                "backlog cache unreadable, so "
+                f"{sorted(_CACHE_DEPENDENT_PROBES)} could not resolve any of the "
+                f"{len(cited)} norm citation(s) in this repo — their silence is NOT "
+                "asserted by this run. Seed the cache with `python3 "
+                "plugin/bin/prawduct-hook backlog sync --repo <owner/repo>` to make "
+                "this test say something about them."
+            )
         assert fired == [], (
             f"expected no norm-lifecycle advisory to fire here; got: {fired}"
         )
+
+
+class TestTheTripwireCannotPassVacuously:
+    """#738: the guards that keep the tripwire above from certifying nothing.
+
+    A test asserting "nothing fired" is only as good as its evidence that
+    something COULD have fired. These exercise each guard against a repo shape
+    that would previously have sailed through — an empty registry, a registry
+    citing nothing, a lapsed bound with no cache to read. They are the
+    discriminating half: without them the guards are three more lines that
+    could quietly stop working the same way the filter did.
+    """
+
+    def test_an_empty_registry_does_not_read_as_a_healthy_one(self, tmp_path):
+        # No Direction entries at all: every probe below is structurally silent.
+        # Guard 1's job is that this is a red, not a green.
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse only.\n")
+        assert not np._any_direction_entry(_cb(tmp_path))
+
+    def test_a_registry_citing_nothing_leaves_two_probes_nothing_to_resolve(self, tmp_path):
+        # Direction entries exist, so guard 1 passes — but no entry cites a
+        # backlog item, so dead-why and stalled-transition scan and resolve zero
+        # citations. Their silence says nothing about the backlog, which is what
+        # guard 2 (the citation count) is there to notice.
+        _write_artifact(
+            tmp_path,
+            "architecture.md",
+            _direction_artifact("- **X.**\n  Why: because it is simpler.\n"),
+        )
+        codebase = _cb(tmp_path)
+        assert np._any_direction_entry(codebase)
+        cited = [
+            ident
+            for path in np._artifact_paths(codebase)
+            for line in np._direction_lines(np._read_text(path))
+            for ident in np._extract_ids(line)
+        ]
+        assert cited == []
+
+    def test_a_lapsed_bound_is_visible_with_no_backlog_at_all(self, tmp_path):
+        # The join between #737 and #738. `_expired_stopgaps` reads artifacts
+        # only, so the guard that watches this repo's recorded 2026-12-01 bounds
+        # keeps working on a runner that cannot reach any backlog — the exact
+        # condition under which the old test certified everything and checked
+        # nothing. No backlog.md and no cache are written here on purpose.
+        _write_artifact(
+            tmp_path,
+            "architecture.md",
+            _direction_artifact(
+                "- **X.**\n"
+                "  Status: in-transition — tracked in OBS-4C1K\n"
+                f"  Stopgap: recorded {_days_ago(200)}, expires {_days_ago(1)}.\n"
+            ),
+        )
+        lapsed = np._expired_stopgaps(_cb(tmp_path), today=datetime.now(timezone.utc).date())
+        assert sorted(lapsed) == [("architecture.md", "OBS-4C1K")]
+
+    def test_the_cache_dependent_set_matches_the_probes_that_read_the_backlog(self, tmp_path):
+        # The skip names which claims it did not make. If a third probe starts
+        # reading the live backlog and is not added here, the tripwire would
+        # assert its silence on a cache-less run — asserting a probe's verdict
+        # when the probe could not look is the failure mode this whole class
+        # exists to prevent, arriving from the other direction.
+        _write_artifact(
+            tmp_path,
+            "architecture.md",
+            _direction_artifact(
+                "- **X.**\n"
+                "  Why: the OBS-4C1K migration made a second system redundant.\n"
+                "  Status: in-transition — tracked in OBS-4C1K\n"
+            ),
+        )
+        np.register()
+        cands = run_all_probes(
+            ProjectState({"backlog_service_repo": "acme/product"}), _cb(tmp_path)
+        )
+        types = {c.type for c in cands if c.feature == "norm-lifecycle"}
+        assert "backlog-cache-unreadable" in types
+        # Nothing else may fire from a probe that needed the store it could not read.
+        assert types - {"backlog-cache-unreadable"} <= _CACHE_DEPENDENT_PROBES | {
+            "norm-health-sweep-overdue",
+            "norm-registry-unratified",
+        }
 
 
 def _id(candidate) -> str:
