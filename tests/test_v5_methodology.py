@@ -927,8 +927,28 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # a project preference on the one surface that cannot be opted out of. It is
     # also the form the two neighbouring policy bullets already use, naming the
     # governing row inline rather than behind the pointer.
-    "framework": 3343,
-    "product": 2269,
+    # framework 3343 -> 3159, product 2269 -> 2085 on 2026-09-01 (#630): the
+    # digest's stance block was RELOCATED, not cut. Its nine checkable bars now
+    # live in `docs/principles.md` § Agent Stance -- reachable by the pointer the
+    # block already carried and by `/prawduct:methodology principles` -- while
+    # the digest keeps the lead position (the expert take leads, compliance
+    # second) and the roster of nine names. That split is the classification
+    # #630 asks for, applied to the one section where it is unambiguous: the
+    # LEAD is what a thin-anchor repo is wrong without, and the bars are a
+    # lookup a reader consults once they are checking themselves against one.
+    # The obligations that the bars used to carry alone are separately being
+    # attached to the checkpoints an agent already hits (#298), which is what
+    # makes this relocation safe rather than a quiet demotion.
+    #
+    # THE CEILINGS ARE DELIBERATELY NOT RATCHETED IN THIS COMMIT, and this is
+    # the declaration that stops the slack being a silent loan: #298's
+    # `CLAUDE.md` line spends part of this relief, and the ratchet lands with it
+    # in the next commit, at one over the reading it leaves. Ratcheting here
+    # would have forced that commit to RAISE a ceiling to make room for an
+    # addition this one had already paid for -- the accounting reading exactly
+    # backwards from what happened.
+    "framework": 3159,
+    "product": 2085,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
