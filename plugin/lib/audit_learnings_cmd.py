@@ -16,6 +16,13 @@ The HTML comment must be on the line immediately after the ``## Title`` line.
 A comment placed deeper in the entry body is ignored — the strict placement
 avoids parsing surprises when entries quote example metadata in their prose.
 
+**The key set is closed.** ``confirmations``, ``created``, ``sentinel`` and
+``superseded-by`` are the whole schema; any other well-formed ``key=value`` is
+reported as an error rather than ignored, because a misspelled directive
+(``sentinal=``) parses cleanly, does nothing, and still reads in the file as a
+live lifecycle annotation. Fragments with no ``=`` remain tolerated — those are
+prose that resembled metadata, not metadata that resembled a directive.
+
 **Grading a ``sentinel=`` needs the product to say how.** ``sentinel_command:``
 in ``project-state.yaml`` supplies the invocation, carrying a ``{sentinel}``
 placeholder for the file to run (``sentinel_command: npx vitest run {sentinel}``).
@@ -52,17 +59,27 @@ from pathlib import Path
 # days ago. 90d matches the v1.4 plan's F9 section.
 _STALE_THRESHOLD_DAYS = 90
 
-# Metadata fields the audit logic acts on. Unknown keys are preserved in the
-# entry's metadata dict (so future fields don't break the parser) and simply
-# ignored — the parser has no allow-list and this set is not one.
+# Metadata fields the audit logic acts on, and — since #346 — the ALLOW-LIST the
+# audit validates parsed metadata against. The parser still has no allow-list:
+# it keeps every well-formed key it meets, so this module stays the one place
+# that decides what a key means. What changed is that the audit no longer stays
+# SILENT about a key it does not know.
 #
-# It is a SCHEMA ROSTER, and until this chunk it was decorative: the module had
-# exactly one reference to it (this definition), while its comment claimed "the
-# audit logic only consults this set" — a false statement about the code, in the
-# one place a reader checks what the schema is. It is now pinned to the keys the
-# logic actually reads, by ``TestKnownMetadataKeysMatchesTheLogic``, which parses
-# this module's own ``meta.get(...)`` call sites. Drift in either direction fails:
-# acting on a key not listed here, or listing one nothing reads.
+# Silence was the defect. `sentinal=`, `superceded-by=`, `supersededby=` all
+# parse cleanly, act on nothing, and leave the entry reading as fully annotated
+# — a lifecycle directive that looks live in the file and is inert in the
+# machinery, which is the same class of failure the detail-file metadata strip
+# exists to prevent one file over. A typo in a `sentinel=` key does not fail
+# loudly on its own: the entry simply falls through to "active, no lifecycle
+# metadata", indistinguishable from an entry nobody annotated.
+#
+# It is a SCHEMA ROSTER, and until an earlier chunk it was decorative: the module
+# had exactly one reference to it (this definition), while its comment claimed
+# "the audit logic only consults this set" — a false statement about the code, in
+# the one place a reader checks what the schema is. It is now pinned to the keys
+# the logic actually reads, by ``TestKnownMetadataKeysMatchesTheLogic``, which
+# parses this module's own ``meta.get(...)`` call sites. Drift in either
+# direction fails: acting on a key not listed here, or listing one nothing reads.
 _KNOWN_METADATA_KEYS = frozenset(
     {"confirmations", "created", "sentinel", "superseded-by"}
 )
@@ -105,8 +122,19 @@ def parse_learning_metadata(line: str) -> dict[str, str] | None:
     """Parse a single ``<!-- prawduct-learning: ... -->`` comment line.
 
     Returns the metadata dict on match, ``None`` otherwise. Unknown keys are
-    kept (audit logic ignores them); malformed key/value pairs (no ``=``) are
-    dropped silently so a stray semicolon in prose can't break parsing.
+    KEPT — parsing and validation are deliberately separate steps. The parser
+    reports what the line says; :func:`audit_learnings` decides whether the keys
+    mean anything, and raises an ``errors`` entry for one that does not (#346).
+    Splitting them this way keeps the parser usable by callers that only want
+    the raw pairs, and keeps the roster check in the one place that owns the
+    schema.
+
+    Malformed key/value pairs (no ``=``) are still dropped silently, and that
+    tolerance is deliberate and NOT reconsidered by #346: this comment lives on
+    a prose line, and a stray semicolon in an entry's narrative must not turn
+    into a validation finding. A no-``=`` fragment is *prose that resembled
+    metadata*; a well-formed ``key=value`` whose key nobody reads is *metadata
+    that resembled a directive*. Only the second makes a claim worth grading.
 
     Whitespace and trailing semicolons are tolerated. Multiple instances of
     the same key keep the first occurrence (typical of accidental
@@ -588,8 +616,10 @@ def audit_learnings(
         staleness detection — entries that lack it never appear here.
       * ``errors`` — entries whose declared sentinel exists but failed; entries
         with unparseable date fields; entries whose ``superseded-by=`` does not
-        resolve to exactly one other heading; and entries declaring both
-        retirement keys. Every one of these RETAINS the entry — the audit fails
+        resolve to exactly one other heading; entries declaring both
+        retirement keys; and entries carrying a well-formed metadata key that is
+        not in :data:`_KNOWN_METADATA_KEYS` (a misspelled directive reads as
+        live and does nothing). Every one of these RETAINS the entry — the audit fails
         closed on an ambiguous retirement exactly as it does on a failing
         sentinel. The audit keeps going; the per-entry error string tells the
         user what to fix.
@@ -647,6 +677,31 @@ def audit_learnings(
         if not meta:
             retained_entries.append(entry)
             continue
+
+        # Validate the parsed keys against the roster BEFORE acting on any of
+        # them. A well-formed key nobody reads is the silent half of this
+        # schema: `sentinal=tests/x.py::test_y` parses, matches no branch below,
+        # and leaves the entry classified "active, no lifecycle metadata" — the
+        # exact same outcome as an entry with no comment at all, so the author
+        # who wrote a lifecycle directive gets no signal that it does nothing.
+        #
+        # Reported and then IGNORED, never fatal: the entry still flows through
+        # every branch below on whatever keys it does declare. An unknown key
+        # cannot retire anything, so fail-closed is already the behavior; adding
+        # a refusal on top would let a typo elsewhere in the comment block a
+        # retirement whose own key is correct.
+        unknown_keys = sorted(set(meta) - _KNOWN_METADATA_KEYS)
+        if unknown_keys:
+            named = ", ".join(f"`{k}=`" for k in unknown_keys)
+            known = ", ".join(f"`{k}=`" for k in sorted(_KNOWN_METADATA_KEYS))
+            errors.append({
+                "title": entry.title,
+                "error": (
+                    f"unknown lifecycle metadata: {named}. The audit acts on "
+                    f"{known} and nothing else, so this key does nothing while "
+                    "reading as a live directive. Fix the spelling or drop it"
+                ),
+            })
 
         # Promotions: confirmations >= 2. Advisory only — surface but never
         # rewrite the file.

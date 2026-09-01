@@ -1964,3 +1964,100 @@ class TestTheDocumentedExampleActuallyWorks:
         (tmp_path / ".prawduct").mkdir()
         _argv, reason = _mod.resolve_sentinel_command(tmp_path)
         assert _mod.SENTINEL_PLACEHOLDER in reason
+
+
+class TestUnknownMetadataKeysAreReported:
+    """A well-formed key nobody reads is reported, not silently ignored (#346).
+
+    The failure this closes is silence, not damage. `sentinal=tests/x.py` parses
+    cleanly, matches no branch in the audit, and leaves the entry classified
+    "active, no lifecycle metadata" — byte-for-byte the same outcome as an entry
+    carrying no comment at all. The author who wrote a lifecycle directive sees
+    a fully-annotated entry in the file and an audit that never mentions it, so
+    the typo survives every run that was supposed to catch it.
+
+    The roster is the allow-list; the PARSER is deliberately not. Validation
+    lives in the audit because that is the layer that decides what a key means,
+    and `parse_learning_metadata` stays usable by callers that only want pairs.
+    """
+
+    def test_unknown_key_raises_an_error_naming_it(self, tmp_path):
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Misspelled directive\n"
+            "<!-- prawduct-learning: sentinal=tests/test_x.py::test_y -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        messages = [e["error"] for e in result["errors"]]
+        assert len(messages) == 1, messages
+        assert "`sentinal=`" in messages[0]
+        assert result["errors"][0]["title"] == "Misspelled directive"
+        # And it names the roster, so the fix is visible without opening source.
+        for known in _mod._KNOWN_METADATA_KEYS:
+            assert f"`{known}=`" in messages[0]
+
+    def test_every_known_key_passes_validation(self, tmp_path):
+        """Roster-derived, not a second transcription of the same list."""
+        pairs = "; ".join(f"{k}=x" for k in sorted(_mod._KNOWN_METADATA_KEYS))
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Fully annotated\n"
+            f"<!-- prawduct-learning: {pairs} -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        unknown = [
+            e for e in result["errors"] if "unknown lifecycle metadata" in e["error"]
+        ]
+        assert unknown == []
+
+    def test_malformed_no_equals_fragments_stay_tolerated(self, tmp_path):
+        """The parser's prose tolerance is NOT reconsidered by this validation.
+
+        A fragment with no `=` is prose that resembled metadata. Grading it
+        would turn a stray semicolon in an entry's narrative into a finding,
+        which is the misfiring probe this repo names by its cost.
+        """
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Stray semicolon\n"
+            "<!-- prawduct-learning: created=2026-01-01; and then; more prose -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        assert [e["error"] for e in result["errors"]] == []
+
+    def test_an_unknown_key_does_not_block_a_valid_sibling_key(self, tmp_path):
+        """Reported and ignored — never fatal to the keys that ARE correct.
+
+        An unknown key cannot retire anything, so fail-closed is already the
+        behavior. Letting a typo elsewhere in the comment veto a retirement
+        whose own key is right would be a gate weakened by an unrelated edit.
+        """
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Promotable but typo'd\n"
+            "<!-- prawduct-learning: confirmations=3; sentinal=tests/x.py -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        assert [p["title"] for p in result["promotions"]] == ["Promotable but typo'd"]
+        assert any("`sentinal=`" in e["error"] for e in result["errors"])
+
+    def test_this_repos_own_corpus_declares_no_unknown_key(self):
+        """The guard, run against the corpus it governs.
+
+        A validation shipped without this is one nobody has pointed at real
+        data — and this repo's `learnings.md` is the only corpus prawduct's own
+        development touches every day.
+        """
+        repo_learnings = Path(__file__).resolve().parents[1] / ".prawduct" / "learnings.md"
+        if not repo_learnings.is_file():
+            pytest.skip("no .prawduct/learnings.md in this checkout")
+        for entry in _mod.parse_learnings_file(repo_learnings.read_text()):
+            unknown = set(entry.metadata) - _mod._KNOWN_METADATA_KEYS
+            assert not unknown, (
+                f"{entry.title!r} carries {sorted(unknown)}, which the audit "
+                "does not read — fix it here, not by widening the roster."
+            )
