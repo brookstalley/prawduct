@@ -335,6 +335,98 @@ class TestDigestHook:
         assert DIGEST_HOOK.read_text(encoding="utf-8").startswith("#!/usr/bin/env python3")
 
 
+class TestReloadSkills:
+    """`reloadSkills` re-scans the skill directories at a session boundary.
+
+    THE FAILURE THIS CLOSES IS SILENT, NOT SLOW. Claude Code caches skill bodies
+    per session and `/clear` does not refresh them, so a session that edits
+    `skills/*/SKILL.md` and then exercises that skill runs the PRE-EDIT body
+    while believing it tests the new one. The work looks validated. Measured
+    2026-08-02: a fork reported its own body matching a pre-edit commit
+    byte-for-byte while HEAD carried the rewrite, and it cost #207 a designated
+    acceptance test.
+
+    Gated rather than unconditional. The re-scan buys nothing in a repo that
+    never edits the plugin, and this hook fires in every governed repo — so a
+    product session must not pay a directory walk for a defect it cannot have.
+    """
+
+    def _payload(self, plugin_root, project_dir=None):
+        result = _run_digest(plugin_root, project_dir=project_dir)
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)["hookSpecificOutput"]
+
+    def test_the_shipping_checkout_asks_for_the_rescan(self):
+        # The default `_run_digest` shape IS the framework case: plugin root is
+        # this repo's `plugin/`, project dir is this repo.
+        out = self._payload(ROOT)
+        assert out.get("reloadSkills") is True, (
+            "the framework checkout did not request reloadSkills — a session "
+            "that edits a skill here and then exercises it tests the previous "
+            "version and cannot tell"
+        )
+
+    def test_a_product_repo_pays_nothing(self, tmp_path):
+        # A governed repo that is NOT where this plugin lives: same plugin root,
+        # a different project dir. This is every product session.
+        (tmp_path / ".prawduct").mkdir()
+        out = self._payload(ROOT, project_dir=tmp_path)
+        assert out["additionalContext"].strip(), "the digest itself must still ship"
+        assert "reloadSkills" not in out, (
+            "a product repo was charged a skill-directory re-scan it cannot "
+            "benefit from — it never edits the plugin"
+        )
+
+    def test_the_gate_is_structural_not_by_name(self, tmp_path):
+        """A repo named `prawduct` that installed from the marketplace is a
+        PRODUCT session, and a fork under any other name is not. So the question
+        asked is "did this plugin come out of the repo I am governing?", which
+        a name check answers wrong in both directions.
+        """
+        impostor = tmp_path / "prawduct"
+        (impostor / ".prawduct").mkdir(parents=True)
+        out = self._payload(ROOT, project_dir=impostor)
+        assert "reloadSkills" not in out, (
+            "the gate matched on the repo's NAME — an installed-from-the-"
+            "marketplace repo that happens to be called prawduct is a product"
+        )
+
+    def test_a_nested_plugin_root_still_counts(self, tmp_path):
+        """The plugin need not be the project dir, only inside it.
+
+        A checkout is the shipping source when the plugin tree resolves under
+        it — which is the `source: directory` install this repo uses, and which
+        an equality-only check would answer `False` for.
+        """
+        repo = tmp_path / "checkout"
+        (repo / ".prawduct").mkdir(parents=True)
+        meth = repo / "plugin" / "methodology"
+        meth.mkdir(parents=True)
+        (meth / "session-digest.md").write_text("digest body\n", encoding="utf-8")
+        out = self._payload(repo / "plugin", project_dir=repo)
+        assert out.get("reloadSkills") is True
+
+    def test_the_key_rides_the_same_boundaries_the_digest_does(self):
+        """A refresh that fires only on `startup` would not fix this.
+
+        The measured failure happens WITHIN a session -- edit, `/clear`,
+        exercise -- so the registration has to cover `clear`, not just a cold
+        start. The digest's matcher already does, and the key rides that same
+        registration; this is the assertion that says the two cannot drift.
+        """
+        sessionstart = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+        entries = [
+            e for e in sessionstart
+            if any("digest.py" in h["command"] for h in e["hooks"])
+        ]
+        assert entries, "no digest SessionStart entry found"
+        for entry in entries:
+            assert "clear" in entry["matcher"], (
+                "the digest hook stopped firing on `clear`, which is the "
+                "boundary the skill-cache staleness is actually crossed at"
+            )
+
+
 class TestDigestRepoGate:
     """The plugin is user-scoped, so the digest SessionStart hook fires in every
     repo the user opens. It must inject the governance digest ONLY in a
