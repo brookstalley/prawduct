@@ -109,6 +109,71 @@ def judgeable_files(paths: "list[str] | None") -> list[str]:
     return [p for p in (paths or []) if is_judgeable_path(p)]
 
 
+#: Live repo state that a NON-HERMETIC test in this repo reads (COV-4H7N).
+#:
+#: A named inventory, deliberately not a ``.prawduct/**`` rule. These paths are
+#: not judgeable — editing one needs no Critic review — but a change to one CAN
+#: flip a test red, because a test reads the committed file rather than a
+#: fixture. Observed: PR #125 changed only ``.prawduct/*.md`` plus
+#: ``project-state.yaml``; ``check-pr-doc-only`` took the fast path (no Critic,
+#: no PR review, no suite) and ``test-status`` read *current*, while
+#: ``tests/test_norm_probes.py::TestSilentAgainstThisRepo`` reads the live
+#: ``project-state.yaml`` — so ratifying the norm registry broke develop
+#: silently, and only an unrelated branch's suite run found it.
+#:
+#: Membership rule, so this stays an inventory rather than a drift-collector:
+#: a path belongs here when a repo-coupled test asserts a CONTENT property of
+#: it AND the file is low-churn framework configuration.
+#:
+#: - ``project-state.yaml`` — ``test_norm_probes.TestSilentAgainstThisRepo``
+#:   requires every norm-lifecycle probe to stay silent against it, and
+#:   ``test_audit_learnings`` requires a ``sentinel_command:`` spelled with the
+#:   canonical placeholder.
+#: - ``cross-cutting-concerns.md`` — ``test_v5_methodology.TestCrossCuttingConcerns``
+#:   pins named sections and references in it.
+#:
+#: **The residual, stated rather than implied.** ``backlog.md``,
+#: ``change-log.md``, ``learnings.md`` and ``artifacts/**`` are ALSO read by
+#: repo-coupled tests (``test_backlog_parser`` pins an item id;
+#: ``test_change_log`` pins the tagged/untagged split, the scope-to-plan join
+#: and same-line duplicates). They are held out on cost, not on principle: all
+#: four are written as ordinary bookkeeping in nearly every session, and a
+#: change-log entry is written LATE by construction because the PR gate demands
+#: one — so suite-coupling them would tax every PR with a re-run after the
+#: bookkeeping. The sound close for those is to make their tests hermetic
+#: (COV-4H7N option c proper), not to widen this set.
+TEST_COUPLED_STATE = frozenset(
+    {
+        ".prawduct/project-state.yaml",
+        ".prawduct/cross-cutting-concerns.md",
+    }
+)
+
+
+def affects_test_outcome(path: str) -> bool:
+    """True if a change to ``path`` can change what the test suite says.
+
+    A strict superset of :func:`is_judgeable_path`, and the distinction is the
+    point. "Does this need review coverage?" and "can this flip a test red?"
+    are different questions that the metadata boundary answers differently:
+    framework state needs no reviewer, and a non-hermetic test still reads it.
+    Conflating them is what let a state-only PR skip the suite AND read its
+    stale evidence as current (COV-4H7N).
+
+    Kept as a second function rather than a second rule inside
+    :func:`is_judgeable_path` because review coverage must NOT widen here: the
+    ``_BATCH_FIX_DIRECTIVE`` tells a builder that ``.prawduct/`` writes are
+    free mid-review, and that promise stays true.
+    """
+    return is_judgeable_path(path) or path in TEST_COUPLED_STATE
+
+
+def suite_coupled_files(paths: "list[str] | None") -> list[str]:
+    """The subset of ``paths`` a test outcome can depend on (order preserved,
+    None-safe) — :func:`affects_test_outcome` over :func:`judgeable_files`."""
+    return [p for p in (paths or []) if affects_test_outcome(p)]
+
+
 # ---------------------------------------------------------------------------
 # Findings / resolutions join (D5)
 # ---------------------------------------------------------------------------

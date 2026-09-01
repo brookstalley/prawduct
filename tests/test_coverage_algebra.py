@@ -123,6 +123,83 @@ class TestJudgeablePath:
         assert ca.judgeable_files(None) == []
 
 
+class TestSuiteCoupledState:
+    """COV-4H7N — "needs review" and "can flip a test red" are two questions.
+
+    PR #125 changed only `.prawduct/*.md` plus `project-state.yaml`.
+    `check-pr-doc-only` took the fast path (no Critic, no PR review, no suite)
+    AND `test-status` read current, because both asked the review question of
+    a change only the suite could judge. `test_norm_probes` reads the live
+    `project-state.yaml`, so develop broke silently.
+    """
+
+    def test_the_repro_path_is_suite_coupled_but_not_judgeable(self):
+        """Both halves matter. Judgeable would demand a reviewer for a file the
+        batch-fix directive promises is free to write mid-review; not
+        suite-coupled is what let the change skip the suite."""
+        path = ".prawduct/project-state.yaml"
+        assert ca.is_judgeable_path(path) is False
+        assert ca.affects_test_outcome(path) is True
+
+    def test_every_judgeable_path_is_also_suite_coupled(self):
+        """A strict superset — code that needs review can obviously flip a
+        test, and a predicate that lost that would silence the suite question
+        on exactly the paths it matters most for."""
+        for path in TestJudgeablePath.JUDGEABLE:
+            assert ca.affects_test_outcome(path), path
+
+    def test_ordinary_metadata_is_still_free_of_both(self):
+        """The inventory is named, not a `.prawduct/**` rule. Bookkeeping churn
+        keeps costing nothing — that is the whole reason this is a list."""
+        for path in (".prawduct/.critic-findings.json", ".claude/settings.json",
+                     "docs/notes.md", "README.md"):
+            assert ca.is_judgeable_path(path) is False, path
+            assert ca.affects_test_outcome(path) is False, path
+
+    def test_the_held_out_bookkeeping_files_are_recorded_as_a_residual(self):
+        """These ARE read by repo-coupled tests and are deliberately out, on
+        cost. Pinned so the exclusion stays a decision someone made rather than
+        an oversight nobody noticed — flipping one is a deliberate edit here."""
+        for path in (".prawduct/backlog.md", ".prawduct/change-log.md",
+                     ".prawduct/learnings.md",
+                     ".prawduct/artifacts/build-plan-x.md"):
+            assert ca.affects_test_outcome(path) is False, path
+
+    def test_the_inventory_names_files_that_exist(self):
+        """An entry naming a path this repo does not have is a rule guarding
+        nothing, and reads as coverage while providing none."""
+        import pathlib
+
+        repo_root = pathlib.Path(__file__).resolve().parents[1]
+        missing = [p for p in ca.TEST_COUPLED_STATE if not (repo_root / p).is_file()]
+        assert missing == [], (
+            f"TEST_COUPLED_STATE names {missing}, which this repo does not "
+            "carry — drop the entry or fix the spelling"
+        )
+
+    def test_suite_coupled_files_filters_and_preserves_order(self):
+        mixed = ["lib/a.py", "docs/a.md", ".prawduct/project-state.yaml",
+                 ".prawduct/backlog.md", "CLAUDE.md"]
+        assert ca.suite_coupled_files(mixed) == [
+            "lib/a.py", ".prawduct/project-state.yaml", "CLAUDE.md"
+        ]
+        assert ca.suite_coupled_files(None) == []
+
+    def test_suite_coupled_state_never_enters_the_coverage_algebra(self):
+        """The review side must not widen. A review that changed the state file
+        and never reviewed it still yields a valid edge, and a state-only
+        interval is still a free edge — the batch-fix directive's promise."""
+        facts = [
+            _review(
+                "r1", T0, T1, ["lib/a.py", ".prawduct/project-state.yaml"],
+                reviewed=["lib/a.py"],
+            )
+        ]
+        table = {(T1, T2): [".prawduct/project-state.yaml"]}
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff(table))
+        assert verdict["status"] == "covered"
+
+
 # ---------------------------------------------------------------------------
 # Composition verdicts
 # ---------------------------------------------------------------------------

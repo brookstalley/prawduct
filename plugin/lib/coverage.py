@@ -798,7 +798,14 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     when the diff is non-empty and NO changed file is judgeable — the one
     predicate (``coverage_algebra.is_judgeable_path``, kernel-v3 chunk 04)
     answers this, replacing this helper's own ``.md`` + protected-path copy
-    (one of the divergent doc-only sites behind CRT-5D8Q). A
+    (one of the divergent doc-only sites behind CRT-5D8Q) — **and no changed
+    file is live state a non-hermetic test reads** (``TEST_COUPLED_STATE``,
+    COV-4H7N). The fast path skips the Critic, the PR review AND the suite in
+    one move, so it has to clear both questions: PR #125 changed only
+    ``.prawduct/*.md`` plus ``project-state.yaml``, rode this path, and broke
+    ``test_norm_probes`` on develop with nothing to catch it. The two reasons
+    are reported separately because the remedies differ — one needs a review,
+    the other needs a suite run. A
     governance-protected ``.md`` (``skills/``, ``methodology/``,
     ``templates/``, root ``CLAUDE.md`` — PR-5K8D) is judgeable, so it still
     never rides the fast path. The status message names the specific reason
@@ -833,6 +840,15 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
         sample = ", ".join(judgeable[:3])
         more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         return False, f"not-doc-only: PR includes review-needing files: {sample}{more}"
+
+    coupled = [f for f in coverage_algebra.suite_coupled_files(files) if f not in judgeable]
+    if coupled:
+        sample = ", ".join(coupled[:3])
+        more = f" (+{len(coupled) - 3} more)" if len(coupled) > 3 else ""
+        return False, (
+            "not-doc-only: PR includes live state a non-hermetic test reads: "
+            f"{sample}{more}"
+        )
 
     return True, (
         f"doc-only: {len(files)} file(s) in {base}...HEAD, none judgeable"

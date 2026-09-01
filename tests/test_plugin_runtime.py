@@ -1028,6 +1028,57 @@ class TestGitflowBaseResolution:
         assert "nonexistent-branch" in r.stderr
 
 
+class TestDocOnlyAndSuiteCoupledState:
+    """COV-4H7N — the doc-only fast path skips the Critic, the PR review AND
+    the suite in one move, so it has to clear the suite's question too.
+
+    The live case: PR #125 changed only `.prawduct/*.md` plus
+    `project-state.yaml`, rode this path, and broke
+    `tests/test_norm_probes.py::TestSilentAgainstThisRepo` on develop, where it
+    sat until an unrelated branch happened to run the suite.
+    """
+
+    @staticmethod
+    def _use_develop_base(repo):
+        # Uncommitted, so the knob itself never enters the develop...HEAD diff
+        # under test — same posture as TestDocOnlyProtectedPaths.
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "backlog_format_version: 2\nbase_branch: develop\n"
+        )
+
+    def test_a_state_only_pr_is_refused_and_the_reason_names_the_coupling(
+        self, gitflow_repo
+    ):
+        self._use_develop_base(gitflow_repo)
+        _git(gitflow_repo, "add", ".prawduct/project-state.yaml")
+        _git(gitflow_repo, "commit", "-m", "F3 ratify the registry")
+
+        r = _run_in(gitflow_repo, "check-pr-doc-only")
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        out = r.stdout + r.stderr
+        assert "not-doc-only" in out
+        assert "non-hermetic" in out, (
+            "the refusal must say WHY — the remedy for a suite coupling is a "
+            "suite run, not a review, and 'review-needing' sends the reader to "
+            "the wrong one"
+        )
+        assert ".prawduct/project-state.yaml" in out
+
+    def test_an_ordinary_bookkeeping_pr_still_takes_the_fast_path(
+        self, gitflow_repo
+    ):
+        """The inventory is named, not a `.prawduct/**` rule. A backlog- or
+        change-log-only branch keeps its fast path — widening to the prefix is
+        what this fix deliberately did not do."""
+        (gitflow_repo / ".prawduct" / "backlog.md").write_text("# Backlog\n\n## Open\n")
+        _git(gitflow_repo, "add", ".prawduct/backlog.md")
+        _git(gitflow_repo, "commit", "-m", "F3 file an item")
+        self._use_develop_base(gitflow_repo)
+
+        r = _run_in(gitflow_repo, "check-pr-doc-only")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+
+
 class TestDocOnlyProtectedPaths:
     """PR-5K8D: governance-protected paths are never doc-only, even as .md.
 
@@ -2306,11 +2357,30 @@ class TestTreeValidatedFreshness:
         assert _run_in(repo, "test-status").returncode == 0, \
             "unchanged tree must read current despite predating the session"
 
-    def test_metadata_yaml_edit_is_current(self, tmp_path):
+    def test_metadata_edit_is_current(self, tmp_path):
+        """Bookkeeping churn is still free.
+
+        This used to write `.prawduct/project-state.yaml`, which COV-4H7N moved
+        into `TEST_COUPLED_STATE` — a non-hermetic test reads that one, so it
+        now correctly re-stales (pinned in `test_suite_coupled_state_edit_is_stale`
+        below). The property this case is named for is unchanged and is now
+        asserted on a file that really is inert to the suite.
+        """
         repo = self._seed(tmp_path, "meta")
-        (repo / ".prawduct" / "project-state.yaml").write_text("coverage_required: false\n")
+        (repo / ".prawduct" / "backlog.md").write_text("# Backlog\n\n## Open\n")
         assert _run_in(repo, "test-status").returncode == 0, \
-            ".prawduct/*.yaml is not judgeable — must stay current"
+            "ordinary .prawduct/ bookkeeping is not judgeable — must stay current"
+
+    def test_suite_coupled_state_edit_is_stale(self, tmp_path):
+        """COV-4H7N — the tree clause asks the SUITE's question, not the
+        reviewer's. `tests/test_norm_probes.py::TestSilentAgainstThisRepo` reads
+        the live `project-state.yaml`, so a run recorded before an edit to it
+        does not vouch for the tree after it. PR #125 is the live case: that
+        edit read `current` and broke develop."""
+        repo = self._seed(tmp_path, "coupled")
+        (repo / ".prawduct" / "project-state.yaml").write_text("coverage_required: false\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a non-hermetic test reads project-state.yaml — editing it must re-stale"
 
     def test_non_protected_md_edit_is_current(self, tmp_path):
         repo = self._seed(tmp_path, "doc")

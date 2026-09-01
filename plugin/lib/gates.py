@@ -250,10 +250,18 @@ def _test_evidence_tree_valid(
     since the run, so the recorded pass still covers the current state. Uses
     the same primitives the v3 review gates trust: ``evidence.capture_tree``
     (temp index, never touches the session — R1), ``evidence.tree_diff``
-    (git-native ``diff --name-only``), and ``coverage_algebra.judgeable_files``
-    (metadata/session churn and non-protected ``.md`` are not judgeable, so
-    the record's own ``.prawduct/.test-evidence.json`` write and doc edits are
-    filtered out). Classifies paths, never file contents.
+    (git-native ``diff --name-only``), and
+    ``coverage_algebra.suite_coupled_files`` (metadata/session churn and
+    non-protected ``.md`` cannot change a test outcome, so the record's own
+    ``.prawduct/.test-evidence.json`` write and doc edits are filtered out).
+    Classifies paths, never file contents.
+
+    **The question here is the suite's, not the reviewer's (COV-4H7N).** This
+    asks ``affects_test_outcome``, not ``is_judgeable_path``, because a
+    non-hermetic test reads live repo state that needs no review: a
+    ``.prawduct/project-state.yaml`` edit is free to write mid-review and can
+    still turn ``test_norm_probes`` red, so evidence recorded before it does
+    not vouch for the tree after it.
 
     Fails toward *not valid* (the caller keeps the timestamp verdict) whenever
     the tree cannot be captured or diffed, so a git failure can only leave
@@ -290,10 +298,10 @@ def _test_evidence_tree_valid(
     changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
         return False, "tree diff unavailable (missing object or git failure)"
-    judgeable = coverage_algebra.judgeable_files(changed)
-    if judgeable:
-        preview = ", ".join(judgeable[:3]) + ("…" if len(judgeable) > 3 else "")
-        return False, f"{len(judgeable)} judgeable path(s) {differ} ({preview})"
+    coupled = coverage_algebra.suite_coupled_files(changed)
+    if coupled:
+        preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
+        return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview})"
     return True, f"{clean} ({len(changed)} metadata/doc file(s))"
 
 
