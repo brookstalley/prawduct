@@ -102,3 +102,66 @@ def test_the_next_action_text_does_not_prescribe_an_unconditional_round():
     assert "cost-of-commit" in text, (
         "the 0-blocking arm no longer names the pre-commit price check"
     )
+
+
+# ---------------------------------------------------------------------------
+# What a verify-resolutions pass anchored — and what committing next costs
+# ---------------------------------------------------------------------------
+
+#: Surfaces that tell a builder what their next commit costs after a verify
+#: pass. The anchor moves on a TREE comparison — committed *content* the prior
+#: review never saw — and the commit-SET reading of it ("did I commit at all")
+#: is wrong in the ordinary happy path, where the vouching commit materializes
+#: the reviewed tree verbatim and moves nothing. Both of these shipped that
+#: reading, in the same change that was fixing the sibling defect; the wrong
+#: half tells a builder they owe a round they do not.
+_ANCHOR_SURFACES = [
+    pytest.param(PLUGIN / "lib" / "gates.py", id="cumulative-critic-uncovered-remedy"),
+    pytest.param(PLUGIN / "skills" / "pr" / "SKILL.md", id="pr-skill-step-2-sequencing"),
+]
+
+
+@pytest.mark.parametrize("path", _ANCHOR_SURFACES)
+def test_the_anchor_rule_is_stated_as_content_not_as_committing(path: Path):
+    text = path.read_text()
+    # Case-folded: one surface emphasises CONTENT in caps, and the emphasis is
+    # the author's call, not the contract.
+    assert "content the prior review never saw" in text.lower(), (
+        f"{path.relative_to(REPO_ROOT)} tells a builder what a verify pass "
+        "anchored, but no longer states the test as committed CONTENT. A "
+        "commit-set phrasing is wrong on the happy path — the commit that "
+        "vouches for a reviewed dirty tree changes nothing and moves no anchor "
+        "— and being wrong here costs a review round in the direction this "
+        "whole surface exists to avoid."
+    )
+    assert "review-cycle.md" in text, (
+        f"{path.relative_to(REPO_ROOT)} restates the anchoring rule without "
+        "citing its home. Three copies of this rule have already drifted; a "
+        "reader who cannot reach the derivation cannot tell a stale copy from "
+        "a current one."
+    )
+
+
+def test_the_canonical_anchor_statement_still_names_a_tree_comparison():
+    """The home the two surfaces above cite. If this sentence ever softens,
+    their citations point at nothing and the pins above stop meaning anything."""
+    text = (PLUGIN / "skills" / "critic" / "review-cycle.md").read_text()
+    assert '"Differs" is a **tree** comparison' in text, (
+        "review-cycle.md no longer states the anchor test as a tree comparison "
+        "— the two surfaces citing it now cite a statement that does not exist"
+    )
+
+
+def test_the_critic_skill_qualifies_exit_three_for_excluded_work():
+    """A `cumulative`/`verify-resolutions` exit 3 means the PR gate is satisfied.
+    It does NOT mean the branch is clean: both anchor at committed HEAD over a
+    dirty tree, so judgeable uncommitted files sit outside the interval they
+    graded and the two gate targets come apart. Reporting "clean" off that exit
+    is how unreviewed work reaches a PR."""
+    text = (PLUGIN / "skills" / "critic" / "SKILL.md").read_text()
+    for token in ("NOT REVIEWED:", "UNVERIFIED:"):
+        assert token in text, (
+            f"the exit-3 instruction does not tell the reader to look for {token} "
+            "— so a refusal that named excluded work would still be relayed as "
+            '"the gate is satisfied"'
+        )

@@ -122,8 +122,11 @@ def assert_inert_count_cap(text: str, path: str) -> None:
 #: growth is repeatedly recorded and never justified — that is a ceiling's
 #: case, and the readings are what would prove it — or a measured session
 #: opening a guide it did not need, which is an argument about *routing*, not
-#: about size. `skills/critic/SKILL.md` is the standing precedent for the
-#: shape: a reading with no ceiling, and it has held.
+#: about size. What separates this class from the files that DO carry a ceiling
+#: is not size but who pays: an on-demand guide costs only the session that
+#: opens it, while `skills/critic/SKILL.md` is loaded by every Critic dispatch
+#: whether or not anyone chose it — which is why that file's reading sits beside
+#: a ceiling and these three do not.
 #:
 LAST_MEASURED_TOKENS = {
     # -1 on 2026-08-13: the evidence-model paragraph said a rebase/amend
@@ -173,7 +176,85 @@ LAST_MEASURED_TOKENS = {
     # per-mode table and the fail-safe. CEILING RATCHETED 4730 -> 4718 with the
     # cut, per the standing rule: slack left behind is a loan the next edit
     # collects silently and green.
-    "methodology/building.md": 4708,
+    # -53 then +40 on 2026-08-21 (net -13, 4774 -> 4761): the delegation guide's
+    # pointer, funded by a CLASS rather than by words — rules the
+    # always-injected `session-digest.md` states in full, restated here beyond
+    # the part only this file owns. Checked per item, not assumed: (1) Exception
+    # Handling's two language-syntax bullets and its "the general waiver
+    # mechanism (`docs/waivers.md`)" sentence — the digest gives the pragma
+    # string verbatim AND names `docs/waivers.md`, so what stayed is the part it
+    # does not carry (when a broad catch is legitimate, that the comment goes on
+    # the catch line, and the canary/Critic behaviour); (2) "Two session files,
+    # two owners" — the digest owns both the ownership split and the
+    # don't-write-there rule, so what stayed is the regeneration inputs and
+    # `handoff preview`, which nothing else states; (3) the norm-departure
+    # sentence's "never a silent divergence" and "Norms bind; descriptions
+    # track" — the digest's own norms bullet, word for word. The TELL ("a norm
+    # edited to bless your own code") is in that class too — the digest states
+    # it — and was kept anyway, deliberately: it is the clause that makes the
+    # tripwire fire, and this file is where a builder is standing when a norm
+    # surfaces mid-build. A cut is a judgment about the reader's position, not
+    # a rule that every duplicate goes.
+    #
+    # This is the audit the 4718 -> 4800 raise below skipped. That raise was
+    # taken to buy the verification-ceiling rule's *why* without first asking
+    # whether a removable class existed — and one did. The ceiling is ratcheted
+    # with the cut (4800 -> 4775), so the 25 tokens the audit recovered are
+    # given back rather than left as slack for the next edit to spend green.
+    #
+    # +3 on 2026-08-21 (Critic R-1, same chunk's second pass, 4761 -> 4764). The
+    # permissive "also when chunks are independent and parallelizable" survived
+    # the chunk built to replace it — and that is the line that was in force for
+    # the whole 0.34% measurement, in the file a builder MUST read, while the
+    # default lived only in an on-demand guide the pointer sold as "the
+    # questions worth asking". A coordinator reading this file and stopping got
+    # a permission where R18 says it needs a default. Now it states the default.
+    # Paid for almost entirely in place: the override cases (clean context, large
+    # main context) are content `delegation.md` owns canonically under this
+    # plan's Module Boundaries, so restating them here was the duplication, and
+    # the two paragraphs merged into one, dropping a second pointer lead-in.
+    # +10 on 2026-08-21 (Chunk 02), 4764 -> 4774, ceiling untouched at 4775.
+    # R6 names TWO placements and only one had landed: the delegation question
+    # also arrives at a CHUNK CLOSE, and this file is the only surface a
+    # coordinator reads there. Paid for in place, in the same bullet: "then the
+    # combined suite and Critic" was a third statement of what "What stays in
+    # the main agent" owns two paragraphs down, in this same section. The clause
+    # carries the trigger ONLY — the why (a plan-time partition is a default,
+    # re-checked against what the machine is actually doing) is `delegation.md`'s,
+    # and the coordinator is told to open that before fanning out. ONE token of
+    # headroom now, so the next addition trims.
+    # 4774 -> 4773 on 2026-08-21 (Critic R-1, same chunk): the clause was in
+    # the `**Parallel chunks:**` bullet, which addresses a coordinator already
+    # fanning out — while the reader it exists for is the one whose plan says
+    # serial. Moved to the section preamble, which is unconditional and already
+    # states the default. It also got SHORTER there: "when load is finally
+    # knowable" was the why, and `delegation.md` owns that ("a default, not a
+    # commitment: re-check it at dispatch against what the machine is actually
+    # doing") one sentence before the pointer telling you to open it.
+    # -10 on 2026-08-21 (Chunk 04's cumulative, R-13), 4773 -> 4763, ceiling
+    # ratcheted 4775 -> 4765 with the cut. The rationale is at the ceiling
+    # assertion, which is where this file's cuts are narrated.
+    # -3 on 2026-08-21, 4763 -> 4760, ceiling ratcheted 4765 -> 4762. A CUT that
+    # made the rule simpler: `closed-by:` left the mutable-id exemption list.
+    # It was there because the handle used to be allowed to be a chunk id, and a
+    # bare chunk id names no plan -- it fails the very test Principle 13 states
+    # one sentence later. With the handle required to name the work, the entry
+    # needs no exemption and the sentence needs no clause.
+    # -5 on 2026-08-21: the ad-hoc trigger reached the delegation section, and
+    # paid for itself with room over. What funded it was the pointer's own table
+    # of contents — "what overrides that default and what defeats it, what a
+    # brief must say, and the anti-patterns each with its tell" enumerated the
+    # headings of a file the same sentence tells the reader to open, which is
+    # the removable class exactly. What replaced it is the discriminator a
+    # reader actually needs to choose between the two files: the guide is the
+    # judgment, this section is the mechanics. No prose moved between files —
+    # delegation.md already owned every heading that clause listed.
+    # NOT a general rule about enumerations: `skills/methodology/SKILL.md` keeps
+    # (and grew) the same list, because its reader is choosing AMONG seven files
+    # and has not picked one yet. What made the clause removable here is that
+    # this reader has already decided to delegate, so the enumeration answers a
+    # question they are no longer asking.
+    "methodology/building.md": 4755,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -311,14 +392,22 @@ LAST_MEASURED_TOKENS = {
     # block it landed in: "a severity with no remedy is a false blocker" was the
     # tail of the `graded` bullet and is now the lead sentence both it and the
     # new bullet lean on, and the BLOCKING bullet's provenance narration went.
-    "skills/critic/review-cycle.md": 9599,
+    # -3 on 2026-08-24: the reconciliation NOTE template stopped stating WHEN the
+    # archive call runs and now routes to the backlog skill, which owns that
+    # timing and splits it by backend. Paid in the same sentence -- the template
+    # was asserting a timing that is false on the Issues backend, so the routing
+    # replaced prose rather than adding to it, and the "why" the routing would
+    # have restated stayed at the owner where the reader is already being sent.
+    "skills/critic/review-cycle.md": 9596,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
     # seven-goal protocol -- so growth here is the most expensive growth in the
     # skill and was, until now, the only growth nobody had to declare.
-    # No ceiling is asserted with this first measurement; the entry exists so the
-    # next change to this file has to state what paid for it.
+    # A ceiling sits with this reading (`TestCriticSkillRoutesByMode::
+    # test_token_budget`), on that same argument: unconditional payload is where
+    # growth is most expensive, so it is the one destination a relocation must
+    # not be able to hide in.
     # -5 on 2026-08-19: the abandon-a-review parenthetical said the marker "is
     # swept at the next session boundary — `startup` or `/clear`", which the
     # TTL-gated sweep made false for BOTH sources it named, on the payload every
@@ -346,7 +435,40 @@ LAST_MEASURED_TOKENS = {
     # reviewing the correction. Same narrowing applied there. Net for the
     # branch is still -3 (3406 -> 3403): the TTL cut above overpaid, and this
     # spends part of that rather than adding on top of it.
-    "skills/critic/SKILL.md": 3403,
+    #
+    # +18 on 2026-08-19 (3403 -> 3421). Expiry stopped being sufficient grounds
+    # to release the marker — a review whose reviewers have all reported is kept
+    # at any age — so this file's abandon-a-review paragraph was stating a rule
+    # an agent acts on and would now get wrong, relying on a boundary to release
+    # a marker that a boundary keeps. Paid down from the first draft (+60) by
+    # naming the state once ("a **complete roster**", the term the same
+    # paragraph already uses two sentences later) instead of spelling out
+    # "a review whose reviewers have all reported", and by cutting "so
+    # restarting the session is not a way to clear it", which the sentence
+    # before it already establishes. The remaining +18 is the condition itself:
+    # it cannot be inferred from anything else the file says.
+    # +24 on 2026-08-19 (3421 -> 3445). `critic-discard` became the Stop hook's
+    # printed escape hatch, so the caveat that it degrades to DELETE when the
+    # archive cannot be written is now load-bearing at the surface an operator
+    # reaches for while wedged — the paragraph offered an undo with no failure
+    # mode. Paid down from the first draft (+44) by pointing at the dispatch
+    # sweep's identical caveat ("same degrade-to-delete caveat as the dispatch
+    # sweep") instead of restating it, and by trimming the restore bound to
+    # "the newest few" rather than naming the constant, which would be a second
+    # carrier for a number `_ARCHIVE_KEEP` already owns.
+    # +1 net on 2026-08-26: the exit-3 rule told the reader a `cumulative` /
+    # `verify-resolutions` 3 means the gate is satisfied — true of the PR gate,
+    # false of the Stop-hook one when the anchor left judgeable uncommitted work
+    # outside the interval it graded, which is the case the refusal block now
+    # names. A correctness fix on the payload every mode loads, so it was paid
+    # for INSIDE the file rather than by a bump: the "waste this exit exists to
+    # prevent" clause restated the two sentences above it, `run it anyway to be
+    # safe` was quoted twice, "never add `--force` on your own initiative" is
+    # step 4's rule stated in full at step 4, and "(it names the free files)"
+    # had become wrong as well as costly — the block names more than those now.
+    # The ceiling holds at 3450 untouched; the standing rule there is that the
+    # next addition trims or relocates, and this one trimmed.
+    "skills/critic/SKILL.md": 3446,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -362,7 +484,51 @@ LAST_MEASURED_TOKENS = {
     # That growth is the design working, which is exactly why it is recorded
     # rather than capped.
     "methodology/discovery.md": 4752,
-    "methodology/planning.md": 4301,
+    # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
+    # Delegated`, the plan-time half of the placement bet. The partition prompt
+    # where chunk boundaries are drawn (R6), the `partition:` field the decision
+    # is recorded in either way (R7), the disclosure a delegating plan owes when
+    # it is presented (R8-R9), the four reasons to ask and the three standing
+    # negatives as a CLOSED list (R10), and the offer that makes a yes durable
+    # (R11).
+    #
+    # A READING, no ceiling, per the decision block above this dict — and the
+    # growth here is the feature rather than an overrun. Guidance placed where
+    # the coordinator already STOPS is the whole design; guidance in a file
+    # someone might open is what produced 0.34% delegation across 31,220 tool
+    # calls. No trim was owed and none was invented — and to be exact about
+    # what that does NOT claim: two lines here (the plan-time question, and
+    # serial-is-right-but-unexamined-is-not) ARE near-verbatim with
+    # `delegation.md`, deliberately, because the guide is on-demand and this
+    # section fires whether or not anyone opens it. Both copies are test-pinned
+    # on both sides, so they cannot drift into disagreeing. What genuinely
+    # stayed out is the rest: the wall-clock reasoning, the anti-patterns and
+    # the brief contract, which this section points at instead of restating.
+    # +60 on 2026-08-21 (Chunk 04's cumulative, R-7): two of the four
+    # ask-for-approval reasons turned on delegation history that nothing in
+    # `.prawduct/` records. The closed list exists because an agent resolving
+    # vagueness asks defensively every time, so a trigger with no observable
+    # behind it reintroduces the exact cost the closure buys — or invites an
+    # agent to assert a precedent it never checked. What was added is the
+    # observable, not a fifth reason: the `partition:` lines on live and
+    # archived plans, and whether `project-preferences.md` carries a Delegation
+    # row. NOT paid for in place, and this file has a reading rather than a
+    # ceiling, which is exactly the on-demand class #688 decided to account for
+    # without blocking — the cost is opt-in, paid by a session that opens the
+    # guide. Recorded here rather than absorbed, because an unrecorded change is
+    # the only thing a reading refuses.
+    # +9 on 2026-08-24: the plan-retention pointer cited "/prawduct:pr merge-flow
+    # step 7", which a step inserted into that flow turned into "Clean up evidence
+    # file". Replaced with the step's NAME, which costs tokens and cannot rot --
+    # a durable pointer must not ride on a position that renumbers.
+    # +200 on 2026-08-27 (branch-claim-multiplicity, at the base sync): the
+    # multi-claim precedence — sole claimant, then chunks left, then
+    # `active_build_plan`, then path order — is written here and nowhere else,
+    # and every other surface points at it, so it cannot be a pointer itself.
+    # Paid down first rather than recorded whole: the pointer-clear rule kept its
+    # RULE here and handed its WHY to `/prawduct:pr`'s Merge Flow step, which
+    # states it at length, saving ~58 of the ~258 the merge brought in.
+    "methodology/planning.md": 5060,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -375,7 +541,118 @@ LAST_MEASURED_TOKENS = {
     # handful" one clause after citing `MIN_PRICED_SAMPLE`, which is 5. Both
     # were instructions an agent executes at every turn a review is live, so the
     # cost buys a recipe that runs instead of one that reads well.
-    "methodology/reflection.md": 4702,
+    # 4702 -> 4885 on 2026-08-21 (+50 for the boundary step, +133 for the clear
+    # paragraph): the work-cycle boundary gained REAPING as its first step, and
+    # the clear verdict gained the test that generates it. The step states the
+    # rule and POINTS for the argument: `delegation.md` already carried "never
+    # as a mid-flow interrupt" with its reasoning, and the first draft here
+    # restated that reasoning verbatim — two homes for one argument, in the
+    # same commit that created the second. The placement itself stays, because
+    # a step in a close sequence that does not say when it runs is not a step.
+    # Reaping is placed at the boundary and nowhere else because a mechanism
+    # that exists to protect focus must not become the thing that breaks it —
+    # an interrupt-driven reap is the anti-pattern, so the placement IS the
+    # rule and it costs a clause to say. The clear paragraph names the general
+    # test (recovery cost — does a clear leave the work alone?) rather than
+    # adding a second special case beside the live-review one: this repo got
+    # that verdict wrong twice in one session, in opposite directions, and both
+    # errors were reasoning from the special case because the principle was
+    # never written down. A READING, no ceiling, per the decision block above
+    # this dict — the cost is paid by a session that opens the guide.
+    "methodology/reflection.md": 4885,
+    # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
+    # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
+    # requires the entry; the decision block above this
+    # dict is why it is not a ceiling. This guide is the cheap destination that
+    # policy exists to protect: its whole cost is paid by a session that opens
+    # it, and the reason it exists at all is that `building.md` could not hold
+    # the content at any price.
+    #
+    # The first draft was 1041 and tripped `test_no_suite_total_claims` by
+    # quoting the shape it was warning about — the measured pass counts of three
+    # contended runs. Restated relationally (three different totals, none more
+    # than about half of what the suite collects, all exiting 0), which costs 15
+    # tokens and keeps the evidence: the numbers were never the point, the
+    # divergence was.
+    #
+    # -3 in the same chunk's fix pass: the briefing-cost paragraph said the cost
+    # "is a real constraint today", a time-anchor in durable prose against a
+    # figure an open backlog item exists to move. Restated as the condition
+    # ("while that is what one costs"), which is what stays true either way.
+    #
+    # 1053 -> 1415 on 2026-08-21, and NOT paid for in place: the guide answered
+    # how to delegate well and never whether to delegate at all (owner review at
+    # the plan's post-Chunk-01 checkpoint — it "leaps right into the weeds").
+    # R18 and its ruling are in the discovery artifact. The addition is a
+    # `## When to delegate` section leading the guide: the default, the cases
+    # that override it, the cases that defeat it, the route to the project's own
+    # policy, and the qualifier that a fanned-out plan is only faster once each
+    # delegate's verification is bounded.
+    #
+    # No trim was owed and none was invented. This is an on-demand guide — a
+    # READING, no ceiling — and the decision block above this dict says why:
+    # growth here is the CHEAP growth, paid only by a session that opens the
+    # file, and pricing the cheap destination inverts the incentive that put
+    # this content outside `building.md` in the first place. What was paid in
+    # place is the ~14 tokens of duplication the addition created: the
+    # Considerations list asked "is briefing this delegate cheaper than doing
+    # the work inline?", which the new section now answers as a decision rather
+    # than re-asks as a question.
+    #
+    # +4 in the same pass, from a self-scrub the review did not have to catch:
+    # the preamble promised "states the goal and supplies the considerations"
+    # one screen above a section that states a RULE, so the guide contradicted
+    # itself about its own nature — and the title still named only what a
+    # delegate verifies, after the "when" became what leads the file.
+    # +7 on 2026-08-21 (Chunk 02): "Record it either way" had no destination
+    # until this chunk gave the decision one, so the guide now names the plan's
+    # `partition:` field. Without it the guide asks for a record and leaves the
+    # reader to invent where it goes, which is the gap between encouraged and
+    # recorded that the chunk exists to close.
+    # +44 on 2026-08-21 (Chunk 03): the unattributable-green anti-pattern had a
+    # tell and no remedy, so a coordinator who caught themselves doing it had
+    # nowhere to go — the record could not say a run was degraded. Now it can,
+    # and the bullet names the flag that says so. Paid at the on-demand
+    # destination for the same reason the entries above are: growth here is
+    # read only by a session that opens the file.
+    # +61 on 2026-08-21 (Chunk 04's cumulative, R-9 + R-13). Two fixes, both
+    # about this file telling the truth about itself. R-9: the header promised
+    # "nothing here names a command, a marker, a tier or a runner" while the
+    # unattributable-green bullet four sections down names
+    # `test-evidence record --degraded` — correctly, and pinned there by test.
+    # The rule the tests actually encode is narrower than the sentence was:
+    # no CONSUMER's runner, markers or a tier of prawduct's invention, while
+    # prawduct's own commands are in bounds by ruling 9. The claim is relational
+    # now, so it states the rule that holds. R-13: the brief contract is the
+    # point where a verification ceiling is actually written, and it did not
+    # reach for the `Delegate verification` row a project may already have
+    # ratified — so a coordinator could invent a ceiling beside the owner's,
+    # which is the retyping the whole feature exists to end. Reading, not
+    # ceiling: growth here is paid by the session that opens the file.
+    # +936 on 2026-08-21: the ad-hoc trigger — a tangent raised mid-chunk, or
+    # work the agent was about to backlog — arrives when no partition was ever
+    # drawn, so none of the plan-time framing above reaches it. What the section
+    # adds is the three-way decision and its policy dial, the four-paths
+    # requirements bar, the brief written into the worktree as the dispatch
+    # record, the reapability bound, and six anti-patterns with tells. It is a
+    # READING for exactly the reason stated above, and this is the growth that
+    # rule was written for: nobody pays it who is not already about to delegate
+    # a tangent. Two costs were cut rather than written — the diagnosis of WHY
+    # scoping a tangent is expensive lives in the discovery artifact and reaches
+    # the reader here as one anti-pattern tell, and two considerations that
+    # restated rules stated a paragraph earlier were dropped rather than shipped
+    # as a list that looks longer than it is.
+    # +231 on 2026-08-22 (Chunk 04's cumulative, R-5 and R-13): the doctrine
+    # named the brief and its path but never its writer or its moment, and the
+    # mechanics file it defers to documents only harness-created isolation —
+    # a tree the dispatcher cannot name before dispatch. So under the one
+    # documented shape the brief had no author and the advisory that keys on it
+    # was inert by construction. The section now says the coordinator creates
+    # the worktree, writes the brief, then dispatches; and that reaping ends
+    # with the worktree, because a brief left in a reused checkout raises a
+    # delegate advisory about work nobody delegated. A READING, so the cost is
+    # paid only by a session already about to delegate a tangent.
+    "methodology/delegation.md": 2698,
 }
 
 
@@ -502,11 +779,99 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # sentence is already a pointer to `SKILL.md`, which owns the fact, so
     # restating it precisely would have been a more accurate second home. One
     # token is what a pointer costs over a claim.
-    "framework": 3321,
-    "product": 2243,
+    #
+    # framework 3321 -> 3310, product 2243 -> 2236 (2026-08-21). `delegation`
+    # joins both always-injected ROSTERS — the name only, never a rule: a
+    # roster that omits a live topic is a false statement of fact on the one
+    # surface an agent reads before it opens anything, and it is also the only
+    # surface reaching an agent that opens no guide at all. The ruled-out thing
+    # was a delegation *line* (guidance, priced every session forever); listing
+    # the topic is not that, and the owner ruled for the listing.
+    #
+    # PAID FOR past the addition, by a class in each member. CLAUDE.md's guide
+    # roster carried a per-topic when-to-read gloss ("before exploring a
+    # problem", "before designing artifacts or a build plan") that
+    # `skills/methodology/SKILL.md` owns and states more fully for all seven
+    # topics — CLAUDE.md was restating three of them, and adding the sixth
+    # guide would have meant writing a fourth. The digest's reader line said
+    # "overview and the guide reader: pass a topic to open it" and then
+    # demonstrated the form on the next line; the demonstration is the whole
+    # instruction, so the sentence explaining it went.
+    #
+    # The ceilings are deliberately NOT ratcheted with this cut, which departs
+    # from the standing slack-is-a-loan rule and says so rather than doing it
+    # silently: the owner's ruling was explicitly "start this way and dogfood,
+    # and promote to more tokens in CLAUDE.md if we need to". The headroom is
+    # reserved for that promotion, and the load-bearing assumption it would
+    # answer is recorded in `build-plan-delegation.md`'s Requirements
+    # Confidence.
+    # framework 3310 -> 3343, product 2236 -> 2269 (2026-08-21). Both shapes
+    # move by the same +33, because every token of this change is in the digest.
+    # Three edits. Stated as WORD deltas with the token figure derived, because
+    # `estimate_tokens` truncates and per-string token deltas therefore do not
+    # sum to the file's: the words do, and 1519 -> 1544 is the whole change.
+    #
+    #   trim across the two boundary bullets        -17 words   -22
+    #   the standing block accounts for a delegate   +9 words   +12
+    #   the mid-chunk tangent trigger               +33 words   +43
+    #
+    # THIS TABLE IS NOT THE ONLY BUDGET ON THE DIGEST, and that is the lesson
+    # of this entry rather than any figure in it. `session-digest.md` is emitted
+    # as SessionStart `additionalContext`, which Claude Code spills to a file
+    # above 10,000 CHARACTERS — a hard harness threshold, pinned by
+    # `tests/test_plugin_methodology_digest.py`'s two inline-limit assertions
+    # and raisable by nobody. It had 216 characters free at this branch point;
+    # this change wanted 228, and the first draft went 12 over while every
+    # assertion in THIS module was green. The two budgets lived in two modules
+    # with no reference between them, so a careful token accounting here could
+    # not see the wall it was walking into. Check both. When the character
+    # limit binds, the ceilings below are irrelevant — a ratchet is policy and
+    # can be declared past, and 10,000 cannot.
+    # THE TRIM IS REPORTED, NOT ASSUMED, and it came in under what the two
+    # edits needed — which was the plan's stated assumption and is now a
+    # number. What it recovered was one CLASS, not a rewrap (a word-count
+    # estimator returns nothing for rewrapping): prohibitions restating what
+    # the same bullet already requires positively. "Burying, padding or
+    # collapsing it fail alike" forbade three things the bullet had already
+    # required — "last, after every other word" is the anti-burying rule and
+    # "three **separate paragraphs**" is the anti-collapsing one — so only
+    # padding and the reason ("the bottom is all they read") survived, folded
+    # into the opener. Same class in the handoff bullet's consequence clauses,
+    # and `COMPLETE`'s gloss, which said "a blank slate" and "no next action to
+    # propose" for one idea. This is an IN-PLACE dedup, the only kind that is
+    # honest here: funding a digest cut against an on-demand guide is a
+    # deletion for the reader who never opens one, and that reader is the whole
+    # reason this surface exists (`learnings.md`, and the plan's `architecture`
+    # disposition).
+    #
+    # The +12 was MANDATORY at any budget: the bullet said an unread background
+    # agent is `RUNNING`, never `COMPLETE`, and said nothing about the clear
+    # verdict, so an injected rule would otherwise have contradicted the feature
+    # it now carries. Sought as a rewording and found one — the findings-only
+    # sentence already said "not `SAFE TO CLEAR` until it is on disk", so the
+    # delegate joins that clause instead of opening a second one.
+    #
+    # The +43 is a DECISION and the ceilings below are raised for it. It buys
+    # the one moment nothing else in this plan reaches: a tangent arriving
+    # mid-chunk, which an agent otherwise resolves silently by doing it inline
+    # or dropping it. The backlog-skill prompt covers the second moment only,
+    # and only when the instinct was already to file something. The
+    # ready-to-build qualifier is load-bearing rather than decorative: an
+    # unbounded prompt on a surface with no opt-out is the defensive-asking
+    # failure this feature's own discovery names as its live risk, and the
+    # qualifier is the same bar the backlog prompt fires on, so the two
+    # triggers state one rule instead of two. Five of the 33 words are the
+    # `Delegation: off` escape, which is not decoration either: this bullet
+    # INSTRUCTS, and without the escape it would have an agent proposing
+    # delegation in a repo whose preferences disabled it — the digest overriding
+    # a project preference on the one surface that cannot be opted out of. It is
+    # also the form the two neighbouring policy bullets already use, naming the
+    # governing row inline rather than behind the pointer.
+    "framework": 3343,
+    "product": 2269,
 }
 
-#: Ceilings. HARD, like the five per-file prose ceilings in this module and
+#: Ceilings. HARD, like the per-file prose ceilings in this module and
 #: unlike the advisory state-file size threshold in
 #: `artifacts/nonfunctional-requirements.md` § Direction -- that norm governs
 #: `.prawduct/` STATE files, these are shipped instruction payloads. Recorded as
@@ -521,8 +886,15 @@ LAST_MEASURED_INJECTED_TOKENS = {
 INJECTED_FOOTPRINT_CEILINGS = {
     # Ratcheted with the readings they guard (3460 -> 3325, 2260 -> 2248): a
     # ceiling left at its old value after a cut silently re-funds the growth
-    # the cut paid for. Headroom is ~10 by design, matching every other budget
-    # in this module -- the next addition trims or relocates, it does not bump.
+    # the cut paid for -- the next addition trims or relocates, it does not
+    # bump. Ratcheting with every cut is what that rule MEANS here, and it has
+    # driven headroom to a token or two rather than to any target figure: the
+    # 2026-08-19 entry below left 1 on `framework` and 2 on `product`. So a cut
+    # that does NOT ratchet is a departure and has to say why, whatever the
+    # resulting headroom happens to be. (This paragraph used to name "~10 by
+    # design" as the target; two ratchets had already falsified it, and a
+    # 2026-08-21 review reasoned from the stale figure to the wrong conclusion
+    # about whether a departure had occurred.)
     #
     # Both shapes carry the digest, so a digest addition is charged twice and
     # both ceilings bind it; only a CLAUDE.md edit is charged to `framework`
@@ -533,8 +905,45 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # both readings landed BELOW where the branch started; leaving the ceilings
     # would have banked that difference as headroom for the next addition,
     # which is the re-funding this comment's first paragraph forbids.
-    "framework": 3322,
-    "product": 2245,
+    # 3322 -> 3344, 2245 -> 2270 on 2026-08-21. A DELIBERATE RAISE, +22 and
+    # +25, and the first one this table has taken. The ratchet forbids
+    # UNDECLARED growth, not declared growth, and this is the declaration: what
+    # it bought is the mid-chunk tangent trigger, priced at +43 in the reading
+    # above, against 22 tokens of trim and the headroom that was already
+    # reserved for it.
+    #
+    # BEFORE YOU DECLARE THE NEXT ONE: this table is raisable and the digest's
+    # other budget is not. It ships as SessionStart `additionalContext`, which
+    # Claude Code spills to a file above 10,000 characters
+    # (`tests/test_plugin_methodology_digest.py`), and no ruling buys a
+    # character past that. This chunk left the digest at 9987 of 10,000 — so a
+    # raise declared here is worth nothing unless the characters are there
+    # first, and they very nearly were not. Check that limit BEFORE doing this
+    # arithmetic, not after.
+    #
+    # The headroom was reserved on the record, which is why spending it is not
+    # this comment's departure. The 2026-08-21 entry above notes the ceilings
+    # were deliberately NOT ratcheted with the cut that funded delegation's
+    # first digest mention, on the owner's ruling to "start this way and
+    # dogfood, and promote to more tokens if we need to". This is that
+    # promotion. What exceeds the reservation is the raise, and it is set to
+    # exactly one over the reading — zero headroom, so the NEXT addition is
+    # back under the standing trim-or-relocate rule with nothing banked.
+    #
+    # The counter-case, recorded because a raise that only argues for itself is
+    # how the next one gets easier: 43 tokens are paid by every session of
+    # every governed repo forever, the trigger fires on a judgement the agent
+    # makes constantly, and its failure mode — asking defensively every time —
+    # is the risk this feature's discovery flags as unprovable in advance. The
+    # ready-to-build qualifier bounds it; whether that holds is a thing to
+    # watch. Reverting it is a two-line cut, and the mandatory half alone lands
+    # UNDER the ceilings this raise replaces — with room to ratchet down rather
+    # than up. (Measured, not asserted; the figure is deliberately not written
+    # here, because a revert target copied into prose goes stale the next time
+    # either shape moves and reads as fact while it is wrong. Drop the bullet
+    # and read what the assertion prints.)
+    "framework": 3344,
+    "product": 2270,
 }
 
 
@@ -854,7 +1263,15 @@ class TestBuildingMethodology:
         every governed repo, the framework repo included.
         """
         assert "never *ask* whether to prepare a handoff" in self.content
-        digest = read_file("methodology/session-digest.md")
+        # Whitespace-normalized, like the two sibling pins in this class. Both
+        # carriers hard-wrap, so a raw substring makes the FILL WIDTH part of
+        # the contract: a pure rewrap — no word added, removed or reordered —
+        # split "never ask / whether to prepare" across two lines and turned
+        # this red while the rule was intact. That is a false negative, and a
+        # pin that cries wolf gets deleted, which costs more than it ever
+        # caught. The phrase is what is pinned; where the line happens to break
+        # is not.
+        digest = " ".join(read_file("methodology/session-digest.md").split())
         assert "never ask whether to prepare" in digest
         # The why travels with the always-injected surface, not the on-demand one.
         assert "cold cache" in digest
@@ -1047,8 +1464,12 @@ class TestBuildingMethodology:
         positive half alone would stay green through it.
 
         `reflection.md` only: the digest carries the VERDICT binding in its
-        shortest true form (five tokens of headroom, and it is charged to both
-        injected shapes), while the reasoning belongs to the canonical carrier.
+        shortest true form (and it is charged to both injected shapes, so a
+        digest clause costs twice what a `CLAUDE.md` one does), while the
+        reasoning belongs to the canonical carrier. Deliberately no headroom
+        figure here: this docstring carried one that was wrong when written and
+        wrong at every reading since, and a stale number in a docstring about
+        budgets is read as guidance. `LAST_MEASURED_INJECTED_TOKENS` owns it.
         """
         clear_item = _clear_line_guidance()
         assert "*should you*" in clear_item, (
@@ -1531,13 +1952,1275 @@ class TestBuildingMethodology:
         # other budgeted file in this module sits within ~1-34 tokens of its
         # ceiling; this restores building.md to that posture and keeps the
         # trim-or-relocate rule meaning what it says.
-        assert tokens < 4718, f"building.md is ~{tokens} tokens, should be <4718"
+        # RAISED 4718 -> 4800 (2026-08-21, owner ruling, scoped to the delegation
+        # feature; the standing prefer-trimming-over-bumping posture is unchanged).
+        # The rule landed net-zero FIRST and the raise bought only its reason. The
+        # delegation guidance replaced "run the full suite before and after" — the
+        # instruction that had every parallel delegate racing a whole suite on one
+        # box — with a narrowest-run ceiling, paid for in place: ownership of the
+        # combined run had been stated three times and is now stated once, plus an
+        # editorial pass over the section. What would not fit at 4718 was the rule's
+        # *why* — a runner whose workers die under N racing suites typically neither
+        # re-queues their tests nor fails the run, so the box reports a green that
+        # skipped a part nobody can name. That sentence is what stops "never the full
+        # suite" from reading as a rigor discount and being softened later, which is
+        # exactly how the wrong instruction survived: nothing said what it was for.
+        # Requirements and the sweep behind them:
+        # .prawduct/artifacts/delegation-and-verification-cost-discovery.md.
+        # RATCHETED 4800 -> 4775 (2026-08-21) by the delegation chunk that
+        # spent the raise. The pointer to `methodology/delegation.md` was funded
+        # by a class the raise had never been audited for — the accounting is in
+        # LAST_MEASURED_TOKENS above — and the cut came in 13 tokens over the
+        # addition. Slack left behind is a loan the next edit collects silently
+        # and green, so the ceiling moves with the cut.
+        # RATCHETED AGAIN 4775 -> 4765 (2026-08-21, Chunk 04's cumulative, R-13).
+        # RATCHETED AGAIN 4765 -> 4762 (2026-08-21): `closed-by:` left the
+        # mutable-id exemption list, which the reading's entry narrates.
+        # The `How:` line had to reach for the `Delegate verification` row a
+        # project may already have ratified — without it a coordinator writes a
+        # brief inventing a ceiling beside the owner's, which is the retyping the
+        # whole feature exists to end. Paid in place and then some: the *why*
+        # above stays, but its MECHANISM (workers dying under N racing suites,
+        # not re-queued, not failing the run) is `delegation.md`'s canonical
+        # unattributable-green bullet, restated here in full. What this file
+        # needs is that it fails SILENTLY; what it does not need is the retelling.
+        # Net -10, and the ceiling moves with it rather than banking the slack.
+        # RATCHETED AGAIN 4762 -> 4757 (2026-08-21): the ad-hoc delegation
+        # pointer landed and the section got smaller anyway, because the
+        # pointer's table of contents went with it. The ceiling moves by the
+        # same -5 rather than banking it — unratcheted slack is a loan the next
+        # edit collects silently and green.
+        assert tokens < 4757, f"building.md is ~{tokens} tokens, should be <4757"
 
 
 # =============================================================================
 # discovery.md, planning.md, reflection.md
 # =============================================================================
 
+
+class TestDelegationGuide:
+    """`methodology/delegation.md` — the sixth `/prawduct:methodology` topic.
+
+    The design is guidance, not mechanism (owner rulings, 2026-08-21;
+    `.prawduct/artifacts/delegation-and-verification-cost-discovery.md` §6-7):
+    prawduct states the goal and the considerations, and the coordinator — which
+    can see the machine, the project and the moment's load — chooses how. The
+    failure mode of a guidance feature is mechanism creeping back in as
+    helpful-sounding prose, so the bar below is a NEGATIVE one as much as a
+    positive one.
+    """
+
+    content = read_file("methodology/delegation.md")
+
+    def _anti_pattern_bullets(self) -> list[str]:
+        section = self.content.split("## Anti-patterns", 1)[1].split("\n## ", 1)[0]
+        return [ln for ln in section.splitlines() if ln.startswith("- **")]
+
+    def test_every_anti_pattern_carries_a_tell(self):
+        """A tell is what makes an anti-pattern fire at the moment of the error.
+
+        Without one it reads as true afterwards and changes nothing — the
+        `learnings.md` preamble's "delivery is not descent". This is the check
+        that keeps the section from decaying into a list of names, which is the
+        cheapest way for it to look complete while doing nothing.
+        """
+        bullets = self._anti_pattern_bullets()
+        assert len(bullets) >= 7, (
+            f"the anti-pattern list has {len(bullets)} entries; the discovery "
+            "sweep found seven, each observed in a real transcript"
+        )
+        tell_less = [b.split("**")[1] for b in bullets if "*Tell:*" not in b]
+        assert not tell_less, (
+            f"anti-pattern(s) with no tell: {tell_less}. A rule without one is "
+            "read afterwards rather than fired at the moment of the error"
+        )
+
+    def test_the_guide_answers_whether_to_delegate_before_how(self):
+        """R18. The guide as first written went straight to how — owner review,
+        2026-08-21: it "leaps right into the weeds".
+
+        The missing piece is a stated DEFAULT, and it is the one thing R3's
+        questions-not-rules framing cannot supply: an agent with no default
+        answers "should I delegate?" by not delegating, which is the measured
+        0.34%. `building.md`'s permissive line was in place for that entire
+        measurement, so a second permissive line is not the fix.
+
+        Order is asserted, not just presence. A "when" section below the brief
+        contract is met after the decision it governs has been made.
+        """
+        assert "## When to delegate" in self.content, "R18's section is gone"
+        assert self.content.index("## When to delegate") < self.content.index(
+            "## What a delegate is for"
+        ), "the when-to-delegate default no longer leads the guide"
+        lower = self.content.lower()
+        assert "wall clock" in lower and "fight each other" in lower, (
+            "the default posture no longer names its two terms (wall clock, and "
+            "delegates not conflicting) — without both it reads as 'delegate more'"
+        )
+        assert "stay serial" in lower, (
+            "the guide states a default with no cases that defeat it, which is "
+            "how a default becomes a mandate"
+        )
+        assert "project-preferences.md" in self.content, (
+            "the guide no longer routes to the project's own policy, so `off` "
+            "and pre-approved have no way to reach the agent making the call"
+        )
+
+    def test_the_wall_clock_comparison_survives_plan_time(self):
+        """The partition decision is drawn with chunk boundaries, before any
+        brief exists — so a qualifier phrased in terms of briefs is unusable at
+        the exact moment it applies. The first draft said "compare the plan as
+        you will actually brief it", which is that defect.
+
+        What makes it work is that the bound is a property of the CHUNK, and a
+        chunk's deliverables are declared. Pinned on the plan-time form of the
+        question, because that is the half a rewrite would drop.
+        """
+        section = self.content.split("## When to delegate", 1)[1].split("\n## ", 1)[0]
+        assert "prove each chunk on its own" in section, (
+            "the wall-clock qualifier no longer states its plan-time form, so it "
+            "cannot be applied where the partition is actually decided"
+        )
+        assert "not scoped tightly enough" in section, (
+            "the guide dropped what an unanswerable chunk MEANS — which is the "
+            "qualifier's second yield and the more useful one"
+        )
+
+    def test_the_guide_states_the_goal_and_who_owns_integration(self):
+        lower = self.content.lower()
+        assert "nothing beyond it" in lower, "the goal sentence (R1) is gone"
+        for owned in ("critic", "reflection", "merges"):
+            assert owned in lower, (
+                f"the coordinator's retained governance no longer names {owned!r} "
+                "— a delegate that governs is one of the anti-patterns"
+            )
+
+    def test_the_brief_contract_is_qualitative_not_a_template(self):
+        """R5: what must be SAID, not a template that says it.
+
+        The tell of the wrong shape is a fill-in-the-blank form, so this pins
+        both halves — the ceiling is named, and the guide disclaims the template.
+        """
+        assert "verification ceiling" in self.content
+        assert "not a template" in self.content.lower(), (
+            "the brief section no longer refuses to be a template, which is the "
+            "one sentence stopping the next editor from writing one"
+        )
+
+    def test_the_guide_names_no_consumer_test_vocabulary(self):
+        """§6 of the discovery artifact, and the easiest bar to violate while
+        writing helpful prose: prawduct must not name a consumer's test command,
+        runner, marker or tier. Consumers' regimes are not knowable in advance,
+        and naming one is how a framework-defined taxonomy grows back.
+        """
+        lower = self.content.lower()
+        forbidden = [
+            "pytest", "vitest", "jest", "npm test", "maxworkers", "-n auto",
+            "xdist", "testmon", "--maxprocesses", "makefile", "justfile",
+        ]
+        found = [f for f in forbidden if f in lower]
+        assert not found, (
+            f"delegation.md names a consumer's test toolchain: {found}. The "
+            "guidance is qualitative; the project maps it to its own regime"
+        )
+
+    def test_the_unattributable_green_names_the_record_that_answers_it(self):
+        """R16. Every other anti-pattern here is a tell and nothing more,
+        because the remedy is a judgment the coordinator makes. This one is the
+        exception: the record `.test-evidence.json` is prawduct's own artifact,
+        it could not say a run was degraded, and no guidance to a coordinator
+        fixes a record the framework owns (ruling 9). So the bullet carries the
+        route, and this pins it TO THAT BULLET — the sentence is useless
+        anywhere else in the file, because the reader it exists for has just
+        caught themselves accepting a green they cannot attribute.
+
+        The flag string is asserted against the hook that implements it, not
+        just against the prose. A guide naming a flag nobody accepts is worse
+        than one naming none.
+        """
+        bullet = next(
+            (b for b in self._anti_pattern_bullets() if "unattributable" in b.lower()),
+            None,
+        )
+        assert bullet is not None, "the unattributable-green anti-pattern is gone"
+        assert "--degraded" in bullet, (
+            "the anti-pattern states the tell and leaves the reader nowhere to "
+            "go — the record can say a run was degraded, and this is the only "
+            "place a coordinator catching themselves would learn it"
+        )
+        hook = read_file("bin/prawduct-hook")
+        assert '"--degraded"' in hook, (
+            "the guide names a flag the hook does not accept — the flag was "
+            "renamed or removed without the guidance following it"
+        )
+
+    def test_the_guide_points_back_at_the_dispatch_mechanics(self):
+        # The split is deliberate: judgment here, mechanics in building.md.
+        # Restating either side is how the two drift apart.
+        assert "/prawduct:methodology building" in self.content
+
+    def test_building_md_reaches_the_guide(self):
+        """A guide nothing reaches is not a deliverable.
+
+        `building.md` § Delegating Work to Subagents is where a builder already
+        is when the question arises, so the pointer has to be IN that section —
+        a mention elsewhere in the file is met before there is a decision to
+        make, or not at all.
+        """
+        building = read_file("methodology/building.md")
+        section = building.split("## Delegating Work to Subagents", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        assert "/prawduct:methodology delegation" in section, (
+            "building.md's delegation section does not route to the guide"
+        )
+
+
+class TestAdHocDelegation:
+    """`delegation.md` § Work no plan anticipated — the OTHER trigger.
+
+    The parent feature governs a partition drawn at plan time. This one covers
+    work that arrives when no plan anticipated it: a tangent raised mid-chunk,
+    or work the agent was about to propose backlogging. Requirements R1-R9 and
+    R13, `.prawduct/artifacts/adhoc-delegation-discovery.md` §4-5.
+
+    **Why the bar here is placement and completeness rather than wording.** The
+    sibling class above already holds the negative bar this section inherits
+    unchanged (no consumer test vocabulary, no template, no mechanism creeping
+    back as prose) — it reads the whole file, so nothing needs restating. What
+    this class adds is what the ad-hoc trigger alone can get wrong: a rule that
+    silently drops one of the four permitted requirements paths, an anti-pattern
+    list that decays into names, or a section that states the decision without
+    the debt that makes it different from plan-time delegation.
+    """
+
+    content = read_file("methodology/delegation.md")
+    HEADING = "## Work no plan anticipated"
+
+    def _section(self) -> str:
+        assert self.HEADING in self.content, "the ad-hoc section is gone"
+        return self.content.split(self.HEADING, 1)[1]
+
+    def _anti_pattern_bullets(self) -> list[str]:
+        section = self._section().split("### Anti-patterns, ad-hoc", 1)[1]
+        # Bounded, though the list is last in the file today: an unbounded scan
+        # silently absorbs the bullets of whatever section is appended next, and
+        # the count assertion below would then pass on somebody else's list.
+        section = section.split("\n## ", 1)[0]
+        return [ln for ln in section.splitlines() if ln.startswith("- **")]
+
+    def test_the_section_comes_after_the_contract_it_extends(self):
+        """Placement is the substance, same as the sibling class's ordering
+        check. The ad-hoc section says "everything above binds unchanged" — a
+        reader who meets that claim BEFORE the brief contract and the
+        verification ceiling has been handed a reference to prose they have not
+        read, and the sentence that keeps this feature from restating the parent
+        is exactly that reference.
+        """
+        assert self.content.index("## What a brief must say") < self.content.index(
+            self.HEADING
+        ), (
+            "the ad-hoc section now precedes the brief contract it defers to, so "
+            "its 'everything above binds unchanged' points at nothing yet"
+        )
+
+    def test_the_decision_is_three_way_and_the_policy_dial_is_reachable(self):
+        """R1, R2. Two failure modes, one test.
+
+        A section that offers only *delegate or not* turns every tangent into a
+        binary and loses the answer that is usually right — backlog it. And a
+        default with no dial is a mandate: `off` is a complete answer the owner
+        can give, and it only reaches the agent if the guide names where it is
+        written.
+        """
+        section = self._section()
+        lower = section.lower()
+        for option in ("do it now", "delegate it", "backlog it"):
+            assert option in lower, (
+                f"the three-way decision no longer offers {option!r} — a tangent "
+                "with fewer than three answers is a decision the guide has "
+                "already made for the reader"
+            )
+        assert "project-preferences.md" in section and "`off`" in section, (
+            "the delegation-first default no longer routes to the project's own "
+            "policy row, so a repo that has said `off` cannot be heard"
+        )
+
+    def test_the_requirements_bar_states_all_four_paths(self):
+        """R4. The bar is absolute and the paths are a CLOSED list — the owner's
+        ruling was four and no fifth. A guide that drops one path pushes the
+        reader to invent it, and the path most easily dropped is the one that
+        costs the coordinator nothing to skip: the delegate stopping and
+        demanding requirements.
+        """
+        lower = self._section().lower()
+        paths = {
+            "stated in the brief": "state them in the brief",
+            "an artifact referenced": "reference an artifact",
+            "drafted by the delegate": "drafts them as its first deliverable",
+            "the delegate refuses": "stops and demands them",
+        }
+        missing = [name for name, phrase in paths.items() if phrase not in lower]
+        assert not missing, (
+            f"the requirements bar no longer offers: {missing}. Four paths and "
+            "no fifth was the ruling; a reader who cannot find their path "
+            "invents one, which is the un-ratified requirement anti-pattern"
+        )
+
+    def test_drafted_requirements_come_back_proposed(self):
+        """R5, and the sharp edge of path three. A delegate drafting
+        requirements is doing discovery, and discovery output that arrives
+        already implemented reads as ratified — the branch's existence standing
+        in for approval. The word `proposed` is what stops that, so it is
+        pinned rather than left to phrasing.
+        """
+        lower = self._section().lower()
+        assert "proposed" in lower, (
+            "drafted requirements no longer come back marked proposed, so a "
+            "delegate's discovery arrives pre-ratified by the branch it sits on"
+        )
+        assert "ratif" in lower, (
+            "the section names no ratification step, which leaves the debt "
+            "path three creates with nobody owed it"
+        )
+
+    def test_the_integration_debt_and_who_cannot_pay_it_are_stated(self):
+        """The reframe the whole feature rests on. A delegated tangent is not
+        finished work, and the trigger that produced it — a context that is full
+        — guarantees the agent that incurred the debt is not the one who pays.
+        Without that sentence the section reads as a spawn mechanism, which is
+        the design the discovery artifact rejected.
+        """
+        lower = self._section().lower()
+        assert "integration debt" in lower, (
+            "the section no longer names what comes back as a debt, so a "
+            "delegated tangent reads as done"
+        )
+        assert "on disk" in lower and "held in memory" in lower, (
+            "the section dropped WHY the debt has to be recorded — a debt "
+            "living only in the dispatching agent's context evaporates at the "
+            "next /clear, and that is the whole reason the record exists"
+        )
+
+    def test_the_brief_is_the_dispatch_record_at_a_named_path(self):
+        """R8. The brief was always required; writing it INTO the worktree is
+        what makes it the dispatch record, and what makes an abandoned worktree
+        detectable from the filesystem without inventing state.
+
+        The path is pinned because a probe depends on it. The negative half is
+        pinned too: the discovery artifact rules out a registry, schema or lease
+        (§6), and the prior design collapsed for proposing exactly those.
+        """
+        section = self._section()
+        assert ".prawduct/.delegate-brief.md" in section, (
+            "the brief has no named location, so nothing can find an abandoned "
+            "delegate worktree without a registry — which is the design that "
+            "was ruled out"
+        )
+        lower = section.lower()
+        for refused in ("registry", "schema", "lease"):
+            assert refused in lower, (
+                f"the section no longer refuses a {refused}, which is the "
+                "sentence stopping the next editor from adding one"
+            )
+
+    def test_dispatch_is_bounded_by_whether_this_session_can_reap_it(self):
+        """R9. The worst outcome available is not a bad delegate — it is an
+        unreapable one: compute spent, no result read, a worktree orphaned. The
+        comparison that prevents it (expected runtime against remaining useful
+        context) has to be in the guide, because nothing measures it for you.
+        """
+        lower = self._section().lower()
+        assert "reap" in lower, "the section states no reapability bound"
+        assert "backlog" in lower, (
+            "the reapability bound names no alternative, so 'cannot reap' has "
+            "no answer and the reader dispatches anyway"
+        )
+        assert "work-cycle boundary" in lower, (
+            "reaping lost its timing — a reap that fires mid-flow is the "
+            "focus-protecting mechanism breaking focus"
+        )
+
+    def test_every_ad_hoc_anti_pattern_carries_a_tell(self):
+        """The same bar the parent list holds, applied to the list this feature
+        adds. The sibling class's check splits on the FIRST `## Anti-patterns`
+        and stops at the next `##`, so it never reaches these bullets — a fact
+        worth stating, because a reader assuming coverage would leave the new
+        list ungraded.
+        """
+        bullets = self._anti_pattern_bullets()
+        assert len(bullets) >= 6, (
+            f"the ad-hoc anti-pattern list has {len(bullets)} entries; the "
+            "discovery sweep found six, each traced to a cost the design exists "
+            "to hold down"
+        )
+        tell_less = [b.split("**")[1] for b in bullets if "*Tell:*" not in b]
+        assert not tell_less, (
+            f"ad-hoc anti-pattern(s) with no tell: {tell_less}. A rule without "
+            "one is read afterwards rather than fired at the moment of the error"
+        )
+
+    def test_buildings_delegation_section_names_the_ad_hoc_trigger(self):
+        """R13. `building.md` carries a pointer, not the doctrine — but a
+        pointer that mentions only plan-time partition is met by a builder mid
+        chunk and answers a question they are not asking.
+
+        Asserted on the SECTION, not the file, for the sibling's reason: a
+        mention elsewhere is met before there is a decision to make, or not at
+        all.
+        """
+        building = read_file("methodology/building.md")
+        section = building.split("## Delegating Work to Subagents", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        lower = section.lower()
+        assert "tangent" in lower or "backlog" in lower, (
+            "building.md's delegation section frames the question as plan-time "
+            "only, so work arriving mid-cycle never reaches the guide"
+        )
+
+
+class TestAdHocDelegationBacklogPrompt:
+    """R14 — the ad-hoc trigger's second moment, in `skills/backlog/SKILL.md`.
+
+    The guide above is where the judgment lives; nobody reads it who was not
+    already about to delegate. This class covers the surface that catches the
+    other half: an agent whose instinct was to *file* something, at the one
+    stopping point that already fires for it.
+
+    **Why this class lives beside the guide's and not in a backlog module.**
+    The bar the prompt fires on is shared with the session digest's mid-chunk
+    trigger, deliberately — two prompts stating one rule. A guard that reads
+    only one of the two carriers cannot see them drift apart, and the only
+    module that already reads both is this one.
+    (`.prawduct/artifacts/adhoc-delegation-discovery.md` §5 R14, §8.3.)
+
+    **The skill has two `add` procedures, and the first draft only pinned one.**
+    `SKILL.md`'s `### add` is the markdown-backend path; once
+    `backlog_service_repo` is set, `adapter-mode.md` carries its own end-to-end
+    `### add` that *replaces* it — it re-states the dedup step for itself, which
+    is the tell. So a prompt living only in `SKILL.md` never fires on the
+    backend this repo actually runs. The fix keeps ONE statement of the offer
+    and has the adapter path route to it; the assertions below therefore read
+    three carriers, not two.
+
+    **The bar here is placement and boundedness, not wording.** A prompt in the
+    wrong step of `add` is decoration, and an *unbounded* one is worse than
+    absent: §8.3 names defensive asking as this feature's live risk, and a
+    prompt that fires on every `add` is a prompt people route around.
+    """
+
+    skill = read_file("skills/backlog/SKILL.md")
+    adapter = read_file("skills/backlog/adapter-mode.md")
+    digest = read_file("methodology/session-digest.md")
+
+    #: The qualifier both carriers fire on. Shared on purpose — see the class
+    #: docstring. Rewording it is legitimate; rewording it in ONE carrier is
+    #: what this pins, so re-pin here and change both together.
+    QUALIFIER = "ready to build"
+
+    def _add_step(self) -> str:
+        """The `add` subcommand's body, bounded at the next subcommand.
+
+        Unbounded, the scan absorbs `pick`'s stage-aware routing, which names
+        every term below for its own reasons — the assertions would then pass
+        with the `add` path carrying nothing at all.
+        """
+        assert "### add\n" in self.skill, "the `add` subcommand is gone"
+        body = self.skill.split("### add\n", 1)[1]
+        return body.split("\n### ", 1)[0]
+
+    def test_the_prompt_precedes_the_write_and_follows_the_dedup(self):
+        """Placement is the substance (the reader test, not a word test).
+
+        Two orderings make the prompt inert. Before the dedup, it offers to
+        delegate work an existing item already tracks. After the append, the
+        item exists and the decision has been made by default — which is the
+        exact reflex R14 exists to interrupt.
+        """
+        step = self._add_step()
+        dedup = step.lower().index("dedup first")
+        write = step.index("append the item under `## Open`")
+        offer = min(
+            (step.index(o) for o in ("delegate it", "Delegate it") if o in step),
+            default=-1,
+        )
+        assert offer != -1, (
+            "`add` no longer offers to delegate, so the backlog instinct has "
+            "two options again and the third is never said out loud"
+        )
+        assert dedup < offer < write, (
+            "the delegation offer moved out of its slot in `add` (dedup at "
+            f"{dedup}, offer at {offer}, append at {write}): before the dedup "
+            "it proposes delegating work already tracked; after the append the "
+            "item is filed and the reflex has already won"
+        )
+
+    def test_the_offer_is_three_way_and_names_the_delegate_cost(self):
+        """R1 and R3 (Visible Costs), at the moment the offer is made.
+
+        A two-way offer is not the doctrine's decision, and an offer with no
+        price attached is the "delegation as a way to say yes" anti-pattern
+        with the framework's own voice behind it. Outstanding branches are
+        part of the price: a fifth is a different proposal from a first.
+        """
+        step = self._add_step()
+        lower = step.lower()
+        for option in ("do it now", "delegate it", "backlog it"):
+            assert option in lower, (
+                f"`add`'s offer no longer includes {option!r} — the three-way "
+                "decision has collapsed back into a binary"
+            )
+        assert "integration debt" in lower, (
+            "`add` offers a delegate without naming what comes back with it; a "
+            "branch presented as finished work is the debt this feature exists "
+            "to keep visible"
+        )
+        assert "await integration" in lower or "awaiting integration" in lower, (
+            "`add`'s offer no longer discloses how many ad-hoc branches are "
+            "already outstanding, so every proposal reads like the first one"
+        )
+
+    def test_the_prompt_is_bounded_by_the_bar_the_digest_fires_on(self):
+        """§8.3's guard, and the one-rule-two-carriers property.
+
+        The qualifier is what keeps this from becoming the defensive-asking
+        failure. It is asserted on BOTH carriers because a bar reworded in one
+        of them is two bars for one decision, which is the drift no single-file
+        guard can see. Both must also state the quiet side explicitly — the
+        `stage:` lifecycle in the skill, since "everything earlier files
+        silently" is the half a reader acts on most often.
+        """
+        step = self._add_step()
+        assert self.QUALIFIER in step.lower(), (
+            f"`add`'s prompt no longer bounds itself to {self.QUALIFIER!r}, so "
+            "it fires on idea-stage capture too — an unbounded prompt on the "
+            "backlog's own front door is what trains people to route around it"
+        )
+        assert self.QUALIFIER in self.digest.lower(), (
+            f"the digest's mid-chunk trigger no longer says {self.QUALIFIER!r}. "
+            "It and `add`'s prompt state ONE bar on purpose; re-pin QUALIFIER "
+            "and reword both, or the two triggers have quietly diverged"
+        )
+        assert "stage:" in step, (
+            "`add`'s prompt no longer names the `stage:` lifecycle it reads to "
+            "decide whether to fire, so nothing tells a reader which items stay "
+            "silent"
+        )
+
+    def test_add_stamps_the_stage_its_own_prompt_reads(self):
+        """The gap that made the qualifier inoperable, found while re-reading
+        `add` as the agent who runs it.
+
+        `add` filed every item stageless — the field was canonical, `import`
+        inferred it, triage backfilled it, and the one path that creates items
+        never set it. So the bar above had no input, and worse, an item the
+        agent had just judged ready enough to offer *delegating* landed as one
+        `pick` would refuse to present as buildable. The adapter's `file` op
+        already took `--stage`; only this prose omitted it.
+        """
+        step = self._add_step()
+        write = step.index("append the item under `## Open`")
+        stamp = step.lower().find("stamp `stage:`")
+        assert stamp > write, (
+            "`add` no longer stamps `stage:` when it writes the item, so every "
+            "item it files is born not-ready and the ready-to-build prompt "
+            "above reads a field nothing sets"
+        )
+        assert "`--stage=`" in self.skill, (
+            "`add` no longer accepts `--stage=`, so a machine caller cannot "
+            "supply the one field that decides whether an item is buildable"
+        )
+
+    def test_the_prompt_carries_the_off_switch_inline(self):
+        """R2, and the reason it is not left behind the pointer.
+
+        This step INSTRUCTS. A reader of `add` who never opens the guide would
+        otherwise propose delegation in a repo whose preferences disabled it —
+        a skill overriding a project policy it did not read. The digest's
+        neighbouring policy bullets name their governing row inline for the
+        same reason.
+        """
+        step = self._add_step()
+        assert "project-preferences.md" in step and "Delegation: off" in step, (
+            "`add`'s prompt no longer carries the `Delegation: off` escape "
+            "inline; a repo that declined delegation gets offered it anyway by "
+            "the one path that never reads the guide"
+        )
+
+    def test_the_prompt_points_at_the_doctrine_instead_of_restating_it(self):
+        """One home, N pointers — the architecture this whole feature is built
+        on. A skill that grows its own copy of the judgment is the second home,
+        and the copy is the one that goes stale, because the guide is what a
+        reader of the *other* trigger is sent to.
+        """
+        step = self._add_step()
+        assert "/prawduct:methodology delegation" in step, (
+            "`add`'s prompt no longer routes to the guide that owns the "
+            "judgment, so the offer is made with no way to reason about it"
+        )
+        # The four requirements paths and the anti-pattern list are the guide's.
+        # Their tells are distinctive enough to catch a copy without catching a
+        # legitimate one-line reference.
+        for owned in ("no fifth", "four paths", "*Tell:*"):
+            assert owned not in step, (
+                f"`add` has started restating the guide's own material "
+                f"({owned!r}); the pointer exists so this surface stays a "
+                "trigger and the doctrine keeps one home"
+            )
+
+    def _adapter_add(self) -> str:
+        """`adapter-mode.md`'s own `### add`, bounded at the next op."""
+        assert "### add\n" in self.adapter, "adapter-mode's `add` op is gone"
+        return self.adapter.split("### add\n", 1)[1].split("\n### ", 1)[0]
+
+    def _adapter_offer(self) -> str:
+        """The one paragraph of that op which hands over to `SKILL.md` step 2.
+
+        Bounded to the paragraph rather than the section, and the reason is a
+        mutation that stayed green: `ready to build` also appears in the
+        neighbouring `--stage` paragraph, so a section-wide scan passed with the
+        bar stripped out of the offer itself. A substring assertion is only as
+        precise as the region it reads.
+        """
+        paras = [q for q in self._adapter_add().split("\n\n") if q.strip()]
+        hits = [q for q in paras if "step 2" in q.lower() and "SKILL.md" in q]
+        assert len(hits) == 1, (
+            "`adapter-mode.md`'s `add` no longer has exactly one paragraph "
+            f"handing over to `SKILL.md` step 2 (found {len(hits)}); either the "
+            "handover is gone or it has been split into copies that can drift"
+        )
+        return hits[0]
+
+    def test_the_offer_reaches_the_post_cutover_path_too(self):
+        """The gap the first draft shipped: one prompt, two `add` procedures.
+
+        `adapter-mode.md` replaces `SKILL.md`'s steps rather than adding to
+        them, so an offer written only in `SKILL.md` is silent on every repo
+        that has cut over to Issues — this one included. The routing is
+        asserted rather than a second copy: the adapter names the offer, its
+        bar, and where the statement lives, and `SKILL.md` says which of its
+        steps survives the handover.
+        """
+        lower = self._adapter_offer().lower()
+        assert self.QUALIFIER in lower, (
+            f"the adapter's `add` no longer names the {self.QUALIFIER!r} bar, so "
+            "a reader on that path cannot tell when the offer applies"
+        )
+        for option in ("do it now", "delegate it", "backlog it"):
+            assert option in lower, (
+                f"the adapter's `add` names the offer without {option!r}; a "
+                "reader who never opens `SKILL.md` gets a pointer with no idea "
+                "what it points at"
+            )
+        assert "step 2 is backend-independent" in self.skill.lower(), (
+            "`SKILL.md`'s `add` no longer says which of its steps survives the "
+            "handover to `adapter-mode.md`, so the next editor has no way to "
+            "know the offer is not markdown-only"
+        )
+
+    def test_the_adapter_translates_the_two_markdown_specific_halves(self):
+        """A pointer that hands over untranslatable instructions is worse than
+        none — the reader follows it, finds `accepted-by:`, and invents a
+        field. Both halves the offer depends on have a different spelling here:
+        the stage it reads, and the in-flight mark it writes.
+        """
+        adapter_add = self._adapter_add()
+        assert "--stage" in adapter_add and "stageless" in adapter_add.lower(), (
+            "the adapter's `add` no longer tells the agent to infer and pass "
+            "`--stage`, so items are filed stageless and the ready-to-build bar "
+            "has nothing to read"
+        )
+        assert "in-progress" in adapter_add and "--working-branch" in adapter_add, (
+            "the adapter's `add` no longer translates the in-flight mark; a "
+            "reader following the pointer would try to write `accepted-by:`, "
+            "which does not exist on this backend"
+        )
+
+
+class TestPlanTimePartition:
+    """The plan-time half of the placement bet — `planning.md` and the template.
+
+    `building.md` has said "when chunks are independent and parallelizable" the
+    whole time and delegation ran at 0.34% (31,220 tool calls, 106 dispatches).
+    The design's answer is placement, not machinery: the question arrives where
+    the coordinator is ALREADY stopping — when chunk boundaries are drawn, and
+    at a chunk close. This class holds the first of those two, plus the field
+    the decision lands in.
+
+    Requirements R6-R11,
+    `.prawduct/artifacts/delegation-and-verification-cost-discovery.md` §4.5-4.6.
+    """
+
+    content = read_file("methodology/planning.md")
+
+    HEADING = "### Partition: Serial or Delegated"
+
+    def _section(self) -> str:
+        assert self.HEADING in self.content, "the partition section is gone"
+        return self.content.split(self.HEADING, 1)[1].split("\n### ", 1)[0]
+
+    def test_the_question_fires_where_chunk_boundaries_are_drawn(self):
+        """R6, plan-time half. Placement is the substance: a partition section
+        parked outside Build Planning is read after the boundaries are drawn,
+        which is after the decision it governs has been made.
+        """
+        build_planning = self.content.split("\n## Build Planning", 1)
+        assert len(build_planning) == 2, "Build Planning section is gone"
+        assert self.HEADING in build_planning[1].split("\n## ", 1)[0], (
+            "the partition section left Build Planning — it now arrives after "
+            "the chunk boundaries it is supposed to be drawn with"
+        )
+
+    def test_the_plan_time_form_of_the_question_is_the_chunk_not_the_brief(self):
+        """R18's qualifier, which only works because the verification bound is a
+        property of the CHUNK. At plan time no brief exists, so a question
+        phrased in terms of briefs is unusable at the exact moment it fires.
+        The second yield is the more useful one and is pinned with it: a chunk
+        nobody can answer for is a finding about the chunk.
+        """
+        section = self._section()
+        assert "prove this chunk on its own" in section, (
+            "the partition prompt no longer asks the plan-time question, so it "
+            "cannot be answered where the partition is actually decided"
+        )
+        assert "not scoped tightly enough" in section, (
+            "dropped what an unanswerable chunk MEANS — a finding about the "
+            "chunk, which is worth more than the estimate it replaces"
+        )
+        assert "/prawduct:methodology delegation" in section, (
+            "the section no longer routes to the guide that owns the default, "
+            "so planning.md would have to restate it and the two would drift"
+        )
+
+    def test_the_decision_is_recorded_either_way(self):
+        """R7. "Serial, because X" is an answer; silence is not — and silence is
+        what a plan produces when nothing asks for the line. The field is named
+        so the record has somewhere to go rather than being encouraged.
+        """
+        section = self._section()
+        assert "`partition:`" in section, (
+            "the section no longer names the field the decision is recorded in"
+        )
+        assert "serial" in section.lower() and "unexamined" in section.lower(), (
+            "the section no longer says WHICH case the field catches — serial "
+            "is very often right, and a rule read as anti-serial gets ignored"
+        )
+
+    def test_the_disclosure_names_the_four_things_that_vary(self):
+        """R8-R9. Disclosure is the cheap half of the asymmetry, so it is
+        unconditional — and it carries what varies between plans, because a
+        disclosure that could be copy-pasted from the last one is boilerplate.
+        """
+        section = self._section().lower()
+        for owed in (
+            "how many delegates",              # the count
+            "isolated worktrees or the shared one",  # where they write
+            "what each touches",               # the ownership boundary
+            "what they will *not* do",         # what stays with the coordinator
+        ):
+            assert owed in section, (
+                f"the disclosure no longer says {owed!r} — a delegation the "
+                "user cannot picture is the surprise this rule exists to prevent"
+            )
+        assert "boilerplate" in section, (
+            "the disclosure lost the rule that keeps it informative; a "
+            "boilerplate disclosure satisfies the letter and is never read"
+        )
+
+    def test_the_ask_condition_is_a_closed_list(self):
+        """R10, and the half that decides whether this costs or saves.
+
+        An OPEN condition is worse than no condition: an agent resolving
+        vagueness asks defensively every time, which is the round-trip the
+        asymmetry exists to avoid. So the four reasons are enumerated, the
+        prose says the list is closed, the three standing negatives are stated,
+        and the section carries no hedge that would reopen it.
+        """
+        section = self._section()
+        numbered = [
+            ln for ln in section.splitlines()
+            if re.match(r"^\d+\. ", ln.strip())
+        ]
+        assert len(numbered) == 4, (
+            f"the ask-condition list has {len(numbered)} enumerated reasons; "
+            "the discovery sweep named four, and a fifth added without a "
+            "ruling reopens what the closure is for"
+        )
+        assert "closed" in section.lower(), (
+            "the list no longer SAYS it is closed, so a reader treats it as "
+            "examples and the defensive asking returns"
+        )
+        for negative in ("already approved", "pre-approved", "without further interruption"):
+            assert negative in section, (
+                f"standing negative {negative!r} is gone — each one names a "
+                "case where asking is pure cost"
+            )
+        hedges = [
+            h for h in ("such as", "for example", "e.g.", "among others",
+                        "including but", "and so on", "etc.")
+            if h in section.lower()
+        ]
+        assert not hedges, (
+            f"the ask-condition section hedges: {hedges}. An enumerated list "
+            "with an open tail is an open condition wearing a list's clothes"
+        )
+        assert "disclose and proceed" in section.lower(), (
+            "the section no longer says what happens ABSENT a listed reason, "
+            "which is the case that governs almost every plan"
+        )
+
+    def test_a_yes_can_be_made_durable(self):
+        """R11. Without this the same question returns with every plan — the
+        unnecessary-asking failure wearing a seatbelt — and the one moment the
+        answer is fresh is the moment it is given.
+        """
+        section = self._section()
+        assert "project-preferences.md" in section, (
+            "an approval can no longer be promoted to a preference row, so the "
+            "ask repeats every plan"
+        )
+
+    def test_the_section_names_no_consumer_test_vocabulary(self):
+        """§6 of the discovery artifact, applied to the surface this chunk adds.
+
+        Same bar as `TestDelegationGuide`, and it has to be repeated per surface
+        rather than stated once: the failure mode of a guidance feature is
+        mechanism creeping back in as helpful-sounding prose, and it creeps into
+        whichever file is being written at the time.
+        """
+        lower = self._section().lower()
+        forbidden = [
+            "pytest", "vitest", "jest", "npm test", "maxworkers", "-n auto",
+            "xdist", "testmon", "--maxprocesses", "makefile", "justfile",
+        ]
+        found = [f for f in forbidden if f in lower]
+        assert not found, (
+            f"the partition section names a consumer's test toolchain: {found}. "
+            "The guidance is qualitative; the project maps it to its own regime"
+        )
+
+    def test_the_template_carries_the_field_and_it_round_trips(self):
+        """R7's other half: a field nothing writes is a field nothing records.
+
+        Read back through `_frontmatter_scalar` — the private helper is the
+        point, not a shortcut. Its docstring says why it is the ONE value-level
+        reader: two readers over the same block let a later fix to quoting or
+        comment handling land on one key and not the other. A test that parsed
+        the line itself would be exactly that second reader.
+
+        `scope:` and `branch:` are asserted alongside it because the regression
+        that matters is the neighbours: a new key is the cheapest way to break
+        a block that was parsing fine.
+        """
+        from lib.plan_index import (  # noqa: PLC0415 - lib import is path-dependent
+            _frontmatter_scalar,
+            frontmatter_lines,
+            parse_build_plan_frontmatter_branch,
+            parse_build_plan_frontmatter_scope,
+        )
+
+        template = read_file("templates/build-plan.md")
+        fm = frontmatter_lines(template)
+        assert fm is not None, "the template's frontmatter no longer parses"
+
+        present, value = _frontmatter_scalar(fm, "partition")
+        assert present, "the template has no `partition:` field to fill in"
+        assert value, (
+            "`partition:` is present but empty — a blank field records nothing, "
+            "and the whole point is that serial is an ANSWER"
+        )
+        assert "serial" in value.lower(), (
+            "the filled example no longer demonstrates the serial case, which "
+            "is the one a reader is most likely to be writing"
+        )
+        assert parse_build_plan_frontmatter_scope(template) == (True, "pantry-v1")
+        assert parse_build_plan_frontmatter_branch(template) is None, (
+            "the template's `branch:` is deliberately commented out — a "
+            "placeholder branch is one no repo has"
+        )
+
+    def test_building_md_fires_the_question_at_a_chunk_close(self):
+        """R6's SECOND placement, and the one `planning.md` cannot serve.
+
+        A plan-time partition is a default, not a commitment: what the machine
+        is actually doing is knowable only at dispatch. `building.md` is the
+        only file a coordinator reads at a chunk close, so the trigger lives in
+        its delegation section — the why stays in the guide it points at.
+        """
+        building = read_file("methodology/building.md")
+        section = building.split("## Delegating Work to Subagents", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        # PLACEMENT, not presence. The first draft put this inside the
+        # `**Parallel chunks:**` bullet, which opens "launch independent chunks
+        # as separate subagents" — so it reached only a coordinator ALREADY
+        # fanning out. The reader R6's second placement exists for is the
+        # opposite one: a plan that recorded `partition: serial` and whose load
+        # at a chunk close now justifies delegating. That reader has no parallel
+        # chunks and never reaches the bullet. A whole-section search cannot
+        # tell the two apart, so the preamble is asserted explicitly.
+        preamble = section.split("\n**How:**", 1)[0]
+        assert "chunk close" in preamble, (
+            "the chunk-close re-check left the section preamble — wherever it "
+            "went, it now reaches only readers who are already delegating"
+        )
+        assert "`partition:`" in preamble, (
+            "the chunk-close re-check no longer names the field it re-checks"
+        )
+
+
+
+class TestDelegationPolicyAndPromotion:
+    """R12-R14 — where a project records what it decided, and how it gets there.
+
+    §2.3 of the discovery artifact is the failure this chunk answers: the right
+    rule was stated by the owner three times, in three sessions, and never became
+    durable anywhere. So policy needs a home in the project's own words
+    (`project-preferences.md`), and there has to be a one-step route from a
+    practice the repo already runs to a row the next session reads
+    (`/prawduct:doctor`).
+
+    `.prawduct/artifacts/delegation-and-verification-cost-discovery.md` §4.7.
+    """
+
+    prefs = read_file("templates/project-preferences.md")
+    doctor = read_file("skills/doctor/SKILL.md")
+
+    ROWS = ("Delegation", "Delegate verification", "Delegation approval")
+
+    #: The rows Health Check #18 may branch on. NOT `ROWS`: `Delegation
+    #: approval` ships a default, so it is never unset, and including it makes
+    #: every freshly scaffolded repo a mixed state — one filled row beside two
+    #: blank ones — which reads as "recorded" and silently turns the check off
+    #: for exactly the repos the template reaches.
+    TRIGGER_ROWS = ("Delegation", "Delegate verification")
+
+    def _workflow(self) -> str:
+        """The Workflow section, bounded by whichever comes first — the next
+        `## ` heading or the `---` rule.
+
+        Bounding on `---` alone was wrong and mutation caught it: the rule sits
+        several headings down, so a row relocated into a section of its own was
+        still inside the slice and the placement assertion passed on prose it
+        was meant to reject.
+        """
+        assert "\n## Workflow\n" in self.prefs, "the Workflow section is gone"
+        rest = self.prefs.split("\n## Workflow\n", 1)[1]
+        ends = [i for i in (rest.find("\n## "), rest.find("\n---")) if i != -1]
+        return rest[:min(ends)] if ends else rest
+
+    def _check(self) -> str:
+        """The delegation-policy health check, anchored on its TITLE.
+
+        Not on its number: checks renumber when one is removed, and an anchor
+        that renumbers turns a passing guard into a silent one. The file itself
+        cross-references by number, which is right for prose a reader is
+        scanning; a test picking the same handle inherits the decay for nothing.
+        """
+        marker = "**Delegation policy unrecorded"
+        assert marker in self.doctor, (
+            "the delegation-policy health check is gone — nothing in doctor "
+            "looks at delegation policy, so R13's detection has no surface"
+        )
+        return self.doctor.split(marker, 1)[1].split("\nClassify and report:", 1)[0]
+
+    def _flow(self) -> str:
+        heading = "## Delegation Policy Flow"
+        assert heading in self.doctor, "the promotion flow is gone"
+        return self.doctor.split(heading, 1)[1].split("\n## ", 1)[0]
+
+    def test_the_three_policy_rows_are_in_the_workflow_section(self):
+        """R12. Placement is the substance again: these are read by a session
+        about to draw a plan, and the sections above Workflow are about how code
+        is written. A row parked outside Workflow is read by nobody deciding a
+        partition.
+        """
+        workflow = self._workflow()
+        for row in self.ROWS:
+            assert f"- **{row}**:" in workflow, (
+                f"the `{row}` row left the Workflow section of "
+                "project-preferences.md — R12's policy has nowhere to be written"
+            )
+
+    def test_off_is_a_complete_answer_and_says_so(self):
+        """`off` stays supported and ceremony-free — §6 rules out mandating
+        delegation, and a setting that is honoured but still nagged about is
+        mandate with extra steps. Asserted on BOTH surfaces: the row has to
+        offer it, and the check has to stop on it.
+        """
+        assert "`off`" in self._workflow(), (
+            "the Delegation row no longer offers `off`, which §6 requires stay "
+            "a supported setting"
+        )
+        check = self._check()
+        assert "off` ends the check" in check or "off` ends this check" in check, (
+            "Health Check #18 no longer stops on `off` — a repo that declined "
+            "delegation now gets nudged about it, which is mandating it slowly"
+        )
+
+    def test_a_durable_yes_has_a_row_and_the_flow_lands_it_there(self):
+        """R11/R14's other half. An approval that cannot be recorded is
+        re-asked with every plan, which is `planning.md`'s ask wearing a
+        seatbelt — so `pre-approved` needs a home AND a writer.
+        """
+        assert "pre-approved" in self._workflow(), (
+            "no row records a durable approval, so the partition ask returns "
+            "with every plan"
+        )
+        flow = self._flow()
+        assert "pre-approved" in flow, (
+            "the promotion flow no longer lands a durable yes anywhere"
+        )
+        assert "planning.md" in flow, (
+            "the flow no longer says WHAT a durable yes stops — without the "
+            "consequence, `pre-approved` reads as a label rather than a lever"
+        )
+
+    def test_the_proposal_is_derived_from_evidence_not_emitted_unconditionally(self):
+        """The load-bearing property of R13, and the one that decides whether
+        this check is worth its line.
+
+        A proposal that fires in every repo carries no information; `norms.md`
+        names the cost from this repo's own orphan-term hook. So the check must
+        say the found-nothing case propose nothing, and must require the
+        proposal to quote what the repo actually says about itself.
+        """
+        check = self._check()
+        lower = check.lower()
+        assert "found nothing" in lower and "propose nothing" in lower, (
+            "Health Check #18 no longer says what to do when the repo encodes "
+            "nothing — and the silent default is to invent a policy, which is "
+            "the unconditional proposal this check is shaped to avoid"
+        )
+        assert "the repo's own names" in check, (
+            "the proposal is no longer required to quote the repo's own "
+            "vocabulary, so it can be assembled from prawduct's instead"
+        )
+        assert "naming the file each came from" in check, (
+            "the proposal no longer has to cite where each item came from — an "
+            "owner who cannot check the claim can only rubber-stamp it"
+        )
+
+    def test_the_check_grades_nothing(self):
+        """A missing delegation policy is not a defect. Check #17 is the
+        precedent and says why in its own words: grading optional advice makes
+        it behave like the install contract. Here the stakes are higher —
+        `Mandating delegation` is out of scope by ruling, and a check that
+        reports `degraded` until you delegate has mandated it.
+        """
+        check = self._check()
+        assert "a recommendation, not a conformance check" in check, (
+            "Check #18 lost the label that keeps it out of the classification"
+        )
+        assert "never degrade the repo on this" in check.lower(), (
+            "Check #18 can now degrade a repo for having no delegation policy, "
+            "which mandates delegation through the grading system"
+        )
+        classify = self.doctor.split("\nClassify and report:", 1)[1].split("\n## ", 1)[0]
+        assert "delegation" not in classify.lower(), (
+            "the classification block now mentions delegation — whatever it "
+            "says there, a grade is being assigned to an optional policy"
+        )
+
+    def test_the_flow_writes_rows_that_are_absent_not_only_blank(self):
+        """The reach gap, and it is the whole difference between shipping this
+        feature and shipping it to new repos only.
+
+        `project-preferences.md` is scaffolded once at onboard and never
+        regenerated, so the template rows added in this chunk reach a repo that
+        onboards AFTER them and no other. Every already-onboarded repo has no
+        such rows at all. This is Health Check #14's bug exactly — "the fix
+        reached new onboards and nothing else" — and this flow is the only path
+        by which an existing repo gets the rows.
+        """
+        flow = self._flow()
+        lower = flow.lower()
+        assert "absent" in lower, (
+            "the flow no longer distinguishes a blank row from a missing one, "
+            "so on every already-onboarded repo it has nothing to fill and "
+            "silently does nothing"
+        )
+        assert "never regenerated" in lower or "scaffolded once" in lower, (
+            "the flow no longer says WHY the rows are missing; without the "
+            "reason the instruction reads as an edge case and gets trimmed"
+        )
+
+    def test_the_flow_is_one_step_and_one_confirmation(self):
+        """R14 — one step, not an interview. The Norm Ratification Flow is the
+        heavy path and it is the wrong shape here: three rows do not need
+        surface-by-exception, and per-row prompting is the confirmation fatigue
+        `security-model.md` § Direction calls a safety regression in itself.
+        """
+        flow = self._flow()
+        assert "One confirmation covers the set" in flow, (
+            "the flow no longer commits to a single confirmation, so it can "
+            "grow back into the interview R14 exists to replace"
+        )
+        assert "per-row prompting is forbidden" in flow.lower(), (
+            "per-row prompting is no longer refused — 'discouraged' has never "
+            "held anywhere else in this file either"
+        )
+
+    def test_a_row_the_evidence_does_not_support_is_not_drafted(self):
+        """The asymmetry that makes a proposal safe to accept: a blank row is
+        honest, a guessed row is a decision the next session reads as the
+        owner's.
+        """
+        flow = self._flow()
+        assert "only the rows the evidence supports" in flow.lower(), (
+            "the flow can now draft all three rows regardless of what it found, "
+            "which puts prawduct's guess in the owner's voice"
+        )
+
+    def test_doctors_write_rule_survives_the_second_writing_flow(self):
+        """This chunk gives doctor a SECOND flow that writes, and two sentences
+        said there was one. The count was never the invariant — what the owner
+        confirmed, into `.prawduct/` state, never product code, is. Pinned
+        because a skill that quietly grows write paths is exactly what makes
+        running prawduct an unsafe trust decision.
+        """
+        assert "one doctor flow that writes" not in self.doctor, (
+            "the skill still claims a single write path while shipping two — "
+            "a reader who believes it will not look for the second"
+        )
+        assert "Doctor's write rule" in self.doctor, (
+            "the skill-level write rule is gone; without it the constraint "
+            "lives only inside whichever flow happens to restate it"
+        )
+        rule = self.doctor.split("Doctor's write rule", 1)[1].split("\n\n", 1)[0]
+        for owed in ("only what the owner confirmed", "never product code"):
+            assert owed in rule, (
+                f"the write rule dropped {owed!r} — the clause is the rule; "
+                "what is left is a description of where doctor happens to write"
+            )
+
+    def test_the_enforcement_row_is_assigned_a_mechanism_and_stays_a_handle(self):
+        """Two project norms meet here. Every preference is assigned a mechanism
+        at birth or it becomes aspirational — and prose policy is
+        judgment-required by construction, so it is `Critic` with `janitor` as
+        its audit home (`advisory` needs a named mechanical hook, and there is
+        none). And an index entry is a name, not a copy: the row points at the
+        policy rather than restating it, or the two drift.
+        """
+        assert "takes `Critic`" in self.prefs, (
+            "a filled delegation row no longer has an assigned mechanism, so it "
+            "is a preference nothing grades"
+        )
+        assert "audit home `janitor`" in self.prefs, (
+            "the audit home is unassigned — the rule for adding a preference "
+            "requires both, and `advisory` would need a hook nobody built"
+        )
+        flow = self._flow()
+        assert "a handle, not a second copy" in flow, (
+            "the Enforcement row the flow writes may now restate the policy, "
+            "which is the duplication `one home per fact` exists to refuse"
+        )
+
+    def test_the_shipped_enforcement_table_still_has_no_rows(self):
+        """The reason no Enforcement row ships with the template, asserted here
+        rather than only in `test_norm_probes.py`: a populated row is a HOMED
+        NORM, so shipping one claims a norm registry every new product has
+        ratified nothing into. This chunk's rows are written at ratification
+        instead. Read the real template, per the rule this repo learned the hard
+        way when hand-written fixtures agreed with each other and disagreed with
+        the shipped file.
+        """
+        index = self.prefs.split("| Preference / norm | Mechanism |", 1)
+        assert len(index) == 2, "the norm index table is gone"
+        body = index[1].split("\n\n", 1)[0]
+        data_rows = [
+            ln for ln in body.splitlines()
+            if ln.strip().startswith("|") and not re.match(r"^\|[\s:|-]+\|$", ln.strip())
+        ]
+        assert data_rows == [], (
+            f"the norm index ships {len(data_rows)} populated row(s): {data_rows}. "
+            "It must ship empty — a row here is a ratified norm, and the "
+            "delegation rows get theirs from /prawduct:doctor, not from onboard"
+        )
+
+    def test_the_trigger_set_excludes_the_row_that_ships_filled(self):
+        """The state the template actually ships is the one the check must not
+        misread, and nothing else in this class can see a regression here.
+
+        `Delegation approval` ships `ask-on-reason` **filled** while the other
+        two ship `(unset — …)`. A check that reads all three together meets a
+        mixed state on every newly scaffolded repo, and the reading that says
+        "rows are filled, report recorded" turns the check off for precisely
+        the population the template reaches. Every other assertion in this
+        class — `off` ends it, found-nothing proposes nothing, it grades
+        nothing — stays green through that regression, which is why this one
+        exists.
+        """
+        check = self._check()
+        for row in self.TRIGGER_ROWS:
+            assert f"`{row}`" in check, (
+                f"the check no longer reads the `{row}` row, so a policy the "
+                "owner can state has no detector"
+            )
+        assert "not in the trigger set" in check, (
+            "`Delegation approval` is back in the trigger set (or the exclusion "
+            "stopped being stated) — it ships a default, so it is never unset, "
+            "and reading it alongside the other two recreates the mixed state "
+            "that reads as `recorded` and silently disables the check"
+        )
+        # The template is the other half of the claim: this test is only true
+        # while `Delegation approval` really does ship filled. Read the real
+        # file rather than trusting the sentence above it.
+        workflow = self._workflow()
+        assert "- **Delegation approval**: ask-on-reason (default:" in workflow, (
+            "`Delegation approval` no longer ships filled — the exclusion above "
+            "was justified by that fact, so if it now ships unset the reasoning "
+            "has to be redone rather than the assertion relaxed"
+        )
+        for row in self.TRIGGER_ROWS:
+            assert f"- **{row}**: (unset" in workflow, (
+                f"`{row}` no longer ships unset, so it can no longer be the "
+                "thing the check detects as missing"
+            )
+
+    def test_the_check_branches_per_row_not_on_the_set(self):
+        """Branching collectively is what made the mixed state unreadable — a
+        set is either "filled" or "unset" and a repo's rows are neither.
+        """
+        check = self._check()
+        assert "branch per row rather than on the set" in check, (
+            "the check went back to branching on the row set as a whole, so a "
+            "repo with one row filled and one blank has no defined behaviour"
+        )
+        assert "a blank one beside it is still a candidate" in check, (
+            "the check no longer says what happens to a blank row sitting next "
+            "to a filled one, which is the mixed state itself"
+        )
+
+    def test_neither_surface_invents_a_test_vocabulary(self):
+        """§6, applied to this chunk's two surfaces — and scoped differently for
+        each, which is the point.
+
+        The **template row** is guidance to a project about what to write, so it
+        is held to the same bar as the guide: no runner, no tier, no command.
+        The **doctor check** is the opposite job — it READS a consumer's repo,
+        so naming the kinds of file it opens is its function, not a violation.
+        What it may not do is arrive with a taxonomy of its own, so the ruled-out
+        tier names are what is asserted there.
+        """
+        workflow = self._workflow().lower()
+        runners = [
+            r for r in ("pytest", "vitest", "jest", "npm test", "xdist",
+                        "-n auto", "maxworkers", "testmon", "go test", "cargo test")
+            if r in workflow
+        ]
+        assert not runners, (
+            f"the delegation rows name a consumer's toolchain: {runners}. The "
+            "project writes its own regime; prawduct does not supply one"
+        )
+        tiers = [
+            t for t in ("`focused`", "`adjacent`", "`whole`", "`live`",
+                        "contention class", "tier")
+            if t in self._check().lower()
+        ]
+        assert not tiers, (
+            f"Health Check #18 arrives with a framework tier vocabulary: "
+            f"{tiers}. §6 rules those out by name — the proposal is assembled "
+            "from what the repo says, not from a taxonomy prawduct brought"
+        )
 
 class TestOtherMethodology:
     def test_discovery_continuous(self):
@@ -1844,7 +3527,7 @@ class TestCriticSkill:
         # extends the skill while reviewing. Maintainer-facing rationale inside a
         # per-review payload is the same class the goals-1-3.md budget comment
         # records cutting twice. Relocated, not deleted -- review-cycle.md is the
-        # maintainer's companion file and carries no ceiling.
+        # maintainer's companion file, which is the audience that section serves.
         #
         # 3589 -> 3611 (2026-08-05) -- a partial is now bound to the review that
         # dispatched it, not to the commit alone, so the coordinator template
@@ -2264,6 +3947,26 @@ class TestCriticSkillRoutesByMode:
     def load(self):
         self.content = read_file("skills/critic/SKILL.md")
 
+    def test_token_budget(self):
+        # Ceiling 3450 against a reading of 3445 (`estimate_tokens`, recorded in
+        # LAST_MEASURED_TOKENS above): four tokens of slack under the strict
+        # `<`, and deliberately tighter than any sibling ceiling in this module.
+        # This is the one payload EVERY mode loads -- the skill body a reviewer
+        # reads before step 1 has told it which protocol file it needs -- so a
+        # token added here is paid by the fast `chunk` path whose whole reason
+        # for existing is to not read the seven-goal protocol, and paid again by
+        # each coordinator reviewer on a `final`/`cumulative`. Unconditional
+        # payload is therefore the most expensive place in the skill to grow and
+        # the worst available relocation target, not an exempt one; the ceiling
+        # is what stops it being the cheap destination instead. Same standing
+        # rule as every other budget comment here: THE NEXT ADDITION TRIMS OR
+        # RELOCATES, IT DOES NOT BUMP.
+        #
+        # It lives in this class because this class owns SKILL.md; the mode
+        # routing it asserts around it is the reason the ceiling is this tight.
+        tokens = estimate_tokens(self.content)
+        assert tokens < 3450, f"SKILL.md is ~{tokens} tokens, should be <3450"
+
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
         assert "goals-1-3.md" in line
@@ -2389,9 +4092,8 @@ class TestCriticSkillRoutesByMode:
 
 class TestReviewCycle:
     def test_token_budget(self):
-        # Ceiling 9600. Added 2026-08-04 because this file was the only
-        # `final`/`cumulative` payload with no bound, and the gap was being
-        # SPENT: `review-protocol.md`'s relocated "Extending This Skill" and the
+        # Ceiling 9600. It exists because the absence of one was being SPENT:
+        # `review-protocol.md`'s relocated "Extending This Skill" and the
         # verify-narrowing argument both landed here justified by "review-cycle
         # carries no ceiling", while the ceiling test one file over passed on a
         # token DROP. Relocation across an unguarded boundary is a bump wearing
@@ -2406,14 +4108,21 @@ class TestReviewCycle:
         # every other budget comment here: THE NEXT ADDITION TRIMS OR RELOCATES,
         # IT DOES NOT BUMP.
         #
-        # The first draft of this comment closed with "'relocate to the
-        # unbudgeted file' is no longer an available move anywhere in this
-        # skill". That was FALSE when written -- `framework-checks.md` is listed
-        # at SKILL.md:27 as `final`/`cumulative` payload and had no ceiling
-        # either. Caught as an observation by the verify pass over the very
-        # commit that added this. It is true now because the sibling test below
-        # was added to MAKE it true, which is the only honest way to keep a
-        # universal claim: bound the last case, or do not make the claim.
+        # A ceiling binds ONE file, so nothing written here can be true of the
+        # skill as a whole -- and "'relocate to the unbudgeted file' is no
+        # longer an available move anywhere in this skill" is the sentence this
+        # comment must never carry. That is a claim about a SET THAT GROWS: the
+        # next payload file added falsifies it silently while it goes on reading
+        # as settled fact to the maintainer deciding where to put prose, and a
+        # third ceiling would only make it true until the sixth file.
+        #
+        # State the mechanism instead, which survives the set growing: every
+        # accounted payload file has a reading in `LAST_MEASURED_TOKENS`, and
+        # `test_recorded_token_count_matches_the_file` turns an undeclared
+        # change red wherever it lands -- so a relocation out of this file has
+        # to be declared at its destination. Whether that destination also
+        # carries a CEILING is a separate per-file decision, stated at that
+        # file's own assertion and nowhere else.
         #
         # 9471 -> 9532 (2026-08-05) -- the manifest key list gained `rendezvous`
         # and the consolidation contract gained the `dispatch_id` binding. Not
@@ -2470,11 +4179,14 @@ class TestReviewCycle:
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
 
     def test_framework_checks_token_budget(self):
-        # Ceiling 1150. The last `final`/`cumulative` payload file without one
-        # (SKILL.md:27 routes final/cumulative reviewers here for the four
+        # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
+        # header bullets route those reviewers here for the four
         # Framework-Specific Check definitions, and `review-protocol.md` names
-        # the file rather than restating them -- a deliberate relocation that
-        # this bound is what keeps honest).
+        # the file rather than restating them. A relocation is only honest while
+        # its destination is bounded, and this ceiling is what bounds this one.
+        # It says nothing about any other file -- which payload files carry a
+        # ceiling is stated at each one's own assertion, because no comment here
+        # can speak for a set that grows.
         #
         # Small file, so the ceiling is proportionally looser than its siblings'
         # few-token headroom: the point is that the NEXT addition is a decision,

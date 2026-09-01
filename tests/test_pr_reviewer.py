@@ -524,9 +524,12 @@ class TestPrReviewSkillContent:
         assert "evidence file" in content
 
     def test_merge_flow_buildplan_cleanup_is_conditioned(self):
-        """PR-7Q3M: build-plan lifecycle (merge-flow step 7 since the
-        single-pr-bookkeeping restructure; originally step 7, briefly step 8
-        during the stamp-merged era) must branch on whether THIS merge is the
+        """PR-7Q3M: build-plan lifecycle (the Merge Flow's "Confirm the
+        bookkeeping merged WITH the PR" step -- named rather than numbered
+        because the number has now moved three times: step 7, briefly step 8
+        during the stamp-merged era, back to 7, and 8 again once the
+        Issues-backend close was inserted ahead of it) must branch on whether
+        THIS merge is the
         release — retire at the release surface (in the closing PR, per
         create-flow Step 1d), RETAIN while release-pending — not
         unconditionally delete. Guards against a revert to the old

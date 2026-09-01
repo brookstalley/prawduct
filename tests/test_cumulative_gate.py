@@ -132,7 +132,12 @@ def _advanced_base_repo(
 
 
 def _write_test_evidence(
-    repo: Path, *, failed: int = 0, tree: "str | None" = ..., omit_tree: bool = False
+    repo: Path,
+    *,
+    failed: int = 0,
+    tree: "str | None" = ...,
+    omit_tree: bool = False,
+    degraded: "str | None" = None,
 ) -> None:
     """Saved test evidence in the shape ``gates.suite_vouches_for_tree``
     accepts: a run whose recorded ``evidence_tree`` is the CURRENT working tree.
@@ -160,6 +165,8 @@ def _write_test_evidence(
         record["evidence_tree"] = (
             evidence.capture_tree(repo)["tree"] if tree is ... else tree
         )
+    if degraded:
+        record["degraded"] = degraded
     (prawduct / ".test-evidence.json").write_text(json.dumps(record))
 
 
@@ -578,6 +585,26 @@ class TestBaseAdvanceTransfer:
         assert "ONLY condition denying the transfer" in err
         assert "no .test-evidence.json on disk" in err
         assert "test-evidence record" in err
+
+    def test_a_degraded_suite_run_denies_even_against_the_right_tree(
+        self, tmp_path, capsys
+    ):
+        """The second evidence reader. `suite_vouches_for_tree` asks whether a
+        run MET this tree, and this fixture answers yes — the recorded
+        `evidence_tree` is the tree the gate composes to, so every tree-shaped
+        clause is satisfied and only the flag denies.
+
+        It has to deny here as well as at the freshness gate, and refusing in
+        one shared body is what makes the two agree: a run that dropped part of
+        its suite is not evidence for "may this session stop re-running" and not
+        evidence for "did a run meet this tree" either.
+        """
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo, degraded="a worker died; ~half never reported")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "transferred" not in err
+        assert "degraded" in err and "a worker died" in err
 
     def test_a_suite_run_predating_the_advance_denies(self, tmp_path, capsys):
         # The hole `tests_are_current` would have left open: a run from earlier

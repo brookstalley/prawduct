@@ -11,12 +11,20 @@ the file alone — no git mutation, no network.
 Depends on its lib siblings ``gitstate`` (for ``_is_metadata_path``), ``core``
 (``resolve_build_plan_path``, ``read_str_yaml_key``), ``coverage``
 (``_resolve_base_branch``) and ``plan_index`` (the canonical frontmatter ``scope:``
-reader) plus the stdlib — still a clean DAG node, since ``coverage`` depends only
-on ``core`` and ``plan_index`` on nothing in ``lib`` at all. This module reaches the
-canonical resolver in ``lib.core`` directly, exactly as ``critic_mode`` and
-``change_log`` do — there is one resolver now, the hook's inline mirror of it
-having been retired once branch-scoped resolution left it with no caller and no
-import-light claim.
+reader) plus the stdlib. This module reaches the canonical resolver in ``lib.core``
+directly, exactly as ``critic_mode`` and ``change_log`` do — there is one resolver
+now, the hook's inline mirror of it having been retired once branch-scoped
+resolution left it with no caller and no import-light claim.
+
+**The graph is acyclic only because one edge back is lazy, and that is a
+constraint rather than a tuning knob.** ``core.resolve_branch_claim`` calls
+``_has_unfinished_chunk`` to choose among several plans claiming one branch, and
+imports this module *inside the function* to do it; this module imports ``core``
+at module scope. Hoisting core's import — the optimization applied to the
+``plan_index`` import below, on measured cost — would cycle at plugin load. The
+cleaner shape is to move the Status-roster predicate down into ``plan_index``,
+where core already reaches and nothing in ``lib`` is imported at all; until then,
+the laziness is what holds.
 
 Every read of the plan — here and in every other module that reads it — is
 explicitly UTF-8, and every guarded read catches ``UnicodeDecodeError`` beside
@@ -45,7 +53,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
-from . import gitstate, plan_index, waivers
+from . import core, gitstate, plan_index, waivers
 from .core import read_str_yaml_key, resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
@@ -659,21 +667,19 @@ def _scope_of_branch_claiming_plan(
     no scope has no scope to return, and inventing one would tag a change-log
     entry and a ledger row with a string no plan declares.
 
-    Two plans claiming one branch resolves to ``None`` rather than a pick.
-    :func:`core.resolve_build_plan_path` is where that refusal is raised; making
-    a scope *inference* fail closed too would block advice on a condition the
-    authority path already blocks on, so this simply declines and lets the
-    caller's own routes answer.
+    **Several plans may claim one branch, and this asks the same resolver the
+    gates ask** (``core.resolve_branch_claim``) rather than declining on the
+    second claimant. Declining looked conservative and was not: the ledger scope
+    a dispatch records would then name nothing while every gate graded a plan,
+    so the review and the record it leaves would describe different work — the
+    precise failure that made ``critic-begin`` write scope ``(none)`` before
+    branch declarations existed.
     """
-    matched = [
-        path
-        for path, claimed in plan_index.branch_claiming_plans(prawduct_dir / "artifacts")
-        if claimed == branch
-    ]
-    if len(matched) != 1:
+    claim = core.resolve_branch_claim(prawduct_dir)
+    if claim is None or claim.branch != branch:
         return None
     for scope, plan_path in known.items():
-        if plan_path == matched[0]:
+        if plan_path == claim.chosen:
             return scope
     return None
 
@@ -681,30 +687,28 @@ def _scope_of_branch_claiming_plan(
 def _has_unfinished_chunk(plan_path: Path) -> bool:
     """True when ``plan_path``'s Status section still holds an unchecked chunk.
 
-    The liveness signal for :func:`infer_scope_from_branch` and for the session
-    briefing's "claims a branch this repo does not have" advisory, which fires
-    only for a plan with work left — a finished plan whose merged branch is gone
-    is the documented end state, not a finding.
+    **Read this before tuning it: it now decides which plan GOVERNS.**
+    :func:`core.resolve_branch_claim` uses it to choose among several live plans
+    claiming one branch, so a change here moves what every gate grades — not only
+    what advice infers. Its other consumers are :func:`infer_scope_from_branch`
+    and the session briefing's "claims a branch this repo does not have"
+    advisory, which fires only for a plan with work left, because a finished plan
+    whose merged branch is gone is the documented end state, not a finding.
 
-    **The signal is blunt, and the bluntness is now universal — worth knowing,
-    because it used to be sharp on some repos.** The boxes flip per chunk, so a
-    plan reads finished from the moment its last chunk is ticked, which is
-    typically before the branch merges. In that window the branch stops matching
-    and every caller falls back to the ``active_build_plan`` pointer:
-    attribution, ``plan_graded``, and the Stop hook's ``Type:`` carveouts. That
-    is the behaviour those callers had before branch inference existed, so the
-    window is a *lapse of the improvement*, not a new defect — but it lands at
-    end-of-plan, which is exactly when a `cumulative` review and the last gate
-    run happen.
-
-    Repos whose checkboxes were a derived view did not have this window: their
-    boxes flipped at *release*, so "all checked" meant shipped, which is precisely
-    the question asked here. Retiring the derived view removes that sharpness
-    along with the false readings it produced everywhere else — a deliberate
-    trade, stated here rather than discovered later. Narrowing the window needs a
-    liveness signal a plan does not currently carry (a terminal state in
-    frontmatter is the obvious candidate, and archival introduces exactly that);
-    ``--scope`` is the remedy meanwhile.
+    **The signal is blunt: the boxes flip per chunk, so a plan reads finished
+    from the moment its last chunk is ticked** — typically before its branch
+    merges. Resolution answers that by ordering a *sole* claimant ahead of this
+    test, so a lone plan keeps governing through its own closing PR; what the
+    bluntness still costs is the tie-break among SEVERAL claimants, where a
+    just-ticked plan stops counting as open work. Repos whose checkboxes were a
+    derived view never had this: their boxes flipped at *release*, so "all
+    checked" meant shipped, which is precisely the question asked here. Retiring
+    the derived view removed that sharpness along with the false readings it
+    produced everywhere else — a deliberate trade, stated here rather than
+    discovered later. Sharpening it needs a liveness signal a plan does not carry
+    (a terminal state in frontmatter is the obvious candidate, and archival
+    introduces exactly that); ``active_build_plan`` and ``--scope`` are the
+    remedies meanwhile.
 
     A plan with no Status items at all reads as unfinished — an unparseable plan
     is not evidence of completion, and the caller's fallback (the pointer) is no
@@ -1468,6 +1472,126 @@ def chunk_section_gap(chunk_id: str, section: ChunkSection) -> str | None:
             f"{unparsed}"
         )
     return None
+
+
+def plan_has_parseable_chunk_heading(plan_path: "Path | None") -> "bool | None":
+    """Whether ``plan_path`` exposes at least one ``### Chunk NN:`` heading.
+
+    ``None`` when the plan is absent or unreadable — a third answer, and it
+    earns its keep: "has no headings" and "could not look" prescribe different
+    things, and a caller collapsing them reports a confident structural verdict
+    about a file it never opened.
+
+    Chunk sections are located BY heading, so a plan exposing none has nothing
+    for the deliverable check to grade — and that check answers with a null
+    count rather than a complaint, which is why two independent readers ask this
+    question and why it lives here rather than in either of them.
+    """
+    if plan_path is None or not plan_path.is_file():
+        return None
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    return any(_CHUNK_HEADING_RE.match(line.strip()) for line in content.splitlines())
+
+
+def _plan_gaps(plan_path: Path, artifacts_dir: Path) -> list[str]:
+    """The gap sentences for one plan file. See :func:`deliverable_check_gaps`.
+
+    An unreadable plan is REPORTED, not swallowed. An earlier version returned
+    ``[]`` for it on the reasoning that ``plan_index.unreadable_candidates``
+    already covers the case — which is true of the doctor (its only caller,
+    ``lifecycle_repair``) and false of this channel: nothing on the dispatch
+    path calls it, so an undecodable plan under ``artifacts/`` was reported to
+    the operator by no one at all. Reporting the *fault* is not the same as
+    guessing at the structure of content never read; the sentence claims only
+    that the file could not be opened.
+
+    Paths are rendered by :func:`plan_index.display_path`, never ``Path.name``:
+    recursive discovery makes ``build-plan.md`` a near-certain collision across
+    ``plans/<id>/`` directories, and naming two of them identically tells an
+    operator nothing about which to fix.
+    """
+
+    if not plan_path.is_file():
+        return []
+    shown = plan_index.display_path(plan_path, artifacts_dir)
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return [
+            f"{shown} could not be read ({exc.__class__.__name__}), so no review "
+            "can resolve it and the chunk deliverable check cannot grade it. "
+            "Nothing else on the dispatch path reports this"
+        ]
+
+    gaps: list[str] = []
+    declared, _value = plan_index.parse_build_plan_frontmatter_scope(content)
+    if not declared:
+        gaps.append(
+            f"{shown} declares no frontmatter `scope:`, so no review can "
+            "resolve it by scope and the chunk deliverable check reports "
+            "`unchecked` for the life of the plan — which reads as a pass. Add "
+            "`scope: <change-log scope tag>` to its frontmatter"
+        )
+    if not any(
+        _CHUNK_HEADING_RE.match(line.strip()) for line in content.splitlines()
+    ):  # same predicate as `plan_has_parseable_chunk_heading`, on content already read
+        gaps.append(
+            f"{shown} exposes no parseable chunk heading, so there is "
+            "nothing for the deliverable check to grade and it reports NOTHING "
+            "— not even `unchecked`. Chunks must be `### Chunk NN: Name` "
+            "headings; list items under a `## Chunks` section match no heading "
+            "pattern and are invisible to every plan reader"
+        )
+    return gaps
+
+
+def deliverable_check_gaps(
+    prawduct_dir: Path, resolved_plan: "Path | None"
+) -> list[str]:
+    """Why the chunk deliverable check will not grade this review's plan.
+
+    **Asked at DISPATCH, answered before a review runs.** Two conditions disable
+    the check for the whole life of a plan, and neither is visible where it
+    happens: a missing frontmatter ``scope:`` surfaces as
+    ``chunk-ref-missing unchecked — …`` buried in the dispatch manifest, where
+    ``unchecked`` reads as a pass to anyone who does not also read the caveat;
+    chunks written as list items surface as nothing at all, because such a plan
+    yields no offending line to name. The only existing signal is
+    ``check-releasability``'s "release-pending scope has no build-plan file",
+    which fires at RELEASE — long after authoring, and long after the reviews
+    that ran blind.
+
+    **Falls back to scanning when nothing resolved, and that is the main case.**
+    Asking the resolver for the plan and checking only what comes back misses the
+    defect entirely: a plan declaring neither ``scope:`` nor ``branch:`` does not
+    resolve *because of* the very gap being reported, so the resolver returns
+    ``None`` and the check goes quiet exactly where it is needed. When no plan
+    resolved, every live plan file is examined instead and its gaps reported with
+    the file named — an unresolved plan that is also unparseable is the whole of
+    #642's first route, and it must not depend on being found first.
+
+    Returned as finished sentences rather than flags: the caller prints them, and
+    the remedy is three lines of plan frontmatter either way. Empty list = the
+    check has a subject, or there is no plan at all (an absence the resolver
+    already reports, and this must not complain about twice).
+    """
+    if resolved_plan is not None:
+        return _plan_gaps(resolved_plan, prawduct_dir / "artifacts")
+    # Discovery goes through `plan_index`, which owns the rule — recursive, and
+    # never descending an `archive` subtree. A flat glob of `artifacts/*.md` was
+    # wrong on both axes for a repo laying plans out as
+    # `artifacts/plans/<id>/build-plan.md`, and wrong on the path this function's
+    # own docstring calls the main case. `iter_live_plan_files`, not
+    # `iter_scoped_plan_candidates`: the latter yields plans that DECLARE a
+    # scope, which is exactly what a plan missing one cannot do.
+    gaps: list[str] = []
+    artifacts = prawduct_dir / "artifacts"
+    for candidate in plan_index.iter_live_plan_files(artifacts):
+        gaps.extend(_plan_gaps(candidate, artifacts))
+    return gaps
 
 
 def _unparsed_chunk_headings(content: str) -> list[tuple[int, str]]:

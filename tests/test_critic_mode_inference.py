@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import buildplan_refs, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
+from lib import buildplan_refs, core, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
 
 
 # ---------------------------------------------------------------------------
@@ -1172,10 +1172,13 @@ class TestRule4ChunkDefault:
         prawduct = tmp_path / ".prawduct"
         assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "done"
 
-    def test_two_plans_claiming_one_branch_infer_no_scope(self, tmp_path: Path):
-        """Advice declines rather than picking; the resolver is where the refusal
-        is raised, and a scope inference that failed closed would block advice on
-        a condition authority already blocks on."""
+    def test_two_plans_claiming_one_branch_infer_the_resolved_one(self, tmp_path: Path):
+        """Inference asks the same resolver the gates ask.
+
+        Declining on the second claimant looked conservative and was not: the
+        gates would grade a plan while the dispatch recorded no scope at all, so
+        the review and its ledger row would describe different work.
+        """
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
@@ -1183,13 +1186,16 @@ class TestRule4ChunkDefault:
 
         artifacts = tmp_path / ".prawduct" / "artifacts"
         artifacts.mkdir(parents=True, exist_ok=True)
-        for name in ("a", "b"):
+        for name, boxes in (("a", "- [x] Chunk 01: done"), ("b", "- [ ] Chunk 01: current")):
             (artifacts / f"build-plan-{name}.md").write_text(
                 f"---\nartifact: build-plan\nscope: {name}\nbranch: feat/contested\n---\n\n"
-                "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
+                f"# Plan\n\n## Status\n\n{boxes}\n"
             )
         prawduct = tmp_path / ".prawduct"
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+        # `b` is the claimant with chunks left, so it is what resolution picks —
+        # and the scope must name that same plan, not the other one and not None.
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "b"
+        assert core.resolve_build_plan_path(prawduct).name == "build-plan-b.md"
 
     def test_a_declared_plan_with_no_scope_infers_nothing(self, tmp_path: Path):
         """A branch claim is not a scope. Inventing one would tag a change-log
@@ -1900,3 +1906,152 @@ class TestBranchProgressCRT7B4M:
 # then deleted that copy's multi-link ``extends_cumulative`` arm — the
 # stays-deleted guards live in TestRule1bPostCumulativeFix and the rule-2
 # class above.)
+
+
+# ---------------------------------------------------------------------------
+# An unrecognised `Critic mode:` value says so once, then inference proceeds.
+#
+# Fail-open-to-inference is CORRECT and is not what changed: a typo'd mode must
+# not block a review, and nothing is skipped. What changed is that the ignore
+# used to be silent, which let an author believe a mode was pinned when it was
+# not and file the resulting surprise as a defect against prawduct.
+#
+# Absent and blank stay silent — they carry no intent to contradict. Only a
+# value someone typed earns the line, which is why those two are asserted.
+# ---------------------------------------------------------------------------
+
+def test_unrecognized_mode_note_names_the_value_and_the_valid_set():
+    note = critic_mode._unrecognized_mode_note("cumluative")
+
+    assert "'cumluative'" in note
+    for mode in ("chunk", "cumulative", "final", "verify-resolutions"):
+        assert mode in note
+    assert "nothing was skipped" in note
+
+
+def test_unrecognized_mode_note_points_at_the_right_field_for_a_type_value():
+    """`cumulative-final` is the natural trap: a valid `Type:` that reads like a mode."""
+    note = critic_mode._unrecognized_mode_note("cumulative-final")
+
+    assert "`Type:`" in note
+    assert "orthogonal" in note
+
+
+def test_a_plain_typo_gets_no_type_hint():
+    """The hint must not fire on every unrecognised token, or it carries nothing."""
+    assert "`Type:`" not in critic_mode._unrecognized_mode_note("cumluative")
+
+
+def test_every_valid_chunk_type_is_recognised_as_a_type_by_the_hint():
+    """Pinned against the real vocabulary rather than a copy of it.
+
+    A `Type:` value added later without updating this hint would silently stop
+    routing authors to the right field.
+    """
+    from lib import buildplan_refs
+
+    for value in buildplan_refs._BUILD_PLAN_ALLOWED_TYPES:
+        if value in critic_mode._VALID_ARG_MODES:
+            continue
+        assert "`Type:`" in critic_mode._unrecognized_mode_note(value), value
+
+
+def test_a_recognized_mode_is_returned_and_earns_no_note():
+    read = critic_mode.ChunkModeRead("cumulative", None)
+
+    assert read.mode == "cumulative"
+    assert read.unrecognized is None
+
+
+def test_chunk_mode_read_defaults_unrecognized_so_existing_callers_are_unchanged():
+    """The field is additive — a two-argument construction still works."""
+    read = critic_mode.ChunkModeRead(None, None)
+
+    assert read.unrecognized is None
+
+
+class TestUnrecognizedCriticModeIsAnnounced:
+    """The emission, not just the wording.
+
+    `_unrecognized_mode_note` being correct proves nothing if nothing calls it.
+    Both halves of the requirement — "emits exactly one line" and "still infers"
+    — are only observable at `infer_mode`, so they are asserted there.
+
+    The two silence cases are the ones that keep this honest: an absent or blank
+    field carries no intent to contradict, and a note on either would fire on
+    ordinary plans and train its reader to ignore it.
+    """
+
+    def _repo_with_mode_field(self, tmp_path: Path, field_line: str) -> Path:
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True, exist_ok=True)
+        (prawduct / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan.md\n"
+        )
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: a thing\n\n"
+            "### Chunk 01: a thing\n\n"
+            "- **Description:** work\n"
+            f"{field_line}"
+            "- **Done when:** it is done\n"
+        )
+        _write(tmp_path, "src/work.py", "# chunk work\n")
+        return tmp_path
+
+    def test_an_unrecognized_value_emits_one_line_and_inference_still_runs(
+        self, tmp_path: Path, capsys
+    ):
+        repo = self._repo_with_mode_field(tmp_path, "- **Critic mode:** cumluative\n")
+
+        mode, rationale = infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        assert err.count("NOTE: chunk's `Critic mode:`") == 1, err
+        assert "'cumluative'" in err
+        # Fail-open-to-inference: a mode was still chosen, and it is not an
+        # escalation to `final` the way an UNREADABLE plan would be.
+        assert mode in {"chunk", "final", "cumulative", "verify-resolutions"}
+        assert "plan-override" not in rationale
+
+    def test_a_type_value_in_the_mode_field_names_the_right_field(
+        self, tmp_path: Path, capsys
+    ):
+        """The natural trap: `cumulative-final` is a Type that reads like a mode."""
+        repo = self._repo_with_mode_field(
+            tmp_path, "- **Critic mode:** cumulative-final\n"
+        )
+
+        infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        assert "`Type:`" in err
+        assert "orthogonal" in err
+
+    def test_a_recognized_value_is_honoured_and_says_nothing(
+        self, tmp_path: Path, capsys
+    ):
+        repo = self._repo_with_mode_field(tmp_path, "- **Critic mode:** cumulative\n")
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_an_absent_field_says_nothing(self, tmp_path: Path, capsys):
+        repo = self._repo_with_mode_field(tmp_path, "")
+
+        infer_mode(repo, None)
+
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_a_blank_field_says_nothing(self, tmp_path: Path, capsys):
+        """Blank carries no intent either — only a typed value does."""
+        repo = self._repo_with_mode_field(tmp_path, "- **Critic mode:**\n")
+
+        infer_mode(repo, None)
+
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err

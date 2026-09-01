@@ -453,6 +453,39 @@ class TestChunkRefs:
         (repo / ".prawduct" / "artifacts" / "build-plan.md").write_text(plan)
         return repo, _commit(repo, "plan")
 
+    def test_structurally_ungradeable_plan_is_not_quiet(self, tmp_path):
+        """#642 Route 2 — the wholly-silent one.
+
+        Chunks written as list items under `## Chunks` match no heading pattern,
+        so no chunk section can be located and the deliverable check grades
+        nothing for the plan's whole life. Unlike every other failure on this
+        path it emitted no `unchecked` line at all — a null count that reads
+        exactly like a healthy plan — so nothing downstream had a word to carry.
+        """
+        plan = "# Plan\n\n## Chunks\n\n- Chunk 01: do it\n"
+        repo, head = self._repo_with_plan(tmp_path, plan, "nogradeable")
+        result = _lint(repo, [], head, head)
+        assert result["findings"] == [], "this is a gap, not a per-chunk finding"
+        assert any("no parseable chunk heading" in u for u in result["unchecked"]), (
+            f"the silent route stayed silent: {result['unchecked']}"
+        )
+
+    def test_a_finished_plan_stays_quiet(self, tmp_path):
+        """The discriminator, pinned from the other side.
+
+        Every box ticked ALSO yields "no current chunk", and that is grading
+        being over rather than disabled. A first draft of the check above keyed
+        only on the absent heading and reported this healthy case too — a
+        signal whose first firing is wrong is one its readers learn to ignore.
+        """
+        plan = (
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n\n"
+            "### Chunk 01: done\n\n- **Deliverables:** none\n"
+        )
+        repo, head = self._repo_with_plan(tmp_path, plan, "finishedquiet")
+        result = _lint(repo, [], head, head)
+        assert not any("no parseable chunk heading" in u for u in result["unchecked"])
+
     def test_missing_deliverable_is_reported(self, tmp_path):
         plan = (
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"

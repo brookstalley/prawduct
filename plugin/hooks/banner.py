@@ -261,6 +261,61 @@ def write_marker(prawduct_dir: Path, version: str) -> None:
         print(f"NOTE: Prawduct banner could not update version marker: {exc}", file=sys.stderr)
 
 
+def _strip_list_and_emphasis(line: str) -> str:
+    """A changelog line reduced to its sentence.
+
+    ``lstrip("-* ")`` removed the leading list bullet and the opening ``**`` of
+    a bolded lead-in, and left the CLOSING ``**`` sitting mid-sentence: every
+    rendered headline read ``…fewer rounds in review.** Gate checks stop…``.
+    Cosmetic, but it lands on the single most-read line prawduct emits — the one
+    every upgrading repo sees — and it had rendered that way since at least
+    v3.3.2.
+
+    Strips the bullet first, then removes emphasis markers ONLY as a matched
+    pair wrapping a leading run: `**Lead-in.** rest` becomes `Lead-in. rest`,
+    while a headline using emphasis mid-sentence keeps it, because there the
+    markers are the author's and carry meaning. A blanket `replace("**", "")`
+    would flatten both and is why this is a function rather than one more
+    argument to `lstrip`.
+
+    **The bullet and the emphasis marker share a character, so they cannot
+    share a strip set** — which is precisely how the original defect arose.
+    `lstrip("-* ")` consumed the OPENING `**` as though it were bullet
+    punctuation, leaving the closing one with nothing to pair against.
+
+    The discriminator is the FOLLOWING WHITESPACE, not the following character:
+    a bullet is `- `, `+ ` or `* `, while `*text*` and `**text**` are emphasis.
+    Testing "is the next character another star" gets `**` right and single `*`
+    wrong — it eats the opening marker of `*Lead-in.* Rest.` and reproduces the
+    same stray one marker narrower.
+    """
+    text = line.strip()
+    # A bullet is a marker followed by WHITESPACE. That is the discriminator,
+    # and requiring the space is what separates it from emphasis: `* ` opens a
+    # list item, `*text*` and `**text**` open emphasis. Testing only "is the
+    # next character another star" got `**` right and single `*` wrong, eating
+    # the opening marker of `*Lead-in.* Rest.` and leaving the same stray this
+    # function exists to remove, one marker narrower.
+    if text[:1] in ("-", "+", "*") and text[1:2] in (" ", "\t"):
+        text = text[1:].lstrip()
+    # Longest first: `**` must be tried before `*`, or a bolded lead-in is
+    # unwrapped one marker at a time and leaves its partners behind. And a
+    # single-char marker must not apply to text opening with the DOUBLED form —
+    # otherwise an unclosed `**lead-in` falls through to the `*` rule, which
+    # finds the second star of that very pair and unwraps a marker the author
+    # left deliberately open.
+    for marker in ("**", "__", "*", "_"):
+        if not text.startswith(marker):
+            continue
+        if len(marker) == 1 and text.startswith(marker * 2):
+            continue
+        end = text.find(marker, len(marker))
+        if end == -1:
+            continue
+        return (text[len(marker):end] + text[end + len(marker):]).strip()
+    return text
+
+
 def parse_changelog(root: Path) -> list[tuple[str, str]]:
     """Parse the bundled CHANGELOG.md into ordered ``(version, headline)`` pairs.
 
@@ -291,7 +346,7 @@ def parse_changelog(root: Path) -> list[tuple[str, str]]:
                 continue
             if stripped.startswith("#"):
                 break
-            headline = stripped.lstrip("-* ").strip()
+            headline = _strip_list_and_emphasis(stripped)
             break
         out.append((version, headline))
         i += 1

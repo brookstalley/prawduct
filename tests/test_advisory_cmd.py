@@ -392,6 +392,17 @@ class TestRunDispatcher:
         assert _cmd.run(str(tmp_path), ["show", "missing-v1-000000"]) == 1
         assert "not found" in capsys.readouterr().err.lower()
 
+    def test_show_renders_alternative_actions(self, tmp_path, capsys):
+        """The briefing prints one action per advisory by design, so `show` is
+        the only surface an alternative can reach a reader through."""
+        entry = _active("synthetic-synthetic-condition-v1-aaa111", "synthetic")
+        entry["alternative_actions"] = ["/synthetic other-route", "rm -rf nothing"]
+        _seed_store(tmp_path, [entry])
+        assert _cmd.run(str(tmp_path), ["show", "synthetic-synthetic-condition-v1-aaa111"]) == 0
+        out = capsys.readouterr().out
+        assert "/synthetic other-route" in out
+        assert "rm -rf nothing" in out
+
     def test_dismiss_with_reason_separate_token(self, tmp_path):
         _seed_store(tmp_path, [_active("synthetic-synthetic-condition-v1-aaa111", "synthetic")])
         assert _cmd.run(str(tmp_path), ["dismiss", "synthetic-synthetic-condition-v1-aaa111", "--reason", "later"]) == 0

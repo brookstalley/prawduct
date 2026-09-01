@@ -439,9 +439,9 @@ for only two of them**:
   it, and will report `ok` while leaving `id_aliases` untouched.** Read the body,
   delete only that one entry, and pass everything else back **verbatim**:
 
-      gh issue view <n> --repo <owner>/<repo> --json body -q .body > /tmp/loser-body.md
+      gh issue view <n> --repo <target> --json body -q .body > /tmp/loser-body.md
       # remove the duplicated id from the id_aliases LIST; keep the rest of the line
-      gh issue edit <n> --repo <owner>/<repo> --body-file /tmp/loser-body.md
+      gh issue edit <n> --repo <target> --body-file /tmp/loser-body.md
 
   **`id_aliases` is one line holding a list** — `id_aliases: [ABC-1234, DEF-5678]` — so
   what you are deleting is a list *element*, not the line. Delete the whole line only if

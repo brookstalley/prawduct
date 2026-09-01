@@ -565,6 +565,55 @@ class TestCensus:
         assert report["summary"]["undispositioned"] == 1
         assert report["summary"]["findings"] == 5
 
+    def test_a_summary_only_finding_is_named_in_the_census_and_the_prior_block(
+        self, tmp_path
+    ):
+        """Both readers must fall back to `summary` when there is no `title`.
+
+        A DERIVED findings record — the shape `.critic-findings.json` and the
+        review facts written from it actually carry — states the finding under
+        `summary`. `prior_dispositions` already fell back; `_row` did not, so the
+        census rendered `title: null` for exactly the records a human reads to
+        check a disposition was filed against the right finding, and a null title
+        makes that check impossible.
+
+        This module's own `_review_fact` helper always set `title`, which is why
+        nothing caught it: the fixture was shaped like the input that works. So
+        the finding here is built with `summary` and no `title` at all, and both
+        readers are asserted, because fixing one and leaving the other is how
+        this defect came to exist.
+        """
+        repo = _make_repo(tmp_path)
+        body = {
+            "base_tree": "a" * 40,
+            "head_tree": "b" * 40,
+            "mode": "final",
+            "scope": None,
+            "chunk": None,
+            "findings": [
+                {
+                    "fid": "R-1",
+                    "severity": "warning",
+                    "goal": "Nothing Is Broken",
+                    "summary": "the gate reads a stale tree",
+                    "files": ["lib/a.py"],
+                }
+            ],
+        }
+        assert evidence.append_fact(repo, "review", "rev-1", body)["status"] == "appended"
+        dispositions.record(
+            repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design"
+        )
+        store = evidence.read_facts(repo)
+
+        row = dispositions.census(store)["reviews"][0]["rows"][0]
+        assert row["title"] == "the gate reads a stale tree", (
+            "the census renders no name for a summary-only finding, so the row "
+            "cannot be matched to the finding it dispositions"
+        )
+        entry = dispositions.prior_dispositions(store, ["lib/a.py"])["entries"][0]
+        assert entry["title"] == "the gate reads a stale tree"
+
     def test_unrecognized_resolution_disposition_is_shown_not_hidden(self, tmp_path):
         repo = _make_repo(tmp_path)
         _review_fact(repo, "rev-1", [("R-1", "warning")])
@@ -1112,3 +1161,75 @@ class TestPriorDispositions:
         store = evidence.read_facts(repo)
         assert dispositions.prior_dispositions(store, ["lib/a.py"])["matched"] == 0
         assert dispositions.prior_dispositions(store, [])["matched"] == 1
+
+
+class TestFindingTitleAccessor:
+    """One finding, three key names, one place that knows it.
+
+    The same sentence is `name` in a reviewer's partial, `title` once
+    consolidation writes the review fact, and `summary` again in the derived
+    `.critic-findings.json`. Five readers each re-derived that chain by hand and
+    the only thing carrying the contract was a comment in each one pointing at
+    the last — a countdown, not a redundancy: the reader that forgets emits
+    `title: null` into the record a human checks a disposition against, which
+    has already happened once.
+    """
+
+    def test_each_layers_key_resolves(self):
+        for key in ("title", "summary", "name"):
+            assert evidence.finding_title({key: "the sentence"}) == "the sentence", (
+                f"a finding carrying only {key!r} — the shape one whole layer "
+                "emits — no longer resolves, so that layer reads as untitled"
+            )
+
+    def test_precedence_is_fact_then_cache_then_partial(self):
+        """Not alphabetical, and not arbitrary. A finding that carries more than
+        one is one that has been through a projection, and the later layer is
+        the one a human was shown.
+        """
+        assert evidence.finding_title(
+            {"title": "fact", "summary": "cache", "name": "partial"}
+        ) == "fact"
+        assert evidence.finding_title({"summary": "cache", "name": "partial"}) == "cache"
+
+    def test_blank_and_missing_both_fall_through(self):
+        """Presence is not a title. `""` and `"   "` reached the old chains as
+        falsey and fell through; a `key in finding` test would not, and would
+        put an empty string where a caller asked for `<no title>`.
+        """
+        assert evidence.finding_title({}) == ""
+        assert evidence.finding_title({"title": "", "summary": "cache"}) == "cache"
+        assert evidence.finding_title({"title": "   ", "name": "partial"}) == "partial"
+        assert evidence.finding_title({"title": None}, "<no title>") == "<no title>"
+
+    def test_a_non_string_does_not_reach_the_caller(self):
+        """The chains this replaces used `or`, so a truthy non-string (a dict a
+        malformed partial might carry) propagated into `len()` and `str()` at
+        different call sites with different results. It is skipped now.
+        """
+        assert evidence.finding_title({"title": {"nested": 1}, "summary": "cache"}) == "cache"
+        assert evidence.finding_title({"title": 42}, "fallback") == "fallback"
+
+    def test_no_reader_re_derives_the_chain(self):
+        """The property that closes the class — asserted over the source, because
+        the defect is a SIXTH reader being added, and no behavioural test can see
+        one that does not exist yet.
+
+        **What turns this red, and what does not.** It matches a single-line
+        `x.get("a") or y.get("b")` pair — the idiom that actually existed, five
+        times. A chain a formatter wrapped across lines, or a three-key one split
+        at a paren, slips it. That is a real limit and it is stated rather than
+        implied: the scan raises the cost of re-deriving the chain, it does not
+        make it impossible, and a reader who believes otherwise will not look.
+        """
+        import re as _re
+        offenders = []
+        for path in sorted((ROOT / "lib").rglob("*.py")):
+            src = path.read_text(encoding="utf-8")
+            for num, line in enumerate(src.splitlines(), 1):
+                if _re.search(r'get\("(title|summary|name)"\)\s+or\s+\w+\.get\("(title|summary|name)"\)', line):
+                    offenders.append(f"{path.name}:{num}: {line.strip()}")
+        assert offenders == [], (
+            "a reader re-derives the finding-title alias chain instead of "
+            "calling `evidence.finding_title`:\n  " + "\n  ".join(offenders)
+        )

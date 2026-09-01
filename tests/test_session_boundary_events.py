@@ -33,8 +33,11 @@ source is only a proxy for the question it asks. What licenses deleting someone
 else's marker is that the dispatching process is gone — and `clear` discards the
 transcript WITHOUT ending the process, so it passes the test that sorts this
 column while failing the one the sweep needs. At a boundary the sweep therefore
-fires only on a marker that has already failed the 30-minute TTL; a fresh one
-survives every session event.
+asks two questions, not one: the TTL answers *is the dispatching process gone*,
+and the roster answers *is there anything left to finish*. A fresh marker
+survives every session event, and so does an expired one whose reviewers have
+all reported — that review is one deterministic consolidation from being
+recorded, and the Stop hook's backstop runs that step itself.
 
 The premise was verified empirically before this was built, not reasoned about:
 a headless session was given a codeword, resumed by session id, and returned the
@@ -247,8 +250,11 @@ class TestBoundaryDependentInterpretation:
 
         This replaces test_resume_still_sweeps_a_stale_critic_marker, which pinned
         the opposite. That test asserted a real defect, so this is a correction,
-        not a relaxation: the marker's three independent recoveries (30-min TTL,
-        `--force`, `rm`) all survive, and the boundary sweep below still fires.
+        not a relaxation: the marker's three independent recoveries (TTL expiry,
+        the boundary sweep, and an explicit named act — `critic-end`,
+        `critic-discard`, `clear --force`) all survive, and the boundary sweep
+        below still fires. A bare `rm` is NOT among them: it does the same damage
+        while saying nothing.
         """
         prawduct = _seed_session(tmp_path)
         marker = prawduct / ".critic-active"
@@ -477,6 +483,43 @@ class TestBoundaryDependentInterpretation:
         assert "after the next dispatch" not in out, (
             "the notice is back on the unrunnable timing — that phrasing names the "
             "one moment `critic-restore` is guaranteed to refuse"
+        )
+
+    def test_a_sweep_with_no_readable_id_offers_a_handle_that_exists(self, tmp_path):
+        """The disk where the id is not a name but a sentence: partials on disk
+        with no manifest describing them. The notice promises preservation
+        (correctly — that output is real) and then used to render
+        `prawduct-hook critic-restore (id unavailable — …)` as the ONLY handle.
+        An operator who copies it gets `no archived review named '(id…'`, and
+        the two handles that work — the bare listing, and the
+        `unmanifested-<ts>` name the archiving dispatch prints — are never
+        mentioned. The partials then age out of the archive ring unread, which
+        is exactly the harm the preservation clause exists to prevent.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        marker = prawduct / ".critic-active"
+        marker.write_text(json.dumps({"started_at": now}))
+        from lib.critic_consolidate import manifest_path  # noqa: PLC0415
+        partials = manifest_path(prawduct).parent
+        partials.mkdir(parents=True, exist_ok=True)
+        (partials / "correctness.rev-orphan.json").write_text("{}")
+
+        res = run_plugin_hook("clear", tmp_path, "--session-start", "--force")
+        assert res.returncode == 0, res.stderr
+        out = res.stdout + res.stderr
+        assert not marker.is_file(), "--force must still sweep; this pins the notice"
+        assert "reviewer partial(s)" in out, (
+            "fixture guard: this disk must reach the preservation branch, or the "
+            "recovery line under test is never rendered"
+        )
+        assert "critic-restore (id unavailable" not in out, (
+            "the notice offered a command whose argument is a sentence about not "
+            "having an argument"
+        )
+        assert "prawduct-hook critic-restore\n" in out, (
+            "the runnable handle — bare `critic-restore` lists the archive — must "
+            "be the one offered when the id cannot be read"
         )
 
     def test_forcing_a_sweep_of_a_complete_roster_names_the_lost_self_heal(self, tmp_path):
