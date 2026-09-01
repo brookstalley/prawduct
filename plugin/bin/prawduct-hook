@@ -1299,6 +1299,23 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     cannot clobber the session it is reviewing. A continuation neither sweeps nor
     refuses — it mutates no session state, so the guard has nothing to protect.
 
+    **That exemption reaches a BARE ``clear --brief-only`` too, deliberately, and
+    the sentence above is the whole of its licence — so read it exactly.** "No
+    session state" is not "nothing": a continuation writes ``.advisories.json``,
+    regenerates ``.subagent-briefing.md``, and can ``git rm --cached`` an
+    accidentally-committed session file, which mutates the git index. None of
+    those is the *reviewed* session's evidence, which is the only thing CRT-3X9D
+    protects. ``hooks.json`` never issues this shape — both its ``clear``
+    registrations carry ``--session-start`` — so it is reachable only by hand,
+    i.e. exclusively by the CRT-3X9D vector; requiring ``--session-start`` for the
+    CONTINUATION classification was weighed and rejected, because it would leave a
+    reviewer subagent unable to ORIENT itself and would give up ``--brief-only``'s
+    orthogonality, to refuse a path that touches none of what the guard defends.
+    Pinned by ``TestBoundaryDependentInterpretation`` — a live marker plus a bare
+    ``--brief-only``, asserting the marker and every evidence file survive
+    (CRT-7N4B). If that stops holding, this classification changes; the pin is not
+    a licence to start mutating here.
+
     ``--brief-only`` exists because the SessionStart matcher is the only thing
     that knows whether this invocation ends a session or continues one, and
     ``startup|resume|clear`` threw that fact away: `resume`, `compact` and `fork`
