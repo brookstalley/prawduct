@@ -32,10 +32,12 @@ disappearing.** Such an entry belongs to no scope, so it reaches no row of a rel
 classification table and can be neither shipped nor withheld — the gate was certifying releases
 over work it had never enumerated. It now refuses with `unclassifiable-pending-entry:` and names
 every offending entry with its line number, so the fix is one `scope=` per entry. **If you carry
-legacy untagged entries, your next release will newly refuse**; that is the intended cost, and
-naming each entry is how it stays a minute's work rather than a hunt. The gate also now says what
-it looked at on every run — entries scanned, how many are release-pending, the scopes they
-enumerate — so a verdict can be audited against its own denominator.
+tagged, release-pending entries that never got a `scope=`, your next release will newly refuse**;
+an entry with no tag line at all is untouched, because the gate has never claimed authority over
+untagged history. That is the intended cost, and naming each entry is how it stays a minute's work
+rather than a hunt. The gate also now says what it looked at on every run — entries scanned, how
+many are release-pending, the scopes they enumerate — so a verdict can be audited against its own
+denominator.
 
 **Delegation has a guide, a default, and a place to record what your project decided.**
 `/prawduct:methodology delegation` opens it: when to delegate and when to stay serial, what
