@@ -16,8 +16,8 @@ The Critic reviews changes against principles and specifications as a **separate
 
 **This file serves `final` and `cumulative`.** `chunk` and `verify-resolutions` read `goals-1-3.md` — self-contained for those two, which is why nothing here restates them. Per-mode behavior: `review-cycle.md`.
 
-- **`final`** — all 7 goals + Learnings Cross-Check + Backlog Reconciliation + Framework-Specific Checks. Coordinator pattern eligible. Target 4-10 min.
-- **`cumulative`** — `final`-mode goals scoped to `merge-base...HEAD` (the full PR bundle). Required by `/prawduct:pr create`.
+- **`final`** — coordinator-pattern eligible. Target 4-10 min.
+- **`cumulative`** — the same goals over `merge-base...HEAD`. Required by `/prawduct:pr create`.
 
 **Chunk type axis.** Chunks declare `Type:` (orthogonal to mode); it adjusts per-goal protocol (`review-cycle.md` "Per-Chunk Type Protocol Selector"). Missing/unrecognized → `code`.
 
@@ -68,7 +68,7 @@ downgrade.
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
 - `infrastructure_dependencies` declared: tests and code exercise the real dependency, not an in-memory stand-in → **WARNING** if all mocked. Document a mock; never substitute one silently.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when (read source or probe before drafting handlers — see `methodology/planning.md`) → **WARNING** if missing.
-- **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach` present, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. The produced-surface mirror of Foreign API — see `methodology/planning.md`.
+- **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach` present, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. The produced-surface mirror of Foreign API — see `methodology/planning.md`. **Presence is not adherence**: where the contract's `Retention:` policy defers removal to a major, a member its Surface Inventory declares `stable`/`deprecated` that the diff removes — or un-declares — is a **BLOCKING** norm departure (Normative authority above), read from that declaration and never from source.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 
 ### 3. Nothing Is Unintended
@@ -81,7 +81,7 @@ downgrade.
 ### 4. Everything Is Coherent
 - **Drift — a description whose subject moved.** The container never changes the check: artifacts and code drift in both directions, and so do the README and `docs/` you read when features change, comments, type annotations, docstrings, API docs, and the citations a renamed or removed term leaves behind. A stale artifact, README or doc page → **WARNING**; comment, docstring and doc *wording* takes Severity Levels' prose ceiling; an instruction that actively misleads (a wrong command, a deleted config reference) → **BLOCKING**. Sharpest instance, meaning anchored to something that moves: an ephemeral build id (a count, a chunk number that renumbers, a work-cycle name), or a plan cited by path — archiving dangles it, so a plan resolves **by scope**. Norms are exempt — Normative authority above.
 - **History cannot drift**: only what this changeset added or modified is in scope. Changelog entries (`change-log.md`, `change_log_history`), commit messages and archives are append-only, and bookkeeping that records the work (backlog `closed-by:`, operator-verification) is exempt for the same reason.
-- **CLAUDE.md size**: CLAUDE.md is an instruction file, not an architecture reference. Check project-specific content (outside PRAWDUCT markers): over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`.
+- **CLAUDE.md size**: project-specific content (outside PRAWDUCT markers) over ~150 lines → **WARNING**, naming what to move to `docs/` or `.prawduct/artifacts/`.
 
 ### 5. Decisions Were Deliberate
 - **A decision without a recorded why** → **WARNING**: a new external dependency, an architectural pattern, or a major technology choice with alternatives considered, each in the artifact that owns it.
@@ -107,7 +107,7 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 ## Framework-Specific Checks
 
-**Applies when reviewing framework instruction files, templates, or structural decisions.** Product builds skip these. Read `framework-checks.md` for the definitions: **Generality**, **Instruction Clarity**, **Cumulative Health**, **Pipeline Coverage**.
+Self-gating (SKILL step 1). Read `framework-checks.md` for the definitions: **Generality**, **Instruction Clarity**, **Cumulative Health**, **Pipeline Coverage**.
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
@@ -193,4 +193,4 @@ If no findings: "No issues found. Changes are ready to proceed."
 
 ## Review Cycle
 
-Read `review-cycle.md` for the per-chunk lifecycle and mode selection. Framework changes follow the same protocol as product changes; framework-only fixes without a build plan run a single `final` review.
+Framework changes follow the same protocol as product changes; framework-only fixes without a build plan run a single `final` review.

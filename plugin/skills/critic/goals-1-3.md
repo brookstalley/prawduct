@@ -3,8 +3,7 @@
 **Self-contained by design** — everything you need is here,
 so do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
 
-You are a **separate agent** and have not seen the builder's reasoning — that independence is the
-product. **Never run tests, builds, or executables**: review test quality and coverage by reading
+**Never run tests, builds, or executables**: review test quality and coverage by reading
 code. Both modes are **always single-pass** — no subagents, no coordinator. In `verify-resolutions`,
 only **BLOCKING** is a finding — report anything lesser, record-lint entries included, as an
 observation, never in `findings`. **Deliver every observation pre-priced:** ACCEPT is the default
@@ -83,7 +82,7 @@ Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_grade
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
 - If `infrastructure_dependencies` is declared: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when → **WARNING** if missing.
-- **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach`, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing.
+- **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach`, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. Presence is not adherence: where the contract's `Retention:` policy defers removal to a major, a `stable`/`deprecated` member of its Surface Inventory the diff removes or un-declares → **BLOCKING** norm departure.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 
 ## 3. Nothing Is Unintended
@@ -103,8 +102,6 @@ Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_grade
 - **Prose remedies** — stale prose gets one of three: delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
 **Never name the backlog as a finding's destination** — disposition is the builder's call.
-Proportionality: quick assessment for typos and formatting, full analysis for behavioral or
-structural change.
 
 ## Record your judgment
 
@@ -139,5 +136,5 @@ mismatch, so match this schema exactly.
 
 Then report to the user: signals (size, type, files, boundaries crossed), what you reviewed, each
 finding with goal, severity and recommendation, and a summary by severity saying whether the changes
-are ready. No findings, no observations: "No issues found." **Either way** your last line is consolidate's
-`NEXT-ACTION:`, verbatim — the clean pass is where it matters most, never an exemption.
+are ready. No findings, no observations: "No issues found." A clean pass is not an exemption from
+the `NEXT-ACTION:` last line — it is where that line matters most.
