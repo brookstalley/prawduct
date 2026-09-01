@@ -300,7 +300,10 @@ def test_a_clean_corpus_still_applies_and_reports_applied(tmp_path):
 
     assert result["applied"] is True
     assert all(r["applied"] for r in result["retirements"])
-    assert "the only copy" in (repo / ".prawduct" / "learnings-detail.md").read_text()
+    # The archive is its own file since #350 — the narrative MOVED, and the
+    # property under test is that it still exists somewhere, not that it
+    # stayed in the file a lookup reads.
+    assert "the only copy" in (repo / ".prawduct" / "learnings-history.md").read_text()
 
 
 _HOOK = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
@@ -358,7 +361,7 @@ def test_the_cli_tests_target_the_fixture_and_not_the_real_repo(tmp_path):
 
     _run_hook(repo, "audit-learnings", "--apply")
 
-    assert "superseded by" in (repo / ".prawduct" / "learnings-detail.md").read_text()
+    assert "superseded by" in (repo / ".prawduct" / "learnings-history.md").read_text()
     if real_before is not None:
         assert real_index.read_text(encoding="utf-8") == real_before
 

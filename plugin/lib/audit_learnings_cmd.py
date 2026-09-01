@@ -112,6 +112,35 @@ _METADATA_RE = re.compile(
     r"<!--\s*prawduct-learning:\s*(?P<body>.*?)\s*-->\s*$"
 )
 
+#: Filenames of the three-tier corpus. The split is the whole point of #350:
+#: `learnings-detail.md` was an unbounded sink — 557KB across 4,748 lines and
+#: growing 65% a month, with 182KB of it archive — and every `/prawduct:learnings`
+#: lookup read the archive to answer a question about the active corpus.
+#:
+#: * `learnings.md`         — the active rule index (bounded; the briefing nudges
+#:                            it past 40KB).
+#: * `learnings-detail.md`  — the narrative for ACTIVE rules only.
+#: * `learnings-history.md` — retired entries. Append-only, deliberately
+#:                            unbounded, and read ONLY on a miss: a reader who
+#:                            remembers a rule and cannot find it looks here for
+#:                            the forwarding address, and nobody else pays for it.
+#:
+#: That is the route out. The archive still never loses an entry — retirement
+#: stays a MOVE, and now it moves one file further, out of the read path instead
+#: of into a section at the bottom of it.
+DETAIL_FILENAME = "learnings-detail.md"
+HISTORY_FILENAME = "learnings-history.md"
+
+_HISTORY_FILE_PREAMBLE = (
+    "# Learnings — Retired\n\n"
+    "Entries retired by `audit-learnings --apply`, moved out of "
+    "`learnings-detail.md` so the active corpus stays the thing a lookup reads. "
+    "**Nothing is ever deleted from this file.** A reader who remembers a rule "
+    "and cannot find it in `learnings.md` looks here: each entry carries the "
+    "reason it was retired and, for a supersession, the heading that replaced "
+    "it.\n"
+)
+
 _HISTORICAL_SECTION_HEADER = "## Historical (structurally enforced)"
 #: The header stays for continuity with entries already filed under it; the
 #: blurb no longer claims sentinels are the only route, because supersession
@@ -1166,8 +1195,11 @@ def _apply_retirements(
         rebuilt_parts.append(_entry_block(entry).rstrip("\n") + "\n")
     new_content = "\n".join(rebuilt_parts).rstrip("\n") + "\n"
 
-    detail_path = learnings_path.parent / "learnings-detail.md"
-    detail_content, error = _detail_with_retirements(detail_path, retired_with_notes)
+    detail_path = learnings_path.parent / DETAIL_FILENAME
+    history_path = learnings_path.parent / HISTORY_FILENAME
+    detail_content, history_content, error = _compose_retirement_files(
+        detail_path, history_path, retired_with_notes
+    )
     if error:
         # Refuse BEFORE the first write. Both files are still exactly as found,
         # which is the whole reason composition happens ahead of I/O here — a
@@ -1191,6 +1223,11 @@ def _apply_retirements(
     # re-run reconciles it), while learnings-then-detail fails toward deletion.
     # Same probability, opposite blast radius, and Chunk 03's bulk `--apply` is
     # the first caller.
+    # THREE files now, and the direction argument is unchanged: write the
+    # ARCHIVE first, then the file the entry is leaving, then the index. Every
+    # partial failure lands on the duplicate side — the entry visible in two
+    # places, which a re-run reconciles — never on the deletion side.
+    history_path.write_text(history_content)
     detail_path.write_text(detail_content)
     learnings_path.write_text(new_content)
 
@@ -1210,89 +1247,168 @@ def _find_historical_section(lines: list[str]) -> int | None:
     return None
 
 
-def _detail_with_retirements(
-    detail_path: Path, retired_with_notes: list[tuple[LearningEntry, str]]
-) -> tuple["str | None", "dict | None"]:
-    """The full new text of ``learnings-detail.md``, or a refusal.
+def _lift_legacy_historical_section(
+    lines: list[str],
+) -> list[str]:
+    """Cut a legacy in-file historical section out of ``lines`` and return its
+    ENTRY blocks. Mutates ``lines``. Returns ``[]`` when there is no section.
 
-    Returns ``(text, None)`` normally and ``(None, {"title", "error"})`` when a
-    retiring entry's title is duplicated in the active section — see
-    :func:`_take_active_narrative`. The pair is carried rather than a bare
-    reason so the refusal stays attributed to the entry that produced it.
+    Every corpus split before #350 keeps its archive inside
+    ``learnings-detail.md``. Leaving it there while new retirements go to
+    ``learnings-history.md`` would give a product two archives and a route out
+    that routes nothing — the old sink keeps being read on every lookup, which
+    is the entire cost the split exists to remove. So the first `--apply` after
+    the split MOVES it, in the same composed-before-any-write pass as the
+    retirement that triggered it.
+
+    Only the section's entry blocks are lifted. Its header line and the blurb
+    beneath it are boilerplate the history file supplies itself, and carrying
+    them across would file a second header inside the first section — so
+    everything above the section's first ``## `` heading is dropped, which is
+    exactly the boilerplate and nothing an author wrote.
+
+    A detail file with no historical section is the post-split steady state and
+    returns ``[]`` without touching ``lines``.
+    """
+    start = _find_historical_section(lines)
+    if start is None:
+        return []
+    # Only a TOP-level heading closes the section, matching the writer's own
+    # scan: retired entries are `## ` and belong inside it.
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if lines[i].startswith("# ") and not lines[i].startswith("## "):
+            end = i
+            break
+    section = lines[start + 1 : end]
+    del lines[start:end]
+    first_entry = next(
+        (i for i, line in enumerate(section) if line.startswith("## ")), None
+    )
+    if first_entry is None:
+        return []
+    return section[first_entry:]
+
+
+def _compose_retirement_files(
+    detail_path: Path,
+    history_path: Path,
+    retired_with_notes: list[tuple[LearningEntry, str]],
+) -> tuple["str | None", "str | None", "dict | None"]:
+    """The full new text of ``learnings-detail.md`` AND ``learnings-history.md``,
+    or a refusal.
+
+    Returns ``(detail_text, history_text, None)`` normally and
+    ``(None, None, {"title", "error"})`` when a retiring entry's title is
+    duplicated in the detail file's active section — see
+    :func:`_take_active_narrative`. The pair is carried rather than a bare reason
+    so the refusal stays attributed to the entry that produced it.
 
     Pure — writes nothing either way, and the refusal returns BEFORE any cut is
-    composed, so a rejected run leaves both files exactly as it found them
+    composed, so a rejected run leaves all three files exactly as it found them
     rather than half-moved.
+
+    **Retirement is still a MOVE, now across two files.** The entry's active
+    narrative is cut out of the detail file and folded into its historical block
+    in the history file. Without the cut the corpus grows a second block under
+    the same heading and the *undecorated* one sorts first, so a lookup returns
+    a retired rule as current with no successor — the hole-that-reads-as-a-
+    forwarding-address this lifecycle exists to prevent, reintroduced one file
+    over. Found by all three reviewers independently on the first bulk
+    ``--apply`` (2026-08-01), which duplicated 17 headings.
     """
     if detail_path.is_file():
         detail_content = detail_path.read_text()
     else:
         detail_content = (
             "# Learnings — Full Detail\n\n"
-            "Historical record of learnings with their full context. "
-            "See `learnings.md` for the active rule list.\n"
+            "Full context for the ACTIVE rules in `learnings.md`, under the same "
+            "headings. Retired entries live in `learnings-history.md`.\n"
         )
+
+    lines = detail_content.split("\n")
+
+    # Lift any pre-split archive out FIRST, so the cuts below run against a file
+    # that is entirely active — which is what makes the boundary bookkeeping
+    # unnecessary from here on.
+    legacy_blocks = _lift_legacy_historical_section(lines)
 
     # Cut each retiring entry's ACTIVE narrative out of the detail file before
     # composing its historical block, so the prose MOVES rather than being
-    # duplicated under a second copy of the same heading. Done against a live
-    # `lines` list — and the historical boundary is re-found after every cut,
-    # because each removal shifts it upward.
-    lines = detail_content.split("\n")
+    # duplicated.
     narratives: list[str] = []
     for entry, _note in retired_with_notes:
-        boundary = _find_historical_section(lines)
-        limit = boundary if boundary is not None else len(lines)
-        narrative, error = _take_active_narrative(lines, entry.title, limit)
+        narrative, error = _take_active_narrative(lines, entry.title, len(lines))
         if error:
             # Attributed to the entry that actually refused, not to the first
             # candidate. This loop runs over EVERY retiring entry and returns on
             # the first duplicate it meets, so with a bulk `--apply` the two are
             # different entries — and `errors[].title` is the field doctor
             # relays, so a mismatch prints one line naming two entries.
-            return None, {"title": entry.title, "error": error}
+            return None, None, {"title": entry.title, "error": error}
         narratives.append(narrative)
+
+    detail_text = "\n".join(lines)
+    if not detail_text.endswith("\n"):
+        detail_text += "\n"
 
     appended_blocks = "\n".join(
         _historical_block(entry, note, narrative).rstrip("\n") + "\n"
         for (entry, note), narrative in zip(retired_with_notes, narratives)
     )
+    if legacy_blocks:
+        lifted = "\n".join(legacy_blocks).strip("\n")
+        appended_blocks = lifted + "\n\n" + appended_blocks
 
+    return detail_text, _history_with_blocks(history_path, appended_blocks), None
+
+
+def _history_with_blocks(history_path: Path, blocks: str) -> str:
+    """``learnings-history.md`` with ``blocks`` appended inside its section.
+
+    Seeded with a preamble and the historical section header when absent. The
+    section header is kept — verbatim, ``## Historical (structurally
+    enforced)`` — for continuity with the entries already filed under it and
+    with every reference that names it; the file around it is what changed, not
+    the section.
+
+    Appends at the END OF THE SECTION rather than at EOF. Those are the same
+    place only while the section is last, and this file's contract has always
+    been "under the historical section": once any later top-level section
+    exists, EOF-appending files every retirement under a heading it does not
+    belong to, with the file reading as though it did.
+    """
+    if history_path.is_file():
+        content = history_path.read_text()
+    else:
+        content = ""
+
+    lines = content.split("\n") if content else []
     start = _find_historical_section(lines)
     if start is None:
-        # Rebuild from `lines`, NOT from `detail_content` — the narratives were
-        # cut out of `lines`, and returning the original string here would put
-        # every one of them back while also writing its historical copy, which
-        # is the duplication this function now exists to prevent.
-        remaining = "\n".join(lines)
-        if not remaining.endswith("\n"):
-            remaining += "\n"
-        return remaining + (
-            "\n" + _HISTORICAL_SECTION_HEADER + "\n\n"
+        head = content.rstrip("\n")
+        if not head:
+            head = _HISTORY_FILE_PREAMBLE.rstrip("\n")
+        return (
+            head + "\n\n"
+            + _HISTORICAL_SECTION_HEADER + "\n\n"
             + _HISTORICAL_SECTION_BLURB
-            + "\n" + appended_blocks
-        ), None
+            + "\n" + blocks
+        )
 
-    # The section EXISTS — insert at its end, not the file's. Appending to EOF
-    # is the same place only while the section is last, and the docstring has
-    # claimed "under the historical section" the whole time. Chunk 03's bulk
-    # collapse is the first `--apply` here, so once any later top-level section
-    # exists, EOF-appending files every retirement under a heading it does not
-    # belong to — with the file reading as though it did.
     end = len(lines)
     for i in range(start + 1, len(lines)):
         # Only a TOP-level heading closes the section: retired entries are `## `
-        # and every block this function writes belongs inside. A detail file
-        # with no later top-level heading appends at EOF exactly as before.
+        # and every block written here belongs inside.
         if lines[i].startswith("# ") and not lines[i].startswith("## "):
             end = i
             break
     tail = "\n".join(lines[end:])
     head = "\n".join(lines[:end]).rstrip("\n")
-    out = head + "\n\n" + appended_blocks
+    out = head + "\n\n" + blocks
     if tail.strip():
         out = out.rstrip("\n") + "\n\n" + tail
-    return out, None
+    return out
 
 
 def run_audit_learnings(product_dir: str, *, apply: bool = False) -> dict:
