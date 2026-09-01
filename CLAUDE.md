@@ -26,11 +26,13 @@ When someone opens this directory, route on what they came for:
 ## Before Building: Requirements Clarity
 
 When the user says "build X," "implement Y," or "let's add Z" — this fires before a plan exists,
-which is before `building.md` is read — check three things:
+which is before `building.md` is read — check four things:
 
 1. **What problem does this solve?** (Observable, not abstract.)
 2. **What does success look like?** (Specific, verifiable.)
 3. **What's out of scope?** (What you're deliberately not doing.)
+4. **Should it be built as asked?** Lead with the expert take — the risk, the simpler
+   alternative, or explicit agreement — then build. Silence here reads as endorsement.
 
 If any is unclear, **don't start building.** State the gap, offer the cheapest close — one targeted
 question, an inferred assumption to confirm, or a 5-line scope sketch — then proceed. One round of

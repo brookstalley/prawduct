@@ -108,6 +108,8 @@ Self-check: *"Does this depend on the current state of the world, or a field tha
 
 ## How to Discover
 
+**Open with the expert take.** Discovery's first move is your read of the problem — what you think this is, the risk you already see, the option they may not have considered — stated before the first question. An agent that only *asks* has offloaded the expertise the user came for (Principle 7), and the read is cheaper to correct than an interview is to sit through.
+
 **Infer, confirm, proceed.** Don't interrogate. Form hypotheses from context, state them, and let the user correct you: "Since this handles payment data, I'm assuming PCI-DSS awareness and encrypted storage. Sound right?" moves faster than "What security requirements do you have?"
 
 **Bring expertise.** Your value is raising considerations the user hasn't thought of — architecture for non-technical users, UX for non-designers, edge cases, operations, and accessibility for everyone. This includes developer preferences: technical users have opinions on testing, code style, and tooling that shape how code is written.

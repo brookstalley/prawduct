@@ -522,7 +522,17 @@ LAST_MEASURED_TOKENS = {
     # (3238 → 4083), then the clear-line verdict and its deadline (#687).
     # That growth is the design working, which is exactly why it is recorded
     # rather than capped.
-    "methodology/discovery.md": 4752,
+    # +87 on 2026-09-01 (#298): the advisory obligation attached to DISCOVERY
+    # START -- open with your read of the problem before the first question.
+    # The tone half of advisor-first shipped in 2026-07 as the digest's stance
+    # block, and #298's premise is that a stance living only in adjectives
+    # decays under context pressure and on weaker models. So the obligation is
+    # now attached at three checkpoints an agent already hits, in the surface
+    # that owns each: here, `planning.md` at plan presentation, and CLAUDE.md's
+    # Before-Building check. Unfunded by design -- the on-demand class carries a
+    # reading and no ceiling (#688), and the always-injected surface (CLAUDE.md)
+    # is where the same feature paid at a ceiling.
+    "methodology/discovery.md": 4839,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -580,7 +590,13 @@ LAST_MEASURED_TOKENS = {
     # session that opens it. The pushback bullet is also #298's plan-creation
     # advisory obligation in its plan-shape form: the obligation is stated where
     # the decision is made, not in the digest's adjectives.
-    "methodology/planning.md": 5363,
+    # +103 on 2026-09-01 (#298): the advisory obligation attached to PLAN
+    # PRESENTATION -- say what you would do differently before the chunks, and
+    # "nothing, this is the right shape" is a fine answer; what is not an option
+    # is a plan handed over with no position on it. Distinct from the Plan Shape
+    # pushback above, which is one specific take (this plan is too big); this is
+    # the general obligation that take is an instance of.
+    "methodology/planning.md": 5466,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -947,7 +963,21 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # would have forced that commit to RAISE a ceiling to make room for an
     # addition this one had already paid for -- the accounting reading exactly
     # backwards from what happened.
-    "framework": 3159,
+    # framework 3159 -> 3197 on 2026-09-01 (#298): CLAUDE.md's Before-Building
+    # check gained a fourth question -- "should it be built as asked?", leading
+    # with the expert take. Charged to `framework` alone, since `product` takes
+    # the static anchor rather than this file. SPENT OUT OF #630's RELIEF, in
+    # the commit that relief's own entry above named: the two commits net to
+    # framework 3343 -> 3197 and product 2269 -> 2085, and no ceiling was
+    # raised at any point.
+    #
+    # Why this line is worth a surface with no opt-out. The check already fired
+    # at the right moment and asked the right three questions -- and all three
+    # are about the WORK, so an agent could answer them completely and never
+    # form a view on whether the work should happen. That is the gap: the most
+    # expensive failure available here is building the wrong thing well, and it
+    # is invisible to a check that only interrogates scope.
+    "framework": 3197,
     "product": 2085,
 }
 
@@ -1022,8 +1052,19 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # here, because a revert target copied into prose goes stale the next time
     # either shape moves and reads as fact while it is wrong. Drop the bullet
     # and read what the assertion prints.)
-    "framework": 3344,
-    "product": 2270,
+    # 3344 -> 3198, 2270 -> 2086 on 2026-09-01 (#630 + #298, ratcheted here
+    # because #630 deliberately deferred it one commit rather than force this
+    # one to RAISE for an addition the previous commit had already funded).
+    # Back to one over the reading -- zero banked, so the next addition is under
+    # the standing trim-or-relocate rule with nothing to collect silently.
+    #
+    # The reserve #630 restored is NOT held here, and that is the point: this
+    # table's unit is tokens and it is raisable by declaration, while the
+    # reserve is characters against a harness threshold that no ruling buys past
+    # (`tests/test_plugin_methodology_digest.py`'s DIGEST_HEADROOM_RESERVE).
+    # Banking headroom in a raisable budget would have protected nothing.
+    "framework": 3198,
+    "product": 2086,
 }
 
 
