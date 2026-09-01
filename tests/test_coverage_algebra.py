@@ -483,6 +483,112 @@ class TestBlockingAndResolutions:
         assert ca.coverage_verdict(facts, T0, T1, _diff({}))["status"] == "covered"
 
 
+class TestBlockersAreAPropertyOfNodes:
+    """CRT-5H2D — the findings question is asked of the trees the path stands
+    on, not of the edges it traversed.
+
+    Two independent doors let a BLOCKING finding gate nothing before this:
+    ``review_edges`` drops a self-loop (``base_tree == head_tree``) before
+    either search phase runs, and ``coverage_verdict`` short-circuited an
+    equal-trees span to ``covered`` before the edges were built at all. Both
+    are pinned here, plus the widening they imply and the limits on it.
+    """
+
+    def test_the_live_case_a_self_loop_blocker_blocks_a_span_through_its_tree(self):
+        """The exact observed failure: a verify-resolutions re-dispatch against
+        an unchanged tree recorded a BLOCKING finding at ``T1 -> T1``, and
+        ``check-cumulative-critic`` answered ``satisfied ... 0 unresolved``.
+        A span composed through T1 must now read ``blocked``."""
+        facts = [
+            _review("r1", T0, T1, ["lib/a.py"]),
+            _review("r-self", T1, T1, [], findings=[BLOCKER]),
+            _review("r2", T1, T2, ["lib/b.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "blocked"
+        assert [e["review_id"] for e in verdict["unresolved"]] == ["r-self"]
+        assert verdict["unresolved"][0]["fid"] == "F-1"
+
+    def test_a_degenerate_gate_span_is_not_free_coverage(self):
+        """Door two: the gate's own span is zero-length. There is still a node,
+        and the node still carries the finding."""
+        facts = [_review("r-self", T1, T1, [], findings=[BLOCKER])]
+        verdict = ca.coverage_verdict(facts, T1, T1, _diff({}))
+        assert verdict["status"] == "blocked"
+        assert verdict["path"] == []
+        assert [e["review_id"] for e in verdict["unresolved"]] == ["r-self"]
+
+    def test_a_degenerate_span_names_the_verify_route(self):
+        """The self-loop fact IS what a verify-resolutions pass anchors to, so
+        the finding must not be reported as superseded — that would advise a
+        spanning review when the cheap route is available."""
+        facts = [_review("r-self", T1, T1, [], findings=[BLOCKER])]
+        verdict = ca.coverage_verdict(facts, T1, T1, _diff({}))
+        assert verdict["unresolved"][0]["superseded"] is False
+
+    def test_a_resolution_fact_clears_a_self_loop_blocker(self):
+        """The blocker becomes reachable, so the ordinary route out works —
+        no re-review, and no special case for the degenerate interval."""
+        facts = [
+            _review("r-self", T1, T1, [], findings=[BLOCKER]),
+            _resolution("s1", "r-self", "F-1"),
+        ]
+        assert ca.coverage_verdict(facts, T1, T1, _diff({}))["status"] == "covered"
+
+    def test_a_self_loop_blocker_at_an_unrelated_tree_still_does_not_haunt(self):
+        """The sweep is scoped to the path's nodes. An abandoned state's
+        self-loop is no more haunting than an abandoned state's edge."""
+        facts = [
+            _review("r-dead-self", T_DEAD, T_DEAD, [], findings=[BLOCKER]),
+            _review("r1", T0, T1, ["lib/a.py"]),
+        ]
+        assert ca.coverage_verdict(facts, T0, T1, _diff({}))["status"] == "covered"
+
+    def test_a_blocker_at_a_node_survives_a_free_edge_around_it(self):
+        """Routing around the blocked edge does not answer the accusation the
+        node carries: the tree is still the one a reviewer refused."""
+        facts = [_review("r1", T0, T1, ["lib/a.py"], findings=[BLOCKER])]
+        table = {(T0, T1): [".prawduct/backlog.md"]}  # free edge, same endpoints
+        verdict = ca.coverage_verdict(facts, T0, T1, _diff(table))
+        assert verdict["status"] == "blocked"
+        assert [e["review_id"] for e in verdict["unresolved"]] == ["r1"]
+
+    def test_an_under_reviewed_fact_still_accuses_even_though_it_cannot_vouch(self):
+        """Edge validity gates what evidence *proves*, never what it accuses.
+        A scoped pass that saw less than its diff yields no edge — and its
+        BLOCKING finding is still a real one."""
+        partial = _review(
+            "r-partial", T0, T1, ["lib/a.py", "lib/b.py"],
+            reviewed=["lib/a.py"], findings=[BLOCKER],
+        )
+        facts = [partial, _review("r-full", T0, T1, ["lib/a.py", "lib/b.py"])]
+        verdict = ca.coverage_verdict(facts, T0, T1, _diff({}))
+        assert verdict["status"] == "blocked"
+        assert [e["review_id"] for e in verdict["unresolved"]] == ["r-partial"]
+
+    def test_a_spanning_review_past_the_blocked_tree_still_composes(self):
+        """The documented escape stays open: a review whose interval never
+        stands at the accused tree supplies a clean path around it."""
+        facts = [
+            _review("r1", T0, T1, ["lib/a.py"], findings=[BLOCKER]),
+            _review("r-span", T0, T2, ["lib/a.py", "lib/b.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "covered"
+        assert [s["id"] for s in verdict["path"]] == ["r-span"]
+
+    def test_a_clean_span_with_no_findings_anywhere_is_untouched(self):
+        """The sweep costs nothing when there is nothing to sweep — the
+        ordinary case keeps its ordinary verdict and its ordinary path."""
+        facts = [
+            _review("r1", T0, T1, ["lib/a.py"]),
+            _review("r2", T1, T2, ["lib/b.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "covered"
+        assert [s["id"] for s in verdict["path"]] == ["r1", "r2"]
+
+
 class TestReproScenarios:
     def test_crt_j4pm_no_rerun_after_label_mismatch(self):
         """The v2.3.3 deadlock: chunk reviews + a cumulative + a post-fix
